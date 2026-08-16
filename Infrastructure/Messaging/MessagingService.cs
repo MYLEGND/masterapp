@@ -38,6 +38,7 @@ internal sealed class MessagingService : IMessagingService
     private readonly ITranslationService _translation;
     private readonly ITranslationLearningPublisher _translationLearning;
     private readonly ILegendLanguageRegistry _languages;
+    private readonly ILegendConnectTranslationIntelligence? _translationIntelligence;
     private readonly Dictionary<string, TranslationLearningCandidate> _pendingTranslationLearning = new(StringComparer.Ordinal);
     private readonly INotificationEngine _notifications;
     private readonly string? _configuredFounderOid;
@@ -58,7 +59,8 @@ internal sealed class MessagingService : IMessagingService
         ITranslationLearningPublisher? translationLearning = null,
         ILegendLanguageRegistry? languages = null,
         ITranslationEntitlementAuthority? translationEntitlements = null,
-        ITranslationSystemUsageRecorder? translationSystemUsage = null)
+        ITranslationSystemUsageRecorder? translationSystemUsage = null,
+        ILegendConnectTranslationIntelligence? translationIntelligence = null)
     {
         _db = db;
         _logger = logger;
@@ -77,6 +79,7 @@ internal sealed class MessagingService : IMessagingService
         _communitySafety = communitySafety;
         _translationEntitlements = translationEntitlements;
         _translationSystemUsage = translationSystemUsage;
+        _translationIntelligence = translationIntelligence;
     }
 
     public async Task<MessagingGroupImage?> GetConversationImageAsync(
@@ -4511,6 +4514,67 @@ internal sealed class MessagingService : IMessagingService
             .SingleOrDefaultAsync(cancellationToken);
         if (cached is not null)
             return cached;
+
+        // Cross-message exact reuse belongs to the existing LEGEND language
+        // intelligence authority. Founder/human corrections outrank every
+        // weaker source; system-validated and safe ProviderDerived observations
+        // can avoid another Azure call without being relabeled FounderApproved.
+        if (_translationIntelligence is not null)
+        {
+            var memory = await _translationIntelligence.TryGetTrustedExactMemoryAsync(
+                sourceLanguage,
+                targetLanguage,
+                message.Body,
+                cancellationToken);
+
+            if (memory is not null)
+            {
+                var memoryProvider = memory.Provenance ==
+                        LegendConnectKnowledgeProvenance.ProviderDerived
+                    ? "LegendConnectProviderMemory"
+                    : "LegendConnectTranslationMemory";
+
+                var reused = new MessageTranslation
+                {
+                    Id = Guid.NewGuid(),
+                    InternalMessageId = message.Id,
+                    TargetLanguage = targetLanguage,
+                    TranslatedText = memory.Text,
+                    Provider = memoryProvider,
+                    CreatedUtc = DateTime.UtcNow
+                };
+
+                _db.MessageTranslations.Add(reused);
+
+                if (persistChanges)
+                {
+                    try
+                    {
+                        await _db.SaveChangesAsync(cancellationToken);
+                    }
+                    catch (DbUpdateException)
+                    {
+                        _db.Entry(reused).State = EntityState.Detached;
+
+                        return await _db.MessageTranslations
+                            .AsNoTracking()
+                            .Where(translation =>
+                                translation.InternalMessageId == message.Id &&
+                                translation.TargetLanguage == targetLanguage)
+                            .Select(translation => new CachedMessageTranslation(
+                                translation.TranslatedText,
+                                sourceLanguage,
+                                translation.Provider))
+                            .SingleOrDefaultAsync(cancellationToken);
+                    }
+                }
+
+                return new CachedMessageTranslation(
+                    reused.TranslatedText,
+                    sourceLanguage,
+                    reused.Provider);
+            }
+        }
 
         TranslationProviderResult providerResult;
         try

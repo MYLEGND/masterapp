@@ -21,7 +21,7 @@ namespace AgentPortal.Tests;
 public sealed class LegendConnectTranslationQualityTests
 {
     [Fact]
-    public async Task CompatibleProviderObservation_RecordsSupportWithoutPrematureVerification()
+    public async Task CompatibleProviderObservation_SystemValidatesFromIndependentFounderEvidenceWithoutHumanRelabeling()
     {
         await using var db = ControllerTestHelpers.BuildDb();
         var fixture = CreateFixture(db);
@@ -43,8 +43,10 @@ public sealed class LegendConnectTranslationQualityTests
 
         var persisted = await db.LegendTranslationAlignments.SingleAsync(item => item.Id == observation.Id);
         Assert.Equal("ProviderDerived", persisted.Provenance);
-        Assert.Equal("Observation", persisted.QualityState);
+        Assert.Equal("SystemValidated", persisted.QualityState);
         Assert.False(persisted.HumanVerified);
+        Assert.Equal("ProviderDerived", persisted.Provenance);
+        Assert.True(persisted.Confidence >= 0.98m);
         Assert.Contains(await db.LegendTranslationQualityEvidence.ToListAsync(), item =>
             item.ObservedAlignmentId == observation.Id && item.Signal == "Supported" &&
             item.ReasonCode == "trusted_target_context");
@@ -606,4 +608,61 @@ public sealed class LegendConnectTranslationQualityTests
         LegendConnectCorpusService Corpus,
         LegendConnectCurriculumService Curriculum,
         LegendConnectOperations Operations);
+
+    [Fact]
+    public async Task ExactMemory_PrefersFounderOverSystemValidatedAndProviderObservation()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var fixture = CreateFixture(db);
+        var pair = await PairAsync(fixture.Registry, "ht");
+
+        var source = Unit("en", "Priority source.", "FounderApproved");
+        var providerTarget = Unit("ht", "Rezilta Azure.", "ProviderDerived");
+        var founderTarget = Unit("ht", "Rezilta Fondatè.", "FounderApproved");
+
+        var provider = ProviderObservation(pair, source, providerTarget);
+        provider.QualityState = "SystemValidated";
+        provider.Confidence = 0.98m;
+
+        var founder = HumanAlignment(pair, source, founderTarget);
+
+        db.AddRange(source, providerTarget, founderTarget, provider, founder);
+        await db.SaveChangesAsync();
+
+        var memory = await fixture.Intelligence.TryGetTrustedExactMemoryAsync(
+            "en", "ht", source.Text);
+
+        Assert.NotNull(memory);
+        Assert.Equal(founderTarget.Text, memory!.Text);
+        Assert.Equal("FounderApproved", memory.Provenance);
+    }
+
+
+    [Fact]
+    public async Task ContradictedProviderObservation_CannotBeServedAsReusableMemory()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var fixture = CreateFixture(db);
+        var pair = await PairAsync(fixture.Registry, "ht");
+
+        var source = Unit("en", "Contradicted reusable source.", "FounderApproved");
+        var providerTarget = Unit("ht", "Move Azure.", "ProviderDerived");
+        var founderTarget = Unit("ht", "Move Fondatè.", "FounderApproved");
+
+        var provider = ProviderObservation(pair, source, providerTarget);
+        var founder = HumanAlignment(pair, source, founderTarget);
+
+        db.AddRange(source, providerTarget, founderTarget, provider, founder);
+        await db.SaveChangesAsync();
+
+        await fixture.Intelligence.EvaluateProviderObservationAsync(provider.Id);
+
+        var memory = await fixture.Intelligence.TryGetTrustedExactMemoryAsync(
+            "en", "ht", source.Text);
+
+        Assert.NotNull(memory);
+        Assert.Equal(founderTarget.Text, memory!.Text);
+    }
+
+
 }

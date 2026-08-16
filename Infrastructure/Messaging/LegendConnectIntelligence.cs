@@ -7,7 +7,11 @@ using Microsoft.Extensions.Logging;
 
 namespace Infrastructure.Messaging;
 
-internal sealed record LegendTranslationMemoryMatch(string Text, decimal Confidence);
+internal sealed record LegendTranslationMemoryMatch(
+    string Text,
+    decimal Confidence,
+    string Provenance,
+    string QualityState);
 
 internal sealed record LegendContextualTranslationSuggestion(string Text, decimal Confidence);
 
@@ -107,8 +111,11 @@ internal sealed class LegendConnectTranslationIntelligence : ILegendConnectTrans
         CancellationToken cancellationToken = default)
     {
         var hash = LegendLanguageIdentity.TextHash(text);
-        var pairKey = LegendLanguageIdentity.PairKey(sourceLanguageCode, targetLanguageCode);
-        var match = await (
+        var pairKey = LegendLanguageIdentity.PairKey(
+            sourceLanguageCode,
+            targetLanguageCode);
+
+        var candidates = await (
             from alignment in _db.Set<LegendTranslationAlignment>().AsNoTracking()
             join source in _db.Set<LegendLanguageTextUnit>().AsNoTracking()
                 on alignment.SourceTextUnitId equals source.Id
@@ -116,23 +123,107 @@ internal sealed class LegendConnectTranslationIntelligence : ILegendConnectTrans
                 on alignment.TargetTextUnitId equals target.Id
             where alignment.PairKey == pairKey &&
                   alignment.SupersededUtc == null &&
-                  (alignment.HumanVerified ||
-                   (alignment.Provenance == LegendConnectKnowledgeProvenance.ConsentedLiveTranslation &&
-                    alignment.QualityState == "ConsentedLive" &&
-                    alignment.Confidence >= 0.98m)) &&
                   source.IsTrainingEligible &&
                   target.IsTrainingEligible &&
                   source.LanguageCode == sourceLanguageCode &&
-                  source.NormalizedHash == hash
-            orderby alignment.Confidence descending, alignment.UpdatedUtc descending
-            select new { target.Text, alignment.Confidence }
-        ).FirstOrDefaultAsync(cancellationToken);
+                  target.LanguageCode == targetLanguageCode &&
+                  source.NormalizedHash == hash &&
+                  (
+                      alignment.HumanVerified ||
+                      (
+                          alignment.Provenance ==
+                              LegendConnectKnowledgeProvenance.ConsentedLiveTranslation &&
+                          alignment.QualityState == "ConsentedLive" &&
+                          alignment.Confidence >= 0.98m
+                      ) ||
+                      (
+                          alignment.Provenance ==
+                              LegendConnectKnowledgeProvenance.ProviderDerived &&
+                          alignment.QualityState == "SystemValidated"
+                      )
+                  )
+            select new
+            {
+                target.Text,
+                alignment.Confidence,
+                alignment.Provenance,
+                alignment.QualityState,
+                alignment.HumanVerified,
+                alignment.Id
+            }
+        ).ToListAsync(cancellationToken);
 
-        return match is null
-            ? null
-            : new LegendTranslationMemoryMatch(
-                match.Text,
-                match.Confidence ?? (match.Text.Length > 0 ? 1m : 0m));
+        if (candidates.Count == 0)
+            return null;
+
+        // Provider observations carrying an unresolved contradiction are
+        // retained historically but cannot be served.
+        var providerIds = candidates
+            .Where(item =>
+                !item.HumanVerified &&
+                item.Provenance == LegendConnectKnowledgeProvenance.ProviderDerived)
+            .Select(item => item.Id)
+            .ToArray();
+
+        HashSet<Guid> contradicted = providerIds.Length == 0
+            ? []
+            : (await _db.Set<LegendTranslationQualityEvidence>()
+                .AsNoTracking()
+                .Where(item =>
+                    providerIds.Contains(item.ObservedAlignmentId) &&
+                    item.Signal == "Contradictory" &&
+                    item.ResolutionState == "Open" &&
+                    item.SupersededUtc == null)
+                .Select(item => item.ObservedAlignmentId)
+                .Distinct()
+                .ToListAsync(cancellationToken))
+                .ToHashSet();
+
+        var eligible = candidates
+            .Where(item => !contradicted.Contains(item.Id))
+            .OrderByDescending(item =>
+                item.HumanVerified ? 4 :
+                item.QualityState == "SystemValidated" ? 3 :
+                item.Provenance ==
+                    LegendConnectKnowledgeProvenance.ConsentedLiveTranslation ? 2 :
+                1)
+            .ThenByDescending(item => item.Confidence ?? 0m)
+            .ThenByDescending(item => item.Id)
+            .ToList();
+
+        if (eligible.Count == 0)
+            return null;
+
+        var bestRank =
+            eligible[0].HumanVerified ? 4 :
+            eligible[0].QualityState == "SystemValidated" ? 3 :
+            eligible[0].Provenance ==
+                LegendConnectKnowledgeProvenance.ConsentedLiveTranslation ? 2 :
+            1;
+
+        var sameRank = eligible
+            .Where(item =>
+                (item.HumanVerified ? 4 :
+                 item.QualityState == "SystemValidated" ? 3 :
+                 item.Provenance ==
+                    LegendConnectKnowledgeProvenance.ConsentedLiveTranslation ? 2 :
+                 1) == bestRank)
+            .Select(item => item.Text)
+            .Distinct(StringComparer.Ordinal)
+            .Take(2)
+            .ToList();
+
+        // Never guess between competing targets at the same authority level.
+        if (sameRank.Count != 1)
+            return null;
+
+        var match = eligible[0];
+
+        return new LegendTranslationMemoryMatch(
+            match.Text,
+            match.Confidence ?? (match.Text.Length > 0 ? 1m : 0m),
+            match.Provenance,
+            match.QualityState);
     }
 
     public async Task<LegendContextualTranslationSuggestion?> EvaluateContextAsync(
@@ -356,6 +447,80 @@ internal sealed class LegendConnectTranslationIntelligence : ILegendConnectTrans
                 "Open",
                 null,
                 cancellationToken);
+        }
+
+        // Automatic validation is an evidence-derived state on the existing
+        // ProviderDerived alignment. It never changes provenance and never
+        // fabricates HumanVerified/Founder approval.
+        var persistedEvidence = await _db.Set<LegendTranslationQualityEvidence>()
+            .AsNoTracking()
+            .Where(item =>
+                item.ObservedAlignmentId == observation.Alignment.Id &&
+                item.SupersededUtc == null)
+            .Select(item => new
+            {
+                item.Signal,
+                item.ResolutionState
+            })
+            .ToListAsync(cancellationToken);
+
+        // AddEvidenceIfAbsentAsync may have created evidence in this same
+        // evaluation pass. Include the tracked active rows so maturity is
+        // derived from the exact evidence this canonical evaluator just
+        // established, without requiring a second persistence boundary.
+        var trackedEvidence = _db.Set<LegendTranslationQualityEvidence>()
+            .Local
+            .Where(item =>
+                item.ObservedAlignmentId == observation.Alignment.Id &&
+                item.SupersededUtc == null &&
+                _db.Entry(item).State != EntityState.Deleted)
+            .Select(item => new
+            {
+                item.Signal,
+                item.ResolutionState
+            })
+            .ToList();
+
+        var hasIndependentSupport =
+            persistedEvidence.Any(item => item.Signal == "Supported") ||
+            trackedEvidence.Any(item => item.Signal == "Supported");
+
+        var hasOpenContradiction =
+            persistedEvidence.Any(item =>
+                item.Signal == "Contradictory" &&
+                item.ResolutionState == "Open") ||
+            trackedEvidence.Any(item =>
+                item.Signal == "Contradictory" &&
+                item.ResolutionState == "Open");
+
+        if (!observation.Alignment.HumanVerified &&
+            observation.Alignment.Provenance ==
+                LegendConnectKnowledgeProvenance.ProviderDerived &&
+            hasIndependentSupport &&
+            !hasOpenContradiction)
+        {
+            if (observation.Alignment.QualityState != "SystemValidated" ||
+                observation.Alignment.Confidence < 0.98m)
+            {
+                observation.Alignment.QualityState = "SystemValidated";
+                observation.Alignment.Confidence =
+                    Math.Max(observation.Alignment.Confidence ?? 0m, 0.98m);
+                observation.Alignment.UpdatedUtc = DateTime.UtcNow;
+                changed = true;
+            }
+        }
+        else if (!observation.Alignment.HumanVerified &&
+                 observation.Alignment.Provenance ==
+                     LegendConnectKnowledgeProvenance.ProviderDerived &&
+                 observation.Alignment.QualityState == "SystemValidated")
+        {
+            // Current evidence owns current maturity. Historical validation
+            // cannot survive a newly discovered contradiction.
+            observation.Alignment.QualityState = "Observation";
+            observation.Alignment.Confidence =
+                Math.Min(observation.Alignment.Confidence ?? 0.5m, 0.5m);
+            observation.Alignment.UpdatedUtc = DateTime.UtcNow;
+            changed = true;
         }
 
         if (changed)
