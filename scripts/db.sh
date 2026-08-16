@@ -110,12 +110,21 @@ run_ef() (
     assert_local_connection_override || exit $?
 
     if [[ -n "${MASTERAPP_LOCAL_DB_CONNECTION:-}" ]]; then
-
         export ConnectionStrings__MasterAppDb="$MASTERAPP_LOCAL_DB_CONNECTION"
         export MASTERAPP_DEV_USE_SQLSERVER=true
-        printf '[LOCAL DATABASE] Using MASTERAPP_LOCAL_DB_CONNECTION.\n'
+        printf '[LOCAL DATABASE] Using caller-provided local database configuration.\n'
     else
-        printf '[LOCAL DATABASE] Using the repository development database.\n'
+        # EF model validation must use the same relational provider as the
+        # canonical migration snapshot. A loopback-only design-time SQL Server
+        # connection provides provider metadata without introducing a remote
+        # database, production credential, or committed secret.
+        #
+        # Commands such as migrations has-pending-model-changes compare model
+        # metadata and do not require this endpoint to host a live database.
+        export ConnectionStrings__MasterAppDb="Server=127.0.0.1;Database=masterapp_ef_design_time;Integrated Security=true;TrustServerCertificate=true;Encrypt=false"
+        export EF_FORCE_SQLSERVER=true
+        export MASTERAPP_DEV_USE_SQLSERVER=true
+        printf '[LOCAL DATABASE] Using isolated loopback SQL Server design-time configuration.\n'
     fi
 
     dotnet tool run dotnet-ef "$@"
@@ -207,6 +216,46 @@ path_changed() {
     grep -Fqx "$1" "$CHANGED_PATHS_FILE"
 }
 
+artifact_base_ref() {
+    if [[ -n "${DB_BASE_REF:-}" ]] && git cat-file -e "${DB_BASE_REF}^{commit}" 2>/dev/null; then
+        printf '%s' "$DB_BASE_REF"
+        return 0
+    fi
+
+    if git rev-parse --verify HEAD >/dev/null 2>&1; then
+        printf 'HEAD'
+        return 0
+    fi
+
+    return 1
+}
+
+is_historical_designer_restoration() {
+    local designer_path="$1"
+    local source_path="$2"
+    local prior_ref=""
+
+    prior_ref="$(artifact_base_ref)" || return 1
+
+    # This exception is deliberately narrow:
+    # - the migration source must already exist in the prior committed state;
+    # - the designer must NOT exist in that prior state;
+    # - both source and reconstructed designer must exist now;
+    # - the designer must contain the historical target model.
+    #
+    # Therefore this cannot be used to bypass the complete-artifact rule for
+    # any newly-created migration.
+    [[ -f "$source_path" ]] || return 1
+    [[ -f "$designer_path" ]] || return 1
+    git cat-file -e "${prior_ref}:${source_path}" 2>/dev/null || return 1
+
+    if git cat-file -e "${prior_ref}:${designer_path}" 2>/dev/null; then
+        return 1
+    fi
+
+    grep -Fq 'BuildTargetModel(ModelBuilder modelBuilder)' "$designer_path"
+}
+
 add_integrity_error() {
     INTEGRITY_ERRORS+=("$1")
 }
@@ -222,6 +271,7 @@ check_changed_artifact_set() {
     local source_changed=0
     local designer_changed=0
     local snapshot_changed=0
+    local restored_designer=0
     local path file counterpart
 
     while IFS= read -r path; do
@@ -232,10 +282,15 @@ check_changed_artifact_set() {
                 snapshot_changed=1
                 ;;
             *.Designer.cs)
-                designer_changed=1
                 counterpart="${path%.Designer.cs}.cs"
-                if ! path_changed "$counterpart"; then
-                    add_integrity_error "Changed designer $file has no matching changed migration source."
+
+                if path_changed "$counterpart"; then
+                    designer_changed=1
+                elif is_historical_designer_restoration "$path" "$counterpart"; then
+                    restored_designer=1
+                    printf '[MIGRATION] Restored missing historical designer: %s\n' "$file"
+                else
+                    add_integrity_error "Changed designer $file has no matching changed migration source and is not a verified historical restoration."
                 fi
                 ;;
             *.cs)
@@ -245,19 +300,27 @@ check_changed_artifact_set() {
                 else
                     counterpart="${path%.cs}.Designer.cs"
                     if ! path_changed "$counterpart"; then
-                    add_integrity_error "Changed migration $file is missing a matching changed designer."
+                        add_integrity_error "Changed migration $file is missing a matching changed designer."
                     fi
                 fi
                 ;;
         esac
     done <"$CHANGED_PATHS_FILE"
 
+    # Newly created/changed migrations remain strict: source + designer +
+    # snapshot must move together. A verified restoration of a historically
+    # missing designer does not change the database model or migration source,
+    # so it must not require falsifying changes to the canonical snapshot.
     if (( source_changed || designer_changed )) && (( ! snapshot_changed )); then
         add_integrity_error "Migration artifacts changed without MasterAppDbContextModelSnapshot.cs."
     fi
 
     if (( snapshot_changed )) && (( ! source_changed || ! designer_changed )); then
         add_integrity_error "MasterAppDbContextModelSnapshot.cs changed without a complete migration source/designer pair."
+    fi
+
+    if (( restored_designer )); then
+        printf '[MIGRATION] Historical designer restoration verified against the prior committed state.\n'
     fi
 }
 
