@@ -116,7 +116,10 @@ internal sealed class LegendConnectTranslationIntelligence : ILegendConnectTrans
                 on alignment.TargetTextUnitId equals target.Id
             where alignment.PairKey == pairKey &&
                   alignment.SupersededUtc == null &&
-                  alignment.HumanVerified &&
+                  (alignment.HumanVerified ||
+                   (alignment.Provenance == LegendConnectKnowledgeProvenance.ConsentedLiveTranslation &&
+                    alignment.QualityState == "ConsentedLive" &&
+                    alignment.Confidence >= 0.98m)) &&
                   source.IsTrainingEligible &&
                   target.IsTrainingEligible &&
                   source.LanguageCode == sourceLanguageCode &&

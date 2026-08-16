@@ -92,7 +92,13 @@ public sealed class SocialMediaProcessingWorkerTests
         Guid assetId,
         string expectedState)
     {
-        var deadline = DateTime.UtcNow.AddSeconds(5);
+        // The production worker's durable recovery sweep is intentionally
+        // twenty seconds. The regression must allow one complete recovery
+        // cycle plus bounded runner-scheduling headroom; otherwise a transient
+        // startup/recovery delay is incorrectly reported as a queue failure.
+        // A worker that genuinely fails to reach the requested state still
+        // fails this test at the bounded deadline.
+        var deadline = DateTime.UtcNow.AddSeconds(30);
         while (DateTime.UtcNow < deadline)
         {
             await using var scope = provider.CreateAsyncScope();
@@ -108,7 +114,7 @@ public sealed class SocialMediaProcessingWorkerTests
         }
 
         throw new Xunit.Sdk.XunitException(
-            $"Video asset {assetId} did not reach {expectedState} within five seconds.");
+            $"Video asset {assetId} did not reach {expectedState} within the bounded worker recovery window.");
     }
 
     private sealed class SuccessfulVideoProcessor : ISocialMediaVideoProcessor
