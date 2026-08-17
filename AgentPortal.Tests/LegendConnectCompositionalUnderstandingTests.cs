@@ -1027,4 +1027,148 @@ public sealed class LegendConnectCompositionalUnderstandingTests
         LegendConnectOperations Operations);
 
     private sealed record ConflictFixture(string ReversedSourceText, Guid ReversedAlignmentId);
+
+    [Fact]
+    public async Task FounderEquivalentSurfaceFusion_LearnsMultipleSemanticsOnOneTokenWithoutContractionRule()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var fixture = CreateFixture(db);
+
+        await SeedSupportedCompositionAsync(fixture);
+
+        var fusion = new LegendConnectCurriculumBatchSubmission(
+            "composition.surface-fusion",
+            "Founder-controlled equivalent fused surface realization",
+            [
+                new LegendConnectCurriculumExampleSubmission(
+                    "I will prepare notes.",
+                    new Dictionary<string, string>
+                    {
+                        ["agent"] = "I",
+                        ["modality"] = "will",
+                        ["predicate"] = "prepare",
+                        ["object"] = "notes"
+                    }),
+                new LegendConnectCurriculumExampleSubmission(
+                    "I'll prepare notes.",
+                    new Dictionary<string, string>
+                    {
+                        ["agent"] = "I",
+                        ["modality"] = "will",
+                        ["predicate"] = "prepare",
+                        ["object"] = "notes"
+                    })
+            ]);
+
+        var submitted =
+            await fixture.Curriculum
+                .SubmitFounderEnglishBatchAsync(fusion);
+
+        Assert.True(submitted.Succeeded, submitted.Message);
+
+        var understood =
+            await fixture.Curriculum
+                .AnalyzeShadowSourceSemanticsAsync(
+                    "en",
+                    "I'll affirmative combine packets.");
+
+        Assert.Equal(
+            LegendShadowSourceUnderstanding
+                .SupportedForShadowEvaluation,
+            understood.State);
+
+        var fused = understood.Components
+            .Where(item =>
+                item.StartTokenIndex == 0 &&
+                item.TokenLength == 1)
+            .OrderBy(item => item.Dimension)
+            .ToList();
+
+        Assert.Equal(2, fused.Count);
+
+        Assert.Contains(
+            fused,
+            item =>
+                item.Dimension == "agent" &&
+                item.Value == "I" &&
+                item.SurfaceForm == "i'll");
+
+        Assert.Contains(
+            fused,
+            item =>
+                item.Dimension == "modality" &&
+                item.Value == "will" &&
+                item.SurfaceForm == "i'll");
+
+        // Nothing in production contains an English contraction dictionary.
+        // The fused surface is justified by an expanded Founder witness.
+        Assert.Contains(
+            understood.Components,
+            item =>
+                item.Dimension == "predicate" &&
+                item.Value == "combine");
+
+        Assert.Contains(
+            understood.Components,
+            item =>
+                item.Dimension == "object" &&
+                item.Value == "packets");
+    }
+
+    [Fact]
+    public async Task ProductionComposition_UsesExistingSegmenterForRepeatedSentencesAndStrongClauses()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var fixture = CreateFixture(db);
+
+        await SeedSupportedCompositionAsync(fixture);
+
+        const string atomic =
+            "I affirmative combine packets.";
+
+        var longMessage =
+            string.Join(
+                " ",
+                Enumerable.Repeat(
+                    atomic,
+                    7));
+
+        // 28 lexical components total. The old flat source gate was 24.
+        var multiSentence =
+            await fixture.Curriculum.TryComposeAsync(
+                "en",
+                "x-test",
+                longMessage);
+
+        Assert.NotNull(multiSentence);
+
+        Assert.Equal(
+            string.Join(
+                " ",
+                Enumerable.Repeat(
+                    "za affirmative combine packets",
+                    7)),
+            multiSentence!.Text);
+
+        var strongClauses =
+            string.Join(
+                "; ",
+                Enumerable.Repeat(
+                    "I affirmative combine packets",
+                    2));
+
+        var clauseComposition =
+            await fixture.Curriculum.TryComposeAsync(
+                "en",
+                "x-test",
+                strongClauses);
+
+        Assert.NotNull(clauseComposition);
+
+        Assert.Equal(
+            "za affirmative combine packets " +
+            "za affirmative combine packets",
+            clauseComposition!.Text);
+    }
+
 }

@@ -1261,7 +1261,7 @@ internal static class LegendConnectLanguageIntelligenceEvaluatorVersion
     // production-eligibility corrections. Existing source families,
     // alignments, provider observations, and operational translations converge
     // under the same rules used by present and future evidence.
-    internal const int Current = 11;
+    internal const int Current = 13;
 }
 
 internal sealed class LegendConnectLearningHostedService : BackgroundService

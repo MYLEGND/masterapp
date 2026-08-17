@@ -665,49 +665,131 @@ internal static class LegendFounderTrainingSegmenter
         "mr", "mrs", "ms", "dr", "prof", "sr", "jr", "st", "vs", "etc", "e.g", "i.e", "a.m", "p.m"
     };
 
-    internal static IReadOnlyList<LegendFounderTrainingAtomicUnit> Segment(string rawText)
+    internal static IReadOnlyList<LegendFounderTrainingAtomicUnit> Segment(
+        string rawText) =>
+        SegmentCore(
+            rawText,
+            deduplicate: true,
+            splitStrongClauses: false);
+
+    internal static IReadOnlyList<LegendFounderTrainingAtomicUnit>
+        SegmentForComposition(string rawText) =>
+        SegmentCore(
+            rawText,
+            deduplicate: false,
+            splitStrongClauses: true);
+
+    private static IReadOnlyList<LegendFounderTrainingAtomicUnit>
+        SegmentCore(
+            string rawText,
+            bool deduplicate,
+            bool splitStrongClauses)
     {
-        var paragraphs = Regex.Split(rawText.Replace("\r\n", "\n").Replace('\r', '\n'), @"\n\s*\n")
+        var paragraphs = Regex.Split(
+                rawText
+                    .Replace("\r\n", "\n")
+                    .Replace('\r', '\n'),
+                @"\n\s*\n")
             .Select(item => item.Trim())
             .Where(item => item.Length > 0)
             .ToArray();
-        var discovered = new List<(string Text, string UnitType, int Paragraph)>();
-        for (var paragraphIndex = 0; paragraphIndex < paragraphs.Length; paragraphIndex++)
+
+        var discovered =
+            new List<(string Text, string UnitType, int Paragraph)>();
+
+        for (var paragraphIndex = 0;
+             paragraphIndex < paragraphs.Length;
+             paragraphIndex++)
         {
             var paragraph = paragraphs[paragraphIndex];
-            var paragraphUnits = new List<(string Text, string UnitType)>();
-            foreach (var rawLine in paragraph.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+
+            var paragraphUnits =
+                new List<(string Text, string UnitType)>();
+
+            foreach (var rawLine in paragraph.Split(
+                         '\n',
+                         StringSplitOptions.RemoveEmptyEntries |
+                         StringSplitOptions.TrimEntries))
             {
-                var line = ListPrefix.Replace(rawLine, string.Empty).Trim();
+                var line = ListPrefix
+                    .Replace(rawLine, string.Empty)
+                    .Trim();
+
                 if (line.Length == 0)
                     continue;
-                paragraphUnits.AddRange(SegmentLine(line));
+
+                paragraphUnits.AddRange(
+                    SegmentLine(
+                        line,
+                        splitStrongClauses));
             }
 
-            var isParagraph = paragraphUnits.Count > 1;
-            discovered.AddRange(paragraphUnits.Select(item => (
-                item.Text,
-                isParagraph && item.UnitType is "Sentence" or "Question" or "Exclamation" ? "ParagraphSentence" : item.UnitType,
-                paragraphIndex + 1)));
+            var isParagraph =
+                paragraphUnits.Count > 1;
+
+            discovered.AddRange(
+                paragraphUnits.Select(item => (
+                    item.Text,
+                    isParagraph &&
+                    item.UnitType is
+                        "Sentence" or
+                        "Question" or
+                        "Exclamation"
+                        ? "ParagraphSentence"
+                        : item.UnitType,
+                    paragraphIndex + 1)));
         }
 
-        var hashes = new HashSet<string>(StringComparer.Ordinal);
-        var result = new List<LegendFounderTrainingAtomicUnit>(discovered.Count);
+        var hashes =
+            new HashSet<string>(StringComparer.Ordinal);
+
+        var result =
+            new List<LegendFounderTrainingAtomicUnit>(
+                discovered.Count);
+
         foreach (var item in discovered)
         {
-            var text = LegendLanguageIdentity.NormalizeText(item.Text);
-            if (string.IsNullOrWhiteSpace(text) || text.Length > 2_000)
+            var text =
+                LegendLanguageIdentity.NormalizeText(
+                    item.Text);
+
+            if (string.IsNullOrWhiteSpace(text) ||
+                text.Length > 2_000)
+            {
                 continue;
-            if (!hashes.Add(LegendLanguageIdentity.TextHash(text)))
+            }
+
+            var hash =
+                LegendLanguageIdentity.TextHash(text);
+
+            if (deduplicate &&
+                !hashes.Add(hash))
+            {
                 continue;
-            result.Add(new LegendFounderTrainingAtomicUnit(text, item.UnitType, result.Count + 1, item.Paragraph));
+            }
+
+            if (!deduplicate)
+                hashes.Add(hash);
+
+            result.Add(
+                new LegendFounderTrainingAtomicUnit(
+                    text,
+                    item.UnitType,
+                    result.Count + 1,
+                    item.Paragraph));
         }
+
         return result;
     }
 
-    private static IReadOnlyList<(string Text, string UnitType)> SegmentLine(string line)
+    private static IReadOnlyList<(string Text, string UnitType)> SegmentLine(
+        string line,
+        bool splitStrongClauses = false)
     {
-        var recoveredList = RecoverCollapsedLeadingLexicalList(line);
+        var recoveredList =
+            RecoverCollapsedLeadingLexicalList(
+                line,
+                splitStrongClauses);
         if (recoveredList is not null)
             return recoveredList;
 
@@ -716,8 +798,26 @@ internal static class LegendFounderTrainingSegmenter
         for (var index = 0; index < line.Length; index++)
         {
             var current = line[index];
-            if (current is not ('.' or '?' or '!') || !IsTerminator(line, index))
+
+            if (splitStrongClauses &&
+                current == ';')
+            {
+                var clause =
+                    line[start..index].Trim();
+
+                if (clause.Length > 0)
+                    segments.Add((clause, "Clause"));
+
+                start = index + 1;
                 continue;
+            }
+
+            if (current is not ('.' or '?' or '!') ||
+                !IsTerminator(line, index))
+            {
+                continue;
+            }
+
             var end = index + 1;
             while (end < line.Length && line[end] is '.' or '!' or '?' or '”' or '"' or '\'' or ')' or ']')
                 end++;
@@ -738,7 +838,10 @@ internal static class LegendFounderTrainingSegmenter
     /// breaks (for example, "person family I understand you."). Recover only
     /// this unambiguous shape; ordinary prose remains sentence-scanned.
     /// </summary>
-    private static IReadOnlyList<(string Text, string UnitType)>? RecoverCollapsedLeadingLexicalList(string line)
+    private static IReadOnlyList<(string Text, string UnitType)>?
+        RecoverCollapsedLeadingLexicalList(
+            string line,
+            bool splitStrongClauses = false)
     {
         var sentenceStart = Regex.Match(line,
             @"\s+(?=\p{Lu})",
@@ -753,8 +856,12 @@ internal static class LegendFounderTrainingSegmenter
             items.Any(item => item.Any(char.IsPunctuation) || item.Length > 80 || !char.IsLower(item[0])))
             return null;
 
-        var recovered = items.Select(item => (item, "Lexical"))
-            .Concat(SegmentLine(remainder))
+        var recovered = items
+            .Select(item => (item, "Lexical"))
+            .Concat(
+                SegmentLine(
+                    remainder,
+                    splitStrongClauses))
             .ToList();
         return recovered;
     }
