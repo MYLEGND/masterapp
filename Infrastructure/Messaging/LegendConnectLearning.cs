@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Domain.Entities;
 using Domain.Messaging;
 using Infrastructure.Data;
@@ -1491,6 +1492,7 @@ internal sealed class LegendConnectAutonomousLearningService
     private readonly IConfiguration _configuration;
     private readonly ILegendConnectRuntimePolicyAuthority? _runtimePolicy;
     private readonly LegendConnectCurriculumService? _curriculum;
+    private readonly ILegendConnectLanguageTeacher? _languageTeacher;
 
     public LegendConnectAutonomousLearningService(
         MasterAppDbContext db,
@@ -1502,7 +1504,8 @@ internal sealed class LegendConnectAutonomousLearningService
         IConfiguration configuration,
         ILegendConnectOperationalEventWriter? operations = null,
         ILegendConnectRuntimePolicyAuthority? runtimePolicy = null,
-        LegendConnectCurriculumService? curriculum = null)
+        LegendConnectCurriculumService? curriculum = null,
+        ILegendConnectLanguageTeacher? languageTeacher = null)
     {
         _db = db;
         _registry = registry;
@@ -1514,6 +1517,7 @@ internal sealed class LegendConnectAutonomousLearningService
         _operations = operations;
         _runtimePolicy = runtimePolicy;
         _curriculum = curriculum;
+        _languageTeacher = languageTeacher;
     }
 
     internal bool IsBootstrapEnabled =>
@@ -1534,6 +1538,16 @@ internal sealed class LegendConnectAutonomousLearningService
         }
         else if (!IsBootstrapEnabled)
             return;
+
+        // Phase 3 reuses this exact autonomous authority and hosted cadence.
+        // Proposal retries are processed before selecting new acquisition work,
+        // but an unavailable teacher never rolls back or blocks an already
+        // completed Azure/corpus acquisition.
+        if (_languageTeacher is not null &&
+            await TryProcessPendingLanguageProposalAsync(cancellationToken))
+        {
+            return;
+        }
 
         var candidateId = await _planner.SelectApprovedGapAsync(runtime, cancellationToken);
         if (candidateId is null)
@@ -1701,6 +1715,20 @@ internal sealed class LegendConnectAutonomousLearningService
                     _ = exception;
                 }
             }
+
+            // Only a successfully processed existing corpus observation opens
+            // Phase-3 proposal work. Historical Queued candidates are not
+            // silently replayed in this milestone.
+            if (item.ProcessingState == "Processed" &&
+                candidate.TeacherProposalProcessingState == "NotStarted")
+            {
+                candidate.TeacherProposalProcessingState = "Pending";
+                candidate.TeacherProposalFailureCode = null;
+                candidate.TeacherProposalLeaseExpiresUtc = null;
+                candidate.TeacherProposalProcessedUtc = null;
+                await _db.SaveChangesAsync(cancellationToken);
+            }
+
             await RecordAsync(
                 "CorpusExpansion",
                 "Info",
@@ -1735,6 +1763,562 @@ internal sealed class LegendConnectAutonomousLearningService
             // input before a timeout or transport failure reaches us.
             await _capacity.CompleteAsync(reservation, providerExecuted, cancellationToken);
         }
+    }
+
+    private async Task<bool> TryProcessPendingLanguageProposalAsync(
+        CancellationToken cancellationToken)
+    {
+        var maximumAttempts = Math.Clamp(
+            _configuration.GetValue<int?>(
+                "LegendConnect:LanguageTeacher:MaximumAutonomousAttempts") ?? 3,
+            1,
+            5);
+
+        var candidate = await TryClaimLanguageProposalCandidateAsync(
+            maximumAttempts,
+            cancellationToken);
+
+        if (candidate is null)
+            return false;
+
+        var pairKey = LegendLanguageIdentity.PairKey(
+            candidate.SourceLanguageCode,
+            candidate.TargetLanguageCode);
+
+        var request = await BuildLanguageProposalRequestAsync(
+            candidate,
+            cancellationToken);
+
+        if (request is null)
+        {
+            candidate.TeacherProposalProcessingState = "InsufficientEvidence";
+            candidate.TeacherProposalFailureCode =
+                "language_teacher_insufficient_governed_evidence";
+            candidate.TeacherProposalLeaseExpiresUtc = null;
+            candidate.TeacherProposalProcessedUtc = DateTime.UtcNow;
+
+            await _db.SaveChangesAsync(cancellationToken);
+
+            await RecordAsync(
+                "LanguageTeacherProposal",
+                "Info",
+                "InsufficientEvidence",
+                candidate.SourceLanguageCode,
+                pairKey,
+                candidate.TeacherProposalFailureCode,
+                "Autonomous proposal generation was skipped because the candidate lacked sufficient governed evidence.",
+                cancellationToken);
+
+            return true;
+        }
+
+        await RecordAsync(
+            "LanguageTeacherProposal",
+            "Info",
+            "Requested",
+            candidate.SourceLanguageCode,
+            pairKey,
+            null,
+            "The existing autonomous authority requested a bounded machine proposal from governed evidence.",
+            cancellationToken);
+
+        LegendLanguageTeacherProposalResult teacherResult;
+        try
+        {
+            teacherResult = await _languageTeacher!.ProposeAsync(
+                request,
+                cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception)
+        {
+            await DeferLanguageProposalAsync(
+                candidate,
+                "language_teacher_failed",
+                maximumAttempts,
+                CancellationToken.None);
+
+            await RecordAsync(
+                "LanguageTeacherProposal",
+                "Warning",
+                candidate.TeacherProposalProcessingState,
+                candidate.SourceLanguageCode,
+                pairKey,
+                candidate.TeacherProposalFailureCode,
+                "The teacher boundary failed without changing canonical knowledge.",
+                CancellationToken.None);
+
+            return true;
+        }
+
+        if (!teacherResult.Succeeded || teacherResult.Families.Count == 0)
+        {
+            await DeferLanguageProposalAsync(
+                candidate,
+                teacherResult.ErrorCode ?? "language_teacher_failed",
+                maximumAttempts,
+                cancellationToken);
+
+            await RecordAsync(
+                "LanguageTeacherProposal",
+                "Warning",
+                candidate.TeacherProposalProcessingState,
+                candidate.SourceLanguageCode,
+                pairKey,
+                candidate.TeacherProposalFailureCode,
+                "The teacher returned no admissible proposal artifact; canonical knowledge was unchanged.",
+                cancellationToken);
+
+            return true;
+        }
+
+        // Phase-2 already bounds this to four; autonomous Phase-3 orchestration
+        // deliberately narrows it further to two families per candidate.
+        var families = teacherResult.Families.Take(2).ToArray();
+        var critiques = new List<(
+            LegendLanguageTeacherFamilyProposal Family,
+            LegendLanguageTeacherCritiqueResult Critique)>(families.Length);
+
+        foreach (var family in families)
+        {
+            LegendLanguageTeacherCritiqueResult critique;
+
+            try
+            {
+                critique = await _languageTeacher!.CritiqueAsync(
+                    new LegendLanguageTeacherCritiqueRequest(
+                        request,
+                        family),
+                    cancellationToken);
+            }
+            catch (OperationCanceledException) when (
+                cancellationToken.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (Exception)
+            {
+                await DeferLanguageProposalAsync(
+                    candidate,
+                    "language_critic_failed",
+                    maximumAttempts,
+                    CancellationToken.None);
+
+                await RecordAsync(
+                    "LanguageTeacherProposal",
+                    "Warning",
+                    candidate.TeacherProposalProcessingState,
+                    candidate.SourceLanguageCode,
+                    pairKey,
+                    candidate.TeacherProposalFailureCode,
+                    "Independent critique failed; no machine proposal was admitted to canonical knowledge.",
+                    CancellationToken.None);
+
+                return true;
+            }
+
+            if (!critique.Succeeded)
+            {
+                await DeferLanguageProposalAsync(
+                    candidate,
+                    critique.ErrorCode ?? "language_critic_failed",
+                    maximumAttempts,
+                    cancellationToken);
+
+                await RecordAsync(
+                    "LanguageTeacherProposal",
+                    "Warning",
+                    candidate.TeacherProposalProcessingState,
+                    candidate.SourceLanguageCode,
+                    pairKey,
+                    candidate.TeacherProposalFailureCode,
+                    "Independent critique did not complete; canonical knowledge was unchanged.",
+                    cancellationToken);
+
+                return true;
+            }
+
+            critiques.Add((family, critique));
+        }
+
+        var evidenceIdentityHash = LegendLanguageIdentity.TextHash(
+            string.Join(
+                "\n",
+                request.Evidence
+                    .Select(item => item.EvidenceIdentity)
+                    .OrderBy(item => item, StringComparer.Ordinal)));
+
+        var anyApproved = false;
+
+        foreach (var (family, critique) in critiques)
+        {
+            var payload = JsonSerializer.Serialize(family);
+            var proposalIdentity = LegendLanguageIdentity.TextHash(
+                string.Join(
+                    "|",
+                    "language-teacher-proposal:v1",
+                    candidate.IdempotencyKey,
+                    evidenceIdentityHash,
+                    payload));
+
+            var alreadyExists = await _db
+                .Set<LegendLanguageTeacherProposal>()
+                .AnyAsync(
+                    item => item.ProposalIdentity == proposalIdentity,
+                    cancellationToken);
+
+            if (alreadyExists)
+            {
+                anyApproved |= critique.Approved;
+                continue;
+            }
+
+            var validationState = critique.Approved
+                ? "AwaitingCanonicalValidation"
+                : "CriticRejected";
+
+            anyApproved |= critique.Approved;
+
+            _db.Set<LegendLanguageTeacherProposal>().Add(
+                new LegendLanguageTeacherProposal
+                {
+                    Id = Guid.NewGuid(),
+                    CorpusCandidateId = candidate.Id,
+                    ProposalIdentity = proposalIdentity,
+                    PairKey = pairKey,
+                    SourceLanguageCode = candidate.SourceLanguageCode,
+                    TargetLanguageCode = candidate.TargetLanguageCode,
+                    EvidenceIdentityHash = evidenceIdentityHash,
+                    FamilyKey = family.FamilyKey,
+                    SemanticCategory = family.SemanticCategory,
+                    Rationale = family.Rationale,
+                    Confidence = Math.Clamp(
+                        family.Confidence,
+                        0m,
+                        1m),
+                    ProposalPayloadJson = payload,
+                    CriticApproved = critique.Approved,
+                    CriticConfidence = critique.Confidence is null
+                        ? null
+                        : Math.Clamp(
+                            critique.Confidence.Value,
+                            0m,
+                            1m),
+                    CriticReasonCodesJson = JsonSerializer.Serialize(
+                        critique.ReasonCodes),
+                    ValidationState = validationState,
+                    Provenance = "MachineProposed",
+                    CreatedUtc = DateTime.UtcNow,
+                    UpdatedUtc = DateTime.UtcNow
+                });
+        }
+
+        candidate.TeacherProposalProcessingState = anyApproved
+            ? "AwaitingCanonicalValidation"
+            : "CriticRejected";
+        candidate.TeacherProposalFailureCode = null;
+        candidate.TeacherProposalLeaseExpiresUtc = null;
+        candidate.TeacherProposalProcessedUtc = DateTime.UtcNow;
+
+        await _db.SaveChangesAsync(cancellationToken);
+
+        await RecordAsync(
+            "LanguageTeacherProposal",
+            "Info",
+            candidate.TeacherProposalProcessingState,
+            candidate.SourceLanguageCode,
+            pairKey,
+            null,
+            anyApproved
+                ? "Machine proposal artifacts survived independent critique and now await canonical LEGEND validation."
+                : "Machine proposal artifacts were rejected by the independent critic and cannot enter canonical knowledge.",
+            cancellationToken);
+
+        return true;
+    }
+
+    private async Task<LegendLanguageTeacherProposalRequest?>
+        BuildLanguageProposalRequestAsync(
+            LegendCorpusCandidate candidate,
+            CancellationToken cancellationToken)
+    {
+        var pairKey = LegendLanguageIdentity.PairKey(
+            candidate.SourceLanguageCode,
+            candidate.TargetLanguageCode);
+
+        var source = await _db.Set<LegendLanguageTextUnit>()
+            .AsNoTracking()
+            .SingleOrDefaultAsync(
+                item =>
+                    item.LanguageCode == candidate.SourceLanguageCode &&
+                    item.NormalizedHash == candidate.SourceTextHash &&
+                    item.IsTrainingEligible,
+                cancellationToken);
+
+        if (source is null ||
+            !string.Equals(
+                source.Text,
+                LegendLanguageIdentity.NormalizeText(candidate.SourceText),
+                StringComparison.Ordinal))
+        {
+            return null;
+        }
+
+        // Teacher evidence is intentionally stronger than ordinary translation
+        // memory eligibility. Provider-only Observation rows are not allowed to
+        // teach themselves into stronger knowledge.
+        var trusted = await (
+            from alignment in _db.Set<LegendTranslationAlignment>()
+                .AsNoTracking()
+            join evidenceSource in _db.Set<LegendLanguageTextUnit>()
+                .AsNoTracking()
+                on alignment.SourceTextUnitId equals evidenceSource.Id
+            join evidenceTarget in _db.Set<LegendLanguageTextUnit>()
+                .AsNoTracking()
+                on alignment.TargetTextUnitId equals evidenceTarget.Id
+            where
+                alignment.PairKey == pairKey &&
+                alignment.SupersededUtc == null &&
+                evidenceSource.IsTrainingEligible &&
+                evidenceTarget.IsTrainingEligible &&
+                evidenceSource.LanguageCode ==
+                    candidate.SourceLanguageCode &&
+                evidenceTarget.LanguageCode ==
+                    candidate.TargetLanguageCode &&
+                (
+                    alignment.HumanVerified ||
+                    alignment.QualityState == "SystemValidated"
+                )
+            orderby
+                alignment.HumanVerified descending,
+                alignment.Confidence descending,
+                alignment.UpdatedUtc descending
+            select new
+            {
+                alignment.Id,
+                alignment.HumanVerified,
+                alignment.Provenance,
+                alignment.QualityState,
+                SourceText = evidenceSource.Text,
+                TargetText = evidenceTarget.Text
+            })
+            .Take(64)
+            .ToListAsync(cancellationToken);
+
+        var machineValidatedIds = trusted
+            .Where(item => !item.HumanVerified)
+            .Select(item => item.Id)
+            .ToArray();
+
+        HashSet<Guid> contradicted = machineValidatedIds.Length == 0
+            ? []
+            : (await _db.Set<LegendTranslationQualityEvidence>()
+                .AsNoTracking()
+                .Where(item =>
+                    machineValidatedIds.Contains(
+                        item.ObservedAlignmentId) &&
+                    item.Signal == "Contradictory" &&
+                    item.ResolutionState == "Open" &&
+                    item.SupersededUtc == null)
+                .Select(item => item.ObservedAlignmentId)
+                .Distinct()
+                .ToListAsync(cancellationToken))
+                .ToHashSet();
+
+        var evidence = new List<LegendLanguageTeacherEvidence>(32)
+        {
+            new(
+                $"source:{source.Id:D}",
+                source.Text,
+                null,
+                source.Provenance,
+                "CanonicalSource")
+        };
+
+        foreach (var row in trusted
+                     .Where(item =>
+                         item.HumanVerified ||
+                         !contradicted.Contains(item.Id))
+                     .Take(31))
+        {
+            evidence.Add(
+                new LegendLanguageTeacherEvidence(
+                    $"alignment:{row.Id:D}",
+                    row.SourceText,
+                    row.TargetText,
+                    row.Provenance,
+                    row.QualityState));
+        }
+
+        // A source alone does not justify machine derivation. Require at least
+        // one independently governed directional relationship before making
+        // any external teacher call.
+        if (evidence.Count < 2)
+            return null;
+
+        LegendCurriculumFamily? family = null;
+
+        if (candidate.CurriculumFamilyId is Guid familyId)
+        {
+            family = await _db.Set<LegendCurriculumFamily>()
+                .AsNoTracking()
+                .SingleOrDefaultAsync(
+                    item => item.Id == familyId,
+                    cancellationToken);
+        }
+
+        var learningGoal = family is null
+            ? candidate.Category
+            : string.IsNullOrWhiteSpace(family.SemanticCategory)
+                ? family.FamilyKey
+                : $"{family.FamilyKey} | {family.SemanticCategory}";
+
+        learningGoal = learningGoal.Trim();
+        if (learningGoal.Length > 500)
+            learningGoal = learningGoal[..500];
+
+        return new LegendLanguageTeacherProposalRequest(
+            candidate.SourceLanguageCode,
+            candidate.TargetLanguageCode,
+            learningGoal,
+            evidence,
+            MaximumFamilies: 2);
+    }
+
+    private async Task<LegendCorpusCandidate?>
+        TryClaimLanguageProposalCandidateAsync(
+            int maximumAttempts,
+            CancellationToken cancellationToken)
+    {
+        var now = DateTime.UtcNow;
+        var expires = now.AddMinutes(10);
+
+        var candidateId = await _db.Set<LegendCorpusCandidate>()
+            .AsNoTracking()
+            .Where(item =>
+                item.IsApproved &&
+                item.ProcessingState == "Queued" &&
+                item.TeacherProposalAttemptCount < maximumAttempts &&
+                (
+                    item.TeacherProposalProcessingState == "Pending" ||
+                    (
+                        item.TeacherProposalProcessingState == "Processing" &&
+                        item.TeacherProposalLeaseExpiresUtc != null &&
+                        item.TeacherProposalLeaseExpiresUtc < now
+                    )
+                ))
+            .OrderByDescending(item => item.Priority)
+            .ThenBy(item => item.CreatedUtc)
+            .Select(item => (Guid?)item.Id)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        if (candidateId is null)
+            return null;
+
+        if (!_db.Database.IsRelational())
+        {
+            var candidate = await _db.Set<LegendCorpusCandidate>()
+                .SingleOrDefaultAsync(
+                    item =>
+                        item.Id == candidateId.Value &&
+                        item.IsApproved &&
+                        item.ProcessingState == "Queued" &&
+                        item.TeacherProposalAttemptCount <
+                            maximumAttempts &&
+                        (
+                            item.TeacherProposalProcessingState ==
+                                "Pending" ||
+                            (
+                                item.TeacherProposalProcessingState ==
+                                    "Processing" &&
+                                item.TeacherProposalLeaseExpiresUtc !=
+                                    null &&
+                                item.TeacherProposalLeaseExpiresUtc <
+                                    now
+                            )
+                        ),
+                    cancellationToken);
+
+            if (candidate is null)
+                return null;
+
+            candidate.TeacherProposalProcessingState = "Processing";
+            candidate.TeacherProposalAttemptCount++;
+            candidate.TeacherProposalLeaseExpiresUtc = expires;
+
+            await _db.SaveChangesAsync(cancellationToken);
+            return candidate;
+        }
+
+        var claimed = await _db.Set<LegendCorpusCandidate>()
+            .Where(item =>
+                item.Id == candidateId.Value &&
+                item.IsApproved &&
+                item.ProcessingState == "Queued" &&
+                item.TeacherProposalAttemptCount < maximumAttempts &&
+                (
+                    item.TeacherProposalProcessingState == "Pending" ||
+                    (
+                        item.TeacherProposalProcessingState == "Processing" &&
+                        item.TeacherProposalLeaseExpiresUtc != null &&
+                        item.TeacherProposalLeaseExpiresUtc < now
+                    )
+                ))
+            .ExecuteUpdateAsync(
+                setters => setters
+                    .SetProperty(
+                        item => item.TeacherProposalProcessingState,
+                        "Processing")
+                    .SetProperty(
+                        item => item.TeacherProposalAttemptCount,
+                        item => item.TeacherProposalAttemptCount + 1)
+                    .SetProperty(
+                        item => item.TeacherProposalLeaseExpiresUtc,
+                        expires),
+                cancellationToken);
+
+        return claimed == 1
+            ? await _db.Set<LegendCorpusCandidate>()
+                .SingleAsync(
+                    item => item.Id == candidateId.Value,
+                    cancellationToken)
+            : null;
+    }
+
+    private async Task DeferLanguageProposalAsync(
+        LegendCorpusCandidate candidate,
+        string failureCode,
+        int maximumAttempts,
+        CancellationToken cancellationToken)
+    {
+        candidate.TeacherProposalFailureCode =
+            string.IsNullOrWhiteSpace(failureCode)
+                ? "language_teacher_failed"
+                : failureCode[..Math.Min(failureCode.Length, 120)];
+
+        if (candidate.TeacherProposalAttemptCount >= maximumAttempts)
+        {
+            candidate.TeacherProposalProcessingState = "Failed";
+            candidate.TeacherProposalLeaseExpiresUtc = null;
+            candidate.TeacherProposalProcessedUtc = DateTime.UtcNow;
+        }
+        else
+        {
+            candidate.TeacherProposalProcessingState = "Processing";
+            candidate.TeacherProposalLeaseExpiresUtc =
+                DateTime.UtcNow.AddMinutes(
+                    Math.Min(
+                        30,
+                        Math.Max(
+                            5,
+                            candidate.TeacherProposalAttemptCount * 5)));
+            candidate.TeacherProposalProcessedUtc = null;
+        }
+
+        await _db.SaveChangesAsync(cancellationToken);
     }
 
     private async Task DeferCandidateAsync(

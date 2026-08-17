@@ -661,10 +661,12 @@ command_sync() {
     print_migration_summary "${generated[0]}"
 
     load_pending_migration_files
-    if ! scan_for_manual_review "${PENDING_MIGRATION_FILES[@]}"; then
-        printf '[MIGRATION] File: %s\n' "${generated[0]}" >&2
-        printf '[RECOVERY] If unapplied, undo it with: dotnet tool run dotnet-ef migrations remove --project Infrastructure/Infrastructure.csproj --startup-project AgentPortal/AgentPortal.csproj --context MasterAppDbContext\n' >&2
-        exit 21
+    if (( ${#PENDING_MIGRATION_FILES[@]} > 0 )); then
+        if ! scan_for_manual_review "${PENDING_MIGRATION_FILES[@]}"; then
+            printf '[MIGRATION] File: %s\n' "${generated[0]}" >&2
+            printf '[RECOVERY] If unapplied, undo it with: dotnet tool run dotnet-ef migrations remove --project Infrastructure/Infrastructure.csproj --startup-project AgentPortal/AgentPortal.csproj --context MasterAppDbContext\n' >&2
+            exit 21
+        fi
     fi
 
     apply_local_migrations

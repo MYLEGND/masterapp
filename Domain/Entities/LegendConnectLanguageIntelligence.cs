@@ -251,6 +251,77 @@ public sealed class LegendCorpusCandidate
     public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
     public DateTime? ProcessedUtc { get; set; }
     public string? FailureCode { get; set; }
+
+    /// <summary>
+    /// Phase-3 teacher/critic orchestration remains subordinate to this
+    /// existing autonomous candidate. It does not create another work queue.
+    /// Existing rows remain NotStarted and are not historically replayed by
+    /// this milestone; newly processed acquisition work explicitly enters
+    /// Pending after canonical provider-observation processing succeeds.
+    /// </summary>
+    public string TeacherProposalProcessingState { get; set; } = "NotStarted";
+    public int TeacherProposalAttemptCount { get; set; }
+    public DateTime? TeacherProposalLeaseExpiresUtc { get; set; }
+    public DateTime? TeacherProposalProcessedUtc { get; set; }
+    public string? TeacherProposalFailureCode { get; set; }
+}
+
+/// <summary>
+/// One independently identifiable machine-generated curriculum-family proposal
+/// produced by the governed Phase-2 teacher and independently reviewed by its
+/// critic. This is an auditable proposal artifact only: it is not a corpus
+/// unit, curriculum family, alignment, structural assertion, training example,
+/// SystemValidated fact, or production-eligible authority.
+///
+/// Work ownership, leasing, retry, gap selection, and scheduling remain on the
+/// existing LegendCorpusCandidate and existing acquisition worker.
+/// </summary>
+public sealed class LegendLanguageTeacherProposal
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid CorpusCandidateId { get; set; }
+
+    /// <summary>
+    /// Stable identity derived from the originating candidate, exact governed
+    /// evidence identities, and canonicalized family proposal payload.
+    /// </summary>
+    public string ProposalIdentity { get; set; } = string.Empty;
+
+    public string PairKey { get; set; } = string.Empty;
+    public string SourceLanguageCode { get; set; } = string.Empty;
+    public string TargetLanguageCode { get; set; } = string.Empty;
+    public string EvidenceIdentityHash { get; set; } = string.Empty;
+
+    public string FamilyKey { get; set; } = string.Empty;
+    public string SemanticCategory { get; set; } = string.Empty;
+    public string Rationale { get; set; } = string.Empty;
+    public decimal Confidence { get; set; }
+
+    /// <summary>
+    /// Exact bounded Phase-2 family proposal serialized for later canonical
+    /// Phase-4 validation. Persisting it does not admit any contained text into
+    /// a language dataset.
+    /// </summary>
+    public string ProposalPayloadJson { get; set; } = string.Empty;
+
+    public bool CriticApproved { get; set; }
+    public decimal? CriticConfidence { get; set; }
+    public string CriticReasonCodesJson { get; set; } = "[]";
+
+    /// <summary>
+    /// AwaitingCanonicalValidation or CriticRejected in Phase 3.
+    /// Phase 4 alone may introduce further canonical-validation outcomes.
+    /// </summary>
+    public string ValidationState { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Explicitly prevents machine output from masquerading as Founder or
+    /// human authority.
+    /// </summary>
+    public string Provenance { get; set; } = "MachineProposed";
+
+    public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
+    public DateTime UpdatedUtc { get; set; } = DateTime.UtcNow;
 }
 
 /// <summary>

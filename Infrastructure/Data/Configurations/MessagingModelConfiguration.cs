@@ -561,10 +561,25 @@ internal static class MessagingModelConfiguration
             entity.Property(item => item.Provenance).IsRequired().HasMaxLength(80);
             entity.Property(item => item.ProcessingState).IsRequired().HasMaxLength(40);
             entity.Property(item => item.FailureCode).HasMaxLength(80);
+
+            entity.Property(item => item.TeacherProposalProcessingState)
+                .IsRequired()
+                .HasMaxLength(40)
+                .HasDefaultValue("NotStarted");
+            entity.Property(item => item.TeacherProposalFailureCode).HasMaxLength(120);
+
             entity.HasIndex(item => item.IdempotencyKey).IsUnique();
             entity.HasIndex(item => new { item.IsApproved, item.ProcessingState, item.Priority, item.CreatedUtc });
             entity.HasIndex(item => new { item.SourceLanguageCode, item.TargetLanguageCode });
             entity.HasIndex(item => new { item.CurriculumFamilyId, item.SourceCurriculumExampleId });
+            entity.HasIndex(item => new
+            {
+                item.IsApproved,
+                item.ProcessingState,
+                item.TeacherProposalProcessingState,
+                item.TeacherProposalLeaseExpiresUtc,
+                item.CreatedUtc
+            });
             entity.HasOne<LegendCurriculumFamily>()
                 .WithMany()
                 .HasForeignKey(item => item.CurriculumFamilyId)
@@ -572,6 +587,65 @@ internal static class MessagingModelConfiguration
             entity.HasOne<LegendCurriculumExample>()
                 .WithMany()
                 .HasForeignKey(item => item.SourceCurriculumExampleId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<LegendLanguageTeacherProposal>(entity =>
+        {
+            entity.ToTable("LegendLanguageTeacherProposals");
+            entity.HasKey(item => item.Id);
+
+            entity.Property(item => item.ProposalIdentity)
+                .IsRequired()
+                .HasMaxLength(64);
+            entity.Property(item => item.PairKey)
+                .IsRequired()
+                .HasMaxLength(72);
+            entity.Property(item => item.SourceLanguageCode)
+                .IsRequired()
+                .HasMaxLength(32);
+            entity.Property(item => item.TargetLanguageCode)
+                .IsRequired()
+                .HasMaxLength(32);
+            entity.Property(item => item.EvidenceIdentityHash)
+                .IsRequired()
+                .HasMaxLength(64);
+            entity.Property(item => item.FamilyKey)
+                .IsRequired()
+                .HasMaxLength(160);
+            entity.Property(item => item.SemanticCategory)
+                .IsRequired()
+                .HasMaxLength(160);
+            entity.Property(item => item.Rationale)
+                .IsRequired()
+                .HasMaxLength(2_000);
+            entity.Property(item => item.Confidence)
+                .HasPrecision(5, 4);
+            entity.Property(item => item.ProposalPayloadJson)
+                .IsRequired();
+            entity.Property(item => item.CriticConfidence)
+                .HasPrecision(5, 4);
+            entity.Property(item => item.CriticReasonCodesJson)
+                .IsRequired()
+                .HasMaxLength(4_000);
+            entity.Property(item => item.ValidationState)
+                .IsRequired()
+                .HasMaxLength(40);
+            entity.Property(item => item.Provenance)
+                .IsRequired()
+                .HasMaxLength(80);
+
+            entity.HasIndex(item => item.ProposalIdentity).IsUnique();
+            entity.HasIndex(item => new
+            {
+                item.CorpusCandidateId,
+                item.ValidationState,
+                item.CreatedUtc
+            });
+
+            entity.HasOne<LegendCorpusCandidate>()
+                .WithMany()
+                .HasForeignKey(item => item.CorpusCandidateId)
                 .OnDelete(DeleteBehavior.Restrict);
         });
 
