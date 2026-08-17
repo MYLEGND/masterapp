@@ -42,7 +42,15 @@ public static class MessagingServiceCollectionExtensions
             provider.GetRequiredService<LegendConnectCurriculumService>());
         services.AddScoped<LegendConnectAutonomousGapPlanner>();
         services.AddScoped<LegendConnectAutonomousLearningService>();
+        services.AddScoped<ILegendConnectLanguageTeacher, OpenAiLegendConnectLanguageTeacher>();
         services.AddScoped<ILegendConnectOperations, LegendConnectOperations>();
+        services.AddHttpClient("LegendLanguageTeacher", client =>
+        {
+            // Teacher/critic reasoning is non-authoritative and may be
+            // slower than operational translation. Timeout still fails
+            // closed without delaying authoritative messaging writes.
+            client.Timeout = TimeSpan.FromSeconds(30);
+        });
         services.AddHttpClient("AzureTranslator", client =>
         {
             // Provider failures must never hold up message delivery.
