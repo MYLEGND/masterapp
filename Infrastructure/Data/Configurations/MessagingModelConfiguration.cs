@@ -273,6 +273,102 @@ internal static class MessagingModelConfiguration
 
     private static void ConfigureLegendConnect(ModelBuilder modelBuilder, string? providerName)
     {
+        modelBuilder.Entity<LegendConnectModelTrainingRun>(entity =>
+        {
+            entity.ToTable("LegendConnectModelTrainingRuns");
+            entity.HasKey(item => item.Id);
+
+            entity.Property(item => item.RunKey)
+                .IsRequired()
+                .HasMaxLength(160);
+
+            entity.Property(item => item.ScopeKey)
+                .IsRequired()
+                .HasMaxLength(80);
+
+            entity.Property(item => item.DatasetIdentity)
+                .IsRequired()
+                .HasMaxLength(64);
+
+            entity.Property(item => item.TrainingProvider)
+                .IsRequired()
+                .HasMaxLength(80);
+
+            entity.Property(item => item.BaseModel)
+                .IsRequired()
+                .HasMaxLength(160);
+
+            entity.Property(item => item.TrainingFileId)
+                .HasMaxLength(240);
+
+            entity.Property(item => item.ExternalJobId)
+                .HasMaxLength(240);
+
+            entity.Property(item => item.ChallengerModelVersion)
+                .HasMaxLength(240);
+
+            entity.Property(item => item.State)
+                .IsRequired()
+                .HasMaxLength(40);
+
+            entity.Property(item => item.EvaluationState)
+                .IsRequired()
+                .HasMaxLength(40);
+
+            entity.Property(item => item.PromotionState)
+                .IsRequired()
+                .HasMaxLength(40);
+
+            entity.Property(item => item.HeldOutScore)
+                .HasPrecision(9, 6);
+
+            entity.Property(item => item.RegressionScore)
+                .HasPrecision(9, 6);
+
+            entity.Property(item => item.FailureCode)
+                .HasMaxLength(120);
+
+            entity.Property(item => item.FailureDetail)
+                .HasMaxLength(1000);
+
+            // RunKey is the cross-instance idempotency boundary.
+            entity.HasIndex(item => item.RunKey)
+                .IsUnique()
+                .HasDatabaseName(
+                    "IX_LegendConnectModelTrainingRuns_RunKey");
+
+            // A generation is unique inside one logical model scope.
+            entity.HasIndex(item => new
+                {
+                    item.ScopeKey,
+                    item.Generation
+                })
+                .IsUnique()
+                .HasDatabaseName(
+                    "IX_LegendConnectModelTrainingRuns_ScopeGeneration");
+
+            // Future canonical orchestration claims the next runnable record
+            // from this index without introducing another queue.
+            entity.HasIndex(item => new
+                {
+                    item.State,
+                    item.LeaseExpiresUtc,
+                    item.CreatedUtc
+                })
+                .HasDatabaseName(
+                    "IX_LegendConnectModelTrainingRuns_Work");
+
+            // Promotion/evaluation inspection remains bounded as history grows.
+            entity.HasIndex(item => new
+                {
+                    item.ScopeKey,
+                    item.PromotionState,
+                    item.CreatedUtc
+                })
+                .HasDatabaseName(
+                    "IX_LegendConnectModelTrainingRuns_Promotion");
+        });
+
         modelBuilder.Entity<LegendLanguageDefinition>(entity =>
         {
             entity.ToTable("LegendLanguageDefinitions");

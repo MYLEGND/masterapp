@@ -895,3 +895,96 @@ public sealed class LegendCurriculumManifestWorkItem
     public DateTime UpdatedUtc { get; set; }
     public DateTime? CompletedUtc { get; set; }
 }
+
+/// <summary>
+/// Durable orchestration state for one governed LEGEND model-training
+/// generation. This record is not language knowledge and cannot promote
+/// translations, structural evidence, or itself into production.
+///
+/// Canonical corpus/evidence remains the sole source of training truth.
+/// Future teacher, training, evaluation, and promotion phases must move
+/// through this lifecycle rather than creating independent schedulers,
+/// queues, or model authorities.
+/// </summary>
+public sealed class LegendConnectModelTrainingRun
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+
+    /// <summary>
+    /// Deterministic idempotency identity for the exact governed training
+    /// generation. Concurrent instances must converge on this identity.
+    /// </summary>
+    public string RunKey { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Logical model scope. "Global" is valid for a multilingual model;
+    /// a future directional scope may use the canonical pair identity.
+    /// This field does not itself grant language authority.
+    /// </summary>
+    public string ScopeKey { get; set; } = "Global";
+
+    /// <summary>
+    /// Monotonically increasing generation within ScopeKey.
+    /// </summary>
+    public int Generation { get; set; }
+
+    /// <summary>
+    /// Hash of the exact canonical training manifest selected from existing
+    /// governed LEGEND evidence. No corpus text is stored on this record.
+    /// </summary>
+    public string DatasetIdentity { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Language-intelligence evaluator version under which the dataset was
+    /// assembled. This prevents an old interpretation from silently training
+    /// a new generation after evaluator semantics change.
+    /// </summary>
+    public int DatasetEvaluatorVersion { get; set; }
+
+    /// <summary>
+    /// Provider/model lineage only. These values never imply approval.
+    /// </summary>
+    public string TrainingProvider { get; set; } = string.Empty;
+    public string BaseModel { get; set; } = string.Empty;
+
+    /// <summary>
+    /// External artifact/job identities are populated by a later training
+    /// phase. They remain null during this foundation phase.
+    /// </summary>
+    public string? TrainingFileId { get; set; }
+    public string? ExternalJobId { get; set; }
+    public string? ChallengerModelVersion { get; set; }
+
+    /// <summary>
+    /// Durable orchestration state. Future phases transition this state through
+    /// one canonical service using leases and idempotent writes.
+    /// </summary>
+    public string State { get; set; } = "PendingDataset";
+
+    /// <summary>
+    /// Evaluation and promotion are deliberately independent from training.
+    /// A completed training job therefore cannot become active merely because
+    /// the provider returned a model.
+    /// </summary>
+    public string EvaluationState { get; set; } = "NotStarted";
+    public string PromotionState { get; set; } = "NotEvaluated";
+
+    public int TrainingExampleCount { get; set; }
+    public int ValidationExampleCount { get; set; }
+
+    public decimal? HeldOutScore { get; set; }
+    public decimal? RegressionScore { get; set; }
+
+    public int AttemptCount { get; set; }
+    public DateTime? LeaseExpiresUtc { get; set; }
+
+    public string? FailureCode { get; set; }
+    public string? FailureDetail { get; set; }
+
+    public DateTime? StartedUtc { get; set; }
+    public DateTime? CompletedUtc { get; set; }
+    public DateTime? PromotedUtc { get; set; }
+
+    public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
+    public DateTime UpdatedUtc { get; set; } = DateTime.UtcNow;
+}
