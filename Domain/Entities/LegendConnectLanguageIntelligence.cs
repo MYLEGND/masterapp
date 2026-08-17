@@ -320,6 +320,17 @@ public sealed class LegendLanguageTeacherProposal
     /// </summary>
     public string Provenance { get; set; } = "MachineProposed";
 
+    /// <summary>
+    /// Phase-4 canonical validation reuses ValidationState as the sole
+    /// proposal-state authority. These fields provide only durable claim,
+    /// retry, failure, and completion metadata; they do not create a second
+    /// queue or validation state machine.
+    /// </summary>
+    public int CanonicalValidationAttemptCount { get; set; }
+    public DateTime? CanonicalValidationLeaseExpiresUtc { get; set; }
+    public DateTime? CanonicalValidatedUtc { get; set; }
+    public string? CanonicalValidationFailureCode { get; set; }
+
     public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedUtc { get; set; } = DateTime.UtcNow;
 }

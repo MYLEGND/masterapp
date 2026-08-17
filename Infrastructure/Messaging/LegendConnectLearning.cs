@@ -21,6 +21,12 @@ internal static class LegendConnectKnowledgeProvenance
     internal const string FounderApproved = "FounderApproved";
     internal const string ProviderDerived = "ProviderDerived";
     internal const string ConsentedLiveTranslation = "ConsentedLiveTranslation";
+
+    // Machine-derived material may receive this provenance only after the
+    // existing canonical LEGEND evidence authorities independently validate
+    // the exact Phase-3 proposal and evidence lineage. It never impersonates
+    // FounderApproved or HumanVerified evidence.
+    internal const string SystemValidatedMachine = "SystemValidatedMachine";
 }
 
 internal sealed class NullTranslationLearningPublisher : ITranslationLearningPublisher
@@ -1539,6 +1545,16 @@ internal sealed class LegendConnectAutonomousLearningService
         else if (!IsBootstrapEnabled)
             return;
 
+        // Phase 4 remains inside this existing autonomous authority and hosted
+        // cadence. Canonical validation is processed before new teacher/provider
+        // work so already-created machine proposals cannot accumulate behind
+        // additional acquisition. It does not require the external teacher.
+        if (_curriculum is not null &&
+            await TryProcessPendingCanonicalLanguageProposalAsync(cancellationToken))
+        {
+            return;
+        }
+
         // Phase 3 reuses this exact autonomous authority and hosted cadence.
         // Proposal retries are processed before selecting new acquisition work,
         // but an unavailable teacher never rolls back or blocks an already
@@ -1764,6 +1780,546 @@ internal sealed class LegendConnectAutonomousLearningService
             await _capacity.CompleteAsync(reservation, providerExecuted, cancellationToken);
         }
     }
+
+    private async Task<bool> TryProcessPendingCanonicalLanguageProposalAsync(
+        CancellationToken cancellationToken)
+    {
+        const int maximumAttempts = 3;
+
+        var proposal = await TryClaimCanonicalLanguageProposalAsync(
+            maximumAttempts,
+            cancellationToken);
+
+        if (proposal is null)
+            return false;
+
+        try
+        {
+            var candidate = await _db.Set<LegendCorpusCandidate>()
+                .AsNoTracking()
+                .SingleOrDefaultAsync(
+                    item => item.Id == proposal.CorpusCandidateId,
+                    cancellationToken);
+
+            if (candidate is null)
+            {
+                await CompleteCanonicalLanguageProposalAsync(
+                    proposal,
+                    "Rejected",
+                    "canonical_candidate_missing",
+                    cancellationToken);
+                return true;
+            }
+
+            if (!proposal.CriticApproved ||
+                !string.Equals(
+                    proposal.Provenance,
+                    "MachineProposed",
+                    StringComparison.Ordinal))
+            {
+                await CompleteCanonicalLanguageProposalAsync(
+                    proposal,
+                    "Rejected",
+                    "canonical_proposal_not_critic_approved",
+                    cancellationToken);
+                return true;
+            }
+
+            var expectedPairKey = LegendLanguageIdentity.PairKey(
+                candidate.SourceLanguageCode,
+                candidate.TargetLanguageCode);
+
+            if (!string.Equals(
+                    proposal.PairKey,
+                    expectedPairKey,
+                    StringComparison.OrdinalIgnoreCase) ||
+                !string.Equals(
+                    proposal.SourceLanguageCode,
+                    candidate.SourceLanguageCode,
+                    StringComparison.OrdinalIgnoreCase) ||
+                !string.Equals(
+                    proposal.TargetLanguageCode,
+                    candidate.TargetLanguageCode,
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                await CompleteCanonicalLanguageProposalAsync(
+                    proposal,
+                    "Rejected",
+                    "canonical_language_lineage_mismatch",
+                    cancellationToken);
+                return true;
+            }
+
+            // Reuse the exact Phase-3 evidence construction. Phase 4 does not
+            // introduce a second evidence query or reinterpret what the teacher
+            // originally saw.
+            var request = await BuildLanguageProposalRequestAsync(
+                candidate,
+                cancellationToken);
+
+            if (request is null)
+            {
+                await CompleteCanonicalLanguageProposalAsync(
+                    proposal,
+                    "InsufficientEvidence",
+                    "canonical_governed_evidence_unavailable",
+                    cancellationToken);
+                return true;
+            }
+
+            var currentEvidenceIdentityHash =
+                LegendLanguageIdentity.TextHash(
+                    string.Join(
+                        "\n",
+                        request.Evidence
+                            .Select(item => item.EvidenceIdentity)
+                            .OrderBy(item => item, StringComparer.Ordinal)));
+
+            if (!string.Equals(
+                    proposal.EvidenceIdentityHash,
+                    currentEvidenceIdentityHash,
+                    StringComparison.Ordinal))
+            {
+                await CompleteCanonicalLanguageProposalAsync(
+                    proposal,
+                    "Rejected",
+                    "canonical_evidence_identity_mismatch",
+                    cancellationToken);
+                return true;
+            }
+
+            LegendLanguageTeacherFamilyProposal? family;
+            try
+            {
+                family =
+                    JsonSerializer.Deserialize<LegendLanguageTeacherFamilyProposal>(
+                        proposal.ProposalPayloadJson);
+            }
+            catch (JsonException)
+            {
+                family = null;
+            }
+
+            if (family is null ||
+                family.Examples is null ||
+                family.Examples.Count is < 2 or > 8 ||
+                string.IsNullOrWhiteSpace(family.FamilyKey) ||
+                string.IsNullOrWhiteSpace(family.SemanticCategory) ||
+                !string.Equals(
+                    family.FamilyKey,
+                    proposal.FamilyKey,
+                    StringComparison.Ordinal) ||
+                !string.Equals(
+                    family.SemanticCategory,
+                    proposal.SemanticCategory,
+                    StringComparison.Ordinal))
+            {
+                await CompleteCanonicalLanguageProposalAsync(
+                    proposal,
+                    "Rejected",
+                    "canonical_proposal_payload_invalid",
+                    cancellationToken);
+                return true;
+            }
+
+            // Recompute the exact Phase-3 proposal identity from the original
+            // candidate, current exact governed evidence identity, and exact
+            // persisted payload. Changed lineage can never inherit an earlier
+            // critic decision.
+            var expectedProposalIdentity =
+                LegendLanguageIdentity.TextHash(
+                    string.Join(
+                        "|",
+                        "language-teacher-proposal:v1",
+                        candidate.IdempotencyKey,
+                        currentEvidenceIdentityHash,
+                        proposal.ProposalPayloadJson));
+
+            if (!string.Equals(
+                    proposal.ProposalIdentity,
+                    expectedProposalIdentity,
+                    StringComparison.Ordinal))
+            {
+                await CompleteCanonicalLanguageProposalAsync(
+                    proposal,
+                    "Rejected",
+                    "canonical_proposal_identity_mismatch",
+                    cancellationToken);
+                return true;
+            }
+
+            foreach (var example in family.Examples)
+            {
+                if (string.IsNullOrWhiteSpace(example.SourceText) ||
+                    example.Components is null ||
+                    example.Components.Count is < 1 or > 16)
+                {
+                    await CompleteCanonicalLanguageProposalAsync(
+                        proposal,
+                        "Rejected",
+                        "canonical_example_payload_invalid",
+                        cancellationToken);
+                    return true;
+                }
+
+                var understanding =
+                    await _curriculum!.AnalyzeShadowSourceSemanticsAsync(
+                        proposal.SourceLanguageCode,
+                        example.SourceText,
+                        cancellationToken);
+
+                if (string.Equals(
+                        understanding.State,
+                        LegendShadowSourceUnderstanding.Ambiguous,
+                        StringComparison.Ordinal))
+                {
+                    await CompleteCanonicalLanguageProposalAsync(
+                        proposal,
+                        "Rejected",
+                        "canonical_source_semantics_ambiguous",
+                        cancellationToken);
+                    return true;
+                }
+
+                if (!string.Equals(
+                        understanding.State,
+                        LegendShadowSourceUnderstanding
+                            .SupportedForShadowEvaluation,
+                        StringComparison.Ordinal))
+                {
+                    await CompleteCanonicalLanguageProposalAsync(
+                        proposal,
+                        "InsufficientEvidence",
+                        "canonical_source_semantics_insufficient",
+                        cancellationToken);
+                    return true;
+                }
+
+                var proposedComponents = example.Components
+                    .Select(item => CanonicalMachineComponentIdentity(
+                        item.Dimension,
+                        item.Value,
+                        item.SurfaceForm))
+                    .OrderBy(item => item, StringComparer.Ordinal)
+                    .ToArray();
+
+                var establishedComponents = understanding.Components
+                    .Select(item => CanonicalMachineComponentIdentity(
+                        item.Dimension,
+                        item.Value,
+                        item.SurfaceForm))
+                    .OrderBy(item => item, StringComparer.Ordinal)
+                    .ToArray();
+
+                if (proposedComponents.Length !=
+                        proposedComponents
+                            .Distinct(StringComparer.Ordinal)
+                            .Count() ||
+                    !proposedComponents.SequenceEqual(
+                        establishedComponents,
+                        StringComparer.Ordinal))
+                {
+                    await CompleteCanonicalLanguageProposalAsync(
+                        proposal,
+                        "Rejected",
+                        "canonical_semantic_component_mismatch",
+                        cancellationToken);
+                    return true;
+                }
+
+                // A null target remains a source-only machine proposal and is
+                // not allowed to invent a target. When a target is supplied,
+                // require the existing Founder-backed directional formulation
+                // authority to independently produce that exact target.
+                if (!string.IsNullOrWhiteSpace(example.TargetText))
+                {
+                    var formulation =
+                        await _curriculum.FormulateShadowTargetAsync(
+                            proposal.SourceLanguageCode,
+                            proposal.TargetLanguageCode,
+                            example.SourceText,
+                            cancellationToken);
+
+                    if (string.Equals(
+                            formulation.State,
+                            LegendShadowTargetFormulation.Ambiguous,
+                            StringComparison.Ordinal) ||
+                        string.Equals(
+                            formulation.State,
+                            LegendShadowTargetFormulation.Contradicted,
+                            StringComparison.Ordinal))
+                    {
+                        await CompleteCanonicalLanguageProposalAsync(
+                            proposal,
+                            "Rejected",
+                            "canonical_target_formulation_contradicted",
+                            cancellationToken);
+                        return true;
+                    }
+
+                    if (!string.Equals(
+                            formulation.State,
+                            LegendShadowTargetFormulation
+                                .SupportedForShadowEvaluation,
+                            StringComparison.Ordinal) ||
+                        string.IsNullOrWhiteSpace(formulation.Text))
+                    {
+                        await CompleteCanonicalLanguageProposalAsync(
+                            proposal,
+                            "InsufficientEvidence",
+                            "canonical_target_formulation_insufficient",
+                            cancellationToken);
+                        return true;
+                    }
+
+                    if (!string.Equals(
+                            LegendLanguageIdentity.NormalizeText(
+                                formulation.Text),
+                            LegendLanguageIdentity.NormalizeText(
+                                example.TargetText),
+                            StringComparison.OrdinalIgnoreCase))
+                    {
+                        await CompleteCanonicalLanguageProposalAsync(
+                            proposal,
+                            "Rejected",
+                            "canonical_target_text_mismatch",
+                            cancellationToken);
+                        return true;
+                    }
+                }
+            }
+
+            // Phase 4 admits only the proposal artifact into the governed
+            // machine-validation tier. It deliberately creates no curriculum
+            // family, example, alignment, text unit, structural evidence, or
+            // expansion candidate. Phase 5 owns that boundary.
+            proposal.ValidationState = "SystemValidated";
+            proposal.Provenance =
+                LegendConnectKnowledgeProvenance.SystemValidatedMachine;
+            proposal.CanonicalValidationFailureCode = null;
+            proposal.CanonicalValidationLeaseExpiresUtc = null;
+            proposal.CanonicalValidatedUtc = DateTime.UtcNow;
+            proposal.UpdatedUtc = DateTime.UtcNow;
+
+            await _db.SaveChangesAsync(cancellationToken);
+
+            await RecordAsync(
+                "CanonicalLanguageProposal",
+                "Info",
+                "SystemValidated",
+                proposal.SourceLanguageCode,
+                proposal.PairKey,
+                null,
+                "The exact machine proposal and its original governed evidence lineage passed existing LEGEND semantic and directional validation gates. No curriculum or corpus knowledge was written.",
+                cancellationToken);
+
+            return true;
+        }
+        catch (OperationCanceledException)
+            when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception)
+        {
+            proposal.CanonicalValidationFailureCode =
+                "canonical_validation_failed";
+
+            if (proposal.CanonicalValidationAttemptCount >= maximumAttempts)
+            {
+                proposal.ValidationState = "Failed";
+                proposal.CanonicalValidationLeaseExpiresUtc = null;
+                proposal.CanonicalValidatedUtc = DateTime.UtcNow;
+            }
+            else
+            {
+                proposal.ValidationState =
+                    "CanonicalValidationProcessing";
+                proposal.CanonicalValidationLeaseExpiresUtc =
+                    DateTime.UtcNow.AddMinutes(
+                        Math.Min(
+                            30,
+                            Math.Max(
+                                5,
+                                proposal.CanonicalValidationAttemptCount * 5)));
+            }
+
+            proposal.UpdatedUtc = DateTime.UtcNow;
+
+            await _db.SaveChangesAsync(CancellationToken.None);
+
+            await RecordAsync(
+                "CanonicalLanguageProposal",
+                "Warning",
+                proposal.ValidationState,
+                proposal.SourceLanguageCode,
+                proposal.PairKey,
+                proposal.CanonicalValidationFailureCode,
+                "Canonical proposal validation failed closed and did not mutate corpus or curriculum knowledge.",
+                CancellationToken.None);
+
+            return true;
+        }
+    }
+
+    private async Task<LegendLanguageTeacherProposal?>
+        TryClaimCanonicalLanguageProposalAsync(
+            int maximumAttempts,
+            CancellationToken cancellationToken)
+    {
+        var now = DateTime.UtcNow;
+        var expires = now.AddMinutes(10);
+
+        var proposalId =
+            await _db.Set<LegendLanguageTeacherProposal>()
+                .AsNoTracking()
+                .Where(item =>
+                    item.CriticApproved &&
+                    item.Provenance == "MachineProposed" &&
+                    item.CanonicalValidationAttemptCount <
+                        maximumAttempts &&
+                    (
+                        item.ValidationState ==
+                            "AwaitingCanonicalValidation" ||
+                        (
+                            item.ValidationState ==
+                                "CanonicalValidationProcessing" &&
+                            item.CanonicalValidationLeaseExpiresUtc !=
+                                null &&
+                            item.CanonicalValidationLeaseExpiresUtc <
+                                now
+                        )
+                    ))
+                .OrderBy(item => item.CreatedUtc)
+                .Select(item => (Guid?)item.Id)
+                .FirstOrDefaultAsync(cancellationToken);
+
+        if (proposalId is null)
+            return null;
+
+        if (!_db.Database.IsRelational())
+        {
+            var proposal =
+                await _db.Set<LegendLanguageTeacherProposal>()
+                    .SingleOrDefaultAsync(
+                        item =>
+                            item.Id == proposalId.Value &&
+                            item.CriticApproved &&
+                            item.Provenance ==
+                                "MachineProposed" &&
+                            item.CanonicalValidationAttemptCount <
+                                maximumAttempts &&
+                            (
+                                item.ValidationState ==
+                                    "AwaitingCanonicalValidation" ||
+                                (
+                                    item.ValidationState ==
+                                        "CanonicalValidationProcessing" &&
+                                    item.CanonicalValidationLeaseExpiresUtc !=
+                                        null &&
+                                    item.CanonicalValidationLeaseExpiresUtc <
+                                        now
+                                )
+                            ),
+                        cancellationToken);
+
+            if (proposal is null)
+                return null;
+
+            proposal.ValidationState =
+                "CanonicalValidationProcessing";
+            proposal.CanonicalValidationAttemptCount++;
+            proposal.CanonicalValidationLeaseExpiresUtc = expires;
+            proposal.UpdatedUtc = now;
+
+            await _db.SaveChangesAsync(cancellationToken);
+            return proposal;
+        }
+
+        var claimed =
+            await _db.Set<LegendLanguageTeacherProposal>()
+                .Where(item =>
+                    item.Id == proposalId.Value &&
+                    item.CriticApproved &&
+                    item.Provenance == "MachineProposed" &&
+                    item.CanonicalValidationAttemptCount <
+                        maximumAttempts &&
+                    (
+                        item.ValidationState ==
+                            "AwaitingCanonicalValidation" ||
+                        (
+                            item.ValidationState ==
+                                "CanonicalValidationProcessing" &&
+                            item.CanonicalValidationLeaseExpiresUtc !=
+                                null &&
+                            item.CanonicalValidationLeaseExpiresUtc <
+                                now
+                        )
+                    ))
+                .ExecuteUpdateAsync(
+                    setters => setters
+                        .SetProperty(
+                            item => item.ValidationState,
+                            "CanonicalValidationProcessing")
+                        .SetProperty(
+                            item =>
+                                item.CanonicalValidationAttemptCount,
+                            item =>
+                                item.CanonicalValidationAttemptCount +
+                                1)
+                        .SetProperty(
+                            item =>
+                                item.CanonicalValidationLeaseExpiresUtc,
+                            expires)
+                        .SetProperty(
+                            item => item.UpdatedUtc,
+                            now),
+                    cancellationToken);
+
+        return claimed == 1
+            ? await _db.Set<LegendLanguageTeacherProposal>()
+                .SingleAsync(
+                    item => item.Id == proposalId.Value,
+                    cancellationToken)
+            : null;
+    }
+
+    private async Task CompleteCanonicalLanguageProposalAsync(
+        LegendLanguageTeacherProposal proposal,
+        string state,
+        string failureCode,
+        CancellationToken cancellationToken)
+    {
+        proposal.ValidationState = state;
+        proposal.CanonicalValidationFailureCode =
+            failureCode[..Math.Min(failureCode.Length, 160)];
+        proposal.CanonicalValidationLeaseExpiresUtc = null;
+        proposal.CanonicalValidatedUtc = DateTime.UtcNow;
+        proposal.UpdatedUtc = DateTime.UtcNow;
+
+        await _db.SaveChangesAsync(cancellationToken);
+
+        await RecordAsync(
+            "CanonicalLanguageProposal",
+            state == "Rejected" ? "Warning" : "Info",
+            state,
+            proposal.SourceLanguageCode,
+            proposal.PairKey,
+            proposal.CanonicalValidationFailureCode,
+            "Canonical machine-proposal validation completed without writing corpus or curriculum knowledge.",
+            cancellationToken);
+    }
+
+    private static string CanonicalMachineComponentIdentity(
+        string dimension,
+        string value,
+        string surfaceForm) =>
+        string.Join(
+            "|",
+            dimension.Trim().ToLowerInvariant(),
+            value.Trim().ToLowerInvariant(),
+            LegendLanguageIdentity.NormalizeText(surfaceForm)
+                .ToLowerInvariant());
 
     private async Task<bool> TryProcessPendingLanguageProposalAsync(
         CancellationToken cancellationToken)
