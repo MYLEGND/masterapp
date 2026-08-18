@@ -1764,6 +1764,13 @@ internal sealed class LegendConnectLearningHostedService : BackgroundService
                     await scope.ServiceProvider.GetRequiredService<LegendConnectCorpusService>()
                         .ProcessPendingAsync(25, stoppingToken);
                 }
+
+                // Phase 7 reuses this existing deployment-wide learning
+                // worker. The training service is configuration-gated and
+                // bounded to one durable lifecycle transition per tick.
+                await scope.ServiceProvider
+                    .GetRequiredService<LegendConnectModelTrainingService>()
+                    .ProcessOneAsync(stoppingToken);
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {

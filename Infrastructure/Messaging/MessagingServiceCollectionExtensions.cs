@@ -42,8 +42,15 @@ public static class MessagingServiceCollectionExtensions
             provider.GetRequiredService<LegendConnectCurriculumService>());
         services.AddScoped<LegendConnectAutonomousGapPlanner>();
         services.AddScoped<LegendConnectAutonomousLearningService>();
+        services.AddScoped<LegendConnectTrainingDatasetCompiler>();
+        services.AddScoped<LegendConnectModelTrainingService>();
+        services.AddScoped<ILegendConnectModelTrainingBackend, OpenAiLegendConnectModelTrainingBackend>();
         services.AddScoped<ILegendConnectLanguageTeacher, OpenAiLegendConnectLanguageTeacher>();
         services.AddScoped<ILegendConnectOperations, LegendConnectOperations>();
+        services.AddHttpClient("LegendModelTraining", client =>
+        {
+            client.Timeout = TimeSpan.FromSeconds(60);
+        });
         services.AddHttpClient("LegendLanguageTeacher", client =>
         {
             // Teacher/critic reasoning is non-authoritative and may be
