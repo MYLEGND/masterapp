@@ -15,6 +15,9 @@ internal interface ITranslationDemandRecorder
         bool contextualCompositionObserved = false,
         bool contextualInternalServed = false,
         bool structuralInternalServed = false,
+        bool neuralModelServed = false,
+        bool neuralModelFailed = false,
+        bool providerObservationReused = false,
         CancellationToken cancellationToken = default);
 }
 
@@ -64,6 +67,9 @@ internal sealed class TranslationDemandRecorder : ITranslationDemandRecorder
         bool contextualCompositionObserved = false,
         bool contextualInternalServed = false,
         bool structuralInternalServed = false,
+        bool neuralModelServed = false,
+        bool neuralModelFailed = false,
+        bool providerObservationReused = false,
         CancellationToken cancellationToken = default)
     {
         try
@@ -80,6 +86,9 @@ internal sealed class TranslationDemandRecorder : ITranslationDemandRecorder
             var contextualObservedDelta = contextualCompositionObserved ? 1 : 0;
             var contextualServedDelta = contextualInternalServed ? 1 : 0;
             var structuralServedDelta = structuralInternalServed ? 1 : 0;
+            var neuralServedDelta = neuralModelServed ? 1 : 0;
+            var neuralFailedDelta = neuralModelFailed ? 1 : 0;
+            var providerObservationReuseDelta = providerObservationReused ? 1 : 0;
             var now = DateTime.UtcNow;
 
             if (_db.Database.IsRelational())
@@ -92,6 +101,9 @@ internal sealed class TranslationDemandRecorder : ITranslationDemandRecorder
                     contextualObservedDelta,
                     contextualServedDelta,
                     structuralServedDelta,
+                    neuralServedDelta,
+                    neuralFailedDelta,
+                    providerObservationReuseDelta,
                     now,
                     cancellationToken);
                 if (affected == 1)
@@ -108,6 +120,9 @@ internal sealed class TranslationDemandRecorder : ITranslationDemandRecorder
                     ContextualCompositionObservationCount = contextualObservedDelta,
                     ContextualInternalServeCount = contextualServedDelta,
                     StructuralInternalServeCount = structuralServedDelta,
+                    NeuralModelServeCount = neuralServedDelta,
+                    NeuralModelFailureCount = neuralFailedDelta,
+                    ProviderObservationReuseCount = providerObservationReuseDelta,
                     LastRequestedUtc = now
                 });
                 try
@@ -129,6 +144,9 @@ internal sealed class TranslationDemandRecorder : ITranslationDemandRecorder
                         contextualObservedDelta,
                         contextualServedDelta,
                         structuralServedDelta,
+                        neuralServedDelta,
+                        neuralFailedDelta,
+                        providerObservationReuseDelta,
                         now,
                         cancellationToken);
                     return;
@@ -149,6 +167,9 @@ internal sealed class TranslationDemandRecorder : ITranslationDemandRecorder
             demand.ContextualCompositionObservationCount += contextualObservedDelta;
             demand.ContextualInternalServeCount += contextualServedDelta;
             demand.StructuralInternalServeCount += structuralServedDelta;
+            demand.NeuralModelServeCount += neuralServedDelta;
+            demand.NeuralModelFailureCount += neuralFailedDelta;
+            demand.ProviderObservationReuseCount += providerObservationReuseDelta;
             demand.LastRequestedUtc = now;
             await _db.SaveChangesAsync(cancellationToken);
         }
@@ -173,6 +194,9 @@ internal sealed class TranslationDemandRecorder : ITranslationDemandRecorder
         int contextualObserved,
         int contextualServed,
         int structuralServed,
+        int neuralServed,
+        int neuralFailed,
+        int providerObservationReused,
         DateTime now,
         CancellationToken cancellationToken) =>
         _db.Set<LegendTranslationPairDemand>()
@@ -185,6 +209,9 @@ internal sealed class TranslationDemandRecorder : ITranslationDemandRecorder
                 .SetProperty(item => item.ContextualCompositionObservationCount, item => item.ContextualCompositionObservationCount + contextualObserved)
                 .SetProperty(item => item.ContextualInternalServeCount, item => item.ContextualInternalServeCount + contextualServed)
                 .SetProperty(item => item.StructuralInternalServeCount, item => item.StructuralInternalServeCount + structuralServed)
+                .SetProperty(item => item.NeuralModelServeCount, item => item.NeuralModelServeCount + neuralServed)
+                .SetProperty(item => item.NeuralModelFailureCount, item => item.NeuralModelFailureCount + neuralFailed)
+                .SetProperty(item => item.ProviderObservationReuseCount, item => item.ProviderObservationReuseCount + providerObservationReused)
                 .SetProperty(item => item.LastRequestedUtc, now), cancellationToken);
 }
 

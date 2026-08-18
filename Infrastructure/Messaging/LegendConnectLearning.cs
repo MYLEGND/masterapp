@@ -1903,7 +1903,23 @@ internal sealed class LegendConnectAutonomousGapPlanner
         var pairKeys = planned.Select(item => item.Pair.PairKey).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
         var demandByPair = await _db.Set<LegendTranslationPairDemand>()
             .Where(item => pairKeys.Contains(item.PairKey))
-            .ToDictionaryAsync(item => item.PairKey, item => item.TranslationRequestCount, StringComparer.OrdinalIgnoreCase, cancellationToken);
+            .Select(item => new
+            {
+                item.PairKey,
+                item.TranslationRequestCount,
+                item.NeuralModelFailureCount,
+                item.ProviderObservationReuseCount,
+                item.AzureFallbackCount
+            })
+            .ToDictionaryAsync(
+                item => item.PairKey,
+                item =>
+                    item.TranslationRequestCount +
+                    (item.NeuralModelFailureCount * 4L) +
+                    (item.ProviderObservationReuseCount * 2L) +
+                    item.AzureFallbackCount,
+                StringComparer.OrdinalIgnoreCase,
+                cancellationToken);
 
         return planned
             .OrderByDescending(item => LegendCorpusCandidateScoring.Score(

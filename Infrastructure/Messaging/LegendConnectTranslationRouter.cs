@@ -213,6 +213,7 @@ internal sealed class LegendConnectTranslationRouter : IAccountScopedTranslation
         }
 
         LegendContextualTranslationSuggestion? contextualSuggestion = null;
+        var neuralModelFailed = false;
         var pairKey = source is null ? null : LegendLanguageIdentity.PairKey(source, target);
         if (source is not null && _intelligence is not null)
         {
@@ -324,12 +325,27 @@ internal sealed class LegendConnectTranslationRouter : IAccountScopedTranslation
                         !string.IsNullOrWhiteSpace(
                             neural.Text))
                     {
+                        if (_demand is not null)
+                        {
+                            await _demand.TryRecordAsync(
+                                pairKey!,
+                                0,
+                                neuralModelServed: true,
+                                cancellationToken: cancellationToken);
+                        }
+
                         return new TranslationProviderResult(
                             true,
                             neural.Text,
                             source,
                             "LegendConnectNeuralModel");
                     }
+
+                    neuralModelFailed =
+                        !string.Equals(
+                            neural.ErrorCode,
+                            "active_model_unavailable",
+                            StringComparison.Ordinal);
                 }
 
                 var providerObservation =
@@ -347,6 +363,8 @@ internal sealed class LegendConnectTranslationRouter : IAccountScopedTranslation
                             pairKey!,
                             0,
                             translationMemoryHit: true,
+                            neuralModelFailed: neuralModelFailed,
+                            providerObservationReused: true,
                             cancellationToken:
                                 cancellationToken);
                     }
@@ -386,6 +404,7 @@ internal sealed class LegendConnectTranslationRouter : IAccountScopedTranslation
                 text?.Length ?? 0,
                 azureFallback: true,
                 contextualCompositionObserved: contextualSuggestion is not null,
+                neuralModelFailed: neuralModelFailed,
                 cancellationToken: cancellationToken);
         }
 

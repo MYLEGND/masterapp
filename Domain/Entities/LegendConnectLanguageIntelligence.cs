@@ -825,6 +825,25 @@ public sealed class LegendTranslationPairDemand
     /// usage ledgers/system usage aggregate.
     /// </summary>
     public long AzureFallbackCount { get; set; }
+    /// <summary>
+    /// Successful production translations served by the currently promoted
+    /// LEGEND neural model. Pair aggregate only; no production text or member
+    /// identity is retained here.
+    /// </summary>
+    public long NeuralModelServeCount { get; set; }
+
+    /// <summary>
+    /// Production requests for which an active promoted LEGEND model existed
+    /// but did not return a usable translation. This is a governed weakness
+    /// signal only and never admits production text into training.
+    /// </summary>
+    public long NeuralModelFailureCount { get; set; }
+
+    /// <summary>
+    /// Requests ultimately served by an eligible reusable ProviderDerived
+    /// observation after governed memory, composition, and neural inference.
+    /// </summary>
+    public long ProviderObservationReuseCount { get; set; }
     public long ContextualCompositionObservationCount { get; set; }
     public long ContextualInternalServeCount { get; set; }
     public DateTime LastRequestedUtc { get; set; } = DateTime.UtcNow;
