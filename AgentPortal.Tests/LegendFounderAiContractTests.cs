@@ -1,5 +1,7 @@
+using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using System.Text.Json;
 using AgentPortal.Controllers;
 using AgentPortal.Security;
 using AgentPortal.Services;
@@ -126,4 +128,108 @@ public sealed class LegendFounderAiContractTests
             },
             publicMethods);
     }
+
+    [Fact]
+    public void ConversationFailure_PreservesProviderClassification()
+    {
+        var failure =
+            LegendFounderAiChatResponse.Failure(
+                "provider rejected request",
+                "provider_http",
+                400,
+                "req_test");
+
+        Assert.False(failure.Succeeded);
+        Assert.Equal(
+            "provider_http",
+            failure.FailureKind);
+        Assert.Equal(
+            400,
+            failure.ProviderStatusCode);
+        Assert.Equal(
+            "req_test",
+            failure.Reference);
+    }
+
+    [Fact]
+    public void FounderCurriculumTool_UsesClosedStrictVariationSchema()
+    {
+        var buildTools =
+            typeof(LegendFounderAiConversationService)
+                .GetMethod(
+                    "BuildFounderTools",
+                    BindingFlags.NonPublic |
+                    BindingFlags.Static);
+
+        Assert.NotNull(buildTools);
+
+        var tools =
+            Assert.IsAssignableFrom<
+                IReadOnlyList<object>>(
+                buildTools!.Invoke(
+                    null,
+                    null));
+
+        using var document =
+            JsonDocument.Parse(
+                JsonSerializer.Serialize(
+                    tools));
+
+        var curriculum =
+            document.RootElement
+                .EnumerateArray()
+                .Single(
+                    tool =>
+                        tool.GetProperty("name")
+                            .GetString() ==
+                        "legend_submit_founder_curriculum");
+
+        Assert.True(
+            curriculum.GetProperty("strict")
+                .GetBoolean());
+
+        var variations =
+            curriculum
+                .GetProperty("parameters")
+                .GetProperty("properties")
+                .GetProperty("families")
+                .GetProperty("items")
+                .GetProperty("properties")
+                .GetProperty("examples")
+                .GetProperty("items")
+                .GetProperty("properties")
+                .GetProperty("variations");
+
+        Assert.Equal(
+            "array",
+            variations.GetProperty("type")
+                .GetString());
+
+        var variationItem =
+            variations.GetProperty("items");
+
+        Assert.False(
+            variationItem
+                .GetProperty(
+                    "additionalProperties")
+                .GetBoolean());
+
+        var required =
+            variationItem
+                .GetProperty("required")
+                .EnumerateArray()
+                .Select(
+                    item =>
+                        item.GetString())
+                .ToArray();
+
+        Assert.Contains(
+            "dimension",
+            required);
+
+        Assert.Contains(
+            "value",
+            required);
+    }
+
 }

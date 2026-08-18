@@ -41,8 +41,29 @@ public sealed class LegendFounderAiController : Controller
 
             if (!result.Succeeded)
             {
+                var statusCode =
+                    result.FailureKind switch
+                    {
+                        "validation" =>
+                            StatusCodes.Status400BadRequest,
+
+                        "configuration" =>
+                            StatusCodes.Status503ServiceUnavailable,
+
+                        "timeout" =>
+                            StatusCodes.Status504GatewayTimeout,
+
+                        "provider_http" or
+                        "transport" or
+                        "provider_json" =>
+                            StatusCodes.Status502BadGateway,
+
+                        _ =>
+                            StatusCodes.Status502BadGateway
+                    };
+
                 return StatusCode(
-                    StatusCodes.Status503ServiceUnavailable,
+                    statusCode,
                     result);
             }
 

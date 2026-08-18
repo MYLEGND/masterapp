@@ -86,14 +86,17 @@ public sealed class LegendFounderAiConversationService
                 out var conversation,
                 out var validationError))
         {
-            return LegendFounderAiChatResponse.Failure(validationError);
+            return LegendFounderAiChatResponse.Failure(
+                validationError,
+                "validation");
         }
 
         var apiKey = OpenAiKeyResolver.Resolve(_configuration);
         if (string.IsNullOrWhiteSpace(apiKey))
         {
             return LegendFounderAiChatResponse.Failure(
-                "Legend® Ai is not configured because the OpenAI API key is unavailable.");
+                "Legend® Ai is not configured because the OpenAI API key is unavailable.",
+                "configuration");
         }
 
         var model =
@@ -246,20 +249,37 @@ public sealed class LegendFounderAiConversationService
             return LegendFounderAiChatResponse.Failure(
                 "Legend® Ai reached its bounded inspection limit. Ask a narrower follow-up question.");
         }
+        catch (LegendFounderAiProviderException exception)
+        {
+            var reference =
+                !string.IsNullOrWhiteSpace(
+                    exception.ProviderRequestId)
+                    ? exception.ProviderRequestId
+                    : exception.ClientRequestId;
+
+            return LegendFounderAiChatResponse.Failure(
+                $"Legend® Ai's reasoning provider rejected the request " +
+                $"(HTTP {exception.StatusCode}). Reference: {reference}",
+                "provider_http",
+                exception.StatusCode,
+                reference);
+        }
         catch (OperationCanceledException)
             when (!cancellationToken.IsCancellationRequested)
         {
             return LegendFounderAiChatResponse.Failure(
-                "Legend® Ai timed out while reasoning over the current system state.");
+                "Legend® Ai timed out while reasoning over the current system state.",
+                "timeout");
         }
         catch (HttpRequestException exception)
         {
             _logger.LogWarning(
                 exception,
-                "LEGEND Founder AI provider request failed.");
+                "LEGEND Founder AI provider transport failed.");
 
             return LegendFounderAiChatResponse.Failure(
-                "Legend® Ai could not reach its conversational reasoning provider.");
+                "Legend® Ai could not reach its conversational reasoning provider.",
+                "transport");
         }
         catch (JsonException exception)
         {
@@ -268,7 +288,8 @@ public sealed class LegendFounderAiConversationService
                 "LEGEND Founder AI received invalid provider JSON.");
 
             return LegendFounderAiChatResponse.Failure(
-                "Legend® Ai received an invalid reasoning response.");
+                "Legend® Ai received an invalid reasoning response.",
+                "provider_json");
         }
     }
 
@@ -305,6 +326,9 @@ public sealed class LegendFounderAiConversationService
              attempt <= 2;
              attempt++)
         {
+            var clientRequestId =
+                Guid.NewGuid().ToString("D");
+
             using var request =
                 new HttpRequestMessage(
                     HttpMethod.Post,
@@ -313,6 +337,10 @@ public sealed class LegendFounderAiConversationService
                     Content =
                         JsonContent.Create(payload)
                 };
+
+            request.Headers.TryAddWithoutValidation(
+                "X-Client-Request-Id",
+                clientRequestId);
 
             request.Headers.Authorization =
                 new AuthenticationHeaderValue(
@@ -377,12 +405,26 @@ public sealed class LegendFounderAiConversationService
                     errorBody[..1_000];
             }
 
-            _logger.LogWarning(
-                "LEGEND Founder AI provider returned HTTP {StatusCode}. Body={Body}",
+            var providerRequestId =
+                response.Headers.TryGetValues(
+                    "x-request-id",
+                    out var providerRequestIds)
+                    ? providerRequestIds.FirstOrDefault()
+                    : null;
+
+            _logger.LogError(
+                "LEGEND Founder AI provider rejected request. " +
+                "HTTP={StatusCode} ClientRequestId={ClientRequestId} " +
+                "ProviderRequestId={ProviderRequestId} Body={Body}",
                 (int)response.StatusCode,
+                clientRequestId,
+                providerRequestId ?? "unavailable",
                 errorBody);
 
-            return null;
+            throw new LegendFounderAiProviderException(
+                (int)response.StatusCode,
+                clientRequestId,
+                providerRequestId);
         }
 
         return null;
@@ -783,7 +825,7 @@ public sealed class LegendFounderAiConversationService
                                 "variations",
                                 out var variationsElement) ||
                             variationsElement.ValueKind !=
-                                JsonValueKind.Object)
+                                JsonValueKind.Array)
                         {
                             return """{"error":"invalid_curriculum_example"}""";
                         }
@@ -792,22 +834,33 @@ public sealed class LegendFounderAiConversationService
                             new Dictionary<string, string>(
                                 StringComparer.OrdinalIgnoreCase);
 
-                        foreach (var property in
-                                 variationsElement
-                                     .EnumerateObject())
+                        foreach (var variation in
+                                 variationsElement.EnumerateArray())
                         {
-                            if (property.Value.ValueKind !=
-                                    JsonValueKind.String ||
-                                string.IsNullOrWhiteSpace(
-                                    property.Value.GetString()))
+                            if (variation.ValueKind !=
+                                JsonValueKind.Object)
                             {
                                 return """{"error":"invalid_curriculum_variation"}""";
                             }
 
-                            variations[property.Name] =
-                                property.Value
-                                    .GetString()!
-                                    .Trim();
+                            var dimension =
+                                ReadRequiredString(
+                                    variation,
+                                    "dimension");
+
+                            var value =
+                                ReadRequiredString(
+                                    variation,
+                                    "value");
+
+                            if (string.IsNullOrWhiteSpace(dimension) ||
+                                string.IsNullOrWhiteSpace(value) ||
+                                !variations.TryAdd(
+                                    dimension,
+                                    value))
+                            {
+                                return """{"error":"invalid_curriculum_variation"}""";
+                            }
                         }
 
                         if (variations.Count == 0)
@@ -1363,15 +1416,34 @@ public sealed class LegendFounderAiConversationService
                                                 },
                                                 variations = new
                                                 {
-                                                    type = "object",
-                                                    additionalProperties =
-                                                        new
+                                                    type = "array",
+                                                    minItems = 1,
+                                                    maxItems = 32,
+                                                    items = new
+                                                    {
+                                                        type = "object",
+                                                        properties = new
                                                         {
-                                                            type =
-                                                                "string",
-                                                            minLength = 1,
-                                                            maxLength = 240
-                                                        }
+                                                            dimension = new
+                                                            {
+                                                                type = "string",
+                                                                minLength = 1,
+                                                                maxLength = 80
+                                                            },
+                                                            value = new
+                                                            {
+                                                                type = "string",
+                                                                minLength = 1,
+                                                                maxLength = 240
+                                                            }
+                                                        },
+                                                        required = new[]
+                                                        {
+                                                            "dimension",
+                                                            "value"
+                                                        },
+                                                        additionalProperties = false
+                                                    }
                                                 }
                                             },
                                             required = new[]
@@ -1820,6 +1892,28 @@ Never upgrade an unresolved, rejected or contradicted record merely because it a
                "\n[LEGEND TOOL OUTPUT TRUNCATED AT BOUNDED LIMIT]";
     }
 
+    private sealed class LegendFounderAiProviderException
+        : Exception
+    {
+        public LegendFounderAiProviderException(
+            int statusCode,
+            string clientRequestId,
+            string? providerRequestId)
+            : base(
+                $"Legend Founder AI provider returned HTTP {statusCode}.")
+        {
+            StatusCode = statusCode;
+            ClientRequestId = clientRequestId;
+            ProviderRequestId = providerRequestId;
+        }
+
+        public int StatusCode { get; }
+
+        public string ClientRequestId { get; }
+
+        public string? ProviderRequestId { get; }
+    }
+
     private sealed record FounderAiToolCall(
         string CallId,
         string Name,
@@ -1845,13 +1939,22 @@ public sealed record LegendFounderAiChatResponse(
     bool Succeeded,
     string Mode,
     string? Message,
-    string? Error)
+    string? Error,
+    string? FailureKind = null,
+    int? ProviderStatusCode = null,
+    string? Reference = null)
 {
     public static LegendFounderAiChatResponse Failure(
-        string error) =>
+        string error,
+        string? failureKind = null,
+        int? providerStatusCode = null,
+        string? reference = null) =>
         new(
             false,
             "legend",
             null,
-            error);
+            error,
+            failureKind,
+            providerStatusCode,
+            reference);
 }
