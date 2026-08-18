@@ -73,7 +73,7 @@ public class WebsiteAnalyticsInitialQualityModeTests
             .AddInMemoryCollection(new Dictionary<string, string?>
             {
                 ["Founder:Upn"] = "founder@example.com",
-                ["Analytics:EnvironmentFilter"] = "development",
+                ["Analytics:EnvironmentFilter"] = "production",
                 ["Analytics:ExcludeLocalHosts"] = "false"
             })
             .Build();
@@ -174,6 +174,8 @@ public class WebsiteAnalyticsInitialQualityModeTests
             IsInternal = isInternal,
             PageKey = "quote_life",
             UserAgent = "Mozilla/5.0",
+            Browser = "Chrome",
+            OperatingSystem = "macOS",
             WebDriver = false,
             IsHeadless = false,
             EngagedMilliseconds = eventType == "page_engaged_15s" ? 15000 : 0,
