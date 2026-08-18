@@ -254,6 +254,17 @@ public sealed class LegendConnectRuntimePolicyTests
         await policy.RecordWorkerHeartbeatAsync("Learning");
         await policy.RecordWorkerHeartbeatAsync("Acquisition");
 
+        var convergenceBlocked =
+            await policy.ActivateAsync("founder");
+        Assert.Equal("BLOCKED", convergenceBlocked.State);
+        Assert.Equal(
+            "BLOCKED",
+            Assert.Single(
+                convergenceBlocked.Checks,
+                item => item.Name == "Historical Convergence").State);
+
+        await CompleteHistoricalConvergenceAsync(policy);
+
         var idle = await policy.ActivateAsync("founder");
         Assert.Equal("ACTIVE — NO ELIGIBLE WORK", idle.State);
         Assert.Equal("IDLE", Assert.Single(idle.Checks, item => item.Name == "Approved Corpus").State);
@@ -288,6 +299,7 @@ public sealed class LegendConnectRuntimePolicyTests
             1_000, 250, 750, true, "Shadow", 0.98m));
         await policy.RecordWorkerHeartbeatAsync("Learning");
         await policy.RecordWorkerHeartbeatAsync("Acquisition");
+        await CompleteHistoricalConvergenceAsync(policy);
 
         Assert.Equal("ACTIVE — NO ELIGIBLE WORK", (await policy.ActivateAsync("founder")).State);
 
@@ -390,6 +402,7 @@ public sealed class LegendConnectRuntimePolicyTests
             10_000, 100, 9_900, true, "Shadow", 0.98m));
         await policy.RecordWorkerHeartbeatAsync("Learning");
         await policy.RecordWorkerHeartbeatAsync("Acquisition");
+        await CompleteHistoricalConvergenceAsync(policy);
 
         // This is the production failure shape: a large older backlog for
         // other targets preceded the new focused English batch. The focus
@@ -462,6 +475,7 @@ public sealed class LegendConnectRuntimePolicyTests
             10_000, 100, 9_900, true, "Shadow", 0.98m));
         await policy.RecordWorkerHeartbeatAsync("Learning");
         await policy.RecordWorkerHeartbeatAsync("Acquisition");
+        await CompleteHistoricalConvergenceAsync(policy);
         await policy.ConfigureAutonomousLanguageFocusAsync(
             "founder",
             new LegendConnectAutonomousLanguageFocusMutation(true, ["ht", "es"]));
@@ -535,6 +549,7 @@ public sealed class LegendConnectRuntimePolicyTests
             await policy.UpdateAsync("founder", new LegendConnectRuntimePolicyMutation(100, 20, 80, true, "Shadow", 0.98m));
             await policy.RecordWorkerHeartbeatAsync("Learning");
             await policy.RecordWorkerHeartbeatAsync("Acquisition");
+            await CompleteHistoricalConvergenceAsync(policy);
             seeded.AddRange(
                 CanonicalSource("en", "One approved candidate"),
                 Candidate("shared-candidate", "en", "ht", "One approved candidate"));
@@ -554,6 +569,29 @@ public sealed class LegendConnectRuntimePolicyTests
         Assert.Equal(1, provider.TranslateCalls);
         Assert.Equal("Queued", (await verification.LegendCorpusCandidates.SingleAsync()).ProcessingState);
         Assert.Single(await verification.LegendTranslationAlignments.ToListAsync());
+    }
+
+    private static async Task CompleteHistoricalConvergenceAsync(
+        LegendConnectRuntimePolicyAuthority policy)
+    {
+        for (var pass = 0; pass < 5; pass++)
+        {
+            var replay =
+                await policy.GetOrStartLanguageIntelligenceReevaluationAsync(
+                    LegendConnectLanguageIntelligenceEvaluatorVersion.Current);
+
+            if (!replay.RequiresWork)
+                return;
+
+            await policy.AdvanceLanguageIntelligenceReevaluationAsync(
+                LegendConnectLanguageIntelligenceEvaluatorVersion.Current,
+                replay.Phase,
+                null,
+                true);
+        }
+
+        throw new Xunit.Sdk.XunitException(
+            "The canonical historical convergence state did not complete.");
     }
 
     private static LegendConnectRuntimePolicyAuthority Policy(

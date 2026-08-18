@@ -57,7 +57,9 @@ public sealed class LegendConnectModelTrainingTests
                 db.Set<LegendConnectModelTrainingRun>());
 
         Assert.NotEmpty(run.DatasetIdentity);
-        Assert.Equal(13, run.DatasetEvaluatorVersion);
+        Assert.Equal(
+            LegendConnectLanguageIntelligenceEvaluatorVersion.Current,
+            run.DatasetEvaluatorVersion);
         Assert.Equal("OpenAI", run.TrainingProvider);
         Assert.Equal("test-base-model", run.BaseModel);
         Assert.Equal("file-training", run.TrainingFileId);
@@ -529,8 +531,10 @@ public sealed class LegendConnectModelTrainingTests
             {
                 Id = Guid.NewGuid(),
                 ScopeKey = "Global",
-                CompletedLanguageIntelligenceEvaluatorVersion = 13,
-                TargetLanguageIntelligenceEvaluatorVersion = 13,
+                CompletedLanguageIntelligenceEvaluatorVersion =
+                    LegendConnectLanguageIntelligenceEvaluatorVersion.Current,
+                TargetLanguageIntelligenceEvaluatorVersion =
+                    LegendConnectLanguageIntelligenceEvaluatorVersion.Current,
                 LanguageIntelligenceReevaluationPhase =
                     "Complete"
             });

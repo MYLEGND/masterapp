@@ -209,6 +209,28 @@ public sealed class LegendConnectOperationalProofTests
                 var policy = scope.ServiceProvider.GetRequiredService<ILegendConnectRuntimePolicyAuthority>();
                 await policy.RecordWorkerHeartbeatAsync("Learning");
                 await policy.RecordWorkerHeartbeatAsync("Acquisition");
+
+                for (var pass = 0; pass < 5; pass++)
+                {
+                    var replay =
+                        await policy.GetOrStartLanguageIntelligenceReevaluationAsync(
+                            LegendConnectLanguageIntelligenceEvaluatorVersion.Current);
+
+                    if (!replay.RequiresWork)
+                        break;
+
+                    await policy.AdvanceLanguageIntelligenceReevaluationAsync(
+                        LegendConnectLanguageIntelligenceEvaluatorVersion.Current,
+                        replay.Phase,
+                        null,
+                        true);
+                }
+
+                var completed =
+                    await policy.GetOrStartLanguageIntelligenceReevaluationAsync(
+                        LegendConnectLanguageIntelligenceEvaluatorVersion.Current);
+
+                Assert.False(completed.RequiresWork);
             }
 
             await AssertFounderRedirectAsync(client, founderId, token.RequestToken, cookie,

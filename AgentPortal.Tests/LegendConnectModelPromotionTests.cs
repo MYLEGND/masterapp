@@ -247,8 +247,10 @@ public sealed class LegendConnectModelPromotionTests
             {
                 Id = Guid.NewGuid(),
                 ScopeKey = "Global",
-                CompletedLanguageIntelligenceEvaluatorVersion = 13,
-                TargetLanguageIntelligenceEvaluatorVersion = 13,
+                CompletedLanguageIntelligenceEvaluatorVersion =
+                    LegendConnectLanguageIntelligenceEvaluatorVersion.Current,
+                TargetLanguageIntelligenceEvaluatorVersion =
+                    LegendConnectLanguageIntelligenceEvaluatorVersion.Current,
                 LanguageIntelligenceReevaluationPhase =
                     "Complete"
             });

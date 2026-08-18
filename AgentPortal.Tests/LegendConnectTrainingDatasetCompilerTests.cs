@@ -18,8 +18,10 @@ public sealed class LegendConnectTrainingDatasetCompilerTests
         {
             Id = Guid.NewGuid(),
             ScopeKey = "Global",
-            CompletedLanguageIntelligenceEvaluatorVersion = 4,
-            TargetLanguageIntelligenceEvaluatorVersion = 4,
+            CompletedLanguageIntelligenceEvaluatorVersion =
+                LegendConnectLanguageIntelligenceEvaluatorVersion.Current,
+            TargetLanguageIntelligenceEvaluatorVersion =
+                LegendConnectLanguageIntelligenceEvaluatorVersion.Current,
             LanguageIntelligenceReevaluationPhase = "Complete"
         });
 
@@ -85,8 +87,10 @@ public sealed class LegendConnectTrainingDatasetCompilerTests
         {
             Id = Guid.NewGuid(),
             ScopeKey = "Global",
-            CompletedLanguageIntelligenceEvaluatorVersion = 4,
-            TargetLanguageIntelligenceEvaluatorVersion = 4,
+            CompletedLanguageIntelligenceEvaluatorVersion =
+                LegendConnectLanguageIntelligenceEvaluatorVersion.Current,
+            TargetLanguageIntelligenceEvaluatorVersion =
+                LegendConnectLanguageIntelligenceEvaluatorVersion.Current,
             LanguageIntelligenceReevaluationPhase = "Complete"
         });
 
@@ -148,8 +152,10 @@ public sealed class LegendConnectTrainingDatasetCompilerTests
         {
             Id = Guid.NewGuid(),
             ScopeKey = "Global",
-            CompletedLanguageIntelligenceEvaluatorVersion = 4,
-            TargetLanguageIntelligenceEvaluatorVersion = 4,
+            CompletedLanguageIntelligenceEvaluatorVersion =
+                LegendConnectLanguageIntelligenceEvaluatorVersion.Current,
+            TargetLanguageIntelligenceEvaluatorVersion =
+                LegendConnectLanguageIntelligenceEvaluatorVersion.Current,
             LanguageIntelligenceReevaluationPhase = "Complete"
         });
 
@@ -216,6 +222,36 @@ public sealed class LegendConnectTrainingDatasetCompilerTests
     }
 
     [Fact]
+    public async Task CompletedOlderEvaluatorGeneration_FailsClosedBeforeWorkerStartsNewReplay()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+
+        db.Add(new LegendConnectRuntimePolicy
+        {
+            Id = Guid.NewGuid(),
+            ScopeKey = "Global",
+            CompletedLanguageIntelligenceEvaluatorVersion =
+                LegendConnectLanguageIntelligenceEvaluatorVersion.Current - 1,
+            TargetLanguageIntelligenceEvaluatorVersion =
+                LegendConnectLanguageIntelligenceEvaluatorVersion.Current - 1,
+            LanguageIntelligenceReevaluationPhase = "Complete"
+        });
+
+        await db.SaveChangesAsync();
+
+        var compiler =
+            new LegendConnectTrainingDatasetCompiler(db);
+
+        var error =
+            await Assert.ThrowsAsync<InvalidOperationException>(
+                () => compiler.CompileAsync());
+
+        Assert.Equal(
+            "training_dataset_historical_replay_incomplete",
+            error.Message);
+    }
+
+    [Fact]
     public async Task IncompleteHistoricalReplay_FailsClosed()
     {
         await using var db = ControllerTestHelpers.BuildDb();
@@ -224,8 +260,10 @@ public sealed class LegendConnectTrainingDatasetCompilerTests
         {
             Id = Guid.NewGuid(),
             ScopeKey = "Global",
-            CompletedLanguageIntelligenceEvaluatorVersion = 3,
-            TargetLanguageIntelligenceEvaluatorVersion = 4,
+            CompletedLanguageIntelligenceEvaluatorVersion =
+                LegendConnectLanguageIntelligenceEvaluatorVersion.Current - 1,
+            TargetLanguageIntelligenceEvaluatorVersion =
+                LegendConnectLanguageIntelligenceEvaluatorVersion.Current,
             LanguageIntelligenceReevaluationPhase = "ProviderObservations"
         });
 

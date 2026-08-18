@@ -1689,12 +1689,12 @@ internal sealed class LegendConnectCorpusService
 /// </summary>
 internal static class LegendConnectLanguageIntelligenceEvaluatorVersion
 {
-    // v11 replays historical language intelligence through the same canonical
-    // evaluator after the Phase 4 structural-identity, formulation, and
-    // production-eligibility corrections. Existing source families,
-    // alignments, provider observations, and operational translations converge
-    // under the same rules used by present and future evidence.
-    internal const int Current = 13;
+    // v14 is the V14 final-convergence generation. It deliberately sends all
+    // retained historical source families, alignments, provider observations,
+    // and eligible operational translations through the same canonical
+    // authorities used by current evidence after Phases 1-11. No parallel
+    // backfill, replay worker, provenance upgrade, or training shortcut exists.
+    internal const int Current = 14;
 }
 
 internal sealed class LegendConnectLearningHostedService : BackgroundService

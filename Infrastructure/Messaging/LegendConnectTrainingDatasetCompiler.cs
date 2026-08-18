@@ -40,7 +40,8 @@ internal sealed class LegendConnectTrainingDatasetCompiler
             throw new InvalidOperationException(
                 "training_dataset_runtime_policy_missing");
 
-        if (policy.CompletedLanguageIntelligenceEvaluatorVersion <= 0 ||
+        if (policy.CompletedLanguageIntelligenceEvaluatorVersion <
+                LegendConnectLanguageIntelligenceEvaluatorVersion.Current ||
             !string.Equals(
                 policy.LanguageIntelligenceReevaluationPhase,
                 "Complete",

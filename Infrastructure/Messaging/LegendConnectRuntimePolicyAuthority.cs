@@ -131,6 +131,39 @@ internal sealed class LegendConnectRuntimePolicyAuthority : ILegendConnectRuntim
                 : $"A {AzureTranslatorSubscriptionCapacity.LiveReservePercent}% live reserve is derived from the current Azure tier."
             : "Live reserve must be below capacity and corpus consumption must remain outside it."));
 
+        // Phase 12 makes historical convergence an explicit production gate.
+        // The replay itself remains owned by the existing learning worker and
+        // runtime-policy cursor. Readiness only observes that canonical state;
+        // it does not create another replay path or mutate historical data.
+        var convergence = await _db.Set<LegendConnectRuntimePolicy>()
+            .AsNoTracking()
+            .Where(item => item.ScopeKey == GlobalScope)
+            .Select(item => new
+            {
+                item.TargetLanguageIntelligenceEvaluatorVersion,
+                item.CompletedLanguageIntelligenceEvaluatorVersion,
+                item.LanguageIntelligenceReevaluationPhase
+            })
+            .SingleOrDefaultAsync(cancellationToken);
+
+        var historicalConvergenceReady =
+            convergence is not null &&
+            convergence.CompletedLanguageIntelligenceEvaluatorVersion >=
+                LegendConnectLanguageIntelligenceEvaluatorVersion.Current &&
+            convergence.TargetLanguageIntelligenceEvaluatorVersion ==
+                convergence.CompletedLanguageIntelligenceEvaluatorVersion &&
+            string.Equals(
+                convergence.LanguageIntelligenceReevaluationPhase,
+                LegendConnectLanguageIntelligenceReevaluationPhases.Complete,
+                StringComparison.Ordinal);
+
+        checks.Add(Check(
+            "Historical Convergence",
+            historicalConvergenceReady,
+            historicalConvergenceReady
+                ? $"Historical language intelligence is converged at evaluator v{LegendConnectLanguageIntelligenceEvaluatorVersion.Current}."
+                : $"Historical language intelligence must complete evaluator v{LegendConnectLanguageIntelligenceEvaluatorVersion.Current} before autonomous production learning is ready."));
+
         var candidates = await CandidateReadinessAsync(cancellationToken);
         var candidateReady = candidates.PendingEligible > 0;
         checks.Add(new LegendConnectReadinessCheck(
@@ -141,7 +174,8 @@ internal sealed class LegendConnectRuntimePolicyAuthority : ILegendConnectRuntim
                 : "No eligible approved corpus candidate is waiting. Submit source-language-only Founder-approved knowledge to queue missing enabled coverage."));
 
         var baseReady = databaseReady && providerReady && registryReady && learningWorkerReady &&
-                        acquisitionWorkerReady && capacityReady && reserveReady && policy.LearningEnabled;
+                        acquisitionWorkerReady && capacityReady && reserveReady &&
+                        historicalConvergenceReady && policy.LearningEnabled;
         // An empty corpus queue is an expected idle condition, not a safety
         // failure. Enabling now means the single existing worker is ready to
         // claim future Founder-approved monolingual seeds without a second
