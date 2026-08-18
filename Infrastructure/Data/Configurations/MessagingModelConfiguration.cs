@@ -1075,6 +1075,44 @@ internal static class MessagingModelConfiguration
             entity.HasIndex(item => new { item.FounderUserId, item.OccurredUtc });
         });
 
+        modelBuilder.Entity<LegendConnectModelPromotionPair>(entity =>
+        {
+            entity.ToTable("LegendConnectModelPromotionPairs");
+            entity.HasKey(item => item.Id);
+
+            entity.Property(item => item.PairKey)
+                .IsRequired()
+                .HasMaxLength(72);
+
+            entity.Property(item => item.PreviousActiveModelVersion)
+                .HasMaxLength(240);
+
+            entity.Property(item => item.PromotedModelVersion)
+                .IsRequired()
+                .HasMaxLength(240);
+
+            entity.HasIndex(item =>
+                new
+                {
+                    item.ModelTrainingRunId,
+                    item.PairKey
+                })
+                .IsUnique();
+
+            entity.HasIndex(item =>
+                new
+                {
+                    item.PairKey,
+                    item.PromotedUtc
+                });
+
+            entity.HasOne<LegendConnectModelTrainingRun>()
+                .WithMany()
+                .HasForeignKey(item =>
+                    item.ModelTrainingRunId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
         modelBuilder.Entity<LegendConnectRuntimePolicy>(entity =>
         {
             entity.ToTable("LegendConnectRuntimePolicies");

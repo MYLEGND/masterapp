@@ -1080,3 +1080,27 @@ public sealed class LegendConnectModelTrainingRun
     public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedUtc { get; set; } = DateTime.UtcNow;
 }
+
+/// <summary>
+/// Durable per-pair lineage for one governed model promotion.
+///
+/// LegendLanguagePair.ActiveModelVersion remains the only active-model
+/// authority. This row records only the predecessor and promoted version
+/// required to make rollback auditable and exact for a multilingual run.
+/// </summary>
+public sealed class LegendConnectModelPromotionPair
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+
+    public Guid ModelTrainingRunId { get; set; }
+
+    public string PairKey { get; set; } = string.Empty;
+
+    public string? PreviousActiveModelVersion { get; set; }
+
+    public string PromotedModelVersion { get; set; } = string.Empty;
+
+    public DateTime PromotedUtc { get; set; } = DateTime.UtcNow;
+
+    public DateTime? RolledBackUtc { get; set; }
+}

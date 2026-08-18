@@ -1778,6 +1778,14 @@ internal sealed class LegendConnectLearningHostedService : BackgroundService
                 await scope.ServiceProvider
                     .GetRequiredService<LegendConnectModelEvaluationService>()
                     .ProcessOneAsync(stoppingToken);
+
+                // Phase 9 is the sole authority that may move an evaluated
+                // challenger onto the existing pair ActiveModelVersion
+                // projection. It remains separately configuration-gated and
+                // does not participate in inference routing.
+                await scope.ServiceProvider
+                    .GetRequiredService<LegendConnectModelPromotionService>()
+                    .ProcessOneAsync(stoppingToken);
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {
