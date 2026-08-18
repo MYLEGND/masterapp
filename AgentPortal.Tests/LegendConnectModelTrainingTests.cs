@@ -291,7 +291,11 @@ public sealed class LegendConnectModelTrainingTests
         db.Add(
             new LegendTranslationAlignment
             {
-                Id = Guid.NewGuid(),
+                // This fixture must remain in the Phase-6 training split.
+                // EvidenceIdentity includes Alignment.Id, so a random Guid
+                // makes this Phase-7 training test nondeterministically move
+                // between training and held-out.
+                Id = Guid.Parse("00000000-0000-0000-0000-000000000001"),
                 PairKey = "en:ht",
                 SourceTextUnitId = source.Id,
                 TargetTextUnitId = target.Id,

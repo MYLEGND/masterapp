@@ -1771,6 +1771,13 @@ internal sealed class LegendConnectLearningHostedService : BackgroundService
                 await scope.ServiceProvider
                     .GetRequiredService<LegendConnectModelTrainingService>()
                     .ProcessOneAsync(stoppingToken);
+
+                // Phase 8 continues the same durable model lifecycle only
+                // after training has produced a challenger. Evaluation is
+                // separately configuration-gated and cannot promote a model.
+                await scope.ServiceProvider
+                    .GetRequiredService<LegendConnectModelEvaluationService>()
+                    .ProcessOneAsync(stoppingToken);
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {

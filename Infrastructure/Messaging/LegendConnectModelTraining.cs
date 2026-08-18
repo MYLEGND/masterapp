@@ -1,5 +1,6 @@
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Linq.Expressions;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -493,6 +494,62 @@ internal sealed class OpenAiLegendConnectModelTrainingBackend
         (int)status >= 500;
 }
 
+internal static class LegendConnectModelLifecycleLease
+{
+    internal static async Task<bool> TryClaimAsync(
+        MasterAppDbContext db,
+        Guid runId,
+        DateTime now,
+        System.Linq.Expressions.Expression<Func<LegendConnectModelTrainingRun, bool>> eligibility,
+        CancellationToken cancellationToken)
+    {
+        var leaseExpiresUtc =
+            now.AddMinutes(10);
+
+        var query =
+            db.Set<LegendConnectModelTrainingRun>()
+                .Where(item =>
+                    item.Id == runId &&
+                    (item.LeaseExpiresUtc == null ||
+                     item.LeaseExpiresUtc < now))
+                .Where(eligibility);
+
+        if (db.Database.IsRelational())
+        {
+            var claimed =
+                await query.ExecuteUpdateAsync(
+                    setters => setters
+                        .SetProperty(
+                            item => item.LeaseExpiresUtc,
+                            leaseExpiresUtc)
+                        .SetProperty(
+                            item => item.UpdatedUtc,
+                            now),
+                    cancellationToken);
+
+            return claimed == 1;
+        }
+
+        var tracked =
+            await query.SingleOrDefaultAsync(
+                cancellationToken);
+
+        if (tracked is null)
+            return false;
+
+        tracked.LeaseExpiresUtc =
+            leaseExpiresUtc;
+
+        tracked.UpdatedUtc =
+            now;
+
+        await db.SaveChangesAsync(
+            cancellationToken);
+
+        return true;
+    }
+}
+
 internal sealed class LegendConnectModelTrainingService
 {
     private const string Prefix = "LegendConnect:ModelTraining:";
@@ -554,9 +611,13 @@ internal sealed class LegendConnectModelTrainingService
 
         var now = DateTime.UtcNow;
 
-        if (!await TryClaimAsync(
+        if (!await LegendConnectModelLifecycleLease.TryClaimAsync(
+                _db,
                 run.Id,
                 now,
+                item =>
+                    item.State != "TrainingCompleted" &&
+                    item.State != "Failed",
                 cancellationToken))
         {
             return;
@@ -690,69 +751,6 @@ internal sealed class LegendConnectModelTrainingService
 
         await _db.SaveChangesAsync(
             cancellationToken);
-    }
-
-    private async Task<bool> TryClaimAsync(
-        Guid runId,
-        DateTime now,
-        CancellationToken cancellationToken)
-    {
-        var leaseExpiresUtc =
-            now.AddMinutes(10);
-
-        if (_db.Database.IsRelational())
-        {
-            // Production SQL keeps the lease claim atomic across app
-            // instances. No tracked read/write race owns this path.
-            var claimed =
-                await _db.Set<LegendConnectModelTrainingRun>()
-                    .Where(item =>
-                        item.Id == runId &&
-                        item.State != "TrainingCompleted" &&
-                        item.State != "Failed" &&
-                        (item.LeaseExpiresUtc == null ||
-                         item.LeaseExpiresUtc < now))
-                    .ExecuteUpdateAsync(
-                        setters => setters
-                            .SetProperty(
-                                item => item.LeaseExpiresUtc,
-                                leaseExpiresUtc)
-                            .SetProperty(
-                                item => item.UpdatedUtc,
-                                now),
-                        cancellationToken);
-
-            return claimed == 1;
-        }
-
-        // MASTERAPP's established unit-test DbContext uses EF InMemory,
-        // which cannot translate ExecuteUpdateAsync. Preserve the same
-        // lifecycle eligibility and lease semantics without changing the
-        // production relational claim authority.
-        var tracked =
-            await _db.Set<LegendConnectModelTrainingRun>()
-                .SingleOrDefaultAsync(
-                    item => item.Id == runId,
-                    cancellationToken);
-
-        if (tracked is null ||
-            tracked.State is "TrainingCompleted" or "Failed" ||
-            (tracked.LeaseExpiresUtc is not null &&
-             tracked.LeaseExpiresUtc >= now))
-        {
-            return false;
-        }
-
-        tracked.LeaseExpiresUtc =
-            leaseExpiresUtc;
-
-        tracked.UpdatedUtc =
-            now;
-
-        await _db.SaveChangesAsync(
-            cancellationToken);
-
-        return true;
     }
 
     internal static byte[] BuildTrainingJsonl(
