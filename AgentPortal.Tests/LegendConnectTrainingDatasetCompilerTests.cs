@@ -1,0 +1,261 @@
+using System;
+using System.Linq;
+using System.Threading.Tasks;
+using Domain.Entities;
+using Infrastructure.Messaging;
+using Xunit;
+
+namespace AgentPortal.Tests;
+
+public sealed class LegendConnectTrainingDatasetCompilerTests
+{
+    [Fact]
+    public async Task SameGovernedEvidence_ProducesSameDatasetIdentity()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+
+        db.Add(new LegendConnectRuntimePolicy
+        {
+            Id = Guid.NewGuid(),
+            ScopeKey = "Global",
+            CompletedLanguageIntelligenceEvaluatorVersion = 4,
+            TargetLanguageIntelligenceEvaluatorVersion = 4,
+            LanguageIntelligenceReevaluationPhase = "Complete"
+        });
+
+        var source = Unit(
+            "en",
+            "hello",
+            "source-hash",
+            "FounderApproved");
+
+        var target = Unit(
+            "ht",
+            "bonjou",
+            "target-hash",
+            "FounderApproved");
+
+        db.AddRange(source, target);
+
+        db.Add(new LegendTranslationAlignment
+        {
+            Id = Guid.NewGuid(),
+            PairKey = "en:ht",
+            SourceTextUnitId = source.Id,
+            TargetTextUnitId = target.Id,
+            Provider = "Founder",
+            Provenance = "FounderApproved",
+            QualityState = "Verified",
+            HumanVerified = true,
+            Confidence = 1m
+        });
+
+        await db.SaveChangesAsync();
+
+        var compiler =
+            new LegendConnectTrainingDatasetCompiler(db);
+
+        var first = await compiler.CompileAsync();
+        var second = await compiler.CompileAsync();
+
+        Assert.Equal(
+            first.DatasetIdentity,
+            second.DatasetIdentity);
+
+        Assert.Equal(
+            first.TrainingExampleCount,
+            second.TrainingExampleCount);
+
+        Assert.Equal(
+            first.ValidationExampleCount,
+            second.ValidationExampleCount);
+
+        Assert.Equal(
+            1,
+            first.TrainingExampleCount +
+            first.ValidationExampleCount);
+    }
+
+    [Fact]
+    public async Task OpenContradiction_IsExcluded()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+
+        db.Add(new LegendConnectRuntimePolicy
+        {
+            Id = Guid.NewGuid(),
+            ScopeKey = "Global",
+            CompletedLanguageIntelligenceEvaluatorVersion = 4,
+            TargetLanguageIntelligenceEvaluatorVersion = 4,
+            LanguageIntelligenceReevaluationPhase = "Complete"
+        });
+
+        var source = Unit(
+            "en",
+            "hello",
+            "source-hash",
+            "FounderApproved");
+
+        var target = Unit(
+            "ht",
+            "wrong",
+            "target-hash",
+            "ProviderDerived");
+
+        var alignment = new LegendTranslationAlignment
+        {
+            Id = Guid.NewGuid(),
+            PairKey = "en:ht",
+            SourceTextUnitId = source.Id,
+            TargetTextUnitId = target.Id,
+            Provider = "AzureTranslator",
+            Provenance = "ProviderDerived",
+            QualityState = "Observation",
+            HumanVerified = false
+        };
+
+        db.AddRange(source, target, alignment);
+
+        db.Add(new LegendTranslationQualityEvidence
+        {
+            Id = Guid.NewGuid(),
+            ObservedAlignmentId = alignment.Id,
+            PairKey = "en:ht",
+            SourceTextUnitId = source.Id,
+            TargetTextUnitId = target.Id,
+            Signal = "Contradictory",
+            ReasonCode = "test",
+            ResolutionState = "Open",
+            EvidenceIdentity = Guid.NewGuid().ToString("N")
+        });
+
+        await db.SaveChangesAsync();
+
+        var manifest =
+            await new LegendConnectTrainingDatasetCompiler(db)
+                .CompileAsync();
+
+        Assert.Empty(manifest.Training);
+        Assert.Empty(manifest.HeldOut);
+    }
+
+    [Fact]
+    public async Task SystemValidatedMachineCurriculum_IsRetainedAtLowerWeightThanFounder()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+
+        db.Add(new LegendConnectRuntimePolicy
+        {
+            Id = Guid.NewGuid(),
+            ScopeKey = "Global",
+            CompletedLanguageIntelligenceEvaluatorVersion = 4,
+            TargetLanguageIntelligenceEvaluatorVersion = 4,
+            LanguageIntelligenceReevaluationPhase = "Complete"
+        });
+
+        var source = Unit(
+            "en",
+            "confirm",
+            "source-hash",
+            "FounderApproved");
+
+        var target = Unit(
+            "ht",
+            "konfime",
+            "target-hash",
+            "SystemValidatedMachine");
+
+        var family = new LegendCurriculumFamily
+        {
+            Id = Guid.NewGuid(),
+            FamilyKey = "phase6.test",
+            Provenance = "SystemValidatedMachine"
+        };
+
+        var sourceExample = new LegendCurriculumExample
+        {
+            Id = Guid.NewGuid(),
+            CurriculumFamilyId = family.Id,
+            TextUnitId = source.Id,
+            LanguageCode = "en",
+            Provenance = "FounderApproved"
+        };
+
+        var targetExample = new LegendCurriculumExample
+        {
+            Id = Guid.NewGuid(),
+            CurriculumFamilyId = family.Id,
+            TextUnitId = target.Id,
+            LanguageCode = "ht",
+            DerivedFromCurriculumExampleId = sourceExample.Id,
+            Provenance = "SystemValidatedMachine"
+        };
+
+        db.AddRange(
+            source,
+            target,
+            family,
+            sourceExample,
+            targetExample);
+
+        await db.SaveChangesAsync();
+
+        var manifest =
+            await new LegendConnectTrainingDatasetCompiler(db)
+                .CompileAsync();
+
+        var example =
+            Assert.Single(
+                manifest.Training.Concat(manifest.HeldOut));
+
+        Assert.Equal(
+            "SystemValidatedMachine",
+            example.Provenance);
+
+        Assert.Equal(3, example.Weight);
+    }
+
+    [Fact]
+    public async Task IncompleteHistoricalReplay_FailsClosed()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+
+        db.Add(new LegendConnectRuntimePolicy
+        {
+            Id = Guid.NewGuid(),
+            ScopeKey = "Global",
+            CompletedLanguageIntelligenceEvaluatorVersion = 3,
+            TargetLanguageIntelligenceEvaluatorVersion = 4,
+            LanguageIntelligenceReevaluationPhase = "ProviderObservations"
+        });
+
+        await db.SaveChangesAsync();
+
+        var compiler =
+            new LegendConnectTrainingDatasetCompiler(db);
+
+        var error =
+            await Assert.ThrowsAsync<InvalidOperationException>(
+                () => compiler.CompileAsync());
+
+        Assert.Equal(
+            "training_dataset_historical_replay_incomplete",
+            error.Message);
+    }
+
+    private static LegendLanguageTextUnit Unit(
+        string language,
+        string text,
+        string hash,
+        string provenance) =>
+        new()
+        {
+            Id = Guid.NewGuid(),
+            LanguageCode = language,
+            StoragePartition = language,
+            Text = text,
+            NormalizedHash = hash,
+            Provenance = provenance,
+            IsTrainingEligible = true
+        };
+}
