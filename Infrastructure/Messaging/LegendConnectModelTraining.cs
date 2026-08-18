@@ -26,6 +26,21 @@ internal sealed record LegendModelTrainingJobResult(
     string? ErrorCode,
     bool Retryable);
 
+internal enum LegendModelTrainingJobLookupState
+{
+    Found,
+    NotFound,
+    Indeterminate
+}
+
+internal sealed record LegendModelTrainingJobLookupResult(
+    LegendModelTrainingJobLookupState State,
+    string? JobId,
+    string? Status,
+    string? ChallengerModelVersion,
+    string? ErrorCode,
+    bool Retryable);
+
 internal interface ILegendConnectModelTrainingBackend
 {
     Task<LegendModelTrainingUploadResult> UploadTrainingFileAsync(
@@ -36,6 +51,10 @@ internal interface ILegendConnectModelTrainingBackend
     Task<LegendModelTrainingJobResult> CreateTrainingJobAsync(
         string trainingFileId,
         string baseModel,
+        string runKey,
+        CancellationToken cancellationToken = default);
+
+    Task<LegendModelTrainingJobLookupResult> FindTrainingJobByRunKeyAsync(
         string runKey,
         CancellationToken cancellationToken = default);
 
@@ -216,7 +235,8 @@ internal sealed class OpenAiLegendConnectModelTrainingBackend
                 out _,
                 out var jobsEndpoint) ||
             string.IsNullOrWhiteSpace(trainingFileId) ||
-            string.IsNullOrWhiteSpace(baseModel))
+            string.IsNullOrWhiteSpace(baseModel) ||
+            string.IsNullOrWhiteSpace(runKey))
         {
             return new(
                 false,
@@ -299,6 +319,260 @@ internal sealed class OpenAiLegendConnectModelTrainingBackend
                 null,
                 "model_training_provider_failed",
                 true);
+        }
+    }
+
+    public async Task<LegendModelTrainingJobLookupResult>
+        FindTrainingJobByRunKeyAsync(
+            string runKey,
+            CancellationToken cancellationToken = default)
+    {
+        if (!TryGetProviderConfiguration(
+                out var key,
+                out _,
+                out var jobsEndpoint) ||
+            string.IsNullOrWhiteSpace(runKey))
+        {
+            return new(
+                LegendModelTrainingJobLookupState.Indeterminate,
+                null,
+                null,
+                null,
+                "model_training_provider_unavailable",
+                false);
+        }
+
+        try
+        {
+            var endpointText =
+                jobsEndpoint.ToString();
+
+            var separator =
+                string.IsNullOrWhiteSpace(jobsEndpoint.Query)
+                    ? "?"
+                    : "&";
+
+            var endpoint =
+                new Uri(
+                    endpointText +
+                    separator +
+                    "limit=100&metadata%5Blegend_run_key%5D=" +
+                    Uri.EscapeDataString(runKey));
+
+            using var request =
+                new HttpRequestMessage(
+                    HttpMethod.Get,
+                    endpoint);
+
+            request.Headers.Authorization =
+                new AuthenticationHeaderValue(
+                    "Bearer",
+                    key);
+
+            using var response =
+                await _clients
+                    .CreateClient(ClientName)
+                    .SendAsync(
+                        request,
+                        HttpCompletionOption.ResponseHeadersRead,
+                        cancellationToken);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                return new(
+                    LegendModelTrainingJobLookupState.Indeterminate,
+                    null,
+                    null,
+                    null,
+                    "model_training_job_lookup_failed",
+                    IsRetryable(response.StatusCode));
+            }
+
+            await using var stream =
+                await response.Content.ReadAsStreamAsync(
+                    cancellationToken);
+
+            using var document =
+                await JsonDocument.ParseAsync(
+                    stream,
+                    cancellationToken: cancellationToken);
+
+            var root =
+                document.RootElement;
+
+            if (!root.TryGetProperty(
+                    "data",
+                    out var data) ||
+                data.ValueKind != JsonValueKind.Array ||
+                !root.TryGetProperty(
+                    "has_more",
+                    out var hasMore) ||
+                (
+                    hasMore.ValueKind != JsonValueKind.True &&
+                    hasMore.ValueKind != JsonValueKind.False
+                ))
+            {
+                return new(
+                    LegendModelTrainingJobLookupState.Indeterminate,
+                    null,
+                    null,
+                    null,
+                    "model_training_invalid_job_lookup_response",
+                    false);
+            }
+
+            if (hasMore.GetBoolean())
+            {
+                return new(
+                    LegendModelTrainingJobLookupState.Indeterminate,
+                    null,
+                    null,
+                    null,
+                    "model_training_job_lookup_incomplete",
+                    true);
+            }
+
+            LegendModelTrainingJobResult? match =
+                null;
+
+            foreach (var item in data.EnumerateArray())
+            {
+                if (!item.TryGetProperty(
+                        "metadata",
+                        out var metadata) ||
+                    metadata.ValueKind != JsonValueKind.Object ||
+                    !metadata.TryGetProperty(
+                        "legend_run_key",
+                        out var remoteRunKey) ||
+                    remoteRunKey.ValueKind != JsonValueKind.String ||
+                    !string.Equals(
+                        remoteRunKey.GetString(),
+                        runKey,
+                        StringComparison.Ordinal))
+                {
+                    return new(
+                        LegendModelTrainingJobLookupState.Indeterminate,
+                        null,
+                        null,
+                        null,
+                        "model_training_job_lookup_identity_mismatch",
+                        false);
+                }
+
+                var id =
+                    item.TryGetProperty(
+                        "id",
+                        out var idElement) &&
+                    idElement.ValueKind == JsonValueKind.String
+                        ? idElement.GetString()
+                        : null;
+
+                var status =
+                    item.TryGetProperty(
+                        "status",
+                        out var statusElement) &&
+                    statusElement.ValueKind == JsonValueKind.String
+                        ? statusElement.GetString()
+                        : null;
+
+                var challenger =
+                    item.TryGetProperty(
+                            "fine_tuned_model",
+                            out var modelElement) &&
+                        modelElement.ValueKind == JsonValueKind.String
+                            ? modelElement.GetString()
+                            : null;
+
+                if (string.IsNullOrWhiteSpace(id) ||
+                    string.IsNullOrWhiteSpace(status))
+                {
+                    return new(
+                        LegendModelTrainingJobLookupState.Indeterminate,
+                        null,
+                        null,
+                        null,
+                        "model_training_invalid_job_lookup_response",
+                        false);
+                }
+
+                if (match is not null)
+                {
+                    return new(
+                        LegendModelTrainingJobLookupState.Indeterminate,
+                        null,
+                        null,
+                        null,
+                        "model_training_duplicate_remote_jobs",
+                        false);
+                }
+
+                match =
+                    new LegendModelTrainingJobResult(
+                        true,
+                        id,
+                        status,
+                        challenger,
+                        null,
+                        false);
+            }
+
+            if (match is null)
+            {
+                return new(
+                    LegendModelTrainingJobLookupState.NotFound,
+                    null,
+                    null,
+                    null,
+                    null,
+                    false);
+            }
+
+            return new(
+                LegendModelTrainingJobLookupState.Found,
+                match.JobId,
+                match.Status,
+                match.ChallengerModelVersion,
+                null,
+                false);
+        }
+        catch (OperationCanceledException)
+            when (!cancellationToken.IsCancellationRequested)
+        {
+            return new(
+                LegendModelTrainingJobLookupState.Indeterminate,
+                null,
+                null,
+                null,
+                "model_training_provider_timeout",
+                true);
+        }
+        catch (HttpRequestException exception)
+        {
+            _logger.LogWarning(
+                exception,
+                "LEGEND model-training job reconciliation failed.");
+
+            return new(
+                LegendModelTrainingJobLookupState.Indeterminate,
+                null,
+                null,
+                null,
+                "model_training_provider_failed",
+                true);
+        }
+        catch (JsonException exception)
+        {
+            _logger.LogWarning(
+                exception,
+                "LEGEND model-training job reconciliation response was invalid.");
+
+            return new(
+                LegendModelTrainingJobLookupState.Indeterminate,
+                null,
+                null,
+                null,
+                "model_training_invalid_job_lookup_response",
+                false);
         }
     }
 
@@ -666,28 +940,104 @@ internal sealed class LegendConnectModelTrainingService
 
         if (run.ExternalJobId is null)
         {
-            var created =
-                await _backend.CreateTrainingJobAsync(
-                    run.TrainingFileId,
-                    run.BaseModel,
-                    run.RunKey,
-                    cancellationToken);
+            LegendModelTrainingJobResult? job =
+                null;
 
-            if (!created.Succeeded ||
-                string.IsNullOrWhiteSpace(created.JobId))
+            if (RequiresRemoteJobReconciliation(run))
             {
-                await RecordFailureAsync(
-                    run,
-                    created.ErrorCode ??
-                        "model_training_job_create_failed",
-                    created.Retryable,
+                var lookup =
+                    await _backend.FindTrainingJobByRunKeyAsync(
+                        run.RunKey,
+                        cancellationToken);
+
+                if (lookup.State ==
+                    LegendModelTrainingJobLookupState.Indeterminate)
+                {
+                    await RecordFailureAsync(
+                        run,
+                        lookup.ErrorCode ??
+                            "model_training_job_lookup_indeterminate",
+                        lookup.Retryable,
+                        cancellationToken);
+                    return;
+                }
+
+                if (lookup.State ==
+                    LegendModelTrainingJobLookupState.Found)
+                {
+                    if (string.IsNullOrWhiteSpace(
+                            lookup.JobId) ||
+                        string.IsNullOrWhiteSpace(
+                            lookup.Status))
+                    {
+                        await RecordFailureAsync(
+                            run,
+                            "model_training_invalid_job_lookup_response",
+                            false,
+                            cancellationToken);
+                        return;
+                    }
+
+                    job =
+                        new LegendModelTrainingJobResult(
+                            true,
+                            lookup.JobId,
+                            lookup.Status,
+                            lookup.ChallengerModelVersion,
+                            null,
+                            false);
+                }
+            }
+
+            if (job is null)
+            {
+                job =
+                    await _backend.CreateTrainingJobAsync(
+                        run.TrainingFileId,
+                        run.BaseModel,
+                        run.RunKey,
+                        cancellationToken);
+
+                if (!job.Succeeded ||
+                    string.IsNullOrWhiteSpace(job.JobId))
+                {
+                    await RecordFailureAsync(
+                        run,
+                        job.ErrorCode ??
+                            "model_training_job_create_failed",
+                        job.Retryable,
+                        cancellationToken);
+                    return;
+                }
+            }
+
+            var observedStatus =
+                job.Status?
+                    .Trim()
+                    .ToLowerInvariant();
+
+            if (observedStatus is "failed" or "cancelled")
+            {
+                run.ExternalJobId =
+                    job.JobId;
+
+                run.AttemptCount++;
+                run.State = "Failed";
+                run.FailureCode =
+                    "model_training_provider_terminal_failure";
+                run.FailureDetail =
+                    observedStatus;
+                run.LeaseExpiresUtc = null;
+                run.UpdatedUtc = DateTime.UtcNow;
+
+                await _db.SaveChangesAsync(
                     cancellationToken);
                 return;
             }
 
-            run.ExternalJobId = created.JobId;
+            run.ExternalJobId = job.JobId;
             run.State =
-                NormalizeProviderState(created.Status);
+                NormalizeProviderState(job.Status);
             run.StartedUtc ??= DateTime.UtcNow;
             run.FailureCode = null;
             run.FailureDetail = null;
@@ -696,7 +1046,7 @@ internal sealed class LegendConnectModelTrainingService
 
             ApplySuccessfulCompletion(
                 run,
-                created);
+                job);
 
             await _db.SaveChangesAsync(
                 cancellationToken);
@@ -897,6 +1247,15 @@ internal sealed class LegendConnectModelTrainingService
 
         return null;
     }
+
+    private static bool RequiresRemoteJobReconciliation(
+        LegendConnectModelTrainingRun run) =>
+        string.Equals(
+            run.State,
+            "PendingRetry",
+            StringComparison.Ordinal) &&
+        run.TrainingFileId is not null &&
+        run.ExternalJobId is null;
 
     private async Task RecordFailureAsync(
         LegendConnectModelTrainingRun run,

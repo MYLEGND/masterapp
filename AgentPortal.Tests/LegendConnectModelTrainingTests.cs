@@ -134,6 +134,289 @@ public sealed class LegendConnectModelTrainingTests
     }
 
     [Fact]
+    public async Task FirstJobCreation_DoesNotLookupBeforeInitialCreate()
+    {
+        await using var db =
+            ControllerTestHelpers.BuildDb();
+
+        await SeedDatasetAsync(db);
+
+        var backend = new FakeBackend();
+
+        var service =
+            Service(
+                db,
+                backend,
+                enabled: true);
+
+        await service.ProcessOneAsync();
+        await service.ProcessOneAsync();
+
+        Assert.Equal(1, backend.CreateCalls);
+        Assert.Equal(0, backend.LookupCalls);
+
+        var run =
+            Assert.Single(
+                db.Set<LegendConnectModelTrainingRun>());
+
+        Assert.Equal(
+            "ftjob-test",
+            run.ExternalJobId);
+    }
+
+    [Fact]
+    public async Task AmbiguousCreate_FoundJobIsRecoveredWithoutSecondCreate()
+    {
+        await using var db =
+            ControllerTestHelpers.BuildDb();
+
+        await SeedDatasetAsync(db);
+
+        var backend =
+            new FakeBackend
+            {
+                FailNextCreateAmbiguously = true
+            };
+
+        var service =
+            Service(
+                db,
+                backend,
+                enabled: true);
+
+        await service.ProcessOneAsync();
+        await service.ProcessOneAsync();
+
+        Assert.Equal(1, backend.CreateCalls);
+        Assert.Equal(0, backend.LookupCalls);
+
+        backend.LookupState =
+            LegendModelTrainingJobLookupState.Found;
+        backend.LookupJobId =
+            "ftjob-recovered";
+        backend.LookupStatus =
+            "queued";
+
+        await service.ProcessOneAsync();
+
+        Assert.Equal(1, backend.CreateCalls);
+        Assert.Equal(1, backend.LookupCalls);
+
+        var run =
+            Assert.Single(
+                db.Set<LegendConnectModelTrainingRun>());
+
+        Assert.Equal(
+            "ftjob-recovered",
+            run.ExternalJobId);
+        Assert.Equal("Queued", run.State);
+        Assert.Equal("NotStarted", run.EvaluationState);
+        Assert.Equal("NotEvaluated", run.PromotionState);
+        Assert.Null(run.PromotedUtc);
+
+        var pair =
+            Assert.Single(
+                db.Set<LegendLanguagePair>());
+
+        Assert.Null(pair.ActiveModelVersion);
+    }
+
+    [Fact]
+    public async Task AmbiguousCreate_IndeterminateLookupNeverCreatesAgain()
+    {
+        await using var db =
+            ControllerTestHelpers.BuildDb();
+
+        await SeedDatasetAsync(db);
+
+        var backend =
+            new FakeBackend
+            {
+                FailNextCreateAmbiguously = true
+            };
+
+        var service =
+            Service(
+                db,
+                backend,
+                enabled: true);
+
+        await service.ProcessOneAsync();
+        await service.ProcessOneAsync();
+
+        backend.LookupState =
+            LegendModelTrainingJobLookupState.Indeterminate;
+        backend.LookupErrorCode =
+            "model_training_provider_timeout";
+        backend.LookupRetryable = true;
+
+        await service.ProcessOneAsync();
+
+        Assert.Equal(1, backend.CreateCalls);
+        Assert.Equal(1, backend.LookupCalls);
+
+        var run =
+            Assert.Single(
+                db.Set<LegendConnectModelTrainingRun>());
+
+        Assert.Null(run.ExternalJobId);
+        Assert.Equal("PendingRetry", run.State);
+        Assert.Equal("NotStarted", run.EvaluationState);
+        Assert.Equal("NotEvaluated", run.PromotionState);
+        Assert.Null(run.PromotedUtc);
+    }
+
+    [Fact]
+    public async Task AmbiguousCreate_NotFoundAllowsOneRetryCreate()
+    {
+        await using var db =
+            ControllerTestHelpers.BuildDb();
+
+        await SeedDatasetAsync(db);
+
+        var backend =
+            new FakeBackend
+            {
+                FailNextCreateAmbiguously = true
+            };
+
+        var service =
+            Service(
+                db,
+                backend,
+                enabled: true);
+
+        await service.ProcessOneAsync();
+        await service.ProcessOneAsync();
+
+        backend.LookupState =
+            LegendModelTrainingJobLookupState.NotFound;
+
+        await service.ProcessOneAsync();
+
+        Assert.Equal(1, backend.LookupCalls);
+        Assert.Equal(2, backend.CreateCalls);
+
+        var run =
+            Assert.Single(
+                db.Set<LegendConnectModelTrainingRun>());
+
+        Assert.Equal(
+            "ftjob-test",
+            run.ExternalJobId);
+        Assert.Equal("Queued", run.State);
+    }
+
+    [Fact]
+    public async Task RecoveredSucceededJob_BecomesChallengerButNeverPromotes()
+    {
+        await using var db =
+            ControllerTestHelpers.BuildDb();
+
+        await SeedDatasetAsync(db);
+
+        var backend =
+            new FakeBackend
+            {
+                FailNextCreateAmbiguously = true
+            };
+
+        var service =
+            Service(
+                db,
+                backend,
+                enabled: true);
+
+        await service.ProcessOneAsync();
+        await service.ProcessOneAsync();
+
+        backend.LookupState =
+            LegendModelTrainingJobLookupState.Found;
+        backend.LookupJobId =
+            "ftjob-recovered";
+        backend.LookupStatus =
+            "succeeded";
+        backend.LookupModel =
+            "ft:test:recovered-challenger";
+
+        await service.ProcessOneAsync();
+
+        Assert.Equal(1, backend.CreateCalls);
+        Assert.Equal(1, backend.LookupCalls);
+
+        var run =
+            Assert.Single(
+                db.Set<LegendConnectModelTrainingRun>());
+
+        Assert.Equal(
+            "TrainingCompleted",
+            run.State);
+        Assert.Equal(
+            "ft:test:recovered-challenger",
+            run.ChallengerModelVersion);
+        Assert.Equal("NotStarted", run.EvaluationState);
+        Assert.Equal("NotEvaluated", run.PromotionState);
+        Assert.Null(run.PromotedUtc);
+
+        var pair =
+            Assert.Single(
+                db.Set<LegendLanguagePair>());
+
+        Assert.Null(pair.ActiveModelVersion);
+    }
+
+    [Fact]
+    public async Task RecoveredFailedJob_FailsWithoutReplacementCreate()
+    {
+        await using var db =
+            ControllerTestHelpers.BuildDb();
+
+        await SeedDatasetAsync(db);
+
+        var backend =
+            new FakeBackend
+            {
+                FailNextCreateAmbiguously = true
+            };
+
+        var service =
+            Service(
+                db,
+                backend,
+                enabled: true);
+
+        await service.ProcessOneAsync();
+        await service.ProcessOneAsync();
+
+        backend.LookupState =
+            LegendModelTrainingJobLookupState.Found;
+        backend.LookupJobId =
+            "ftjob-failed";
+        backend.LookupStatus =
+            "failed";
+
+        await service.ProcessOneAsync();
+
+        Assert.Equal(1, backend.CreateCalls);
+        Assert.Equal(1, backend.LookupCalls);
+
+        var run =
+            Assert.Single(
+                db.Set<LegendConnectModelTrainingRun>());
+
+        Assert.Equal(
+            "ftjob-failed",
+            run.ExternalJobId);
+        Assert.Equal("Failed", run.State);
+        Assert.Equal(
+            "model_training_provider_terminal_failure",
+            run.FailureCode);
+        Assert.Equal("NotStarted", run.EvaluationState);
+        Assert.Equal("NotEvaluated", run.PromotionState);
+        Assert.Null(run.PromotedUtc);
+    }
+
+    [Fact]
     public void TrainingJsonl_UsesTrainingManifestOnlyAndPreservesWeightRatio()
     {
         var manifest =
@@ -312,11 +595,25 @@ public sealed class LegendConnectModelTrainingTests
         : ILegendConnectModelTrainingBackend
     {
         public int UploadCalls { get; private set; }
+        public int CreateCalls { get; private set; }
+        public int LookupCalls { get; private set; }
+        public int PollCalls { get; private set; }
         public byte[]? UploadedJsonl { get; private set; }
 
         public string CreatedStatus { get; init; } = "queued";
         public string PolledStatus { get; init; } = "running";
         public string? PolledModel { get; init; }
+
+        public bool FailNextCreateAmbiguously { get; set; }
+
+        public LegendModelTrainingJobLookupState LookupState { get; set; } =
+            LegendModelTrainingJobLookupState.NotFound;
+
+        public string? LookupJobId { get; set; }
+        public string? LookupStatus { get; set; }
+        public string? LookupModel { get; set; }
+        public string? LookupErrorCode { get; set; }
+        public bool LookupRetryable { get; set; }
 
         public Task<LegendModelTrainingUploadResult>
             UploadTrainingFileAsync(
@@ -340,8 +637,25 @@ public sealed class LegendConnectModelTrainingTests
                 string trainingFileId,
                 string baseModel,
                 string runKey,
-                CancellationToken cancellationToken = default) =>
-            Task.FromResult(
+                CancellationToken cancellationToken = default)
+        {
+            CreateCalls++;
+
+            if (FailNextCreateAmbiguously)
+            {
+                FailNextCreateAmbiguously = false;
+
+                return Task.FromResult(
+                    new LegendModelTrainingJobResult(
+                        false,
+                        null,
+                        null,
+                        null,
+                        "model_training_provider_timeout",
+                        true));
+            }
+
+            return Task.FromResult(
                 new LegendModelTrainingJobResult(
                     true,
                     "ftjob-test",
@@ -349,12 +663,33 @@ public sealed class LegendConnectModelTrainingTests
                     null,
                     null,
                     false));
+        }
+
+        public Task<LegendModelTrainingJobLookupResult>
+            FindTrainingJobByRunKeyAsync(
+                string runKey,
+                CancellationToken cancellationToken = default)
+        {
+            LookupCalls++;
+
+            return Task.FromResult(
+                new LegendModelTrainingJobLookupResult(
+                    LookupState,
+                    LookupJobId,
+                    LookupStatus,
+                    LookupModel,
+                    LookupErrorCode,
+                    LookupRetryable));
+        }
 
         public Task<LegendModelTrainingJobResult>
             GetTrainingJobAsync(
                 string jobId,
-                CancellationToken cancellationToken = default) =>
-            Task.FromResult(
+                CancellationToken cancellationToken = default)
+        {
+            PollCalls++;
+
+            return Task.FromResult(
                 new LegendModelTrainingJobResult(
                     true,
                     jobId,
@@ -362,5 +697,6 @@ public sealed class LegendConnectModelTrainingTests
                     PolledModel,
                     null,
                     false));
+        }
     }
 }
