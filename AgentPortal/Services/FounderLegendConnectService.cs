@@ -81,6 +81,145 @@ public sealed class FounderLegendConnectService
         };
     }
 
+    public async Task<LegendConnectLanguageKnowledgeSnapshot?> GetLanguageKnowledgeAsync(
+        ClaimsPrincipal user,
+        string languageCode,
+        CancellationToken cancellationToken = default)
+    {
+        _ = await ResolveFounderActorAsync(user, cancellationToken);
+
+        return await _operations.GetLanguageKnowledgeAsync(
+            languageCode,
+            cancellationToken);
+    }
+
+    public async Task<LegendConnectPairHealthSnapshot?> GetPairHealthAsync(
+        ClaimsPrincipal user,
+        string pairKey,
+        CancellationToken cancellationToken = default)
+    {
+        _ = await ResolveFounderActorAsync(user, cancellationToken);
+
+        return await _operations.GetPairHealthAsync(
+            pairKey,
+            cancellationToken);
+    }
+
+    public async Task<LegendConnectTranslationQualitySnapshot> GetTranslationQualityAsync(
+        ClaimsPrincipal user,
+        CancellationToken cancellationToken = default)
+    {
+        _ = await ResolveFounderActorAsync(user, cancellationToken);
+
+        return await _operations.GetTranslationQualityAsync(
+            cancellationToken);
+    }
+
+    public async Task<LegendTargetRealizationReviewSnapshot> GetTargetRealizationReviewAsync(
+        ClaimsPrincipal user,
+        CancellationToken cancellationToken = default)
+    {
+        _ = await ResolveFounderActorAsync(user, cancellationToken);
+
+        return await _operations.GetTargetRealizationReviewAsync(
+            cancellationToken);
+    }
+
+    public async Task<LegendConnectKnowledgeSubmissionResult> QueueFounderLearningSeedAsync(
+        ClaimsPrincipal user,
+        string sourceLanguageCode,
+        string sourceText,
+        string? contextCategory,
+        string? usageRegister,
+        string? regionalVariant,
+        CancellationToken cancellationToken = default)
+    {
+        var founder = await ResolveFounderActorAsync(
+            user,
+            cancellationToken);
+
+        return await _operations.SubmitFounderKnowledgeAsync(
+            founder,
+            new LegendConnectKnowledgeSubmission(
+                sourceLanguageCode,
+                sourceText,
+                null,
+                null,
+                contextCategory,
+                usageRegister,
+                regionalVariant,
+                "FounderApproved"),
+            cancellationToken);
+    }
+
+    public async Task<LegendConnectCurriculumSubmissionResult> QueueFounderCurriculumAsync(
+        ClaimsPrincipal user,
+        LegendConnectCurriculumManifestSubmission submission,
+        CancellationToken cancellationToken = default)
+    {
+        var founder = await ResolveFounderActorAsync(
+            user,
+            cancellationToken);
+
+        return await _operations.SubmitFounderCurriculumManifestAsync(
+            founder,
+            submission,
+            cancellationToken);
+    }
+
+    public async Task<FounderLegendConnectOperationResult> EnsureAutonomousLearningActiveAsync(
+        ClaimsPrincipal user,
+        CancellationToken cancellationToken = default)
+    {
+        var founder = await ResolveFounderActorAsync(
+            user,
+            cancellationToken);
+
+        if (_runtimePolicy is null)
+        {
+            return new FounderLegendConnectOperationResult(
+                false,
+                "Legend Connect runtime policy authority is unavailable.");
+        }
+
+        var effective =
+            await _runtimePolicy.GetEffectiveAsync(
+                cancellationToken);
+
+        if (effective.CorpusAcquisitionEnabled &&
+            effective.LearningEnabled)
+        {
+            return new FounderLegendConnectOperationResult(
+                true,
+                "Existing autonomous learning is already active.");
+        }
+
+        if (!effective.LearningEnabled)
+        {
+            await _runtimePolicy.UpdateCompositionAsync(
+                founder,
+                learningEnabled: true,
+                contextualCompositionMode: null,
+                contextualMinimumConfidence:
+                    effective.ContextualMinimumConfidence,
+                cancellationToken: cancellationToken);
+        }
+
+        var readiness =
+            await _runtimePolicy.ActivateAsync(
+                founder,
+                cancellationToken);
+
+        var active =
+            readiness.State is
+                "ACTIVE" or
+                "ACTIVE — NO ELIGIBLE WORK";
+
+        return new FounderLegendConnectOperationResult(
+            active,
+            readiness.Summary);
+    }
+
     public async Task<LegendConnectProviderCapacitySnapshot> GetProviderCapacityAsync(
         ClaimsPrincipal user,
         CancellationToken cancellationToken = default)

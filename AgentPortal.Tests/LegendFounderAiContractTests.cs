@@ -56,6 +56,30 @@ public sealed class LegendFounderAiContractTests
     }
 
     [Fact]
+    public void FounderAdapter_ExposesOnlyExistingGovernedLearningEntryPoints()
+    {
+        var type = typeof(FounderLegendConnectService);
+
+        Assert.NotNull(
+            type.GetMethod(
+                nameof(
+                    FounderLegendConnectService
+                        .QueueFounderLearningSeedAsync)));
+
+        Assert.NotNull(
+            type.GetMethod(
+                nameof(
+                    FounderLegendConnectService
+                        .QueueFounderCurriculumAsync)));
+
+        Assert.NotNull(
+            type.GetMethod(
+                nameof(
+                    FounderLegendConnectService
+                        .EnsureAutonomousLearningActiveAsync)));
+    }
+
+    [Fact]
     public void ConversationService_IsPresentationOrchestrationOnly()
     {
         var type =

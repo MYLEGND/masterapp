@@ -4,6 +4,7 @@ using System.Security.Claims;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using AgentPortal.Services.Analytics;
+using Domain.Messaging;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 
@@ -156,7 +157,7 @@ public sealed class LegendFounderAiConversationService
                 foreach (var call in toolCalls)
                 {
                     var toolOutput =
-                        await ExecuteReadOnlyToolAsync(
+                        await ExecuteFounderToolAsync(
                             founder,
                             call,
                             cancellationToken);
@@ -259,7 +260,7 @@ public sealed class LegendFounderAiConversationService
             cancellationToken: cancellationToken);
     }
 
-    private async Task<string> ExecuteReadOnlyToolAsync(
+    private async Task<string> ExecuteFounderToolAsync(
         ClaimsPrincipal founder,
         FounderAiToolCall call,
         CancellationToken cancellationToken)
@@ -284,6 +285,240 @@ public sealed class LegendFounderAiConversationService
                         cancellationToken);
 
                 return SerializeBounded(snapshot);
+            }
+
+            case "legend_language_knowledge":
+            {
+                using var arguments =
+                    JsonDocument.Parse(call.Arguments);
+
+                var language =
+                    ReadRequiredString(
+                        arguments.RootElement,
+                        "language");
+
+                if (string.IsNullOrWhiteSpace(language))
+                    return """{"error":"language_required"}""";
+
+                var snapshot =
+                    await _legend.GetLanguageKnowledgeAsync(
+                        founder,
+                        language,
+                        cancellationToken);
+
+                return SerializeBounded(snapshot);
+            }
+
+            case "legend_pair_health":
+            {
+                using var arguments =
+                    JsonDocument.Parse(call.Arguments);
+
+                var pair =
+                    ReadRequiredString(
+                        arguments.RootElement,
+                        "pair");
+
+                if (string.IsNullOrWhiteSpace(pair))
+                    return """{"error":"pair_required"}""";
+
+                var snapshot =
+                    await _legend.GetPairHealthAsync(
+                        founder,
+                        pair,
+                        cancellationToken);
+
+                return SerializeBounded(snapshot);
+            }
+
+            case "legend_translation_quality":
+            {
+                var snapshot =
+                    await _legend.GetTranslationQualityAsync(
+                        founder,
+                        cancellationToken);
+
+                return SerializeBounded(snapshot);
+            }
+
+            case "legend_target_realizations":
+            {
+                var snapshot =
+                    await _legend.GetTargetRealizationReviewAsync(
+                        founder,
+                        cancellationToken);
+
+                return SerializeBounded(snapshot);
+            }
+
+            case "legend_submit_founder_seed":
+            {
+                using var arguments =
+                    JsonDocument.Parse(call.Arguments);
+
+                var sourceLanguage =
+                    ReadRequiredString(
+                        arguments.RootElement,
+                        "source_language");
+
+                var sourceText =
+                    ReadRequiredString(
+                        arguments.RootElement,
+                        "source_text");
+
+                var contextCategory =
+                    ReadOptionalString(
+                        arguments.RootElement,
+                        "context_category");
+
+                var usageRegister =
+                    ReadOptionalString(
+                        arguments.RootElement,
+                        "usage_register");
+
+                var regionalVariant =
+                    ReadOptionalString(
+                        arguments.RootElement,
+                        "regional_variant");
+
+                if (string.IsNullOrWhiteSpace(sourceLanguage) ||
+                    string.IsNullOrWhiteSpace(sourceText))
+                {
+                    return """{"error":"source_language_and_text_required"}""";
+                }
+
+                var result =
+                    await _legend.QueueFounderLearningSeedAsync(
+                        founder,
+                        sourceLanguage,
+                        sourceText,
+                        contextCategory,
+                        usageRegister,
+                        regionalVariant,
+                        cancellationToken);
+
+                return SerializeBounded(result);
+            }
+
+            case "legend_submit_founder_curriculum":
+            {
+                using var arguments =
+                    JsonDocument.Parse(call.Arguments);
+
+                var familiesElement =
+                    arguments.RootElement.GetProperty(
+                        "families");
+
+                var families =
+                    new List<LegendConnectCurriculumBatchSubmission>();
+
+                foreach (var family in
+                         familiesElement.EnumerateArray())
+                {
+                    var familyKey =
+                        ReadRequiredString(
+                            family,
+                            "family_key");
+
+                    var semanticCategory =
+                        ReadOptionalString(
+                            family,
+                            "semantic_category");
+
+                    if (string.IsNullOrWhiteSpace(familyKey) ||
+                        !family.TryGetProperty(
+                            "examples",
+                            out var examplesElement) ||
+                        examplesElement.ValueKind !=
+                            JsonValueKind.Array)
+                    {
+                        return """{"error":"invalid_curriculum_family"}""";
+                    }
+
+                    var examples =
+                        new List<
+                            LegendConnectCurriculumExampleSubmission>();
+
+                    foreach (var example in
+                             examplesElement.EnumerateArray())
+                    {
+                        var exampleText =
+                            ReadRequiredString(
+                                example,
+                                "text");
+
+                        if (string.IsNullOrWhiteSpace(exampleText) ||
+                            !example.TryGetProperty(
+                                "variations",
+                                out var variationsElement) ||
+                            variationsElement.ValueKind !=
+                                JsonValueKind.Object)
+                        {
+                            return """{"error":"invalid_curriculum_example"}""";
+                        }
+
+                        var variations =
+                            new Dictionary<string, string>(
+                                StringComparer.OrdinalIgnoreCase);
+
+                        foreach (var property in
+                                 variationsElement
+                                     .EnumerateObject())
+                        {
+                            if (property.Value.ValueKind !=
+                                    JsonValueKind.String ||
+                                string.IsNullOrWhiteSpace(
+                                    property.Value.GetString()))
+                            {
+                                return """{"error":"invalid_curriculum_variation"}""";
+                            }
+
+                            variations[property.Name] =
+                                property.Value
+                                    .GetString()!
+                                    .Trim();
+                        }
+
+                        if (variations.Count == 0)
+                            return """{"error":"curriculum_variations_required"}""";
+
+                        examples.Add(
+                            new LegendConnectCurriculumExampleSubmission(
+                                exampleText,
+                                variations));
+                    }
+
+                    if (examples.Count < 2)
+                        return """{"error":"curriculum_family_requires_contrasts"}""";
+
+                    families.Add(
+                        new LegendConnectCurriculumBatchSubmission(
+                            familyKey,
+                            semanticCategory,
+                            examples));
+                }
+
+                if (families.Count == 0)
+                    return """{"error":"curriculum_families_required"}""";
+
+                var result =
+                    await _legend.QueueFounderCurriculumAsync(
+                        founder,
+                        new LegendConnectCurriculumManifestSubmission(
+                            families),
+                        cancellationToken);
+
+                return SerializeBounded(result);
+            }
+
+            case "legend_activate_autonomous_learning":
+            {
+                var result =
+                    await _legend.EnsureAutonomousLearningActiveAsync(
+                        founder,
+                        cancellationToken);
+
+                return SerializeBounded(result);
             }
 
             case "legend_metric_detail":
@@ -442,6 +677,237 @@ public sealed class LegendFounderAiConversationService
                     additionalProperties = false
                 },
                 strict = true
+            },
+            new
+            {
+                type = "function",
+                name = "legend_language_knowledge",
+                description =
+                    "Read the existing bounded canonical knowledge, alignments, contexts, learning activity, structural patterns and directional pair health for one LEGEND language.",
+                parameters = new
+                {
+                    type = "object",
+                    properties = new
+                    {
+                        language = new
+                        {
+                            type = "string",
+                            minLength = 2,
+                            maxLength = 40
+                        }
+                    },
+                    required = new[] { "language" },
+                    additionalProperties = false
+                },
+                strict = true
+            },
+            new
+            {
+                type = "function",
+                name = "legend_pair_health",
+                description =
+                    "Read current governed health, coverage, demand, internal reuse, provider dependency and recent learning state for one exact directional LEGEND language pair.",
+                parameters = new
+                {
+                    type = "object",
+                    properties = new
+                    {
+                        pair = new
+                        {
+                            type = "string",
+                            minLength = 5,
+                            maxLength = 100
+                        }
+                    },
+                    required = new[] { "pair" },
+                    additionalProperties = false
+                },
+                strict = true
+            },
+            new
+            {
+                type = "function",
+                name = "legend_translation_quality",
+                description =
+                    "Read current retained provider observations, supported observations, contradictions, review-needed evidence and HumanVerified totals from the existing LEGEND quality authority.",
+                parameters = new
+                {
+                    type = "object",
+                    properties = new { },
+                    required = Array.Empty<string>(),
+                    additionalProperties = false
+                },
+                strict = true
+            },
+            new
+            {
+                type = "function",
+                name = "legend_target_realizations",
+                description =
+                    "Read current retained target-realization hypotheses, support, contradictions, verification state and evidence from the existing LEGEND curriculum authority.",
+                parameters = new
+                {
+                    type = "object",
+                    properties = new { },
+                    required = Array.Empty<string>(),
+                    additionalProperties = false
+                },
+                strict = true
+            },
+            new
+            {
+                type = "function",
+                name = "legend_submit_founder_seed",
+                description =
+                    "Submit an explicit Founder-approved source-language knowledge seed through LEGEND's existing Founder ingestion authority. This is not OpenAI self-approval. Use only when the Founder explicitly instructs Legend® Ai to teach, add, submit, retain, or train this exact source knowledge.",
+                parameters = new
+                {
+                    type = "object",
+                    properties = new
+                    {
+                        source_language = new
+                        {
+                            type = "string",
+                            minLength = 2,
+                            maxLength = 40
+                        },
+                        source_text = new
+                        {
+                            type = "string",
+                            minLength = 1,
+                            maxLength = 6000
+                        },
+                        context_category = new
+                        {
+                            type = new[] { "string", "null" },
+                            maxLength = 120
+                        },
+                        usage_register = new
+                        {
+                            type = new[] { "string", "null" },
+                            maxLength = 80
+                        },
+                        regional_variant = new
+                        {
+                            type = new[] { "string", "null" },
+                            maxLength = 80
+                        }
+                    },
+                    required = new[]
+                    {
+                        "source_language",
+                        "source_text",
+                        "context_category",
+                        "usage_register",
+                        "regional_variant"
+                    },
+                    additionalProperties = false
+                },
+                strict = true
+            },
+            new
+            {
+                type = "function",
+                name = "legend_submit_founder_curriculum",
+                description =
+                    "Submit explicit Founder-approved controlled curriculum into LEGEND's existing canonical curriculum authority. Use only when the Founder explicitly asks Legend® Ai to teach/train/add this curriculum. The existing autonomous expansion, teacher, critic, validator and model lifecycle continue afterward.",
+                parameters = new
+                {
+                    type = "object",
+                    properties = new
+                    {
+                        families = new
+                        {
+                            type = "array",
+                            minItems = 1,
+                            maxItems = 20,
+                            items = new
+                            {
+                                type = "object",
+                                properties = new
+                                {
+                                    family_key = new
+                                    {
+                                        type = "string",
+                                        minLength = 3,
+                                        maxLength = 120
+                                    },
+                                    semantic_category = new
+                                    {
+                                        type = new[]
+                                        {
+                                            "string",
+                                            "null"
+                                        },
+                                        maxLength = 120
+                                    },
+                                    examples = new
+                                    {
+                                        type = "array",
+                                        minItems = 2,
+                                        maxItems = 100,
+                                        items = new
+                                        {
+                                            type = "object",
+                                            properties = new
+                                            {
+                                                text = new
+                                                {
+                                                    type = "string",
+                                                    minLength = 1,
+                                                    maxLength = 2000
+                                                },
+                                                variations = new
+                                                {
+                                                    type = "object",
+                                                    additionalProperties =
+                                                        new
+                                                        {
+                                                            type =
+                                                                "string",
+                                                            minLength = 1,
+                                                            maxLength = 240
+                                                        }
+                                                }
+                                            },
+                                            required = new[]
+                                            {
+                                                "text",
+                                                "variations"
+                                            },
+                                            additionalProperties = false
+                                        }
+                                    }
+                                },
+                                required = new[]
+                                {
+                                    "family_key",
+                                    "semantic_category",
+                                    "examples"
+                                },
+                                additionalProperties = false
+                            }
+                        }
+                    },
+                    required = new[] { "families" },
+                    additionalProperties = false
+                },
+                strict = true
+            },
+            new
+            {
+                type = "function",
+                name = "legend_activate_autonomous_learning",
+                description =
+                    "Activate the existing governed autonomous learning/acquisition runtime if the Founder explicitly asks Legend® Ai to turn on, continue, or automatically run LEGEND learning. This calls the existing runtime-policy authority and creates no new worker.",
+                parameters = new
+                {
+                    type = "object",
+                    properties = new { },
+                    required = Array.Empty<string>(),
+                    additionalProperties = false
+                },
+                strict = true
             }
         ];
     }
@@ -460,10 +926,15 @@ CRITICAL GOVERNANCE:
 - Never claim a current LEGEND fact without inspecting the provided read-only tools when the answer depends on current system state.
 - Never invent database state, evidence, training status, model versions, evaluation results, contradictions, readiness, capacity, or language coverage.
 - Tool outputs come from existing LEGEND authorities and are the source of truth for current system facts.
-- You have NO write tools.
-- You cannot directly persist curriculum, evidence, corrections, training data, model promotion, runtime policy changes, or translations.
-- A proposal made in conversation is only a proposal.
-- Any future mutation must flow through LEGEND's existing governed Founder/lifecycle authorities.
+- You can inspect LEGEND through read tools.
+- You also have narrowly scoped Founder-authorized orchestration tools that delegate only to LEGEND's existing canonical Founder ingestion, curriculum, and runtime-policy authorities.
+- Never call a mutation tool merely because you think it would be useful. Call one only when the Founder explicitly instructs you to teach, add, submit, retain, train, activate, or continue learning.
+- Founder-submitted source knowledge and curriculum are FounderApproved because the authenticated Founder explicitly directed the action.
+- OpenAI-generated teaching is NOT automatically FounderApproved merely because it appears in conversation.
+- Machine-derived teaching must continue through LEGEND's existing teacher, independent critic, canonical validator, curriculum admission, dataset compiler, challenger training, evaluation and promotion authorities.
+- ProviderDerived or MachineProposed material must not be erased merely because it is not yet approved. Preserve its actual provenance and validation state; contradictions and rejections remain durable gating evidence.
+- Never bypass existing validation, contradiction, privacy, capacity, dataset, evaluation, promotion, or runtime-readiness gates.
+- You cannot directly promote a model, rewrite canonical evidence, bypass contradiction resolution, or write private-message data.
 - Do not ask for or expose API keys, secrets, access tokens, connection strings, member identity, or private message data.
 - Explain technical system state in clear Founder-level language.
 - You may reason broadly and naturally when the question is not a claim about current LEGEND system state.
@@ -506,6 +977,22 @@ Use first-person language naturally when describing LEGEND, but distinguish:
 - what remains only a proposed next action.
 
 Never pretend that OpenAI conversational reasoning itself is canonical LEGEND knowledge.
+
+Understand LEGEND's actual learning architecture:
+- LEGEND retains provenance-bearing evidence and does not equate "not yet approved" with "forgotten".
+- Provider observations may remain ProviderDerived.
+- External teacher proposals may remain MachineProposed while awaiting critique or validation.
+- Canonically admitted machine knowledge may become SystemValidatedMachine.
+- Founder-directed submissions enter through the existing FounderApproved authority.
+- Governed active evidence is compiled into training and held-out datasets.
+- Challengers train, are evaluated against held-out and regression gates, and only the existing promotion authority may make them active.
+- Production should increasingly prefer LEGEND's own eligible knowledge and promoted models when those existing routing authorities permit it, while external providers remain fallback/teacher dependencies for unresolved gaps.
+
+If the Founder explicitly asks you to teach or train LEGEND:
+1. inspect current state when relevant;
+2. use the existing Founder seed or curriculum submission tool for the exact material the Founder is intentionally directing;
+3. activate the existing autonomous learning runtime only when explicitly requested;
+4. explain that the existing worker will continue provider acquisition, teacher proposals, independent critique, canonical validation, curriculum admission, dataset compilation, training, evaluation and promotion as configured.
 """;
     }
 
@@ -700,7 +1187,7 @@ Never pretend that OpenAI conversational reasoning itself is canonical LEGEND kn
             : null;
     }
 
-    private static string SerializeBounded(object value)
+    private static string SerializeBounded(object? value)
     {
         var json =
             JsonSerializer.Serialize(
