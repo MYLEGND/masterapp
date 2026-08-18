@@ -582,6 +582,69 @@ public sealed record LegendTargetRealizationReviewActionResult(
     Guid? VerifiedAnchorId);
 
 /// <summary>
+/// One exact semantic component discovered by a non-authoritative machine
+/// conversation. It is a proposal payload only and cannot itself create
+/// canonical language knowledge.
+/// </summary>
+public sealed record LegendConnectMachineTeachingComponentSubmission(
+    string Dimension,
+    string Value,
+    string SurfaceForm);
+
+public sealed record LegendConnectMachineTeachingExampleSubmission(
+    string SourceText,
+    string? TargetText,
+    IReadOnlyList<LegendConnectMachineTeachingComponentSubmission> Components);
+
+/// <summary>
+/// A bounded machine-derived teaching candidate. This contract feeds the
+/// existing LegendCorpusCandidate / LegendLanguageTeacherProposal lifecycle;
+/// it is not a second memory, curriculum, or evidence store.
+/// </summary>
+public sealed record LegendConnectMachineTeachingSubmission(
+    string SourceLanguageCode,
+    string TargetLanguageCode,
+    string FamilyKey,
+    string SemanticCategory,
+    string Rationale,
+    decimal Confidence,
+    IReadOnlyList<LegendConnectMachineTeachingExampleSubmission> Examples);
+
+public sealed record LegendConnectMachineTeachingSubmissionResult(
+    bool Succeeded,
+    bool DuplicatePrevented,
+    string State,
+    string? ErrorCode,
+    string Message,
+    Guid? CorpusCandidateId,
+    Guid? ProposalId);
+
+/// <summary>
+/// One bounded retrieval result projected from existing LEGEND evidence.
+/// AuthorityRank is presentation metadata only; the underlying provenance,
+/// validation and contradiction records remain authoritative.
+/// </summary>
+public sealed record LegendConnectRetainedKnowledgeItemSnapshot(
+    string Kind,
+    string AuthorityState,
+    int AuthorityRank,
+    string Provenance,
+    string? LanguageCode,
+    string? PairKey,
+    string Content,
+    string? RelatedContent,
+    decimal? Confidence,
+    bool IsCanonical,
+    bool IsContradicted,
+    string? ActiveModelVersion,
+    DateTime UpdatedUtc);
+
+public sealed record LegendConnectRetainedKnowledgeSearchSnapshot(
+    string Query,
+    int ResultCount,
+    IReadOnlyList<LegendConnectRetainedKnowledgeItemSnapshot> Items);
+
+/// <summary>
 /// The sole read/write authority for Legend Connect operations. Presentation
 /// layers may use it only after their established Founder authorization guard
 /// succeeds; it owns neither identity authorization nor mobile contracts.
@@ -629,6 +692,17 @@ public interface ILegendConnectOperations
     Task<LegendTargetRealizationReviewActionResult> RejectTargetRealizationCandidateAsync(
         string founderUserId,
         Guid candidateId,
+        CancellationToken cancellationToken = default);
+
+    Task<LegendConnectMachineTeachingSubmissionResult> SubmitMachineTeachingProposalAsync(
+        LegendConnectMachineTeachingSubmission submission,
+        CancellationToken cancellationToken = default);
+
+    Task<LegendConnectRetainedKnowledgeSearchSnapshot> SearchRetainedKnowledgeAsync(
+        string query,
+        string? sourceLanguageCode = null,
+        string? targetLanguageCode = null,
+        int take = 12,
         CancellationToken cancellationToken = default);
 
     Task<LegendConnectKnowledgeSubmissionResult> SubmitFounderKnowledgeAsync(

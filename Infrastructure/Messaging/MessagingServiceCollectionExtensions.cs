@@ -80,10 +80,20 @@ public static class MessagingServiceCollectionExtensions
         });
         services.AddHttpClient("LegendLanguageTeacher", client =>
         {
-            // Teacher/critic reasoning is non-authoritative and may be
-            // slower than operational translation. Timeout still fails
-            // closed without delaying authoritative messaging writes.
-            client.Timeout = TimeSpan.FromSeconds(30);
+            // Teacher/critic work is non-authoritative and isolated from
+            // operational translation. Larger controlled families need a
+            // bounded reasoning window without changing Azure/message latency.
+            var teacherTimeoutSeconds =
+                Math.Clamp(
+                    configuration.GetValue<int?>(
+                        "LegendConnect:LanguageTeacher:TimeoutSeconds") ??
+                        90,
+                    30,
+                    180);
+
+            client.Timeout =
+                TimeSpan.FromSeconds(
+                    teacherTimeoutSeconds);
         });
         services.AddHttpClient("AzureTranslator", client =>
         {

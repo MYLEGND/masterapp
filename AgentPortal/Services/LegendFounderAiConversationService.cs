@@ -1,3 +1,4 @@
+using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Security.Claims;
@@ -21,16 +22,20 @@ namespace AgentPortal.Services;
 /// </summary>
 public sealed class LegendFounderAiConversationService
 {
-    private const int MaximumConversationMessages = 20;
-    private const int MaximumMessageCharacters = 6_000;
-    private const int MaximumConversationCharacters = 30_000;
-    private const int MaximumToolRounds = 4;
-    private const int MaximumToolOutputCharacters = 30_000;
+    private const int MaximumConversationMessages = 30;
+    private const int MaximumMessageCharacters = 20_000;
+    private const int MaximumConversationCharacters = 120_000;
+    private const int MaximumProviderConversationCharacters = 60_000;
+    private const int MaximumToolRounds = 6;
+    private const int MaximumToolOutputCharacters = 20_000;
+    private const int MaximumRetainedContextCharacters = 16_000;
 
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly IConfiguration _configuration;
     private readonly FounderLegendConnectService _legend;
     private readonly ILogger<LegendFounderAiConversationService> _logger;
+    private readonly int _timeoutSeconds;
+    private readonly int _maxOutputTokens;
 
     private static readonly JsonSerializerOptions JsonOptions =
         new(JsonSerializerDefaults.Web)
@@ -48,6 +53,22 @@ public sealed class LegendFounderAiConversationService
         _configuration = configuration;
         _legend = legend;
         _logger = logger;
+
+        _timeoutSeconds =
+            Math.Clamp(
+                configuration.GetValue<int?>(
+                    "OpenAI:LegendFounderAiTimeoutSeconds") ??
+                    120,
+                30,
+                180);
+
+        _maxOutputTokens =
+            Math.Clamp(
+                configuration.GetValue<int?>(
+                    "OpenAI:LegendFounderAiMaxOutputTokens") ??
+                    5_000,
+                1_500,
+                8_000);
     }
 
     public async Task<LegendFounderAiChatResponse> ReplyAsync(
@@ -84,12 +105,40 @@ public sealed class LegendFounderAiConversationService
         if (string.IsNullOrWhiteSpace(model))
             model = "gpt-5";
 
-        var instructions = BuildInstructions(mode);
-        var tools = BuildReadOnlyTools();
+        using var requestBudget =
+            CancellationTokenSource.CreateLinkedTokenSource(
+                cancellationToken);
 
-        var input = new List<object>(conversation.Count + 12);
+        requestBudget.CancelAfter(
+            TimeSpan.FromSeconds(
+                _timeoutSeconds));
 
-        foreach (var message in conversation)
+        var effectiveToken =
+            requestBudget.Token;
+
+        var retainedKnowledge =
+            await TryLoadRetainedKnowledgeAsync(
+                founder,
+                conversation[^1].Content ??
+                    string.Empty,
+                effectiveToken);
+
+        var instructions =
+            BuildInstructions(mode) +
+            BuildRetainedKnowledgeContext(
+                retainedKnowledge);
+
+        var tools = BuildFounderTools();
+
+        var providerConversation =
+            CompactProviderConversation(
+                conversation);
+
+        var input =
+            new List<object>(
+                providerConversation.Count + 12);
+
+        foreach (var message in providerConversation)
         {
             input.Add(new Dictionary<string, object?>
             {
@@ -109,7 +158,7 @@ public sealed class LegendFounderAiConversationService
                         instructions,
                         input,
                         tools,
-                        cancellationToken);
+                        effectiveToken);
 
                 if (responseDocument is null)
                 {
@@ -119,10 +168,33 @@ public sealed class LegendFounderAiConversationService
 
                 var root = responseDocument.RootElement;
 
-                if (!TryReadCompletedResponse(root))
+                var responseState =
+                    ReadResponseState(root);
+
+                if (responseState == "incomplete")
+                {
+                    var partial =
+                        ExtractOutputText(root);
+
+                    if (!string.IsNullOrWhiteSpace(
+                            partial))
+                    {
+                        return new LegendFounderAiChatResponse(
+                            true,
+                            mode,
+                            partial.Trim() +
+                            "\n\n[This response reached its bounded output limit. Ask Legend® Ai to continue if you want the remainder.]",
+                            null);
+                    }
+
+                    return LegendFounderAiChatResponse.Failure(
+                        "Legend® Ai reached its bounded output limit before producing usable text.");
+                }
+
+                if (responseState != "completed")
                 {
                     return LegendFounderAiChatResponse.Failure(
-                        "Legend® Ai received an incomplete reasoning response.");
+                        "Legend® Ai received an unusable reasoning response.");
                 }
 
                 var toolCalls = ReadFunctionCalls(root);
@@ -160,7 +232,7 @@ public sealed class LegendFounderAiConversationService
                         await ExecuteFounderToolAsync(
                             founder,
                             call,
-                            cancellationToken);
+                            effectiveToken);
 
                     input.Add(new Dictionary<string, object?>
                     {
@@ -217,48 +289,114 @@ public sealed class LegendFounderAiConversationService
             tools,
             tool_choice = "auto",
             parallel_tool_calls = false,
-            max_output_tokens = 2_500
+            max_output_tokens = _maxOutputTokens
         };
 
-        using var request =
-            new HttpRequestMessage(
-                HttpMethod.Post,
-                "v1/responses")
-            {
-                Content = JsonContent.Create(payload)
-            };
-
-        request.Headers.Authorization =
-            new AuthenticationHeaderValue(
-                "Bearer",
-                apiKey);
-
         var client =
-            _httpClientFactory.CreateClient("OpenAI");
+            _httpClientFactory.CreateClient(
+                "OpenAI");
 
-        using var response =
-            await client.SendAsync(
-                request,
-                HttpCompletionOption.ResponseHeadersRead,
-                cancellationToken);
+        // Feature-local timeout is governed by the linked request budget.
+        // Do not mutate the shared OpenAI registration used by other features.
+        client.Timeout =
+            Timeout.InfiniteTimeSpan;
 
-        if (!response.IsSuccessStatusCode)
+        for (var attempt = 1;
+             attempt <= 2;
+             attempt++)
         {
+            using var request =
+                new HttpRequestMessage(
+                    HttpMethod.Post,
+                    "v1/responses")
+                {
+                    Content =
+                        JsonContent.Create(payload)
+                };
+
+            request.Headers.Authorization =
+                new AuthenticationHeaderValue(
+                    "Bearer",
+                    apiKey);
+
+            using var response =
+                await client.SendAsync(
+                    request,
+                    HttpCompletionOption.ResponseHeadersRead,
+                    cancellationToken);
+
+            if (response.IsSuccessStatusCode)
+            {
+                await using var stream =
+                    await response.Content
+                        .ReadAsStreamAsync(
+                            cancellationToken);
+
+                return await JsonDocument.ParseAsync(
+                    stream,
+                    cancellationToken:
+                        cancellationToken);
+            }
+
+            var transient =
+                IsTransientOpenAiStatus(
+                    response.StatusCode);
+
+            if (transient &&
+                attempt < 2)
+            {
+                var retryAfter =
+                    response.Headers
+                        .RetryAfter?
+                        .Delta;
+
+                var delay =
+                    retryAfter is null
+                        ? TimeSpan.FromSeconds(1)
+                        : TimeSpan.FromSeconds(
+                            Math.Clamp(
+                                retryAfter.Value.TotalSeconds,
+                                1,
+                                5));
+
+                await Task.Delay(
+                    delay,
+                    cancellationToken);
+
+                continue;
+            }
+
+            var errorBody =
+                await response.Content
+                    .ReadAsStringAsync(
+                        cancellationToken);
+
+            if (errorBody.Length > 1_000)
+            {
+                errorBody =
+                    errorBody[..1_000];
+            }
+
             _logger.LogWarning(
-                "LEGEND Founder AI provider returned HTTP {StatusCode}.",
-                (int)response.StatusCode);
+                "LEGEND Founder AI provider returned HTTP {StatusCode}. Body={Body}",
+                (int)response.StatusCode,
+                errorBody);
 
             return null;
         }
 
-        await using var stream =
-            await response.Content.ReadAsStreamAsync(
-                cancellationToken);
-
-        return await JsonDocument.ParseAsync(
-            stream,
-            cancellationToken: cancellationToken);
+        return null;
     }
+
+    private static bool IsTransientOpenAiStatus(
+        HttpStatusCode status) =>
+        status is
+            HttpStatusCode.RequestTimeout or
+            HttpStatusCode.TooManyRequests or
+            HttpStatusCode.InternalServerError or
+            HttpStatusCode.BadGateway or
+            HttpStatusCode.ServiceUnavailable or
+            HttpStatusCode.GatewayTimeout;
 
     private async Task<string> ExecuteFounderToolAsync(
         ClaimsPrincipal founder,
@@ -349,6 +487,199 @@ public sealed class LegendFounderAiConversationService
                         cancellationToken);
 
                 return SerializeBounded(snapshot);
+            }
+
+            case "legend_search_retained_knowledge":
+            {
+                using var arguments =
+                    JsonDocument.Parse(
+                        call.Arguments);
+
+                var query =
+                    ReadRequiredString(
+                        arguments.RootElement,
+                        "query");
+
+                var sourceLanguage =
+                    ReadOptionalString(
+                        arguments.RootElement,
+                        "source_language");
+
+                var targetLanguage =
+                    ReadOptionalString(
+                        arguments.RootElement,
+                        "target_language");
+
+                if (string.IsNullOrWhiteSpace(
+                        query))
+                {
+                    return """{"error":"query_required"}""";
+                }
+
+                var snapshot =
+                    await _legend
+                        .SearchRetainedKnowledgeAsync(
+                            founder,
+                            query,
+                            sourceLanguage,
+                            targetLanguage,
+                            16,
+                            cancellationToken);
+
+                return SerializeBounded(
+                    snapshot);
+            }
+
+            case "legend_submit_machine_learning_candidate":
+            {
+                using var arguments =
+                    JsonDocument.Parse(
+                        call.Arguments);
+
+                var sourceLanguage =
+                    ReadRequiredString(
+                        arguments.RootElement,
+                        "source_language");
+
+                var targetLanguage =
+                    ReadRequiredString(
+                        arguments.RootElement,
+                        "target_language");
+
+                var familyKey =
+                    ReadRequiredString(
+                        arguments.RootElement,
+                        "family_key");
+
+                var semanticCategory =
+                    ReadRequiredString(
+                        arguments.RootElement,
+                        "semantic_category");
+
+                var rationale =
+                    ReadRequiredString(
+                        arguments.RootElement,
+                        "rationale");
+
+                if (string.IsNullOrWhiteSpace(
+                        sourceLanguage) ||
+                    string.IsNullOrWhiteSpace(
+                        targetLanguage) ||
+                    string.IsNullOrWhiteSpace(
+                        familyKey) ||
+                    string.IsNullOrWhiteSpace(
+                        semanticCategory) ||
+                    string.IsNullOrWhiteSpace(
+                        rationale) ||
+                    !arguments.RootElement
+                        .TryGetProperty(
+                            "confidence",
+                            out var confidenceElement) ||
+                    !confidenceElement
+                        .TryGetDecimal(
+                            out var confidence) ||
+                    !arguments.RootElement
+                        .TryGetProperty(
+                            "examples",
+                            out var examplesElement) ||
+                    examplesElement.ValueKind !=
+                        JsonValueKind.Array)
+                {
+                    return """{"error":"invalid_machine_learning_candidate"}""";
+                }
+
+                var examples =
+                    new List<
+                        LegendConnectMachineTeachingExampleSubmission>();
+
+                foreach (var example in
+                         examplesElement
+                             .EnumerateArray())
+                {
+                    var sourceText =
+                        ReadRequiredString(
+                            example,
+                            "source_text");
+
+                    var targetText =
+                        ReadOptionalString(
+                            example,
+                            "target_text");
+
+                    if (string.IsNullOrWhiteSpace(
+                            sourceText) ||
+                        !example.TryGetProperty(
+                            "components",
+                            out var componentsElement) ||
+                        componentsElement.ValueKind !=
+                            JsonValueKind.Array)
+                    {
+                        return """{"error":"invalid_machine_learning_example"}""";
+                    }
+
+                    var components =
+                        new List<
+                            LegendConnectMachineTeachingComponentSubmission>();
+
+                    foreach (var component in
+                             componentsElement
+                                 .EnumerateArray())
+                    {
+                        var dimension =
+                            ReadRequiredString(
+                                component,
+                                "dimension");
+
+                        var value =
+                            ReadRequiredString(
+                                component,
+                                "value");
+
+                        var surface =
+                            ReadRequiredString(
+                                component,
+                                "surface_form");
+
+                        if (string.IsNullOrWhiteSpace(
+                                dimension) ||
+                            string.IsNullOrWhiteSpace(
+                                value) ||
+                            string.IsNullOrWhiteSpace(
+                                surface))
+                        {
+                            return """{"error":"invalid_machine_learning_component"}""";
+                        }
+
+                        components.Add(
+                            new LegendConnectMachineTeachingComponentSubmission(
+                                dimension,
+                                value,
+                                surface));
+                    }
+
+                    examples.Add(
+                        new LegendConnectMachineTeachingExampleSubmission(
+                            sourceText,
+                            targetText,
+                            components));
+                }
+
+                var result =
+                    await _legend
+                        .QueueMachineTeachingProposalAsync(
+                            founder,
+                            new LegendConnectMachineTeachingSubmission(
+                                sourceLanguage,
+                                targetLanguage,
+                                familyKey,
+                                semanticCategory,
+                                rationale,
+                                confidence,
+                                examples),
+                            cancellationToken);
+
+                return SerializeBounded(
+                    result);
             }
 
             case "legend_submit_founder_seed":
@@ -589,11 +920,11 @@ public sealed class LegendFounderAiConversationService
             }
 
             default:
-                return """{"error":"unknown_read_only_tool"}""";
+                return """{"error":"unknown_founder_tool"}""";
         }
     }
 
-    private static IReadOnlyList<object> BuildReadOnlyTools()
+    private static IReadOnlyList<object> BuildFounderTools()
     {
         return
         [
@@ -750,6 +1081,179 @@ public sealed class LegendFounderAiConversationService
                     type = "object",
                     properties = new { },
                     required = Array.Empty<string>(),
+                    additionalProperties = false
+                },
+                strict = true
+            },
+            new
+            {
+                type = "function",
+                name = "legend_search_retained_knowledge",
+                description =
+                    "Search LEGEND's existing retained language evidence before relying on general OpenAI recall. Results preserve provenance, authority, contradiction and proposal state.",
+                parameters = new
+                {
+                    type = "object",
+                    properties = new
+                    {
+                        query = new
+                        {
+                            type = "string",
+                            minLength = 1,
+                            maxLength = 2_000
+                        },
+                        source_language = new
+                        {
+                            type = new[] { "string", "null" },
+                            maxLength = 40
+                        },
+                        target_language = new
+                        {
+                            type = new[] { "string", "null" },
+                            maxLength = 40
+                        }
+                    },
+                    required = new[]
+                    {
+                        "query",
+                        "source_language",
+                        "target_language"
+                    },
+                    additionalProperties = false
+                },
+                strict = true
+            },
+            new
+            {
+                type = "function",
+                name = "legend_submit_machine_learning_candidate",
+                description =
+                    "Retain reusable machine-derived LANGUAGE teaching from the current conversation in LEGEND's existing MachineProposed lifecycle. This tool does NOT approve, validate, train or promote the material. The existing independent critic and canonical validator remain authoritative. Use only for reusable linguistic knowledge with controlled contrasts; never use it for personal facts, private messages, transient platform facts or unsupported speculation.",
+                parameters = new
+                {
+                    type = "object",
+                    properties = new
+                    {
+                        source_language = new
+                        {
+                            type = "string",
+                            minLength = 2,
+                            maxLength = 32
+                        },
+                        target_language = new
+                        {
+                            type = "string",
+                            minLength = 2,
+                            maxLength = 32
+                        },
+                        family_key = new
+                        {
+                            type = "string",
+                            minLength = 3,
+                            maxLength = 120
+                        },
+                        semantic_category = new
+                        {
+                            type = "string",
+                            minLength = 1,
+                            maxLength = 120
+                        },
+                        rationale = new
+                        {
+                            type = "string",
+                            minLength = 1,
+                            maxLength = 1_000
+                        },
+                        confidence = new
+                        {
+                            type = "number",
+                            minimum = 0,
+                            maximum = 1
+                        },
+                        examples = new
+                        {
+                            type = "array",
+                            minItems = 2,
+                            maxItems = 8,
+                            items = new
+                            {
+                                type = "object",
+                                properties = new
+                                {
+                                    source_text = new
+                                    {
+                                        type = "string",
+                                        minLength = 1,
+                                        maxLength = 2_000
+                                    },
+                                    target_text = new
+                                    {
+                                        type = new[]
+                                        {
+                                            "string",
+                                            "null"
+                                        },
+                                        maxLength = 2_000
+                                    },
+                                    components = new
+                                    {
+                                        type = "array",
+                                        minItems = 1,
+                                        maxItems = 16,
+                                        items = new
+                                        {
+                                            type = "object",
+                                            properties = new
+                                            {
+                                                dimension = new
+                                                {
+                                                    type = "string",
+                                                    minLength = 1,
+                                                    maxLength = 80
+                                                },
+                                                value = new
+                                                {
+                                                    type = "string",
+                                                    minLength = 1,
+                                                    maxLength = 240
+                                                },
+                                                surface_form = new
+                                                {
+                                                    type = "string",
+                                                    minLength = 1,
+                                                    maxLength = 500
+                                                }
+                                            },
+                                            required = new[]
+                                            {
+                                                "dimension",
+                                                "value",
+                                                "surface_form"
+                                            },
+                                            additionalProperties = false
+                                        }
+                                    }
+                                },
+                                required = new[]
+                                {
+                                    "source_text",
+                                    "target_text",
+                                    "components"
+                                },
+                                additionalProperties = false
+                            }
+                        }
+                    },
+                    required = new[]
+                    {
+                        "source_language",
+                        "target_language",
+                        "family_key",
+                        "semantic_category",
+                        "rationale",
+                        "confidence",
+                        "examples"
+                    },
                     additionalProperties = false
                 },
                 strict = true
@@ -928,10 +1432,16 @@ CRITICAL GOVERNANCE:
 - Tool outputs come from existing LEGEND authorities and are the source of truth for current system facts.
 - You can inspect LEGEND through read tools.
 - You also have narrowly scoped Founder-authorized orchestration tools that delegate only to LEGEND's existing canonical Founder ingestion, curriculum, and runtime-policy authorities.
-- Never call a mutation tool merely because you think it would be useful. Call one only when the Founder explicitly instructs you to teach, add, submit, retain, train, activate, or continue learning.
+- Founder-authoritative mutation tools must never be called merely because you think they would be useful. Use Founder seed/curriculum/runtime mutation only when the Founder explicitly instructs you to teach, add, submit, retain, train, activate, or continue learning.
+- The one exception is legend_submit_machine_learning_candidate: it is NON-AUTHORITATIVE retention only. You may use it automatically when the conversation genuinely discovers reusable linguistic knowledge with controlled contrasts. It creates only MachineProposed evidence and cannot approve itself.
 - Founder-submitted source knowledge and curriculum are FounderApproved because the authenticated Founder explicitly directed the action.
 - OpenAI-generated teaching is NOT automatically FounderApproved merely because it appears in conversation.
 - Machine-derived teaching must continue through LEGEND's existing teacher, independent critic, canonical validator, curriculum admission, dataset compiler, challenger training, evaluation and promotion authorities.
+- Before relying on general OpenAI recall for language knowledge, prefer the retained LEGEND context supplied with this request and use legend_search_retained_knowledge when deeper retrieval is useful.
+- Retained authority precedence is: FounderApproved/HumanVerified → SystemValidatedMachine → other supported retained evidence → promoted LEGEND model state → unresolved MachineProposed/ProviderDerived evidence as clearly labeled observations → OpenAI reasoning for unresolved gaps.
+- Rejected, contradicted, insufficient, failed or unresolved material remains auditable history but must never be presented as canonical truth.
+- Never automatically retain personal facts, account data, private messages, casual conversation, transient business/system metrics or unsupported speculation as language knowledge.
+- Unless the Founder explicitly asks for multiple families, make at most one automatic conversational machine-learning submission for one coherent semantic family in a turn.
 - ProviderDerived or MachineProposed material must not be erased merely because it is not yet approved. Preserve its actual provenance and validation state; contradictions and rejections remain durable gating evidence.
 - Never bypass existing validation, contradiction, privacy, capacity, dataset, evaluation, promotion, or runtime-readiness gates.
 - You cannot directly promote a model, rewrite canonical evidence, bypass contradiction resolution, or write private-message data.
@@ -958,7 +1468,7 @@ Your job is to:
 
 You are explicitly NOT LEGEND itself.
 You are explicitly NOT Founder authority.
-You may recommend teaching, but you may not claim it entered LEGEND.
+You may autonomously retain genuinely reusable language teaching through legend_submit_machine_learning_candidate. That action enters only MachineProposed state; you must report its returned state accurately and must never describe it as canonical, approved, trained or promoted unless later LEGEND tools prove that transition.
 """;
         }
 
@@ -978,6 +1488,10 @@ Use first-person language naturally when describing LEGEND, but distinguish:
 
 Never pretend that OpenAI conversational reasoning itself is canonical LEGEND knowledge.
 
+Before external recall, use LEGEND's retained evidence when it is relevant. Treat unresolved machine/provider observations as evidence to reason about, never as truth.
+
+When this conversation reveals a reusable linguistic distinction that is not already established, you may retain one bounded MachineProposed family through legend_submit_machine_learning_candidate. That is how conversational learning survives this chat without creating a second memory system.
+
 Understand LEGEND's actual learning architecture:
 - LEGEND retains provenance-bearing evidence and does not equate "not yet approved" with "forgotten".
 - Provider observations may remain ProviderDerived.
@@ -994,6 +1508,115 @@ If the Founder explicitly asks you to teach or train LEGEND:
 3. activate the existing autonomous learning runtime only when explicitly requested;
 4. explain that the existing worker will continue provider acquisition, teacher proposals, independent critique, canonical validation, curriculum admission, dataset compilation, training, evaluation and promotion as configured.
 """;
+    }
+
+    private async Task<LegendConnectRetainedKnowledgeSearchSnapshot>
+        TryLoadRetainedKnowledgeAsync(
+            ClaimsPrincipal founder,
+            string query,
+            CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await _legend
+                .SearchRetainedKnowledgeAsync(
+                    founder,
+                    query,
+                    take: 12,
+                    cancellationToken:
+                        cancellationToken);
+        }
+        catch (OperationCanceledException)
+            when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception exception)
+        {
+            _logger.LogWarning(
+                exception,
+                "Legend Founder AI retained-knowledge retrieval failed closed.");
+
+            return new LegendConnectRetainedKnowledgeSearchSnapshot(
+                query,
+                0,
+                []);
+        }
+    }
+
+    private static string BuildRetainedKnowledgeContext(
+        LegendConnectRetainedKnowledgeSearchSnapshot snapshot)
+    {
+        if (snapshot.Items.Count == 0)
+            return string.Empty;
+
+        var json =
+            JsonSerializer.Serialize(
+                snapshot,
+                JsonOptions);
+
+        if (json.Length >
+            MaximumRetainedContextCharacters)
+        {
+            json =
+                json[
+                    ..MaximumRetainedContextCharacters] +
+                "\n[LEGEND RETAINED CONTEXT BOUNDED]";
+        }
+
+        return
+            """
+
+LEGEND_RETAINED_KNOWLEDGE_CONTEXT:
+These records were retrieved from LEGEND before external reasoning.
+Respect AuthorityState, Provenance, IsCanonical and IsContradicted.
+Never upgrade an unresolved, rejected or contradicted record merely because it appears here.
+""" +
+            json;
+    }
+
+    private static IReadOnlyList<LegendFounderAiChatMessage>
+        CompactProviderConversation(
+            IReadOnlyList<LegendFounderAiChatMessage> conversation)
+    {
+        var selected =
+            new List<LegendFounderAiChatMessage>(
+                conversation.Count);
+
+        var remaining =
+            MaximumProviderConversationCharacters;
+
+        for (var index =
+                 conversation.Count - 1;
+             index >= 0;
+             index--)
+        {
+            var message =
+                conversation[index];
+
+            var length =
+                message.Content?.Length ??
+                0;
+
+            if (index ==
+                    conversation.Count - 1 ||
+                length <= remaining)
+            {
+                selected.Add(message);
+
+                remaining =
+                    Math.Max(
+                        0,
+                        remaining - length);
+            }
+
+            if (remaining == 0)
+                break;
+        }
+
+        selected.Reverse();
+
+        return selected;
     }
 
     private static bool TryNormalizeMessages(
@@ -1068,17 +1691,13 @@ If the Founder explicitly asks you to teach or train LEGEND:
             ? "teacher"
             : "legend";
 
-    private static bool TryReadCompletedResponse(
-        JsonElement root)
-    {
-        return root.TryGetProperty(
-                   "status",
-                   out var status) &&
-               string.Equals(
-                   status.GetString(),
-                   "completed",
-                   StringComparison.Ordinal);
-    }
+    private static string? ReadResponseState(
+        JsonElement root) =>
+        root.TryGetProperty(
+            "status",
+            out var status)
+            ? status.GetString()
+            : null;
 
     private static List<FounderAiToolCall> ReadFunctionCalls(
         JsonElement root)

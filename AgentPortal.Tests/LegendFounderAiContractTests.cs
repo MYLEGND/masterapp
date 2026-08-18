@@ -56,7 +56,7 @@ public sealed class LegendFounderAiContractTests
     }
 
     [Fact]
-    public void FounderAdapter_ExposesOnlyExistingGovernedLearningEntryPoints()
+    public void FounderAdapter_ExposesOnlyGovernedLearningEntryPoints()
     {
         var type = typeof(FounderLegendConnectService);
 
@@ -77,6 +77,19 @@ public sealed class LegendFounderAiContractTests
                 nameof(
                     FounderLegendConnectService
                         .EnsureAutonomousLearningActiveAsync)));
+
+
+        Assert.NotNull(
+            type.GetMethod(
+                nameof(
+                    FounderLegendConnectService
+                        .SearchRetainedKnowledgeAsync)));
+
+        Assert.NotNull(
+            type.GetMethod(
+                nameof(
+                    FounderLegendConnectService
+                        .QueueMachineTeachingProposalAsync)));
     }
 
     [Fact]

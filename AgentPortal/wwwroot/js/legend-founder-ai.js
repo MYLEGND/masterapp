@@ -23,7 +23,7 @@
         'legendFounderAi.conversations.v1';
 
     const MAX_CONVERSATIONS = 30;
-    const MAX_MESSAGES = 20;
+    const MAX_MESSAGES = 30;
 
     const transcript =
         document.getElementById(
@@ -956,8 +956,21 @@
                         }
                     );
 
-                const result =
-                    await response.json();
+                const rawResponse =
+                    await response.text();
+
+                let result = null;
+
+                try {
+                    result =
+                        rawResponse
+                            ? JSON.parse(
+                                rawResponse
+                            )
+                            : null;
+                } catch {
+                    result = null;
+                }
 
                 if (
                     !response.ok ||
@@ -965,7 +978,12 @@
                 ) {
                     throw new Error(
                         result?.error ||
-                        'Legend® Ai could not complete that response.'
+                        (
+                            rawResponse &&
+                            rawResponse.length < 600
+                                ? rawResponse
+                                : 'Legend® Ai could not complete that response.'
+                        )
                     );
                 }
 

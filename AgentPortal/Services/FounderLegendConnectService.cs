@@ -125,6 +125,44 @@ public sealed class FounderLegendConnectService
             cancellationToken);
     }
 
+    public async Task<LegendConnectRetainedKnowledgeSearchSnapshot>
+        SearchRetainedKnowledgeAsync(
+            ClaimsPrincipal user,
+            string query,
+            string? sourceLanguageCode = null,
+            string? targetLanguageCode = null,
+            int take = 12,
+            CancellationToken cancellationToken = default)
+    {
+        _ = await ResolveFounderActorAsync(
+            user,
+            cancellationToken);
+
+        return await _operations
+            .SearchRetainedKnowledgeAsync(
+                query,
+                sourceLanguageCode,
+                targetLanguageCode,
+                take,
+                cancellationToken);
+    }
+
+    public async Task<LegendConnectMachineTeachingSubmissionResult>
+        QueueMachineTeachingProposalAsync(
+            ClaimsPrincipal user,
+            LegendConnectMachineTeachingSubmission submission,
+            CancellationToken cancellationToken = default)
+    {
+        _ = await ResolveFounderActorAsync(
+            user,
+            cancellationToken);
+
+        return await _operations
+            .SubmitMachineTeachingProposalAsync(
+                submission,
+                cancellationToken);
+    }
+
     public async Task<LegendConnectKnowledgeSubmissionResult> QueueFounderLearningSeedAsync(
         ClaimsPrincipal user,
         string sourceLanguageCode,
