@@ -497,7 +497,7 @@ public sealed class LegendConnectTranslationQualityTests
 
         Assert.Equal("Sib egzak verifye.", (await fixture.Intelligence.TryGetTrustedExactMemoryAsync("en", "ht", trustedSource.Text))?.Text);
         var observedMemory =
-            await fixture.Intelligence.TryGetTrustedExactMemoryAsync(
+            await fixture.Intelligence.TryGetReusableProviderObservationAsync(
                 "en",
                 "ht",
                 observedSource.Text);

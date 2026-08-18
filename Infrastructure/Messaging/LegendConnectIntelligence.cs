@@ -37,6 +37,12 @@ internal interface ILegendConnectTranslationIntelligence
         string text,
         CancellationToken cancellationToken = default);
 
+    Task<LegendTranslationMemoryMatch?> TryGetReusableProviderObservationAsync(
+        string sourceLanguageCode,
+        string targetLanguageCode,
+        string text,
+        CancellationToken cancellationToken = default);
+
     Task<LegendContextualTranslationSuggestion?> EvaluateContextAsync(
         string sourceLanguageCode,
         string targetLanguageCode,
@@ -132,17 +138,15 @@ internal sealed class LegendConnectTranslationIntelligence : ILegendConnectTrans
                       alignment.HumanVerified ||
                       (
                           alignment.Provenance ==
-                              LegendConnectKnowledgeProvenance.ConsentedLiveTranslation &&
-                          alignment.QualityState == "ConsentedLive" &&
+                              LegendConnectKnowledgeProvenance.SystemValidatedMachine &&
+                          alignment.QualityState == "SystemValidated" &&
                           alignment.Confidence >= 0.98m
                       ) ||
                       (
                           alignment.Provenance ==
-                              LegendConnectKnowledgeProvenance.ProviderDerived &&
-                          (
-                              alignment.QualityState == "SystemValidated" ||
-                              alignment.QualityState == "Observation"
-                          )
+                              LegendConnectKnowledgeProvenance.ConsentedLiveTranslation &&
+                          alignment.QualityState == "ConsentedLive" &&
+                          alignment.Confidence >= 0.98m
                       )
                   )
             select new
@@ -159,31 +163,7 @@ internal sealed class LegendConnectTranslationIntelligence : ILegendConnectTrans
         if (candidates.Count == 0)
             return null;
 
-        // Provider observations carrying an unresolved contradiction are
-        // retained historically but cannot be served.
-        var providerIds = candidates
-            .Where(item =>
-                !item.HumanVerified &&
-                item.Provenance == LegendConnectKnowledgeProvenance.ProviderDerived)
-            .Select(item => item.Id)
-            .ToArray();
-
-        HashSet<Guid> contradicted = providerIds.Length == 0
-            ? []
-            : (await _db.Set<LegendTranslationQualityEvidence>()
-                .AsNoTracking()
-                .Where(item =>
-                    providerIds.Contains(item.ObservedAlignmentId) &&
-                    item.Signal == "Contradictory" &&
-                    item.ResolutionState == "Open" &&
-                    item.SupersededUtc == null)
-                .Select(item => item.ObservedAlignmentId)
-                .Distinct()
-                .ToListAsync(cancellationToken))
-                .ToHashSet();
-
         var eligible = candidates
-            .Where(item => !contradicted.Contains(item.Id))
             .OrderByDescending(item =>
                 item.HumanVerified ? 4 :
                 item.QualityState == "SystemValidated" ? 3 :
@@ -225,6 +205,107 @@ internal sealed class LegendConnectTranslationIntelligence : ILegendConnectTrans
         return new LegendTranslationMemoryMatch(
             match.Text,
             match.Confidence ?? (match.Text.Length > 0 ? 1m : 0m),
+            match.Provenance,
+            match.QualityState);
+    }
+
+    public async Task<LegendTranslationMemoryMatch?> TryGetReusableProviderObservationAsync(
+        string sourceLanguageCode,
+        string targetLanguageCode,
+        string text,
+        CancellationToken cancellationToken = default)
+    {
+        var hash = LegendLanguageIdentity.TextHash(text);
+        var pairKey = LegendLanguageIdentity.PairKey(
+            sourceLanguageCode,
+            targetLanguageCode);
+
+        var candidates = await (
+            from alignment in _db.Set<LegendTranslationAlignment>().AsNoTracking()
+            join source in _db.Set<LegendLanguageTextUnit>().AsNoTracking()
+                on alignment.SourceTextUnitId equals source.Id
+            join target in _db.Set<LegendLanguageTextUnit>().AsNoTracking()
+                on alignment.TargetTextUnitId equals target.Id
+            where alignment.PairKey == pairKey &&
+                  alignment.SupersededUtc == null &&
+                  source.IsTrainingEligible &&
+                  target.IsTrainingEligible &&
+                  source.LanguageCode == sourceLanguageCode &&
+                  target.LanguageCode == targetLanguageCode &&
+                  source.NormalizedHash == hash &&
+                  alignment.Provenance ==
+                      LegendConnectKnowledgeProvenance.ProviderDerived &&
+                  (
+                      alignment.QualityState == "SystemValidated" ||
+                      alignment.QualityState == "Observation"
+                  )
+            select new
+            {
+                target.Text,
+                alignment.Confidence,
+                alignment.Provenance,
+                alignment.QualityState,
+                alignment.Id
+            }
+        ).ToListAsync(cancellationToken);
+
+        if (candidates.Count == 0)
+            return null;
+
+        var ids = candidates
+            .Select(item => item.Id)
+            .ToArray();
+
+        var contradicted = (
+            await _db.Set<LegendTranslationQualityEvidence>()
+                .AsNoTracking()
+                .Where(item =>
+                    ids.Contains(item.ObservedAlignmentId) &&
+                    item.Signal == "Contradictory" &&
+                    item.ResolutionState == "Open" &&
+                    item.SupersededUtc == null)
+                .Select(item => item.ObservedAlignmentId)
+                .Distinct()
+                .ToListAsync(cancellationToken))
+            .ToHashSet();
+
+        var eligible = candidates
+            .Where(item =>
+                !contradicted.Contains(item.Id))
+            .OrderByDescending(item =>
+                item.QualityState == "SystemValidated" ? 2 : 1)
+            .ThenByDescending(item =>
+                item.Confidence ?? 0m)
+            .ThenByDescending(item =>
+                item.Id)
+            .ToList();
+
+        if (eligible.Count == 0)
+            return null;
+
+        var bestRank =
+            eligible[0].QualityState == "SystemValidated"
+                ? 2
+                : 1;
+
+        var sameRank = eligible
+            .Where(item =>
+                (item.QualityState == "SystemValidated" ? 2 : 1) ==
+                bestRank)
+            .Select(item => item.Text)
+            .Distinct(StringComparer.Ordinal)
+            .Take(2)
+            .ToList();
+
+        if (sameRank.Count != 1)
+            return null;
+
+        var match = eligible[0];
+
+        return new LegendTranslationMemoryMatch(
+            match.Text,
+            match.Confidence ??
+                (match.Text.Length > 0 ? 1m : 0m),
             match.Provenance,
             match.QualityState);
     }

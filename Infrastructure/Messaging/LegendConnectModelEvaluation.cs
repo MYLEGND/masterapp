@@ -44,6 +44,16 @@ internal sealed record LegendModelEvaluationJudgement(
     string? ErrorCode = null,
     bool Retryable = false);
 
+internal interface ILegendConnectModelInferenceTransport
+{
+    Task<LegendModelEvaluationGenerationResult> GenerateAsync(
+        string model,
+        string sourceLanguageCode,
+        string targetLanguageCode,
+        string text,
+        CancellationToken cancellationToken = default);
+}
+
 internal interface ILegendConnectModelEvaluationBackend
 {
     Task<LegendModelEvaluationGenerationResult> GenerateAsync(
@@ -120,6 +130,282 @@ internal sealed class LegendConnectCurrentProductionBaseline
 /// Provider-neutral challenger inference + independent semantic judge boundary.
 /// Neither operation owns LEGEND evidence or promotion state.
 /// </summary>
+internal sealed class OpenAiLegendConnectModelInferenceTransport
+    : ILegendConnectModelInferenceTransport
+{
+    private const string ClientName =
+        "LegendModelEvaluation";
+
+    private const string Prefix =
+        "LegendConnect:ModelEvaluation:";
+
+    private const string DefaultEndpoint =
+        "https://api.openai.com/v1/responses";
+
+    private readonly IHttpClientFactory _clients;
+    private readonly IConfiguration _configuration;
+    private readonly ILogger<OpenAiLegendConnectModelInferenceTransport> _logger;
+
+    public OpenAiLegendConnectModelInferenceTransport(
+        IHttpClientFactory clients,
+        IConfiguration configuration,
+        ILogger<OpenAiLegendConnectModelInferenceTransport> logger)
+    {
+        _clients = clients;
+        _configuration = configuration;
+        _logger = logger;
+    }
+
+    public async Task<LegendModelEvaluationGenerationResult> GenerateAsync(
+        string model,
+        string sourceLanguageCode,
+        string targetLanguageCode,
+        string text,
+        CancellationToken cancellationToken = default)
+    {
+        if (!TryGetConfiguration(
+                out var endpoint,
+                out var key) ||
+            string.IsNullOrWhiteSpace(model) ||
+            model.Length > 200)
+        {
+            return new(
+                false,
+                null,
+                "model_inference_provider_unavailable");
+        }
+
+        var instructions =
+            $"Translate from {sourceLanguageCode} to {targetLanguageCode}. " +
+            "Preserve all meaning, context, tone, discourse function, and grammatical information. " +
+            "Return only the target-language translation.";
+
+        return await SendTextAsync(
+            endpoint,
+            key,
+            model,
+            instructions,
+            text,
+            cancellationToken);
+    }
+
+    private async Task<LegendModelEvaluationGenerationResult> SendTextAsync(
+        Uri endpoint,
+        string key,
+        string model,
+        string instructions,
+        string input,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var payload =
+                new
+                {
+                    model,
+                    store = false,
+                    max_output_tokens = 1200,
+                    instructions,
+                    input
+                };
+
+            using var request =
+                new HttpRequestMessage(
+                    HttpMethod.Post,
+                    endpoint)
+                {
+                    Content =
+                        JsonContent.Create(
+                            payload)
+                };
+
+            request.Headers.Authorization =
+                new AuthenticationHeaderValue(
+                    "Bearer",
+                    key);
+
+            using var response =
+                await _clients
+                    .CreateClient(ClientName)
+                    .SendAsync(
+                        request,
+                        HttpCompletionOption
+                            .ResponseHeadersRead,
+                        cancellationToken);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                return new(
+                    false,
+                    null,
+                    "model_inference_failed",
+                    IsRetryable(
+                        response.StatusCode));
+            }
+
+            await using var stream =
+                await response.Content
+                    .ReadAsStreamAsync(
+                        cancellationToken);
+
+            using var document =
+                await JsonDocument.ParseAsync(
+                    stream,
+                    cancellationToken:
+                        cancellationToken);
+
+            var output =
+                ExtractCompletedOutputText(
+                    document.RootElement);
+
+            return string.IsNullOrWhiteSpace(
+                    output)
+                ? new(
+                    false,
+                    null,
+                    "model_inference_invalid_response")
+                : new(
+                    true,
+                    output,
+                    null,
+                    false);
+        }
+        catch (OperationCanceledException)
+            when (!cancellationToken
+                .IsCancellationRequested)
+        {
+            return new(
+                false,
+                null,
+                "model_inference_timeout",
+                true);
+        }
+        catch (HttpRequestException exception)
+        {
+            _logger.LogWarning(
+                exception,
+                "LEGEND model inference request failed.");
+
+            return new(
+                false,
+                null,
+                "model_inference_failed",
+                true);
+        }
+        catch (JsonException exception)
+        {
+            _logger.LogWarning(
+                exception,
+                "LEGEND model inference response was invalid.");
+
+            return new(
+                false,
+                null,
+                "model_inference_invalid_response");
+        }
+    }
+
+
+    private bool TryGetConfiguration(
+        out Uri endpoint,
+        out string key)
+    {
+        var endpointValue =
+            (_configuration[
+                Prefix + "Endpoint"] ??
+             DefaultEndpoint)
+            .Trim();
+
+        key =
+            (_configuration[
+                Prefix + "ApiKey"] ??
+             Environment.GetEnvironmentVariable(
+                 "OPENAI_API_KEY") ??
+             string.Empty)
+            .Trim();
+
+        if (!Uri.TryCreate(
+                endpointValue,
+                UriKind.Absolute,
+                out var parsedEndpoint) ||
+            parsedEndpoint.Scheme !=
+                Uri.UriSchemeHttps ||
+            string.IsNullOrWhiteSpace(key))
+        {
+            endpoint = default!;
+            return false;
+        }
+
+        endpoint =
+            parsedEndpoint;
+
+        return true;
+    }
+
+    private static string? ExtractCompletedOutputText(
+        JsonElement root)
+    {
+        if (!root.TryGetProperty(
+                "status",
+                out var status) ||
+            !string.Equals(
+                status.GetString(),
+                "completed",
+                StringComparison.Ordinal) ||
+            !root.TryGetProperty(
+                "output",
+                out var output) ||
+            output.ValueKind !=
+                JsonValueKind.Array)
+        {
+            return null;
+        }
+
+        foreach (var item in output.EnumerateArray())
+        {
+            if (!item.TryGetProperty(
+                    "type",
+                    out var type) ||
+                type.GetString() !=
+                    "message" ||
+                !item.TryGetProperty(
+                    "content",
+                    out var content) ||
+                content.ValueKind !=
+                    JsonValueKind.Array)
+            {
+                continue;
+            }
+
+            foreach (var part in content.EnumerateArray())
+            {
+                if (part.TryGetProperty(
+                        "type",
+                        out var partType) &&
+                    partType.GetString() ==
+                        "output_text" &&
+                    part.TryGetProperty(
+                        "text",
+                        out var text) &&
+                    text.ValueKind ==
+                        JsonValueKind.String)
+                {
+                    return text.GetString();
+                }
+            }
+        }
+
+        return null;
+    }
+
+    private static bool IsRetryable(
+        System.Net.HttpStatusCode status) =>
+        status ==
+            System.Net.HttpStatusCode.RequestTimeout ||
+        (int)status == 429 ||
+        (int)status >= 500;
+}
+
 internal sealed class OpenAiLegendConnectModelEvaluationBackend
     : ILegendConnectModelEvaluationBackend
 {
@@ -243,52 +529,33 @@ Rules:
 - Return only the required structured object.
 """;
 
+    private readonly ILegendConnectModelInferenceTransport _inference;
     private readonly IHttpClientFactory _clients;
     private readonly IConfiguration _configuration;
     private readonly ILogger<OpenAiLegendConnectModelEvaluationBackend> _logger;
 
     public OpenAiLegendConnectModelEvaluationBackend(
+        ILegendConnectModelInferenceTransport inference,
         IHttpClientFactory clients,
         IConfiguration configuration,
         ILogger<OpenAiLegendConnectModelEvaluationBackend> logger)
     {
+        _inference = inference;
         _clients = clients;
         _configuration = configuration;
         _logger = logger;
     }
 
-    public async Task<LegendModelEvaluationGenerationResult> GenerateAsync(
+    public Task<LegendModelEvaluationGenerationResult> GenerateAsync(
         string model,
         LegendConnectTrainingDatasetExample example,
-        CancellationToken cancellationToken = default)
-    {
-        if (!TryGetConfiguration(
-                requireJudgeModel: false,
-                out var endpoint,
-                out var key,
-                out _) ||
-            string.IsNullOrWhiteSpace(model) ||
-            model.Length > 200)
-        {
-            return new(
-                false,
-                null,
-                "model_evaluation_provider_unavailable");
-        }
-
-        var instructions =
-            $"Translate from {example.SourceLanguageCode} to {example.TargetLanguageCode}. " +
-            "Preserve all meaning, context, tone, discourse function, and grammatical information. " +
-            "Return only the target-language translation.";
-
-        return await SendTextAsync(
-            endpoint,
-            key,
+        CancellationToken cancellationToken = default) =>
+        _inference.GenerateAsync(
             model,
-            instructions,
+            example.SourceLanguageCode,
+            example.TargetLanguageCode,
             example.SourceText,
             cancellationToken);
-    }
 
     public async Task<LegendModelEvaluationJudgement> JudgeAsync(
         LegendModelEvaluationJudgeRequest request,
@@ -440,122 +707,6 @@ Rules:
 
             return Failure(
                 "model_evaluation_invalid_judge_response");
-        }
-    }
-
-    private async Task<LegendModelEvaluationGenerationResult> SendTextAsync(
-        Uri endpoint,
-        string key,
-        string model,
-        string instructions,
-        string input,
-        CancellationToken cancellationToken)
-    {
-        try
-        {
-            var payload =
-                new
-                {
-                    model,
-                    store = false,
-                    max_output_tokens = 1200,
-                    instructions,
-                    input
-                };
-
-            using var request =
-                new HttpRequestMessage(
-                    HttpMethod.Post,
-                    endpoint)
-                {
-                    Content =
-                        JsonContent.Create(
-                            payload)
-                };
-
-            request.Headers.Authorization =
-                new AuthenticationHeaderValue(
-                    "Bearer",
-                    key);
-
-            using var response =
-                await _clients
-                    .CreateClient(ClientName)
-                    .SendAsync(
-                        request,
-                        HttpCompletionOption
-                            .ResponseHeadersRead,
-                        cancellationToken);
-
-            if (!response.IsSuccessStatusCode)
-            {
-                return new(
-                    false,
-                    null,
-                    "model_evaluation_challenger_failed",
-                    IsRetryable(
-                        response.StatusCode));
-            }
-
-            await using var stream =
-                await response.Content
-                    .ReadAsStreamAsync(
-                        cancellationToken);
-
-            using var document =
-                await JsonDocument.ParseAsync(
-                    stream,
-                    cancellationToken:
-                        cancellationToken);
-
-            var output =
-                ExtractCompletedOutputText(
-                    document.RootElement);
-
-            return string.IsNullOrWhiteSpace(
-                    output)
-                ? new(
-                    false,
-                    null,
-                    "model_evaluation_invalid_challenger_response")
-                : new(
-                    true,
-                    output,
-                    null,
-                    false);
-        }
-        catch (OperationCanceledException)
-            when (!cancellationToken
-                .IsCancellationRequested)
-        {
-            return new(
-                false,
-                null,
-                "model_evaluation_timeout",
-                true);
-        }
-        catch (HttpRequestException exception)
-        {
-            _logger.LogWarning(
-                exception,
-                "LEGEND challenger inference request failed.");
-
-            return new(
-                false,
-                null,
-                "model_evaluation_challenger_failed",
-                true);
-        }
-        catch (JsonException exception)
-        {
-            _logger.LogWarning(
-                exception,
-                "LEGEND challenger inference response was invalid.");
-
-            return new(
-                false,
-                null,
-                "model_evaluation_invalid_challenger_response");
         }
     }
 

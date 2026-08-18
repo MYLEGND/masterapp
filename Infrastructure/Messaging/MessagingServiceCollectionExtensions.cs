@@ -45,8 +45,10 @@ public static class MessagingServiceCollectionExtensions
         services.AddScoped<LegendConnectTrainingDatasetCompiler>();
         services.AddScoped<LegendConnectModelTrainingService>();
         services.AddScoped<ILegendConnectModelTrainingBackend, OpenAiLegendConnectModelTrainingBackend>();
+        services.AddScoped<ILegendConnectModelInferenceTransport, OpenAiLegendConnectModelInferenceTransport>();
         services.AddScoped<LegendConnectModelEvaluationService>();
         services.AddScoped<ILegendConnectModelEvaluationBackend, OpenAiLegendConnectModelEvaluationBackend>();
+        services.AddScoped<ILegendConnectActiveModelInference, LegendConnectActiveModelInference>();
         services.AddScoped<LegendConnectModelPromotionService>();
         services.AddScoped<ILegendConnectCurrentProductionBaseline, LegendConnectCurrentProductionBaseline>();
         services.AddScoped<ILegendConnectLanguageTeacher, OpenAiLegendConnectLanguageTeacher>();

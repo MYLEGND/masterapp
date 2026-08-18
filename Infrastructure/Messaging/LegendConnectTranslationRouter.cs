@@ -1,4 +1,6 @@
 using Domain.Messaging;
+using Infrastructure.Data;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 
 namespace Infrastructure.Messaging;
@@ -8,6 +10,94 @@ namespace Infrastructure.Messaging;
 /// this milestone; the router is the stable insertion point for an evaluated
 /// future Legend model without any mobile contract change.
 /// </summary>
+internal sealed record LegendConnectActiveModelInferenceResult(
+    bool Succeeded,
+    string? Text,
+    string? ModelVersion,
+    string? ErrorCode);
+
+internal interface ILegendConnectActiveModelInference
+{
+    Task<LegendConnectActiveModelInferenceResult> TryTranslateAsync(
+        string sourceLanguageCode,
+        string targetLanguageCode,
+        string text,
+        CancellationToken cancellationToken = default);
+}
+
+internal sealed class LegendConnectActiveModelInference
+    : ILegendConnectActiveModelInference
+{
+    private readonly MasterAppDbContext _db;
+    private readonly ILegendConnectModelInferenceTransport _transport;
+
+    public LegendConnectActiveModelInference(
+        MasterAppDbContext db,
+        ILegendConnectModelInferenceTransport transport)
+    {
+        _db = db;
+        _transport = transport;
+    }
+
+    public async Task<LegendConnectActiveModelInferenceResult> TryTranslateAsync(
+        string sourceLanguageCode,
+        string targetLanguageCode,
+        string text,
+        CancellationToken cancellationToken = default)
+    {
+        var pairKey =
+            LegendLanguageIdentity.PairKey(
+                sourceLanguageCode,
+                targetLanguageCode);
+
+        var pair =
+            await _db.Set<Domain.Entities.LegendLanguagePair>()
+                .AsNoTracking()
+                .SingleOrDefaultAsync(
+                    item =>
+                        item.PairKey == pairKey &&
+                        item.IsEnabled,
+                    cancellationToken);
+
+        if (pair is null ||
+            string.IsNullOrWhiteSpace(
+                pair.ActiveModelVersion))
+        {
+            return new(
+                false,
+                null,
+                null,
+                "active_model_unavailable");
+        }
+
+        var result =
+            await _transport.GenerateAsync(
+                pair.ActiveModelVersion,
+                sourceLanguageCode,
+                targetLanguageCode,
+                text,
+                cancellationToken);
+
+        if (!result.Succeeded ||
+            string.IsNullOrWhiteSpace(
+                result.Text))
+        {
+            return new(
+                false,
+                null,
+                pair.ActiveModelVersion,
+                result.ErrorCode ??
+                    "active_model_inference_failed");
+        }
+
+        return new(
+            true,
+            result.Text,
+            pair.ActiveModelVersion,
+            null);
+    }
+}
+
 internal sealed class LegendConnectTranslationRouter : IAccountScopedTranslationService
 {
     private readonly ITranslationProvider _azure;
@@ -20,6 +110,7 @@ internal sealed class LegendConnectTranslationRouter : IAccountScopedTranslation
     private readonly ITranslationEntitlementAuthority? _entitlements;
     private readonly ILegendConnectRuntimePolicyAuthority? _runtimePolicy;
     private readonly ILegendConnectStructuralCompositionGate? _structuralComposition;
+    private readonly ILegendConnectActiveModelInference? _activeModelInference;
     private readonly ILogger<LegendConnectTranslationRouter> _logger;
 
     public LegendConnectTranslationRouter(
@@ -33,7 +124,8 @@ internal sealed class LegendConnectTranslationRouter : IAccountScopedTranslation
         ILegendConnectOperationalEventWriter? operations = null,
         ITranslationEntitlementAuthority? entitlements = null,
         ILegendConnectRuntimePolicyAuthority? runtimePolicy = null,
-        ILegendConnectStructuralCompositionGate? structuralComposition = null)
+        ILegendConnectStructuralCompositionGate? structuralComposition = null,
+        ILegendConnectActiveModelInference? activeModelInference = null)
     {
         _azure = azure;
         _languages = languages;
@@ -46,6 +138,7 @@ internal sealed class LegendConnectTranslationRouter : IAccountScopedTranslation
         _entitlements = entitlements;
         _runtimePolicy = runtimePolicy;
         _structuralComposition = structuralComposition;
+        _activeModelInference = activeModelInference;
     }
 
     public async Task<TranslationDetectionResult> DetectLanguageAsync(
@@ -216,6 +309,56 @@ internal sealed class LegendConnectTranslationRouter : IAccountScopedTranslation
                         contextualSuggestion.Text,
                         source,
                         "LegendConnectContextualComposition");
+                }
+
+                if (_activeModelInference is not null)
+                {
+                    var neural =
+                        await _activeModelInference.TryTranslateAsync(
+                            source,
+                            target,
+                            text ?? string.Empty,
+                            cancellationToken);
+
+                    if (neural.Succeeded &&
+                        !string.IsNullOrWhiteSpace(
+                            neural.Text))
+                    {
+                        return new TranslationProviderResult(
+                            true,
+                            neural.Text,
+                            source,
+                            "LegendConnectNeuralModel");
+                    }
+                }
+
+                var providerObservation =
+                    await _intelligence.TryGetReusableProviderObservationAsync(
+                        source,
+                        target,
+                        text ?? string.Empty,
+                        cancellationToken);
+
+                if (providerObservation is not null)
+                {
+                    if (_demand is not null)
+                    {
+                        await _demand.TryRecordAsync(
+                            pairKey!,
+                            0,
+                            translationMemoryHit: true,
+                            cancellationToken:
+                                cancellationToken);
+                    }
+
+                    LegendConnectTelemetry.TranslationMemoryHit(
+                        pairKey!);
+
+                    return new TranslationProviderResult(
+                        true,
+                        providerObservation.Text,
+                        source,
+                        "LegendConnectProviderObservation");
                 }
             }
             catch (Exception exception) when (!cancellationToken.IsCancellationRequested)

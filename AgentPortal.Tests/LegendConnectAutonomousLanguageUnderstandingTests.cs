@@ -117,7 +117,7 @@ public sealed class LegendConnectAutonomousLanguageUnderstandingTests
         Assert.False(persistedProvider.HumanVerified);
 
         var reusableMemory =
-            await fixture.Intelligence.TryGetTrustedExactMemoryAsync(
+            await fixture.Intelligence.TryGetReusableProviderObservationAsync(
                 "en",
                 "x-test",
                 source.Text);
