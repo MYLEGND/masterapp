@@ -1,0 +1,260 @@
+<div class="modal fade legend-founder-ai-modal"
+     id="legendFounderAiModal"
+     tabindex="-1"
+     aria-labelledby="legendFounderAiTitle"
+     aria-hidden="true"
+     data-chat-url="@Url.Action("Chat", "LegendFounderAi")">
+
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content legend-founder-ai-shell">
+
+            <div class="legend-founder-ai-brandline"></div>
+
+            <header class="legend-founder-ai-header">
+
+                <div class="legend-founder-ai-identity">
+                    <div class="legend-founder-ai-logo-frame">
+                        <img src="~/images/legend-ai/legend-logo.png"
+                             asp-append-version="true"
+                             alt=""
+                             class="legend-founder-ai-logo" />
+                    </div>
+
+                    <div class="legend-founder-ai-heading">
+                        <div class="legend-founder-ai-title-row">
+                            <h2 id="legendFounderAiTitle">
+                                Legend<sup>®</sup> Ai
+                            </h2>
+
+                            <span class="legend-founder-ai-founder-pill">
+                                FOUNDER
+                            </span>
+                        </div>
+
+                        <p id="legendFounderAiSubtitle">
+                            Governed intelligence conversation
+                        </p>
+                    </div>
+                </div>
+
+                <button type="button"
+                        class="legend-founder-ai-close"
+                        data-bs-dismiss="modal"
+                        aria-label="Close">
+                    <span aria-hidden="true">×</span>
+                </button>
+
+            </header>
+
+            <div class="legend-founder-ai-workspace">
+
+                <aside class="legend-founder-ai-sidebar"
+                       id="legendFounderAiSidebar">
+
+                    <button type="button"
+                            id="legendFounderAiNew"
+                            class="legend-founder-ai-new-conversation">
+                        <span class="legend-founder-ai-new-icon">＋</span>
+                        <span>New conversation</span>
+                    </button>
+
+                    <section class="legend-founder-ai-sidebar-section">
+                        <div class="legend-founder-ai-sidebar-heading">
+                            <span>Conversations</span>
+
+                            <button type="button"
+                                    id="legendFounderAiHistoryToggle"
+                                    class="legend-founder-ai-icon-button"
+                                    aria-label="Conversation history">
+                                ◷
+                            </button>
+                        </div>
+
+                        <div class="legend-founder-ai-history"
+                             id="legendFounderAiHistory">
+                        </div>
+
+                        <div class="legend-founder-ai-history-empty"
+                             id="legendFounderAiHistoryEmpty">
+                            No previous conversations yet.
+                        </div>
+                    </section>
+
+                    <section class="legend-founder-ai-sidebar-section legend-founder-ai-settings">
+
+                        <div class="legend-founder-ai-sidebar-heading">
+                            <span>Settings</span>
+                        </div>
+
+                        <div class="legend-founder-ai-setting-row">
+                            <span class="legend-founder-ai-setting-icon">
+                                ◉
+                            </span>
+
+                            <span class="legend-founder-ai-setting-copy">
+                                <strong>Model</strong>
+                                <small>Managed by LEGEND server configuration</small>
+                            </span>
+                        </div>
+
+                        <div class="legend-founder-ai-setting-row">
+                            <span class="legend-founder-ai-setting-icon">
+                                ◈
+                            </span>
+
+                            <span class="legend-founder-ai-setting-copy">
+                                <strong>Tools &amp; Data Access</strong>
+                                <small>Governed read-only LEGEND tools</small>
+                            </span>
+                        </div>
+
+                        <div class="legend-founder-ai-setting-row">
+                            <span class="legend-founder-ai-setting-icon">
+                                ✦
+                            </span>
+
+                            <span class="legend-founder-ai-setting-copy">
+                                <strong>Conversation Behavior</strong>
+                                <small>Founder-aware · precise · governed</small>
+                            </span>
+                        </div>
+
+                        <div class="legend-founder-ai-setting-row">
+                            <span class="legend-founder-ai-setting-icon">
+                                ⌁
+                            </span>
+
+                            <span class="legend-founder-ai-setting-copy">
+                                <strong>History</strong>
+                                <small>This browser only · no LEGEND chat database</small>
+                            </span>
+                        </div>
+
+                    </section>
+
+                    <div class="legend-founder-ai-sidebar-spacer"></div>
+
+                    <button type="button"
+                            id="legendFounderAiClearHistory"
+                            class="legend-founder-ai-clear-history">
+                        <span aria-hidden="true">⌫</span>
+                        <span>Clear conversations</span>
+                    </button>
+
+                    <div class="legend-founder-ai-sidebar-footer">
+                        Founder interface
+                        <span>•</span>
+                        Governed V14 state
+                    </div>
+
+                </aside>
+
+                <section class="legend-founder-ai-main">
+
+                    <div class="legend-founder-ai-modebar"
+                         role="tablist"
+                         aria-label="Conversation mode">
+
+                        <button type="button"
+                                class="legend-founder-ai-mode is-active"
+                                data-legend-ai-mode="legend"
+                                role="tab"
+                                aria-selected="true">
+                            LEGEND<sup>®</sup> Ai
+                        </button>
+
+                        <button type="button"
+                                class="legend-founder-ai-mode"
+                                data-legend-ai-mode="teacher"
+                                role="tab"
+                                aria-selected="false">
+                            OpenAI Teacher
+                        </button>
+
+                    </div>
+
+                    <main class="legend-founder-ai-transcript"
+                          id="legendFounderAiTranscript"
+                          aria-live="polite"
+                          aria-label="Legend® Ai conversation">
+
+                        <div class="legend-founder-ai-welcome"
+                             id="legendFounderAiWelcome">
+
+                            <div class="legend-founder-ai-welcome-mark">
+                                <img src="~/images/legend-ai/legend-logo.png"
+                                     asp-append-version="true"
+                                     alt="" />
+                            </div>
+
+                            <h3>
+                                Talk directly with LEGEND<sup>®</sup>
+                            </h3>
+
+                            <p>
+                                Ask about current knowledge, language weaknesses,
+                                learning gaps, evidence, training generations,
+                                model state, readiness, provider dependence,
+                                or what should be taught next.
+                            </p>
+
+                        </div>
+
+                    </main>
+
+                    <div class="legend-founder-ai-status"
+                         id="legendFounderAiStatus"
+                         aria-live="polite">
+                    </div>
+
+                    <footer class="legend-founder-ai-composer">
+
+                        <form id="legendFounderAiForm"
+                              autocomplete="off">
+
+                            @Html.AntiForgeryToken()
+
+                            <div class="legend-founder-ai-input-wrap">
+
+                                <textarea id="legendFounderAiInput"
+                                          rows="1"
+                                          maxlength="6000"
+                                          placeholder="Talk to Legend® Ai…"
+                                          aria-label="Message Legend® Ai"></textarea>
+
+                                <button type="submit"
+                                        id="legendFounderAiSend"
+                                        class="legend-founder-ai-send"
+                                        aria-label="Send message">
+                                    <span aria-hidden="true">↑</span>
+                                </button>
+
+                            </div>
+
+                            <div class="legend-founder-ai-composer-meta">
+
+                                <div class="legend-founder-ai-composer-tools">
+                                    <span>Founder-only</span>
+                                    <span>•</span>
+                                    <span>Read-only tools</span>
+                                    <span>•</span>
+                                    <span>Governed V14 state</span>
+                                </div>
+
+                                <span id="legendFounderAiConversationState">
+                                    New conversation
+                                </span>
+
+                            </div>
+
+                        </form>
+
+                    </footer>
+
+                </section>
+
+            </div>
+
+        </div>
+    </div>
+</div>

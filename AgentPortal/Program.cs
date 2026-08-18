@@ -128,6 +128,7 @@ builder.Services.AddScoped<AgentProfileAccessResolver>();
 builder.Services.AddScoped<AgencyCommandService>();
 builder.Services.AddScoped<FounderSubscribersService>();
 builder.Services.AddScoped<FounderLegendConnectService>();
+builder.Services.AddScoped<LegendFounderAiConversationService>();
 builder.Services.AddScoped<FounderImpersonationService>();
 builder.Services.AddScoped<ProductionService>();
 builder.Services.AddScoped<MetaSignalCrmOutcomeService>();

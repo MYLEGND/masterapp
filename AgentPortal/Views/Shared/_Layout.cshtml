@@ -1,4 +1,4 @@
-﻿@using Microsoft.AspNetCore.Http
+@using Microsoft.AspNetCore.Http
 @using System.Security.Claims
 @using AgentPortal.Security
 @using System.IO
@@ -65,6 +65,10 @@
     <!-- Bootstrap -->
     <link rel="stylesheet" href="~/lib/bootstrap/dist/css/bootstrap.min.css" />
     <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
+    @if (isFounder && !isOnboardingPublic)
+    {
+        <link rel="stylesheet" href="~/css/legend-founder-ai.css" asp-append-version="true" />
+    }
     @if (string.Equals(currentController, "Finance", StringComparison.OrdinalIgnoreCase))
     {
         <link rel="stylesheet" href="~/_content/Shared/css/legend-finance-shared.css" asp-append-version="true" />
@@ -652,6 +656,18 @@
 }
 
                     <a class="nav-link" href="https://shopparfait.com/store" target="_blank">Store</a>
+                    @if (isFounder)
+                    {
+                        <button type="button"
+                                id="legendFounderAiTrigger"
+                                class="legend-founder-ai-nav-button"
+                                title="Legend® Ai"
+                                aria-label="Open Legend® Ai">
+                            <img src="~/images/legend-ai/legend-logo.png"
+                                 asp-append-version="true"
+                                 alt="" />
+                        </button>
+                    }
                     @if (!isAssistant)
                     {
                         @await Html.PartialAsync("~/Views/Messaging/_NavButton.cshtml")
@@ -1786,5 +1802,12 @@
 <script src="/js/appointment-modal.js"></script>
 
     <script src="~/js/app-date-format.js" asp-append-version="true"></script>
+@if (isFounder && !isOnboardingPublic)
+{
+    @await Html.PartialAsync("~/Views/Shared/_LegendFounderAiModal.cshtml")
+    <script src="~/js/legend-founder-ai.js"
+            asp-append-version="true"></script>
+}
+
 </body>
 </html>

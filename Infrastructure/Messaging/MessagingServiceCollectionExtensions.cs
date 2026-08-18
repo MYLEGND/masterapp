@@ -42,14 +42,31 @@ public static class MessagingServiceCollectionExtensions
             provider.GetRequiredService<LegendConnectCurriculumService>());
         services.AddScoped<LegendConnectAutonomousGapPlanner>();
         services.AddScoped<LegendConnectAutonomousLearningService>();
-        services.AddScoped<LegendConnectTrainingDatasetCompiler>();
-        services.AddScoped<LegendConnectModelTrainingService>();
+        services.AddScoped<LegendConnectTrainingDatasetCompiler>(provider =>
+            new LegendConnectTrainingDatasetCompiler(
+                provider.GetRequiredService<Infrastructure.Data.MasterAppDbContext>()));
+        services.AddScoped<LegendConnectModelTrainingService>(provider =>
+            new LegendConnectModelTrainingService(
+                provider.GetRequiredService<Infrastructure.Data.MasterAppDbContext>(),
+                provider.GetRequiredService<LegendConnectTrainingDatasetCompiler>(),
+                provider.GetRequiredService<ILegendConnectModelTrainingBackend>(),
+                provider.GetRequiredService<IConfiguration>()));
         services.AddScoped<ILegendConnectModelTrainingBackend, OpenAiLegendConnectModelTrainingBackend>();
         services.AddScoped<ILegendConnectModelInferenceTransport, OpenAiLegendConnectModelInferenceTransport>();
-        services.AddScoped<LegendConnectModelEvaluationService>();
+        services.AddScoped<LegendConnectModelEvaluationService>(provider =>
+            new LegendConnectModelEvaluationService(
+                provider.GetRequiredService<Infrastructure.Data.MasterAppDbContext>(),
+                provider.GetRequiredService<LegendConnectTrainingDatasetCompiler>(),
+                provider.GetRequiredService<ILegendConnectModelEvaluationBackend>(),
+                provider.GetRequiredService<ILegendConnectCurrentProductionBaseline>(),
+                provider.GetRequiredService<IConfiguration>()));
         services.AddScoped<ILegendConnectModelEvaluationBackend, OpenAiLegendConnectModelEvaluationBackend>();
         services.AddScoped<ILegendConnectActiveModelInference, LegendConnectActiveModelInference>();
-        services.AddScoped<LegendConnectModelPromotionService>();
+        services.AddScoped<LegendConnectModelPromotionService>(provider =>
+            new LegendConnectModelPromotionService(
+                provider.GetRequiredService<Infrastructure.Data.MasterAppDbContext>(),
+                provider.GetRequiredService<LegendConnectTrainingDatasetCompiler>(),
+                provider.GetRequiredService<IConfiguration>()));
         services.AddScoped<ILegendConnectCurrentProductionBaseline, LegendConnectCurrentProductionBaseline>();
         services.AddScoped<ILegendConnectLanguageTeacher, OpenAiLegendConnectLanguageTeacher>();
         services.AddScoped<ILegendConnectOperations, LegendConnectOperations>();
