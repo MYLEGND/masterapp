@@ -331,6 +331,16 @@ public sealed class LegendLanguageTeacherProposal
     public DateTime? CanonicalValidatedUtc { get; set; }
     public string? CanonicalValidationFailureCode { get; set; }
 
+    /// <summary>
+    /// Phase-5 admission remains on this same governed proposal artifact.
+    /// ValidationState remains the one lifecycle authority; these fields add
+    /// only restart-safe claim/retry/audit metadata for curriculum admission.
+    /// </summary>
+    public int CurriculumAdmissionAttemptCount { get; set; }
+    public DateTime? CurriculumAdmissionLeaseExpiresUtc { get; set; }
+    public DateTime? CurriculumAdmittedUtc { get; set; }
+    public string? CurriculumAdmissionFailureCode { get; set; }
+
     public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedUtc { get; set; } = DateTime.UtcNow;
 }

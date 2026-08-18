@@ -610,6 +610,348 @@ internal sealed class LegendConnectCorpusService
     }
 
     /// <summary>
+    /// Phase-5 admission for knowledge already proven by the Phase-4 canonical
+    /// machine validator. This extends the existing corpus authority rather
+    /// than creating another corpus path.
+    ///
+    /// Existing stronger provenance is never downgraded. New machine
+    /// alignments are SystemValidated but never HumanVerified.
+    /// </summary>
+    internal async Task<LegendConnectKnowledgeSubmissionResult>
+        SubmitSystemValidatedMachineKnowledgeAsync(
+            string sourceLanguageCode,
+            string sourceText,
+            string? targetLanguageCode,
+            string? targetText,
+            string? contextCategory,
+            CancellationToken cancellationToken = default)
+    {
+        var sourceLanguage =
+            await _languages.NormalizeEnabledTranslationLanguageAsync(
+                sourceLanguageCode,
+                cancellationToken);
+
+        var normalizedSource =
+            LegendLanguageIdentity.NormalizeText(sourceText);
+
+        if (sourceLanguage is null ||
+            string.IsNullOrWhiteSpace(normalizedSource) ||
+            normalizedSource.Length > 10_000)
+        {
+            return new LegendConnectKnowledgeSubmissionResult(
+                false,
+                false,
+                "invalid_machine_source",
+                "The SystemValidatedMachine source failed canonical normalization.",
+                sourceLanguage ?? string.Empty,
+                null,
+                null,
+                null,
+                null,
+                null);
+        }
+
+        var hasTargetLanguage =
+            !string.IsNullOrWhiteSpace(targetLanguageCode);
+        var hasTargetText =
+            !string.IsNullOrWhiteSpace(targetText);
+
+        if (hasTargetLanguage != hasTargetText)
+        {
+            return new LegendConnectKnowledgeSubmissionResult(
+                false,
+                false,
+                "invalid_machine_pair",
+                "A machine-validated directional entry requires both target language and target text.",
+                sourceLanguage,
+                null,
+                null,
+                null,
+                null,
+                null);
+        }
+
+        string? targetLanguage = null;
+        string? normalizedTarget = null;
+        LegendLanguagePairSnapshot? pair = null;
+
+        if (hasTargetLanguage)
+        {
+            targetLanguage =
+                await _languages.NormalizeEnabledTranslationLanguageAsync(
+                    targetLanguageCode,
+                    cancellationToken);
+
+            normalizedTarget =
+                LegendLanguageIdentity.NormalizeText(targetText!);
+
+            if (targetLanguage is null ||
+                string.IsNullOrWhiteSpace(normalizedTarget) ||
+                normalizedTarget.Length > 10_000 ||
+                string.Equals(
+                    sourceLanguage,
+                    targetLanguage,
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                return new LegendConnectKnowledgeSubmissionResult(
+                    false,
+                    false,
+                    "invalid_machine_pair",
+                    "The SystemValidatedMachine directional pair is invalid.",
+                    sourceLanguage,
+                    targetLanguage,
+                    null,
+                    null,
+                    null,
+                    null);
+            }
+
+            pair = await _languages.GetOrCreateEnabledPairAsync(
+                sourceLanguage,
+                targetLanguage,
+                cancellationToken);
+
+            if (pair is null)
+            {
+                return new LegendConnectKnowledgeSubmissionResult(
+                    false,
+                    false,
+                    "machine_pair_unavailable",
+                    "The SystemValidatedMachine directional pair is unavailable.",
+                    sourceLanguage,
+                    targetLanguage,
+                    null,
+                    null,
+                    null,
+                    null);
+            }
+        }
+
+        var sourceHash =
+            LegendLanguageIdentity.TextHash(normalizedSource);
+
+        var existingSource =
+            await _db.Set<LegendLanguageTextUnit>()
+                .SingleOrDefaultAsync(
+                    item =>
+                        item.LanguageCode == sourceLanguage &&
+                        item.NormalizedHash == sourceHash,
+                    cancellationToken);
+
+        if (existingSource is not null &&
+            !existingSource.IsTrainingEligible)
+        {
+            return new LegendConnectKnowledgeSubmissionResult(
+                false,
+                false,
+                "machine_source_retired",
+                "The machine proposal matches a retired canonical source asset.",
+                sourceLanguage,
+                targetLanguage,
+                pair?.PairKey,
+                existingSource.Id,
+                null,
+                null);
+        }
+
+        var source =
+            existingSource ??
+            await GetOrCreateTextUnitAsync(
+                sourceLanguage,
+                normalizedSource,
+                sourceHash,
+                LegendConnectKnowledgeProvenance.SystemValidatedMachine,
+                cancellationToken);
+
+        if (pair is null || normalizedTarget is null)
+        {
+            return new LegendConnectKnowledgeSubmissionResult(
+                true,
+                existingSource is not null,
+                null,
+                existingSource is null
+                    ? "SystemValidatedMachine source entered the existing corpus."
+                    : "Existing canonical source was reused without changing its stronger/original provenance.",
+                sourceLanguage,
+                null,
+                null,
+                source.Id,
+                null,
+                null);
+        }
+
+        var targetHash =
+            LegendLanguageIdentity.TextHash(normalizedTarget);
+
+        var existingTarget =
+            await _db.Set<LegendLanguageTextUnit>()
+                .SingleOrDefaultAsync(
+                    item =>
+                        item.LanguageCode == pair.TargetLanguageCode &&
+                        item.NormalizedHash == targetHash,
+                    cancellationToken);
+
+        if (existingTarget is not null &&
+            !existingTarget.IsTrainingEligible)
+        {
+            return new LegendConnectKnowledgeSubmissionResult(
+                false,
+                false,
+                "machine_target_retired",
+                "The machine proposal matches a retired canonical target asset.",
+                sourceLanguage,
+                pair.TargetLanguageCode,
+                pair.PairKey,
+                source.Id,
+                existingTarget.Id,
+                null);
+        }
+
+        var target =
+            existingTarget ??
+            await GetOrCreateTextUnitAsync(
+                pair.TargetLanguageCode,
+                normalizedTarget,
+                targetHash,
+                LegendConnectKnowledgeProvenance.SystemValidatedMachine,
+                cancellationToken);
+
+        // Founder/HumanVerified directional knowledge always wins.
+        var founderConflict =
+            await _db.Set<LegendTranslationAlignment>()
+                .AsNoTracking()
+                .AnyAsync(
+                    item =>
+                        item.PairKey == pair.PairKey &&
+                        item.SourceTextUnitId == source.Id &&
+                        item.TargetTextUnitId != target.Id &&
+                        item.HumanVerified &&
+                        item.SupersededUtc == null,
+                    cancellationToken);
+
+        if (founderConflict)
+        {
+            return new LegendConnectKnowledgeSubmissionResult(
+                false,
+                false,
+                "human_verified_directional_conflict",
+                "A stronger HumanVerified target blocks this machine admission.",
+                sourceLanguage,
+                pair.TargetLanguageCode,
+                pair.PairKey,
+                source.Id,
+                target.Id,
+                null);
+        }
+
+        var alignment =
+            await _db.Set<LegendTranslationAlignment>()
+                .SingleOrDefaultAsync(
+                    item =>
+                        item.PairKey == pair.PairKey &&
+                        item.SourceTextUnitId == source.Id &&
+                        item.TargetTextUnitId == target.Id &&
+                        item.SupersededUtc == null,
+                    cancellationToken);
+
+        if (alignment is not null && !alignment.HumanVerified)
+        {
+            var contradicted =
+                await _db.Set<LegendTranslationQualityEvidence>()
+                    .AsNoTracking()
+                    .AnyAsync(
+                        item =>
+                            item.ObservedAlignmentId == alignment.Id &&
+                            item.Signal == "Contradictory" &&
+                            item.ResolutionState == "Open" &&
+                            item.SupersededUtc == null,
+                        cancellationToken);
+
+            if (contradicted)
+            {
+                return new LegendConnectKnowledgeSubmissionResult(
+                    false,
+                    false,
+                    "machine_alignment_contradicted",
+                    "An unresolved contradiction blocks machine admission.",
+                    sourceLanguage,
+                    pair.TargetLanguageCode,
+                    pair.PairKey,
+                    source.Id,
+                    target.Id,
+                    alignment.Id);
+            }
+
+            alignment.QualityState = "SystemValidated";
+            alignment.Confidence =
+                Math.Max(alignment.Confidence ?? 0m, 0.98m);
+            alignment.UpdatedUtc = DateTime.UtcNow;
+        }
+
+        if (alignment is null)
+        {
+            alignment = new LegendTranslationAlignment
+            {
+                Id = Guid.NewGuid(),
+                PairKey = pair.PairKey,
+                SourceTextUnitId = source.Id,
+                TargetTextUnitId = target.Id,
+                Provider = "LegendSystemValidator",
+                Provenance =
+                    LegendConnectKnowledgeProvenance
+                        .SystemValidatedMachine,
+                Confidence = 0.98m,
+                QualityState = "SystemValidated",
+                HumanVerified = false,
+                ObservationCount = 1,
+                CreatedUtc = DateTime.UtcNow,
+                UpdatedUtc = DateTime.UtcNow
+            };
+
+            _db.Set<LegendTranslationAlignment>().Add(alignment);
+        }
+
+        await GetOrCreateContextRelationshipAsync(
+            pair.PairKey,
+            source,
+            target,
+            contextCategory,
+            usageRegister: null,
+            regionalVariant: null,
+            confidence: alignment.HumanVerified ? 1m : 0.98m,
+            qualityState:
+                alignment.HumanVerified
+                    ? "Verified"
+                    : "SystemValidated",
+            provenance:
+                alignment.HumanVerified
+                    ? alignment.Provenance
+                    : LegendConnectKnowledgeProvenance
+                        .SystemValidatedMachine,
+            cancellationToken);
+
+        await _db.SaveChangesAsync(cancellationToken);
+        await RefreshPairCoverageAsync(
+            pair.PairKey,
+            cancellationToken);
+
+        return new LegendConnectKnowledgeSubmissionResult(
+            true,
+            existingSource is not null &&
+                existingTarget is not null,
+            null,
+            alignment.HumanVerified
+                ? "Existing HumanVerified alignment was reused without downgrade."
+                : "SystemValidatedMachine directional knowledge entered the existing corpus without HumanVerified authority.",
+            sourceLanguage,
+            pair.TargetLanguageCode,
+            pair.PairKey,
+            source.Id,
+            target.Id,
+            alignment.Id);
+    }
+
+    /// <summary>
     /// Founder-approved knowledge enters the very same isolated text-unit,
     /// alignment, and contextual-intelligence pipeline as approved automated
     /// corpus work. Exact canonical duplicates are rejected before any insert
@@ -789,7 +1131,11 @@ internal sealed class LegendConnectCorpusService
                 // candidate authority for valid enabled targets so the
                 // existing planner/worker can expand only missing knowledge
                 // under its normal capacity, quality, and deduplication gates.
-                await QueueFounderSeedCandidatesAsync(source, cancellationToken);
+                await EnsureFounderSeedCandidatesAsync(
+                    source,
+                    null,
+                    null,
+                    cancellationToken);
             }
             if (pairKey is not null)
             {
@@ -1009,84 +1355,164 @@ internal sealed class LegendConnectCorpusService
         Guid? curriculumFamilyId,
         Guid? sourceCurriculumExampleId,
         CancellationToken cancellationToken = default) =>
-        QueueFounderSeedCandidatesAsync(
+        QueueSeedCandidatesAsync(
             source,
+            LegendConnectKnowledgeProvenance.FounderApproved,
+            "FounderApprovedSeed",
+            "founder-seed",
             cancellationToken,
             curriculumFamilyId,
             sourceCurriculumExampleId);
 
-    private async Task QueueFounderSeedCandidatesAsync(
+    internal Task EnsureSystemValidatedMachineSeedCandidatesAsync(
         LegendLanguageTextUnit source,
+        Guid? curriculumFamilyId,
+        Guid? sourceCurriculumExampleId,
+        CancellationToken cancellationToken = default) =>
+        QueueSeedCandidatesAsync(
+            source,
+            LegendConnectKnowledgeProvenance.SystemValidatedMachine,
+            "SystemValidatedMachineSeed",
+            "system-validated-machine-seed",
+            cancellationToken,
+            curriculumFamilyId,
+            sourceCurriculumExampleId);
+
+    private async Task QueueSeedCandidatesAsync(
+        LegendLanguageTextUnit source,
+        string candidateProvenance,
+        string category,
+        string idempotencyPrefix,
         CancellationToken cancellationToken,
         Guid? curriculumFamilyId = null,
         Guid? sourceCurriculumExampleId = null)
     {
         if (!source.IsTrainingEligible)
             return;
-        var enabledTargets = await _languages.ListEnabledTranslationLanguagesAsync(cancellationToken);
+
+        var enabledTargets =
+            await _languages.ListEnabledTranslationLanguagesAsync(
+                cancellationToken);
+
         var pending = false;
-        foreach (var target in enabledTargets.Where(item => item.IsLearningEnabled && item.IsTranslationEnabled))
+
+        foreach (var target in enabledTargets.Where(item =>
+                     item.IsLearningEnabled &&
+                     item.IsTranslationEnabled))
         {
-            if (string.Equals(source.LanguageCode, target.Code, StringComparison.OrdinalIgnoreCase))
-                continue;
-            var pair = await _languages.GetOrCreateEnabledPairAsync(source.LanguageCode, target.Code, cancellationToken);
-            if (pair is null || string.Equals(pair.SourceLanguageCode, pair.TargetLanguageCode, StringComparison.OrdinalIgnoreCase))
-                continue;
-
-            var idempotencyKey = $"founder-seed:{source.Id:D}:{pair.PairKey}";
-            var aligned = await (
-                from alignment in _db.Set<LegendTranslationAlignment>()
-                join targetUnit in _db.Set<LegendLanguageTextUnit>() on alignment.TargetTextUnitId equals targetUnit.Id
-                where alignment.PairKey == pair.PairKey && alignment.SourceTextUnitId == source.Id &&
-                    alignment.SupersededUtc == null && targetUnit.IsTrainingEligible
-                select alignment.Id)
-                .AnyAsync(cancellationToken);
-            if (aligned)
-                continue;
-
-            var existingCandidate = await _db.Set<LegendCorpusCandidate>()
-                .SingleOrDefaultAsync(item => item.IdempotencyKey == idempotencyKey, cancellationToken);
-            if (existingCandidate is not null)
+            if (string.Equals(
+                    source.LanguageCode,
+                    target.Code,
+                    StringComparison.OrdinalIgnoreCase))
             {
-                if (RestoreCandidateForMissingCoverage(existingCandidate, source, pair))
-                    pending = true;
-                // A single-entry Founder seed may have already created this
-                // canonical candidate. Tag the same candidate when it later
-                // becomes a curriculum example rather than duplicating an
-                // Azure request or a confidence observation.
-                if (curriculumFamilyId is not null &&
-                    existingCandidate.CurriculumFamilyId is null &&
-                    existingCandidate.ProcessingState is "Pending" or "Processing")
-                {
-                    existingCandidate.CurriculumFamilyId = curriculumFamilyId;
-                    existingCandidate.SourceCurriculumExampleId = sourceCurriculumExampleId;
-                    pending = true;
-                }
                 continue;
             }
 
-            _db.Set<LegendCorpusCandidate>().Add(new LegendCorpusCandidate
+            var pair =
+                await _languages.GetOrCreateEnabledPairAsync(
+                    source.LanguageCode,
+                    target.Code,
+                    cancellationToken);
+
+            if (pair is null ||
+                string.Equals(
+                    pair.SourceLanguageCode,
+                    pair.TargetLanguageCode,
+                    StringComparison.OrdinalIgnoreCase))
             {
-                Id = Guid.NewGuid(),
-                IdempotencyKey = idempotencyKey,
-                SourceLanguageCode = pair.SourceLanguageCode,
-                TargetLanguageCode = pair.TargetLanguageCode,
-                SourceText = source.Text,
-                SourceTextHash = source.NormalizedHash,
-                Category = "FounderApprovedSeed",
-                Provenance = "FounderApproved",
-                CurriculumFamilyId = curriculumFamilyId,
-                SourceCurriculumExampleId = sourceCurriculumExampleId,
-                IsApproved = true,
-                ProcessingState = "Pending",
-                CreatedUtc = DateTime.UtcNow
-            });
+                continue;
+            }
+
+            var aligned = await (
+                from alignment in _db.Set<LegendTranslationAlignment>()
+                join targetUnit in _db.Set<LegendLanguageTextUnit>()
+                    on alignment.TargetTextUnitId equals targetUnit.Id
+                where
+                    alignment.PairKey == pair.PairKey &&
+                    alignment.SourceTextUnitId == source.Id &&
+                    alignment.SupersededUtc == null &&
+                    targetUnit.IsTrainingEligible
+                select alignment.Id)
+                .AnyAsync(cancellationToken);
+
+            if (aligned)
+                continue;
+
+            // Reuse any existing exact source/direction candidate before
+            // creating provenance-specific work. This prevents duplicate
+            // Azure/provider calls when Founder, autonomous-gap, and machine
+            // curriculum paths converge on the same missing coverage.
+            var existingCandidate =
+                await _db.Set<LegendCorpusCandidate>()
+                    .Where(item =>
+                        item.SourceLanguageCode ==
+                            pair.SourceLanguageCode &&
+                        item.TargetLanguageCode ==
+                            pair.TargetLanguageCode &&
+                        item.SourceTextHash ==
+                            source.NormalizedHash)
+                    .OrderBy(item =>
+                        item.IdempotencyKey ==
+                            $"{idempotencyPrefix}:{source.Id:D}:{pair.PairKey}"
+                            ? 0
+                            : 1)
+                    .ThenBy(item => item.CreatedUtc)
+                    .FirstOrDefaultAsync(cancellationToken);
+
+            if (existingCandidate is not null)
+            {
+                if (RestoreCandidateForMissingCoverage(
+                        existingCandidate,
+                        source,
+                        pair))
+                {
+                    pending = true;
+                }
+
+                if (curriculumFamilyId is not null &&
+                    existingCandidate.CurriculumFamilyId is null &&
+                    existingCandidate.ProcessingState
+                        is "Pending" or "Processing" or "Queued")
+                {
+                    existingCandidate.CurriculumFamilyId =
+                        curriculumFamilyId;
+                    existingCandidate.SourceCurriculumExampleId =
+                        sourceCurriculumExampleId;
+                    pending = true;
+                }
+
+                continue;
+            }
+
+            _db.Set<LegendCorpusCandidate>().Add(
+                new LegendCorpusCandidate
+                {
+                    Id = Guid.NewGuid(),
+                    IdempotencyKey =
+                        $"{idempotencyPrefix}:{source.Id:D}:{pair.PairKey}",
+                    SourceLanguageCode =
+                        pair.SourceLanguageCode,
+                    TargetLanguageCode =
+                        pair.TargetLanguageCode,
+                    SourceText = source.Text,
+                    SourceTextHash =
+                        source.NormalizedHash,
+                    Category = category,
+                    Provenance = candidateProvenance,
+                    CurriculumFamilyId =
+                        curriculumFamilyId,
+                    SourceCurriculumExampleId =
+                        sourceCurriculumExampleId,
+                    IsApproved = true,
+                    ProcessingState = "Pending",
+                    CreatedUtc = DateTime.UtcNow
+                });
+
             pending = true;
         }
 
-        if (!pending)
-            return;
-        await _db.SaveChangesAsync(cancellationToken);
+        if (pending)
+            await _db.SaveChangesAsync(cancellationToken);
     }
 
     private static bool RestoreCandidateForMissingCoverage(
@@ -1544,6 +1970,17 @@ internal sealed class LegendConnectAutonomousLearningService
         }
         else if (!IsBootstrapEnabled)
             return;
+
+        // Phase 5 consumes already-SystemValidated proposals through the
+        // existing curriculum/corpus authorities before creating additional
+        // proposal work. No second worker or admission queue exists.
+        if (_curriculum is not null &&
+            await _curriculum
+                .ProcessOneSystemValidatedMachineProposalAsync(
+                    cancellationToken))
+        {
+            return;
+        }
 
         // Phase 4 remains inside this existing autonomous authority and hosted
         // cadence. Canonical validation is processed before new teacher/provider

@@ -636,6 +636,8 @@ internal static class MessagingModelConfiguration
                 .HasMaxLength(80);
             entity.Property(item => item.CanonicalValidationFailureCode)
                 .HasMaxLength(160);
+            entity.Property(item => item.CurriculumAdmissionFailureCode)
+                .HasMaxLength(160);
 
             entity.HasIndex(item => item.ProposalIdentity).IsUnique();
             entity.HasIndex(item => new
@@ -648,6 +650,12 @@ internal static class MessagingModelConfiguration
             {
                 item.ValidationState,
                 item.CanonicalValidationLeaseExpiresUtc,
+                item.CreatedUtc
+            });
+            entity.HasIndex(item => new
+            {
+                item.ValidationState,
+                item.CurriculumAdmissionLeaseExpiresUtc,
                 item.CreatedUtc
             });
 
