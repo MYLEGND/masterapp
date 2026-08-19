@@ -663,7 +663,7 @@
                                 class="legend-founder-ai-nav-button"
                                 title="Legend® Ai"
                                 aria-label="Open Legend® Ai">
-                            <img src="~/images/legend-ai/legend-logo.png"
+                            <img src="~/images/legend-ai/legendai.png"
                                  asp-append-version="true"
                                  alt="" />
                         </button>
@@ -825,10 +825,195 @@
                 <small>Utility</small>
             </a>
 
+            <div id="explorePageHealthSlot"
+                 hidden>
+                <div class="explore-group-label">System</div>
+                <div id="explorePageHealthHost"></div>
+            </div>
+
             @* Add unlimited items here — it auto-scrolls *@
         </div>
     </div>
 </aside>
+
+<script>
+(() => {
+    "use strict";
+
+    const slotId = "explorePageHealthSlot";
+    const hostId = "explorePageHealthHost";
+
+    let queued = false;
+
+    function normalizedText(node) {
+        return (node?.textContent || "")
+            .replace(/\s+/g, " ")
+            .trim();
+    }
+
+    function pageHealthText(node) {
+        return normalizedText(node);
+    }
+
+    function pageHealthElementCandidates(host) {
+        return [...document.querySelectorAll("body *")]
+            .filter((element) => {
+                if (host.contains(element)) {
+                    return false;
+                }
+
+                const text = pageHealthText(element);
+                return text === "Page Health"
+                    || text.startsWith("Page Health ")
+                    || text.includes("Page Health No active issues")
+                    || /^Page Health\s+\d+\b/.test(text);
+            })
+            .sort((left, right) => {
+                const leftChildren = left.children?.length ?? 0;
+                const rightChildren = right.children?.length ?? 0;
+
+                if (leftChildren !== rightChildren) {
+                    return leftChildren - rightChildren;
+                }
+
+                return pageHealthText(left).length - pageHealthText(right).length;
+            });
+    }
+
+    function resolvePageHealthRoot(host) {
+        const candidates = pageHealthElementCandidates(host);
+
+        for (const candidate of candidates) {
+            let current = candidate;
+
+            while (
+                current
+                && current !== document.body
+                && current !== document.documentElement
+            ) {
+                const style = window.getComputedStyle(current);
+                const rect = current.getBoundingClientRect();
+                const text = pageHealthText(current);
+
+                const containsPageHealth =
+                    text === "Page Health"
+                    || text.startsWith("Page Health ")
+                    || text.includes("Page Health No active issues")
+                    || /^Page Health\s+\d+\b/.test(text);
+
+                const isFloatingOwner =
+                    (style.position === "fixed" || style.position === "sticky")
+                    && rect.width > 80
+                    && rect.height > 28
+                    && containsPageHealth;
+
+                if (isFloatingOwner) {
+                    return current;
+                }
+
+                current = current.parentElement;
+            }
+        }
+
+        return null;
+    }
+
+    function normalizePageHealthInsideExplore(trigger) {
+        trigger.dataset.explorePageHealthRelocated = "1";
+
+        trigger.style.position = "static";
+        trigger.style.inset = "auto";
+        trigger.style.top = "auto";
+        trigger.style.right = "auto";
+        trigger.style.bottom = "auto";
+        trigger.style.left = "auto";
+        trigger.style.width = "100%";
+        trigger.style.maxWidth = "none";
+        trigger.style.margin = "0";
+        trigger.style.transform = "none";
+        trigger.style.zIndex = "auto";
+    }
+
+    function closeExploreDrawerAfterHealthOpen() {
+        const drawer = document.getElementById("exploreDrawer");
+        const overlay = document.getElementById("exploreOverlay");
+        const exploreTrigger = document.getElementById("exploreTrigger");
+
+        drawer?.classList.remove("open");
+        overlay?.classList.remove("open", "show");
+        overlay?.setAttribute("aria-hidden", "true");
+        exploreTrigger?.setAttribute("aria-expanded", "false");
+    }
+
+    function relocatePageHealthTrigger() {
+        queued = false;
+
+        const slot = document.getElementById(slotId);
+        const host = document.getElementById(hostId);
+        if (!slot || !host) {
+            return;
+        }
+
+        const alreadyMoved = host.querySelector(
+            '[data-explore-page-health-relocated="1"]'
+        );
+
+        if (alreadyMoved) {
+            slot.hidden = false;
+            return;
+        }
+
+        const trigger = resolvePageHealthRoot(host);
+        if (!trigger) {
+            return;
+        }
+
+        host.appendChild(trigger);
+        normalizePageHealthInsideExplore(trigger);
+        slot.hidden = false;
+
+        if (host.dataset.healthClickBound !== "1") {
+            host.dataset.healthClickBound = "1";
+            host.addEventListener("click", (event) => {
+                if (!event.target.closest(
+                    '[data-explore-page-health-relocated="1"]'
+                )) {
+                    return;
+                }
+
+                window.requestAnimationFrame(
+                    closeExploreDrawerAfterHealthOpen
+                );
+            });
+        }
+    }
+
+    function queueRelocation() {
+        if (queued) {
+            return;
+        }
+
+        queued = true;
+        window.requestAnimationFrame(relocatePageHealthTrigger);
+    }
+
+    if (document.readyState === "loading") {
+        document.addEventListener(
+            "DOMContentLoaded",
+            queueRelocation,
+            { once: true }
+        );
+    } else {
+        queueRelocation();
+    }
+
+    const observer = new MutationObserver(queueRelocation);
+    observer.observe(document.documentElement, {
+        childList: true,
+        subtree: true
+    });
+})();
+</script>
 
 @await Html.PartialAsync("~/Views/Messaging/_LifeHacModal.cshtml")
 

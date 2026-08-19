@@ -1,127 +1,221 @@
 (() => {
     'use strict';
 
-    const trigger =
-        document.getElementById(
-            'legendFounderAiTrigger'
-        );
+    const trigger = document.getElementById('legendFounderAiTrigger');
+    const modalElement = document.getElementById('legendFounderAiModal');
 
-    const modalElement =
-        document.getElementById(
-            'legendFounderAiModal'
-        );
-
-    if (
-        !trigger ||
-        !modalElement ||
-        typeof bootstrap === 'undefined'
-    ) {
+    if (!trigger || !modalElement || typeof bootstrap === 'undefined') {
         return;
     }
 
-    const STORAGE_KEY =
-        'legendFounderAi.conversations.v1';
-
+    const STORAGE_KEY = 'legendFounderAi.conversations.v1';
+    const UI_STORAGE_KEY = 'legendFounderAi.ui.v2';
     const MAX_CONVERSATIONS = 30;
     const MAX_MESSAGES = 30;
+    const MOBILE_QUERY = '(max-width: 820px)';
 
-    const transcript =
-        document.getElementById(
-            'legendFounderAiTranscript'
-        );
+    const transcript = document.getElementById('legendFounderAiTranscript');
+    const welcome = document.getElementById('legendFounderAiWelcome');
+    const form = document.getElementById('legendFounderAiForm');
+    const input = document.getElementById('legendFounderAiInput');
+    const send = document.getElementById('legendFounderAiSend');
+    const newConversation = document.getElementById('legendFounderAiNew');
+    const clearHistory = document.getElementById('legendFounderAiClearHistory');
+    const history = document.getElementById('legendFounderAiHistory');
+    const historyEmpty = document.getElementById('legendFounderAiHistoryEmpty');
+    const conversationCount = document.getElementById('legendFounderAiConversationCount');
+    const status = document.getElementById('legendFounderAiStatus');
+    const subtitle = document.getElementById('legendFounderAiSubtitle');
+    const conversationState = document.getElementById('legendFounderAiConversationState');
+    const sidebar = document.getElementById('legendFounderAiSidebar');
+    const sidebarCollapse = document.getElementById('legendFounderAiSidebarCollapse');
+    const sidebarScrim = document.getElementById('legendFounderAiSidebarScrim');
+    const mobileMenu = document.getElementById('legendFounderAiMobileMenu');
+    const mobileNew = document.getElementById('legendFounderAiMobileNew');
 
-    const welcome =
-        document.getElementById(
-            'legendFounderAiWelcome'
-        );
+    const modeButtons = Array.from(
+        modalElement.querySelectorAll('[data-legend-ai-mode]')
+    );
 
-    const form =
-        document.getElementById(
-            'legendFounderAiForm'
-        );
+    const modal = bootstrap.Modal.getOrCreateInstance(modalElement);
 
-    const input =
-        document.getElementById(
-            'legendFounderAiInput'
-        );
-
-    const send =
-        document.getElementById(
-            'legendFounderAiSend'
-        );
-
-    const newConversation =
-        document.getElementById(
-            'legendFounderAiNew'
-        );
-
-    const clearHistory =
-        document.getElementById(
-            'legendFounderAiClearHistory'
-        );
-
-    const history =
-        document.getElementById(
-            'legendFounderAiHistory'
-        );
-
-    const historyEmpty =
-        document.getElementById(
-            'legendFounderAiHistoryEmpty'
-        );
-
-    const status =
-        document.getElementById(
-            'legendFounderAiStatus'
-        );
-
-    const subtitle =
-        document.getElementById(
-            'legendFounderAiSubtitle'
-        );
-
-    const conversationState =
-        document.getElementById(
-            'legendFounderAiConversationState'
-        );
-
-    const modeButtons =
-        Array.from(
-            document.querySelectorAll(
-                '[data-legend-ai-mode]'
-            )
-        );
-
-    const modal =
-        bootstrap.Modal.getOrCreateInstance(
-            modalElement
-        );
+    const logoSource =
+        modalElement.querySelector('.legend-founder-ai-logo')?.getAttribute('src') ||
+        '/images/legend-ai/legendai.png';
 
     let busy = false;
-
     let state = loadState();
+    let uiState = loadUiState();
+    let lastTranscriptScrollTop = 0;
 
     ensureActiveConversation();
+    applyDesktopSidebarState();
+    syncViewportHeight();
 
-    trigger.addEventListener(
-        'click',
-        () => {
-            modal.show();
+    function isMobile() {
+        return window.matchMedia(MOBILE_QUERY).matches;
+    }
 
-            renderAll();
+    function loadUiState() {
+        try {
+            const raw = window.localStorage.getItem(UI_STORAGE_KEY);
+            const parsed = raw ? JSON.parse(raw) : null;
 
-            window.setTimeout(
-                () => input?.focus(),
-                160
+            return {
+                sidebarCollapsed:
+                    parsed?.sidebarCollapsed === true
+            };
+        } catch {
+            return {
+                sidebarCollapsed: false
+            };
+        }
+    }
+
+    function saveUiState() {
+        try {
+            window.localStorage.setItem(
+                UI_STORAGE_KEY,
+                JSON.stringify(uiState)
+            );
+        } catch {
+            // UI preference persistence is optional.
+        }
+    }
+
+    function syncViewportHeight() {
+        const height =
+            window.visualViewport?.height ||
+            window.innerHeight;
+
+        modalElement.style.setProperty(
+            '--legend-ai-viewport-height',
+            `${Math.round(height)}px`
+        );
+    }
+
+    function focusComposer() {
+        if (isMobile()) {
+            return;
+        }
+
+        window.setTimeout(
+            () => input?.focus({ preventScroll: true }),
+            80
+        );
+    }
+
+    function applyDesktopSidebarState() {
+        if (isMobile()) {
+            modalElement.classList.remove('is-sidebar-collapsed');
+            sidebarCollapse?.setAttribute('aria-expanded', 'true');
+            return;
+        }
+
+        modalElement.classList.toggle(
+            'is-sidebar-collapsed',
+            uiState.sidebarCollapsed
+        );
+
+        sidebarCollapse?.setAttribute(
+            'aria-expanded',
+            uiState.sidebarCollapsed ? 'false' : 'true'
+        );
+
+        if (sidebarCollapse) {
+            sidebarCollapse.title =
+                uiState.sidebarCollapsed
+                    ? 'Expand sidebar'
+                    : 'Collapse sidebar';
+
+            sidebarCollapse.setAttribute(
+                'aria-label',
+                uiState.sidebarCollapsed
+                    ? 'Expand conversation sidebar'
+                    : 'Collapse conversation sidebar'
             );
         }
+    }
+
+    function toggleDesktopSidebar() {
+        if (isMobile()) {
+            return;
+        }
+
+        uiState.sidebarCollapsed = !uiState.sidebarCollapsed;
+        saveUiState();
+        applyDesktopSidebarState();
+    }
+
+    function setSidebarOpen(open) {
+        if (!isMobile()) {
+            modalElement.classList.remove('is-sidebar-open');
+            mobileMenu?.setAttribute('aria-expanded', 'false');
+            sidebar?.removeAttribute('aria-hidden');
+            return;
+        }
+
+        modalElement.classList.toggle('is-sidebar-open', open);
+        mobileMenu?.setAttribute(
+            'aria-expanded',
+            open ? 'true' : 'false'
+        );
+        sidebar?.setAttribute(
+            'aria-hidden',
+            open ? 'false' : 'true'
+        );
+    }
+
+    function setReadingMode(active) {
+        const next =
+            isMobile() &&
+            active === true &&
+            !modalElement.classList.contains('is-sidebar-open');
+
+        modalElement.classList.toggle('is-reading', next);
+    }
+
+    trigger.addEventListener('click', () => {
+        syncViewportHeight();
+        setReadingMode(false);
+        setSidebarOpen(false);
+        applyDesktopSidebarState();
+        modal.show();
+        renderAll({ forceBottom: true });
+        focusComposer();
+    });
+
+    modalElement.addEventListener('shown.bs.modal', () => {
+        syncViewportHeight();
+
+        if (isMobile()) {
+            input?.blur();
+            sidebar?.setAttribute('aria-hidden', 'true');
+        }
+    });
+
+    modalElement.addEventListener('hidden.bs.modal', () => {
+        setReadingMode(false);
+        setSidebarOpen(false);
+        input?.blur();
+    });
+
+    window.addEventListener('resize', () => {
+        syncViewportHeight();
+        setReadingMode(false);
+        setSidebarOpen(false);
+        applyDesktopSidebarState();
+    });
+
+    window.visualViewport?.addEventListener(
+        'resize',
+        syncViewportHeight
     );
 
     function createId() {
         if (
             window.crypto &&
-            typeof window.crypto.randomUUID ===
-                'function'
+            typeof window.crypto.randomUUID === 'function'
         ) {
             return window.crypto.randomUUID();
         }
@@ -129,17 +223,12 @@
         return (
             Date.now().toString(36) +
             '-' +
-            Math.random()
-                .toString(36)
-                .slice(2)
+            Math.random().toString(36).slice(2)
         );
     }
 
-    function newConversationRecord(
-        mode = 'legend'
-    ) {
-        const now =
-            new Date().toISOString();
+    function newConversationRecord(mode = 'legend') {
+        const now = new Date().toISOString();
 
         return {
             id: createId(),
@@ -152,38 +241,28 @@
     }
 
     function defaultState() {
-        const conversation =
-            newConversationRecord();
+        const conversation = newConversationRecord();
 
         return {
-            activeConversationId:
-                conversation.id,
-
-            conversations: [
-                conversation
-            ]
+            activeConversationId: conversation.id,
+            conversations: [conversation]
         };
     }
 
     function loadState() {
         try {
             const raw =
-                window.localStorage.getItem(
-                    STORAGE_KEY
-                );
+                window.localStorage.getItem(STORAGE_KEY);
 
             if (!raw) {
                 return defaultState();
             }
 
-            const parsed =
-                JSON.parse(raw);
+            const parsed = JSON.parse(raw);
 
             if (
                 !parsed ||
-                !Array.isArray(
-                    parsed.conversations
-                )
+                !Array.isArray(parsed.conversations)
             ) {
                 return defaultState();
             }
@@ -193,21 +272,12 @@
                     .filter(
                         conversation =>
                             conversation &&
-                            typeof conversation.id ===
-                                'string' &&
-                            Array.isArray(
-                                conversation.messages
-                            )
+                            typeof conversation.id === 'string' &&
+                            Array.isArray(conversation.messages)
                     )
-                    .slice(
-                        0,
-                        MAX_CONVERSATIONS
-                    );
+                    .slice(0, MAX_CONVERSATIONS);
 
-            if (
-                parsed.conversations.length ===
-                0
-            ) {
+            if (parsed.conversations.length === 0) {
                 return defaultState();
             }
 
@@ -223,25 +293,17 @@
                 state.conversations
                     .sort(
                         (a, b) =>
-                            new Date(
-                                b.updatedUtc
-                            ) -
-                            new Date(
-                                a.updatedUtc
-                            )
+                            new Date(b.updatedUtc) -
+                            new Date(a.updatedUtc)
                     )
-                    .slice(
-                        0,
-                        MAX_CONVERSATIONS
-                    );
+                    .slice(0, MAX_CONVERSATIONS);
 
             window.localStorage.setItem(
                 STORAGE_KEY,
                 JSON.stringify(state)
             );
         } catch {
-            // Browser history persistence is
-            // optional. Conversation continues.
+            // Browser conversation persistence is optional.
         }
     }
 
@@ -257,15 +319,10 @@
             return found;
         }
 
-        const conversation =
-            newConversationRecord();
+        const conversation = newConversationRecord();
 
-        state.conversations.unshift(
-            conversation
-        );
-
-        state.activeConversationId =
-            conversation.id;
+        state.conversations.unshift(conversation);
+        state.activeConversationId = conversation.id;
 
         saveState();
 
@@ -281,8 +338,7 @@
             return;
         }
 
-        const conversation =
-            activeConversation();
+        const conversation = activeConversation();
 
         conversation.mode =
             nextMode === 'teacher'
@@ -293,9 +349,9 @@
             new Date().toISOString();
 
         saveState();
-        renderAll();
-
-        input?.focus();
+        setReadingMode(false);
+        renderAll({ forceBottom: false });
+        focusComposer();
     }
 
     function startNewConversation() {
@@ -303,29 +359,23 @@
             return;
         }
 
-        const current =
-            activeConversation();
-
+        const current = activeConversation();
         const conversation =
-            newConversationRecord(
-                current.mode
-            );
+            newConversationRecord(current.mode);
 
-        state.conversations.unshift(
-            conversation
-        );
-
-        state.activeConversationId =
-            conversation.id;
+        state.conversations.unshift(conversation);
+        state.activeConversationId = conversation.id;
 
         saveState();
-        renderAll();
+        setSidebarOpen(false);
+        setReadingMode(false);
+        renderAll({ forceBottom: true });
 
         if (status) {
             status.textContent = '';
         }
 
-        input?.focus();
+        focusComposer();
     }
 
     function openConversation(id) {
@@ -335,8 +385,7 @@
 
         const conversation =
             state.conversations.find(
-                item =>
-                    item.id === id
+                item => item.id === id
             );
 
         if (!conversation) {
@@ -346,9 +395,10 @@
         state.activeConversationId = id;
 
         saveState();
-        renderAll();
-
-        input?.focus();
+        setSidebarOpen(false);
+        setReadingMode(false);
+        renderAll({ forceBottom: true });
+        focusComposer();
     }
 
     function clearAllHistory() {
@@ -356,42 +406,33 @@
             return;
         }
 
-        const replacement =
-            defaultState();
-
-        state = replacement;
+        state = defaultState();
 
         try {
-            window.localStorage.removeItem(
-                STORAGE_KEY
-            );
+            window.localStorage.removeItem(STORAGE_KEY);
         } catch {
         }
 
         saveState();
-        renderAll();
+        setSidebarOpen(false);
+        setReadingMode(false);
+        renderAll({ forceBottom: true });
 
         if (status) {
             status.textContent = '';
         }
 
-        input?.focus();
+        focusComposer();
     }
 
-    function updateConversationTitle(
-        conversation
-    ) {
-        if (
-            conversation.title !==
-            'New conversation'
-        ) {
+    function updateConversationTitle(conversation) {
+        if (conversation.title !== 'New conversation') {
             return;
         }
 
         const firstUser =
             conversation.messages.find(
-                message =>
-                    message.role === 'user'
+                message => message.role === 'user'
             );
 
         if (!firstUser) {
@@ -405,31 +446,56 @@
 
         if (title.length > 42) {
             title =
-                title.slice(0, 39) +
-                '…';
+                title.slice(0, 39) + '…';
         }
 
         conversation.title =
             title || 'New conversation';
     }
 
-    function renderAll() {
+    function isTranscriptNearBottom() {
+        if (!transcript) {
+            return true;
+        }
+
+        return (
+            transcript.scrollHeight -
+            transcript.scrollTop -
+            transcript.clientHeight
+        ) < 72;
+    }
+
+    function renderAll({ forceBottom = false } = {}) {
+        const wasNearBottom =
+            isTranscriptNearBottom();
+
+        const priorScrollTop =
+            transcript?.scrollTop || 0;
+
         renderModes();
         renderHistory();
         renderConversation();
+
+        if (!transcript) {
+            return;
+        }
+
+        if (forceBottom || wasNearBottom) {
+            scrollToBottom();
+        } else {
+            transcript.scrollTop = priorScrollTop;
+        }
+
+        lastTranscriptScrollTop =
+            transcript.scrollTop;
     }
 
     function renderModes() {
-        const conversation =
-            activeConversation();
+        const conversation = activeConversation();
 
-        for (
-            const button
-            of modeButtons
-        ) {
+        for (const button of modeButtons) {
             const active =
-                button.dataset
-                    .legendAiMode ===
+                button.dataset.legendAiMode ===
                 conversation.mode;
 
             button.classList.toggle(
@@ -439,34 +505,27 @@
 
             button.setAttribute(
                 'aria-selected',
-                active
-                    ? 'true'
-                    : 'false'
+                active ? 'true' : 'false'
             );
         }
 
         if (subtitle) {
             subtitle.textContent =
-                conversation.mode ===
-                'teacher'
+                conversation.mode === 'teacher'
                     ? 'External language teacher & strategy'
                     : 'Governed intelligence conversation';
         }
 
         if (input) {
             input.placeholder =
-                conversation.mode ===
-                'teacher'
-                    ? 'Talk directly with the OpenAI Teacher…'
-                    : 'Talk to Legend® Ai…';
+                conversation.mode === 'teacher'
+                    ? 'Message the OpenAI Teacher…'
+                    : 'Message Legend® Ai…';
         }
     }
 
     function renderHistory() {
-        if (
-            !history ||
-            !historyEmpty
-        ) {
+        if (!history || !historyEmpty) {
             return;
         }
 
@@ -476,21 +535,19 @@
             [...state.conversations]
                 .sort(
                     (a, b) =>
-                        new Date(
-                            b.updatedUtc
-                        ) -
-                        new Date(
-                            a.updatedUtc
-                        )
+                        new Date(b.updatedUtc) -
+                        new Date(a.updatedUtc)
                 );
 
-        if (
-            conversations.length === 0
-        ) {
+        if (conversationCount) {
+            conversationCount.textContent =
+                String(conversations.length);
+        }
+
+        if (conversations.length === 0) {
             historyEmpty.classList.add(
                 'is-visible'
             );
-
             return;
         }
 
@@ -498,17 +555,11 @@
             'is-visible'
         );
 
-        for (
-            const conversation
-            of conversations
-        ) {
+        for (const conversation of conversations) {
             const button =
-                document.createElement(
-                    'button'
-                );
+                document.createElement('button');
 
             button.type = 'button';
-
             button.className =
                 'legend-founder-ai-history-item';
 
@@ -516,23 +567,17 @@
                 conversation.id ===
                 state.activeConversationId
             ) {
-                button.classList.add(
-                    'is-active'
-                );
+                button.classList.add('is-active');
             }
 
-            const main =
-                document.createElement(
-                    'span'
-                );
+            const mainCopy =
+                document.createElement('span');
 
-            main.className =
+            mainCopy.className =
                 'legend-founder-ai-history-main';
 
             const title =
-                document.createElement(
-                    'span'
-                );
+                document.createElement('span');
 
             title.className =
                 'legend-founder-ai-history-title';
@@ -542,32 +587,26 @@
                 'New conversation';
 
             const preview =
-                document.createElement(
-                    'span'
-                );
+                document.createElement('span');
 
             preview.className =
                 'legend-founder-ai-history-preview';
 
             const last =
                 conversation.messages[
-                    conversation.messages
-                        .length - 1
+                    conversation.messages.length - 1
                 ];
 
             preview.textContent =
                 last?.content ||
                 (
-                    conversation.mode ===
-                    'teacher'
+                    conversation.mode === 'teacher'
                         ? 'OpenAI Teacher'
                         : 'Legend® Ai'
                 );
 
             const time =
-                document.createElement(
-                    'span'
-                );
+                document.createElement('span');
 
             time.className =
                 'legend-founder-ai-history-time';
@@ -577,10 +616,10 @@
                     conversation.updatedUtc
                 );
 
-            main.appendChild(title);
-            main.appendChild(preview);
+            mainCopy.appendChild(title);
+            mainCopy.appendChild(preview);
 
-            button.appendChild(main);
+            button.appendChild(mainCopy);
             button.appendChild(time);
 
             button.addEventListener(
@@ -591,21 +630,15 @@
                     )
             );
 
-            history.appendChild(
-                button
-            );
+            history.appendChild(button);
         }
     }
 
-    function formatRelativeTime(
-        iso
-    ) {
+    function formatRelativeTime(iso) {
         const timestamp =
             new Date(iso).getTime();
 
-        if (
-            Number.isNaN(timestamp)
-        ) {
+        if (Number.isNaN(timestamp)) {
             return '';
         }
 
@@ -613,9 +646,7 @@
             Date.now() - timestamp;
 
         const minutes =
-            Math.floor(
-                elapsed / 60000
-            );
+            Math.floor(elapsed / 60000);
 
         if (minutes < 1) {
             return 'Now';
@@ -626,32 +657,27 @@
         }
 
         const hours =
-            Math.floor(
-                minutes / 60
-            );
+            Math.floor(minutes / 60);
 
         if (hours < 24) {
             return `${hours}h`;
         }
 
         const days =
-            Math.floor(
-                hours / 24
-            );
+            Math.floor(hours / 24);
 
         if (days < 7) {
             return `${days}d`;
         }
 
-        return new Date(
-            timestamp
-        ).toLocaleDateString(
-            undefined,
-            {
-                month: 'short',
-                day: 'numeric'
-            }
-        );
+        return new Date(timestamp)
+            .toLocaleDateString(
+                undefined,
+                {
+                    month: 'short',
+                    day: 'numeric'
+                }
+            );
     }
 
     function renderConversation() {
@@ -664,20 +690,14 @@
 
         transcript.replaceChildren();
 
-        if (
-            conversation.messages
-                .length === 0
-        ) {
+        if (conversation.messages.length === 0) {
             if (welcome) {
                 transcript.appendChild(
                     welcome.cloneNode(true)
                 );
             }
         } else {
-            for (
-                const message
-                of conversation.messages
-            ) {
+            for (const message of conversation.messages) {
                 appendBubble(
                     message.role,
                     message.content,
@@ -691,8 +711,6 @@
                 conversation.title ||
                 'New conversation';
         }
-
-        scrollToBottom();
     }
 
     function appendBubble(
@@ -704,36 +722,47 @@
             return;
         }
 
-        const shell =
-            document.createElement(
-                'div'
-            );
+        const message =
+            document.createElement('article');
 
-        shell.className =
+        message.className =
             `legend-founder-ai-message ${
                 role === 'user'
                     ? 'is-user'
                     : 'is-assistant'
             }`;
 
-        const bubble =
-            document.createElement(
-                'div'
+        if (role !== 'user') {
+            const mark =
+                document.createElement('span');
+
+            mark.className =
+                'legend-founder-ai-message-mark';
+
+            const logo =
+                document.createElement('img');
+
+            logo.src = logoSource;
+            logo.alt = '';
+            logo.setAttribute(
+                'aria-hidden',
+                'true'
             );
+
+            mark.appendChild(logo);
+            message.appendChild(mark);
+        }
+
+        const bubble =
+            document.createElement('div');
 
         bubble.className =
             'legend-founder-ai-bubble';
 
-        bubble.textContent =
-            content;
+        bubble.textContent = content;
 
-        shell.appendChild(
-            bubble
-        );
-
-        transcript.appendChild(
-            shell
-        );
+        message.appendChild(bubble);
+        transcript.appendChild(message);
 
         if (scroll) {
             scrollToBottom();
@@ -747,6 +776,11 @@
 
         transcript.scrollTop =
             transcript.scrollHeight;
+
+        lastTranscriptScrollTop =
+            transcript.scrollTop;
+
+        setReadingMode(false);
     }
 
     function setBusy(
@@ -756,36 +790,31 @@
         busy = value;
 
         if (send) {
-            send.disabled =
-                value;
+            send.disabled = value;
         }
 
         if (input) {
-            input.disabled =
-                value;
+            input.disabled = value;
         }
 
         if (newConversation) {
-            newConversation.disabled =
-                value;
+            newConversation.disabled = value;
+        }
+
+        if (mobileNew) {
+            mobileNew.disabled = value;
         }
 
         if (clearHistory) {
-            clearHistory.disabled =
-                value;
+            clearHistory.disabled = value;
         }
 
-        for (
-            const button
-            of modeButtons
-        ) {
-            button.disabled =
-                value;
+        for (const button of modeButtons) {
+            button.disabled = value;
         }
 
         if (status) {
-            status.textContent =
-                message;
+            status.textContent = message;
         }
     }
 
@@ -794,16 +823,13 @@
             return;
         }
 
-        input.style.height =
-            'auto';
+        input.style.height = 'auto';
 
         input.style.height =
-            `${
-                Math.min(
-                    input.scrollHeight,
-                    145
-                )
-            }px`;
+            `${Math.min(
+                input.scrollHeight,
+                isMobile() ? 138 : 152
+            )}px`;
     }
 
     input?.addEventListener(
@@ -812,11 +838,21 @@
     );
 
     input?.addEventListener(
+        'focus',
+        () => {
+            setReadingMode(false);
+            window.setTimeout(
+                syncViewportHeight,
+                40
+            );
+        }
+    );
+
+    input?.addEventListener(
         'keydown',
         event => {
             if (
-                event.key ===
-                    'Enter' &&
+                event.key === 'Enter' &&
                 !event.shiftKey
             ) {
                 event.preventDefault();
@@ -828,28 +864,86 @@
         }
     );
 
-    newConversation
-        ?.addEventListener(
-            'click',
-            startNewConversation
-        );
+    transcript?.addEventListener(
+        'scroll',
+        () => {
+            if (!isMobile()) {
+                return;
+            }
 
-    clearHistory
-        ?.addEventListener(
-            'click',
-            clearAllHistory
-        );
+            const current =
+                transcript.scrollTop;
 
-    for (
-        const button
-        of modeButtons
-    ) {
+            const delta =
+                current -
+                lastTranscriptScrollTop;
+
+            const nearBottom =
+                isTranscriptNearBottom();
+
+            if (nearBottom) {
+                setReadingMode(false);
+            } else if (
+                delta > 6 &&
+                current > 44
+            ) {
+                setReadingMode(true);
+                setSidebarOpen(false);
+                input?.blur();
+            } else if (delta < -6) {
+                setReadingMode(false);
+            }
+
+            lastTranscriptScrollTop =
+                current;
+        },
+        { passive: true }
+    );
+
+    sidebarCollapse?.addEventListener(
+        'click',
+        toggleDesktopSidebar
+    );
+
+    newConversation?.addEventListener(
+        'click',
+        startNewConversation
+    );
+
+    mobileNew?.addEventListener(
+        'click',
+        startNewConversation
+    );
+
+    clearHistory?.addEventListener(
+        'click',
+        clearAllHistory
+    );
+
+    mobileMenu?.addEventListener(
+        'click',
+        () => {
+            setReadingMode(false);
+
+            setSidebarOpen(
+                !modalElement.classList
+                    .contains('is-sidebar-open')
+            );
+        }
+    );
+
+    sidebarScrim?.addEventListener(
+        'click',
+        () =>
+            setSidebarOpen(false)
+    );
+
+    for (const button of modeButtons) {
         button.addEventListener(
             'click',
             () =>
                 setMode(
-                    button.dataset
-                        .legendAiMode ||
+                    button.dataset.legendAiMode ||
                     'legend'
                 )
         );
@@ -860,10 +954,7 @@
         async event => {
             event.preventDefault();
 
-            if (
-                busy ||
-                !input
-            ) {
+            if (busy || !input) {
                 return;
             }
 
@@ -883,36 +974,30 @@
             });
 
             if (
-                conversation.messages
-                    .length >
+                conversation.messages.length >
                 MAX_MESSAGES
             ) {
                 conversation.messages.splice(
                     0,
-                    conversation.messages
-                        .length -
-                        MAX_MESSAGES
+                    conversation.messages.length -
+                    MAX_MESSAGES
                 );
             }
 
             conversation.updatedUtc =
                 new Date().toISOString();
 
-            updateConversationTitle(
-                conversation
-            );
-
+            updateConversationTitle(conversation);
             saveState();
 
             input.value = '';
-
             resizeInput();
-            renderAll();
+            setReadingMode(false);
+            renderAll({ forceBottom: true });
 
             setBusy(
                 true,
-                conversation.mode ===
-                    'teacher'
+                conversation.mode === 'teacher'
                     ? 'OpenAI Teacher is reasoning…'
                     : 'Legend® Ai is reasoning and may inspect governed system state…'
             );
@@ -925,33 +1010,24 @@
 
                 const response =
                     await fetch(
-                        modalElement.dataset
-                            .chatUrl,
+                        modalElement.dataset.chatUrl,
                         {
                             method: 'POST',
-
-                            credentials:
-                                'same-origin',
-
+                            credentials: 'same-origin',
                             headers: {
                                 'Content-Type':
                                     'application/json',
-
                                 'RequestVerificationToken':
                                     token,
-
                                 'X-Requested-With':
                                     'XMLHttpRequest'
                             },
-
                             body:
                                 JSON.stringify({
                                     mode:
                                         conversation.mode,
-
                                     messages:
-                                        conversation
-                                            .messages
+                                        conversation.messages
                                 })
                         }
                     );
@@ -994,15 +1070,13 @@
                 });
 
                 if (
-                    conversation.messages
-                        .length >
+                    conversation.messages.length >
                     MAX_MESSAGES
                 ) {
                     conversation.messages.splice(
                         0,
-                        conversation.messages
-                            .length -
-                            MAX_MESSAGES
+                        conversation.messages.length -
+                        MAX_MESSAGES
                     );
                 }
 
@@ -1010,11 +1084,9 @@
                     new Date().toISOString();
 
                 saveState();
-                renderAll();
-
+                renderAll({ forceBottom: true });
                 setBusy(false, '');
-
-                input.focus();
+                focusComposer();
             } catch (error) {
                 setBusy(
                     false,
@@ -1023,10 +1095,10 @@
                         : 'Legend® Ai could not complete that response.'
                 );
 
-                input.focus();
+                focusComposer();
             }
         }
     );
 
-    renderAll();
+    renderAll({ forceBottom: true });
 })();
