@@ -4,12 +4,13 @@ on:
   push:
     branches:
       - fix/legend-founder-provider-resilience-20260819
-  pull_request:
-    branches:
-      - meta-authority-cleanup
 
 permissions:
   contents: write
+
+concurrency:
+  group: legend-founder-provider-resilience-repair
+  cancel-in-progress: true
 
 jobs:
   repair:
