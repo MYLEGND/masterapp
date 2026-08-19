@@ -97,7 +97,7 @@ struct LegendApplicationShell: View {
     @State private var selectedTab: LegendAppTab = .home
     @ObservedObject private var messages: MessagingStore
     @ObservedObject private var social: MobileSocialStore
-    @StateObject private var legendFounderAi: LegendFounderAiStore
+    @ObservedObject private var legendFounderAi: LegendFounderAiStore
     @ObservedObject private var activity: LegendDailyActivityStore
     @State private var isMessageThreadActive = false
     @State private var pendingMessageConversationID: UUID?
@@ -108,6 +108,7 @@ struct LegendApplicationShell: View {
         currentSession: MobileSession,
         coordinator: MobileSessionCoordinator,
         bootstrap: LegendApplicationBootstrapCoordinator,
+        legendFounderAi: LegendFounderAiStore,
         onSignOut: @escaping () -> Void
     ) {
         self.currentSession = currentSession
@@ -117,11 +118,8 @@ struct LegendApplicationShell: View {
         _account = ObservedObject(wrappedValue: bootstrap.stores.account)
         _messages = ObservedObject(wrappedValue: bootstrap.stores.messaging)
         _social = ObservedObject(wrappedValue: bootstrap.stores.social)
-        _legendFounderAi = StateObject(
-            wrappedValue:
-                coordinator.makeLegendFounderAiStore(
-                    participantType:
-                        currentSession.actor.identity.participantType))
+        _legendFounderAi = ObservedObject(
+            wrappedValue: legendFounderAi)
         _activity = ObservedObject(wrappedValue: bootstrap.activity)
     }
 
@@ -466,34 +464,36 @@ private struct LegendAppBrandBar: View {
     let openLegendAi: () -> Void
 
     var body: some View {
-        HStack(spacing: LegendNextSpacing.sm) {
-            homeActionButton(
-                systemImage: "plus",
-                label: "Create a Legend update",
-                action: .create)
-
-            Spacer(minLength: LegendNextSpacing.sm)
-
+        ZStack {
             Text("LEGEND®")
                 .font(LegendNextTypography.wordmark)
                 .tracking(LegendSharedDesign.tracking("wordmark"))
                 .foregroundStyle(wordmarkColor)
+                .frame(maxWidth: .infinity)
                 .accessibilityAddTraits(.isHeader)
 
-            Spacer(minLength: LegendNextSpacing.sm)
+            HStack(spacing: LegendNextSpacing.sm) {
+                homeActionButton(
+                    systemImage: "plus",
+                    label: "Create a Legend update",
+                    action: .create)
 
-            if showsLegendAi {
-                LegendFounderAiLauncherButton(
-                    action: openLegendAi,
-                    size: 44)
+                Spacer(minLength: LegendNextSpacing.sm)
+
+                if showsLegendAi {
+                    LegendFounderAiLauncherButton(
+                        action: openLegendAi,
+                        size: 44)
+                }
+
+                homeActionButton(
+                    systemImage: "heart",
+                    label: notificationAccessibilityLabel,
+                    action: .notifications,
+                    badge: activityCount)
             }
-
-            homeActionButton(
-                systemImage: "heart",
-                label: notificationAccessibilityLabel,
-                action: .notifications,
-                badge: activityCount)
         }
+        .frame(maxWidth: .infinity)
         .padding(.horizontal, LegendNextSpacing.sm)
         .padding(.vertical, LegendNextSpacing.micro)
         .background(surfaceColor)

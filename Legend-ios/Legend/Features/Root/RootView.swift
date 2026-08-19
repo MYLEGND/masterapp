@@ -365,6 +365,7 @@ private struct AuthenticatedHomeView: View {
     let currentSession: MobileSession
     @ObservedObject private var coordinator: MobileSessionCoordinator
     @StateObject private var bootstrap: LegendApplicationBootstrapCoordinator
+    @StateObject private var legendFounderAi: LegendFounderAiStore
     @State private var notificationSynchronizationInFlight = false
     @State private var pushDeviceRegistrationInFlight = false
 
@@ -374,6 +375,12 @@ private struct AuthenticatedHomeView: View {
         _bootstrap = StateObject(wrappedValue: LegendApplicationBootstrapCoordinator(
             currentSession: currentSession,
             coordinator: coordinator))
+
+        _legendFounderAi = StateObject(
+            wrappedValue:
+                coordinator.makeLegendFounderAiStore(
+                    participantType:
+                        currentSession.actor.identity.participantType))
     }
 
     var body: some View {
@@ -386,6 +393,7 @@ private struct AuthenticatedHomeView: View {
                     currentSession: currentSession,
                     coordinator: coordinator,
                     bootstrap: bootstrap,
+                    legendFounderAi: legendFounderAi,
                     onSignOut: {
                         Task { await signOut() }
                     })
