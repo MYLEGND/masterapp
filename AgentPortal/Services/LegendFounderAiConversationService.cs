@@ -44,6 +44,8 @@ public sealed class LegendFounderAiConversationService
     private readonly ILogger<LegendFounderAiConversationService> _logger;
     private readonly int _timeoutSeconds;
     private readonly int _maxOutputTokens;
+    private readonly string _reasoningEffort;
+    private readonly string _serviceTier;
 
     private static readonly JsonSerializerOptions JsonOptions =
         new(JsonSerializerDefaults.Web)
@@ -77,6 +79,16 @@ public sealed class LegendFounderAiConversationService
                     5_000,
                 1_500,
                 8_000);
+
+        _reasoningEffort =
+            NormalizeReasoningEffort(
+                configuration[
+                    "OpenAI:LegendFounderAiReasoningEffort"]);
+
+        _serviceTier =
+            NormalizeServiceTier(
+                configuration[
+                    "OpenAI:LegendFounderAiServiceTier"]);
     }
 
     public async Task<LegendFounderAiChatResponse> ReplyAsync(
@@ -469,6 +481,13 @@ public sealed class LegendFounderAiConversationService
             // context or accumulated tool results exceed model context,
             // discard the oldest input items instead of failing the request.
             truncation = "auto",
+
+            reasoning = new
+            {
+                effort = _reasoningEffort
+            },
+
+            service_tier = _serviceTier,
 
             max_output_tokens = _maxOutputTokens
         };
@@ -1351,6 +1370,11 @@ public sealed class LegendFounderAiConversationService
         [
             new
             {
+                type = "web_search",
+                search_context_size = "medium"
+            },
+            new
+            {
                 type = "function",
                 name = "legend_system_overview",
                 description =
@@ -1869,8 +1893,12 @@ CRITICAL GOVERNANCE:
 - You are conversational reasoning, not a new LEGEND authority.
 - Never claim a current LEGEND fact without inspecting the provided read-only tools when the answer depends on current system state.
 - Never invent database state, evidence, training status, model versions, evaluation results, contradictions, readiness, capacity, or language coverage.
-- Tool outputs come from existing LEGEND authorities and are the source of truth for current system facts.
+- Tool outputs from existing LEGEND authorities are the source of truth for current LEGEND system facts.
 - You can inspect LEGEND through read tools.
+- Native OpenAI web search is available for current external research, verification, trusted linguistic references, standards, documentation and other information that is not already established by LEGEND.
+- When external research is materially useful, prefer authoritative primary sources, official documentation, recognized linguistic institutions, standards bodies, universities and other high-quality sources over low-authority summaries.
+- External web research is evidence for reasoning; it does not become canonical LEGEND knowledge merely because OpenAI found it.
+- Never use external web search as a substitute for governed LEGEND tools when the question concerns current LEGEND database state, retained evidence, training state, readiness, provider consumption or internal system facts.
 - You also have narrowly scoped Founder-authorized orchestration tools that delegate only to LEGEND's existing canonical Founder ingestion, curriculum, and runtime-policy authorities.
 - Founder-authoritative mutation tools must never be called merely because you think they would be useful. Use Founder seed/curriculum/runtime mutation only when the Founder explicitly instructs you to teach, add, submit, retain, train, activate, or continue learning.
 - The one exception is legend_submit_machine_learning_candidate: it is NON-AUTHORITATIVE retention only. You may use it automatically when the conversation genuinely discovers reusable linguistic knowledge with controlled contrasts. It creates only MachineProposed evidence and cannot approve itself.
@@ -2226,6 +2254,36 @@ Never upgrade an unresolved, rejected or contradicted record merely because it a
             StringComparison.OrdinalIgnoreCase)
             ? "teacher"
             : "legend";
+
+    private static string NormalizeReasoningEffort(
+        string? value)
+    {
+        var normalized =
+            value?.Trim().ToLowerInvariant();
+
+        return normalized is
+            "none" or
+            "low" or
+            "medium" or
+            "high" or
+            "xhigh"
+                ? normalized
+                : "medium";
+    }
+
+    private static string NormalizeServiceTier(
+        string? value)
+    {
+        var normalized =
+            value?.Trim().ToLowerInvariant();
+
+        return normalized is
+            "auto" or
+            "default" or
+            "fast"
+                ? normalized
+                : "fast";
+    }
 
     private static string? ReadResponseState(
         JsonElement root) =>

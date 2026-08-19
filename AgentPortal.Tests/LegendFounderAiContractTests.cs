@@ -180,9 +180,11 @@ public sealed class LegendFounderAiContractTests
                 .EnumerateArray()
                 .Single(
                     tool =>
-                        tool.GetProperty("name")
-                            .GetString() ==
-                        "legend_submit_founder_curriculum");
+                        tool.TryGetProperty(
+                            "name",
+                            out var name) &&
+                        name.GetString() ==
+                            "legend_submit_founder_curriculum");
 
         Assert.True(
             curriculum.GetProperty("strict")
@@ -230,6 +232,72 @@ public sealed class LegendFounderAiContractTests
         Assert.Contains(
             "value",
             required);
+    }
+
+
+    [Fact]
+    public void FounderTools_IncludeNativeWebResearchWithoutReplacingGovernedTools()
+    {
+        var buildTools =
+            typeof(LegendFounderAiConversationService)
+                .GetMethod(
+                    "BuildFounderTools",
+                    BindingFlags.NonPublic |
+                    BindingFlags.Static);
+
+        Assert.NotNull(buildTools);
+
+        var tools =
+            Assert.IsAssignableFrom<IReadOnlyList<object>>(
+                buildTools!.Invoke(
+                    null,
+                    null));
+
+        using var document =
+            JsonDocument.Parse(
+                JsonSerializer.Serialize(
+                    tools));
+
+        var toolArray =
+            document.RootElement
+                .EnumerateArray()
+                .ToArray();
+
+        Assert.Single(
+            toolArray.Where(
+                tool =>
+                    tool.TryGetProperty(
+                        "type",
+                        out var type) &&
+                    type.GetString() ==
+                        "web_search"));
+
+        Assert.Contains(
+            toolArray,
+            tool =>
+                tool.TryGetProperty(
+                    "name",
+                    out var name) &&
+                name.GetString() ==
+                    "legend_system_overview");
+
+        Assert.Contains(
+            toolArray,
+            tool =>
+                tool.TryGetProperty(
+                    "name",
+                    out var name) &&
+                name.GetString() ==
+                    "legend_search_retained_knowledge");
+
+        Assert.Contains(
+            toolArray,
+            tool =>
+                tool.TryGetProperty(
+                    "name",
+                    out var name) &&
+                name.GetString() ==
+                    "legend_submit_machine_learning_candidate");
     }
 
 }
