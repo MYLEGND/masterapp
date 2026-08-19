@@ -1,0 +1,34 @@
+name: Apply LEGEND Founder Provider Resilience
+
+on:
+  push:
+    branches:
+      - fix/legend-founder-provider-resilience-20260819
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
+      - name: Apply exact scoped repair
+        run: python3 scripts/apply-legend-founder-provider-resilience.py
+      - name: Verify only intended runtime/test files changed
+        run: |
+          set -e
+          git diff --check
+          changed="$(git diff --name-only | sort)"
+          expected="$(printf '%s\n' AgentPortal.Tests/LegendFounderAiProviderResilienceTests.cs AgentPortal/Controllers/LegendFounderAiController.cs AgentPortal/Services/LegendFounderAiConversationService.cs | sort)"
+          test "$changed" = "$expected" || { echo "Unexpected changed files:"; printf '%s\n' "$changed"; exit 1; }
+      - name: Commit repair
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add AgentPortal/Services/LegendFounderAiConversationService.cs AgentPortal/Controllers/LegendFounderAiController.cs AgentPortal.Tests/LegendFounderAiProviderResilienceTests.cs
+          git commit -m 'Harden LEGEND Founder AI provider resilience'
+          git push origin HEAD
