@@ -1,0 +1,90 @@
+name: Build and deploy AgentPortal to Azure Web App - masterapp-portal
+
+on:
+  push:
+    branches:
+      - meta-authority-cleanup
+    paths:
+      - 'AgentPortal/**'
+      - 'Infrastructure/**'
+      - 'Application/**'
+      - 'Domain/**'
+      - 'Shared/**'
+      - 'Directory.Build.*'
+      - 'Directory.Packages.props'
+      - '.github/workflows/meta-authority-cleanup_masterapp-portal.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  AZURE_WEBAPP_NAME: masterapp-portal
+  DOTNET_VERSION: '10.x'
+  PROJECT_PATH: AgentPortal/AgentPortal.csproj
+  PUBLISH_DIR: ${{ github.workspace }}\\publish\\agentportal
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Restore AgentPortal
+        run: dotnet restore "${{ env.PROJECT_PATH }}"
+
+      - name: Build AgentPortal
+        run: dotnet build "${{ env.PROJECT_PATH }}" --configuration Release --no-restore
+
+      - name: Publish AgentPortal
+        run: dotnet publish "${{ env.PROJECT_PATH }}" --configuration Release --no-build --output "${{ env.PUBLISH_DIR }}"
+
+      - name: Verify packaged FFmpeg runtime
+        shell: pwsh
+        run: |
+          $ffmpeg = Join-Path '${{ env.PUBLISH_DIR }}' 'tools/ffmpeg/ffmpeg.exe'
+          $ffprobe = Join-Path '${{ env.PUBLISH_DIR }}' 'tools/ffmpeg/ffprobe.exe'
+          if (-not (Test-Path $ffmpeg)) { throw "Missing packaged ffmpeg.exe" }
+          if (-not (Test-Path $ffprobe)) { throw "Missing packaged ffprobe.exe" }
+
+      - name: Upload deployment artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: agentportal-production
+          path: ${{ env.PUBLISH_DIR }}
+          if-no-files-found: error
+
+  deploy:
+    runs-on: windows-latest
+    needs: build
+    environment:
+      name: Production
+
+    steps:
+      - name: Download deployment artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: agentportal-production
+          path: ./package
+
+      - name: Login to Azure with OIDC
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID_MASTERAPP_PORTAL }}
+          tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_MASTERAPP_PORTAL }}
+          subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_MASTERAPP_PORTAL }}
+
+      - name: Deploy to Azure Web App
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: ${{ env.AZURE_WEBAPP_NAME }}
+          slot-name: Production
+          package: ./package
