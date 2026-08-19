@@ -1,0 +1,136 @@
+name: One-time LEGEND casual routing repair
+
+on:
+  push:
+    branches:
+      - fix/legend-founder-casual-intent-20260819
+    paths:
+      - '.github/workflows/legend-casual-routing-fix-once.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          ref: fix/legend-founder-casual-intent-20260819
+          fetch-depth: 0
+
+      - name: Patch existing routing authority only
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          service_path = Path('AgentPortal/Services/LegendFounderAiConversationService.cs')
+          service = service_path.read_text()
+          old = '''    private static bool RequiresGovernedInspection(
+        IReadOnlyList<LegendFounderAiChatMessage> conversation,
+        string mode)
+    {
+        if (string.Equals(mode, "teacher", StringComparison.Ordinal))
+            return true;
+
+        var latest = conversation
+            .Last(message => string.Equals(message.Role, "user", StringComparison.Ordinal))
+            .Content?.Trim() ?? string.Empty;
+
+        if (latest.Length == 0)
+            return false;
+
+        var text = latest.ToLowerInvariant();
+
+        var governedSignals = new[]
+        {
+            "legend", "canonical", "retained knowledge", "retained",
+            "curriculum", "train ", "training", "teacher", "translation",
+            "haitian creole", "language", "alignment", "provenance",
+            "evidence", "model readiness", "readiness", "provider",
+            "azure", "system state", "system status", "metrics", "metric",
+            "knowledge", "learning", "corpus"
+        };
+
+        return governedSignals.Any(signal =>
+            text.Contains(signal, StringComparison.Ordinal));
+    }
+'''
+          new = '''    private static bool RequiresGovernedInspection(
+        IReadOnlyList<LegendFounderAiChatMessage> conversation,
+        string mode)
+    {
+        if (string.Equals(mode, "teacher", StringComparison.Ordinal))
+            return true;
+
+        var latest = conversation
+            .Last(message => string.Equals(message.Role, "user", StringComparison.Ordinal))
+            .Content?.Trim() ?? string.Empty;
+
+        if (latest.Length == 0)
+            return false;
+
+        var text = latest.ToLowerInvariant();
+
+        var governedSignals = new[]
+        {
+            "canonical", "retained knowledge", "retained",
+            "curriculum", "train ", "training", "teacher", "translation",
+            "haitian creole", "language", "alignment", "provenance",
+            "evidence", "model readiness", "readiness", "provider",
+            "azure", "system state", "system status", "metrics", "metric",
+            "knowledge", "learning", "corpus"
+        };
+
+        return governedSignals.Any(signal =>
+            text.Contains(signal, StringComparison.Ordinal));
+    }
+'''
+          if service.count(old) != 1:
+              raise SystemExit(f'Expected routing block exactly once, found {service.count(old)}')
+          service_path.write_text(service.replace(old, new, 1))
+
+          test_path = Path('AgentPortal.Tests/LegendFounderAiConversationRoutingTests.cs')
+          tests = test_path.read_text()
+          old_test = '''    [InlineData("Hi")]
+    [InlineData("Hello")]
+    [InlineData("How are you?")]
+    [InlineData("Why are you being so slow?")]
+'''
+          new_test = '''    [InlineData("Hi")]
+    [InlineData("Hello")]
+    [InlineData("Hello legend")]
+    [InlineData("Hello Legend® Ai")]
+    [InlineData("How are you?")]
+    [InlineData("Why are you being so slow?")]
+'''
+          if tests.count(old_test) != 1:
+              raise SystemExit('Expected casual routing theory block exactly once')
+          tests = tests.replace(old_test, new_test, 1)
+
+          old_gov = '''    [InlineData("What does LEGEND currently know about Haitian Creole?")]
+'''
+          new_gov = '''    [InlineData("What does LEGEND currently know about Haitian Creole?")]
+    [InlineData("Legend, what is the current system state?")]
+'''
+          if tests.count(old_gov) != 1:
+              raise SystemExit('Expected governed routing theory block exactly once')
+          test_path.write_text(tests.replace(old_gov, new_gov, 1))
+          PY
+
+          git diff --check
+          dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Debug --filter 'FullyQualifiedName~LegendFounderAiConversationRoutingTests'
+
+      - name: Commit proven routing repair
+        shell: bash
+        run: |
+          rm -f .github/workflows/legend-casual-routing-fix-once.yml
+          git config user.name 'MYLEGND'
+          git config user.email 'zac.owen@mylegnd.com'
+          git add AgentPortal/Services/LegendFounderAiConversationService.cs \
+                  AgentPortal.Tests/LegendFounderAiConversationRoutingTests.cs \
+                  .github/workflows/legend-casual-routing-fix-once.yml
+          git diff --cached --check
+          git commit -m 'Fix Legend AI casual name routing'
+          git push origin HEAD:fix/legend-founder-casual-intent-20260819
