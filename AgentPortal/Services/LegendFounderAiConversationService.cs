@@ -2611,7 +2611,7 @@ Never upgrade an unresolved, rejected or contradicted record merely because it a
 
         var governedSignals = new[]
         {
-            "legend", "canonical", "retained knowledge", "retained",
+            "canonical", "retained knowledge", "retained",
             "curriculum", "train ", "training", "teacher", "translation",
             "haitian creole", "language", "alignment", "provenance",
             "evidence", "model readiness", "readiness", "provider",
