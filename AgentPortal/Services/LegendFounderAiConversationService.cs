@@ -24,9 +24,10 @@ namespace AgentPortal.Services;
 public sealed class LegendFounderAiConversationService
 {
     private const int MaximumConversationMessages = 30;
-    private const int MaximumMessageCharacters = 20_000;
-    private const int MaximumConversationCharacters = 120_000;
+    private const int MaximumMessageCharacters = 500_000;
+    private const int MaximumConversationCharacters = 750_000;
     private const int MaximumProviderConversationCharacters = 60_000;
+    private const int MinimumLatestMessageTailCharacters = 12_000;
     private const int MaximumToolRounds = 6;
     private const int MinimumFinalizationReserveSeconds = 8;
     private const int MaximumProviderRoundSeconds = 55;
@@ -1932,20 +1933,31 @@ Never upgrade an unresolved, rejected or contradicted record merely because it a
             var message =
                 conversation[index];
 
-            var length =
-                message.Content?.Length ??
-                0;
+            var content =
+                message.Content ??
+                string.Empty;
 
             if (index ==
-                    conversation.Count - 1 ||
-                length <= remaining)
+                    conversation.Count - 1 &&
+                content.Length >
+                    MaximumProviderConversationCharacters)
+            {
+                selected.Add(
+                    new LegendFounderAiChatMessage(
+                        message.Role,
+                        CompactOversizedLatestMessage(
+                            content)));
+
+                remaining = 0;
+                break;
+            }
+
+            if (content.Length <= remaining)
             {
                 selected.Add(message);
 
-                remaining =
-                    Math.Max(
-                        0,
-                        remaining - length);
+                remaining -=
+                    content.Length;
             }
 
             if (remaining == 0)
@@ -1955,6 +1967,39 @@ Never upgrade an unresolved, rejected or contradicted record merely because it a
         selected.Reverse();
 
         return selected;
+    }
+
+    private static string CompactOversizedLatestMessage(
+        string content)
+    {
+        if (content.Length <=
+            MaximumProviderConversationCharacters)
+        {
+            return content;
+        }
+
+        const string marker =
+            "\n\n[EARLIER PORTION OF THIS FOUNDER MESSAGE OMITTED " +
+            "FROM THE CURRENT PROVIDER WINDOW; THE ORIGINAL REQUEST " +
+            "WAS ACCEPTED IN FULL BY LEGEND AI.]\n\n";
+
+        var available =
+            MaximumProviderConversationCharacters -
+            marker.Length;
+
+        var tailLength =
+            Math.Min(
+                MinimumLatestMessageTailCharacters,
+                available / 2);
+
+        var headLength =
+            available -
+            tailLength;
+
+        return
+            content[..headLength] +
+            marker +
+            content[^tailLength..];
     }
 
     private static bool TryNormalizeMessages(
