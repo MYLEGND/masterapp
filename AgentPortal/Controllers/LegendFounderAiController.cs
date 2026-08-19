@@ -121,6 +121,9 @@ public sealed class LegendFounderAiController : Controller
             "validation" => StatusCodes.Status400BadRequest,
             "configuration" => StatusCodes.Status503ServiceUnavailable,
             "timeout" => StatusCodes.Status504GatewayTimeout,
+            "provider_http" when result.ProviderStatusCode == StatusCodes.Status429TooManyRequests => StatusCodes.Status429TooManyRequests,
+            "provider_http" when result.ProviderStatusCode == StatusCodes.Status503ServiceUnavailable => StatusCodes.Status503ServiceUnavailable,
+            "provider_http" when result.ProviderStatusCode is StatusCodes.Status408RequestTimeout or StatusCodes.Status504GatewayTimeout => StatusCodes.Status504GatewayTimeout,
             "provider_http" or "transport" or "provider_json" => StatusCodes.Status502BadGateway,
             _ => StatusCodes.Status502BadGateway
         };

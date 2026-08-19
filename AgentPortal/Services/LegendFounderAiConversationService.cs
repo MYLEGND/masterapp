@@ -37,6 +37,10 @@ public sealed class LegendFounderAiConversationService
     private const int MaximumReadOnlyToolSeconds = 8;
     private const int MaximumToolOutputCharacters = 20_000;
     private const int MaximumRetainedContextCharacters = 16_000;
+    private const int MinimumProviderAttemptWindowSeconds = 3;
+    private const int MaximumProviderCooldownSeconds = 300;
+    private static readonly object ProviderCooldownSync = new();
+    private static DateTimeOffset _providerNotBeforeUtc = DateTimeOffset.MinValue;
 
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly IConfiguration _configuration;
@@ -504,16 +508,24 @@ public sealed class LegendFounderAiConversationService
         var providerClock =
             Stopwatch.StartNew();
 
-        for (var attempt = 1;
-             attempt <= 2;
-             attempt++)
+        var attempt = 0;
+
+        while (true)
         {
+            attempt++;
+
+            await WaitForProviderCooldownAsync(
+                providerBudget,
+                providerClock,
+                cancellationToken);
+
             var attemptRemaining =
                 providerBudget -
                 providerClock.Elapsed;
 
             if (attemptRemaining <=
-                TimeSpan.FromSeconds(1))
+                TimeSpan.FromSeconds(
+                    MinimumProviderAttemptWindowSeconds))
             {
                 throw new OperationCanceledException();
             }
@@ -570,28 +582,52 @@ public sealed class LegendFounderAiConversationService
                 IsTransientOpenAiStatus(
                     response.StatusCode);
 
-            if (transient &&
-                attempt < 2)
+            if (transient)
             {
-                var retryAfter =
-                    response.Headers
-                        .RetryAfter?
-                        .Delta;
-
                 var delay =
-                    retryAfter is null
-                        ? TimeSpan.FromSeconds(1)
-                        : TimeSpan.FromSeconds(
-                            Math.Clamp(
-                                retryAfter.Value.TotalSeconds,
-                                1,
-                                5));
+                    ResolveProviderRetryDelay(
+                        response,
+                        attempt);
 
-                await Task.Delay(
-                    delay,
-                    providerAttempt.Token);
+                ExtendProviderCooldown(delay);
 
-                continue;
+                var remainingAfterResponse =
+                    providerBudget -
+                    providerClock.Elapsed;
+
+                if (remainingAfterResponse >
+                    TimeSpan.FromSeconds(
+                        MinimumProviderAttemptWindowSeconds))
+                {
+                    var maximumDelay =
+                        remainingAfterResponse -
+                        TimeSpan.FromSeconds(
+                            MinimumProviderAttemptWindowSeconds);
+
+                    var boundedDelay =
+                        delay <= maximumDelay
+                            ? delay
+                            : maximumDelay;
+
+                    if (boundedDelay > TimeSpan.Zero)
+                    {
+                        _logger.LogWarning(
+                            "LEGEND Founder AI provider transient rejection. " +
+                            "HTTP={StatusCode} Attempt={Attempt} RetryDelayMs={RetryDelayMs} " +
+                            "RequestReset={RequestReset} TokenReset={TokenReset}",
+                            (int)response.StatusCode,
+                            attempt,
+                            (long)Math.Ceiling(boundedDelay.TotalMilliseconds),
+                            GetProviderHeader(response, "x-ratelimit-reset-requests") ?? "unavailable",
+                            GetProviderHeader(response, "x-ratelimit-reset-tokens") ?? "unavailable");
+
+                        await Task.Delay(
+                            boundedDelay,
+                            cancellationToken);
+
+                        continue;
+                    }
+                }
             }
 
             var errorBody =
@@ -606,11 +642,9 @@ public sealed class LegendFounderAiConversationService
             }
 
             var providerRequestId =
-                response.Headers.TryGetValues(
-                    "x-request-id",
-                    out var providerRequestIds)
-                    ? providerRequestIds.FirstOrDefault()
-                    : null;
+                GetProviderHeader(
+                    response,
+                    "x-request-id");
 
             _logger.LogError(
                 "LEGEND Founder AI provider rejected request. " +
@@ -629,6 +663,197 @@ public sealed class LegendFounderAiConversationService
 
         return null;
     }
+
+    private static async Task WaitForProviderCooldownAsync(
+        TimeSpan providerBudget,
+        Stopwatch providerClock,
+        CancellationToken cancellationToken)
+    {
+        TimeSpan delay;
+
+        lock (ProviderCooldownSync)
+        {
+            delay =
+                _providerNotBeforeUtc -
+                DateTimeOffset.UtcNow;
+        }
+
+        if (delay <= TimeSpan.Zero)
+            return;
+
+        var maximumDelay =
+            providerBudget -
+            providerClock.Elapsed -
+            TimeSpan.FromSeconds(
+                MinimumProviderAttemptWindowSeconds);
+
+        if (maximumDelay <= TimeSpan.Zero)
+            throw new OperationCanceledException();
+
+        if (delay > maximumDelay)
+            delay = maximumDelay;
+
+        await Task.Delay(delay, cancellationToken);
+    }
+
+    private static void ExtendProviderCooldown(
+        TimeSpan delay)
+    {
+        if (delay <= TimeSpan.Zero)
+            return;
+
+        var maximum =
+            TimeSpan.FromSeconds(
+                MaximumProviderCooldownSeconds);
+
+        if (delay > maximum)
+            delay = maximum;
+
+        var candidate =
+            DateTimeOffset.UtcNow + delay;
+
+        lock (ProviderCooldownSync)
+        {
+            if (candidate > _providerNotBeforeUtc)
+                _providerNotBeforeUtc = candidate;
+        }
+    }
+
+    private static TimeSpan ResolveProviderRetryDelay(
+        HttpResponseMessage response,
+        int attempt)
+    {
+        var retryAfter =
+            response.Headers.RetryAfter?.Delta;
+
+        if (retryAfter is null &&
+            response.Headers.RetryAfter?.Date is { } retryDate)
+        {
+            var datedDelay =
+                retryDate - DateTimeOffset.UtcNow;
+
+            if (datedDelay > TimeSpan.Zero)
+                retryAfter = datedDelay;
+        }
+
+        var resetDelay =
+            ReadLongestRateLimitReset(response);
+
+        var providerDelay =
+            retryAfter is null
+                ? resetDelay
+                : resetDelay is null || retryAfter >= resetDelay
+                    ? retryAfter
+                    : resetDelay;
+
+        if (providerDelay is { } hinted &&
+            hinted > TimeSpan.Zero)
+        {
+            return hinted > TimeSpan.FromSeconds(MaximumProviderCooldownSeconds)
+                ? TimeSpan.FromSeconds(MaximumProviderCooldownSeconds)
+                : hinted;
+        }
+
+        var exponent = Math.Min(Math.Max(attempt - 1, 0), 6);
+        var seconds = Math.Pow(2, exponent) + Random.Shared.NextDouble() * 0.5;
+        return TimeSpan.FromSeconds(seconds);
+    }
+
+    private static TimeSpan? ReadLongestRateLimitReset(
+        HttpResponseMessage response)
+    {
+        TimeSpan? longest = null;
+
+        foreach (var name in new[]
+                 {
+                     "x-ratelimit-reset-requests",
+                     "x-ratelimit-reset-tokens"
+                 })
+        {
+            var raw = GetProviderHeader(response, name);
+            if (!TryParseProviderDuration(raw, out var parsed))
+                continue;
+
+            if (longest is null || parsed > longest.Value)
+                longest = parsed;
+        }
+
+        return longest;
+    }
+
+    private static bool TryParseProviderDuration(
+        string? raw,
+        out TimeSpan duration)
+    {
+        duration = TimeSpan.Zero;
+        if (string.IsNullOrWhiteSpace(raw))
+            return false;
+
+        var value = raw.Trim();
+        var index = 0;
+        double totalMilliseconds = 0;
+
+        while (index < value.Length)
+        {
+            var numberStart = index;
+            while (index < value.Length &&
+                   (char.IsDigit(value[index]) || value[index] == '.'))
+            {
+                index++;
+            }
+
+            if (numberStart == index ||
+                !double.TryParse(
+                    value[numberStart..index],
+                    System.Globalization.NumberStyles.Float,
+                    System.Globalization.CultureInfo.InvariantCulture,
+                    out var amount))
+            {
+                return false;
+            }
+
+            string unit;
+            if (value.AsSpan(index).StartsWith("ms", StringComparison.OrdinalIgnoreCase))
+            {
+                unit = "ms";
+                index += 2;
+            }
+            else if (index < value.Length)
+            {
+                unit = char.ToLowerInvariant(value[index]).ToString();
+                index++;
+            }
+            else
+            {
+                return false;
+            }
+
+            totalMilliseconds += unit switch
+            {
+                "ms" => amount,
+                "s" => amount * 1_000d,
+                "m" => amount * 60_000d,
+                "h" => amount * 3_600_000d,
+                _ => double.NaN
+            };
+
+            if (double.IsNaN(totalMilliseconds))
+                return false;
+        }
+
+        if (totalMilliseconds <= 0 || double.IsInfinity(totalMilliseconds))
+            return false;
+
+        duration = TimeSpan.FromMilliseconds(totalMilliseconds);
+        return true;
+    }
+
+    private static string? GetProviderHeader(
+        HttpResponseMessage response,
+        string name) =>
+        response.Headers.TryGetValues(name, out var values)
+            ? values.FirstOrDefault()
+            : null;
 
     private static ValueTask ReportProgressAsync(
         Func<
