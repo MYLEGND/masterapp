@@ -26,7 +26,7 @@ jobs:
         run: |
           set -e
           git diff --check
-          changed="$(git diff --name-only | sort)"
+          changed="$(git status --porcelain=v1 | sed -E 's/^.. //' | sort)"
           expected="$(printf '%s\n' AgentPortal.Tests/LegendFounderAiProviderResilienceTests.cs AgentPortal/Controllers/LegendFounderAiController.cs AgentPortal/Services/LegendFounderAiConversationService.cs | sort)"
           test "$changed" = "$expected" || { echo "Unexpected changed files:"; printf '%s\n' "$changed"; exit 1; }
       - name: Commit repair
