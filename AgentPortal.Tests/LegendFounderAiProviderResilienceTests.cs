@@ -82,7 +82,7 @@ public sealed class LegendFounderAiProviderResilienceTests
     }
 
     [Fact]
-    public void ProviderConversationBudgetExpandsForLargeFounderConversations()
+    public void ProviderConversationBudgetUsesAvailableConversationWithoutArtificialPadding()
     {
         var method = typeof(LegendFounderAiConversationService).GetMethod("ResolveProviderConversationBudget", BindingFlags.NonPublic | BindingFlags.Static);
         Assert.NotNull(method);
@@ -95,7 +95,7 @@ public sealed class LegendFounderAiProviderResilienceTests
         ];
 
         var budget = Assert.IsType<int>(method!.Invoke(null, new object[] { conversation }));
-        Assert.Equal(120_000, budget);
+        Assert.Equal(110_000, budget);
     }
 
     [Fact]
