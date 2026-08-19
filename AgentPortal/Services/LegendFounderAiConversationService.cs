@@ -44,8 +44,6 @@ public sealed class LegendFounderAiConversationService
     private const int MaximumRetainedContextCharacters = 64_000;
     private const int MinimumProviderAttemptWindowSeconds = 3;
     private const int MaximumProviderCooldownSeconds = 300;
-    private static readonly object ProviderCooldownSync = new();
-    private static DateTimeOffset _providerNotBeforeUtc = DateTimeOffset.MinValue;
 
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly IConfiguration _configuration;
@@ -197,12 +195,14 @@ public sealed class LegendFounderAiConversationService
         }
 
         var instructions =
-            BuildInstructions(mode) +
-            (retainedKnowledge is null
-                ? string.Empty
-                : BuildRetainedKnowledgeContext(
-                    retainedKnowledge,
-                    ResolveRetainedContextBudget(conversation)));
+            requiresGovernedInspection
+                ? BuildInstructions(mode) +
+                  (retainedKnowledge is null
+                      ? string.Empty
+                      : BuildRetainedKnowledgeContext(
+                          retainedKnowledge,
+                          ResolveRetainedContextBudget(conversation)))
+                : BuildCasualInstructions();
 
         var tools = BuildFounderTools();
 
@@ -227,7 +227,9 @@ public sealed class LegendFounderAiConversationService
         try
         {
             var maximumToolRounds =
-                ResolveMaximumToolRounds(conversation);
+                requiresGovernedInspection
+                    ? ResolveMaximumToolRounds(conversation)
+                    : 1;
 
             for (var round = 0; round < maximumToolRounds; round++)
             {
@@ -284,9 +286,11 @@ public sealed class LegendFounderAiConversationService
                         allowTools &&
                         round == 0
                             ? "Planning the response and determining which governed LEGEND checks are actually needed."
-                            : allowTools
-                                ? "Integrating the governed results already collected and determining whether another check is necessary."
-                                : "Finalizing the best supported response from the governed evidence already collected.",
+                            : requiresGovernedInspection
+                                ? allowTools
+                                    ? "Integrating the governed results already collected and determining whether another check is necessary."
+                                    : "Finalizing the best supported response from the governed evidence already collected."
+                                : "Preparing the conversational response.",
                         round + 1),
                     effectiveToken);
 
@@ -532,11 +536,6 @@ public sealed class LegendFounderAiConversationService
         {
             attempt++;
 
-            await WaitForProviderCooldownAsync(
-                providerBudget,
-                providerClock,
-                cancellationToken);
-
             var attemptRemaining =
                 providerBudget -
                 providerClock.Elapsed;
@@ -607,8 +606,6 @@ public sealed class LegendFounderAiConversationService
                         response,
                         attempt);
 
-                ExtendProviderCooldown(delay);
-
                 var remainingAfterResponse =
                     providerBudget -
                     providerClock.Elapsed;
@@ -677,61 +674,6 @@ public sealed class LegendFounderAiConversationService
                 (int)response.StatusCode,
                 clientRequestId,
                 providerRequestId);
-        }
-    }
-
-    private static async Task WaitForProviderCooldownAsync(
-        TimeSpan providerBudget,
-        Stopwatch providerClock,
-        CancellationToken cancellationToken)
-    {
-        TimeSpan delay;
-
-        lock (ProviderCooldownSync)
-        {
-            delay =
-                _providerNotBeforeUtc -
-                DateTimeOffset.UtcNow;
-        }
-
-        if (delay <= TimeSpan.Zero)
-            return;
-
-        var maximumDelay =
-            providerBudget -
-            providerClock.Elapsed -
-            TimeSpan.FromSeconds(
-                MinimumProviderAttemptWindowSeconds);
-
-        if (maximumDelay <= TimeSpan.Zero)
-            throw new OperationCanceledException();
-
-        if (delay > maximumDelay)
-            delay = maximumDelay;
-
-        await Task.Delay(delay, cancellationToken);
-    }
-
-    private static void ExtendProviderCooldown(
-        TimeSpan delay)
-    {
-        if (delay <= TimeSpan.Zero)
-            return;
-
-        var maximum =
-            TimeSpan.FromSeconds(
-                MaximumProviderCooldownSeconds);
-
-        if (delay > maximum)
-            delay = maximum;
-
-        var candidate =
-            DateTimeOffset.UtcNow + delay;
-
-        lock (ProviderCooldownSync)
-        {
-            if (candidate > _providerNotBeforeUtc)
-                _providerNotBeforeUtc = candidate;
         }
     }
 
@@ -2220,6 +2162,16 @@ If the Founder explicitly asks you to teach or train LEGEND:
 """;
     }
 
+    private static string BuildCasualInstructions() =>
+        """
+You are Legend® Ai speaking with the Founder.
+Respond naturally, directly, and conversationally.
+Use the product name exactly as "Legend® Ai" if you name yourself.
+Do not claim current LEGEND database, training, readiness, provider, evidence, or system-state facts in this conversational path.
+Do not invent internal state, private data, or operational results.
+If the Founder asks for current LEGEND system facts, that request belongs to the governed inspection path rather than casual conversation.
+""";
+
     private async Task<LegendConnectRetainedKnowledgeSearchSnapshot>
         TryLoadRetainedKnowledgeAsync(
             ClaimsPrincipal founder,
@@ -2611,7 +2563,7 @@ Never upgrade an unresolved, rejected or contradicted record merely because it a
 
         var governedSignals = new[]
         {
-            "legend", "canonical", "retained knowledge", "retained",
+            "canonical", "retained knowledge", "retained",
             "curriculum", "train ", "training", "teacher", "translation",
             "haitian creole", "language", "alignment", "provenance",
             "evidence", "model readiness", "readiness", "provider",
@@ -2627,9 +2579,11 @@ Never upgrade an unresolved, rejected or contradicted record merely because it a
         int round,
         bool requiresGovernedInspection,
         string configuredEffort) =>
-        !requiresGovernedInspection || round == 0
-            ? "low"
-            : configuredEffort;
+        !requiresGovernedInspection
+            ? "none"
+            : round == 0
+                ? "low"
+                : configuredEffort;
 
     private static string NormalizeReasoningEffort(
         string? value)
