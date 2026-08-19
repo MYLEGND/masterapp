@@ -153,7 +153,6 @@ struct LegendApplicationShell: View {
             LegendAppBrandBar(
                 showsHomeActions: selectedTab == .home,
                 showsLegendAi:
-                    selectedTab == .home &&
                     legendFounderAi.isAvailable,
                 usesDarkSurface: selectedTab == .discover,
                 openLegendAi: {
@@ -269,8 +268,7 @@ struct LegendApplicationShell: View {
                     currentSession: currentSession,
                     store: bootstrap.stores.discovery,
                     journeyCircles: bootstrap.stores.journeyCircles,
-                    social: bootstrap.stores.social,
-                    legendFounderAi: legendFounderAi
+                    social: bootstrap.stores.social
                 )
             }
 
@@ -289,11 +287,7 @@ struct LegendApplicationShell: View {
                 pendingConversationID: $pendingMessageConversationID,
                 messages: messages,
                 currentSession: currentSession,
-                social: social,
-                showsLegendAi: legendFounderAi.isAvailable,
-                openLegendAi: {
-                    isPresentingLegendFounderAi = true
-                }
+                social: social
             )
             .task { messages.load() }
 
@@ -1552,8 +1546,6 @@ private struct LegendMessagesTab: View {
     @ObservedObject var messages: MessagingStore
     let currentSession: MobileSession
     @ObservedObject var social: MobileSocialStore
-    let showsLegendAi: Bool
-    let openLegendAi: () -> Void
     @State private var navigationPath: [UUID] = []
 
     var body: some View {
@@ -1570,8 +1562,6 @@ private struct LegendMessagesTab: View {
         ) {
             MessagingHomeView(
                 store: messages,
-                showsLegendAi: showsLegendAi,
-                openLegendAi: openLegendAi,
                 openConversation: { conversationID in
                     // Begin the single-flight detail request before SwiftUI
                     // schedules the navigation destination. This removes a
@@ -2627,9 +2617,7 @@ private struct LegendAgentLeadsView: View {
 struct LegendJourneyProfileEditor: View {
     let dashboard: MobileJourneyDashboardResponse
     @ObservedObject var store: MobileJourneyCirclesStore
-    @ObservedObject var legendFounderAi: LegendFounderAiStore
     @Environment(\.dismiss) private var dismiss
-    @State private var isPresentingLegendFounderAi = false
     @State private var consentAffirmed: Bool
     @State private var isOptedIn: Bool
     @State private var isDiscoverable: Bool
@@ -2647,13 +2635,10 @@ struct LegendJourneyProfileEditor: View {
 
     init(
         dashboard: MobileJourneyDashboardResponse,
-        store: MobileJourneyCirclesStore,
-        legendFounderAi: LegendFounderAiStore
+        store: MobileJourneyCirclesStore
     ) {
         self.dashboard = dashboard
         _store = ObservedObject(wrappedValue: store)
-        _legendFounderAi = ObservedObject(
-            wrappedValue: legendFounderAi)
         let preferences = dashboard.preferences
         let profile = dashboard.profile
         _consentAffirmed = State(initialValue: preferences?.consentAffirmed ?? false)
@@ -2778,16 +2763,6 @@ struct LegendJourneyProfileEditor: View {
                     Button("Close") { dismiss() }
                 }
 
-                if legendFounderAi.isAvailable {
-                    ToolbarItem(placement: .principal) {
-                        LegendFounderAiLauncherButton(
-                            action: {
-                                isPresentingLegendFounderAi = true
-                            },
-                            size: 38)
-                    }
-                }
-
                 ToolbarItem(placement: .confirmationAction) {
                     Button(store.isPerformingAction ? "Saving…" : "Save") {
                         store.saveProfile(MobileJourneyProfileInput(
@@ -2809,10 +2784,6 @@ struct LegendJourneyProfileEditor: View {
                     .disabled(store.isPerformingAction || !consentAffirmed)
                 }
             }
-        }
-        .fullScreenCover(isPresented: $isPresentingLegendFounderAi) {
-            LegendFounderAiConversationView(
-                store: legendFounderAi)
         }
     }
 
