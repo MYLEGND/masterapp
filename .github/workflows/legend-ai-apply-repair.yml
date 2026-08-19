@@ -1,0 +1,416 @@
+name: One-time LEGEND AI apply repair
+
+on:
+  push:
+    branches:
+      - fix/legend-retained-knowledge-retrieval-20260819
+    paths:
+      - '.github/workflows/legend-ai-apply-repair.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          ref: fix/legend-retained-knowledge-retrieval-20260819
+          fetch-depth: 0
+
+      - name: Apply surgical repair to existing authorities
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          service_path = Path('AgentPortal/Services/LegendFounderAiConversationService.cs')
+          service = service_path.read_text()
+
+          old = '''        await ReportProgressAsync(
+              progress,
+              new LegendFounderAiProgressEvent(
+                  "retained_knowledge",
+                  "Checking retained LEGEND knowledge relevant to this request."),
+              effectiveToken);
+
+        var retainedKnowledgeQuery =
+            BuildRetainedKnowledgeQuery(conversation);
+
+        var retainedKnowledge =
+            await TryLoadRetainedKnowledgeAsync(
+                founder,
+                retainedKnowledgeQuery,
+                conversation,
+                effectiveToken);
+
+        await ReportProgressAsync(
+            progress,
+            new LegendFounderAiProgressEvent(
+                "retained_knowledge",
+                retainedKnowledge.Items.Count > 0
+                    ? $"Found {retainedKnowledge.Items.Count} relevant retained LEGEND record(s)."
+                    : "No directly matching retained LEGEND records were found; continuing with the governed tools available for this request."),
+            effectiveToken);
+
+        var instructions =
+            BuildInstructions(mode) +
+            BuildRetainedKnowledgeContext(
+                retainedKnowledge,
+                ResolveRetainedContextBudget(conversation));
+'''
+          new = '''        var requiresGovernedInspection =
+            RequiresGovernedInspection(
+                conversation,
+                mode);
+
+        var instructions =
+            BuildInstructions(mode);
+
+        if (requiresGovernedInspection)
+        {
+            await ReportProgressAsync(
+                progress,
+                new LegendFounderAiProgressEvent(
+                    "retained_knowledge",
+                    "Checking retained LEGEND knowledge relevant to this request."),
+                effectiveToken);
+
+            var retainedKnowledgeQuery =
+                BuildRetainedKnowledgeQuery(conversation);
+
+            var retainedKnowledge =
+                await TryLoadRetainedKnowledgeAsync(
+                    founder,
+                    retainedKnowledgeQuery,
+                    conversation,
+                    effectiveToken);
+
+            await ReportProgressAsync(
+                progress,
+                new LegendFounderAiProgressEvent(
+                    "retained_knowledge",
+                    retainedKnowledge.Items.Count > 0
+                        ? $"Found {retainedKnowledge.Items.Count} relevant retained LEGEND record(s)."
+                        : "No directly matching retained LEGEND records were found; continuing with the governed tools available for this request."),
+                effectiveToken);
+
+            instructions +=
+                BuildRetainedKnowledgeContext(
+                    retainedKnowledge,
+                    ResolveRetainedContextBudget(conversation));
+        }
+'''
+          if service.count(old) != 1:
+              raise SystemExit('Expected retained preload block exactly once.')
+          service = service.replace(old, new, 1)
+
+          old = '''                var allowTools =
+                    round < maximumToolRounds - 1 &&
+                    remaining >
+                        TimeSpan.FromSeconds(
+                            MinimumFinalSynthesisWindowSeconds);
+'''
+          new = '''                var allowTools =
+                    requiresGovernedInspection &&
+                    round < maximumToolRounds - 1 &&
+                    remaining >
+                        TimeSpan.FromSeconds(
+                            MinimumFinalSynthesisWindowSeconds);
+'''
+          if service.count(old) != 1:
+              raise SystemExit('Expected allowTools block exactly once.')
+          service = service.replace(old, new, 1)
+
+          old = '''                        allowTools,
+                        providerBudget,
+                        effectiveToken);'''
+          new = '''                        allowTools,
+                        providerBudget,
+                        ResolveReasoningEffortForRound(round, _reasoningEffort),
+                        effectiveToken);'''
+          if service.count(old) != 1:
+              raise SystemExit('Expected SendResponseAsync call exactly once.')
+          service = service.replace(old, new, 1)
+
+          old = '''        bool allowTools,
+        TimeSpan providerBudget,
+        CancellationToken cancellationToken)'''
+          new = '''        bool allowTools,
+        TimeSpan providerBudget,
+        string reasoningEffort,
+        CancellationToken cancellationToken)'''
+          if service.count(old) != 1:
+              raise SystemExit('Expected SendResponseAsync signature exactly once.')
+          service = service.replace(old, new, 1)
+
+          old = '''            reasoning = new
+            {
+                effort = _reasoningEffort
+            },'''
+          new = '''            reasoning = new
+            {
+                effort = reasoningEffort
+            },'''
+          if service.count(old) != 1:
+              raise SystemExit('Expected reasoning payload exactly once.')
+          service = service.replace(old, new, 1)
+
+          marker = '''    private static string NormalizeReasoningEffort(
+        string? value)
+    {'''
+          insert = '''    private static string ResolveReasoningEffortForRound(
+        int round,
+        string configuredEffort) =>
+        round == 0
+            ? "low"
+            : configuredEffort;
+
+    private static bool RequiresGovernedInspection(
+        IReadOnlyList<LegendFounderAiChatMessage> conversation,
+        string mode)
+    {
+        if (string.Equals(mode, "teacher", StringComparison.Ordinal))
+            return true;
+
+        var latest = conversation.LastOrDefault(item =>
+            string.Equals(item.Role, "user", StringComparison.Ordinal))?.Content ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(latest))
+            return false;
+
+        var value = latest.ToLowerInvariant();
+        var markers = new[]
+        {
+            "legend currently", "legend know", "current system", "system state",
+            "canonical", "retained knowledge", "translation", "language",
+            "haitian creole", "curriculum", "train legend", "training",
+            "model readiness", "readiness", "provider", "azure", "corpus",
+            "alignment", "semantic", "founder-approved", "founder approved",
+            "knowledge", "learning", "evidence", "production eligible",
+            "dashboard", "how many", "count", "pair", "memory"
+        };
+
+        return markers.Any(marker => value.Contains(marker, StringComparison.Ordinal));
+    }
+
+'''
+          if marker not in service:
+              raise SystemExit('NormalizeReasoningEffort marker missing.')
+          service = service.replace(marker, insert + marker, 1)
+          service_path.write_text(service)
+
+          ops_path = Path('Infrastructure/Messaging/LegendConnectOperations.cs')
+          ops = ops_path.read_text()
+          start = ops.find('    public async Task<LegendConnectRetainedKnowledgeSearchSnapshot>\n        SearchRetainedKnowledgeAsync(')
+          end = ops.find('    private static int RetainedKnowledgeMatch(', start)
+          if start < 0 or end < 0:
+              raise SystemExit('Retained knowledge search method boundaries missing.')
+          section = ops[start:end]
+
+          section = section.replace('''            Math.Clamp(
+                take,
+                1,
+                20);''','''            Math.Clamp(
+                take,
+                1,
+                64);''',1)
+          section = section.replace('''                .Distinct(StringComparer.Ordinal)
+                .Take(10)
+                .ToArray();''','''                .Distinct(StringComparer.Ordinal)
+                .Take(Math.Clamp(boundedTake * 2, 12, 64))
+                .ToArray();''',1)
+          section = section.replace('''                .OrderByDescending(item =>
+                    item.UpdatedUtc)
+                .Take(400)
+                .ToListAsync(cancellationToken);''','''                .Where(item =>
+                    sourceLanguage == null ||
+                    item.LanguageCode == sourceLanguage)
+                .OrderByDescending(item =>
+                    item.UpdatedUtc)
+                .ToListAsync(cancellationToken);''',1)
+          section = section.replace('''                    source.IsTrainingEligible &&
+                    target.IsTrainingEligible &&
+                    (''','''                    source.IsTrainingEligible &&
+                    target.IsTrainingEligible &&
+                    (sourceLanguage == null || source.LanguageCode == sourceLanguage) &&
+                    (targetLanguage == null || target.LanguageCode == targetLanguage) &&
+                    (''',1)
+          section = section.replace('''                })
+                .Take(400)
+                .ToListAsync(cancellationToken);''','''                })
+                .ToListAsync(cancellationToken);''',1)
+          section = section.replace('''                .OrderByDescending(item =>
+                    item.UpdatedUtc)
+                .Take(300)
+                .ToListAsync(cancellationToken);''','''                .Where(item =>
+                    (sourceLanguage == null || item.SourceLanguageCode == sourceLanguage) &&
+                    (targetLanguage == null || item.TargetLanguageCode == targetLanguage))
+                .OrderByDescending(item =>
+                    item.UpdatedUtc)
+                .ToListAsync(cancellationToken);''',1)
+          section = section.replace('''                .OrderByDescending(item =>
+                    item.UpdatedUtc)
+                .Take(100)
+                .ToListAsync(cancellationToken);''','''                .OrderByDescending(item =>
+                    item.UpdatedUtc)
+                .ToListAsync(cancellationToken);''',1)
+
+          section = section.replace('''            var languageMatch =
+                sourceLanguage is not null &&
+                string.Equals(
+                    unit.LanguageCode,
+                    sourceLanguage,
+                    StringComparison.OrdinalIgnoreCase);
+
+            if (match == 0 &&
+                !languageMatch)''','''            if (match == 0)''',1)
+          section = section.replace('''            var languageMatch =
+                sourceLanguage is not null &&
+                string.Equals(
+                    row.SourceLanguage,
+                    sourceLanguage,
+                    StringComparison.OrdinalIgnoreCase);
+
+            if (match == 0 &&
+                !languageMatch)''','''            if (match == 0)''',1)
+          section = section.replace('''            var languageMatch =
+                sourceLanguage is not null &&
+                string.Equals(
+                    proposal.SourceLanguageCode,
+                    sourceLanguage,
+                    StringComparison.OrdinalIgnoreCase);
+
+            if (match == 0 &&
+                !languageMatch)''','''            if (match == 0)''',1)
+          section = section.replace('''            var languageMatch =
+                sourceLanguage is not null &&
+                (
+                    string.Equals(
+                        pair.SourceLanguageCode,
+                        sourceLanguage,
+                        StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(
+                        pair.TargetLanguageCode,
+                        sourceLanguage,
+                        StringComparison.OrdinalIgnoreCase)
+                );
+
+            if (match == 0 &&
+                !languageMatch)''','''            if (match == 0)''',1)
+
+          section = section.replace('''            scored
+                .OrderByDescending(item =>
+                    item.Item.AuthorityRank)
+                .ThenByDescending(item =>
+                    item.Match)''','''            scored
+                .OrderByDescending(item =>
+                    item.Match)
+                .ThenByDescending(item =>
+                    item.Item.AuthorityRank)''',1)
+
+          ops = ops[:start] + section + ops[end:]
+          ops_path.write_text(ops)
+
+          direct_test = Path('AgentPortal.Tests/LegendFounderAiConversationDirectResponseTests.cs')
+          direct_test.write_text(r'''using System.Net;
+using System.Security.Claims;
+using System.Text;
+using AgentPortal.Services;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging.Abstractions;
+using Xunit;
+
+namespace AgentPortal.Tests;
+
+public sealed class LegendFounderAiConversationDirectResponseTests
+{
+    [Fact]
+    public async Task Greeting_RespondsInFirstProviderRoundWithoutTouchingLegendAuthorities()
+    {
+        var previousKey = Environment.GetEnvironmentVariable("OPENAI_API_KEY");
+        Environment.SetEnvironmentVariable("OPENAI_API_KEY", "test-founder-ai-key");
+        try
+        {
+            var handler = new RecordingHandler();
+            var factory = new RecordingFactory(handler);
+            var configuration = new ConfigurationBuilder()
+                .AddInMemoryCollection(new Dictionary<string, string?>
+                {
+                    ["OpenAI:ApiKey"] = "test-founder-ai-key",
+                    ["OpenAI:Key"] = "test-founder-ai-key",
+                    ["OpenAI:LegendFounderAiModel"] = "gpt-5"
+                })
+                .Build();
+
+            var service = new LegendFounderAiConversationService(
+                factory,
+                configuration,
+                null!,
+                NullLogger<LegendFounderAiConversationService>.Instance);
+
+            var response = await service.ReplyAsync(
+                new ClaimsPrincipal(new ClaimsIdentity()),
+                new LegendFounderAiChatRequest
+                {
+                    Mode = "legend",
+                    Messages = [new LegendFounderAiChatMessage("user", "Hi")]
+                });
+
+            Assert.True(response.Succeeded, response.Error);
+            Assert.Equal("Hello! How can I help?", response.Message);
+            Assert.Equal(1, handler.CallCount);
+            Assert.Contains("\"effort\":\"low\"", handler.LastRequestBody, StringComparison.Ordinal);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("OPENAI_API_KEY", previousKey);
+        }
+    }
+
+    private sealed class RecordingFactory(RecordingHandler handler) : IHttpClientFactory
+    {
+        public HttpClient CreateClient(string name) => new(handler, disposeHandler: false)
+        {
+            BaseAddress = new Uri("https://api.openai.test/")
+        };
+    }
+
+    private sealed class RecordingHandler : HttpMessageHandler
+    {
+        public int CallCount { get; private set; }
+        public string LastRequestBody { get; private set; } = string.Empty;
+
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            CallCount++;
+            LastRequestBody = request.Content is null ? string.Empty : await request.Content.ReadAsStringAsync(cancellationToken);
+            const string json = """
+            {"status":"completed","output":[{"type":"message","content":[{"type":"output_text","text":"Hello! How can I help?"}]}]}
+            """;
+            return new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(json, Encoding.UTF8, "application/json")
+            };
+        }
+    }
+}
+''')
+          PY
+
+          git diff --check
+          dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Debug --filter 'FullyQualifiedName~LegendConnectRetainedKnowledgeScaleTests|FullyQualifiedName~LegendFounderAiConversationRoutingTests|FullyQualifiedName~LegendFounderAiConversationDirectResponseTests'
+
+      - name: Commit repaired authority implementation
+        shell: bash
+        run: |
+          rm -f .github/workflows/legend-ai-apply-repair.yml
+          git config user.name "MYLEGND"
+          git config user.email "zac.owen@mylegnd.com"
+          git add AgentPortal/Services/LegendFounderAiConversationService.cs \
+                  Infrastructure/Messaging/LegendConnectOperations.cs \
+                  AgentPortal.Tests/LegendFounderAiConversationDirectResponseTests.cs \
+                  .github/workflows/legend-ai-apply-repair.yml
+          git diff --cached --check
+          git commit -m "Repair LEGEND AI response routing and retained retrieval"
+          git push origin HEAD:fix/legend-retained-knowledge-retrieval-20260819
