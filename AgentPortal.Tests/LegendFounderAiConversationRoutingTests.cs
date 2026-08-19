@@ -11,6 +11,10 @@ public sealed class LegendFounderAiConversationRoutingTests
     [Theory]
     [InlineData("Hi")]
     [InlineData("Hello")]
+    [InlineData("Hello legend")]
+    [InlineData("Hello Legend® Ai")]
+    [InlineData("Hi Legend")]
+    [InlineData("Legend, hello")]
     [InlineData("How are you?")]
     [InlineData("Why are you being so slow?")]
     public void CasualConversation_DoesNotRequireGovernedInspection(string text)
@@ -24,6 +28,7 @@ public sealed class LegendFounderAiConversationRoutingTests
 
     [Theory]
     [InlineData("What does LEGEND currently know about Haitian Creole?")]
+    [InlineData("Legend, what is the current system state?")]
     [InlineData("How many canonical entries do we have?")]
     [InlineData("Train LEGEND on this curriculum.")]
     [InlineData("What is our current model readiness?")]
