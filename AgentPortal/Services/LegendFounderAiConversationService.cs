@@ -162,37 +162,47 @@ public sealed class LegendFounderAiConversationService
         var executionClock =
             Stopwatch.StartNew();
 
-        await ReportProgressAsync(
-            progress,
-            new LegendFounderAiProgressEvent(
-                "retained_knowledge",
-                "Checking retained LEGEND knowledge relevant to this request."),
-            effectiveToken);
+        var requiresGovernedInspection =
+            RequiresGovernedInspection(conversation, mode);
 
-        var retainedKnowledgeQuery =
-            BuildRetainedKnowledgeQuery(conversation);
+        LegendConnectRetainedKnowledgeSearchSnapshot? retainedKnowledge = null;
 
-        var retainedKnowledge =
-            await TryLoadRetainedKnowledgeAsync(
-                founder,
-                retainedKnowledgeQuery,
-                conversation,
+        if (requiresGovernedInspection)
+        {
+            await ReportProgressAsync(
+                progress,
+                new LegendFounderAiProgressEvent(
+                    "retained_knowledge",
+                    "Checking retained LEGEND knowledge relevant to this request."),
                 effectiveToken);
 
-        await ReportProgressAsync(
-            progress,
-            new LegendFounderAiProgressEvent(
-                "retained_knowledge",
-                retainedKnowledge.Items.Count > 0
-                    ? $"Found {retainedKnowledge.Items.Count} relevant retained LEGEND record(s)."
-                    : "No directly matching retained LEGEND records were found; continuing with the governed tools available for this request."),
-            effectiveToken);
+            var retainedKnowledgeQuery =
+                BuildRetainedKnowledgeQuery(conversation);
+
+            retainedKnowledge =
+                await TryLoadRetainedKnowledgeAsync(
+                    founder,
+                    retainedKnowledgeQuery,
+                    conversation,
+                    effectiveToken);
+
+            await ReportProgressAsync(
+                progress,
+                new LegendFounderAiProgressEvent(
+                    "retained_knowledge",
+                    retainedKnowledge.Items.Count > 0
+                        ? $"Found {retainedKnowledge.Items.Count} relevant retained LEGEND record(s)."
+                        : "No directly matching retained LEGEND records were found; continuing with the governed tools available for this request."),
+                effectiveToken);
+        }
 
         var instructions =
             BuildInstructions(mode) +
-            BuildRetainedKnowledgeContext(
-                retainedKnowledge,
-                ResolveRetainedContextBudget(conversation));
+            (retainedKnowledge is null
+                ? string.Empty
+                : BuildRetainedKnowledgeContext(
+                    retainedKnowledge,
+                    ResolveRetainedContextBudget(conversation)));
 
         var tools = BuildFounderTools();
 
@@ -244,6 +254,7 @@ public sealed class LegendFounderAiConversationService
                 }
 
                 var allowTools =
+                    requiresGovernedInspection &&
                     round < maximumToolRounds - 1 &&
                     remaining >
                         TimeSpan.FromSeconds(
@@ -288,6 +299,10 @@ public sealed class LegendFounderAiConversationService
                         tools,
                         allowTools,
                         providerBudget,
+                        ResolveReasoningEffortForRound(
+                            round,
+                            requiresGovernedInspection,
+                            _reasoningEffort),
                         effectiveToken);
 
                 if (responseDocument is null)
@@ -470,6 +485,7 @@ public sealed class LegendFounderAiConversationService
         IReadOnlyList<object> tools,
         bool allowTools,
         TimeSpan providerBudget,
+        string reasoningEffort,
         CancellationToken cancellationToken)
     {
         var payload = new
@@ -493,7 +509,7 @@ public sealed class LegendFounderAiConversationService
 
             reasoning = new
             {
-                effort = _reasoningEffort
+                effort = reasoningEffort
             },
 
             service_tier = _serviceTier,
@@ -2576,6 +2592,44 @@ Never upgrade an unresolved, rejected or contradicted record merely because it a
             StringComparison.OrdinalIgnoreCase)
             ? "teacher"
             : "legend";
+
+    private static bool RequiresGovernedInspection(
+        IReadOnlyList<LegendFounderAiChatMessage> conversation,
+        string mode)
+    {
+        if (string.Equals(mode, "teacher", StringComparison.Ordinal))
+            return true;
+
+        var latest = conversation
+            .Last(message => string.Equals(message.Role, "user", StringComparison.Ordinal))
+            .Content?.Trim() ?? string.Empty;
+
+        if (latest.Length == 0)
+            return false;
+
+        var text = latest.ToLowerInvariant();
+
+        var governedSignals = new[]
+        {
+            "legend", "canonical", "retained knowledge", "retained",
+            "curriculum", "train ", "training", "teacher", "translation",
+            "haitian creole", "language", "alignment", "provenance",
+            "evidence", "model readiness", "readiness", "provider",
+            "azure", "system state", "system status", "metrics", "metric",
+            "knowledge", "learning", "corpus"
+        };
+
+        return governedSignals.Any(signal =>
+            text.Contains(signal, StringComparison.Ordinal));
+    }
+
+    private static string ResolveReasoningEffortForRound(
+        int round,
+        bool requiresGovernedInspection,
+        string configuredEffort) =>
+        !requiresGovernedInspection || round == 0
+            ? "low"
+            : configuredEffort;
 
     private static string NormalizeReasoningEffort(
         string? value)
