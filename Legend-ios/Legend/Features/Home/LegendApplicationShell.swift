@@ -1,6 +1,7 @@
 import SwiftUI
 import UIKit
 import PhotosUI
+import Combine
 
 private func legendMobileAvatarUpdate(from imageData: Data) -> MobileAccountAvatarUpdate? {
     guard let image = UIImage(data: imageData) else { return nil }
@@ -96,10 +97,12 @@ struct LegendApplicationShell: View {
     @State private var selectedTab: LegendAppTab = .home
     @ObservedObject private var messages: MessagingStore
     @ObservedObject private var social: MobileSocialStore
+    @ObservedObject private var legendFounderAi: LegendFounderAiStore
     @ObservedObject private var activity: LegendDailyActivityStore
     @State private var isMessageThreadActive = false
     @State private var pendingMessageConversationID: UUID?
     @State private var accountNavigationPath: [LegendAccountNavigationRoute] = []
+    @State private var isPresentingLegendFounderAi = false
 
     init(
         currentSession: MobileSession,
@@ -114,6 +117,11 @@ struct LegendApplicationShell: View {
         _account = ObservedObject(wrappedValue: bootstrap.stores.account)
         _messages = ObservedObject(wrappedValue: bootstrap.stores.messaging)
         _social = ObservedObject(wrappedValue: bootstrap.stores.social)
+        _legendFounderAi = ObservedObject(
+            wrappedValue:
+                coordinator.makeLegendFounderAiStore(
+                    participantType:
+                        currentSession.actor.identity.participantType))
         _activity = ObservedObject(wrappedValue: bootstrap.activity)
     }
 
@@ -146,8 +154,14 @@ struct LegendApplicationShell: View {
         VStack(spacing: 0) {
             LegendAppBrandBar(
                 showsHomeActions: selectedTab == .home,
+                showsLegendAi:
+                    selectedTab == .home &&
+                    legendFounderAi.isAvailable,
                 activityCount: homeActivityCount,
-                usesDarkSurface: selectedTab == .discover)
+                usesDarkSurface: selectedTab == .discover,
+                openLegendAi: {
+                    isPresentingLegendFounderAi = true
+                })
                 .padding(.bottom, LegendNextSpacing.xs)
 
             selectedTabContent
@@ -196,6 +210,13 @@ struct LegendApplicationShell: View {
             }
         }
         .tint(LegendNextColor.gold)
+        .task {
+            await legendFounderAi.resolveAvailability()
+        }
+        .sheet(isPresented: $isPresentingLegendFounderAi) {
+            LegendFounderAiConversationView(
+                store: legendFounderAi)
+        }
         .animation(
             reduceMotion ? nil : LegendNextMotion.tab,
             value: scrollChrome.isBottomNavigationVisible)
@@ -251,7 +272,8 @@ struct LegendApplicationShell: View {
                     currentSession: currentSession,
                     store: bootstrap.stores.discovery,
                     journeyCircles: bootstrap.stores.journeyCircles,
-                    social: bootstrap.stores.social
+                    social: bootstrap.stores.social,
+                    legendFounderAi: legendFounderAi
                 )
             }
 
@@ -270,7 +292,11 @@ struct LegendApplicationShell: View {
                 pendingConversationID: $pendingMessageConversationID,
                 messages: messages,
                 currentSession: currentSession,
-                social: social
+                social: social,
+                showsLegendAi: legendFounderAi.isAvailable,
+                openLegendAi: {
+                    isPresentingLegendFounderAi = true
+                }
             )
             .task { messages.load() }
 
@@ -434,8 +460,10 @@ private struct LegendAppBrandBar: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     let showsHomeActions: Bool
+    let showsLegendAi: Bool
     let activityCount: Int
     let usesDarkSurface: Bool
+    let openLegendAi: () -> Void
 
     var body: some View {
         HStack(spacing: LegendNextSpacing.sm) {
@@ -453,6 +481,12 @@ private struct LegendAppBrandBar: View {
                 .accessibilityAddTraits(.isHeader)
 
             Spacer(minLength: LegendNextSpacing.sm)
+
+            if showsLegendAi {
+                LegendFounderAiLauncherButton(
+                    action: openLegendAi,
+                    size: 44)
+            }
 
             homeActionButton(
                 systemImage: "heart",
@@ -1517,6 +1551,8 @@ private struct LegendMessagesTab: View {
     @ObservedObject var messages: MessagingStore
     let currentSession: MobileSession
     @ObservedObject var social: MobileSocialStore
+    let showsLegendAi: Bool
+    let openLegendAi: () -> Void
     @State private var navigationPath: [UUID] = []
 
     var body: some View {
@@ -1533,6 +1569,8 @@ private struct LegendMessagesTab: View {
         ) {
             MessagingHomeView(
                 store: messages,
+                showsLegendAi: showsLegendAi,
+                openLegendAi: openLegendAi,
                 openConversation: { conversationID in
                     // Begin the single-flight detail request before SwiftUI
                     // schedules the navigation destination. This removes a
@@ -2559,7 +2597,9 @@ private struct LegendAgentLeadsView: View {
 struct LegendJourneyProfileEditor: View {
     let dashboard: MobileJourneyDashboardResponse
     @ObservedObject var store: MobileJourneyCirclesStore
+    @ObservedObject var legendFounderAi: LegendFounderAiStore
     @Environment(\.dismiss) private var dismiss
+    @State private var isPresentingLegendFounderAi = false
     @State private var consentAffirmed: Bool
     @State private var isOptedIn: Bool
     @State private var isDiscoverable: Bool
@@ -2575,9 +2615,15 @@ struct LegendJourneyProfileEditor: View {
     @State private var communicationStyles: Set<String>
     @State private var accountabilityFrequencies: Set<String>
 
-    init(dashboard: MobileJourneyDashboardResponse, store: MobileJourneyCirclesStore) {
+    init(
+        dashboard: MobileJourneyDashboardResponse,
+        store: MobileJourneyCirclesStore,
+        legendFounderAi: LegendFounderAiStore
+    ) {
         self.dashboard = dashboard
         _store = ObservedObject(wrappedValue: store)
+        _legendFounderAi = ObservedObject(
+            wrappedValue: legendFounderAi)
         let preferences = dashboard.preferences
         let profile = dashboard.profile
         _consentAffirmed = State(initialValue: preferences?.consentAffirmed ?? false)
@@ -2701,6 +2747,17 @@ struct LegendJourneyProfileEditor: View {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Close") { dismiss() }
                 }
+
+                if legendFounderAi.isAvailable {
+                    ToolbarItem(placement: .principal) {
+                        LegendFounderAiLauncherButton(
+                            action: {
+                                isPresentingLegendFounderAi = true
+                            },
+                            size: 38)
+                    }
+                }
+
                 ToolbarItem(placement: .confirmationAction) {
                     Button(store.isPerformingAction ? "Saving…" : "Save") {
                         store.saveProfile(MobileJourneyProfileInput(
@@ -2722,6 +2779,10 @@ struct LegendJourneyProfileEditor: View {
                     .disabled(store.isPerformingAction || !consentAffirmed)
                 }
             }
+        }
+        .sheet(isPresented: $isPresentingLegendFounderAi) {
+            LegendFounderAiConversationView(
+                store: legendFounderAi)
         }
     }
 
@@ -10037,5 +10098,539 @@ struct LegendProfileAvatar: View {
             .uppercased()
 
         return value.isEmpty ? "L" : value
+    }
+}
+
+
+// MARK: - Founder Legend® Ai Mobile Presentation
+
+struct LegendFounderAiChatMessage:
+    Encodable,
+    Identifiable,
+    Equatable
+{
+    let id: UUID
+    let role: String
+    let content: String
+
+    init(
+        id: UUID = UUID(),
+        role: String,
+        content: String
+    ) {
+        self.id = id
+        self.role = role
+        self.content = content
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case role
+        case content
+    }
+}
+
+private struct LegendFounderAiAccessResponse: Decodable {
+    let available: Bool
+}
+
+private struct LegendFounderAiChatRequest: Encodable {
+    let mode: String
+    let messages: [LegendFounderAiChatMessage]
+}
+
+private struct LegendFounderAiChatResponse: Decodable {
+    let succeeded: Bool
+    let mode: String
+    let message: String?
+    let error: String?
+    let failureKind: String?
+    let providerStatusCode: Int?
+    let reference: String?
+}
+
+@MainActor
+final class LegendFounderAiStore: ObservableObject {
+    @Published private(set) var isAvailable = false
+    @Published private(set) var messages:
+        [LegendFounderAiChatMessage] = []
+    @Published private(set) var isSending = false
+    @Published private(set) var failureMessage: String?
+
+    private let client: MobileHTTPClient?
+    private let participantType: ParticipantType
+    private let accessTokenProvider: () async throws -> String
+    private var availabilityResolved = false
+
+    init(
+        client: MobileHTTPClient?,
+        participantType: ParticipantType,
+        accessTokenProvider:
+            @escaping () async throws -> String
+    ) {
+        self.client = client
+        self.participantType = participantType
+        self.accessTokenProvider = accessTokenProvider
+    }
+
+    func resolveAvailability() async {
+        guard !availabilityResolved else {
+            return
+        }
+
+        guard let client else {
+            isAvailable = false
+            availabilityResolved = true
+            return
+        }
+
+        do {
+            let token =
+                try await accessTokenProvider()
+
+            let response =
+                try await client.get(
+                    "/api/v1/mobile/founder/legend-ai/access",
+                    accessToken: token,
+                    headers: participantHeaders,
+                    response:
+                        LegendFounderAiAccessResponse.self)
+
+            isAvailable = response.available
+            availabilityResolved = true
+        } catch {
+            isAvailable = false
+        }
+    }
+
+    func send(_ rawText: String) async {
+        guard isAvailable,
+              !isSending,
+              let client
+        else {
+            return
+        }
+
+        let text =
+            rawText.trimmingCharacters(
+                in: .whitespacesAndNewlines)
+
+        guard !text.isEmpty else {
+            return
+        }
+
+        messages.append(
+            LegendFounderAiChatMessage(
+                role: "user",
+                content: text))
+
+        failureMessage = nil
+        isSending = true
+
+        defer {
+            isSending = false
+        }
+
+        do {
+            let token =
+                try await accessTokenProvider()
+
+            let response =
+                try await client.post(
+                    "/api/v1/mobile/founder/legend-ai/chat",
+                    body:
+                        LegendFounderAiChatRequest(
+                            mode: "system",
+                            messages: messages),
+                    accessToken: token,
+                    headers: participantHeaders,
+                    response:
+                        LegendFounderAiChatResponse.self)
+
+            if response.succeeded,
+               let answer =
+                    response.message?
+                        .trimmingCharacters(
+                            in: .whitespacesAndNewlines),
+               !answer.isEmpty
+            {
+                messages.append(
+                    LegendFounderAiChatMessage(
+                        role: "assistant",
+                        content: answer))
+
+                failureMessage = nil
+                return
+            }
+
+            failureMessage =
+                typedFailure(response)
+        } catch {
+            failureMessage =
+                "Legend® Ai could not complete that request."
+        }
+    }
+
+    func clearConversation() {
+        guard !isSending else {
+            return
+        }
+
+        messages.removeAll()
+        failureMessage = nil
+    }
+
+    private var participantHeaders:
+        [String: String]
+    {
+        [
+            "X-Legend-Participant-Type":
+                participantType.rawValue
+        ]
+    }
+
+    private func typedFailure(
+        _ response: LegendFounderAiChatResponse
+    ) -> String {
+        var parts: [String] = []
+
+        if let error =
+            response.error?
+                .trimmingCharacters(
+                    in: .whitespacesAndNewlines),
+           !error.isEmpty
+        {
+            parts.append(error)
+        } else {
+            parts.append(
+                "Legend® Ai could not complete that request.")
+        }
+
+        if let kind =
+            response.failureKind,
+           !kind.isEmpty
+        {
+            parts.append(
+                "Type: \(kind)")
+        }
+
+        if let status =
+            response.providerStatusCode
+        {
+            parts.append(
+                "Provider HTTP: \(status)")
+        }
+
+        if let reference =
+            response.reference,
+           !reference.isEmpty
+        {
+            parts.append(
+                "Reference: \(reference)")
+        }
+
+        return parts.joined(
+            separator: "\n")
+    }
+}
+
+struct LegendFounderAiLauncherButton: View {
+    let action: () -> Void
+    let size: CGFloat
+
+    var body: some View {
+        Button(action: action) {
+            Image("LegendAiIcon")
+                .resizable()
+                .scaledToFit()
+                .padding(size * 0.06)
+                .frame(
+                    width: size,
+                    height: size)
+                .clipShape(Circle())
+                .overlay {
+                    Circle()
+                        .strokeBorder(
+                            LegendNextColor.gold.opacity(0.72),
+                            lineWidth: 1)
+                }
+                .shadow(
+                    color:
+                        LegendNextColor.gold.opacity(0.18),
+                    radius: 8,
+                    y: 4)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Open Legend Ai")
+        .accessibilityHint(
+            "Opens the Founder Legend Ai conversation.")
+    }
+}
+
+struct LegendFounderAiConversationView: View {
+    @ObservedObject var store: LegendFounderAiStore
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var draft = ""
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                LegendNextCanvas()
+
+                VStack(spacing: 0) {
+                    conversation
+
+                    Divider()
+
+                    composer
+                }
+            }
+            .navigationTitle("Legend® Ai")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(
+                    placement: .topBarLeading
+                ) {
+                    Button("Close") {
+                        dismiss()
+                    }
+                }
+
+                if !store.messages.isEmpty {
+                    ToolbarItem(
+                        placement: .topBarTrailing
+                    ) {
+                        Button("Clear") {
+                            store.clearConversation()
+                        }
+                        .disabled(store.isSending)
+                    }
+                }
+            }
+        }
+        .presentationDragIndicator(.visible)
+    }
+
+    @ViewBuilder
+    private var conversation: some View {
+        if store.messages.isEmpty {
+            VStack(
+                spacing: LegendNextSpacing.md
+            ) {
+                Spacer()
+
+                Image("LegendAiIcon")
+                    .resizable()
+                    .scaledToFit()
+                    .frame(
+                        width: 92,
+                        height: 92)
+                    .clipShape(Circle())
+
+                Text("Legend® Ai")
+                    .font(LegendNextTypography.hero)
+                    .foregroundStyle(
+                        LegendNextColor.textPrimary)
+
+                Text(
+                    "Ask Legend® Ai about the current " +
+                    "LEGEND system and its retained intelligence."
+                )
+                .font(LegendNextTypography.body)
+                .foregroundStyle(
+                    LegendNextColor.textSecondary)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: 360)
+
+                Spacer()
+            }
+            .padding(LegendNextSpacing.md)
+            .frame(
+                maxWidth: .infinity,
+                maxHeight: .infinity)
+        } else {
+            ScrollViewReader { proxy in
+                ScrollView {
+                    LazyVStack(
+                        alignment: .leading,
+                        spacing:
+                            LegendNextSpacing.sm
+                    ) {
+                        ForEach(
+                            store.messages
+                        ) { message in
+                            bubble(message)
+                                .id(message.id)
+                        }
+
+                        if store.isSending {
+                            HStack(
+                                spacing:
+                                    LegendNextSpacing.xs
+                            ) {
+                                ProgressView()
+                                    .controlSize(.small)
+
+                                Text(
+                                    "Legend® Ai is thinking…")
+                                    .font(
+                                        LegendNextTypography.caption)
+                                    .foregroundStyle(
+                                        LegendNextColor
+                                            .textSecondary)
+                            }
+                        }
+
+                        if let failure =
+                            store.failureMessage
+                        {
+                            Text(failure)
+                                .font(
+                                    LegendNextTypography.caption)
+                                .foregroundStyle(
+                                    LegendNextColor.danger)
+                                .textSelection(.enabled)
+                        }
+                    }
+                    .padding(
+                        LegendNextSpacing.sm)
+                }
+                .onChange(
+                    of: store.messages.count
+                ) {
+                    guard let last =
+                        store.messages.last
+                    else {
+                        return
+                    }
+
+                    withAnimation {
+                        proxy.scrollTo(
+                            last.id,
+                            anchor: .bottom)
+                    }
+                }
+            }
+        }
+    }
+
+    private func bubble(
+        _ message: LegendFounderAiChatMessage
+    ) -> some View {
+        HStack {
+            if message.role == "user" {
+                Spacer(minLength: 48)
+            }
+
+            Text(message.content)
+                .font(LegendNextTypography.body)
+                .foregroundStyle(
+                    message.role == "user"
+                        ? Color.white
+                        : LegendNextColor.textPrimary)
+                .textSelection(.enabled)
+                .padding(
+                    .horizontal,
+                    LegendNextSpacing.sm)
+                .padding(
+                    .vertical,
+                    LegendNextSpacing.xs)
+                .background(
+                    message.role == "user"
+                        ? LegendNextColor.navy
+                        : LegendNextColor.canvas,
+                    in:
+                        RoundedRectangle(
+                            cornerRadius:
+                                LegendNextRadius.control,
+                            style: .continuous))
+
+            if message.role != "user" {
+                Spacer(minLength: 48)
+            }
+        }
+    }
+
+    private var composer: some View {
+        HStack(
+            alignment: .bottom,
+            spacing: LegendNextSpacing.xs
+        ) {
+            TextField(
+                "Message Legend® Ai",
+                text: $draft,
+                axis: .vertical)
+                .lineLimit(1...6)
+                .textFieldStyle(.plain)
+                .padding(
+                    .horizontal,
+                    LegendNextSpacing.sm)
+                .padding(.vertical, 11)
+                .background(
+                    LegendNextColor.canvas,
+                    in:
+                        RoundedRectangle(
+                            cornerRadius:
+                                LegendNextRadius.control,
+                            style: .continuous))
+                .overlay {
+                    RoundedRectangle(
+                        cornerRadius:
+                            LegendNextRadius.control,
+                        style: .continuous)
+                        .strokeBorder(
+                            LegendNextColor.gold
+                                .opacity(0.30),
+                            lineWidth: 1)
+                }
+
+            Button {
+                let text = draft
+
+                guard !text
+                    .trimmingCharacters(
+                        in: .whitespacesAndNewlines)
+                    .isEmpty
+                else {
+                    return
+                }
+
+                draft = ""
+
+                Task {
+                    await store.send(text)
+                }
+            } label: {
+                Image(systemName: "arrow.up")
+                    .font(
+                        .system(
+                            size: 17,
+                            weight: .bold))
+                    .foregroundStyle(
+                        LegendNextColor.midnight)
+                    .frame(
+                        width: 44,
+                        height: 44)
+                    .background(
+                        LegendNextGradient.gold,
+                        in: Circle())
+            }
+            .buttonStyle(.plain)
+            .disabled(
+                store.isSending ||
+                draft
+                    .trimmingCharacters(
+                        in: .whitespacesAndNewlines)
+                    .isEmpty)
+            .accessibilityLabel("Send message")
+        }
+        .padding(
+            .horizontal,
+            LegendNextSpacing.sm)
+        .padding(
+            .vertical,
+            LegendNextSpacing.xs)
+        .background(
+            LegendNextColor.canvas)
     }
 }

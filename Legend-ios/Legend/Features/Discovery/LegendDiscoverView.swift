@@ -11,6 +11,7 @@ struct LegendDiscoverView: View {
     @ObservedObject var store: MobileDiscoveryStore
     @ObservedObject var journeyCircles: MobileJourneyCirclesStore
     @ObservedObject var social: MobileSocialStore
+    @ObservedObject var legendFounderAi: LegendFounderAiStore
 
     @State private var isEditingJourneyProfile = false
     @State private var publicProfile: LegendPublicProfileRoute?
@@ -30,7 +31,10 @@ struct LegendDiscoverView: View {
             .preferredColorScheme(.dark)
             .sheet(isPresented: $isEditingJourneyProfile) {
                 if case .loaded(let dashboard) = journeyCircles.state {
-                    LegendJourneyProfileEditor(dashboard: dashboard, store: journeyCircles)
+                    LegendJourneyProfileEditor(
+                        dashboard: dashboard,
+                        store: journeyCircles,
+                        legendFounderAi: legendFounderAi)
                 }
             }
             .navigationDestination(item: $publicProfile) { route in

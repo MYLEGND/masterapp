@@ -122,6 +122,8 @@ private struct LegendVerificationProfileRoute: Identifiable {
 
 struct MessagingHomeView: View {
     @ObservedObject var store: MessagingStore
+    let showsLegendAi: Bool
+    let openLegendAi: () -> Void
     let openConversation: (UUID) -> Void
 
     @Environment(\.colorScheme) private var colorScheme
@@ -258,6 +260,12 @@ struct MessagingHomeView: View {
                 Spacer(minLength: LegendNextSpacing.sm)
 
                 HStack(spacing: LegendNextSpacing.sm) {
+                    if showsLegendAi {
+                        LegendFounderAiLauncherButton(
+                            action: openLegendAi,
+                            size: 48)
+                    }
+
                     Button {
                         isPresentingNewConversation = true
                         store.loadRecipients()
