@@ -279,7 +279,7 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
             Math.Clamp(
                 take,
                 1,
-                20);
+                64);
 
         var terms =
             normalizedQuery
@@ -296,7 +296,7 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
                 .Where(item =>
                     item.Length >= 2)
                 .Distinct(StringComparer.Ordinal)
-                .Take(10)
+                .Take(Math.Clamp(boundedTake * 2, 12, 64))
                 .ToArray();
 
         var languages =
@@ -355,10 +355,10 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
                             LegendConnectKnowledgeProvenance.FounderApproved ||
                         item.Provenance ==
                             LegendConnectKnowledgeProvenance.SystemValidatedMachine
-                    ))
+                    ) &&
+                    (sourceLanguage == null || item.LanguageCode == sourceLanguage))
                 .OrderByDescending(item =>
                     item.UpdatedUtc)
-                .Take(400)
                 .ToListAsync(cancellationToken);
 
         var alignments =
@@ -380,6 +380,8 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
                     alignment.SupersededUtc == null &&
                     source.IsTrainingEligible &&
                     target.IsTrainingEligible &&
+                    (sourceLanguage == null || source.LanguageCode == sourceLanguage) &&
+                    (targetLanguage == null || target.LanguageCode == targetLanguage) &&
                     (
                         alignment.HumanVerified ||
                         alignment.QualityState ==
@@ -401,7 +403,6 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
                     TargetText =
                         target.Text
                 })
-                .Take(400)
                 .ToListAsync(cancellationToken);
 
         var alignmentIds =
@@ -436,9 +437,11 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
         var proposals =
             await _db.Set<LegendLanguageTeacherProposal>()
                 .AsNoTracking()
+                .Where(item =>
+                    (sourceLanguage == null || item.SourceLanguageCode == sourceLanguage) &&
+                    (targetLanguage == null || item.TargetLanguageCode == targetLanguage))
                 .OrderByDescending(item =>
                     item.UpdatedUtc)
-                .Take(300)
                 .ToListAsync(cancellationToken);
 
         var activeModels =
@@ -449,7 +452,6 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
                     item.ActiveModelVersion != null)
                 .OrderByDescending(item =>
                     item.UpdatedUtc)
-                .Take(100)
                 .ToListAsync(cancellationToken);
 
         var scored =
@@ -473,15 +475,7 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
                     unit.Text,
                     terms);
 
-            var languageMatch =
-                sourceLanguage is not null &&
-                string.Equals(
-                    unit.LanguageCode,
-                    sourceLanguage,
-                    StringComparison.OrdinalIgnoreCase);
-
-            if (match == 0 &&
-                !languageMatch)
+            if (match == 0)
             {
                 continue;
             }
@@ -543,15 +537,7 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
                     row.Alignment.PairKey,
                     terms);
 
-            var languageMatch =
-                sourceLanguage is not null &&
-                string.Equals(
-                    row.SourceLanguage,
-                    sourceLanguage,
-                    StringComparison.OrdinalIgnoreCase);
-
-            if (match == 0 &&
-                !languageMatch)
+            if (match == 0)
             {
                 continue;
             }
@@ -634,15 +620,7 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
                     proposal.ProposalPayloadJson,
                     terms);
 
-            var languageMatch =
-                sourceLanguage is not null &&
-                string.Equals(
-                    proposal.SourceLanguageCode,
-                    sourceLanguage,
-                    StringComparison.OrdinalIgnoreCase);
-
-            if (match == 0 &&
-                !languageMatch)
+            if (match == 0)
             {
                 continue;
             }
@@ -700,21 +678,7 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
                     pair.ActiveModelVersion,
                     terms);
 
-            var languageMatch =
-                sourceLanguage is not null &&
-                (
-                    string.Equals(
-                        pair.SourceLanguageCode,
-                        sourceLanguage,
-                        StringComparison.OrdinalIgnoreCase) ||
-                    string.Equals(
-                        pair.TargetLanguageCode,
-                        sourceLanguage,
-                        StringComparison.OrdinalIgnoreCase)
-                );
-
-            if (match == 0 &&
-                !languageMatch)
+            if (match == 0)
             {
                 continue;
             }
@@ -742,9 +706,9 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
         var selected =
             scored
                 .OrderByDescending(item =>
-                    item.Item.AuthorityRank)
-                .ThenByDescending(item =>
                     item.Match)
+                .ThenByDescending(item =>
+                    item.Item.AuthorityRank)
                 .ThenByDescending(item =>
                     item.Item.UpdatedUtc)
                 .Take(boundedTake)
