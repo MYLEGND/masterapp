@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Net;
 using System.Net.Http;
 using System.Reflection;
@@ -104,7 +105,7 @@ public sealed class LegendFounderAiProviderResilienceTests
         Assert.NotNull(method);
 
         var shortTake = Assert.IsType<int>(method!.Invoke(null, new object[] { "simple query" }));
-        var longTake = Assert.IsType<int>(method.Invoke(null, new object[] { string.Join(' ', new string[800].Select((_, index) => $"term{index}")) }));
+        var longTake = Assert.IsType<int>(method.Invoke(null, new object[] { string.Join(' ', Enumerable.Range(0, 800).Select(index => $"term{index}")) }));
 
         Assert.InRange(shortTake, 12, 32);
         Assert.Equal(32, longTake);
