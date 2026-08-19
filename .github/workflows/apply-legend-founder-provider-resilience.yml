@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - fix/legend-founder-provider-resilience-20260819
+  pull_request:
+    branches:
+      - meta-authority-cleanup
 
 permissions:
   contents: write
@@ -15,6 +18,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7.0.1
         with:
+          ref: fix/legend-founder-provider-resilience-20260819
           fetch-depth: 0
       - name: Apply exact scoped repair
         run: python3 scripts/apply-legend-founder-provider-resilience.py
@@ -31,4 +35,4 @@ jobs:
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add AgentPortal/Services/LegendFounderAiConversationService.cs AgentPortal/Controllers/LegendFounderAiController.cs AgentPortal.Tests/LegendFounderAiProviderResilienceTests.cs
           git commit -m 'Harden LEGEND Founder AI provider resilience'
-          git push origin HEAD
+          git push origin HEAD:fix/legend-founder-provider-resilience-20260819
