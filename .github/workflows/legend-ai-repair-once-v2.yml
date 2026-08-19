@@ -1,0 +1,162 @@
+name: One-time LEGEND AI repair v2
+
+on:
+  push:
+    branches:
+      - fix/legend-retained-knowledge-retrieval-20260819
+    paths:
+      - '.github/workflows/legend-ai-repair-once-v2.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          ref: fix/legend-retained-knowledge-retrieval-20260819
+          fetch-depth: 0
+
+      - name: Patch existing authorities only
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace_once(text, old, new, label):
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"{label}: expected exactly 1 match, found {count}")
+              return text.replace(old, new, 1)
+
+          # --- Founder AI orchestration: route casual conversation directly through
+          # the same provider service; governed system/knowledge requests keep the
+          # same FounderLegendConnectService and tools. No parallel authority.
+          service_path = Path('AgentPortal/Services/LegendFounderAiConversationService.cs')
+          service = service_path.read_text()
+
+          old = '''        var executionClock =\n            Stopwatch.StartNew();\n\n        await ReportProgressAsync(\n            progress,\n            new LegendFounderAiProgressEvent(\n                "retained_knowledge",\n                "Checking retained LEGEND knowledge relevant to this request."),\n            effectiveToken);\n\n        var retainedKnowledgeQuery =\n            BuildRetainedKnowledgeQuery(conversation);\n\n        var retainedKnowledge =\n            await TryLoadRetainedKnowledgeAsync(\n                founder,\n                retainedKnowledgeQuery,\n                conversation,\n                effectiveToken);\n\n        await ReportProgressAsync(\n            progress,\n            new LegendFounderAiProgressEvent(\n                "retained_knowledge",\n                retainedKnowledge.Items.Count > 0\n                    ? $"Found {retainedKnowledge.Items.Count} relevant retained LEGEND record(s)."\n                    : "No directly matching retained LEGEND records were found; continuing with the governed tools available for this request."),\n            effectiveToken);\n\n        var instructions =\n            BuildInstructions(mode) +\n            BuildRetainedKnowledgeContext(\n                retainedKnowledge,\n                ResolveRetainedContextBudget(conversation));\n\n        var tools = BuildFounderTools();\n'''
+          new = '''        var executionClock =\n            Stopwatch.StartNew();\n\n        var requiresGovernedInspection =\n            RequiresGovernedInspection(conversation, mode);\n\n        LegendConnectRetainedKnowledgeSearchSnapshot? retainedKnowledge = null;\n\n        if (requiresGovernedInspection)\n        {\n            await ReportProgressAsync(\n                progress,\n                new LegendFounderAiProgressEvent(\n                    "retained_knowledge",\n                    "Checking retained LEGEND knowledge relevant to this request."),\n                effectiveToken);\n\n            var retainedKnowledgeQuery =\n                BuildRetainedKnowledgeQuery(conversation);\n\n            retainedKnowledge =\n                await TryLoadRetainedKnowledgeAsync(\n                    founder,\n                    retainedKnowledgeQuery,\n                    conversation,\n                    effectiveToken);\n\n            await ReportProgressAsync(\n                progress,\n                new LegendFounderAiProgressEvent(\n                    "retained_knowledge",\n                    retainedKnowledge.Items.Count > 0\n                        ? $"Found {retainedKnowledge.Items.Count} relevant retained LEGEND record(s)."\n                        : "No directly matching retained LEGEND records were found; continuing with the governed tools available for this request."),\n                effectiveToken);\n        }\n\n        var instructions =\n            BuildInstructions(mode) +\n            (retainedKnowledge is null\n                ? string.Empty\n                : BuildRetainedKnowledgeContext(\n                    retainedKnowledge,\n                    ResolveRetainedContextBudget(conversation)));\n\n        var tools = BuildFounderTools();\n'''
+          service = replace_once(service, old, new, 'governed preload routing')
+
+          old = '''                var allowTools =\n                    round < maximumToolRounds - 1 &&\n                    remaining >\n                        TimeSpan.FromSeconds(\n                            MinimumFinalSynthesisWindowSeconds);\n'''
+          new = '''                var allowTools =\n                    requiresGovernedInspection &&\n                    round < maximumToolRounds - 1 &&\n                    remaining >\n                        TimeSpan.FromSeconds(\n                            MinimumFinalSynthesisWindowSeconds);\n'''
+          service = replace_once(service, old, new, 'tool routing gate')
+
+          old = '''                    await SendResponseAsync(\n                        apiKey,\n                        model,\n                        instructions,\n                        input,\n                        tools,\n                        allowTools,\n                        providerBudget,\n                        effectiveToken);'''
+          new = '''                    await SendResponseAsync(\n                        apiKey,\n                        model,\n                        instructions,\n                        input,\n                        tools,\n                        allowTools,\n                        providerBudget,\n                        ResolveReasoningEffortForRound(\n                            round,\n                            requiresGovernedInspection,\n                            _reasoningEffort),\n                        effectiveToken);'''
+          service = replace_once(service, old, new, 'provider call reasoning route')
+
+          old = '''        bool allowTools,\n        TimeSpan providerBudget,\n        CancellationToken cancellationToken)'''
+          new = '''        bool allowTools,\n        TimeSpan providerBudget,\n        string reasoningEffort,\n        CancellationToken cancellationToken)'''
+          service = replace_once(service, old, new, 'SendResponseAsync signature')
+
+          old = '''            reasoning = new\n            {\n                effort = _reasoningEffort\n            },'''
+          new = '''            reasoning = new\n            {\n                effort = reasoningEffort\n            },'''
+          service = replace_once(service, old, new, 'reasoning payload')
+
+          marker = '''    private static string NormalizeReasoningEffort(\n        string? value)\n    {'''
+          if marker not in service:
+              raise SystemExit('NormalizeReasoningEffort marker missing')
+          insert = '''    private static bool RequiresGovernedInspection(\n        IReadOnlyList<LegendFounderAiChatMessage> conversation,\n        string mode)\n    {\n        if (string.Equals(mode, "teacher", StringComparison.Ordinal))\n            return true;\n\n        var latest = conversation\n            .Last(message => string.Equals(message.Role, "user", StringComparison.Ordinal))\n            .Content?.Trim() ?? string.Empty;\n\n        if (latest.Length == 0)\n            return false;\n\n        var text = latest.ToLowerInvariant();\n\n        var governedSignals = new[]\n        {\n            "legend", "canonical", "retained knowledge", "retained",\n            "curriculum", "train ", "training", "teacher", "translation",\n            "haitian creole", "language", "alignment", "provenance",\n            "evidence", "model readiness", "readiness", "provider",\n            "azure", "system state", "system status", "metrics", "metric",\n            "knowledge", "learning", "corpus"\n        };\n\n        return governedSignals.Any(signal =>\n            text.Contains(signal, StringComparison.Ordinal));\n    }\n\n    private static string ResolveReasoningEffortForRound(\n        int round,\n        bool requiresGovernedInspection,\n        string configuredEffort) =>\n        !requiresGovernedInspection || round == 0\n            ? "low"\n            : configuredEffort;\n\n'''
+          service = service.replace(marker, insert + marker, 1)
+          service_path.write_text(service)
+
+          # --- Existing retained-knowledge authority: remove pre-ranking recency
+          # blindness and require semantic match. Language remains a filter, not
+          # a substitute for relevance. Preserve authority and contradiction state.
+          ops_path = Path('Infrastructure/Messaging/LegendConnectOperations.cs')
+          ops = ops_path.read_text()
+
+          ops = replace_once(
+              ops,
+              '''            Math.Clamp(\n                take,\n                1,\n                20);''',
+              '''            Math.Clamp(\n                take,\n                1,\n                64);''',
+              'retained take bound')
+
+          ops = replace_once(
+              ops,
+              '''                .Distinct(StringComparer.Ordinal)\n                .Take(10)\n                .ToArray();''',
+              '''                .Distinct(StringComparer.Ordinal)\n                .Take(Math.Clamp(boundedTake * 2, 12, 64))\n                .ToArray();''',
+              'dynamic query terms')
+
+          ops = replace_once(
+              ops,
+              '''                .Where(item =>\n                    item.IsTrainingEligible &&\n                    (\n                        item.Provenance ==\n                            LegendConnectKnowledgeProvenance.FounderApproved ||\n                        item.Provenance ==\n                            LegendConnectKnowledgeProvenance.SystemValidatedMachine\n                    ))\n                .OrderByDescending(item =>\n                    item.UpdatedUtc)\n                .Take(400)\n                .ToListAsync(cancellationToken);''',
+              '''                .Where(item =>\n                    item.IsTrainingEligible &&\n                    (\n                        item.Provenance ==\n                            LegendConnectKnowledgeProvenance.FounderApproved ||\n                        item.Provenance ==\n                            LegendConnectKnowledgeProvenance.SystemValidatedMachine\n                    ) &&\n                    (sourceLanguage == null || item.LanguageCode == sourceLanguage))\n                .OrderByDescending(item =>\n                    item.UpdatedUtc)\n                .ToListAsync(cancellationToken);''',
+              'canonical recency cutoff')
+
+          ops = replace_once(
+              ops,
+              '''                    alignment.SupersededUtc == null &&\n                    source.IsTrainingEligible &&\n                    target.IsTrainingEligible &&\n                    (''',
+              '''                    alignment.SupersededUtc == null &&\n                    source.IsTrainingEligible &&\n                    target.IsTrainingEligible &&\n                    (sourceLanguage == null || source.LanguageCode == sourceLanguage) &&\n                    (targetLanguage == null || target.LanguageCode == targetLanguage) &&\n                    (''',
+              'alignment language filtering')
+
+          ops = replace_once(
+              ops,
+              ''')\n                .Take(400)\n                .ToListAsync(cancellationToken);''',
+              ''')\n                .ToListAsync(cancellationToken);''',
+              'alignment recency cutoff')
+
+          ops = replace_once(
+              ops,
+              '''            await _db.Set<LegendLanguageTeacherProposal>()\n                .AsNoTracking()\n                .OrderByDescending(item =>\n                    item.UpdatedUtc)\n                .Take(300)\n                .ToListAsync(cancellationToken);''',
+              '''            await _db.Set<LegendLanguageTeacherProposal>()\n                .AsNoTracking()\n                .Where(item =>\n                    (sourceLanguage == null || item.SourceLanguageCode == sourceLanguage) &&\n                    (targetLanguage == null || item.TargetLanguageCode == targetLanguage))\n                .OrderByDescending(item =>\n                    item.UpdatedUtc)\n                .ToListAsync(cancellationToken);''',
+              'proposal recency cutoff')
+
+          ops = replace_once(
+              ops,
+              '''                .OrderByDescending(item =>\n                    item.UpdatedUtc)\n                .Take(100)\n                .ToListAsync(cancellationToken);''',
+              '''                .OrderByDescending(item =>\n                    item.UpdatedUtc)\n                .ToListAsync(cancellationToken);''',
+              'active model recency cutoff')
+
+          # Four scoring loops used languageMatch as a fallback even when there
+          # was no semantic overlap. Replace those exact fallback blocks.
+          fallback = '''            var languageMatch =\n                sourceLanguage is not null &&\n                string.Equals(\n                    {VALUE},\n                    sourceLanguage,\n                    StringComparison.OrdinalIgnoreCase);\n\n            if (match == 0 &&\n                !languageMatch)\n            {\n                continue;\n            }'''
+          for value in ['unit.LanguageCode', 'row.SourceLanguage', 'proposal.SourceLanguageCode']:
+              old_block = fallback.replace('{VALUE}', value)
+              ops = replace_once(
+                  ops,
+                  old_block,
+                  '''            if (match == 0)\n            {\n                continue;\n            }''',
+                  f'semantic-only match for {value}')
+
+          old_model = '''            var languageMatch =\n                sourceLanguage is not null &&\n                (\n                    string.Equals(\n                        pair.SourceLanguageCode,\n                        sourceLanguage,\n                        StringComparison.OrdinalIgnoreCase) ||\n                    string.Equals(\n                        pair.TargetLanguageCode,\n                        sourceLanguage,\n                        StringComparison.OrdinalIgnoreCase)\n                );\n\n            if (match == 0 &&\n                !languageMatch)\n            {\n                continue;\n            }'''
+          ops = replace_once(
+              ops,
+              old_model,
+              '''            if (match == 0)\n            {\n                continue;\n            }''',
+              'semantic-only active model match')
+
+          ops = replace_once(
+              ops,
+              '''            scored\n                .OrderByDescending(item =>\n                    item.Item.AuthorityRank)\n                .ThenByDescending(item =>\n                    item.Match)''',
+              '''            scored\n                .OrderByDescending(item =>\n                    item.Match)\n                .ThenByDescending(item =>\n                    item.Item.AuthorityRank)''',
+              'relevance-first ordering')
+
+          ops_path.write_text(ops)
+          PY
+
+          git diff --check
+
+      - name: Run focused proof
+        shell: bash
+        run: |
+          dotnet restore MASTERAPP.sln
+          dotnet build MASTERAPP.sln -c Debug --no-restore
+          dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Debug --no-build --filter 'FullyQualifiedName~LegendConnectRetainedKnowledgeScaleTests|FullyQualifiedName~LegendFounderAiConversationRoutingTests'
+
+      - name: Commit only proven repair
+        shell: bash
+        run: |
+          rm -f .github/workflows/legend-ai-repair-once-v2.yml
+          git config user.name 'MYLEGND'
+          git config user.email 'zac.owen@mylegnd.com'
+          git add AgentPortal/Services/LegendFounderAiConversationService.cs \
+                  Infrastructure/Messaging/LegendConnectOperations.cs \
+                  .github/workflows/legend-ai-repair-once-v2.yml
+          git diff --cached --check
+          git commit -m 'Fix LEGEND AI governed routing and retained retrieval'
+          git push origin HEAD:fix/legend-retained-knowledge-retrieval-20260819
