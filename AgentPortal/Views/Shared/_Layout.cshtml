@@ -852,7 +852,18 @@
     }
 
     function pageHealthText(node) {
-        return normalizedText(node);
+        const rendered =
+            typeof node?.innerText === "string"
+                ? node.innerText
+                : node?.textContent;
+
+        return (rendered || "")
+            .replace(/\s+/g, " ")
+            .trim();
+    }
+
+    function isPageHealthText(value) {
+        return value.startsWith("Page Health");
     }
 
     function pageHealthElementCandidates(host) {
@@ -862,26 +873,32 @@
                     return false;
                 }
 
-                const text = pageHealthText(element);
-                return text === "Page Health"
-                    || text.startsWith("Page Health ")
-                    || text.includes("Page Health No active issues")
-                    || /^Page Health\s+\d+\b/.test(text);
+                return isPageHealthText(
+                    pageHealthText(element)
+                );
             })
             .sort((left, right) => {
-                const leftChildren = left.children?.length ?? 0;
-                const rightChildren = right.children?.length ?? 0;
+                const leftRect =
+                    left.getBoundingClientRect();
 
-                if (leftChildren !== rightChildren) {
-                    return leftChildren - rightChildren;
-                }
+                const rightRect =
+                    right.getBoundingClientRect();
 
-                return pageHealthText(left).length - pageHealthText(right).length;
+                const leftArea =
+                    Math.max(1, leftRect.width)
+                    * Math.max(1, leftRect.height);
+
+                const rightArea =
+                    Math.max(1, rightRect.width)
+                    * Math.max(1, rightRect.height);
+
+                return leftArea - rightArea;
             });
     }
 
     function resolvePageHealthRoot(host) {
-        const candidates = pageHealthElementCandidates(host);
+        const candidates =
+            pageHealthElementCandidates(host);
 
         for (const candidate of candidates) {
             let current = candidate;
@@ -891,21 +908,19 @@
                 && current !== document.body
                 && current !== document.documentElement
             ) {
-                const style = window.getComputedStyle(current);
-                const rect = current.getBoundingClientRect();
-                const text = pageHealthText(current);
+                const style =
+                    window.getComputedStyle(current);
 
-                const containsPageHealth =
-                    text === "Page Health"
-                    || text.startsWith("Page Health ")
-                    || text.includes("Page Health No active issues")
-                    || /^Page Health\s+\d+\b/.test(text);
+                const rect =
+                    current.getBoundingClientRect();
 
                 const isFloatingOwner =
-                    (style.position === "fixed" || style.position === "sticky")
+                    (
+                        style.position === "fixed"
+                        || style.position === "sticky"
+                    )
                     && rect.width > 80
-                    && rect.height > 28
-                    && containsPageHealth;
+                    && rect.height > 28;
 
                 if (isFloatingOwner) {
                     return current;
