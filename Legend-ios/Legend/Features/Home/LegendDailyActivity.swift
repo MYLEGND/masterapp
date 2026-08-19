@@ -1453,7 +1453,8 @@ struct LegendInAppNotificationsSheet: View {
                                 openEvent: { openNotification(notification) },
                                 openProfile: notification.actor.map { author in
                                     { openProfile(author) }
-                                })
+                                },
+                                usesRelativeTimestamp: true)
                         }
                     }
                 }
@@ -1790,6 +1791,23 @@ private struct LegendDailyActivityRow: View {
     let toggleCompletion: () -> Void
     let openEvent: () -> Void
     let openProfile: (() -> Void)?
+    var usesRelativeTimestamp = false
+
+    private static let relativeDateFormatter: RelativeDateTimeFormatter = {
+        let formatter = RelativeDateTimeFormatter()
+        formatter.unitsStyle = .full
+        formatter.dateTimeStyle = .numeric
+        return formatter
+    }()
+
+    private func relativeTimestamp(
+        for date: Date
+    ) -> String {
+        Self.relativeDateFormatter.localizedString(
+            for: date,
+            relativeTo: Date()
+        )
+    }
 
     var body: some View {
         LegendNextSurface(style: .elevated, padding: LegendNextSpacing.sm) {
@@ -1821,9 +1839,26 @@ private struct LegendDailyActivityRow: View {
                             .foregroundStyle(LegendNextColor.textSecondary)
                             .lineLimit(2)
 
-                        Text(item.occurredAt, format: .dateTime.hour().minute())
+                        if usesRelativeTimestamp {
+                            Text(
+                                relativeTimestamp(
+                                    for: item.occurredAt
+                                )
+                            )
                             .font(.caption2)
-                            .foregroundStyle(LegendNextColor.textTertiary)
+                            .foregroundStyle(
+                                LegendNextColor.textTertiary
+                            )
+                        } else {
+                            Text(
+                                item.occurredAt,
+                                format: .dateTime.hour().minute()
+                            )
+                            .font(.caption2)
+                            .foregroundStyle(
+                                LegendNextColor.textTertiary
+                            )
+                        }
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }

@@ -155,7 +155,6 @@ struct LegendApplicationShell: View {
                 showsLegendAi:
                     selectedTab == .home &&
                     legendFounderAi.isAvailable,
-                activityCount: homeActivityCount,
                 usesDarkSurface: selectedTab == .discover,
                 openLegendAi: {
                     isPresentingLegendFounderAi = true
@@ -356,10 +355,6 @@ struct LegendApplicationShell: View {
         }
     }
 
-    private var homeActivityCount: Int {
-        activity.unreadBadgeCount
-    }
-
     private var activeAccountAvatar: ProfileAvatar? {
         guard case .loaded(let profile) = account.state else {
             return currentSession.actor.avatar
@@ -459,17 +454,31 @@ private struct LegendAppBrandBar: View {
 
     let showsHomeActions: Bool
     let showsLegendAi: Bool
-    let activityCount: Int
     let usesDarkSurface: Bool
     let openLegendAi: () -> Void
 
     var body: some View {
         ZStack {
-            Text("LEGEND®")
+            Text("LEGEND")
                 .font(LegendNextTypography.wordmark)
                 .tracking(LegendSharedDesign.tracking("wordmark"))
-                .foregroundStyle(wordmarkColor)
+                .foregroundStyle(Color.clear)
+                .overlay(alignment: .leading) {
+                    Text("LEGEND®")
+                        .font(LegendNextTypography.wordmark)
+                        .tracking(
+                            LegendSharedDesign.tracking("wordmark")
+                        )
+                        .foregroundStyle(wordmarkColor)
+                        .fixedSize(
+                            horizontal: true,
+                            vertical: false
+                        )
+                        .allowsHitTesting(false)
+                        .accessibilityHidden(true)
+                }
                 .frame(maxWidth: .infinity)
+                .accessibilityLabel("LEGEND registered")
                 .accessibilityAddTraits(.isHeader)
 
             HStack(spacing: LegendNextSpacing.sm) {
@@ -486,11 +495,6 @@ private struct LegendAppBrandBar: View {
                         size: 44)
                 }
 
-                homeActionButton(
-                    systemImage: "heart",
-                    label: notificationAccessibilityLabel,
-                    action: .notifications,
-                    badge: activityCount)
             }
         }
         .frame(maxWidth: .infinity)
@@ -554,9 +558,6 @@ private struct LegendAppBrandBar: View {
         usesDarkSurface ? LegendNextColor.midnight : LegendNextColor.canvas
     }
 
-    private var notificationAccessibilityLabel: String {
-        "Open notifications, \(activityCount) recent interactions"
-    }
 }
 
 private struct LegendNextTabBar: View {
@@ -1688,8 +1689,37 @@ private struct LegendHomeView: View {
                     }
                 ) {
                     homeHero(home)
-                    LegendTodayActivitySummaryPill(activity: activity) {
-                        scrollChrome.requestHomeAction(.todayActivity)
+                    HStack(spacing: LegendNextSpacing.xs) {
+                        LegendTodayActivitySummaryPill(activity: activity) {
+                            scrollChrome.requestHomeAction(.todayActivity)
+                        }
+                        .frame(maxWidth: .infinity)
+
+                        Button {
+                            scrollChrome.requestHomeAction(.notifications)
+                        } label: {
+                            ZStack(alignment: .topTrailing) {
+                                Image(systemName: "heart")
+
+                                if activity.unreadBadgeCount > 0 {
+                                    Text("\(min(activity.unreadBadgeCount, 99))")
+                                        .font(.caption2.weight(.bold))
+                                        .foregroundStyle(.white)
+                                        .padding(5)
+                                        .background(
+                                            LegendNextColor.danger,
+                                            in: Circle()
+                                        )
+                                        .offset(x: 4, y: -4)
+                                }
+                            }
+                        }
+                        .buttonStyle(
+                            LegendNextIconButtonStyle(tone: .navy)
+                        )
+                        .accessibilityLabel(
+                            "Open notifications, \(activity.unreadBadgeCount) recent interactions"
+                        )
                     }
                 }
             }
@@ -10509,6 +10539,8 @@ struct LegendFounderAiConversationView: View {
     @State private var draft = ""
     @State private var mode = "legend"
     @State private var chatsOpen = false
+    @State private var composerVisible = true
+    @FocusState private var composerFocused: Bool
 
     var body: some View {
         GeometryReader { geometry in
@@ -10520,17 +10552,19 @@ struct LegendFounderAiConversationView: View {
                     header
                         .frame(height: 62)
 
-                    mobileActions
-                        .frame(height: 44)
-
-                    modeBar
-                        .frame(height: 43)
-
                     conversationArea
 
                     statusArea
 
-                    composer
+                    if composerVisible {
+                        composer
+                            .transition(
+                                .move(edge: .bottom)
+                                .combined(with: .opacity))
+                    } else {
+                        composerRestoreBar
+                            .transition(.opacity)
+                    }
                 }
                 .frame(
                     width: geometry.size.width,
@@ -10660,112 +10694,6 @@ struct LegendFounderAiConversationView: View {
     }
 
 
-    private var mobileActions: some View {
-        HStack(spacing: 8) {
-            Button {
-                chatsOpen = true
-            } label: {
-                HStack(spacing: 6) {
-                    Text("☰")
-                    Text("Chats")
-                }
-                .font(
-                    .system(
-                        size: 12,
-                        weight: .heavy))
-                .foregroundStyle(
-                    Color(
-                        red: 48.0 / 255.0,
-                        green: 57.0 / 255.0,
-                        blue: 74.0 / 255.0))
-                .frame(
-                    maxWidth: .infinity,
-                    minHeight: 34)
-                .background(
-                    Color.white,
-                    in:
-                        RoundedRectangle(
-                            cornerRadius: 10,
-                            style: .continuous))
-                .overlay {
-                    RoundedRectangle(
-                        cornerRadius: 10,
-                        style: .continuous)
-                        .strokeBorder(
-                            LegendFounderAiMobileWebStyle
-                                .headerGold
-                                .opacity(0.72),
-                            lineWidth: 1)
-                }
-            }
-            .buttonStyle(.plain)
-
-            Button {
-                startNewConversation()
-            } label: {
-                HStack(spacing: 6) {
-                    Text("+")
-                    Text("New")
-                }
-                .font(
-                    .system(
-                        size: 12,
-                        weight: .black))
-                .foregroundStyle(
-                    Color(
-                        red: 61.0 / 255.0,
-                        green: 36.0 / 255.0,
-                        blue: 3.0 / 255.0))
-                .frame(
-                    maxWidth: .infinity,
-                    minHeight: 34)
-                .background(
-                    LegendFounderAiMobileWebStyle.actionGold,
-                    in:
-                        RoundedRectangle(
-                            cornerRadius: 10,
-                            style: .continuous))
-            }
-            .buttonStyle(.plain)
-            .disabled(store.isSending)
-        }
-        .padding(
-            .horizontal,
-            8)
-        .padding(
-            .vertical,
-            5)
-        .background(
-            LegendFounderAiMobileWebStyle.paper)
-        .overlay(alignment: .bottom) {
-            Divider()
-        }
-    }
-
-
-    private var modeBar: some View {
-        HStack(spacing: 6) {
-            modeButton(
-                title: "Legend® Ai",
-                value: "legend")
-
-            modeButton(
-                title: "OpenAI Teacher",
-                value: "teacher")
-        }
-        .padding(
-            .horizontal,
-            8)
-        .padding(
-            .vertical,
-            5)
-        .background(
-            LegendFounderAiMobileWebStyle.paper)
-        .overlay(alignment: .bottom) {
-            Divider()
-        }
-    }
-
     private func modeButton(
         title: String,
         value: String
@@ -10839,12 +10767,55 @@ struct LegendFounderAiConversationView: View {
     }
 
 
-    @ViewBuilder
     private var conversationArea: some View {
-        if store.messages.isEmpty {
-            welcome
-        } else {
-            transcript
+        ZStack(alignment: .topLeading) {
+            Group {
+                if store.messages.isEmpty {
+                    welcome
+                } else {
+                    transcript
+                }
+            }
+
+            Button {
+                hideComposerForReading()
+                chatsOpen = true
+            } label: {
+                Image(systemName: "line.3.horizontal")
+                    .font(
+                        .system(
+                            size: 15,
+                            weight: .black))
+                    .foregroundStyle(
+                        Color(
+                            red: 57.0 / 255.0,
+                            green: 34.0 / 255.0,
+                            blue: 3.0 / 255.0))
+                    .frame(
+                        width: 34,
+                        height: 34)
+                    .background(
+                        LegendFounderAiMobileWebStyle.paper,
+                        in:
+                            RoundedRectangle(
+                                cornerRadius: 9,
+                                style: .continuous))
+                    .overlay {
+                        RoundedRectangle(
+                            cornerRadius: 9,
+                            style: .continuous)
+                            .strokeBorder(
+                                LegendFounderAiMobileWebStyle
+                                    .headerGold
+                                    .opacity(0.72),
+                                lineWidth: 1)
+                    }
+            }
+            .buttonStyle(.plain)
+            .padding(.leading, 7)
+            .padding(.top, 7)
+            .accessibilityLabel(
+                "Open conversations and Legend Ai controls")
         }
     }
 
@@ -10908,6 +10879,13 @@ struct LegendFounderAiConversationView: View {
                 .top,
                 14)
         }
+        .scrollDismissesKeyboard(.immediately)
+        .simultaneousGesture(
+            DragGesture(minimumDistance: 8)
+                .onChanged { _ in
+                    hideComposerForReading()
+                })
+
     }
 
     private var transcript: some View {
@@ -10963,6 +10941,12 @@ struct LegendFounderAiConversationView: View {
                     .vertical,
                     14)
             }
+            .scrollDismissesKeyboard(.immediately)
+            .simultaneousGesture(
+                DragGesture(minimumDistance: 8)
+                    .onChanged { _ in
+                        hideComposerForReading()
+                    })
             .onChange(
                 of: store.messages.count
             ) {
@@ -11095,6 +11079,7 @@ struct LegendFounderAiConversationView: View {
                 .lineLimit(1...6)
                 .font(.system(size: 16))
                 .textFieldStyle(.plain)
+                .focused($composerFocused)
                 .padding(
                     .horizontal,
                     12)
@@ -11167,6 +11152,67 @@ struct LegendFounderAiConversationView: View {
     }
 
 
+    private var composerRestoreBar: some View {
+        HStack {
+            Spacer()
+
+            Button {
+                withAnimation(.easeOut(duration: 0.18)) {
+                    composerVisible = true
+                }
+
+                DispatchQueue.main.async {
+                    composerFocused = true
+                }
+            } label: {
+                Image(systemName: "keyboard")
+                    .font(
+                        .system(
+                            size: 16,
+                            weight: .bold))
+                    .foregroundStyle(
+                        Color(
+                            red: 60.0 / 255.0,
+                            green: 35.0 / 255.0,
+                            blue: 3.0 / 255.0))
+                    .frame(
+                        width: 42,
+                        height: 38)
+                    .background(
+                        LegendFounderAiMobileWebStyle.actionGold,
+                        in:
+                            RoundedRectangle(
+                                cornerRadius: 12,
+                                style: .continuous))
+                    .overlay {
+                        RoundedRectangle(
+                            cornerRadius: 12,
+                            style: .continuous)
+                            .strokeBorder(
+                                LegendFounderAiMobileWebStyle
+                                    .headerGold
+                                    .opacity(0.52),
+                                lineWidth: 1)
+                    }
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(
+                "Show message composer")
+        }
+        .padding(
+            .horizontal,
+            8)
+        .padding(
+            .vertical,
+            5)
+        .background(
+            LegendFounderAiMobileWebStyle.paper)
+        .overlay(alignment: .top) {
+            Divider()
+        }
+    }
+
+
     private var chatsScrim: some View {
         Button {
             chatsOpen = false
@@ -11186,12 +11232,50 @@ struct LegendFounderAiConversationView: View {
             alignment: .leading,
             spacing: 12
         ) {
+            HStack {
+                Text("CHATS")
+                    .font(
+                        .system(
+                            size: 11,
+                            weight: .black))
+                    .tracking(0.9)
+
+                Spacer()
+
+                Button {
+                    chatsOpen = false
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(
+                            .system(
+                                size: 13,
+                                weight: .black))
+                        .foregroundStyle(
+                            Color(
+                                red: 36.0 / 255.0,
+                                green: 22.0 / 255.0,
+                                blue: 4.0 / 255.0))
+                        .frame(
+                            width: 34,
+                            height: 34)
+                        .background(
+                            LegendFounderAiMobileWebStyle.closeGold,
+                            in:
+                                RoundedRectangle(
+                                    cornerRadius: 10,
+                                    style: .continuous))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(
+                    "Close conversations")
+            }
+
             Button {
                 startNewConversation()
                 chatsOpen = false
             } label: {
                 Label(
-                    "New conversation",
+                    "New",
                     systemImage: "plus")
                     .font(
                         .system(
@@ -11203,8 +11287,7 @@ struct LegendFounderAiConversationView: View {
                         maxWidth: .infinity,
                         minHeight: 42)
                     .background(
-                        LegendFounderAiMobileWebStyle
-                            .actionGold,
+                        LegendFounderAiMobileWebStyle.actionGold,
                         in:
                             RoundedRectangle(
                                 cornerRadius: 12,
@@ -11212,6 +11295,25 @@ struct LegendFounderAiConversationView: View {
             }
             .buttonStyle(.plain)
             .disabled(store.isSending)
+
+            VStack(spacing: 7) {
+                modeButton(
+                    title: "Legend® Ai",
+                    value: "legend")
+
+                modeButton(
+                    title: "OpenAI Teacher",
+                    value: "teacher")
+            }
+
+            Rectangle()
+                .fill(
+                    Color(
+                        red: 91.0 / 255.0,
+                        green: 54.0 / 255.0,
+                        blue: 6.0 / 255.0)
+                        .opacity(0.24))
+                .frame(height: 1)
 
             Text("CONVERSATIONS")
                 .font(
@@ -11302,6 +11404,19 @@ struct LegendFounderAiConversationView: View {
             color: Color.black.opacity(0.36),
             radius: 30,
             x: 18)
+    }
+
+
+    private func hideComposerForReading() {
+        composerFocused = false
+
+        guard composerVisible else {
+            return
+        }
+
+        withAnimation(.easeOut(duration: 0.16)) {
+            composerVisible = false
+        }
     }
 
 
