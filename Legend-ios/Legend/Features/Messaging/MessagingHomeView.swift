@@ -303,88 +303,314 @@ struct MessagingHomeView: View {
         .padding(.bottom, LegendNextSpacing.xs)
     }
 
+    private var pinnedColumns: [GridItem] {
+        Array(
+            repeating: GridItem(
+                .flexible(),
+                spacing: LegendNextSpacing.sm,
+                alignment: .top
+            ),
+            count: 3
+        )
+    }
+
     private func conversationSection(
         _ conversations: [ConversationSummary]
     ) -> some View {
-        return VStack(alignment: .leading, spacing: LegendNextSpacing.sm) {
+        let pinnedConversations = conversations.filter { $0.isPinned }
+        let recentConversations = conversations.filter { !$0.isPinned }
+
+        return VStack(
+            alignment: .leading,
+            spacing: LegendNextSpacing.md
+        ) {
             if store.isRefreshing {
                 HStack(spacing: LegendNextSpacing.xs) {
                     ProgressView()
                         .controlSize(.small)
                         .tint(LegendNextColor.gold)
+
                     Text("Updating")
                         .font(.caption.weight(.medium))
-                        .foregroundStyle(LegendNextColor.textSecondary)
+                        .foregroundStyle(
+                            LegendNextColor.textSecondary
+                        )
                 }
-                .padding(.horizontal, LegendNextSpacing.pageHorizontal)
+                .padding(
+                    .horizontal,
+                    LegendNextSpacing.pageHorizontal
+                )
             }
 
-            LazyVStack(spacing: LegendNextSpacing.sm) {
-                ForEach(conversations) { conversation in
-                    conversationButton(conversation)
-                }
+            if !pinnedConversations.isEmpty {
+                pinnedConversationGrid(
+                    pinnedConversations
+                )
+            }
 
-                if store.hasMoreConversations {
-                    Button {
-                        store.loadMoreConversations()
-                    } label: {
-                        HStack(spacing: LegendNextSpacing.xs) {
-                            if store.isLoadingMoreConversations {
-                                ProgressView()
-                                    .controlSize(.small)
-                                    .tint(LegendNextColor.gold)
-                            }
-
-                            Text(store.isLoadingMoreConversations
-                                 ? "Loading earlier conversations"
-                                 : "Load earlier conversations")
-                        }
+            if !recentConversations.isEmpty {
+                LazyVStack(
+                    spacing: LegendNextSpacing.sm
+                ) {
+                    ForEach(
+                        recentConversations
+                    ) { conversation in
+                        conversationButton(
+                            conversation
+                        )
                     }
-                    .buttonStyle(LegendNextButtonStyle(
-                        kind: .secondary,
-                        controlHeight: 38))
-                    .disabled(store.isLoadingMoreConversations)
-                    .padding(.top, LegendNextSpacing.xs)
-                    .accessibilityHint(
-                        "Loads the next oldest conversations without delaying the latest messages.")
                 }
+                .padding(
+                    .horizontal,
+                    LegendNextSpacing.pageHorizontal
+                )
             }
-            .padding(.horizontal, LegendNextSpacing.pageHorizontal)
+
+            if store.hasMoreConversations {
+                Button {
+                    store.loadMoreConversations()
+                } label: {
+                    HStack(
+                        spacing: LegendNextSpacing.xs
+                    ) {
+                        if store.isLoadingMoreConversations {
+                            ProgressView()
+                                .controlSize(.small)
+                                .tint(
+                                    LegendNextColor.gold
+                                )
+                        }
+
+                        Text(
+                            store.isLoadingMoreConversations
+                                ? "Loading earlier conversations"
+                                : "Load earlier conversations"
+                        )
+                    }
+                }
+                .buttonStyle(
+                    LegendNextButtonStyle(
+                        kind: .secondary,
+                        controlHeight: 38
+                    )
+                )
+                .disabled(
+                    store.isLoadingMoreConversations
+                )
+                .padding(
+                    .horizontal,
+                    LegendNextSpacing.pageHorizontal
+                )
+                .accessibilityHint(
+                    "Loads the next oldest conversations without delaying the latest messages."
+                )
+            }
         }
     }
 
-    private func conversationButton(_ conversation: ConversationSummary) -> some View {
+    private func pinnedConversationGrid(
+        _ conversations: [ConversationSummary]
+    ) -> some View {
+        LazyVGrid(
+            columns: pinnedColumns,
+            alignment: .center,
+            spacing: LegendNextSpacing.md
+        ) {
+            ForEach(conversations) { conversation in
+                pinnedConversationButton(
+                    conversation
+                )
+            }
+        }
+        .padding(
+            .horizontal,
+            LegendNextSpacing.pageHorizontal
+        )
+        .accessibilityElement(
+            children: .contain
+        )
+        .accessibilityLabel(
+            "Pinned conversations"
+        )
+    }
+
+    private func pinnedConversationButton(
+        _ conversation: ConversationSummary
+    ) -> some View {
         Button {
             openConversation(conversation.id)
         } label: {
-            LegendConversationRow(conversation: conversation)
+            VStack(
+                spacing: LegendNextSpacing.xs
+            ) {
+                ZStack(alignment: .topTrailing) {
+                    Group {
+                        if conversation.conversationType == "Group" {
+                            LegendMessagingGroupAvatar(
+                                avatar: conversation.groupAvatar,
+                                size: 72
+                            )
+                        } else {
+                            LegendMessagingAvatar(
+                                participant:
+                                    conversation.counterparty,
+                                size: 72,
+                                showsGoldRing:
+                                    conversation.unreadCount > 0
+                            )
+                        }
+                    }
+                    .frame(
+                        width: 72,
+                        height: 72
+                    )
+
+                    if conversation.unreadCount > 0 {
+                        Text(
+                            conversation.unreadCount > 99
+                                ? "99+"
+                                : "\(conversation.unreadCount)"
+                        )
+                        .font(
+                            .caption2.weight(.bold)
+                        )
+                        .foregroundStyle(.white)
+                        .frame(
+                            minWidth: 22,
+                            minHeight: 22
+                        )
+                        .padding(
+                            .horizontal,
+                            conversation.unreadCount > 9
+                                ? 4
+                                : 0
+                        )
+                        .background(
+                            Color(
+                                uiColor: .systemRed
+                            ),
+                            in: Capsule()
+                        )
+                        .offset(
+                            x: 7,
+                            y: -6
+                        )
+                        .accessibilityLabel(
+                            "\(conversation.unreadCount) unread messages"
+                        )
+                    }
+                }
+                .frame(
+                    width: 88,
+                    height: 78
+                )
+
+                Text(conversation.title)
+                    .font(
+                        .caption.weight(.semibold)
+                    )
+                    .foregroundStyle(
+                        LegendNextColor.textPrimary
+                    )
+                    .multilineTextAlignment(.center)
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.82)
+                    .frame(
+                        maxWidth: .infinity,
+                        minHeight: 32,
+                        alignment: .top
+                    )
+            }
+            .frame(
+                maxWidth: .infinity,
+                alignment: .top
+            )
         }
-        .buttonStyle(LegendMessagingPressButtonStyle())
-        .accessibilityHint("Open conversation")
+        .buttonStyle(.plain)
+        .accessibilityLabel(
+            "\(conversation.title), pinned conversation"
+        )
+        .accessibilityHint(
+            "Open conversation"
+        )
         .contextMenu {
-            Button {
-                store.setPinned(conversationID: conversation.id, isPinned: !conversation.isPinned)
-            } label: {
-                Label(
-                    conversation.isPinned ? "Unpin" : "Pin",
-                    systemImage: conversation.isPinned ? "pin.slash" : "pin")
-            }
+            conversationContextMenu(
+                conversation
+            )
+        }
+    }
 
-            Button {
-                store.setMuted(conversationID: conversation.id, isMuted: !conversation.isMuted)
-            } label: {
-                Label(
-                    conversation.isMuted ? "Unmute" : "Mute",
-                    systemImage: conversation.isMuted ? "bell" : "bell.slash")
-            }
+    private func conversationButton(
+        _ conversation: ConversationSummary
+    ) -> some View {
+        Button {
+            openConversation(conversation.id)
+        } label: {
+            LegendConversationRow(
+                conversation: conversation
+            )
+        }
+        .buttonStyle(
+            LegendMessagingPressButtonStyle()
+        )
+        .accessibilityHint(
+            "Open conversation"
+        )
+        .contextMenu {
+            conversationContextMenu(
+                conversation
+            )
+        }
+    }
 
-            Divider()
+    @ViewBuilder
+    private func conversationContextMenu(
+        _ conversation: ConversationSummary
+    ) -> some View {
+        Button {
+            store.setPinned(
+                conversationID: conversation.id,
+                isPinned: !conversation.isPinned
+            )
+        } label: {
+            Label(
+                conversation.isPinned
+                    ? "Unpin"
+                    : "Pin",
+                systemImage:
+                    conversation.isPinned
+                        ? "pin.slash"
+                        : "pin"
+            )
+        }
 
-            Button(role: .destructive) {
-                conversationPendingRemoval = conversation
-            } label: {
-                Label("Remove from inbox", systemImage: "trash")
-            }
+        Button {
+            store.setMuted(
+                conversationID: conversation.id,
+                isMuted: !conversation.isMuted
+            )
+        } label: {
+            Label(
+                conversation.isMuted
+                    ? "Unmute"
+                    : "Mute",
+                systemImage:
+                    conversation.isMuted
+                        ? "bell"
+                        : "bell.slash"
+            )
+        }
+
+        Divider()
+
+        Button(role: .destructive) {
+            conversationPendingRemoval =
+                conversation
+        } label: {
+            Label(
+                "Remove from inbox",
+                systemImage: "trash"
+            )
         }
     }
 
