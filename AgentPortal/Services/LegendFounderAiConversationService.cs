@@ -30,7 +30,11 @@ public sealed class LegendFounderAiConversationService
     private const int MinimumLatestMessageTailCharacters = 12_000;
     private const int MaximumToolRounds = 6;
     private const int MinimumFinalizationReserveSeconds = 8;
+    private const int MinimumFinalSynthesisWindowSeconds = 28;
     private const int MaximumProviderRoundSeconds = 55;
+    private const int MaximumRetainedKnowledgeLookupSeconds = 4;
+    private const int MaximumRetainedKnowledgeQueryCharacters = 2_000;
+    private const int MaximumReadOnlyToolSeconds = 8;
     private const int MaximumToolOutputCharacters = 20_000;
     private const int MaximumRetainedContextCharacters = 16_000;
 
@@ -144,11 +148,15 @@ public sealed class LegendFounderAiConversationService
                 "Checking retained LEGEND knowledge relevant to this request."),
             effectiveToken);
 
+        var retainedKnowledgeQuery =
+            CompactRetainedKnowledgeQuery(
+                conversation[^1].Content ??
+                    string.Empty);
+
         var retainedKnowledge =
             await TryLoadRetainedKnowledgeAsync(
                 founder,
-                conversation[^1].Content ??
-                    string.Empty,
+                retainedKnowledgeQuery,
                 effectiveToken);
 
         await ReportProgressAsync(
@@ -210,6 +218,18 @@ public sealed class LegendFounderAiConversationService
                         "timeout");
                 }
 
+                var allowTools =
+                    round <
+                        MaximumToolRounds - 1 &&
+                    remaining >
+                        TimeSpan.FromSeconds(
+                            MinimumFinalSynthesisWindowSeconds);
+
+                var providerReserveSeconds =
+                    allowTools
+                        ? MinimumFinalizationReserveSeconds
+                        : 2;
+
                 var providerBudget =
                     TimeSpan.FromSeconds(
                         Math.Min(
@@ -217,17 +237,21 @@ public sealed class LegendFounderAiConversationService
                             Math.Max(
                                 5,
                                 remaining.TotalSeconds -
-                                MinimumFinalizationReserveSeconds)));
+                                providerReserveSeconds)));
 
                 await ReportProgressAsync(
                     progress,
                     new LegendFounderAiProgressEvent(
+                        allowTools &&
                         round == 0
                             ? "planning"
                             : "synthesis",
+                        allowTools &&
                         round == 0
                             ? "Planning the response and determining which governed LEGEND checks are actually needed."
-                            : "Integrating the governed results already collected and determining whether another check is necessary.",
+                            : allowTools
+                                ? "Integrating the governed results already collected and determining whether another check is necessary."
+                                : "Finalizing the best supported response from the governed evidence already collected.",
                         round + 1),
                     effectiveToken);
 
@@ -238,6 +262,7 @@ public sealed class LegendFounderAiConversationService
                         instructions,
                         input,
                         tools,
+                        allowTools,
                         providerBudget,
                         effectiveToken);
 
@@ -339,7 +364,7 @@ public sealed class LegendFounderAiConversationService
                         effectiveToken);
 
                     var toolOutput =
-                        await ExecuteFounderToolAsync(
+                        await ExecuteFounderToolWithBudgetAsync(
                             founder,
                             call,
                             effectiveToken);
@@ -415,6 +440,7 @@ public sealed class LegendFounderAiConversationService
         string instructions,
         IReadOnlyList<object> input,
         IReadOnlyList<object> tools,
+        bool allowTools,
         TimeSpan providerBudget,
         CancellationToken cancellationToken)
     {
@@ -424,13 +450,25 @@ public sealed class LegendFounderAiConversationService
             store = false,
             instructions,
             input,
-            tools,
-            tool_choice = "auto",
+            tools =
+                allowTools
+                    ? tools
+                    : Array.Empty<object>(),
+
+            tool_choice =
+                allowTools
+                    ? "auto"
+                    : "none",
 
             // The model may request multiple governed checks in one
             // provider round. Execution below remains sequential through
             // the existing scoped LEGEND authorities.
-            parallel_tool_calls = true,
+            parallel_tool_calls = allowTools,
+
+            // Final provider-side protection. If instructions, retained
+            // context or accumulated tool results exceed model context,
+            // discard the oldest input items instead of failing the request.
+            truncation = "auto",
 
             max_output_tokens = _maxOutputTokens
         };
@@ -706,6 +744,69 @@ public sealed class LegendFounderAiConversationService
             HttpStatusCode.BadGateway or
             HttpStatusCode.ServiceUnavailable or
             HttpStatusCode.GatewayTimeout;
+
+    private async Task<string> ExecuteFounderToolWithBudgetAsync(
+        ClaimsPrincipal founder,
+        FounderAiToolCall call,
+        CancellationToken cancellationToken)
+    {
+        if (!IsReadOnlyFounderTool(
+                call.Name))
+        {
+            return await ExecuteFounderToolAsync(
+                founder,
+                call,
+                cancellationToken);
+        }
+
+        using var toolBudget =
+            CancellationTokenSource
+                .CreateLinkedTokenSource(
+                    cancellationToken);
+
+        toolBudget.CancelAfter(
+            TimeSpan.FromSeconds(
+                MaximumReadOnlyToolSeconds));
+
+        try
+        {
+            return await ExecuteFounderToolAsync(
+                founder,
+                call,
+                toolBudget.Token);
+        }
+        catch (OperationCanceledException)
+            when (
+                toolBudget.IsCancellationRequested &&
+                !cancellationToken.IsCancellationRequested)
+        {
+            _logger.LogWarning(
+                "Legend Founder AI read-only tool {Tool} exceeded its {Seconds}-second budget; continuing with partial governed evidence.",
+                call.Name,
+                MaximumReadOnlyToolSeconds);
+
+            return JsonSerializer.Serialize(
+                new
+                {
+                    error = "tool_timeout",
+                    tool = call.Name
+                },
+                JsonOptions);
+        }
+    }
+
+    private static bool IsReadOnlyFounderTool(
+        string name) =>
+        name is
+            "legend_system_overview" or
+            "legend_provider_capacity" or
+            "legend_language_knowledge" or
+            "legend_pair_health" or
+            "legend_translation_quality" or
+            "legend_target_realizations" or
+            "legend_search_retained_knowledge" or
+            "legend_metric_detail" or
+            "legend_language_state";
 
     private async Task<string> ExecuteFounderToolAsync(
         ClaimsPrincipal founder,
@@ -1855,6 +1956,15 @@ If the Founder explicitly asks you to teach or train LEGEND:
             string query,
             CancellationToken cancellationToken)
     {
+        using var lookupBudget =
+            CancellationTokenSource
+                .CreateLinkedTokenSource(
+                    cancellationToken);
+
+        lookupBudget.CancelAfter(
+            TimeSpan.FromSeconds(
+                MaximumRetainedKnowledgeLookupSeconds));
+
         try
         {
             return await _legend
@@ -1863,7 +1973,21 @@ If the Founder explicitly asks you to teach or train LEGEND:
                     query,
                     take: 12,
                     cancellationToken:
-                        cancellationToken);
+                        lookupBudget.Token);
+        }
+        catch (OperationCanceledException)
+            when (
+                lookupBudget.IsCancellationRequested &&
+                !cancellationToken.IsCancellationRequested)
+        {
+            _logger.LogWarning(
+                "Legend Founder AI retained-knowledge lookup exceeded its optional {Seconds}-second budget; continuing without retained context.",
+                MaximumRetainedKnowledgeLookupSeconds);
+
+            return new LegendConnectRetainedKnowledgeSearchSnapshot(
+                query,
+                0,
+                []);
         }
         catch (OperationCanceledException)
             when (cancellationToken.IsCancellationRequested)
@@ -1881,6 +2005,35 @@ If the Founder explicitly asks you to teach or train LEGEND:
                 0,
                 []);
         }
+    }
+
+    private static string CompactRetainedKnowledgeQuery(
+        string query)
+    {
+        if (query.Length <=
+            MaximumRetainedKnowledgeQueryCharacters)
+        {
+            return query;
+        }
+
+        const string marker =
+            "\n...[retained-knowledge query compacted]...\n";
+
+        var available =
+            MaximumRetainedKnowledgeQueryCharacters -
+            marker.Length;
+
+        var tailLength =
+            available / 2;
+
+        var headLength =
+            available -
+            tailLength;
+
+        return
+            query[..headLength] +
+            marker +
+            query[^tailLength..];
     }
 
     private static string BuildRetainedKnowledgeContext(
