@@ -661,7 +661,6 @@ public sealed class LegendFounderAiConversationService
                 providerRequestId);
         }
 
-        return null;
     }
 
     private static async Task WaitForProviderCooldownAsync(
