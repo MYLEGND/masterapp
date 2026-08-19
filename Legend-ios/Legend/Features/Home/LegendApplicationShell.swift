@@ -97,7 +97,7 @@ struct LegendApplicationShell: View {
     @State private var selectedTab: LegendAppTab = .home
     @ObservedObject private var messages: MessagingStore
     @ObservedObject private var social: MobileSocialStore
-    @ObservedObject private var legendFounderAi: LegendFounderAiStore
+    @StateObject private var legendFounderAi: LegendFounderAiStore
     @ObservedObject private var activity: LegendDailyActivityStore
     @State private var isMessageThreadActive = false
     @State private var pendingMessageConversationID: UUID?
@@ -117,7 +117,7 @@ struct LegendApplicationShell: View {
         _account = ObservedObject(wrappedValue: bootstrap.stores.account)
         _messages = ObservedObject(wrappedValue: bootstrap.stores.messaging)
         _social = ObservedObject(wrappedValue: bootstrap.stores.social)
-        _legendFounderAi = ObservedObject(
+        _legendFounderAi = StateObject(
             wrappedValue:
                 coordinator.makeLegendFounderAiStore(
                     participantType:

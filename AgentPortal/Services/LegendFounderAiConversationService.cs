@@ -26,7 +26,7 @@ public sealed class LegendFounderAiConversationService
     private const int MaximumMessageCharacters = 20_000;
     private const int MaximumConversationCharacters = 120_000;
     private const int MaximumProviderConversationCharacters = 60_000;
-    private const int MaximumToolRounds = 6;
+    private const int MaximumToolRounds = 3;
     private const int MaximumToolOutputCharacters = 20_000;
     private const int MaximumRetainedContextCharacters = 16_000;
 
@@ -58,17 +58,17 @@ public sealed class LegendFounderAiConversationService
             Math.Clamp(
                 configuration.GetValue<int?>(
                     "OpenAI:LegendFounderAiTimeoutSeconds") ??
-                    120,
+                    80,
                 30,
-                180);
+                90);
 
         _maxOutputTokens =
             Math.Clamp(
                 configuration.GetValue<int?>(
                     "OpenAI:LegendFounderAiMaxOutputTokens") ??
-                    5_000,
+                    3_500,
                 1_500,
-                8_000);
+                6_000);
     }
 
     public async Task<LegendFounderAiChatResponse> ReplyAsync(
