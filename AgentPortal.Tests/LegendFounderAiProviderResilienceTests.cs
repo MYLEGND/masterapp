@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Net;
 using System.Net.Http;
 using System.Reflection;
@@ -48,5 +50,64 @@ public sealed class LegendFounderAiProviderResilienceTests
         Assert.True(Assert.IsType<bool>(method!.Invoke(null, args)));
         var duration = Assert.IsType<TimeSpan>(args[1]);
         Assert.InRange(duration.TotalSeconds, expectedSeconds - 0.001, expectedSeconds + 0.001);
+    }
+
+    [Fact]
+    public void RetainedKnowledgeQueryCarriesPriorFounderContextWhenAvailable()
+    {
+        var method = typeof(LegendFounderAiConversationService).GetMethod("BuildRetainedKnowledgeQuery", BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.NotNull(method);
+
+        IReadOnlyList<LegendFounderAiChatMessage> conversation =
+        [
+            new("user", "Earlier context about Haitian Creole discourse markers."),
+            new("assistant", "Understood."),
+            new("user", "How should that affect the next contrast family?")
+        ];
+
+        var query = Assert.IsType<string>(method!.Invoke(null, new object[] { conversation }));
+        Assert.Contains("How should that affect", query, StringComparison.Ordinal);
+        Assert.Contains("Earlier context about Haitian Creole", query, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData(1_000, 2_000)]
+    [InlineData(5_000, 8_000)]
+    [InlineData(20_000, 16_000)]
+    public void RetainedKnowledgeQueryBudgetScalesWithRequestSize(int queryLength, int expectedBudget)
+    {
+        var method = typeof(LegendFounderAiConversationService).GetMethod("ResolveRetainedKnowledgeQueryBudget", BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.NotNull(method);
+        Assert.Equal(expectedBudget, Assert.IsType<int>(method!.Invoke(null, new object[] { queryLength })));
+    }
+
+    [Fact]
+    public void ProviderConversationBudgetUsesAvailableConversationWithoutArtificialPadding()
+    {
+        var method = typeof(LegendFounderAiConversationService).GetMethod("ResolveProviderConversationBudget", BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.NotNull(method);
+
+        IReadOnlyList<LegendFounderAiChatMessage> conversation =
+        [
+            new("user", new string('a', 70_000)),
+            new("assistant", new string('b', 20_000)),
+            new("user", new string('c', 20_000))
+        ];
+
+        var budget = Assert.IsType<int>(method!.Invoke(null, new object[] { conversation }));
+        Assert.Equal(110_000, budget);
+    }
+
+    [Fact]
+    public void RetainedKnowledgeTakeScalesButRemainsBounded()
+    {
+        var method = typeof(LegendFounderAiConversationService).GetMethod("ResolveRetainedKnowledgeTake", BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.NotNull(method);
+
+        var shortTake = Assert.IsType<int>(method!.Invoke(null, new object[] { "simple query" }));
+        var longTake = Assert.IsType<int>(method.Invoke(null, new object[] { string.Join(' ', Enumerable.Range(0, 800).Select(index => $"term{index}")) }));
+
+        Assert.InRange(shortTake, 12, 32);
+        Assert.Equal(32, longTake);
     }
 }
