@@ -67,3 +67,4 @@ public sealed class LegendConnectRetainedKnowledgeScaleTests
             item.Content == older.Text);
     }
 }
+
