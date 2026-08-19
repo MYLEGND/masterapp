@@ -119,6 +119,41 @@ struct MobileHTTPClient: Sendable {
         return try await perform(request, response: response)
     }
 
+    func streamLines(
+        _ path: String,
+        accessToken: String,
+        queryItems: [URLQueryItem] = [],
+        headers: [String: String] = [:]
+    ) -> AsyncThrowingStream<String, Error> {
+        AsyncThrowingStream { continuation in
+            let task = Task {
+                do {
+                    var request = URLRequest(url: try endpointURL(path, queryItems: queryItems))
+                    request.httpMethod = "GET"
+                    request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+                    request.setValue("application/x-ndjson", forHTTPHeaderField: "Accept")
+                    headers.forEach { request.setValue($0.value, forHTTPHeaderField: $0.key) }
+
+                    let (bytes, response) = try await session.bytes(for: request)
+                    guard let http = response as? HTTPURLResponse,
+                          (200 ... 299).contains(http.statusCode) else {
+                        throw MobileAPIError.invalidServerResponse
+                    }
+
+                    for try await line in bytes.lines {
+                        try Task.checkCancellation()
+                        continuation.yield(line)
+                    }
+                    continuation.finish()
+                } catch {
+                    if Task.isCancelled { continuation.finish() }
+                    else { continuation.finish(throwing: error) }
+                }
+            }
+            continuation.onTermination = { @Sendable _ in task.cancel() }
+        }
+    }
+
     func getData(
         _ path: String,
         accessToken: String,

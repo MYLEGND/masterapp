@@ -10148,12 +10148,26 @@ private struct LegendFounderAiChatResponse: Decodable {
     let reference: String?
 }
 
+private struct LegendFounderAiProgressEnvelope: Decodable {
+    let type: String
+    let elapsedSeconds: Int?
+    let progress: LegendFounderAiProgressUpdate?
+}
+
+private struct LegendFounderAiProgressUpdate: Decodable {
+    let stage: String
+    let message: String
+    let round: Int?
+    let tool: String?
+}
+
 @MainActor
 final class LegendFounderAiStore: ObservableObject {
     @Published private(set) var isAvailable = false
     @Published private(set) var messages:
         [LegendFounderAiChatMessage] = []
     @Published private(set) var isSending = false
+    @Published private(set) var progressMessage: String?
     @Published private(set) var failureMessage: String?
 
     private let client: MobileHTTPClient?
@@ -10224,15 +10238,31 @@ final class LegendFounderAiStore: ObservableObject {
                 content: text))
 
         failureMessage = nil
+        progressMessage = nil
         isSending = true
 
         defer {
             isSending = false
+            progressMessage = nil
         }
 
         do {
             let token =
                 try await accessTokenProvider()
+
+            let operationID = UUID()
+            var chatHeaders = participantHeaders
+            chatHeaders["X-Legend-Ai-Operation-Id"] = operationID.uuidString
+
+            let progressTask = Task {
+                await consumeProgress(
+                    client: client,
+                    operationID: operationID,
+                    accessToken: token)
+            }
+
+            defer { progressTask.cancel() }
+            await Task.yield()
 
             let response =
                 try await client.post(
@@ -10242,7 +10272,7 @@ final class LegendFounderAiStore: ObservableObject {
                             mode: "system",
                             messages: messages),
                     accessToken: token,
-                    headers: participantHeaders,
+                    headers: chatHeaders,
                     response:
                         LegendFounderAiChatResponse.self)
 
@@ -10276,7 +10306,42 @@ final class LegendFounderAiStore: ObservableObject {
         }
 
         messages.removeAll()
+        progressMessage = nil
         failureMessage = nil
+    }
+
+    private func consumeProgress(
+        client: MobileHTTPClient,
+        operationID: UUID,
+        accessToken: String
+    ) async {
+        do {
+            for try await line in client.streamLines(
+                "/api/v1/mobile/founder/legend-ai/progress/\(operationID.uuidString)",
+                accessToken: accessToken,
+                headers: participantHeaders)
+            {
+                guard !Task.isCancelled,
+                      let data = line.data(using: .utf8),
+                      let envelope = try? JSONDecoder.mobile.decode(
+                        LegendFounderAiProgressEnvelope.self,
+                        from: data),
+                      let update = envelope.progress else {
+                    continue
+                }
+
+                let message = update.message.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !message.isEmpty else { continue }
+
+                if envelope.type == "heartbeat", let elapsed = envelope.elapsedSeconds {
+                    progressMessage = "\(message) · \(elapsed)s"
+                } else if envelope.type == "progress" {
+                    progressMessage = message
+                }
+            }
+        } catch {
+            // Progress is advisory; the chat POST remains authoritative.
+        }
     }
 
     private var participantHeaders:
@@ -10471,13 +10536,16 @@ struct LegendFounderAiConversationView: View {
                                 ProgressView()
                                     .controlSize(.small)
 
-                                Text(
-                                    "Legend® Ai is thinking…")
-                                    .font(
-                                        LegendNextTypography.caption)
-                                    .foregroundStyle(
-                                        LegendNextColor
-                                            .textSecondary)
+                                if let progress = store.progressMessage {
+                                    Text(progress)
+                                        .font(
+                                            LegendNextTypography.caption)
+                                        .foregroundStyle(
+                                            LegendNextColor.textSecondary)
+                                        .fixedSize(
+                                            horizontal: false,
+                                            vertical: true)
+                                }
                             }
                         }
 

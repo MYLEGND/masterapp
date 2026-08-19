@@ -818,6 +818,54 @@
         }
     }
 
+    function applyOperationalProgress(payload) {
+        const update = payload?.progress;
+        if (!status || !update?.message) return;
+        status.textContent =
+            payload.type === 'heartbeat' && Number.isFinite(payload.elapsedSeconds)
+                ? `${update.message} · ${payload.elapsedSeconds}s`
+                : update.message;
+    }
+
+    async function consumeProgressStream(response, signal) {
+        if (!response.ok || !response.body) return;
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+
+        const consumeLine = line => {
+            const trimmed = line.trim();
+            if (!trimmed) return;
+            try {
+                const payload = JSON.parse(trimmed);
+                if (payload?.type === 'progress' || payload?.type === 'heartbeat')
+                    applyOperationalProgress(payload);
+            } catch { }
+        };
+
+        try {
+            while (!signal?.aborted) {
+                const chunk = await reader.read();
+                buffer += decoder.decode(chunk.value || new Uint8Array(), { stream: !chunk.done });
+                let newline = buffer.indexOf('\n');
+                while (newline >= 0) {
+                    consumeLine(buffer.slice(0, newline));
+                    buffer = buffer.slice(newline + 1);
+                    newline = buffer.indexOf('\n');
+                }
+                if (chunk.done) break;
+            }
+        } finally {
+            try { await reader.cancel(); } catch { }
+        }
+    }
+
+    function progressUrlFor(chatUrl, operationId) {
+        const url = new URL(chatUrl, window.location.href);
+        url.pathname = url.pathname.replace(/\/chat\/?$/i, `/progress/${operationId}`);
+        return url.toString();
+    }
+
     function resizeInput() {
         if (!input) {
             return;
@@ -997,9 +1045,7 @@
 
             setBusy(
                 true,
-                conversation.mode === 'teacher'
-                    ? 'OpenAI Teacher is reasoning…'
-                    : 'Legend® Ai is reasoning and may inspect governed system state…'
+                ''
             );
 
             try {
@@ -1008,6 +1054,27 @@
                         'input[name="__RequestVerificationToken"]'
                     )?.value || '';
 
+                const operationId = crypto.randomUUID();
+                const progressAbort = new AbortController();
+                const progressPromise =
+                    fetch(
+                        progressUrlFor(modalElement.dataset.chatUrl, operationId),
+                        {
+                            method: 'GET',
+                            credentials: 'same-origin',
+                            headers: {
+                                'Accept': 'application/x-ndjson',
+                                'X-Requested-With': 'XMLHttpRequest'
+                            },
+                            signal: progressAbort.signal
+                        }
+                    )
+                    .then(response => consumeProgressStream(response, progressAbort.signal))
+                    .catch(error => {
+                        if (error?.name !== 'AbortError')
+                            console.warn('Legend AI progress stream ended early.', error);
+                    });
+
                 const response =
                     await fetch(
                         modalElement.dataset.chatUrl,
@@ -1015,37 +1082,29 @@
                             method: 'POST',
                             credentials: 'same-origin',
                             headers: {
-                                'Content-Type':
-                                    'application/json',
-                                'RequestVerificationToken':
-                                    token,
-                                'X-Requested-With':
-                                    'XMLHttpRequest'
+                                'Content-Type': 'application/json',
+                                'Accept': 'application/json',
+                                'RequestVerificationToken': token,
+                                'X-Requested-With': 'XMLHttpRequest',
+                                'X-Legend-Ai-Operation-Id': operationId
                             },
-                            body:
-                                JSON.stringify({
-                                    mode:
-                                        conversation.mode,
-                                    messages:
-                                        conversation.messages
-                                })
+                            body: JSON.stringify({
+                                mode: conversation.mode,
+                                messages: conversation.messages
+                            })
                         }
                     );
 
-                const rawResponse =
-                    await response.text();
-
+                const rawResponse = await response.text();
                 let result = null;
 
                 try {
-                    result =
-                        rawResponse
-                            ? JSON.parse(
-                                rawResponse
-                            )
-                            : null;
+                    result = rawResponse ? JSON.parse(rawResponse) : null;
                 } catch {
                     result = null;
+                } finally {
+                    progressAbort.abort();
+                    try { await progressPromise; } catch { }
                 }
 
                 if (

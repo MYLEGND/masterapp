@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
@@ -26,7 +27,9 @@ public sealed class LegendFounderAiConversationService
     private const int MaximumMessageCharacters = 20_000;
     private const int MaximumConversationCharacters = 120_000;
     private const int MaximumProviderConversationCharacters = 60_000;
-    private const int MaximumToolRounds = 3;
+    private const int MaximumToolRounds = 6;
+    private const int MinimumFinalizationReserveSeconds = 8;
+    private const int MaximumProviderRoundSeconds = 55;
     private const int MaximumToolOutputCharacters = 20_000;
     private const int MaximumRetainedContextCharacters = 16_000;
 
@@ -66,15 +69,19 @@ public sealed class LegendFounderAiConversationService
             Math.Clamp(
                 configuration.GetValue<int?>(
                     "OpenAI:LegendFounderAiMaxOutputTokens") ??
-                    3_500,
+                    5_000,
                 1_500,
-                6_000);
+                8_000);
     }
 
     public async Task<LegendFounderAiChatResponse> ReplyAsync(
         ClaimsPrincipal founder,
         LegendFounderAiChatRequest request,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        Func<
+            LegendFounderAiProgressEvent,
+            CancellationToken,
+            ValueTask>? progress = null)
     {
         ArgumentNullException.ThrowIfNull(founder);
         ArgumentNullException.ThrowIfNull(request);
@@ -90,6 +97,13 @@ public sealed class LegendFounderAiConversationService
                 validationError,
                 "validation");
         }
+
+        await ReportProgressAsync(
+            progress,
+            new LegendFounderAiProgressEvent(
+                "accepted",
+                "Request accepted. Preparing the current conversation context."),
+            cancellationToken);
 
         var apiKey = OpenAiKeyResolver.Resolve(_configuration);
         if (string.IsNullOrWhiteSpace(apiKey))
@@ -119,12 +133,31 @@ public sealed class LegendFounderAiConversationService
         var effectiveToken =
             requestBudget.Token;
 
+        var executionClock =
+            Stopwatch.StartNew();
+
+        await ReportProgressAsync(
+            progress,
+            new LegendFounderAiProgressEvent(
+                "retained_knowledge",
+                "Checking retained LEGEND knowledge relevant to this request."),
+            effectiveToken);
+
         var retainedKnowledge =
             await TryLoadRetainedKnowledgeAsync(
                 founder,
                 conversation[^1].Content ??
                     string.Empty,
                 effectiveToken);
+
+        await ReportProgressAsync(
+            progress,
+            new LegendFounderAiProgressEvent(
+                "retained_knowledge",
+                retainedKnowledge.Items.Count > 0
+                    ? $"Found {retainedKnowledge.Items.Count} relevant retained LEGEND record(s)."
+                    : "No directly matching retained LEGEND records were found; continuing with the governed tools available for this request."),
+            effectiveToken);
 
         var instructions =
             BuildInstructions(mode) +
@@ -154,6 +187,49 @@ public sealed class LegendFounderAiConversationService
         {
             for (var round = 0; round < MaximumToolRounds; round++)
             {
+                var remaining =
+                    TimeSpan.FromSeconds(
+                        _timeoutSeconds) -
+                    executionClock.Elapsed;
+
+                if (remaining <=
+                    TimeSpan.FromSeconds(
+                        MinimumFinalizationReserveSeconds))
+                {
+                    await ReportProgressAsync(
+                        progress,
+                        new LegendFounderAiProgressEvent(
+                            "time_budget",
+                            "The bounded request window is nearly exhausted; stopping additional inspection instead of allowing the gateway to terminate the request.",
+                            round + 1),
+                        effectiveToken);
+
+                    return LegendFounderAiChatResponse.Failure(
+                        "Legend® Ai reached its bounded request window before another provider round could safely begin. Ask it to continue from the current point.",
+                        "timeout");
+                }
+
+                var providerBudget =
+                    TimeSpan.FromSeconds(
+                        Math.Min(
+                            MaximumProviderRoundSeconds,
+                            Math.Max(
+                                5,
+                                remaining.TotalSeconds -
+                                MinimumFinalizationReserveSeconds)));
+
+                await ReportProgressAsync(
+                    progress,
+                    new LegendFounderAiProgressEvent(
+                        round == 0
+                            ? "planning"
+                            : "synthesis",
+                        round == 0
+                            ? "Planning the response and determining which governed LEGEND checks are actually needed."
+                            : "Integrating the governed results already collected and determining whether another check is necessary.",
+                        round + 1),
+                    effectiveToken);
+
                 using var responseDocument =
                     await SendResponseAsync(
                         apiKey,
@@ -161,6 +237,7 @@ public sealed class LegendFounderAiConversationService
                         instructions,
                         input,
                         tools,
+                        providerBudget,
                         effectiveToken);
 
                 if (responseDocument is null)
@@ -204,6 +281,14 @@ public sealed class LegendFounderAiConversationService
 
                 if (toolCalls.Count == 0)
                 {
+                    await ReportProgressAsync(
+                        progress,
+                        new LegendFounderAiProgressEvent(
+                            "response",
+                            "The required checks are complete. Finalizing the response.",
+                            round + 1),
+                        effectiveToken);
+
                     var answer = ExtractOutputText(root);
 
                     if (string.IsNullOrWhiteSpace(answer))
@@ -219,6 +304,14 @@ public sealed class LegendFounderAiConversationService
                         null);
                 }
 
+                await ReportProgressAsync(
+                    progress,
+                    new LegendFounderAiProgressEvent(
+                        "tools",
+                        $"The model requested {toolCalls.Count} governed LEGEND check(s) in this step.",
+                        round + 1),
+                    effectiveToken);
+
                 // Responses API tool continuation with store=false:
                 // preserve the returned output items in local request context,
                 // then append bounded function_call_output items.
@@ -231,11 +324,33 @@ public sealed class LegendFounderAiConversationService
 
                 foreach (var call in toolCalls)
                 {
+                    var toolDescription =
+                        DescribeFounderToolCall(
+                            call);
+
+                    await ReportProgressAsync(
+                        progress,
+                        new LegendFounderAiProgressEvent(
+                            "tool",
+                            toolDescription,
+                            round + 1,
+                            call.Name),
+                        effectiveToken);
+
                     var toolOutput =
                         await ExecuteFounderToolAsync(
                             founder,
                             call,
                             effectiveToken);
+
+                    await ReportProgressAsync(
+                        progress,
+                        new LegendFounderAiProgressEvent(
+                            "tool_complete",
+                            $"Completed: {toolDescription}",
+                            round + 1,
+                            call.Name),
+                        effectiveToken);
 
                     input.Add(new Dictionary<string, object?>
                     {
@@ -299,6 +414,7 @@ public sealed class LegendFounderAiConversationService
         string instructions,
         IReadOnlyList<object> input,
         IReadOnlyList<object> tools,
+        TimeSpan providerBudget,
         CancellationToken cancellationToken)
     {
         var payload = new
@@ -309,7 +425,12 @@ public sealed class LegendFounderAiConversationService
             input,
             tools,
             tool_choice = "auto",
-            parallel_tool_calls = false,
+
+            // The model may request multiple governed checks in one
+            // provider round. Execution below remains sequential through
+            // the existing scoped LEGEND authorities.
+            parallel_tool_calls = true,
+
             max_output_tokens = _maxOutputTokens
         };
 
@@ -322,10 +443,31 @@ public sealed class LegendFounderAiConversationService
         client.Timeout =
             Timeout.InfiniteTimeSpan;
 
+        var providerClock =
+            Stopwatch.StartNew();
+
         for (var attempt = 1;
              attempt <= 2;
              attempt++)
         {
+            var attemptRemaining =
+                providerBudget -
+                providerClock.Elapsed;
+
+            if (attemptRemaining <=
+                TimeSpan.FromSeconds(1))
+            {
+                throw new OperationCanceledException();
+            }
+
+            using var providerAttempt =
+                CancellationTokenSource
+                    .CreateLinkedTokenSource(
+                        cancellationToken);
+
+            providerAttempt.CancelAfter(
+                attemptRemaining);
+
             var clientRequestId =
                 Guid.NewGuid().ToString("D");
 
@@ -351,19 +493,19 @@ public sealed class LegendFounderAiConversationService
                 await client.SendAsync(
                     request,
                     HttpCompletionOption.ResponseHeadersRead,
-                    cancellationToken);
+                    providerAttempt.Token);
 
             if (response.IsSuccessStatusCode)
             {
                 await using var stream =
                     await response.Content
                         .ReadAsStreamAsync(
-                            cancellationToken);
+                            providerAttempt.Token);
 
                 return await JsonDocument.ParseAsync(
                     stream,
                     cancellationToken:
-                        cancellationToken);
+                        providerAttempt.Token);
             }
 
             var transient =
@@ -389,7 +531,7 @@ public sealed class LegendFounderAiConversationService
 
                 await Task.Delay(
                     delay,
-                    cancellationToken);
+                    providerAttempt.Token);
 
                 continue;
             }
@@ -397,7 +539,7 @@ public sealed class LegendFounderAiConversationService
             var errorBody =
                 await response.Content
                     .ReadAsStringAsync(
-                        cancellationToken);
+                        providerAttempt.Token);
 
             if (errorBody.Length > 1_000)
             {
@@ -428,6 +570,130 @@ public sealed class LegendFounderAiConversationService
         }
 
         return null;
+    }
+
+    private static ValueTask ReportProgressAsync(
+        Func<
+            LegendFounderAiProgressEvent,
+            CancellationToken,
+            ValueTask>? progress,
+        LegendFounderAiProgressEvent update,
+        CancellationToken cancellationToken) =>
+        progress is null
+            ? ValueTask.CompletedTask
+            : progress(
+                update,
+                cancellationToken);
+
+    private static string DescribeFounderToolCall(
+        FounderAiToolCall call)
+    {
+        string? argument = null;
+
+        try
+        {
+            using var document =
+                JsonDocument.Parse(
+                    call.Arguments);
+
+            argument =
+                call.Name switch
+                {
+                    "legend_language_state" or
+                    "legend_language_knowledge" =>
+                        ReadRequiredString(
+                            document.RootElement,
+                            "language"),
+
+                    "legend_pair_health" =>
+                        ReadRequiredString(
+                            document.RootElement,
+                            "pair"),
+
+                    "legend_metric_detail" =>
+                        ReadRequiredString(
+                            document.RootElement,
+                            "metric_key"),
+
+                    "legend_search_retained_knowledge" =>
+                        ReadRequiredString(
+                            document.RootElement,
+                            "query"),
+
+                    "legend_submit_machine_learning_candidate" =>
+                        ReadRequiredString(
+                            document.RootElement,
+                            "family_key"),
+
+                    "legend_submit_founder_seed" =>
+                        ReadRequiredString(
+                            document.RootElement,
+                            "source_language"),
+
+                    _ => null
+                };
+        }
+        catch (JsonException)
+        {
+        }
+
+        if (!string.IsNullOrWhiteSpace(argument) &&
+            argument.Length > 120)
+        {
+            argument =
+                argument[..117] +
+                "...";
+        }
+
+        var subject =
+            string.IsNullOrWhiteSpace(argument)
+                ? string.Empty
+                : $": {argument}";
+
+        return call.Name switch
+        {
+            "legend_system_overview" =>
+                "Reading current governed LEGEND system metrics and readiness.",
+
+            "legend_language_state" =>
+                $"Inspecting the current governed language state{subject}.",
+
+            "legend_metric_detail" =>
+                $"Reading the governed evidence behind metric{subject}.",
+
+            "legend_provider_capacity" =>
+                "Checking current translation-provider capacity and consumption.",
+
+            "legend_language_knowledge" =>
+                $"Inspecting retained canonical knowledge and learning evidence{subject}.",
+
+            "legend_pair_health" =>
+                $"Checking directional language-pair health{subject}.",
+
+            "legend_translation_quality" =>
+                "Reviewing translation-quality evidence, contradictions and verification state.",
+
+            "legend_target_realizations" =>
+                "Reviewing retained target-realization hypotheses and their evidence.",
+
+            "legend_search_retained_knowledge" =>
+                $"Searching retained LEGEND language evidence{subject}.",
+
+            "legend_submit_machine_learning_candidate" =>
+                $"Submitting one bounded MachineProposed family through the existing governed lifecycle{subject}.",
+
+            "legend_submit_founder_seed" =>
+                $"Submitting the Founder-directed source seed through the existing Founder authority{subject}.",
+
+            "legend_submit_founder_curriculum" =>
+                "Submitting the Founder-directed curriculum through the existing canonical curriculum authority.",
+
+            "legend_activate_autonomous_learning" =>
+                "Activating the existing governed autonomous-learning runtime.",
+
+            _ =>
+                "Executing the governed LEGEND operation requested for this response."
+        };
     }
 
     private static bool IsTransientOpenAiStatus(
@@ -1919,6 +2185,12 @@ Never upgrade an unresolved, rejected or contradicted record merely because it a
         string Name,
         string Arguments);
 }
+
+public sealed record LegendFounderAiProgressEvent(
+    string Stage,
+    string Message,
+    int? Round = null,
+    string? Tool = null);
 
 public sealed record LegendFounderAiChatMessage(
     string? Role,
