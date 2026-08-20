@@ -72,10 +72,10 @@ jobs:
       name: Production
 
     steps:
-      - name: Checkout production
+      # Use the exact commit that produced the build artifact. A moving branch
+      # ref could otherwise migrate a later commit before this run deploys it.
+      - name: Checkout triggering production commit
         uses: actions/checkout@v4
-        with:
-          ref: production
 
       - name: Set up .NET
         uses: actions/setup-dotnet@v4
