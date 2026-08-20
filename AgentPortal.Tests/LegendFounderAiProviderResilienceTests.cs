@@ -52,13 +52,16 @@ public sealed class LegendFounderAiProviderResilienceTests
         Assert.InRange(duration.TotalSeconds, expectedSeconds - 0.001, expectedSeconds + 0.001);
     }
 
-    [Fact]
-    public void CasualProviderBudgetIsInteractiveAndDoesNotUseGovernedRoundWindow()
+    [Theory]
+    [InlineData("Hi")]
+    [InlineData("Hello Legend® Ai, can you help me think through my day?")]
+    [InlineData("I have three priorities today and I want help deciding the best order to attack them without overcomplicating the plan.")]
+    public void CasualProviderBudgetDoesNotSelfTerminateHealthyProviderWork(string text)
     {
         var method = typeof(LegendFounderAiConversationService).GetMethod("ResolveProviderBudget", BindingFlags.NonPublic | BindingFlags.Static);
         Assert.NotNull(method);
 
-        IReadOnlyList<LegendFounderAiChatMessage> conversation = [new("user", "Hi")];
+        IReadOnlyList<LegendFounderAiChatMessage> conversation = [new("user", text)];
         var budget = Assert.IsType<TimeSpan>(method!.Invoke(null, new object[]
         {
             conversation,
@@ -67,8 +70,7 @@ public sealed class LegendFounderAiProviderResilienceTests
             TimeSpan.FromSeconds(120)
         }));
 
-        Assert.InRange(budget.TotalSeconds, 8, 18);
-        Assert.True(budget < TimeSpan.FromSeconds(20));
+        Assert.Equal(TimeSpan.FromSeconds(75), budget);
     }
 
     [Fact]
@@ -101,6 +103,34 @@ public sealed class LegendFounderAiProviderResilienceTests
 
         Assert.InRange(casual, 256, 1_200);
         Assert.Equal(8_000, governed);
+    }
+
+    [Theory]
+    [InlineData(null, "auto")]
+    [InlineData("", "auto")]
+    [InlineData("fast", "auto")]
+    [InlineData("AUTO", "auto")]
+    [InlineData("default", "default")]
+    [InlineData("flex", "flex")]
+    [InlineData("priority", "priority")]
+    [InlineData("unsupported", "auto")]
+    public void ServiceTierNormalizationMatchesResponsesApiContract(string? configured, string expected)
+    {
+        var method = typeof(LegendFounderAiConversationService).GetMethod("NormalizeServiceTier", BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.NotNull(method);
+        Assert.Equal(expected, Assert.IsType<string>(method!.Invoke(null, new object?[] { configured })));
+    }
+
+    [Theory]
+    [InlineData(false, 0, "none")]
+    [InlineData(false, 3, "none")]
+    [InlineData(true, 0, "low")]
+    [InlineData(true, 1, "medium")]
+    public void ReasoningEffortKeepsConversationLightAndGovernedInspectionDeep(bool governed, int round, string expected)
+    {
+        var method = typeof(LegendFounderAiConversationService).GetMethod("ResolveReasoningEffortForRound", BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.NotNull(method);
+        Assert.Equal(expected, Assert.IsType<string>(method!.Invoke(null, new object[] { round, governed, "medium" })));
     }
 
     [Fact]
