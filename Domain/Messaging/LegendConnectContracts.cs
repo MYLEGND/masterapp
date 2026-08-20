@@ -161,10 +161,38 @@ public sealed record LegendConnectCurriculumExampleSubmission(
     string Text,
     IReadOnlyDictionary<string, string> Variations);
 
+/// <summary>
+/// One explicit, language-neutral semantic frame pattern. Keys and values are
+/// Founder-controlled curriculum dimensions; a value beginning with '$' binds
+/// one semantic variable across the source and result frame.
+/// </summary>
+public sealed record LegendConnectSemanticFrameSubmission(
+    IReadOnlyDictionary<string, string> Dimensions);
+
+/// <summary>
+/// Evidence that a governed source semantic frame can transform into a
+/// governed result semantic frame. This is not a text-to-text answer mapping:
+/// individual curriculum examples supply the evidence after persistence.
+/// </summary>
+public sealed record LegendConnectSemanticTransitionSubmission(
+    LegendConnectSemanticFrameSubmission Source,
+    LegendConnectSemanticFrameSubmission Result);
+
+/// <summary>
+/// Founder-declared grounding for a non-literal source-frame dimension. It
+/// identifies the already-controlled surface dimension which carries that
+/// meaning in a source example; it is not a runtime routing rule.
+/// </summary>
+public sealed record LegendConnectSemanticSpanGroundingSubmission(
+    string SemanticDimension,
+    string SurfaceDimension);
+
 public sealed record LegendConnectCurriculumBatchSubmission(
     string FamilyKey,
     string? SemanticCategory,
-    IReadOnlyList<LegendConnectCurriculumExampleSubmission> Examples);
+    IReadOnlyList<LegendConnectCurriculumExampleSubmission> Examples,
+    IReadOnlyList<LegendConnectSemanticTransitionSubmission>? SemanticTransitions = null,
+    IReadOnlyList<LegendConnectSemanticSpanGroundingSubmission>? SemanticSpanGroundings = null);
 
 /// <summary>
 /// One Founder action may carry multiple explicitly bounded semantic families.
@@ -645,6 +673,29 @@ public sealed record LegendConnectRetainedKnowledgeSearchSnapshot(
     IReadOnlyList<LegendConnectRetainedKnowledgeItemSnapshot> Items);
 
 /// <summary>
+/// A bounded prior turn supplied to the existing LEGEND operations authority
+/// for a read-only conversational inference attempt. It is request context,
+/// not durable chat memory.
+/// </summary>
+public sealed record LegendConnectConversationContextItem(
+    string Role,
+    string Content);
+
+/// <summary>
+/// The governed result of one native LEGEND conversational inference attempt.
+/// A successful result is backed only by canonical, contradiction-free
+/// evidence; all other states explicitly require escalation.
+/// </summary>
+public sealed record LegendConnectNativeInferenceSnapshot(
+    bool Supported,
+    decimal Confidence,
+    string? Answer,
+    string ReasonCode,
+    int EvidenceCount,
+    string AuthoritySummary,
+    bool RequiresEscalation);
+
+/// <summary>
 /// The sole read/write authority for Legend Connect operations. Presentation
 /// layers may use it only after their established Founder authorization guard
 /// succeeds; it owns neither identity authorization nor mobile contracts.
@@ -703,6 +754,11 @@ public interface ILegendConnectOperations
         string? sourceLanguageCode = null,
         string? targetLanguageCode = null,
         int take = 12,
+        CancellationToken cancellationToken = default);
+
+    Task<LegendConnectNativeInferenceSnapshot> TryInferConversationAsync(
+        string input,
+        IReadOnlyList<LegendConnectConversationContextItem> context,
         CancellationToken cancellationToken = default);
 
     Task<LegendConnectKnowledgeSubmissionResult> SubmitFounderKnowledgeAsync(

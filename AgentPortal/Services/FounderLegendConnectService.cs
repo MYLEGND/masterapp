@@ -147,6 +147,23 @@ public sealed class FounderLegendConnectService
                 cancellationToken);
     }
 
+    public async Task<LegendConnectNativeInferenceSnapshot>
+        TryInferConversationAsync(
+            ClaimsPrincipal user,
+            string input,
+            IReadOnlyList<LegendConnectConversationContextItem> context,
+            CancellationToken cancellationToken = default)
+    {
+        _ = await ResolveFounderActorAsync(
+            user,
+            cancellationToken);
+
+        return await _operations.TryInferConversationAsync(
+            input,
+            context,
+            cancellationToken);
+    }
+
     public async Task<LegendConnectMachineTeachingSubmissionResult>
         QueueMachineTeachingProposalAsync(
             ClaimsPrincipal user,
@@ -669,9 +686,18 @@ public sealed class FounderLegendConnectService
     ///
     /// Format:
     /// @family conversation.greeting.basic | Conversation greeting
+    /// @ground function -> salutation
     /// Hi. | function=greeting; intent=start_conversation
     /// Hello. | function=greeting; intent=start_conversation
+    /// @transition
+    /// @source function=request; intent=ask_information; subject=$subject
+    /// @result function=inform; intent=provide_information; subject=$subject
+    /// @endtransition
     /// @end
+    ///
+    /// A transition is a generic controlled semantic relation. It contains no
+    /// stored prompt, answer, response template, or language-specific action;
+    /// source and result curriculum examples remain its only surface evidence.
     /// </summary>
     private static bool TryToCurriculumManifest(
         FounderLegendConnectCurriculumInput input,
@@ -695,19 +721,111 @@ public sealed class FounderLegendConnectService
         string? familyKey = null;
         string? semanticCategory = null;
         List<LegendConnectCurriculumExampleSubmission>? examples = null;
+        List<LegendConnectSemanticTransitionSubmission>? transitions = null;
+        List<LegendConnectSemanticSpanGroundingSubmission>? semanticSpanGroundings = null;
+        IReadOnlyDictionary<string, string>? transitionSource = null;
+        IReadOnlyDictionary<string, string>? transitionResult = null;
 
         for (var index = 0; index < lines.Length; index++)
         {
             var line = lines[index];
-            if (line.StartsWith("@family ", StringComparison.OrdinalIgnoreCase))
+            if (TryReadCurriculumDirective(line, "ground", out var groundingSuffix))
             {
-                if (familyKey is not null)
+                if (familyKey is null || examples is null || transitions is null ||
+                    semanticSpanGroundings is null || transitionSource is not null || transitionResult is not null)
+                {
+                    error = $"Line {index + 1}: @ground must appear inside a family before a @transition block.";
+                    return false;
+                }
+                if (!TryParseSemanticSpanGrounding(groundingSuffix, out var grounding, out var groundingError))
+                {
+                    error = groundingError ?? $"Line {index + 1}: use @ground semantic_dimension -> surface_dimension.";
+                    return false;
+                }
+                if (semanticSpanGroundings.Any(item =>
+                        string.Equals(item.SemanticDimension, grounding.SemanticDimension, StringComparison.OrdinalIgnoreCase) &&
+                        string.Equals(item.SurfaceDimension, grounding.SurfaceDimension, StringComparison.OrdinalIgnoreCase)))
+                {
+                    error = $"Line {index + 1}: the same @ground relation may appear only once per family.";
+                    return false;
+                }
+                semanticSpanGroundings.Add(grounding);
+                continue;
+            }
+
+            if (TryReadCurriculumDirective(line, "transition", out var transitionSuffix))
+            {
+                if (familyKey is null || examples is null || transitions is null)
+                {
+                    error = $"Line {index + 1}: a semantic transition must be inside an explicit @family ... @end block.";
+                    return false;
+                }
+                if (!string.IsNullOrWhiteSpace(transitionSuffix) || transitionSource is not null || transitionResult is not null)
+                {
+                    error = $"Line {index + 1}: use @transition, then explicit @source and @result semantic frames, then @endtransition.";
+                    return false;
+                }
+                transitionSource = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+                continue;
+            }
+
+            if (TryReadCurriculumDirective(line, "source", out var sourceSuffix))
+            {
+                if (transitionSource is null || transitionResult is not null)
+                {
+                    error = $"Line {index + 1}: @source must appear once inside an open @transition block before @result.";
+                    return false;
+                }
+                if (!TryParseSemanticDimensions(sourceSuffix, out var sourceDimensions, out var sourceError))
+                {
+                    error = sourceError ?? $"Line {index + 1}: @source requires one or more unique dimension=value entries.";
+                    return false;
+                }
+                transitionSource = sourceDimensions;
+                continue;
+            }
+
+            if (TryReadCurriculumDirective(line, "result", out var resultSuffix))
+            {
+                if (transitionSource is null || transitionResult is not null)
+                {
+                    error = $"Line {index + 1}: @result must appear once after @source inside an open @transition block.";
+                    return false;
+                }
+                if (!TryParseSemanticDimensions(resultSuffix, out var resultDimensions, out var resultError))
+                {
+                    error = resultError ?? $"Line {index + 1}: @result requires one or more unique dimension=value entries.";
+                    return false;
+                }
+                transitionResult = resultDimensions;
+                continue;
+            }
+
+            if (TryReadCurriculumDirective(line, "endtransition", out var endTransitionSuffix) &&
+                string.IsNullOrWhiteSpace(endTransitionSuffix))
+            {
+                if (transitionSource is null || transitionSource.Count == 0 || transitionResult is null ||
+                    transitionResult.Count == 0 || transitions is null)
+                {
+                    error = $"Line {index + 1}: @endtransition requires one explicit @source and one explicit @result frame.";
+                    return false;
+                }
+                transitions.Add(new LegendConnectSemanticTransitionSubmission(
+                    new LegendConnectSemanticFrameSubmission(transitionSource),
+                    new LegendConnectSemanticFrameSubmission(transitionResult)));
+                transitionSource = null;
+                transitionResult = null;
+                continue;
+            }
+
+            if (TryReadCurriculumDirective(line, "family", out var header))
+            {
+                if (familyKey is not null || transitionSource is not null || transitionResult is not null)
                 {
                     error = $"Line {index + 1}: close family '{familyKey}' with @end before starting another family.";
                     return false;
                 }
 
-                var header = line["@family ".Length..].Trim();
                 var headerParts = header.Split('|', 2, StringSplitOptions.TrimEntries);
                 if (headerParts.Length == 0 || string.IsNullOrWhiteSpace(headerParts[0]))
                 {
@@ -726,24 +844,36 @@ public sealed class FounderLegendConnectService
                 }
 
                 examples = [];
+                transitions = [];
+                semanticSpanGroundings = [];
                 continue;
             }
 
-            if (string.Equals(line, "@end", StringComparison.OrdinalIgnoreCase))
+            if (TryReadCurriculumDirective(line, "end", out var endSuffix) &&
+                string.IsNullOrWhiteSpace(endSuffix))
             {
-                if (familyKey is null || examples is null)
+                if (familyKey is null || examples is null || transitions is null)
                 {
                     error = $"Line {index + 1}: @end has no open @family block.";
+                    return false;
+                }
+                if (transitionSource is not null || transitionResult is not null)
+                {
+                    error = $"Line {index + 1}: close the semantic transition with @endtransition before closing family '{familyKey}'.";
                     return false;
                 }
 
                 families.Add(new LegendConnectCurriculumBatchSubmission(
                     familyKey,
                     semanticCategory,
-                    examples));
+                    examples,
+                    transitions,
+                    semanticSpanGroundings));
                 familyKey = null;
                 semanticCategory = null;
                 examples = null;
+                transitions = null;
+                semanticSpanGroundings = null;
                 continue;
             }
 
@@ -760,21 +890,7 @@ public sealed class FounderLegendConnectService
                 return false;
             }
 
-            var variations = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-            foreach (var item in parts[1].Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
-            {
-                var pair = item.Split('=', 2, StringSplitOptions.TrimEntries);
-                if (pair.Length != 2 ||
-                    string.IsNullOrWhiteSpace(pair[0]) ||
-                    string.IsNullOrWhiteSpace(pair[1]) ||
-                    !variations.TryAdd(pair[0], pair[1]))
-                {
-                    error = $"Line {index + 1}: controlled variations must use unique dimension=value entries separated by semicolons.";
-                    return false;
-                }
-            }
-
-            if (variations.Count == 0)
+            if (!TryParseSemanticDimensions(parts[1], out var variations, out _))
             {
                 error = $"Line {index + 1}: each curriculum example needs at least one controlled variation.";
                 return false;
@@ -788,6 +904,11 @@ public sealed class FounderLegendConnectService
             error = $"Family '{familyKey}' is missing its closing @end.";
             return false;
         }
+        if (transitionSource is not null || transitionResult is not null)
+        {
+            error = "The curriculum manifest has an unclosed semantic transition.";
+            return false;
+        }
         if (families.Count == 0)
         {
             error = "The curriculum manifest did not contain a complete @family ... @end block.";
@@ -795,6 +916,85 @@ public sealed class FounderLegendConnectService
         }
 
         submission = new LegendConnectCurriculumManifestSubmission(families);
+        return true;
+    }
+
+    private static bool TryParseSemanticDimensions(
+        string input,
+        out IReadOnlyDictionary<string, string> dimensions,
+        out string? error)
+    {
+        var parsed = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var item in input.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            var pair = item.Split('=', 2, StringSplitOptions.TrimEntries);
+            if (pair.Length != 2 || string.IsNullOrWhiteSpace(pair[0]) ||
+                string.IsNullOrWhiteSpace(pair[1]) || !parsed.TryAdd(pair[0], pair[1]))
+            {
+                dimensions = parsed;
+                error = "Controlled semantic dimensions must use unique dimension=value entries separated by semicolons.";
+                return false;
+            }
+        }
+
+        dimensions = parsed;
+        error = parsed.Count == 0
+            ? "At least one controlled semantic dimension is required."
+            : null;
+        return parsed.Count > 0;
+    }
+
+    private static bool TryParseSemanticSpanGrounding(
+        string input,
+        out LegendConnectSemanticSpanGroundingSubmission grounding,
+        out string? error)
+    {
+        grounding = new LegendConnectSemanticSpanGroundingSubmission(string.Empty, string.Empty);
+        error = null;
+        var parts = input.Split("->", 2, StringSplitOptions.TrimEntries);
+        if (parts.Length != 2 || string.IsNullOrWhiteSpace(parts[0]) || string.IsNullOrWhiteSpace(parts[1]) ||
+            !IsSemanticDimensionName(parts[0]) || !IsSemanticDimensionName(parts[1]))
+        {
+            error = "A grounding must use semantic_dimension -> surface_dimension with valid dimension names.";
+            return false;
+        }
+
+        grounding = new LegendConnectSemanticSpanGroundingSubmission(parts[0], parts[1]);
+        return true;
+    }
+
+    private static bool IsSemanticDimensionName(string value) =>
+        value.Length <= 80 && value.All(character =>
+            char.IsLetterOrDigit(character) || character is '.' or '-' or '_');
+
+    /// <summary>
+    /// The live Founder form and authoring guide use @@family / @@end, while
+    /// early integrations used @family / @end. Both are explicit delimiter
+    /// syntaxes for the same manifest format; accepting them here keeps one
+    /// parser and one curriculum authority without rewriting submitted input.
+    /// </summary>
+    private static bool TryReadCurriculumDirective(
+        string line,
+        string directive,
+        out string suffix)
+    {
+        suffix = string.Empty;
+        var doublePrefix = "@@" + directive;
+        var singlePrefix = "@" + directive;
+        var prefix = line.StartsWith(doublePrefix, StringComparison.OrdinalIgnoreCase)
+            ? doublePrefix
+            : line.StartsWith(singlePrefix, StringComparison.OrdinalIgnoreCase)
+                ? singlePrefix
+                : null;
+
+        if (prefix is null ||
+            (line.Length > prefix.Length &&
+             !char.IsWhiteSpace(line[prefix.Length])))
+        {
+            return false;
+        }
+
+        suffix = line[prefix.Length..].Trim();
         return true;
     }
 

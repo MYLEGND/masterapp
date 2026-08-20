@@ -254,6 +254,67 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
                     submission,
                     cancellationToken);
 
+    /// <summary>
+    /// Native conversational serving delegates to the existing curriculum
+    /// authority's generic semantic-transition evaluator. It neither retrieves
+    /// nearby text as an answer nor has a prompt/answer store: every supported
+    /// result must pass source understanding, independently supported frame
+    /// transition, contradiction checks, and canonical anchor realization.
+    /// </summary>
+    public async Task<LegendConnectNativeInferenceSnapshot>
+        TryInferConversationAsync(
+            string input,
+            IReadOnlyList<LegendConnectConversationContextItem> context,
+            CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (string.IsNullOrWhiteSpace(
+                LegendLanguageIdentity.NormalizeText(input ?? string.Empty)))
+        {
+            return NativeInferenceUnsupported("invalid_input");
+        }
+
+        // Founder curriculum is currently admitted directly in English. The
+        // evidence query is language-partitioned throughout; no English record
+        // can authorize a different language, and an unavailable language
+        // simply returns unsupported.
+        var inference = await _curriculum.TryInferSemanticTransitionAsync(
+            "en",
+            input ?? string.Empty,
+            context ?? [],
+            cancellationToken);
+        if (string.Equals(inference.State, LegendSemanticTransitionInference.Supported,
+                StringComparison.Ordinal) &&
+            !string.IsNullOrWhiteSpace(inference.RealizedText))
+        {
+            return new LegendConnectNativeInferenceSnapshot(
+                true,
+                // The legacy chat contract has one decimal but no existing
+                // semantic-transition confidence calibration. Do not invent a
+                // certainty score from provenance; callers receive the
+                // independently counted evidence and explicit gate outcome.
+                0m,
+                inference.RealizedText,
+                "semantic_transition_governed",
+                inference.EvidenceCount,
+                "LEGEND independently interpreted the controlled source frame, selected one contradiction-free Founder-supported semantic transition, and realized the result from canonical anchors.",
+                false);
+        }
+
+        return NativeInferenceUnsupported(
+            inference.Reasons.FirstOrDefault() ?? "semantic_transition_not_governed");
+    }
+
+    private static LegendConnectNativeInferenceSnapshot NativeInferenceUnsupported(
+        string reasonCode) => new(
+        false,
+        0m,
+        null,
+        reasonCode,
+        0,
+        "LEGEND could not establish one independently supported, contradiction-free semantic transition and canonical realization for this request.",
+        true);
+
     public async Task<LegendConnectRetainedKnowledgeSearchSnapshot>
         SearchRetainedKnowledgeAsync(
             string query,

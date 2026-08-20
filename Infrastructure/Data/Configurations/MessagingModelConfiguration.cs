@@ -524,6 +524,46 @@ internal static class MessagingModelConfiguration
                 .OnDelete(DeleteBehavior.Restrict);
         });
 
+        modelBuilder.Entity<LegendSemanticTransitionEvidence>(entity =>
+        {
+            entity.ToTable("LegendSemanticTransitionEvidence");
+            entity.HasKey(item => item.Id);
+            entity.Property(item => item.TransitionSignature).IsRequired().HasMaxLength(64);
+            entity.Property(item => item.SourceSemanticFrameSignature).IsRequired().HasMaxLength(64);
+            entity.Property(item => item.ResultSemanticFrameSignature).IsRequired().HasMaxLength(64);
+            entity.Property(item => item.SourceSemanticFrame).IsRequired().HasMaxLength(4000);
+            entity.Property(item => item.ResultSemanticFrame).IsRequired().HasMaxLength(4000);
+            entity.Property(item => item.SourceLanguageCode).IsRequired().HasMaxLength(32);
+            entity.Property(item => item.ResultLanguageCode).IsRequired().HasMaxLength(32);
+            entity.Property(item => item.IndependentSourceIdentity).IsRequired().HasMaxLength(96);
+            entity.Property(item => item.ContributionState).IsRequired().HasMaxLength(40);
+            entity.Property(item => item.Provenance).IsRequired().HasMaxLength(80);
+            entity.HasIndex(item => new
+            {
+                item.TransitionSignature,
+                item.SourceCurriculumExampleId,
+                item.ResultCurriculumExampleId
+            }).IsUnique();
+            entity.HasIndex(item => new
+            {
+                item.SourceSemanticFrameSignature,
+                item.ResultSemanticFrameSignature,
+                item.SourceLanguageCode,
+                item.ResultLanguageCode,
+                item.SupersededUtc
+            }).HasDatabaseName("IX_LegendSemTransEv_FrameLang");
+            entity.HasIndex(item => new { item.SourceCurriculumExampleId, item.SupersededUtc });
+            entity.HasIndex(item => new { item.ResultCurriculumExampleId, item.SupersededUtc });
+            entity.HasOne<LegendCurriculumExample>()
+                .WithMany()
+                .HasForeignKey(item => item.SourceCurriculumExampleId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<LegendCurriculumExample>()
+                .WithMany()
+                .HasForeignKey(item => item.ResultCurriculumExampleId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
         modelBuilder.Entity<LegendTranslationLearningEvent>(entity =>
         {
             entity.ToTable("LegendTranslationLearningEvents");

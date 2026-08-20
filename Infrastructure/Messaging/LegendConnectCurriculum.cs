@@ -3,6 +3,9 @@ using Domain.Messaging;
 using Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Query;
+using System.Security.Cryptography;
+using System.Text;
+using System.Text.Json;
 
 namespace Infrastructure.Messaging;
 
@@ -109,6 +112,22 @@ internal sealed record LegendShadowSourceUnderstanding(
     internal const string SupportedForShadowEvaluation = "SupportedForShadowEvaluation";
     internal const string InsufficientEvidence = "InsufficientEvidence";
     internal const string Ambiguous = "Ambiguous";
+}
+
+/// <summary>
+/// The single read-only result of governed semantic-transition evaluation.
+/// It carries no model result, provider output, or response lookup identity.
+/// </summary>
+internal sealed record LegendSemanticTransitionInference(
+    string State,
+    string? RealizedText,
+    int EvidenceCount,
+    IReadOnlyList<string> Reasons)
+{
+    internal const string Supported = "Supported";
+    internal const string InsufficientEvidence = "InsufficientEvidence";
+    internal const string Ambiguous = "Ambiguous";
+    internal const string Contradicted = "Contradicted";
 }
 
 /// <summary>
@@ -864,6 +883,8 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
     {
         var familyKey = NormalizeFamilyKey(submission.FamilyKey);
         var examples = NormalizeExamples(submission.Examples);
+        var semanticTransitions = NormalizeSemanticTransitions(submission.SemanticTransitions);
+        var semanticSpanGroundings = NormalizeSemanticSpanGroundings(submission.SemanticSpanGroundings);
         var english = await _languages.NormalizeEnabledTranslationLanguageAsync("en", cancellationToken);
         if (english is null || !string.Equals(english, "en", StringComparison.OrdinalIgnoreCase))
             return Rejected("english_training_unavailable", "English must be an enabled direct Founder training language.", familyKey);
@@ -871,6 +892,66 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
             return Rejected("invalid_curriculum_family", "Use a concise semantic family key such as conversation.greeting.basic.", null);
         if (examples is null)
             return Rejected("invalid_curriculum_examples", "A structured curriculum family requires 2–100 distinct English examples with controlled variations.", familyKey);
+        if (semanticTransitions is null)
+            return Rejected(
+                "invalid_semantic_transition",
+                "A semantic transition requires distinct, controlled source and result frames with valid shared variables.",
+                familyKey);
+        if (semanticSpanGroundings is null)
+            return Rejected(
+                "invalid_semantic_span_grounding",
+                "A semantic grounding must identify one unique source-frame dimension and one controlled surface dimension.",
+                familyKey);
+
+        foreach (var transition in semanticTransitions)
+        {
+            var grounded = examples
+                .Select((example, index) => new { Example = example, Index = index })
+                .Where(item => TryBindSemanticFrame(transition.Source, item.Example.Variations, out _))
+                .Select(source => examples
+                    .Select((example, index) => new { Example = example, Index = index })
+                    .Where(result => result.Index != source.Index &&
+                        TryBindSemanticFrame(transition.Result, result.Example.Variations, out var resultBindings) &&
+                        TryBindSemanticFrame(transition.Source, source.Example.Variations, out var sourceBindings) &&
+                        BindingsAreCompatible(sourceBindings, resultBindings))
+                    .Any())
+                .Any();
+            if (!grounded)
+            {
+                return Rejected(
+                    "semantic_transition_not_grounded",
+                    "Each semantic transition needs distinct controlled source and result curriculum examples in its family.",
+                    familyKey);
+            }
+        }
+
+        foreach (var grounding in semanticSpanGroundings)
+        {
+            var applicableTransitions = semanticTransitions
+                .Where(transition => transition.Source.Dimensions.ContainsKey(grounding.SemanticDimension))
+                .ToList();
+            if (applicableTransitions.Count == 0)
+            {
+                return Rejected(
+                    "semantic_span_grounding_not_source",
+                    $"Grounding '{grounding.SemanticDimension} -> {grounding.SurfaceDimension}' must name a dimension in a declared source frame.",
+                    familyKey);
+            }
+
+            var sourceExamples = examples
+                .Where(example => applicableTransitions.Any(transition =>
+                    TryBindSemanticFrame(transition.Source, example.Variations, out _)))
+                .ToList();
+            if (sourceExamples.Count == 0 || sourceExamples.Any(example =>
+                    !example.Variations.TryGetValue(grounding.SurfaceDimension, out var surfaceValue) ||
+                    !HasOneExactSurfaceSpan(example.Text, surfaceValue)))
+            {
+                return Rejected(
+                    "semantic_span_grounding_not_explicit",
+                    $"Grounding '{grounding.SemanticDimension} -> {grounding.SurfaceDimension}' needs one exact controlled surface span in every matching source example.",
+                    familyKey);
+            }
+        }
 
         var semanticCategory = NormalizeOptional(submission.SemanticCategory, 120);
         var existingFamily = await _db.Set<LegendCurriculumFamily>()
@@ -900,6 +981,8 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
 
         var familyKey = NormalizeFamilyKey(submission.FamilyKey)!;
         var examples = NormalizeExamples(submission.Examples)!;
+        var semanticTransitions = NormalizeSemanticTransitions(submission.SemanticTransitions)!;
+        var semanticSpanGroundings = NormalizeSemanticSpanGroundings(submission.SemanticSpanGroundings)!;
         const string english = "en";
 
         LegendCurriculumFamily family;
@@ -987,7 +1070,19 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
                 null))
             .ToList();
         await EnsureLanguageLexicalObservationsAsync(structuredSourceInputs, english, cancellationToken);
-        await AttachExplicitFounderSemanticAnchorsAsync(family, sourceExamples, english, cancellationToken);
+        await AttachExplicitFounderSemanticAnchorsAsync(
+            family,
+            sourceExamples,
+            english,
+            semanticTransitions,
+            semanticSpanGroundings,
+            cancellationToken);
+        await PersistFounderSemanticTransitionEvidenceAsync(
+            family,
+            sourceExamples,
+            semanticTransitions,
+            english,
+            cancellationToken);
 
         // This is the existing expansion authority. It is idempotent by source
         // asset and directional pair, and it carries curriculum lineage only as
@@ -1104,6 +1199,16 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
             .ToListAsync(cancellationToken);
         foreach (var item in evidence)
             item.SupersededUtc = now;
+        var semanticTransitions = await _db.Set<LegendSemanticTransitionEvidence>()
+            .Where(item => item.SupersededUtc == null &&
+                (exampleIds.Contains(item.SourceCurriculumExampleId) ||
+                 exampleIds.Contains(item.ResultCurriculumExampleId)))
+            .ToListAsync(cancellationToken);
+        foreach (var item in semanticTransitions)
+        {
+            item.SupersededUtc = now;
+            item.UpdatedUtc = now;
+        }
         await _db.SaveChangesAsync(cancellationToken);
 
         var affectedPatterns = evidence.Select(item => item.StructuralPatternId).Distinct().ToArray();
@@ -2181,9 +2286,37 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
     /// language-specific grammar branch. This method is deliberately read-only
     /// and cannot formulate or serve a translation.
     /// </summary>
-    public async Task<LegendShadowSourceUnderstanding> AnalyzeShadowSourceSemanticsAsync(
+    public Task<LegendShadowSourceUnderstanding> AnalyzeShadowSourceSemanticsAsync(
         string sourceLanguageCode,
         string text,
+        CancellationToken cancellationToken = default) =>
+        AnalyzeSourceSemanticsAsync(
+            sourceLanguageCode,
+            text,
+            semanticTransitionSourceOnly: false,
+            cancellationToken);
+
+    internal Task<LegendShadowSourceUnderstanding> AnalyzeSemanticTransitionSourceSemanticsAsync(
+        string sourceLanguageCode,
+        string text,
+        CancellationToken cancellationToken = default) =>
+        AnalyzeSourceSemanticsAsync(
+            sourceLanguageCode,
+            text,
+            semanticTransitionSourceOnly: true,
+            cancellationToken);
+
+    /// <summary>
+    /// Uses the existing semantic analyser with the additional authority scope
+    /// required by conversational serving: an anchor must originate from a
+    /// currently governed transition source example. Result-side curriculum
+    /// evidence cannot reinterpret a user utterance merely because it shares
+    /// a literal surface form.
+    /// </summary>
+    private async Task<LegendShadowSourceUnderstanding> AnalyzeSourceSemanticsAsync(
+        string sourceLanguageCode,
+        string text,
+        bool semanticTransitionSourceOnly,
         CancellationToken cancellationToken = default)
     {
         var sourceLanguage = await _languages.NormalizeEnabledTranslationLanguageAsync(
@@ -2226,7 +2359,16 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
                 anchor.SemanticSignature != string.Empty &&
                 anchor.ComponentStartTokenIndex != null &&
                 anchor.ComponentLength != null &&
-                anchor.ComponentLength > 0
+                anchor.ComponentLength > 0 &&
+                (!semanticTransitionSourceOnly ||
+                 _db.Set<LegendSemanticTransitionEvidence>().Any(evidence =>
+                     evidence.SourceCurriculumExampleId == anchor.CurriculumExampleId &&
+                     evidence.SupersededUtc == null &&
+                     evidence.ContributionState == "Supported" &&
+                     evidence.IsHumanVerifiedSupport &&
+                     evidence.Provenance == LegendConnectKnowledgeProvenance.FounderApproved &&
+                     evidence.SourceLanguageCode == sourceLanguage &&
+                     evidence.ResultLanguageCode == sourceLanguage))
             select new
             {
                 anchor.Dimension,
@@ -2541,6 +2683,955 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
     }
 
     /// <summary>
+    /// Evaluates a controlled source frame, selects exactly one sufficiently
+    /// supported result frame, and realizes it only from active canonical
+    /// anchors. This is a generic semantic-transition authority: it does not
+    /// store conversations, match prompts to answers, call a provider, or use
+    /// a language-specific response template.
+    /// </summary>
+    internal async Task<LegendSemanticTransitionInference> TryInferSemanticTransitionAsync(
+        string sourceLanguageCode,
+        string input,
+        IReadOnlyList<LegendConnectConversationContextItem> context,
+        CancellationToken cancellationToken = default)
+    {
+        var sourceLanguage = await _languages.NormalizeEnabledTranslationLanguageAsync(
+            sourceLanguageCode,
+            cancellationToken);
+        if (sourceLanguage is null)
+            return SemanticTransitionInsufficient("invalid_source_language");
+
+        var understanding = await AnalyzeSemanticTransitionSourceSemanticsAsync(
+            sourceLanguage,
+            input,
+            cancellationToken);
+        if (!string.Equals(
+                understanding.State,
+                LegendShadowSourceUnderstanding.SupportedForShadowEvaluation,
+                StringComparison.Ordinal))
+        {
+            return SemanticTransitionInsufficient(
+                understanding.Reasons.FirstOrDefault() ?? "source_semantics_not_governed");
+        }
+
+        if (!TryToUnambiguousSemanticValues(understanding.Components, out var inputValues))
+            return SemanticTransitionAmbiguous("ambiguous_source_semantic_dimension");
+
+        var observations = await LoadActiveSemanticTransitionObservationsAsync(
+            sourceLanguage,
+            cancellationToken);
+        if (observations.Count == 0)
+            return SemanticTransitionInsufficient("semantic_transition_evidence_unknown");
+
+        var directCandidates = BuildProductionSemanticTransitionCandidates(
+            observations,
+            inputValues,
+            allowMissingVariables: false);
+        var candidates = directCandidates;
+
+        if (candidates.Count == 0)
+        {
+            if (HasContradictedSemanticTransition(observations, inputValues))
+                return SemanticTransitionContradicted("semantic_transition_contradicted");
+
+            var partialCandidates = BuildProductionSemanticTransitionCandidates(
+                observations,
+                inputValues,
+                allowMissingVariables: true)
+                .Where(item => item.MissingVariables.Count > 0 && item.DirectBindingCount > 0)
+                .ToList();
+            if (partialCandidates.Count == 0)
+                return SemanticTransitionInsufficient("semantic_transition_not_supported");
+
+            var contextFrames = await ResolveGroundedContextFramesAsync(
+                sourceLanguage,
+                context,
+                observations,
+                cancellationToken);
+            candidates = BindCandidatesFromGroundedContext(partialCandidates, contextFrames);
+            if (candidates.Count == 0)
+                return SemanticTransitionInsufficient("semantic_context_not_governed");
+        }
+
+        var resultSignatures = candidates
+            .Select(item => item.ResultFrame.Signature)
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+        if (resultSignatures.Length != 1)
+            return SemanticTransitionAmbiguous("ambiguous_semantic_transition");
+
+        var selected = candidates
+            .OrderBy(item => item.TransitionSignature, StringComparer.Ordinal)
+            .First();
+        var realization = await TryRealizeSemanticTransitionResultAsync(
+            selected,
+            sourceLanguage,
+            understanding.Components,
+            cancellationToken);
+        if (realization.Reason is not null)
+        {
+            return realization.IsAmbiguous
+                ? SemanticTransitionAmbiguous(realization.Reason)
+                : SemanticTransitionInsufficient(realization.Reason);
+        }
+
+        return new LegendSemanticTransitionInference(
+            LegendSemanticTransitionInference.Supported,
+            realization.Text,
+            selected.IndependentEvidenceCount + realization.LayoutEvidenceCount,
+            ["independently_supported_semantic_transition", "canonical_anchor_realization"]);
+    }
+
+    private async Task<IReadOnlyList<SemanticTransitionObservation>>
+        LoadActiveSemanticTransitionObservationsAsync(
+            string sourceLanguage,
+            CancellationToken cancellationToken)
+    {
+        return await (
+            from evidence in _db.Set<LegendSemanticTransitionEvidence>().AsNoTracking()
+            join source in _db.Set<LegendCurriculumExample>().AsNoTracking()
+                on evidence.SourceCurriculumExampleId equals source.Id
+            join result in _db.Set<LegendCurriculumExample>().AsNoTracking()
+                on evidence.ResultCurriculumExampleId equals result.Id
+            join sourceUnit in _db.Set<LegendLanguageTextUnit>().AsNoTracking()
+                on source.TextUnitId equals sourceUnit.Id
+            join resultUnit in _db.Set<LegendLanguageTextUnit>().AsNoTracking()
+                on result.TextUnitId equals resultUnit.Id
+            where evidence.SupersededUtc == null &&
+                evidence.SourceLanguageCode == sourceLanguage &&
+                evidence.ResultLanguageCode == sourceLanguage &&
+                (evidence.ContributionState == "Supported" ||
+                 evidence.ContributionState == "Contradictory") &&
+                evidence.Provenance == LegendConnectKnowledgeProvenance.FounderApproved &&
+                source.SupersededUtc == null && result.SupersededUtc == null &&
+                source.LanguageCode == sourceLanguage && result.LanguageCode == sourceLanguage &&
+                source.Provenance == LegendConnectKnowledgeProvenance.FounderApproved &&
+                result.Provenance == LegendConnectKnowledgeProvenance.FounderApproved &&
+                sourceUnit.IsTrainingEligible && resultUnit.IsTrainingEligible &&
+                sourceUnit.Provenance == LegendConnectKnowledgeProvenance.FounderApproved &&
+                resultUnit.Provenance == LegendConnectKnowledgeProvenance.FounderApproved
+            select new SemanticTransitionObservation(
+                evidence.TransitionSignature,
+                evidence.SourceSemanticFrame,
+                evidence.ResultSemanticFrame,
+                evidence.IndependentSourceIdentity,
+                evidence.ContributionState,
+                evidence.IsHumanVerifiedSupport,
+                evidence.SourceCurriculumExampleId,
+                evidence.ResultCurriculumExampleId)
+        ).ToListAsync(cancellationToken);
+    }
+
+    private static IReadOnlyList<SemanticTransitionCandidate>
+        BuildProductionSemanticTransitionCandidates(
+            IReadOnlyList<SemanticTransitionObservation> observations,
+            IReadOnlyDictionary<string, string> inputValues,
+            bool allowMissingVariables)
+    {
+        var candidates = new List<SemanticTransitionCandidate>();
+        foreach (var group in observations.GroupBy(item => item.TransitionSignature, StringComparer.Ordinal))
+        {
+            if (group.Any(item => string.Equals(item.ContributionState, "Contradictory", StringComparison.Ordinal)))
+                continue;
+
+            var independentEvidenceCount = group
+                .Where(item => item.IsHumanVerifiedSupport &&
+                    string.Equals(item.ContributionState, "Supported", StringComparison.Ordinal))
+                .Select(item => item.IndependentSourceIdentity)
+                .Distinct(StringComparer.Ordinal)
+                .Count();
+            if (independentEvidenceCount < 3)
+                continue;
+
+            var representative = group.First();
+            if (!TryReadSemanticFrame(representative.SourceFrame, out var sourceFrame) ||
+                !TryReadSemanticFrame(representative.ResultFrame, out var resultFrame) ||
+                group.Any(item => !string.Equals(item.SourceFrame, representative.SourceFrame, StringComparison.Ordinal) ||
+                    !string.Equals(item.ResultFrame, representative.ResultFrame, StringComparison.Ordinal)))
+            {
+                continue;
+            }
+
+            if (!TryBindInputSemanticFrame(
+                    sourceFrame,
+                    inputValues,
+                    allowMissingVariables,
+                    out var bindings,
+                    out var missingVariables,
+                    out var directBindingCount))
+            {
+                continue;
+            }
+
+            candidates.Add(new SemanticTransitionCandidate(
+                representative.TransitionSignature,
+                sourceFrame,
+                resultFrame,
+                bindings,
+                missingVariables,
+                directBindingCount,
+                independentEvidenceCount));
+        }
+        return candidates;
+    }
+
+    private static bool HasContradictedSemanticTransition(
+        IReadOnlyList<SemanticTransitionObservation> observations,
+        IReadOnlyDictionary<string, string> inputValues)
+    {
+        foreach (var group in observations
+                     .Where(item => string.Equals(item.ContributionState, "Contradictory", StringComparison.Ordinal))
+                     .GroupBy(item => item.TransitionSignature, StringComparer.Ordinal))
+        {
+            if (!TryReadSemanticFrame(group.First().SourceFrame, out var sourceFrame))
+                continue;
+            if (TryBindInputSemanticFrame(
+                    sourceFrame,
+                    inputValues,
+                    allowMissingVariables: false,
+                    out _,
+                    out _,
+                    out _))
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private async Task<IReadOnlyList<GroundedContextFrame>> ResolveGroundedContextFramesAsync(
+        string sourceLanguage,
+        IReadOnlyList<LegendConnectConversationContextItem> context,
+        IReadOnlyList<SemanticTransitionObservation> observations,
+        CancellationToken cancellationToken)
+    {
+        var frames = new List<GroundedContextFrame>();
+        foreach (var turn in context.Reverse().Where(item =>
+                     string.Equals(item.Role, "user", StringComparison.OrdinalIgnoreCase) &&
+                     !string.IsNullOrWhiteSpace(item.Content)))
+        {
+            var understanding = await AnalyzeSemanticTransitionSourceSemanticsAsync(
+                sourceLanguage,
+                turn.Content,
+                cancellationToken);
+            if (!string.Equals(understanding.State, LegendShadowSourceUnderstanding.SupportedForShadowEvaluation,
+                    StringComparison.Ordinal) ||
+                !TryToUnambiguousSemanticValues(understanding.Components, out var values))
+            {
+                continue;
+            }
+
+            var candidates = BuildProductionSemanticTransitionCandidates(
+                observations,
+                values,
+                allowMissingVariables: false);
+            if (candidates.Select(item => item.ResultFrame.Signature).Distinct(StringComparer.Ordinal).Count() != 1)
+                continue;
+            foreach (var candidate in candidates)
+            {
+                if (!TryInstantiateFrame(candidate.ResultFrame, candidate.Bindings, out var frameValues))
+                    continue;
+                frames.Add(new GroundedContextFrame(candidate.ResultFrame.Signature, frameValues));
+            }
+        }
+        return frames;
+    }
+
+    private static IReadOnlyList<SemanticTransitionCandidate> BindCandidatesFromGroundedContext(
+        IReadOnlyList<SemanticTransitionCandidate> partialCandidates,
+        IReadOnlyList<GroundedContextFrame> contextFrames)
+    {
+        var completed = new List<SemanticTransitionCandidate>();
+        foreach (var candidate in partialCandidates)
+        {
+            var bindings = new List<IReadOnlyDictionary<string, string>>();
+            foreach (var frame in contextFrames)
+            {
+                var proposed = new Dictionary<string, string>(candidate.Bindings, StringComparer.Ordinal);
+                var isComplete = true;
+                foreach (var missing in candidate.MissingVariables)
+                {
+                    if (!frame.Values.TryGetValue(missing.Dimension, out var value) ||
+                        string.IsNullOrWhiteSpace(value))
+                    {
+                        isComplete = false;
+                        break;
+                    }
+                    if (proposed.TryGetValue(missing.Variable, out var existing) &&
+                        !string.Equals(existing, value, StringComparison.OrdinalIgnoreCase))
+                    {
+                        isComplete = false;
+                        break;
+                    }
+                    proposed[missing.Variable] = value;
+                }
+                if (isComplete)
+                    bindings.Add(proposed);
+            }
+
+            var distinctBindings = bindings
+                .GroupBy(item => CanonicalBindings(item), StringComparer.Ordinal)
+                .Select(group => group.First())
+                .ToList();
+            if (distinctBindings.Count != 1)
+                continue;
+            completed.Add(candidate with
+            {
+                Bindings = distinctBindings[0],
+                MissingVariables = []
+            });
+        }
+        return completed;
+    }
+
+    private async Task<SemanticTransitionRealization> TryRealizeSemanticTransitionResultAsync(
+        SemanticTransitionCandidate candidate,
+        string languageCode,
+        IReadOnlyList<LegendShadowSourceSemanticComponent> sourceComponents,
+        CancellationToken cancellationToken)
+    {
+        if (!TryInstantiateFrame(candidate.ResultFrame, candidate.Bindings, out var resultValues))
+            return SemanticTransitionRealization.Insufficient("result_semantic_variable_unbound");
+
+        var activeExamples =
+            from example in _db.Set<LegendCurriculumExample>().AsNoTracking()
+            join unit in _db.Set<LegendLanguageTextUnit>().AsNoTracking()
+                on example.TextUnitId equals unit.Id
+            where example.SupersededUtc == null &&
+                example.LanguageCode == languageCode &&
+                example.Provenance == LegendConnectKnowledgeProvenance.FounderApproved &&
+                unit.LanguageCode == languageCode && unit.IsTrainingEligible &&
+                unit.Provenance == LegendConnectKnowledgeProvenance.FounderApproved
+            select new { Example = example, Unit = unit };
+
+        // Frame relevance is applied in SQL before materialization. This uses
+        // the existing variation rows as the semantic index and deliberately
+        // does not turn the full English curriculum into an in-memory
+        // candidate universe.
+        var scopedQuery = activeExamples;
+        var layoutQuery = activeExamples;
+        foreach (var dimension in candidate.ResultFrame.Dimensions)
+        {
+            var dimensionName = dimension.Key;
+            if (IsSemanticVariable(dimension.Value))
+            {
+                if (!candidate.Bindings.TryGetValue(dimension.Value, out var boundValue))
+                    return SemanticTransitionRealization.Insufficient("result_semantic_variable_unbound");
+                scopedQuery = scopedQuery.Where(item =>
+                    _db.Set<LegendCurriculumExampleVariation>().Any(variation =>
+                        variation.CurriculumExampleId == item.Example.Id &&
+                        variation.Dimension == dimensionName && variation.Value == boundValue));
+                layoutQuery = layoutQuery.Where(item =>
+                    _db.Set<LegendCurriculumExampleVariation>().Any(variation =>
+                        variation.CurriculumExampleId == item.Example.Id &&
+                        variation.Dimension == dimensionName));
+                continue;
+            }
+
+            var staticValue = dimension.Value;
+            scopedQuery = scopedQuery.Where(item =>
+                _db.Set<LegendCurriculumExampleVariation>().Any(variation =>
+                    variation.CurriculumExampleId == item.Example.Id &&
+                    variation.Dimension == dimensionName && variation.Value == staticValue));
+            layoutQuery = layoutQuery.Where(item =>
+                _db.Set<LegendCurriculumExampleVariation>().Any(variation =>
+                    variation.CurriculumExampleId == item.Example.Id &&
+                    variation.Dimension == dimensionName && variation.Value == staticValue));
+        }
+
+        var scopedDatabaseExamples = await scopedQuery
+            .Select(item => new SemanticResultExample(
+                item.Example.Id,
+                item.Example.CurriculumFamilyId,
+                item.Example.TextUnitId,
+                item.Unit.Text))
+            .ToListAsync(cancellationToken);
+        var layoutDatabaseExamples = await layoutQuery
+            .Select(item => new SemanticResultExample(
+                item.Example.Id,
+                item.Example.CurriculumFamilyId,
+                item.Example.TextUnitId,
+                item.Unit.Text))
+            .ToListAsync(cancellationToken);
+        var examples = scopedDatabaseExamples
+            .Concat(layoutDatabaseExamples)
+            .GroupBy(item => item.Id)
+            .Select(group => group.First())
+            .ToList();
+        if (examples.Count == 0)
+            return SemanticTransitionRealization.Insufficient("result_canonical_evidence_unknown");
+
+        var exampleIds = examples.Select(item => item.Id).ToArray();
+        var variations = await _db.Set<LegendCurriculumExampleVariation>().AsNoTracking()
+            .Where(item => exampleIds.Contains(item.CurriculumExampleId))
+            .Select(item => new SemanticVariation(item.CurriculumExampleId, item.Dimension, item.Value))
+            .ToListAsync(cancellationToken);
+        var variationMaps = variations
+            .GroupBy(item => item.ExampleId)
+            .ToDictionary(
+                group => group.Key,
+                group => (IReadOnlyDictionary<string, string>)group.ToDictionary(
+                    item => item.Dimension,
+                    item => item.Value,
+                    StringComparer.OrdinalIgnoreCase));
+
+        var scopedExamples = examples
+            .Where(item => variationMaps.TryGetValue(item.Id, out var values) &&
+                MatchesInstantiatedSemanticFrame(candidate.ResultFrame, values, candidate.Bindings))
+            .ToList();
+
+        var anchors = await _db.Set<LegendLanguageCompositionalAnchor>().AsNoTracking()
+            .Where(item => exampleIds.Contains(item.CurriculumExampleId) &&
+                item.LanguageCode == languageCode &&
+                item.Provenance == LegendConnectKnowledgeProvenance.FounderApproved &&
+                item.SupersededUtc == null && item.LexemeId != null &&
+                item.ComponentStartTokenIndex != null && item.ComponentLength != null && item.ComponentLength > 0)
+            .Select(item => new SemanticAnchor(
+                item.CurriculumExampleId,
+                item.Dimension,
+                item.Value,
+                item.ComponentStartTokenIndex!.Value,
+                item.ComponentLength!.Value))
+            .ToListAsync(cancellationToken);
+        var anchorsByExample = anchors
+            .GroupBy(item => item.ExampleId)
+            .ToDictionary(group => group.Key, group => group.ToList());
+
+        var frameDimensions = candidate.ResultFrame.Dimensions.Keys
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var layouts = new List<SemanticRealizationLayout>();
+        foreach (var example in examples.Where(item =>
+                     variationMaps.TryGetValue(item.Id, out var values) &&
+                     MatchesStaticSemanticFrame(candidate.ResultFrame, values)))
+        {
+            if (!anchorsByExample.TryGetValue(example.Id, out var exampleAnchors) ||
+                !TryBuildSemanticRealizationLayout(example, exampleAnchors, frameDimensions, out var layout))
+            {
+                continue;
+            }
+            layouts.Add(layout);
+        }
+
+        var eligibleLayouts = layouts
+            .GroupBy(item => item.Shape, StringComparer.Ordinal)
+            .Select(group => new
+            {
+                Layouts = group.ToList(),
+                IndependentFamilies = group.Select(item => item.FamilyId).Distinct().Count()
+            })
+            .Where(group => group.IndependentFamilies >= 3)
+            .ToList();
+        if (scopedExamples.Count > 0)
+        {
+            if (eligibleLayouts.Count == 0)
+                return SemanticTransitionRealization.Insufficient("result_realization_layout_insufficient");
+            if (eligibleLayouts.Count > 1)
+                return SemanticTransitionRealization.Ambiguous("ambiguous_result_realization_layout");
+
+            var learnedLayout = eligibleLayouts[0].Layouts;
+            if (!TryResolveScopedSemanticComponents(
+                    scopedExamples,
+                    anchorsByExample,
+                    frameDimensions,
+                    out var scopedComponents))
+            {
+                return SemanticTransitionRealization.Ambiguous("contradictory_result_semantic_components");
+            }
+
+            if (!TryRealizeLearnedLayout(learnedLayout, scopedComponents, out var text))
+                return SemanticTransitionRealization.Insufficient("result_realization_component_missing");
+            return new SemanticTransitionRealization(text, eligibleLayouts[0].IndependentFamilies, null, false);
+        }
+
+        // A bound result value can be realized from the governed source only
+        // when the result layout itself has three independent Founder families
+        // and every non-bound component is invariant across that layout.  This
+        // permits a learned compositional response to a new approved source
+        // binding without manufacturing a target fact or using a template.
+        return TryRealizeBoundSemanticTransitionResult(
+            candidate,
+            sourceComponents,
+            layoutDatabaseExamples,
+            variationMaps,
+            anchorsByExample);
+    }
+
+    private static LegendSemanticTransitionInference SemanticTransitionInsufficient(string reason) =>
+        new(LegendSemanticTransitionInference.InsufficientEvidence, null, 0, [reason]);
+
+    private static LegendSemanticTransitionInference SemanticTransitionAmbiguous(string reason) =>
+        new(LegendSemanticTransitionInference.Ambiguous, null, 0, [reason]);
+
+    private static LegendSemanticTransitionInference SemanticTransitionContradicted(string reason) =>
+        new(LegendSemanticTransitionInference.Contradicted, null, 0, [reason]);
+
+    private static bool TryToUnambiguousSemanticValues(
+        IReadOnlyList<LegendShadowSourceSemanticComponent> components,
+        out IReadOnlyDictionary<string, string> values)
+    {
+        var resolved = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var group in components.GroupBy(item => item.Dimension, StringComparer.OrdinalIgnoreCase))
+        {
+            var alternatives = group.Select(item => item.Value)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+            if (alternatives.Length != 1)
+            {
+                values = resolved;
+                return false;
+            }
+            resolved[group.Key] = alternatives[0];
+        }
+        values = resolved;
+        return resolved.Count > 0;
+    }
+
+    private static bool TryReadSemanticFrame(
+        string serialized,
+        out NormalizedSemanticFrame frame)
+    {
+        try
+        {
+            var dimensions = JsonSerializer.Deserialize<Dictionary<string, string>>(serialized);
+            var normalized = NormalizeSemanticFrame(dimensions);
+            if (normalized is null || !string.Equals(normalized.Serialized, serialized, StringComparison.Ordinal))
+            {
+                frame = null!;
+                return false;
+            }
+            frame = normalized;
+            return true;
+        }
+        catch (JsonException)
+        {
+            frame = null!;
+            return false;
+        }
+    }
+
+    private static bool TryBindInputSemanticFrame(
+        NormalizedSemanticFrame frame,
+        IReadOnlyDictionary<string, string> inputValues,
+        bool allowMissingVariables,
+        out IReadOnlyDictionary<string, string> bindings,
+        out IReadOnlyList<SemanticMissingVariable> missingVariables,
+        out int directBindingCount)
+    {
+        var resolved = new Dictionary<string, string>(StringComparer.Ordinal);
+        var missing = new List<SemanticMissingVariable>();
+        directBindingCount = 0;
+        foreach (var item in frame.Dimensions)
+        {
+            if (!IsSemanticVariable(item.Value))
+            {
+                if (!inputValues.TryGetValue(item.Key, out var observed) ||
+                    !string.Equals(observed, item.Value, StringComparison.OrdinalIgnoreCase))
+                {
+                    bindings = resolved;
+                    missingVariables = missing;
+                    return false;
+                }
+                continue;
+            }
+
+            if (!inputValues.TryGetValue(item.Key, out var value))
+            {
+                if (!allowMissingVariables)
+                {
+                    bindings = resolved;
+                    missingVariables = missing;
+                    return false;
+                }
+                missing.Add(new SemanticMissingVariable(item.Key, item.Value));
+                continue;
+            }
+            if (resolved.TryGetValue(item.Value, out var existing) &&
+                !string.Equals(existing, value, StringComparison.OrdinalIgnoreCase))
+            {
+                bindings = resolved;
+                missingVariables = missing;
+                return false;
+            }
+            resolved[item.Value] = value;
+            directBindingCount++;
+        }
+        bindings = resolved;
+        missingVariables = missing;
+        return true;
+    }
+
+    private static bool TryInstantiateFrame(
+        NormalizedSemanticFrame frame,
+        IReadOnlyDictionary<string, string> bindings,
+        out IReadOnlyDictionary<string, string> values)
+    {
+        var instantiated = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var item in frame.Dimensions)
+        {
+            if (IsSemanticVariable(item.Value))
+            {
+                if (!bindings.TryGetValue(item.Value, out var value) || string.IsNullOrWhiteSpace(value))
+                {
+                    values = instantiated;
+                    return false;
+                }
+                instantiated[item.Key] = value;
+                continue;
+            }
+            instantiated[item.Key] = item.Value;
+        }
+        values = instantiated;
+        return true;
+    }
+
+    private static bool MatchesInstantiatedSemanticFrame(
+        NormalizedSemanticFrame frame,
+        IReadOnlyDictionary<string, string> variations,
+        IReadOnlyDictionary<string, string> bindings) =>
+        TryInstantiateFrame(frame, bindings, out var values) &&
+        values.All(item => variations.TryGetValue(item.Key, out var observed) &&
+            string.Equals(item.Value, observed, StringComparison.OrdinalIgnoreCase));
+
+    private static bool MatchesStaticSemanticFrame(
+        NormalizedSemanticFrame frame,
+        IReadOnlyDictionary<string, string> variations) =>
+        frame.Dimensions.All(item =>
+            variations.TryGetValue(item.Key, out var observed) &&
+            (IsSemanticVariable(item.Value) ||
+             string.Equals(item.Value, observed, StringComparison.OrdinalIgnoreCase)));
+
+    private static bool TryBuildSemanticRealizationLayout(
+        SemanticResultExample example,
+        IReadOnlyList<SemanticAnchor> anchors,
+        IReadOnlySet<string> frameDimensions,
+        out SemanticRealizationLayout layout)
+    {
+        var components = BuildSemanticLayoutComponents(example, anchors, frameDimensions);
+        if (components.Count < 2 ||
+            components.Select(item => item.Dimension).Distinct(StringComparer.OrdinalIgnoreCase).Count() != components.Count ||
+            components.Zip(components.Skip(1), (left, right) =>
+                    left.StartTokenIndex + left.TokenLength > right.StartTokenIndex)
+                .Any(item => item))
+        {
+            layout = null!;
+            return false;
+        }
+
+        var firstStart = components[0].StartTokenIndex;
+        var shape = string.Join("|", components.Select(item =>
+            $"{item.Dimension}:{item.StartTokenIndex - firstStart}:{item.TokenLength}"));
+        layout = new SemanticRealizationLayout(
+            example.CurriculumFamilyId,
+            shape,
+            components,
+            TerminalPunctuation(example.Text));
+        return true;
+    }
+
+    private static bool TryResolveScopedSemanticComponents(
+        IReadOnlyList<SemanticResultExample> examples,
+        IReadOnlyDictionary<Guid, List<SemanticAnchor>> anchorsByExample,
+        IReadOnlySet<string> frameDimensions,
+        out IReadOnlyDictionary<string, SemanticLayoutComponent> components)
+    {
+        var candidates = new List<SemanticLayoutComponent>();
+        foreach (var example in examples)
+        {
+            if (!anchorsByExample.TryGetValue(example.Id, out var anchors))
+                continue;
+            candidates.AddRange(anchors
+                .GroupBy(item => (item.Dimension, item.StartTokenIndex, item.TokenLength, item.Value))
+                .Select(group => group.First())
+                .Select(item => new SemanticLayoutComponent(
+                    item.Dimension,
+                    item.Value,
+                    item.StartTokenIndex,
+                    item.TokenLength,
+                    ExtractAnchorSurface(example.Text, item.StartTokenIndex, item.TokenLength)))
+                .Where(item => !string.IsNullOrWhiteSpace(item.SurfaceForm)));
+        }
+
+        var resolved = new Dictionary<string, SemanticLayoutComponent>(StringComparer.OrdinalIgnoreCase);
+        foreach (var group in candidates.GroupBy(item => item.Dimension, StringComparer.OrdinalIgnoreCase))
+        {
+            var possibilities = group
+                .GroupBy(item => item.Value + "\u001f" + item.SurfaceForm, StringComparer.Ordinal)
+                .Select(item => item.First())
+                .ToArray();
+            if (possibilities.Length != 1)
+            {
+                components = resolved;
+                return false;
+            }
+            resolved[group.Key] = possibilities[0];
+        }
+        components = resolved;
+        return true;
+    }
+
+    private static bool TryRealizeLearnedLayout(
+        IReadOnlyList<SemanticRealizationLayout> layouts,
+        IReadOnlyDictionary<string, SemanticLayoutComponent> scopedComponents,
+        out string text)
+    {
+        text = string.Empty;
+        if (layouts.Count == 0)
+            return false;
+
+        var output = new List<string>();
+        foreach (var position in layouts[0].Components)
+        {
+            if (scopedComponents.TryGetValue(position.Dimension, out var scoped))
+            {
+                output.Add(scoped.SurfaceForm);
+                continue;
+            }
+
+            var fixedAlternatives = layouts
+                .SelectMany(item => item.Components)
+                .Where(item => string.Equals(item.Dimension, position.Dimension, StringComparison.OrdinalIgnoreCase))
+                .GroupBy(item => item.Value + "\u001f" + item.SurfaceForm, StringComparer.Ordinal)
+                .Select(group => group.First())
+                .ToArray();
+            if (fixedAlternatives.Length != 1)
+                return false;
+            output.Add(fixedAlternatives[0].SurfaceForm);
+        }
+
+        var punctuation = layouts
+            .Select(item => item.TerminalPunctuation)
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+        text = LegendLanguageIdentity.NormalizeText(string.Join(' ', output));
+        if (string.IsNullOrWhiteSpace(text))
+            return false;
+        if (punctuation.Length == 1 && !string.IsNullOrWhiteSpace(punctuation[0]))
+            text += punctuation[0];
+        return true;
+    }
+
+    private static SemanticTransitionRealization TryRealizeBoundSemanticTransitionResult(
+        SemanticTransitionCandidate candidate,
+        IReadOnlyList<LegendShadowSourceSemanticComponent> sourceComponents,
+        IReadOnlyList<SemanticResultExample> layoutExamples,
+        IReadOnlyDictionary<Guid, IReadOnlyDictionary<string, string>> variationMaps,
+        IReadOnlyDictionary<Guid, List<SemanticAnchor>> anchorsByExample)
+    {
+        var dynamicDimensions = candidate.ResultFrame.Dimensions
+            .Where(item => IsSemanticVariable(item.Value))
+            .ToDictionary(item => item.Key, item => item.Value, StringComparer.OrdinalIgnoreCase);
+        if (dynamicDimensions.Count == 0)
+            return SemanticTransitionRealization.Insufficient("result_semantic_frame_unrealized");
+
+        var resultFrameDimensions = candidate.ResultFrame.Dimensions.Keys
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var layouts = new List<SemanticRealizationLayout>();
+        foreach (var example in layoutExamples.Where(item =>
+                     variationMaps.TryGetValue(item.Id, out var values) &&
+                     MatchesStaticSemanticFrame(candidate.ResultFrame, values)))
+        {
+            if (!anchorsByExample.TryGetValue(example.Id, out var anchors) ||
+                !TryBuildBoundSemanticRealizationLayout(
+                    example,
+                    anchors,
+                    resultFrameDimensions,
+                    out var layout))
+            {
+                continue;
+            }
+            layouts.Add(layout);
+        }
+
+        var eligibleLayouts = layouts
+            .GroupBy(item => item.Shape, StringComparer.Ordinal)
+            .Select(group => new
+            {
+                Layouts = group.ToList(),
+                IndependentFamilies = group.Select(item => item.FamilyId).Distinct().Count()
+            })
+            .Where(group => group.IndependentFamilies >= 3)
+            .ToList();
+        if (eligibleLayouts.Count == 0)
+            return SemanticTransitionRealization.Insufficient("result_bound_layout_insufficient");
+        if (eligibleLayouts.Count > 1)
+            return SemanticTransitionRealization.Ambiguous("ambiguous_result_bound_layout");
+
+        var learnedLayout = eligibleLayouts[0].Layouts;
+        if (!TryResolveInvariantBoundLayoutComponents(
+                learnedLayout,
+                dynamicDimensions.Keys.ToHashSet(StringComparer.OrdinalIgnoreCase),
+                out var fixedComponents))
+        {
+            return SemanticTransitionRealization.Ambiguous("contradictory_result_bound_components");
+        }
+
+        var boundSurfaces = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var dynamicDimension in dynamicDimensions)
+        {
+            if (!candidate.Bindings.TryGetValue(dynamicDimension.Value, out var boundValue) ||
+                string.IsNullOrWhiteSpace(boundValue))
+            {
+                return SemanticTransitionRealization.Insufficient("result_semantic_variable_unbound");
+            }
+
+            var surfaces = sourceComponents
+                .Where(item =>
+                    string.Equals(item.Dimension, dynamicDimension.Key, StringComparison.OrdinalIgnoreCase) &&
+                    string.Equals(item.Value, boundValue, StringComparison.OrdinalIgnoreCase))
+                .Select(item => LegendLanguageIdentity.NormalizeText(item.SurfaceForm))
+                .Where(item => !string.IsNullOrWhiteSpace(item))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+            if (surfaces.Length != 1)
+                return SemanticTransitionRealization.Insufficient("result_bound_source_surface_unknown");
+            boundSurfaces[dynamicDimension.Key] = surfaces[0];
+        }
+
+        var output = new List<string>();
+        foreach (var position in learnedLayout[0].Components)
+        {
+            if (boundSurfaces.TryGetValue(position.Dimension, out var dynamicSurface))
+            {
+                output.Add(dynamicSurface);
+                continue;
+            }
+            if (!fixedComponents.TryGetValue(position.Dimension, out var fixedComponent))
+                return SemanticTransitionRealization.Insufficient("result_bound_layout_component_missing");
+            output.Add(fixedComponent.SurfaceForm);
+        }
+
+        var punctuation = learnedLayout
+            .Select(item => item.TerminalPunctuation)
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+        if (punctuation.Length != 1)
+            return SemanticTransitionRealization.Ambiguous("ambiguous_result_bound_punctuation");
+
+        var text = LegendLanguageIdentity.NormalizeText(string.Join(' ', output));
+        if (string.IsNullOrWhiteSpace(text))
+            return SemanticTransitionRealization.Insufficient("result_bound_layout_component_missing");
+        if (!string.IsNullOrWhiteSpace(punctuation[0]))
+            text += punctuation[0];
+        return new SemanticTransitionRealization(
+            text,
+            eligibleLayouts[0].IndependentFamilies,
+            null,
+            false);
+    }
+
+    private static bool TryBuildBoundSemanticRealizationLayout(
+        SemanticResultExample example,
+        IReadOnlyList<SemanticAnchor> anchors,
+        IReadOnlySet<string> resultFrameDimensions,
+        out SemanticRealizationLayout layout)
+    {
+        var components = BuildSemanticLayoutComponents(example, anchors, resultFrameDimensions);
+        if (components.Count < 2 ||
+            components.Select(item => item.Dimension).Distinct(StringComparer.OrdinalIgnoreCase).Count() != components.Count ||
+            components.Zip(components.Skip(1), (left, right) =>
+                    left.StartTokenIndex + left.TokenLength > right.StartTokenIndex)
+                .Any(item => item))
+        {
+            layout = null!;
+            return false;
+        }
+
+        var firstStart = components[0].StartTokenIndex;
+        layout = new SemanticRealizationLayout(
+            example.CurriculumFamilyId,
+            string.Join("|", components.Select(item =>
+                $"{item.Dimension}:{item.StartTokenIndex - firstStart}:{item.TokenLength}")),
+            components,
+            TerminalPunctuation(example.Text));
+        return true;
+    }
+
+    /// <summary>
+    /// Selects output components only from exact lexical Founder anchors. If a
+    /// lexical control and a semantic-frame annotation share a span, the
+    /// lexical control realizes that span. A frame dimension remains eligible
+    /// when it is the sole exact lexical control. No value is inferred.
+    /// </summary>
+    private static List<SemanticLayoutComponent> BuildSemanticLayoutComponents(
+        SemanticResultExample example,
+        IReadOnlyList<SemanticAnchor> anchors,
+        IReadOnlySet<string> resultFrameDimensions)
+    {
+        return anchors
+            .GroupBy(item => (item.StartTokenIndex, item.TokenLength))
+            .SelectMany(group =>
+            {
+                var lexicalControls = group
+                    .Where(item => !resultFrameDimensions.Contains(item.Dimension))
+                    .ToList();
+                return lexicalControls.Count > 0 ? lexicalControls : group.ToList();
+            })
+            .GroupBy(item => (item.Dimension, item.StartTokenIndex, item.TokenLength, item.Value))
+            .Select(group => group.First())
+            .Select(item => new SemanticLayoutComponent(
+                item.Dimension,
+                item.Value,
+                item.StartTokenIndex,
+                item.TokenLength,
+                ExtractAnchorSurface(example.Text, item.StartTokenIndex, item.TokenLength)))
+            .Where(item => !string.IsNullOrWhiteSpace(item.SurfaceForm))
+            .OrderBy(item => item.StartTokenIndex)
+            .ThenBy(item => item.TokenLength)
+            .ToList();
+    }
+
+    private static bool TryResolveInvariantBoundLayoutComponents(
+        IReadOnlyList<SemanticRealizationLayout> layouts,
+        IReadOnlySet<string> dynamicDimensions,
+        out IReadOnlyDictionary<string, SemanticLayoutComponent> components)
+    {
+        var resolved = new Dictionary<string, SemanticLayoutComponent>(StringComparer.OrdinalIgnoreCase);
+        foreach (var group in layouts.SelectMany(item => item.Components)
+                     .Where(item => !dynamicDimensions.Contains(item.Dimension))
+                     .GroupBy(item => item.Dimension, StringComparer.OrdinalIgnoreCase))
+        {
+            var possibilities = group
+                .GroupBy(item => item.Value + "\u001f" + item.SurfaceForm, StringComparer.Ordinal)
+                .Select(item => item.First())
+                .ToArray();
+            if (possibilities.Length != 1)
+            {
+                components = resolved;
+                return false;
+            }
+            resolved[group.Key] = possibilities[0];
+        }
+
+        components = resolved;
+        return true;
+    }
+
+    private static string ExtractAnchorSurface(string text, int startTokenIndex, int tokenLength)
+    {
+        var normalized = LegendLanguageIdentity.NormalizeText(text);
+        var components = SurfaceComponents(normalized);
+        if (startTokenIndex < 0 || tokenLength < 1 || startTokenIndex + tokenLength > components.Count)
+            return string.Empty;
+        var first = components[startTokenIndex];
+        var last = components[startTokenIndex + tokenLength - 1];
+        return normalized[first.CharacterOffset..(last.CharacterOffset + last.CharacterLength)];
+    }
+
+    private static string TerminalPunctuation(string text)
+    {
+        var normalized = LegendLanguageIdentity.NormalizeText(text).Trim();
+        var suffix = new string(normalized.Reverse()
+            .TakeWhile(character => !char.IsLetterOrDigit(character))
+            .Reverse()
+            .ToArray());
+        return suffix.Length <= 4 ? suffix : string.Empty;
+    }
+
+    private static string CanonicalBindings(IReadOnlyDictionary<string, string> bindings) =>
+        JsonSerializer.Serialize(bindings.OrderBy(item => item.Key, StringComparer.Ordinal)
+            .ToDictionary(item => item.Key, item => item.Value, StringComparer.Ordinal));
+
+    /// <summary>
     /// Evaluates an explicitly bounded, previously unseen target construction
     /// against the active canonical evidence graph. It is deliberately
     /// read-only: no composition is persisted, no corpus asset is generated,
@@ -2730,14 +3821,6 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
                 continue;
             }
 
-            var familyIds = directAnchors
-                .Select(item => item.CurriculumFamilyId)
-                .Distinct()
-                .ToArray();
-
-            if (familyIds.Length != 1)
-                continue;
-
             var variations =
                 await _db.Set<LegendCurriculumExampleVariation>()
                     .AsNoTracking()
@@ -2758,63 +3841,13 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
                 continue;
             }
 
-            var witnessAnchors =
-                await _db.Set<LegendLanguageCompositionalAnchor>()
-                    .AsNoTracking()
-                    .Where(item =>
-                        item.CurriculumFamilyId ==
-                            familyIds[0] &&
-                        item.CurriculumExampleId !=
-                            exampleId &&
-                        item.LanguageCode ==
-                            sourceLanguage &&
-                        item.Provenance ==
-                            LegendConnectKnowledgeProvenance
-                                .FounderApproved &&
-                        item.SupersededUtc == null &&
-                        item.LexemeId != null &&
-                        item.SemanticSignature != null &&
-                        signatures.Contains(
-                            item.SemanticSignature) &&
-                        item.ComponentStartTokenIndex != null &&
-                        item.ComponentLength != null &&
-                        item.ComponentLength > 0)
-                    .ToListAsync(cancellationToken);
-
-            var hasExpandedWitness =
-                witnessAnchors
-                    .GroupBy(item =>
-                        item.CurriculumExampleId)
-                    .Any(group =>
-                    {
-                        var groupSignatures = group
-                            .Select(item =>
-                                item.SemanticSignature!)
-                            .Distinct(
-                                StringComparer.Ordinal)
-                            .ToHashSet(
-                                StringComparer.Ordinal);
-
-                        if (signatures.Any(signature =>
-                                !groupSignatures.Contains(
-                                    signature)))
-                        {
-                            return false;
-                        }
-
-                        return group
-                            .Where(item =>
-                                signatures.Contains(
-                                    item.SemanticSignature!))
-                            .Select(item => (
-                                item.ComponentStartTokenIndex,
-                                item.ComponentLength))
-                            .Distinct()
-                            .Count() >= 2;
-                    });
-
-            if (hasExpandedWitness)
-                return true;
+            // Multiple controlled dimensions may deliberately describe the
+            // same explicitly grounded Founder span (for example, lexical
+            // form, speech act, and discourse role).  That is direct
+            // co-annotation, not competing inference.  The exact source
+            // example is the authority for this narrow case; no contextual
+            // or language-specific rule is used to choose between meanings.
+            return true;
         }
 
         return false;
@@ -3195,6 +4228,8 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
         LegendCurriculumFamily family,
         IReadOnlyList<LegendCurriculumExample> examples,
         string languageCode,
+        IReadOnlyList<NormalizedSemanticTransition>? sourceTransitions,
+        IReadOnlyList<NormalizedSemanticSpanGrounding>? semanticSpanGroundings,
         CancellationToken cancellationToken)
     {
         var candidates = examples
@@ -3304,11 +4339,196 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
         if (pending)
             await _db.SaveChangesAsync(cancellationToken);
 
+        // A Founder may describe the semantic role of an explicitly grounded
+        // span with a value that is not itself surface text (for example,
+        // conversation_function=greeting on "Hello").  The normal parser has
+        // already made both facts durable here.  Project that direct
+        // co-annotation onto the already grounded span so native source
+        // analysis can use the Founder-authored semantic value without a
+        // language-specific word list or a second authoring format.
+        await AttachFounderSemanticProjectionAnchorsAsync(
+            family,
+            founderExamples,
+            languageCode,
+            sourceTransitions,
+            semanticSpanGroundings,
+            cancellationToken);
+
         await AttachFounderCoRealizedSemanticAnchorsAsync(
             family,
             founderExamples,
             languageCode,
             cancellationToken);
+    }
+
+    /// <summary>
+    /// Projects a non-literal Founder source-frame annotation only to the
+    /// exact controlled surface span explicitly named by @ground. This never
+    /// guesses from adjacency, syntax, a keyword table, or another family.
+    /// </summary>
+    private async Task AttachFounderSemanticProjectionAnchorsAsync(
+        LegendCurriculumFamily family,
+        IReadOnlyList<LegendCurriculumExample> founderExamples,
+        string languageCode,
+        IReadOnlyList<NormalizedSemanticTransition>? sourceTransitions,
+        IReadOnlyList<NormalizedSemanticSpanGrounding>? semanticSpanGroundings,
+        CancellationToken cancellationToken)
+    {
+        if (founderExamples.Count == 0 || sourceTransitions is null || sourceTransitions.Count == 0 ||
+            semanticSpanGroundings is null || semanticSpanGroundings.Count == 0)
+            return;
+
+        var exampleIds = founderExamples.Select(item => item.Id).Distinct().ToArray();
+        var textUnits = await _db.Set<LegendLanguageTextUnit>()
+            .AsNoTracking()
+            .Where(item => founderExamples.Select(example => example.TextUnitId).Contains(item.Id) &&
+                item.LanguageCode == languageCode &&
+                item.IsTrainingEligible &&
+                item.Provenance == LegendConnectKnowledgeProvenance.FounderApproved)
+            .ToDictionaryAsync(item => item.Id, cancellationToken);
+        if (textUnits.Count == 0)
+            return;
+
+        var variations = await _db.Set<LegendCurriculumExampleVariation>()
+            .AsNoTracking()
+            .Where(item => exampleIds.Contains(item.CurriculumExampleId))
+            .ToListAsync(cancellationToken);
+        var variationsByExample = variations
+            .GroupBy(item => item.CurriculumExampleId)
+            .ToDictionary(group => group.Key, group => group.ToList());
+
+        var anchors = await _db.Set<LegendLanguageCompositionalAnchor>()
+            .AsNoTracking()
+            .Where(item => exampleIds.Contains(item.CurriculumExampleId) &&
+                item.LanguageCode == languageCode &&
+                item.Provenance == LegendConnectKnowledgeProvenance.FounderApproved &&
+                item.SupersededUtc == null && item.LexemeId != null &&
+                item.ComponentStartTokenIndex != null && item.ComponentLength != null &&
+                item.ComponentLength > 0)
+            .Select(item => new FounderLexicalAnchor(
+                item.CurriculumExampleId,
+                item.LexemeId!.Value,
+                item.Dimension,
+                item.Value,
+                item.ComponentStartTokenIndex!.Value,
+                item.ComponentLength!.Value))
+            .ToListAsync(cancellationToken);
+        var existingSignatures = await _db.Set<LegendLanguageCompositionalAnchor>()
+            .Where(item => exampleIds.Contains(item.CurriculumExampleId))
+            .Select(item => item.AnchorSignature)
+            .ToHashSetAsync(cancellationToken);
+
+        var pending = false;
+        foreach (var example in founderExamples)
+        {
+            if (!textUnits.TryGetValue(example.TextUnitId, out var textUnit) ||
+                !variationsByExample.TryGetValue(example.Id, out var exampleVariations))
+            {
+                continue;
+            }
+
+            var variationMap = exampleVariations.ToDictionary(
+                item => item.Dimension,
+                item => item.Value,
+                StringComparer.OrdinalIgnoreCase);
+            if (!sourceTransitions.Any(transition =>
+                    TryBindSemanticFrame(transition.Source, variationMap, out _)))
+            {
+                // Result examples need sentence-level semantic evidence for
+                // canonical matching, but projecting their discourse role
+                // onto source lexemes would fabricate a competing source
+                // interpretation.  Only a declared source frame authorizes
+                // lexical semantic projection.
+                continue;
+            }
+
+            var tokens = SurfaceComponents(textUnit.Text);
+            foreach (var grounding in semanticSpanGroundings)
+            {
+                if (!variationMap.TryGetValue(grounding.SemanticDimension, out var semanticValue))
+                    continue;
+
+                var directAnchors = anchors
+                    .Where(item => item.ExampleId == example.Id &&
+                        string.Equals(item.Dimension, grounding.SurfaceDimension, StringComparison.OrdinalIgnoreCase) &&
+                        IsExactAnchorSurface(tokens, item.StartTokenIndex, item.TokenLength, item.Value))
+                    .GroupBy(item => (item.LexemeId, item.StartTokenIndex, item.TokenLength))
+                    .Select(group => group.First())
+                    .ToList();
+                if (directAnchors.Count != 1)
+                    continue;
+
+                var directAnchor = directAnchors[0];
+                var identity = LegendLanguageIdentity.TextHash(
+                    $"founder-semantic-projection|v2|{example.Id:D}|{directAnchor.LexemeId:D}|" +
+                    $"{directAnchor.StartTokenIndex}|{directAnchor.TokenLength}|" +
+                    $"{grounding.SemanticDimension}|{semanticValue}|{grounding.SurfaceDimension}");
+                if (!existingSignatures.Add(identity))
+                    continue;
+
+                _db.Set<LegendLanguageCompositionalAnchor>().Add(
+                    new LegendLanguageCompositionalAnchor
+                    {
+                        Id = Guid.NewGuid(),
+                        LanguageCode = languageCode,
+                        TextUnitId = example.TextUnitId,
+                        LexemeId = directAnchor.LexemeId,
+                        ComponentStartTokenIndex = directAnchor.StartTokenIndex,
+                        ComponentLength = directAnchor.TokenLength,
+                        CurriculumFamilyId = family.Id,
+                        CurriculumExampleId = example.Id,
+                        Dimension = grounding.SemanticDimension,
+                        Value = semanticValue,
+                        SemanticSignature = SemanticSignature(grounding.SemanticDimension, semanticValue),
+                        AnchorSignature = identity,
+                        Provenance = LegendConnectKnowledgeProvenance.FounderApproved,
+                        CreatedUtc = DateTime.UtcNow
+                    });
+                pending = true;
+            }
+        }
+
+        if (pending)
+            await _db.SaveChangesAsync(cancellationToken);
+    }
+
+    private static bool IsExactAnchorSurface(
+        IReadOnlyList<SurfaceComponent> tokens,
+        int startTokenIndex,
+        int tokenLength,
+        string value)
+    {
+        var valueComponents = SurfaceComponents(value);
+        return valueComponents.Count == tokenLength && startTokenIndex >= 0 &&
+            startTokenIndex + tokenLength <= tokens.Count &&
+            valueComponents.Select(item => item.NormalizedText).SequenceEqual(
+                tokens.Skip(startTokenIndex).Take(tokenLength).Select(item => item.NormalizedText),
+                StringComparer.Ordinal);
+    }
+
+    private static bool HasOneExactSurfaceSpan(string text, string value)
+    {
+        var tokens = SurfaceComponents(text);
+        var components = SurfaceComponents(value);
+        if (components.Count == 0 || tokens.Count < components.Count)
+            return false;
+
+        var matches = 0;
+        for (var start = 0; start <= tokens.Count - components.Count; start++)
+        {
+            if (!components.Select(item => item.NormalizedText).SequenceEqual(
+                    tokens.Skip(start).Take(components.Count).Select(item => item.NormalizedText),
+                    StringComparer.Ordinal))
+            {
+                continue;
+            }
+
+            matches++;
+            if (matches > 1)
+                return false;
+        }
+
+        return matches == 1;
     }
 
     /// <summary>
@@ -3610,7 +4830,13 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
             return;
 
         await EnsureLanguageLexicalObservationsAsync(inputs, languageCode, cancellationToken);
-        await AttachExplicitFounderSemanticAnchorsAsync(family, examples, languageCode, cancellationToken);
+        await AttachExplicitFounderSemanticAnchorsAsync(
+            family,
+            examples,
+            languageCode,
+            sourceTransitions: null,
+            semanticSpanGroundings: null,
+            cancellationToken);
     }
 
     private async Task EnsureParagraphNeighborRelationshipsAsync(
@@ -5718,6 +6944,98 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
         Guid StructuralPatternId,
         Guid? StructuralRelationshipId);
 
+    private sealed record SemanticTransitionObservation(
+        string TransitionSignature,
+        string SourceFrame,
+        string ResultFrame,
+        string IndependentSourceIdentity,
+        string ContributionState,
+        bool IsHumanVerifiedSupport,
+        Guid SourceExampleId,
+        Guid ResultExampleId);
+
+    private sealed record SemanticMissingVariable(
+        string Dimension,
+        string Variable);
+
+    private sealed record SemanticTransitionCandidate(
+        string TransitionSignature,
+        NormalizedSemanticFrame SourceFrame,
+        NormalizedSemanticFrame ResultFrame,
+        IReadOnlyDictionary<string, string> Bindings,
+        IReadOnlyList<SemanticMissingVariable> MissingVariables,
+        int DirectBindingCount,
+        int IndependentEvidenceCount);
+
+    private sealed record GroundedContextFrame(
+        string ResultFrameSignature,
+        IReadOnlyDictionary<string, string> Values);
+
+    private sealed record SemanticResultExample(
+        Guid Id,
+        Guid CurriculumFamilyId,
+        Guid TextUnitId,
+        string Text);
+
+    private sealed record SemanticVariation(
+        Guid ExampleId,
+        string Dimension,
+        string Value);
+
+    private sealed record SemanticAnchor(
+        Guid ExampleId,
+        string Dimension,
+        string Value,
+        int StartTokenIndex,
+        int TokenLength);
+
+    private sealed record FounderLexicalAnchor(
+        Guid ExampleId,
+        Guid LexemeId,
+        string Dimension,
+        string Value,
+        int StartTokenIndex,
+        int TokenLength);
+
+    private sealed record SemanticLayoutComponent(
+        string Dimension,
+        string Value,
+        int StartTokenIndex,
+        int TokenLength,
+        string SurfaceForm);
+
+    private sealed record SemanticRealizationLayout(
+        Guid FamilyId,
+        string Shape,
+        IReadOnlyList<SemanticLayoutComponent> Components,
+        string TerminalPunctuation);
+
+    private sealed record SemanticTransitionRealization(
+        string? Text,
+        int LayoutEvidenceCount,
+        string? Reason,
+        bool IsAmbiguous)
+    {
+        internal static SemanticTransitionRealization Insufficient(string reason) =>
+            new(null, 0, reason, false);
+
+        internal static SemanticTransitionRealization Ambiguous(string reason) =>
+            new(null, 0, reason, true);
+    }
+
+    private sealed record NormalizedSemanticFrame(
+        IReadOnlyDictionary<string, string> Dimensions,
+        string Serialized,
+        string Signature);
+
+    private sealed record NormalizedSemanticTransition(
+        NormalizedSemanticFrame Source,
+        NormalizedSemanticFrame Result);
+
+    private sealed record NormalizedSemanticSpanGrounding(
+        string SemanticDimension,
+        string SurfaceDimension);
+
     private static IReadOnlyList<NormalizedCurriculumExample>? NormalizeExamples(
         IReadOnlyList<LegendConnectCurriculumExampleSubmission>? examples)
     {
@@ -5746,6 +7064,272 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
         }
         return normalized;
     }
+
+    private static IReadOnlyList<NormalizedSemanticTransition>? NormalizeSemanticTransitions(
+        IReadOnlyList<LegendConnectSemanticTransitionSubmission>? transitions)
+    {
+        if (transitions is null || transitions.Count == 0)
+            return [];
+        if (transitions.Count > 12)
+            return null;
+
+        var normalized = new List<NormalizedSemanticTransition>(transitions.Count);
+        var identities = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var transition in transitions)
+        {
+            var source = NormalizeSemanticFrame(transition.Source?.Dimensions);
+            var result = NormalizeSemanticFrame(transition.Result?.Dimensions);
+            if (source is null || result is null)
+                return null;
+
+            var sourceVariables = source.Dimensions
+                .Where(item => IsSemanticVariable(item.Value))
+                .Select(item => item.Value)
+                .ToHashSet(StringComparer.Ordinal);
+            if (result.Dimensions.Any(item => IsSemanticVariable(item.Value) && !sourceVariables.Contains(item.Value)))
+                return null;
+
+            var identity = source.Serialized + "\n→\n" + result.Serialized;
+            if (!identities.Add(identity))
+                return null;
+            normalized.Add(new NormalizedSemanticTransition(source, result));
+        }
+        return normalized;
+    }
+
+    private static IReadOnlyList<NormalizedSemanticSpanGrounding>? NormalizeSemanticSpanGroundings(
+        IReadOnlyList<LegendConnectSemanticSpanGroundingSubmission>? groundings)
+    {
+        if (groundings is null || groundings.Count == 0)
+            return [];
+        if (groundings.Count > 12)
+            return null;
+
+        var normalized = new List<NormalizedSemanticSpanGrounding>(groundings.Count);
+        var identities = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var grounding in groundings)
+        {
+            var semanticDimension = NormalizeDimension(grounding.SemanticDimension);
+            var surfaceDimension = NormalizeDimension(grounding.SurfaceDimension);
+            if (semanticDimension is null || surfaceDimension is null ||
+                !identities.Add(semanticDimension + "→" + surfaceDimension))
+            {
+                return null;
+            }
+            normalized.Add(new NormalizedSemanticSpanGrounding(semanticDimension, surfaceDimension));
+        }
+        return normalized;
+    }
+
+    private static NormalizedSemanticFrame? NormalizeSemanticFrame(
+        IReadOnlyDictionary<string, string>? dimensions)
+    {
+        if (dimensions is null || dimensions.Count is < 1 or > 12)
+            return null;
+
+        var normalized = new SortedDictionary<string, string>(StringComparer.Ordinal);
+        foreach (var item in dimensions)
+        {
+            var dimension = NormalizeDimension(item.Key);
+            var value = NormalizeSemanticFrameValue(item.Value);
+            if (dimension is null || value is null || !normalized.TryAdd(dimension, value))
+                return null;
+        }
+
+        var serialized = JsonSerializer.Serialize(normalized);
+        return serialized.Length > 4000
+            ? null
+            : new NormalizedSemanticFrame(normalized, serialized, FrameSignature(serialized));
+    }
+
+    private static string? NormalizeSemanticFrameValue(string? value)
+    {
+        var normalized = NormalizeOptional(value, 160);
+        if (normalized is null)
+            return null;
+        if (!normalized.StartsWith('$'))
+            return normalized;
+        if (normalized.Length is < 2 or > 81 ||
+            !char.IsLetter(normalized[1]) ||
+            normalized[2..].Any(character =>
+                !(char.IsLetterOrDigit(character) || character is '_' or '-')))
+        {
+            return null;
+        }
+        return "$" + normalized[1..].ToLowerInvariant();
+    }
+
+    private static bool IsSemanticVariable(string value) =>
+        value.Length > 1 && value[0] == '$';
+
+    private static bool TryBindSemanticFrame(
+        NormalizedSemanticFrame frame,
+        IReadOnlyDictionary<string, string> variations,
+        out IReadOnlyDictionary<string, string> bindings)
+    {
+        var resolved = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var item in frame.Dimensions)
+        {
+            if (!variations.TryGetValue(item.Key, out var observed) ||
+                string.IsNullOrWhiteSpace(observed))
+            {
+                bindings = resolved;
+                return false;
+            }
+
+            if (!IsSemanticVariable(item.Value))
+            {
+                if (!string.Equals(item.Value, observed, StringComparison.OrdinalIgnoreCase))
+                {
+                    bindings = resolved;
+                    return false;
+                }
+                continue;
+            }
+
+            if (resolved.TryGetValue(item.Value, out var existing) &&
+                !string.Equals(existing, observed, StringComparison.OrdinalIgnoreCase))
+            {
+                bindings = resolved;
+                return false;
+            }
+            resolved[item.Value] = observed;
+        }
+        bindings = resolved;
+        return true;
+    }
+
+    private static bool BindingsAreCompatible(
+        IReadOnlyDictionary<string, string> first,
+        IReadOnlyDictionary<string, string> second)
+    {
+        foreach (var item in first)
+        {
+            if (second.TryGetValue(item.Key, out var value) &&
+                !string.Equals(item.Value, value, StringComparison.OrdinalIgnoreCase))
+                return false;
+        }
+        return true;
+    }
+
+    private async Task PersistFounderSemanticTransitionEvidenceAsync(
+        LegendCurriculumFamily family,
+        IReadOnlyList<LegendCurriculumExample> examples,
+        IReadOnlyList<NormalizedSemanticTransition> transitions,
+        string languageCode,
+        CancellationToken cancellationToken)
+    {
+        if (transitions.Count == 0)
+            return;
+
+        var exampleIds = examples.Select(item => item.Id).Distinct().ToArray();
+        var currentTransitionSignatures = transitions
+            .Select(item => FrameSignature(
+                item.Source.Serialized + "\n→\n" + item.Result.Serialized))
+            .ToHashSet(StringComparer.Ordinal);
+        // A Founder manifest can replace a transition declaration while
+        // retaining the same canonical examples.  The previous transition is
+        // historical evidence, not simultaneous authority.  Retire it through
+        // the normal lifecycle before persisting the new declaration so the
+        // evaluator never sees competing active frames from one family.
+        var retiredAt = DateTime.UtcNow;
+        var replacedTransitions = await _db.Set<LegendSemanticTransitionEvidence>()
+            .Where(item => item.SupersededUtc == null &&
+                exampleIds.Contains(item.SourceCurriculumExampleId) &&
+                exampleIds.Contains(item.ResultCurriculumExampleId) &&
+                !currentTransitionSignatures.Contains(item.TransitionSignature))
+            .ToListAsync(cancellationToken);
+        foreach (var replaced in replacedTransitions)
+        {
+            replaced.SupersededUtc = retiredAt;
+            replaced.UpdatedUtc = retiredAt;
+        }
+        if (replacedTransitions.Count > 0)
+            await _db.SaveChangesAsync(cancellationToken);
+
+        var variations = await _db.Set<LegendCurriculumExampleVariation>()
+            .Where(item => exampleIds.Contains(item.CurriculumExampleId))
+            .ToListAsync(cancellationToken);
+        var variationMaps = variations
+            .GroupBy(item => item.CurriculumExampleId)
+            .ToDictionary(
+                group => group.Key,
+                group => (IReadOnlyDictionary<string, string>)group.ToDictionary(
+                    item => item.Dimension,
+                    item => item.Value,
+                    StringComparer.OrdinalIgnoreCase));
+        var now = DateTime.UtcNow;
+        var independentSourceIdentity = "family:" + family.Id.ToString("N");
+
+        foreach (var transition in transitions)
+        {
+            var transitionSignature = FrameSignature(
+                transition.Source.Serialized + "\n→\n" + transition.Result.Serialized);
+            var sources = examples
+                .Where(example => variationMaps.TryGetValue(example.Id, out var map) &&
+                    TryBindSemanticFrame(transition.Source, map, out _))
+                .ToList();
+            var results = examples
+                .Where(example => variationMaps.TryGetValue(example.Id, out var map) &&
+                    TryBindSemanticFrame(transition.Result, map, out _))
+                .ToList();
+
+            foreach (var source in sources)
+            {
+                var sourceBindings = variationMaps.TryGetValue(source.Id, out var sourceMap) &&
+                    TryBindSemanticFrame(transition.Source, sourceMap, out var boundSource)
+                    ? boundSource
+                    : null;
+                if (sourceBindings is null)
+                    continue;
+                foreach (var result in results.Where(item => item.Id != source.Id))
+                {
+                    if (!variationMaps.TryGetValue(result.Id, out var resultMap) ||
+                        !TryBindSemanticFrame(transition.Result, resultMap, out var resultBindings) ||
+                        !BindingsAreCompatible(sourceBindings, resultBindings))
+                    {
+                        continue;
+                    }
+
+                    var exists = _db.Set<LegendSemanticTransitionEvidence>().Local.Any(item =>
+                        item.TransitionSignature == transitionSignature &&
+                        item.SourceCurriculumExampleId == source.Id &&
+                        item.ResultCurriculumExampleId == result.Id) ||
+                        await _db.Set<LegendSemanticTransitionEvidence>().AnyAsync(item =>
+                            item.TransitionSignature == transitionSignature &&
+                            item.SourceCurriculumExampleId == source.Id &&
+                            item.ResultCurriculumExampleId == result.Id,
+                            cancellationToken);
+                    if (exists)
+                        continue;
+
+                    _db.Set<LegendSemanticTransitionEvidence>().Add(new LegendSemanticTransitionEvidence
+                    {
+                        Id = Guid.NewGuid(),
+                        TransitionSignature = transitionSignature,
+                        SourceSemanticFrameSignature = transition.Source.Signature,
+                        ResultSemanticFrameSignature = transition.Result.Signature,
+                        SourceSemanticFrame = transition.Source.Serialized,
+                        ResultSemanticFrame = transition.Result.Serialized,
+                        SourceLanguageCode = languageCode,
+                        ResultLanguageCode = languageCode,
+                        SourceCurriculumExampleId = source.Id,
+                        ResultCurriculumExampleId = result.Id,
+                        IndependentSourceIdentity = independentSourceIdentity,
+                        ContributionState = "Supported",
+                        IsHumanVerifiedSupport = true,
+                        Provenance = LegendConnectKnowledgeProvenance.FounderApproved,
+                        CreatedUtc = now,
+                        UpdatedUtc = now
+                    });
+                }
+            }
+        }
+        await _db.SaveChangesAsync(cancellationToken);
+    }
+
+    private static string FrameSignature(string canonicalFrame) =>
+        Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(canonicalFrame))).ToLowerInvariant();
 
     private static string? NormalizeFamilyKey(string? value)
     {

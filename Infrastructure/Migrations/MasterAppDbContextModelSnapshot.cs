@@ -5719,6 +5719,95 @@ namespace Infrastructure.Migrations
                     b.ToTable("LegendLanguageContextRelationships", (string)null);
                 });
 
+            modelBuilder.Entity("Domain.Entities.LegendSemanticTransitionEvidence", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("ContributionState")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("nvarchar(40)");
+
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("IndependentSourceIdentity")
+                        .IsRequired()
+                        .HasMaxLength(96)
+                        .HasColumnType("nvarchar(96)");
+
+                    b.Property<bool>("IsHumanVerifiedSupport")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Provenance")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("nvarchar(80)");
+
+                    b.Property<Guid>("ResultCurriculumExampleId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("ResultLanguageCode")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
+
+                    b.Property<string>("ResultSemanticFrame")
+                        .IsRequired()
+                        .HasMaxLength(4000)
+                        .HasColumnType("nvarchar(4000)");
+
+                    b.Property<string>("ResultSemanticFrameSignature")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<Guid>("SourceCurriculumExampleId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("SourceLanguageCode")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
+
+                    b.Property<string>("SourceSemanticFrame")
+                        .IsRequired()
+                        .HasMaxLength(4000)
+                        .HasColumnType("nvarchar(4000)");
+
+                    b.Property<string>("SourceSemanticFrameSignature")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<DateTime?>("SupersededUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("TransitionSignature")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<DateTime>("UpdatedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ResultCurriculumExampleId", "SupersededUtc");
+
+                    b.HasIndex("SourceCurriculumExampleId", "SupersededUtc");
+
+                    b.HasIndex("SourceSemanticFrameSignature", "ResultSemanticFrameSignature", "SourceLanguageCode", "ResultLanguageCode", "SupersededUtc")
+                        .HasDatabaseName("IX_LegendSemTransEv_FrameLang");
+
+                    b.HasIndex("TransitionSignature", "SourceCurriculumExampleId", "ResultCurriculumExampleId")
+                        .IsUnique();
+
+                    b.ToTable("LegendSemanticTransitionEvidence", (string)null);
+                });
+
             modelBuilder.Entity("Domain.Entities.LegendLanguageDefinition", b =>
                 {
                     b.Property<Guid>("Id")
@@ -10815,6 +10904,21 @@ namespace Infrastructure.Migrations
                     b.HasOne("Domain.Entities.LegendLanguageTextUnit", null)
                         .WithMany()
                         .HasForeignKey("SourceTextUnitId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Domain.Entities.LegendSemanticTransitionEvidence", b =>
+                {
+                    b.HasOne("Domain.Entities.LegendCurriculumExample", null)
+                        .WithMany()
+                        .HasForeignKey("ResultCurriculumExampleId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Domain.Entities.LegendCurriculumExample", null)
+                        .WithMany()
+                        .HasForeignKey("SourceCurriculumExampleId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
                 });

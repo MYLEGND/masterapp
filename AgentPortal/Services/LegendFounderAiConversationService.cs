@@ -18,8 +18,8 @@ namespace AgentPortal.Services;
 /// This is intentionally NOT a language-learning authority, corpus writer,
 /// translation router, model lifecycle authority, or durable chat store.
 ///
-/// OpenAI supplies conversational reasoning. All current LEGEND facts are read
-/// through the already-governed FounderLegendConnectService.
+/// OpenAI is an escalation path for unsupported requests. Governed native
+/// LEGEND inference is always attempted first in normal LEGEND mode.
 /// </summary>
 public sealed class LegendFounderAiConversationService
 {
@@ -34,8 +34,6 @@ public sealed class LegendFounderAiConversationService
     private const int MinimumFinalizationReserveSeconds = 6;
     private const int MinimumFinalSynthesisWindowSeconds = 20;
     private const int MaximumProviderRoundSeconds = 75;
-    private const int MinimumCasualProviderSeconds = 8;
-    private const int MaximumCasualProviderSeconds = 18;
     private const int MinimumCasualOutputTokens = 256;
     private const int MaximumCasualOutputTokens = 1_200;
     private const int MinimumRetainedKnowledgeLookupSeconds = 4;
@@ -48,6 +46,7 @@ public sealed class LegendFounderAiConversationService
     private const int MaximumRetainedContextCharacters = 64_000;
     private const int MinimumProviderAttemptWindowSeconds = 3;
     private const int MaximumProviderCooldownSeconds = 300;
+    private const int MaximumTransientProviderAttempts = 3;
 
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly IConfiguration _configuration;
@@ -133,23 +132,6 @@ public sealed class LegendFounderAiConversationService
                 "Request accepted. Preparing the current conversation context."),
             cancellationToken);
 
-        var apiKey = OpenAiKeyResolver.Resolve(_configuration);
-        if (string.IsNullOrWhiteSpace(apiKey))
-        {
-            return LegendFounderAiChatResponse.Failure(
-                "Legend® Ai is not configured because the OpenAI API key is unavailable.",
-                "configuration");
-        }
-
-        var model =
-            _configuration["OpenAI:LegendFounderAiModel"]?.Trim();
-
-        if (string.IsNullOrWhiteSpace(model))
-            model = _configuration["OpenAI:Model"]?.Trim();
-
-        if (string.IsNullOrWhiteSpace(model))
-            model = "gpt-5";
-
         using var requestBudget =
             CancellationTokenSource.CreateLinkedTokenSource(
                 cancellationToken);
@@ -163,6 +145,76 @@ public sealed class LegendFounderAiConversationService
 
         var executionClock =
             Stopwatch.StartNew();
+
+        LegendConnectNativeInferenceSnapshot? nativeInference = null;
+
+        if (string.Equals(mode, "legend", StringComparison.Ordinal))
+        {
+            await ReportProgressAsync(
+                progress,
+                new LegendFounderAiProgressEvent(
+                    "native_inference",
+                    "Checking governed LEGEND knowledge before external escalation."),
+                effectiveToken);
+
+            try
+            {
+                nativeInference = await _legend.TryInferConversationAsync(
+                    founder,
+                    conversation[^1].Content ?? string.Empty,
+                    conversation
+                        .Take(conversation.Count - 1)
+                        .Select(message => new LegendConnectConversationContextItem(
+                            message.Role ?? string.Empty,
+                            message.Content ?? string.Empty))
+                        .ToArray(),
+                    effectiveToken);
+            }
+            catch (OperationCanceledException)
+                when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (Exception exception)
+            {
+                // Native inference is strictly fail-closed. A read failure
+                // cannot manufacture an answer or suppress the existing
+                // external escalation path.
+                _logger.LogWarning(
+                    exception,
+                    "LEGEND native conversational inference was unavailable; escalating without a native answer.");
+            }
+
+            if (nativeInference is { Supported: true } &&
+                !string.IsNullOrWhiteSpace(nativeInference.Answer))
+            {
+                await ReportProgressAsync(
+                    progress,
+                    new LegendFounderAiProgressEvent(
+                        "native_response",
+                        $"Answered from {nativeInference.EvidenceCount} governed LEGEND evidence record(s)."),
+                    effectiveToken);
+
+                return new LegendFounderAiChatResponse(
+                    true,
+                    mode,
+                    nativeInference.Answer,
+                    null);
+            }
+        }
+
+        var apiKey = OpenAiKeyResolver.Resolve(_configuration);
+        if (string.IsNullOrWhiteSpace(apiKey))
+            return NativeInferenceUnavailableResponse(mode, nativeInference);
+
+        var model =
+            _configuration["OpenAI:LegendFounderAiModel"]?.Trim();
+
+        if (string.IsNullOrWhiteSpace(model))
+            model = _configuration["OpenAI:Model"]?.Trim();
+
+        if (string.IsNullOrWhiteSpace(model))
+            model = "gpt-5";
 
         var requiresGovernedInspection =
             RequiresGovernedInspection(conversation, mode);
@@ -312,8 +364,7 @@ public sealed class LegendFounderAiConversationService
 
                 if (responseDocument is null)
                 {
-                    return LegendFounderAiChatResponse.Failure(
-                        "Legend® Ai could not reach its conversational reasoning provider.");
+                    return NativeInferenceUnavailableResponse(mode, nativeInference);
                 }
 
                 var root = responseDocument.RootElement;
@@ -440,25 +491,18 @@ public sealed class LegendFounderAiConversationService
         }
         catch (LegendFounderAiProviderException exception)
         {
-            var reference =
-                !string.IsNullOrWhiteSpace(
-                    exception.ProviderRequestId)
-                    ? exception.ProviderRequestId
-                    : exception.ClientRequestId;
-
-            return LegendFounderAiChatResponse.Failure(
-                $"Legend® Ai's reasoning provider rejected the request " +
-                $"(HTTP {exception.StatusCode}). Reference: {reference}",
-                "provider_http",
+            _logger.LogWarning(
+                "LEGEND Founder AI provider rejected the escalation. HTTP={StatusCode} ClientRequestId={ClientRequestId} ProviderRequestId={ProviderRequestId}",
                 exception.StatusCode,
-                reference);
+                exception.ClientRequestId,
+                exception.ProviderRequestId);
+
+            return NativeInferenceUnavailableResponse(mode, nativeInference);
         }
         catch (OperationCanceledException)
             when (!cancellationToken.IsCancellationRequested)
         {
-            return LegendFounderAiChatResponse.Failure(
-                "Legend® Ai timed out while reasoning over the current request.",
-                "timeout");
+            return NativeInferenceUnavailableResponse(mode, nativeInference);
         }
         catch (HttpRequestException exception)
         {
@@ -466,9 +510,7 @@ public sealed class LegendFounderAiConversationService
                 exception,
                 "LEGEND Founder AI provider transport failed.");
 
-            return LegendFounderAiChatResponse.Failure(
-                "Legend® Ai could not reach its conversational reasoning provider.",
-                "transport");
+            return NativeInferenceUnavailableResponse(mode, nativeInference);
         }
         catch (JsonException exception)
         {
@@ -476,9 +518,7 @@ public sealed class LegendFounderAiConversationService
                 exception,
                 "LEGEND Founder AI received invalid provider JSON.");
 
-            return LegendFounderAiChatResponse.Failure(
-                "Legend® Ai received an invalid reasoning response.",
-                "provider_json");
+            return NativeInferenceUnavailableResponse(mode, nativeInference);
         }
     }
 
@@ -597,9 +637,21 @@ public sealed class LegendFounderAiConversationService
                         providerAttempt.Token);
             }
 
+            var errorBody =
+                await response.Content
+                    .ReadAsStringAsync(
+                        providerAttempt.Token);
+
+            if (errorBody.Length > 1_000)
+                errorBody = errorBody[..1_000];
+
             var transient =
                 IsTransientOpenAiStatus(
-                    response.StatusCode);
+                    response.StatusCode) &&
+                attempt < MaximumTransientProviderAttempts &&
+                !IsBillingOrQuotaRejection(
+                    response.StatusCode,
+                    errorBody);
 
             if (transient)
             {
@@ -645,17 +697,6 @@ public sealed class LegendFounderAiConversationService
                         continue;
                     }
                 }
-            }
-
-            var errorBody =
-                await response.Content
-                    .ReadAsStringAsync(
-                        providerAttempt.Token);
-
-            if (errorBody.Length > 1_000)
-            {
-                errorBody =
-                    errorBody[..1_000];
             }
 
             var providerRequestId =
@@ -828,6 +869,17 @@ public sealed class LegendFounderAiConversationService
                 update,
                 cancellationToken);
 
+    private static LegendFounderAiChatResponse NativeInferenceUnavailableResponse(
+        string mode,
+        LegendConnectNativeInferenceSnapshot? nativeInference) =>
+        new(
+            true,
+            mode,
+            nativeInference is { ReasonCode.Length: > 0 }
+                ? "LEGEND does not yet have enough governed evidence to answer this directly, and its external teacher is unavailable. No unsupported answer was produced."
+                : "LEGEND could not establish enough governed evidence for a direct answer, and its external teacher is unavailable. No unsupported answer was produced.",
+            null);
+
     private static string DescribeFounderToolCall(
         FounderAiToolCall call)
     {
@@ -948,6 +1000,43 @@ public sealed class LegendFounderAiConversationService
             HttpStatusCode.BadGateway or
             HttpStatusCode.ServiceUnavailable or
             HttpStatusCode.GatewayTimeout;
+
+    /// <summary>
+    /// A 429 can mean temporary request pressure or a durable billing/quota
+    /// refusal. Only the former is retryable. The provider's structured error
+    /// classification is authoritative here; status code alone is not.
+    /// </summary>
+    private static bool IsBillingOrQuotaRejection(
+        HttpStatusCode status,
+        string? errorBody)
+    {
+        if (status != HttpStatusCode.TooManyRequests ||
+            string.IsNullOrWhiteSpace(errorBody))
+        {
+            return false;
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(errorBody);
+            var error = document.RootElement.TryGetProperty("error", out var nestedError)
+                ? nestedError
+                : document.RootElement;
+
+            var type = ReadOptionalString(error, "type");
+            var code = ReadOptionalString(error, "code");
+            return new[] { type, code }
+                .Where(value => !string.IsNullOrWhiteSpace(value))
+                .Any(value =>
+                    value!.Contains("insufficient_quota", StringComparison.OrdinalIgnoreCase) ||
+                    value.Contains("billing", StringComparison.OrdinalIgnoreCase) ||
+                    value.Contains("quota", StringComparison.OrdinalIgnoreCase));
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
+    }
 
     private async Task<string> ExecuteFounderToolWithBudgetAsync(
         ClaimsPrincipal founder,
@@ -2415,34 +2504,20 @@ Never upgrade an unresolved, rejected or contradicted record merely because it a
         bool allowTools,
         TimeSpan remaining)
     {
-        if (requiresGovernedInspection)
-        {
-            var providerReserveSeconds =
-                allowTools
-                    ? MinimumFinalizationReserveSeconds
-                    : 2;
-
-            return TimeSpan.FromSeconds(
-                Math.Min(
-                    MaximumProviderRoundSeconds,
-                    Math.Max(
-                        5,
-                        remaining.TotalSeconds -
-                        providerReserveSeconds)));
-        }
-
-        var totalCharacters = conversation.Sum(message => message.Content?.Length ?? 0);
-        var userTurns = conversation.Count(message => string.Equals(message.Role, "user", StringComparison.Ordinal));
-        var adaptiveSeconds = MinimumCasualProviderSeconds + totalCharacters / 4_000 + Math.Max(0, userTurns - 1);
-        var boundedSeconds = Math.Clamp(
-            adaptiveSeconds,
-            MinimumCasualProviderSeconds,
-            MaximumCasualProviderSeconds);
-
+        // Provider work is bounded by the request-scoped budget, not a
+        // separate short "casual" timeout. Native LEGEND inference has
+        // already had first refusal, so an escalation may use the same safe
+        // provider window regardless of the request's wording.
+        var providerReserveSeconds =
+            requiresGovernedInspection && allowTools
+                ? MinimumFinalizationReserveSeconds
+                : 2;
         return TimeSpan.FromSeconds(
             Math.Min(
-                boundedSeconds,
-                Math.Max(1, remaining.TotalSeconds - 2)));
+                MaximumProviderRoundSeconds,
+                Math.Max(
+                    5,
+                    remaining.TotalSeconds - providerReserveSeconds)));
     }
 
     private static int ResolveMaxOutputTokens(
@@ -2664,12 +2739,12 @@ Never upgrade an unresolved, rejected or contradicted record merely because it a
         var normalized =
             value?.Trim().ToLowerInvariant();
 
-        return normalized is
-            "auto" or
-            "default" or
-            "fast"
-                ? normalized
-                : "fast";
+        // "fast" was a legacy local value. Responses accepts auto/default;
+        // normalize any legacy or invalid setting without changing the global
+        // OpenAI runtime configuration.
+        return normalized is "auto" or "default"
+            ? normalized
+            : "auto";
     }
 
     private static string? ReadResponseState(
