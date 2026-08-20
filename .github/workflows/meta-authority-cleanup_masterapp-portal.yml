@@ -88,3 +88,5 @@ jobs:
           app-name: ${{ env.AZURE_WEBAPP_NAME }}
           slot-name: Production
           package: ./package
+
+# Deployment trigger marker: 2026-08-20 production sync
