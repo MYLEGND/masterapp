@@ -3,7 +3,7 @@ name: Build and deploy AgentPortal to Azure Web App - masterapp-portal
 on:
   push:
     branches:
-      - meta-authority-cleanup
+      - production
     paths:
       - 'AgentPortal/**'
       - 'Infrastructure/**'
