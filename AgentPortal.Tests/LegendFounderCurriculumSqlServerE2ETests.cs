@@ -140,6 +140,136 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
         Assert.All(
             await db.LegendCurriculumManifestWorkItems.ToListAsync(),
             work => Assert.Equal("Completed", work.ProcessingState));
+
+        // Simulate the historical deployment condition in this isolated
+        // database: canonical Founder curriculum exists, but the later
+        // semantic-transition capability has not yet produced its derived
+        // evidence. The external manifest remains the sole declaration of
+        // meaning; no fixture curriculum or runtime rule is introduced.
+        var canonicalAfterNormalProcessing = new
+        {
+            Families = await db.LegendCurriculumFamilies.CountAsync(),
+            Examples = await db.LegendCurriculumExamples.CountAsync(item => item.SupersededUtc == null),
+            Anchors = await db.LegendLanguageCompositionalAnchors.CountAsync(item => item.SupersededUtc == null),
+            Transitions = await db.LegendSemanticTransitionEvidence.CountAsync(item => item.SupersededUtc == null),
+            SupersededTransitions = await db.LegendSemanticTransitionEvidence.CountAsync(item => item.SupersededUtc != null)
+        };
+        var transitionSupportAfterNormalProcessing = await db.LegendSemanticTransitionEvidence
+            .Where(item => item.SupersededUtc == null)
+            .GroupBy(item => new
+            {
+                item.TransitionSignature,
+                item.SourceCurriculumExampleId,
+                item.ResultCurriculumExampleId,
+                item.IndependentSourceIdentity
+            })
+            .Select(group => new { group.Key, Count = group.Count() })
+            .OrderBy(item => item.Key.TransitionSignature)
+            .ThenBy(item => item.Key.SourceCurriculumExampleId)
+            .ThenBy(item => item.Key.ResultCurriculumExampleId)
+            .ToArrayAsync();
+
+        var completedWork = await db.LegendCurriculumManifestWorkItems
+            .Where(item => item.ProcessingState == "Completed")
+            .ToListAsync();
+        Assert.NotEmpty(completedWork);
+        Assert.Contains(completedWork, item => item.FamilyCount > 1);
+        foreach (var work in completedWork)
+        {
+            work.CompletedLanguageIntelligenceEvaluatorVersion =
+                LegendConnectLanguageIntelligenceEvaluatorVersion.Current - 1;
+        }
+        await db.SaveChangesAsync();
+        await db.LegendSemanticTransitionEvidence.ExecuteDeleteAsync();
+        db.ChangeTracker.Clear();
+
+        Assert.Equal(0, await db.LegendSemanticTransitionEvidence.CountAsync());
+        var transitionsAfterHistoricalSimulation = 0;
+
+        // The first replay page has a durable family cursor. An expired lease
+        // is the same recovery boundary used after a process interruption.
+        LegendCurriculumManifestWorkItem? interruptedReplay = null;
+        for (var pass = 0; pass < 32 && interruptedReplay is null; pass++)
+        {
+            Assert.Equal(1, await processor.ProcessPendingAsync(1));
+            db.ChangeTracker.Clear();
+            interruptedReplay = await db.LegendCurriculumManifestWorkItems
+                .Where(item => item.ProcessingState == "Pending" &&
+                    item.NextFamilyIndex > 0 && item.NextFamilyIndex < item.FamilyCount)
+                .OrderBy(item => item.CreatedUtc)
+                .FirstOrDefaultAsync();
+        }
+        Assert.NotNull(interruptedReplay);
+        interruptedReplay.ProcessingState = "Processing";
+        interruptedReplay.LeaseExpiresUtc = DateTime.UtcNow.AddMinutes(-1);
+        await db.SaveChangesAsync();
+
+        for (var pass = 0; pass < 128; pass++)
+        {
+            await processor.ProcessPendingAsync(1);
+            db.ChangeTracker.Clear();
+            var states = await db.LegendCurriculumManifestWorkItems
+                .Select(item => new
+                {
+                    item.ProcessingState,
+                    item.CompletedLanguageIntelligenceEvaluatorVersion
+                })
+                .ToArrayAsync();
+            if (states.All(item => item.ProcessingState == "Completed" &&
+                item.CompletedLanguageIntelligenceEvaluatorVersion ==
+                LegendConnectLanguageIntelligenceEvaluatorVersion.Current))
+                break;
+            Assert.DoesNotContain(states, item => item.ProcessingState == "Failed");
+        }
+
+        var replayedWork = await db.LegendCurriculumManifestWorkItems.ToListAsync();
+        Assert.All(replayedWork, item =>
+        {
+            Assert.Equal("Completed", item.ProcessingState);
+            Assert.Equal(
+                LegendConnectLanguageIntelligenceEvaluatorVersion.Current,
+                item.CompletedLanguageIntelligenceEvaluatorVersion);
+        });
+        var canonicalAfterCapabilityReplay = new
+        {
+            Families = await db.LegendCurriculumFamilies.CountAsync(),
+            Examples = await db.LegendCurriculumExamples.CountAsync(item => item.SupersededUtc == null),
+            Anchors = await db.LegendLanguageCompositionalAnchors.CountAsync(item => item.SupersededUtc == null),
+            Transitions = await db.LegendSemanticTransitionEvidence.CountAsync(item => item.SupersededUtc == null),
+            SupersededTransitions = await db.LegendSemanticTransitionEvidence.CountAsync(item => item.SupersededUtc != null)
+        };
+        var transitionSupportAfterCapabilityReplay = await db.LegendSemanticTransitionEvidence
+            .Where(item => item.SupersededUtc == null)
+            .GroupBy(item => new
+            {
+                item.TransitionSignature,
+                item.SourceCurriculumExampleId,
+                item.ResultCurriculumExampleId,
+                item.IndependentSourceIdentity
+            })
+            .Select(group => new { group.Key, Count = group.Count() })
+            .OrderBy(item => item.Key.TransitionSignature)
+            .ThenBy(item => item.Key.SourceCurriculumExampleId)
+            .ThenBy(item => item.Key.ResultCurriculumExampleId)
+            .ToArrayAsync();
+
+        Assert.Equal(canonicalAfterNormalProcessing, canonicalAfterCapabilityReplay);
+        Assert.Equal(transitionSupportAfterNormalProcessing, transitionSupportAfterCapabilityReplay);
+        Assert.Equal(0, await db.LegendSemanticTransitionEvidence
+            .Where(item => item.SupersededUtc == null)
+            .GroupBy(item => new
+            {
+                item.TransitionSignature,
+                item.SourceCurriculumExampleId,
+                item.ResultCurriculumExampleId
+            })
+            .CountAsync(group => group.Count() > 1));
+        Assert.Equal(0, await db.LegendLanguageCompositionalAnchors
+            .Where(item => item.SupersededUtc == null)
+            .GroupBy(item => item.AnchorSignature)
+            .CountAsync(group => group.Count() > 1));
+        Assert.Equal(0, await processor.ProcessPendingAsync(1));
+
         var request = Environment.GetEnvironmentVariable("LEGEND_FOUNDER_E2E_REQUEST") ?? "Hello legend";
         var history = JsonSerializer.Deserialize<List<LegendFounderAiChatMessage>>(
             Environment.GetEnvironmentVariable("LEGEND_FOUNDER_E2E_HISTORY") ?? "[]") ?? [];
@@ -165,6 +295,8 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
         _output.WriteLine($"EXAMPLES BEFORE: {examplesBefore}");
         _output.WriteLine($"ANCHORS BEFORE: {anchorsBefore}");
         _output.WriteLine($"TRANSITIONS BEFORE: {transitionsBefore}");
+        _output.WriteLine($"HISTORICAL TRANSITIONS MISSING: {transitionsAfterHistoricalSimulation}");
+        _output.WriteLine($"TRANSITIONS AFTER REPLAY: {canonicalAfterCapabilityReplay.Transitions}");
         _output.WriteLine($"NATIVE REASON: {native.ReasonCode}");
         _output.WriteLine($"NATIVE AUTHORITY: {native.AuthoritySummary}");
         Assert.Equal(expectNative, native.Supported);

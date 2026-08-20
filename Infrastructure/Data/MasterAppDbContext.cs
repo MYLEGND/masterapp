@@ -190,6 +190,15 @@ public class MasterAppDbContext : DbContext
                 .HasMaxLength(32)
                 .IsRequired();
 
+            entity.HasIndex(item => new
+                {
+                    item.ProcessingState,
+                    item.CompletedLanguageIntelligenceEvaluatorVersion,
+                    item.LeaseExpiresUtc,
+                    item.CreatedUtc
+                })
+                .HasDatabaseName("IX_LegendCurriculumManifestWorkItems_CapabilityReplay");
+
             entity.Property(item => item.LastErrorCode)
                 .HasMaxLength(120);
 

@@ -71,6 +71,45 @@ public sealed class LegendConnectFounderTrainingIngestionTests
                 "If you need me, call me.", "Every morning, I drink coffee.", "He eats rice.", "Today, we are going home."
             });
         });
+
+        var submission = Assert.Single(await db.LegendFounderTrainingSubmissions.ToListAsync());
+        submission.CompletedLanguageIntelligenceEvaluatorVersion =
+            LegendConnectLanguageIntelligenceEvaluatorVersion.Current - 1;
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        var staleDuplicate = await ingestion.SubmitAsync("founder-1", SourceSeed(raw));
+        Assert.True(staleDuplicate.DuplicatePrevented);
+        Assert.Contains("eligible for bounded evaluator", staleDuplicate.Message!, StringComparison.OrdinalIgnoreCase);
+
+        var canonicalBeforeReplay = new
+        {
+            Submissions = await db.LegendFounderTrainingSubmissions.CountAsync(),
+            Units = await db.LegendFounderTrainingSubmissionUnits.CountAsync(),
+            TextUnits = await db.LegendLanguageTextUnits.CountAsync(),
+            Anchors = await db.LegendLanguageCompositionalAnchors.CountAsync(),
+            Relationships = await db.LegendLanguageContextRelationships.CountAsync()
+        };
+        var replayed = await ingestion.ReconcileLegacyAsync(25);
+        db.ChangeTracker.Clear();
+        var canonicalAfterReplay = new
+        {
+            Submissions = await db.LegendFounderTrainingSubmissions.CountAsync(),
+            Units = await db.LegendFounderTrainingSubmissionUnits.CountAsync(),
+            TextUnits = await db.LegendLanguageTextUnits.CountAsync(),
+            Anchors = await db.LegendLanguageCompositionalAnchors.CountAsync(),
+            Relationships = await db.LegendLanguageContextRelationships.CountAsync()
+        };
+
+        Assert.Equal(1, replayed.CapabilityReplayedSubmissionCount);
+        Assert.Equal(canonicalBeforeReplay, canonicalAfterReplay);
+        Assert.Equal(
+            LegendConnectLanguageIntelligenceEvaluatorVersion.Current,
+            (await db.LegendFounderTrainingSubmissions.SingleAsync())
+                .CompletedLanguageIntelligenceEvaluatorVersion);
+
+        var repeated = await ingestion.ReconcileLegacyAsync(25);
+        Assert.Equal(0, repeated.CapabilityReplayedSubmissionCount);
     }
 
     [Fact]

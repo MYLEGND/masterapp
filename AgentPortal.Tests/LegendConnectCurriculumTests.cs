@@ -441,12 +441,65 @@ public sealed class LegendConnectCurriculumTests
         var completed = Assert.Single(await db.Set<LegendCurriculumManifestWorkItem>().ToListAsync());
         Assert.Equal("Completed", completed.ProcessingState);
         Assert.Equal(2, completed.NextFamilyIndex);
+        Assert.Equal(
+            LegendConnectLanguageIntelligenceEvaluatorVersion.Current,
+            completed.CompletedLanguageIntelligenceEvaluatorVersion);
 
         var duplicate = await operations.SubmitFounderCurriculumManifestAsync("founder-test", manifest);
         Assert.True(duplicate.Succeeded);
         Assert.True(duplicate.DuplicatePrevented);
         Assert.Single(await db.Set<LegendCurriculumManifestWorkItem>().ToListAsync());
         Assert.Equal(2, await db.LegendCurriculumFamilies.CountAsync());
+
+        var canonicalBeforeCapabilityReplay = new
+        {
+            Families = await db.LegendCurriculumFamilies.CountAsync(),
+            Examples = await db.LegendCurriculumExamples.CountAsync(),
+            TextUnits = await db.LegendLanguageTextUnits.CountAsync(),
+            Anchors = await db.LegendLanguageCompositionalAnchors.CountAsync(),
+            ActiveTransitions = await db.LegendSemanticTransitionEvidence.CountAsync(item => item.SupersededUtc == null)
+        };
+        completed.CompletedLanguageIntelligenceEvaluatorVersion =
+            LegendConnectLanguageIntelligenceEvaluatorVersion.Current - 1;
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        var staleDuplicate = await operations.SubmitFounderCurriculumManifestAsync("founder-test", manifest);
+        Assert.True(staleDuplicate.DuplicatePrevented);
+        Assert.Contains("evaluator", staleDuplicate.Message!, StringComparison.OrdinalIgnoreCase);
+
+        // The existing processor claims one historical family, then an
+        // expired lease proves the same durable cursor resumes rather than
+        // rebuilding or duplicating the canonical curriculum.
+        Assert.Equal(1, await processor.ProcessPendingAsync(1));
+        var replayInProgress = Assert.Single(await db.Set<LegendCurriculumManifestWorkItem>().ToListAsync());
+        Assert.Equal("Pending", replayInProgress.ProcessingState);
+        Assert.Equal(1, replayInProgress.NextFamilyIndex);
+        Assert.Equal(
+            LegendConnectLanguageIntelligenceEvaluatorVersion.Current,
+            replayInProgress.TargetLanguageIntelligenceEvaluatorVersion);
+
+        replayInProgress.ProcessingState = "Processing";
+        replayInProgress.LeaseExpiresUtc = DateTime.UtcNow.AddMinutes(-1);
+        await db.SaveChangesAsync();
+        Assert.Equal(1, await processor.ProcessPendingAsync(1));
+        db.ChangeTracker.Clear();
+
+        var replayCompleted = Assert.Single(await db.Set<LegendCurriculumManifestWorkItem>().ToListAsync());
+        Assert.Equal("Completed", replayCompleted.ProcessingState);
+        Assert.Equal(
+            LegendConnectLanguageIntelligenceEvaluatorVersion.Current,
+            replayCompleted.CompletedLanguageIntelligenceEvaluatorVersion);
+        var canonicalAfterCapabilityReplay = new
+        {
+            Families = await db.LegendCurriculumFamilies.CountAsync(),
+            Examples = await db.LegendCurriculumExamples.CountAsync(),
+            TextUnits = await db.LegendLanguageTextUnits.CountAsync(),
+            Anchors = await db.LegendLanguageCompositionalAnchors.CountAsync(),
+            ActiveTransitions = await db.LegendSemanticTransitionEvidence.CountAsync(item => item.SupersededUtc == null)
+        };
+        Assert.Equal(canonicalBeforeCapabilityReplay, canonicalAfterCapabilityReplay);
+        Assert.Equal(0, await processor.ProcessPendingAsync(1));
     }
 
     private static LegendConnectCurriculumBatchSubmission ConversationBatch(

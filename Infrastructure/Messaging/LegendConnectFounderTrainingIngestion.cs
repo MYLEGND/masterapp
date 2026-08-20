@@ -28,6 +28,10 @@ internal sealed class LegendConnectFounderTrainingIngestionAuthority
         string? UsageRegister,
         string? RegionalVariant);
 
+    private sealed record StaleCapabilitySubmissionClaim(
+        Guid SubmissionId,
+        DateTime LeaseExpiresUtc);
+
     public LegendConnectFounderTrainingIngestionAuthority(
         MasterAppDbContext db,
         ILegendLanguageRegistry languages,
@@ -116,7 +120,7 @@ internal sealed class LegendConnectFounderTrainingIngestionAuthority
         var enabledLanguages = await _languages.ListEnabledTranslationLanguagesAsync(cancellationToken);
         var enabledCodes = enabledLanguages.Select(item => item.Code).ToArray();
         if (enabledCodes.Length == 0)
-            return new LegendFounderTrainingReconciliationResult(0, 0, 0, 0);
+            return new LegendFounderTrainingReconciliationResult(0, 0, 0, 0, 0);
 
         // A prior reconciliation can already have recorded the raw
         // submission while a process was interrupted before every derived
@@ -225,17 +229,220 @@ internal sealed class LegendConnectFounderTrainingIngestionAuthority
             }
         }
 
-        if ((reconciled > 0 || reviewed > 0 || supersededRelationships > 0) && _operations is not null)
+        // Raw-source deduplication is intentionally unrelated to evaluator
+        // freshness. Revisit retained atomic submissions only when this
+        // deployment has advanced the canonical intelligence capability. The
+        // replay performs the same atomic observation used by new source
+        // ingestion; it never guesses a semantic transition from adjacency.
+        var capabilityReplayed = await ReconcileStaleCapabilityProcessingAsync(
+            take,
+            enabledCodes,
+            cancellationToken);
+
+        if ((reconciled > 0 || reviewed > 0 || supersededRelationships > 0 || capabilityReplayed > 0) && _operations is not null)
         {
             await _operations.TryRecordAsync(
                 "FounderTrainingReconciliation",
                 "Info",
                 "Processed",
                 errorCode: null,
-                summary: $"Reconciled {reconciled} legacy multi-unit Founder submission(s); reviewed {reviewed} already-atomic source asset(s); retired {supersededRelationships} lineage-bound derived artifact(s).",
+                summary: $"Reconciled {reconciled} legacy multi-unit Founder submission(s); reviewed {reviewed} already-atomic source asset(s); replayed {capabilityReplayed} retained submission(s) for evaluator v{LegendConnectLanguageIntelligenceEvaluatorVersion.Current}; retired {supersededRelationships} lineage-bound derived artifact(s).",
                 cancellationToken: cancellationToken);
         }
-        return new LegendFounderTrainingReconciliationResult(reviewed, reconciled, atomicUnits, supersededRelationships);
+        return new LegendFounderTrainingReconciliationResult(
+            reviewed,
+            reconciled,
+            atomicUnits,
+            supersededRelationships,
+            capabilityReplayed);
+    }
+
+    private async Task<int> ReconcileStaleCapabilityProcessingAsync(
+        int take,
+        IReadOnlyCollection<string> enabledCodes,
+        CancellationToken cancellationToken)
+    {
+        var now = DateTime.UtcNow;
+        var evaluatorVersion = LegendConnectLanguageIntelligenceEvaluatorVersion.Current;
+        var candidateIds = await _db.Set<LegendFounderTrainingSubmission>()
+            .AsNoTracking()
+            .Where(item => enabledCodes.Contains(item.SourceLanguageCode) &&
+                item.CompletedLanguageIntelligenceEvaluatorVersion < evaluatorVersion &&
+                (item.LanguageIntelligenceReevaluationLeaseExpiresUtc == null ||
+                 item.LanguageIntelligenceReevaluationLeaseExpiresUtc < now))
+            .OrderBy(item => item.CreatedUtc)
+            .ThenBy(item => item.Id)
+            .Take(Math.Clamp(take, 1, 100))
+            .Select(item => item.Id)
+            .ToListAsync(cancellationToken);
+
+        var replayed = 0;
+        foreach (var id in candidateIds)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var claim = await TryClaimStaleCapabilitySubmissionAsync(
+                id,
+                evaluatorVersion,
+                cancellationToken);
+            if (claim is null)
+                continue;
+
+            try
+            {
+                var submission = await _db.Set<LegendFounderTrainingSubmission>()
+                    .AsNoTracking()
+                    .SingleOrDefaultAsync(item => item.Id == id, cancellationToken);
+                if (submission is null)
+                    continue;
+
+                // The current governed semantic-transition capability is
+                // English-only. Other enabled source languages have no
+                // cross-language fallback or inferred transition path; their
+                // version watermark simply records that no English-only work
+                // applies to this isolated submission.
+                if (string.Equals(submission.SourceLanguageCode, "en", StringComparison.OrdinalIgnoreCase))
+                {
+                    var sourceUnits = await (
+                        from unit in _db.Set<LegendFounderTrainingSubmissionUnit>().AsNoTracking()
+                        join textUnit in _db.Set<LegendLanguageTextUnit>().AsNoTracking()
+                            on unit.TextUnitId equals textUnit.Id
+                        where unit.SubmissionId == submission.Id &&
+                            textUnit.LanguageCode == submission.SourceLanguageCode &&
+                            textUnit.IsTrainingEligible
+                        orderby unit.SequenceNumber
+                        select new { unit, textUnit }
+                    ).ToListAsync(cancellationToken);
+
+                    // A retained submission without its atomic canonical
+                    // units is not current. Leave its claim releasable for
+                    // diagnosis/recovery rather than marking incomplete data
+                    // as capability-complete.
+                    if (sourceUnits.Count != submission.AtomicUnitCount)
+                    {
+                        await ReleaseStaleCapabilityClaimAsync(claim, cancellationToken);
+                        continue;
+                    }
+
+                    var atomicUnits = sourceUnits
+                        .Select(item => new LegendFounderTrainingAtomicUnit(
+                            item.textUnit.Text,
+                            item.unit.UnitType,
+                            item.unit.SequenceNumber,
+                            item.unit.ParagraphNumber))
+                        .ToArray();
+                    var textUnitsByHash = sourceUnits
+                        .Select(item => item.textUnit)
+                        .ToDictionary(item => item.NormalizedHash, StringComparer.Ordinal);
+
+                    await _curriculum.ObserveFounderEnglishAtomicUnitsAsync(
+                        submission.Id,
+                        atomicUnits,
+                        textUnitsByHash,
+                        cancellationToken);
+                }
+
+                if (await CompleteStaleCapabilityClaimAsync(claim, evaluatorVersion, cancellationToken))
+                    replayed++;
+            }
+            finally
+            {
+                _db.ChangeTracker.Clear();
+            }
+        }
+
+        return replayed;
+    }
+
+    private async Task<StaleCapabilitySubmissionClaim?> TryClaimStaleCapabilitySubmissionAsync(
+        Guid id,
+        int evaluatorVersion,
+        CancellationToken cancellationToken)
+    {
+        var now = DateTime.UtcNow;
+        var leaseExpires = now.AddMinutes(10);
+        if (_db.Database.IsRelational())
+        {
+            var updated = await _db.Set<LegendFounderTrainingSubmission>()
+                .Where(item => item.Id == id &&
+                    item.CompletedLanguageIntelligenceEvaluatorVersion < evaluatorVersion &&
+                    (item.LanguageIntelligenceReevaluationLeaseExpiresUtc == null ||
+                     item.LanguageIntelligenceReevaluationLeaseExpiresUtc < now))
+                .ExecuteUpdateAsync(setters => setters
+                    .SetProperty(item => item.LanguageIntelligenceReevaluationLeaseExpiresUtc, leaseExpires),
+                    cancellationToken);
+            return updated == 1
+                ? new StaleCapabilitySubmissionClaim(id, leaseExpires)
+                : null;
+        }
+
+        var submission = await _db.Set<LegendFounderTrainingSubmission>()
+            .SingleOrDefaultAsync(item => item.Id == id &&
+                item.CompletedLanguageIntelligenceEvaluatorVersion < evaluatorVersion &&
+                (item.LanguageIntelligenceReevaluationLeaseExpiresUtc == null ||
+                 item.LanguageIntelligenceReevaluationLeaseExpiresUtc < now),
+                cancellationToken);
+        if (submission is null)
+            return null;
+
+        submission.LanguageIntelligenceReevaluationLeaseExpiresUtc = leaseExpires;
+        await _db.SaveChangesAsync(cancellationToken);
+        return new StaleCapabilitySubmissionClaim(id, leaseExpires);
+    }
+
+    private async Task<bool> CompleteStaleCapabilityClaimAsync(
+        StaleCapabilitySubmissionClaim claim,
+        int evaluatorVersion,
+        CancellationToken cancellationToken)
+    {
+        if (_db.Database.IsRelational())
+        {
+            var updated = await _db.Set<LegendFounderTrainingSubmission>()
+                .Where(item => item.Id == claim.SubmissionId &&
+                    item.LanguageIntelligenceReevaluationLeaseExpiresUtc == claim.LeaseExpiresUtc)
+                .ExecuteUpdateAsync(setters => setters
+                    .SetProperty(item => item.CompletedLanguageIntelligenceEvaluatorVersion, evaluatorVersion)
+                    .SetProperty(item => item.LanguageIntelligenceReevaluationLeaseExpiresUtc, (DateTime?)null),
+                    cancellationToken);
+            return updated == 1;
+        }
+
+        var submission = await _db.Set<LegendFounderTrainingSubmission>()
+            .SingleOrDefaultAsync(item => item.Id == claim.SubmissionId &&
+                item.LanguageIntelligenceReevaluationLeaseExpiresUtc == claim.LeaseExpiresUtc,
+                cancellationToken);
+        if (submission is null)
+            return false;
+
+        submission.CompletedLanguageIntelligenceEvaluatorVersion = evaluatorVersion;
+        submission.LanguageIntelligenceReevaluationLeaseExpiresUtc = null;
+        await _db.SaveChangesAsync(cancellationToken);
+        return true;
+    }
+
+    private async Task ReleaseStaleCapabilityClaimAsync(
+        StaleCapabilitySubmissionClaim claim,
+        CancellationToken cancellationToken)
+    {
+        if (_db.Database.IsRelational())
+        {
+            await _db.Set<LegendFounderTrainingSubmission>()
+                .Where(item => item.Id == claim.SubmissionId &&
+                    item.LanguageIntelligenceReevaluationLeaseExpiresUtc == claim.LeaseExpiresUtc)
+                .ExecuteUpdateAsync(setters => setters
+                    .SetProperty(item => item.LanguageIntelligenceReevaluationLeaseExpiresUtc, (DateTime?)null),
+                    cancellationToken);
+            return;
+        }
+
+        var submission = await _db.Set<LegendFounderTrainingSubmission>()
+            .SingleOrDefaultAsync(item => item.Id == claim.SubmissionId &&
+                item.LanguageIntelligenceReevaluationLeaseExpiresUtc == claim.LeaseExpiresUtc,
+                cancellationToken);
+        if (submission is null)
+            return;
+
+        submission.LanguageIntelligenceReevaluationLeaseExpiresUtc = null;
+        await _db.SaveChangesAsync(cancellationToken);
     }
 
     private async Task<int> ReconcileKnownLegacyDerivedArtifactsAsync(
@@ -392,6 +599,7 @@ internal sealed class LegendConnectFounderTrainingIngestionAuthority
                 LegacySourceTextUnitId = legacySource?.Id,
                 RawCharacterCount = rawText.Length,
                 AtomicUnitCount = units.Count,
+                CompletedLanguageIntelligenceEvaluatorVersion = 0,
                 ProcessingState = processingState,
                 CreatedUtc = DateTime.UtcNow,
                 ProcessedUtc = null
@@ -432,6 +640,8 @@ internal sealed class LegendConnectFounderTrainingIngestionAuthority
             }
 
             submission.ProcessingState = processingState;
+            submission.CompletedLanguageIntelligenceEvaluatorVersion =
+                LegendConnectLanguageIntelligenceEvaluatorVersion.Current;
             submission.ProcessedUtc = DateTime.UtcNow;
             await _db.SaveChangesAsync(cancellationToken);
             if (transaction is not null)
@@ -478,11 +688,15 @@ internal sealed class LegendConnectFounderTrainingIngestionAuthority
             .Where(item => item.SubmissionId == submission.Id)
             .OrderBy(item => item.SequenceNumber)
             .ToListAsync(cancellationToken);
+        var capabilityCurrent = submission.CompletedLanguageIntelligenceEvaluatorVersion >=
+            LegendConnectLanguageIntelligenceEvaluatorVersion.Current;
         return new LegendConnectKnowledgeSubmissionResult(
             true,
             true,
             null,
-            $"This Founder training submission was already ingested as {units.Count} atomic learning unit(s); existing knowledge and coverage were reused.",
+            capabilityCurrent
+                ? $"This Founder training submission was already ingested as {units.Count} atomic learning unit(s); existing knowledge and coverage were reused."
+                : $"This Founder training submission was already ingested as {units.Count} atomic learning unit(s); existing knowledge and coverage were reused, and its retained atomic evidence is eligible for bounded evaluator v{LegendConnectLanguageIntelligenceEvaluatorVersion.Current} reconciliation.",
             sourceLanguage,
             null,
             null,
@@ -649,7 +863,8 @@ internal sealed record LegendFounderTrainingReconciliationResult(
     int LegacyAtomicReviewedCount,
     int ReconciledSubmissionCount,
     int AtomicUnitCount,
-    int SupersededRelationshipCount);
+    int SupersededRelationshipCount,
+    int CapabilityReplayedSubmissionCount);
 
 internal sealed record LegendFounderTrainingAtomicUnit(
     string Text,

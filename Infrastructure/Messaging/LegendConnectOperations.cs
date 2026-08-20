@@ -2780,9 +2780,15 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
             }
 
             var completed = string.Equals(work.ProcessingState, "Completed", StringComparison.Ordinal);
+            var capabilityReplayPending = completed &&
+                work.CompletedLanguageIntelligenceEvaluatorVersion <
+                LegendConnectLanguageIntelligenceEvaluatorVersion.Current;
             return new LegendConnectCurriculumSubmissionResult(
                 true, true, null,
-                completed
+                capabilityReplayPending
+                    ? $"This exact curriculum manifest already completed, and its retained Founder-approved evidence is eligible for bounded evaluator v{LegendConnectLanguageIntelligenceEvaluatorVersion.Current} reconciliation. " +
+                      $"{work.FamilyCount:N0} families / {work.ExampleCount:N0} examples remain canonical without duplicate confidence."
+                    : completed
                     ? $"This exact curriculum manifest already completed. " +
                       $"{work.FamilyCount:N0} families / {work.ExampleCount:N0} examples were retained without duplicate confidence."
                     : $"This exact curriculum manifest is already {work.ProcessingState.ToLowerInvariant()}. " +
@@ -2800,6 +2806,8 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
             FamilyCount = families.Length,
             ExampleCount = exampleCount,
             NextFamilyIndex = 0,
+            TargetLanguageIntelligenceEvaluatorVersion =
+                LegendConnectLanguageIntelligenceEvaluatorVersion.Current,
             ProcessingState = "Pending",
             AttemptCount = 0,
             CreatedUtc = now,

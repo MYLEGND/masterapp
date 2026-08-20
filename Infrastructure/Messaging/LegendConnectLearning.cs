@@ -1689,12 +1689,11 @@ internal sealed class LegendConnectCorpusService
 /// </summary>
 internal static class LegendConnectLanguageIntelligenceEvaluatorVersion
 {
-    // v14 is the V14 final-convergence generation. It deliberately sends all
-    // retained historical source families, alignments, provider observations,
-    // and eligible operational translations through the same canonical
-    // authorities used by current evidence after Phases 1-11. No parallel
-    // backfill, replay worker, provenance upgrade, or training shortcut exists.
-    internal const int Current = 14;
+    // v15 adds governed semantic-transition/grounding capability after v14
+    // completed in existing environments. Advancing this marker is what
+    // makes retained historical evidence eligible for the established,
+    // cursor-backed evaluator lifecycle; no content-specific backfill exists.
+    internal const int Current = 15;
 }
 
 internal sealed class LegendConnectLearningHostedService : BackgroundService

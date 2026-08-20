@@ -782,6 +782,19 @@ public sealed class LegendFounderTrainingSubmission
     public Guid? LegacySourceTextUnitId { get; set; }
     public int RawCharacterCount { get; set; }
     public int AtomicUnitCount { get; set; }
+    /// <summary>
+    /// The latest deployment-owned language-intelligence revision that has
+    /// replayed this retained atomic source through its canonical authority.
+    /// It is deliberately independent of the raw-text identity used for
+    /// canonical submission deduplication.
+    /// </summary>
+    public int CompletedLanguageIntelligenceEvaluatorVersion { get; set; }
+    /// <summary>
+    /// A short durable claim for a bounded historical capability replay.
+    /// If a worker stops before completion, the existing reconciliation loop
+    /// may safely reclaim the submission after expiry.
+    /// </summary>
+    public DateTime? LanguageIntelligenceReevaluationLeaseExpiresUtc { get; set; }
     public string ProcessingState { get; set; } = "Ingested";
     public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
     public DateTime? ProcessedUtc { get; set; }
@@ -1038,6 +1051,18 @@ public sealed class LegendCurriculumManifestWorkItem
     public int FamilyCount { get; set; }
     public int ExampleCount { get; set; }
     public int NextFamilyIndex { get; set; }
+    /// <summary>
+    /// The deployment-owned evaluator revision this accepted Founder manifest
+    /// is currently being processed against.  It is orchestration state only;
+    /// the payload and canonical curriculum remain the sole language authority.
+    /// </summary>
+    public int TargetLanguageIntelligenceEvaluatorVersion { get; set; }
+    /// <summary>
+    /// The most recent evaluator revision for which every family in this
+    /// retained manifest completed through the canonical curriculum service.
+    /// A lower value makes the completed work eligible for bounded replay.
+    /// </summary>
+    public int CompletedLanguageIntelligenceEvaluatorVersion { get; set; }
     public string ProcessingState { get; set; } = "Pending";
     public int AttemptCount { get; set; }
     public string? LastErrorCode { get; set; }

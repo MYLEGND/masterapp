@@ -33,14 +33,21 @@ internal sealed class LegendConnectCurriculumManifestProcessor
         CancellationToken cancellationToken = default)
     {
         var now = DateTime.UtcNow;
+        var evaluatorVersion = LegendConnectLanguageIntelligenceEvaluatorVersion.Current;
         var candidateIds = await _db.Set<LegendCurriculumManifestWorkItem>()
             .AsNoTracking()
             .Where(item =>
                 item.ProcessingState == "Pending" ||
                 (item.ProcessingState == "Processing" &&
                  item.LeaseExpiresUtc != null &&
-                 item.LeaseExpiresUtc < now))
-            .OrderBy(item => item.CreatedUtc)
+                 item.LeaseExpiresUtc < now) ||
+                (item.ProcessingState == "Completed" &&
+                 item.CompletedLanguageIntelligenceEvaluatorVersion < evaluatorVersion))
+            // Preserve prompt handling for new work. Historical capability
+            // replays are still durable and bounded, but never starve newly
+            // accepted Founder curriculum.
+            .OrderBy(item => item.ProcessingState == "Completed")
+            .ThenBy(item => item.CreatedUtc)
             .ThenBy(item => item.Id)
             .Take(Math.Clamp(take, 1, 4))
             .Select(item => item.Id)
@@ -66,6 +73,7 @@ internal sealed class LegendConnectCurriculumManifestProcessor
     {
         var now = DateTime.UtcNow;
         var leaseExpires = now.Add(LeaseDuration);
+        var evaluatorVersion = LegendConnectLanguageIntelligenceEvaluatorVersion.Current;
 
         if (_db.Database.IsRelational())
         {
@@ -74,10 +82,25 @@ internal sealed class LegendConnectCurriculumManifestProcessor
                     (item.ProcessingState == "Pending" ||
                      (item.ProcessingState == "Processing" &&
                       item.LeaseExpiresUtc != null &&
-                      item.LeaseExpiresUtc < now)))
+                      item.LeaseExpiresUtc < now) ||
+                     (item.ProcessingState == "Completed" &&
+                      item.CompletedLanguageIntelligenceEvaluatorVersion < evaluatorVersion)))
                 .ExecuteUpdateAsync(setters => setters
                     .SetProperty(item => item.ProcessingState, "Processing")
+                    // A completed historical work item is the only case that
+                    // restarts at family zero. Interrupted normal/replay work
+                    // retains its exact durable cursor and target version.
+                    .SetProperty(item => item.NextFamilyIndex,
+                        item => item.ProcessingState == "Completed" ? 0 : item.NextFamilyIndex)
+                    .SetProperty(item => item.TargetLanguageIntelligenceEvaluatorVersion,
+                        item => item.ProcessingState == "Completed"
+                            ? evaluatorVersion
+                            : item.TargetLanguageIntelligenceEvaluatorVersion > 0
+                                ? item.TargetLanguageIntelligenceEvaluatorVersion
+                                : evaluatorVersion)
                     .SetProperty(item => item.LeaseExpiresUtc, leaseExpires)
+                    .SetProperty(item => item.CompletedUtc,
+                        item => item.ProcessingState == "Completed" ? null : item.CompletedUtc)
                     .SetProperty(item => item.UpdatedUtc, now),
                     cancellationToken);
             if (updated != 1)
@@ -93,11 +116,23 @@ internal sealed class LegendConnectCurriculumManifestProcessor
                 (candidate.ProcessingState == "Pending" ||
                  (candidate.ProcessingState == "Processing" &&
                   candidate.LeaseExpiresUtc != null &&
-                  candidate.LeaseExpiresUtc < now)),
+                  candidate.LeaseExpiresUtc < now) ||
+                 (candidate.ProcessingState == "Completed" &&
+                  candidate.CompletedLanguageIntelligenceEvaluatorVersion < evaluatorVersion)),
                 cancellationToken);
         if (item is null)
             return null;
 
+        if (item.ProcessingState == "Completed")
+        {
+            item.NextFamilyIndex = 0;
+            item.TargetLanguageIntelligenceEvaluatorVersion = evaluatorVersion;
+            item.CompletedUtc = null;
+        }
+        else if (item.TargetLanguageIntelligenceEvaluatorVersion <= 0)
+        {
+            item.TargetLanguageIntelligenceEvaluatorVersion = evaluatorVersion;
+        }
         item.ProcessingState = "Processing";
         item.LeaseExpiresUtc = leaseExpires;
         item.UpdatedUtc = now;
@@ -175,6 +210,13 @@ internal sealed class LegendConnectCurriculumManifestProcessor
             var isCompleted = current.NextFamilyIndex >= current.FamilyCount;
             current.ProcessingState = isCompleted ? "Completed" : "Pending";
             current.CompletedUtc = isCompleted ? DateTime.UtcNow : null;
+            if (isCompleted)
+            {
+                current.CompletedLanguageIntelligenceEvaluatorVersion =
+                    current.TargetLanguageIntelligenceEvaluatorVersion > 0
+                        ? current.TargetLanguageIntelligenceEvaluatorVersion
+                        : LegendConnectLanguageIntelligenceEvaluatorVersion.Current;
+            }
 
             _db.Set<LegendConnectKnowledgeAuditEntry>().Add(new LegendConnectKnowledgeAuditEntry
             {
@@ -185,6 +227,7 @@ internal sealed class LegendConnectCurriculumManifestProcessor
                 LanguageCode = "en",
                 Detail = Truncate(
                     $"Manifest {current.ManifestHash[..12]} family {familyIndex + 1}/{current.FamilyCount}: {family.FamilyKey}. " +
+                    $"Evaluator v{current.TargetLanguageIntelligenceEvaluatorVersion}. " +
                     (result.Message ?? "Canonical curriculum processing completed."),
                     500),
                 OccurredUtc = DateTime.UtcNow
@@ -257,6 +300,10 @@ internal sealed class LegendConnectCurriculumManifestProcessor
             .SingleAsync(item => item.Id == id, cancellationToken);
         work.NextFamilyIndex = work.FamilyCount;
         work.ProcessingState = "Completed";
+        work.CompletedLanguageIntelligenceEvaluatorVersion =
+            work.TargetLanguageIntelligenceEvaluatorVersion > 0
+                ? work.TargetLanguageIntelligenceEvaluatorVersion
+                : LegendConnectLanguageIntelligenceEvaluatorVersion.Current;
         work.LeaseExpiresUtc = null;
         work.CompletedUtc = DateTime.UtcNow;
         work.UpdatedUtc = DateTime.UtcNow;
