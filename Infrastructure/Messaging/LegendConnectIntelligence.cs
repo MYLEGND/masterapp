@@ -645,7 +645,7 @@ internal sealed class LegendConnectTranslationIntelligence : ILegendConnectTrans
     public async Task<LegendConnectTranslationQualitySnapshot> GetTranslationQualityAsync(
         CancellationToken cancellationToken = default)
     {
-        var observations = await (
+        var observations =
             from alignment in _db.Set<LegendTranslationAlignment>().AsNoTracking()
             join source in _db.Set<LegendLanguageTextUnit>().AsNoTracking()
                 on alignment.SourceTextUnitId equals source.Id
@@ -665,23 +665,77 @@ internal sealed class LegendConnectTranslationIntelligence : ILegendConnectTrans
                 source.Provenance,
                 target.LanguageCode,
                 target.Text)
-        ).ToListAsync(cancellationToken);
-        var observationIds = observations.Select(item => item.AlignmentId).ToArray();
-        List<LegendTranslationQualityEvidence> evidence = observationIds.Length == 0
+        ;
+        var providerObservationCount = await observations.LongCountAsync(cancellationToken);
+        var activeEvidence =
+            from evidence in _db.Set<LegendTranslationQualityEvidence>().AsNoTracking()
+            join alignment in _db.Set<LegendTranslationAlignment>().AsNoTracking()
+                on evidence.ObservedAlignmentId equals alignment.Id
+            join source in _db.Set<LegendLanguageTextUnit>().AsNoTracking()
+                on alignment.SourceTextUnitId equals source.Id
+            join target in _db.Set<LegendLanguageTextUnit>().AsNoTracking()
+                on alignment.TargetTextUnitId equals target.Id
+            where evidence.SupersededUtc == null &&
+                alignment.Provenance == LegendConnectKnowledgeProvenance.ProviderDerived &&
+                alignment.SupersededUtc == null &&
+                source.IsTrainingEligible && target.IsTrainingEligible
+            select evidence;
+        var supportedObservationCount = await activeEvidence
+            .Where(item => item.Signal == "Supported")
+            .Select(item => item.ObservedAlignmentId)
+            .Distinct()
+            .LongCountAsync(cancellationToken);
+        var contradictionCount = await activeEvidence
+            .Where(item => item.Signal == "Contradictory")
+            .Select(item => item.ObservedAlignmentId)
+            .Distinct()
+            .LongCountAsync(cancellationToken);
+
+        // The page can render at most 250 review rows. First select that
+        // bounded Founder-review queue in SQL, then load evidence only for
+        // those rows instead of materializing every provider observation and
+        // every quality-evidence record on the initial dashboard request.
+        var reviewCandidates = await (
+            from alignment in _db.Set<LegendTranslationAlignment>().AsNoTracking()
+            join source in _db.Set<LegendLanguageTextUnit>().AsNoTracking()
+                on alignment.SourceTextUnitId equals source.Id
+            join target in _db.Set<LegendLanguageTextUnit>().AsNoTracking()
+                on alignment.TargetTextUnitId equals target.Id
+            where alignment.Provenance == LegendConnectKnowledgeProvenance.ProviderDerived &&
+                alignment.SupersededUtc == null &&
+                !alignment.HumanVerified &&
+                source.IsTrainingEligible &&
+                target.IsTrainingEligible &&
+                source.Provenance == LegendConnectKnowledgeProvenance.FounderApproved &&
+                _db.Set<LegendTranslationQualityEvidence>().Any(evidence =>
+                    evidence.ObservedAlignmentId == alignment.Id &&
+                    evidence.SupersededUtc == null &&
+                    evidence.Signal == "Contradictory" &&
+                    evidence.ResolutionState == "Open")
+            orderby alignment.CreatedUtc descending
+            select new ProviderObservationProjection(
+                alignment.Id,
+                alignment.PairKey,
+                alignment.HumanVerified,
+                alignment.QualityState,
+                alignment.Provider,
+                alignment.CreatedUtc,
+                source.LanguageCode,
+                source.Text,
+                source.Provenance,
+                target.LanguageCode,
+                target.Text)
+        ).Take(250).ToListAsync(cancellationToken);
+        var reviewCandidateIds = reviewCandidates.Select(item => item.AlignmentId).ToArray();
+        List<LegendTranslationQualityEvidence> reviewEvidence = reviewCandidateIds.Length == 0
             ? []
             : await _db.Set<LegendTranslationQualityEvidence>().AsNoTracking()
-                .Where(item => observationIds.Contains(item.ObservedAlignmentId) && item.SupersededUtc == null)
+                .Where(item => reviewCandidateIds.Contains(item.ObservedAlignmentId) && item.SupersededUtc == null)
                 .ToListAsync(cancellationToken);
-        var evidenceByObservation = evidence
+        var evidenceByObservation = reviewEvidence
             .GroupBy(item => item.ObservedAlignmentId)
             .ToDictionary(group => group.Key, group => group.ToList());
-        var reviewItems = observations
-            .Where(item => !item.HumanVerified &&
-                item.SourceProvenance == LegendConnectKnowledgeProvenance.FounderApproved &&
-                evidenceByObservation.TryGetValue(item.AlignmentId, out var qualityEvidence) &&
-                qualityEvidence.Any(evidence => evidence.Signal == "Contradictory" && evidence.ResolutionState == "Open"))
-            .OrderByDescending(item => item.ObservedUtc)
-            .Take(250)
+        var reviewItems = reviewCandidates
             .Select(item =>
             {
                 var qualityEvidence = evidenceByObservation[item.AlignmentId];
@@ -719,9 +773,9 @@ internal sealed class LegendConnectTranslationIntelligence : ILegendConnectTrans
 
         return new LegendConnectTranslationQualitySnapshot(
             reviewItems.Count,
-            observations.Count,
-            evidence.Where(item => item.Signal == "Supported").Select(item => item.ObservedAlignmentId).Distinct().LongCount(),
-            evidence.Where(item => item.Signal == "Contradictory").Select(item => item.ObservedAlignmentId).Distinct().LongCount(),
+            providerObservationCount,
+            supportedObservationCount,
+            contradictionCount,
             humanVerified,
             reviewItems);
     }

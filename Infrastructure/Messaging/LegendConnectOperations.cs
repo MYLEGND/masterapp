@@ -93,6 +93,90 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
             pair is null ? null : BuildPairHealth(pair, state));
     }
 
+    // Founder page reads deliberately begin here instead of the historical
+    // dashboard projection above. The dashboard remains available to its
+    // existing non-page consumers, but opening /founder/legend-connect never
+    // materializes its complete corpus, evidence, or operational state.
+    public async Task<LegendConnectFounderShellSnapshot> GetFounderShellAsync(
+        string? languageCode,
+        CancellationToken cancellationToken = default)
+    {
+        var languages = await _db.Set<LegendLanguageDefinition>().AsNoTracking()
+            .Where(item => item.IsEnabled)
+            .OrderBy(item => item.CanonicalName)
+            .Select(item => new LegendConnectFounderLanguageOptionSnapshot(
+                item.LanguageCode,
+                item.CanonicalName,
+                item.IsEnabled))
+            .ToListAsync(cancellationToken);
+        var selectedCode = NormalizeFounderLanguageCode(languageCode, languages);
+        if (selectedCode is null)
+            return new LegendConnectFounderShellSnapshot(languages, null);
+
+        var canonicalEntries = _db.Set<LegendLanguageTextUnit>().AsNoTracking()
+            .Where(item => item.LanguageCode == selectedCode && item.IsTrainingEligible);
+        var activeExamples = _db.Set<LegendCurriculumExample>().AsNoTracking()
+            .Where(item => item.LanguageCode == selectedCode && item.SupersededUtc == null);
+        var activeRelationships = _db.Set<LegendLanguageStructuralRelationship>().AsNoTracking()
+            .Where(item => item.LanguageCode == selectedCode && item.SupersededUtc == null);
+        var pendingLearning = _db.Set<LegendTranslationLearningEvent>().AsNoTracking()
+            .Where(item => (item.SourceLanguageCode == selectedCode || item.TargetLanguageCode == selectedCode) &&
+                item.EligibilityState == "Eligible" &&
+                (item.ProcessingState == "Pending" || item.ProcessingState == "Processing"));
+        var candidates = _db.Set<LegendLanguageTargetRealizationCandidate>().AsNoTracking()
+            .Where(item => (item.SourceLanguageCode == selectedCode || item.TargetLanguageCode == selectedCode) &&
+                item.SupersededUtc == null);
+        var openIssues = _db.Set<LegendConnectOperationalEvent>().AsNoTracking()
+            .Where(item => item.LanguageCode == selectedCode && !item.IsResolved &&
+                (item.Severity == "Warning" || item.Severity == "Error"));
+        var openIssueCount = await openIssues.LongCountAsync(cancellationToken);
+
+        var summary = new LegendConnectFounderLanguageSummarySnapshot(
+            selectedCode,
+            languages.Single(item => item.LanguageCode == selectedCode).DisplayName,
+            openIssueCount > 0 ? "Warning" : "Healthy",
+            await canonicalEntries.LongCountAsync(cancellationToken),
+            await activeExamples.LongCountAsync(cancellationToken),
+            await _db.Set<LegendLanguageCompositionalAnchor>().AsNoTracking()
+                .LongCountAsync(item => item.LanguageCode == selectedCode && item.SupersededUtc == null, cancellationToken),
+            await activeRelationships.LongCountAsync(cancellationToken),
+            await pendingLearning.LongCountAsync(cancellationToken),
+            await candidates.LongCountAsync(cancellationToken),
+            openIssueCount,
+            await canonicalEntries.Select(item => (DateTime?)item.UpdatedUtc).MaxAsync(cancellationToken));
+        return new LegendConnectFounderShellSnapshot(languages, summary);
+    }
+
+    public async Task<LegendConnectFounderSectionPageSnapshot> GetFounderSectionPageAsync(
+        string section,
+        string? languageCode,
+        string? search,
+        string? cursor,
+        Guid? curriculumFamilyId = null,
+        CancellationToken cancellationToken = default)
+    {
+        var language = await ResolveFounderLanguageCodeAsync(languageCode, cancellationToken);
+        var normalizedSection = (section ?? string.Empty).Trim().ToLowerInvariant();
+        var normalizedSearch = NormalizeFounderSectionSearch(search);
+        var pageCursor = ParseFounderSectionCursor(cursor);
+
+        return normalizedSection switch
+        {
+            "curriculum" => await GetCurriculumFamilyPageAsync(language, normalizedSearch, pageCursor, cancellationToken),
+            "curriculum-examples" when curriculumFamilyId.HasValue => await GetCurriculumExamplePageAsync(language, curriculumFamilyId.Value, normalizedSearch, pageCursor, cancellationToken),
+            "candidates" => await GetCandidatePageAsync(language, normalizedSearch, pageCursor, cancellationToken),
+            "evidence" => await GetAnchorPageAsync(language, normalizedSearch, pageCursor, cancellationToken),
+            "relationships" => await GetRelationshipPageAsync(language, normalizedSearch, pageCursor, cancellationToken),
+            "learning" => await GetLearningPageAsync(language, normalizedSearch, pageCursor, cancellationToken),
+            "models" => await GetModelPageAsync(language, normalizedSearch, pageCursor, cancellationToken),
+            "health" => await GetHealthPageAsync(language, normalizedSearch, pageCursor, cancellationToken),
+            "retained-knowledge" => await GetRetainedKnowledgePageAsync(language, normalizedSearch, pageCursor, cancellationToken),
+            "language-pairs" => await GetPairPageAsync(language, normalizedSearch, pageCursor, cancellationToken),
+            "provider-observations" => await GetProviderObservationPageAsync(language, normalizedSearch, pageCursor, cancellationToken),
+            _ => throw new ArgumentException("The requested Founder section is unavailable.", nameof(section))
+        };
+    }
+
     private async Task<LegendConnectDashboardSnapshot> BuildDashboardAsync(
         LegendConnectOperationalState state,
         CancellationToken cancellationToken)
@@ -165,8 +249,7 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
                 .Select(item => (DateTime?)item.UpdatedUtc))
             .Where(item => item != null)
             .Max();
-        var duplicateCount = state.OperationalEvents.LongCount(item => item.Category == "DuplicatePrevention" && item.Status == "Prevented") +
-            state.AuditEntries.LongCount(item => item.Result == "DuplicatePrevented");
+        var duplicateCount = state.DuplicateOperationalEventCount + state.DuplicateKnowledgeAuditCount;
         var translationOpportunities = state.Demand.Sum(item => item.TranslationRequestCount);
         var contextualInternalServed = state.Demand.Sum(item => item.ContextualInternalServeCount);
         var structuralInternalServed = state.Demand.Sum(item => item.StructuralInternalServeCount);
@@ -221,10 +304,9 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
             consentedLiveEvents.LongCount(item => item.PromotionOutcome == "Promoted"),
             consentedLiveEvents.LongCount(item => item.PromotionOutcome == "Reused"),
             consentedLiveEvents.LongCount(item => item.ProcessingState is "Pending" or "Processing"),
-            state.FounderTrainingSubmissions.LongCount(),
-            state.FounderTrainingSubmissionUnits.LongCount(),
-            state.FounderTrainingSubmissions.LongCount(item => item.LegacySourceTextUnitId is not null &&
-                state.TextUnits.Any(unit => unit.Id == item.LegacySourceTextUnitId && !unit.IsTrainingEligible)),
+            state.FounderTrainingSubmissionCount,
+            state.FounderTrainingSubmissionUnitCount,
+            state.RetiredLegacyFounderTrainingSubmissionCount,
             state.Alignments.LongCount(item => item.SupersededUtc is null &&
                 state.TextUnits.Any(unit => unit.Id == item.SourceTextUnitId && unit.IsTrainingEligible) &&
                 state.TextUnits.Any(unit => unit.Id == item.TargetTextUnitId && unit.IsTrainingEligible)),
@@ -253,6 +335,67 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
                 .SubmitConversationMachineProposalAsync(
                     submission,
                     cancellationToken);
+
+    /// <summary>
+    /// Native conversational serving delegates to the existing curriculum
+    /// authority's generic semantic-transition evaluator. It neither retrieves
+    /// nearby text as an answer nor has a prompt/answer store: every supported
+    /// result must pass source understanding, independently supported frame
+    /// transition, contradiction checks, and canonical anchor realization.
+    /// </summary>
+    public async Task<LegendConnectNativeInferenceSnapshot>
+        TryInferConversationAsync(
+            string input,
+            IReadOnlyList<LegendConnectConversationContextItem> context,
+            CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (string.IsNullOrWhiteSpace(
+                LegendLanguageIdentity.NormalizeText(input ?? string.Empty)))
+        {
+            return NativeInferenceUnsupported("invalid_input");
+        }
+
+        // Founder curriculum is currently admitted directly in English. The
+        // evidence query is language-partitioned throughout; no English record
+        // can authorize a different language, and an unavailable language
+        // simply returns unsupported.
+        var inference = await _curriculum.TryInferSemanticTransitionAsync(
+            "en",
+            input ?? string.Empty,
+            context ?? [],
+            cancellationToken);
+        if (string.Equals(inference.State, LegendSemanticTransitionInference.Supported,
+                StringComparison.Ordinal) &&
+            !string.IsNullOrWhiteSpace(inference.RealizedText))
+        {
+            return new LegendConnectNativeInferenceSnapshot(
+                true,
+                // The legacy chat contract has one decimal but no existing
+                // semantic-transition confidence calibration. Do not invent a
+                // certainty score from provenance; callers receive the
+                // independently counted evidence and explicit gate outcome.
+                0m,
+                inference.RealizedText,
+                "semantic_transition_governed",
+                inference.EvidenceCount,
+                "LEGEND independently interpreted the controlled source frame, selected one contradiction-free Founder-supported semantic transition, and realized the result from canonical anchors.",
+                false);
+        }
+
+        return NativeInferenceUnsupported(
+            inference.Reasons.FirstOrDefault() ?? "semantic_transition_not_governed");
+    }
+
+    private static LegendConnectNativeInferenceSnapshot NativeInferenceUnsupported(
+        string reasonCode) => new(
+        false,
+        0m,
+        null,
+        reasonCode,
+        0,
+        "LEGEND could not establish one independently supported, contradiction-free semantic transition and canonical realization for this request.",
+        true);
 
     public async Task<LegendConnectRetainedKnowledgeSearchSnapshot>
         SearchRetainedKnowledgeAsync(
@@ -788,7 +931,7 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
             "group-target-reuse" or "high-consumption-accounts")
             return await BuildUsageMetricDetailAsync(key, cancellationToken);
 
-        var state = await LoadStateAsync(cancellationToken);
+        var state = await LoadStateAsync(cancellationToken, includeMetricDetailRecords: true);
         return key switch
         {
             "active-languages" => BuildLanguageMetricDetail(state),
@@ -3039,21 +3182,465 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
     private static string TextIdentity(string languageCode, string normalizedHash) =>
         $"{languageCode.Trim().ToUpperInvariant()}:{normalizedHash.Trim().ToUpperInvariant()}";
 
-    private async Task<LegendConnectOperationalState> LoadStateAsync(CancellationToken cancellationToken) => new(
-        await _db.Set<LegendLanguageDefinition>().AsNoTracking().ToListAsync(cancellationToken),
-        await _db.Set<LegendLanguagePair>().AsNoTracking().ToListAsync(cancellationToken),
-        await _db.Set<LegendLanguageTextUnit>().AsNoTracking().ToListAsync(cancellationToken),
-        await _db.Set<LegendTranslationAlignment>().AsNoTracking().ToListAsync(cancellationToken),
-        await _db.Set<LegendLanguageContextRelationship>().AsNoTracking().ToListAsync(cancellationToken),
-        await _db.Set<LegendTranslationLearningEvent>().AsNoTracking().ToListAsync(cancellationToken),
-        await _db.Set<LegendCorpusCandidate>().AsNoTracking().ToListAsync(cancellationToken),
-        await _db.Set<LegendTranslationPairDemand>().AsNoTracking().ToListAsync(cancellationToken),
-        await _db.Set<LegendTranslationSystemUsage>().AsNoTracking().ToListAsync(cancellationToken),
-        await _db.Set<LegendTranslationProviderCapacity>().AsNoTracking().ToListAsync(cancellationToken),
-        await _db.Set<LegendConnectOperationalEvent>().AsNoTracking().ToListAsync(cancellationToken),
-        await _db.Set<LegendConnectKnowledgeAuditEntry>().AsNoTracking().ToListAsync(cancellationToken),
-        await _db.Set<LegendFounderTrainingSubmission>().AsNoTracking().ToListAsync(cancellationToken),
-        await _db.Set<LegendFounderTrainingSubmissionUnit>().AsNoTracking().ToListAsync(cancellationToken));
+    private const int FounderSectionPageSize = 50;
+
+    private async Task<string> ResolveFounderLanguageCodeAsync(
+        string? languageCode,
+        CancellationToken cancellationToken)
+    {
+        var languages = await _db.Set<LegendLanguageDefinition>().AsNoTracking()
+            .Where(item => item.IsEnabled)
+            .OrderBy(item => item.CanonicalName)
+            .Select(item => new LegendConnectFounderLanguageOptionSnapshot(
+                item.LanguageCode,
+                item.CanonicalName,
+                item.IsEnabled))
+            .ToListAsync(cancellationToken);
+        return NormalizeFounderLanguageCode(languageCode, languages)
+            ?? throw new ArgumentException("An enabled Legend language is required.", nameof(languageCode));
+    }
+
+    private static string? NormalizeFounderLanguageCode(
+        string? languageCode,
+        IReadOnlyList<LegendConnectFounderLanguageOptionSnapshot> languages)
+    {
+        var requested = languageCode?.Trim();
+        var selected = languages.FirstOrDefault(item =>
+            string.Equals(item.LanguageCode, requested, StringComparison.OrdinalIgnoreCase));
+        if (selected is not null)
+            return selected.LanguageCode;
+        return languages.FirstOrDefault(item =>
+            string.Equals(item.LanguageCode, "en", StringComparison.OrdinalIgnoreCase))?.LanguageCode
+            ?? languages.FirstOrDefault()?.LanguageCode;
+    }
+
+    private async Task<LegendConnectFounderSectionPageSnapshot> GetCurriculumFamilyPageAsync(
+        string language,
+        string? search,
+        FounderSectionCursor? cursor,
+        CancellationToken cancellationToken)
+    {
+        var query = _db.Set<LegendCurriculumFamily>().AsNoTracking()
+            .Where(family => _db.Set<LegendCurriculumExample>().Any(example =>
+                example.CurriculumFamilyId == family.Id && example.LanguageCode == language && example.SupersededUtc == null));
+        if (search is not null)
+            query = query.Where(item => item.FamilyKey.ToLower().Contains(search) ||
+                (item.SemanticCategory ?? string.Empty).ToLower().Contains(search));
+        if (cursor is { } after)
+            query = query.Where(item => item.UpdatedUtc < after.UpdatedUtc ||
+                (item.UpdatedUtc == after.UpdatedUtc && item.Id.CompareTo(after.Id) < 0));
+
+        var families = await query
+            .OrderByDescending(item => item.UpdatedUtc).ThenByDescending(item => item.Id)
+            .Take(FounderSectionPageSize + 1)
+            .Select(item => new { item.Id, item.FamilyKey, item.SemanticCategory, item.Provenance, item.UpdatedUtc })
+            .ToListAsync(cancellationToken);
+        var ids = families.Take(FounderSectionPageSize).Select(item => item.Id).ToArray();
+        var counts = ids.Length == 0
+            ? new Dictionary<Guid, long>()
+            : await _db.Set<LegendCurriculumExample>().AsNoTracking()
+                .Where(item => ids.Contains(item.CurriculumFamilyId) && item.LanguageCode == language && item.SupersededUtc == null)
+                .GroupBy(item => item.CurriculumFamilyId)
+                .Select(group => new { Id = group.Key, Count = group.LongCount() })
+                .ToDictionaryAsync(item => item.Id, item => item.Count, cancellationToken);
+        return FounderPage("curriculum", language, search, families,
+            item => item.Id, item => item.UpdatedUtc,
+            item => new[] { item.Id.ToString("D"), item.FamilyKey, item.SemanticCategory ?? "—", counts.GetValueOrDefault(item.Id).ToString(CultureInfo.InvariantCulture), item.Provenance, item.UpdatedUtc.ToString("u", CultureInfo.InvariantCulture) },
+            new[] { "Family ID", "Family", "Semantic category", "Examples", "Provenance", "Updated" },
+            "No curriculum family matches this language and filter.");
+    }
+
+    private async Task<LegendConnectFounderSectionPageSnapshot> GetCurriculumExamplePageAsync(
+        string language,
+        Guid familyId,
+        string? search,
+        FounderSectionCursor? cursor,
+        CancellationToken cancellationToken)
+    {
+        var query =
+            from example in _db.Set<LegendCurriculumExample>().AsNoTracking()
+            join text in _db.Set<LegendLanguageTextUnit>().AsNoTracking() on example.TextUnitId equals text.Id
+            where example.CurriculumFamilyId == familyId && example.LanguageCode == language &&
+                example.SupersededUtc == null && text.IsTrainingEligible
+            select new { example.Id, Text = text.Text, example.Provenance, example.UpdatedUtc };
+        if (search is not null)
+            query = query.Where(item => item.Text.ToLower().Contains(search));
+        if (cursor is { } after)
+            query = query.Where(item => item.UpdatedUtc < after.UpdatedUtc ||
+                (item.UpdatedUtc == after.UpdatedUtc && item.Id.CompareTo(after.Id) < 0));
+        var examples = await query.OrderByDescending(item => item.UpdatedUtc).ThenByDescending(item => item.Id)
+            .Take(FounderSectionPageSize + 1).ToListAsync(cancellationToken);
+        var ids = examples.Take(FounderSectionPageSize).Select(item => item.Id).ToArray();
+        var anchorCounts = ids.Length == 0
+            ? new Dictionary<Guid, long>()
+            : await _db.Set<LegendLanguageCompositionalAnchor>().AsNoTracking()
+                .Where(item => ids.Contains(item.CurriculumExampleId) && item.SupersededUtc == null)
+                .GroupBy(item => item.CurriculumExampleId)
+                .Select(group => new { Id = group.Key, Count = group.LongCount() })
+                .ToDictionaryAsync(item => item.Id, item => item.Count, cancellationToken);
+        return FounderPage("curriculum-examples", language, search, examples,
+            item => item.Id, item => item.UpdatedUtc,
+            item => new[] { item.Id.ToString("D"), item.Text, anchorCounts.GetValueOrDefault(item.Id).ToString(CultureInfo.InvariantCulture), item.Provenance, item.UpdatedUtc.ToString("u", CultureInfo.InvariantCulture) },
+            new[] { "Example ID", "Canonical example", "Anchors", "Provenance", "Updated" },
+            "No active examples match this curriculum family and filter.");
+    }
+
+    private async Task<LegendConnectFounderSectionPageSnapshot> GetCandidatePageAsync(
+        string language,
+        string? search,
+        FounderSectionCursor? cursor,
+        CancellationToken cancellationToken)
+    {
+        var query = _db.Set<LegendLanguageTargetRealizationCandidate>().AsNoTracking()
+            .Where(item => item.SupersededUtc == null &&
+                (item.SourceLanguageCode == language || item.TargetLanguageCode == language));
+        if (search is not null)
+            query = query.Where(item => item.PairKey.ToLower().Contains(search) ||
+                item.VariationDimension.ToLower().Contains(search) || item.SemanticValue.ToLower().Contains(search) ||
+                item.TargetRealization.ToLower().Contains(search));
+        if (cursor is { } after)
+            query = query.Where(item => item.UpdatedUtc < after.UpdatedUtc ||
+                (item.UpdatedUtc == after.UpdatedUtc && item.Id.CompareTo(after.Id) < 0));
+        var candidates = await query.OrderByDescending(item => item.UpdatedUtc).ThenByDescending(item => item.Id)
+            .Take(FounderSectionPageSize + 1)
+            .Select(item => new { item.Id, item.PairKey, item.VariationDimension, item.SemanticValue, item.VerificationState, item.MaturityState, item.SupportCount, item.ContradictionCount, item.IsProductionEligible, item.UpdatedUtc })
+            .ToListAsync(cancellationToken);
+        return FounderPage("candidates", language, search, candidates,
+            item => item.Id, item => item.UpdatedUtc,
+            item => new[] { item.PairKey, item.VariationDimension, item.SemanticValue, item.VerificationState, item.MaturityState, item.SupportCount.ToString(CultureInfo.InvariantCulture), item.ContradictionCount.ToString(CultureInfo.InvariantCulture), item.IsProductionEligible ? "Eligible" : "Closed", item.UpdatedUtc.ToString("u", CultureInfo.InvariantCulture) },
+            new[] { "Pair", "Dimension", "Value", "Verification", "Maturity", "Support", "Contradictions", "Production", "Updated" },
+            "No target-realization candidates match this language and filter.");
+    }
+
+    private async Task<LegendConnectFounderSectionPageSnapshot> GetAnchorPageAsync(
+        string language,
+        string? search,
+        FounderSectionCursor? cursor,
+        CancellationToken cancellationToken)
+    {
+        var query = _db.Set<LegendLanguageCompositionalAnchor>().AsNoTracking()
+            .Where(item => item.LanguageCode == language && item.SupersededUtc == null);
+        if (search is not null)
+            query = query.Where(item => item.Dimension.ToLower().Contains(search) || item.Value.ToLower().Contains(search) ||
+                (item.PairKey ?? string.Empty).ToLower().Contains(search));
+        if (cursor is { } after)
+            query = query.Where(item => item.CreatedUtc < after.UpdatedUtc ||
+                (item.CreatedUtc == after.UpdatedUtc && item.Id.CompareTo(after.Id) < 0));
+        var anchors = await query.OrderByDescending(item => item.CreatedUtc).ThenByDescending(item => item.Id)
+            .Take(FounderSectionPageSize + 1)
+            .Select(item => new { item.Id, item.PairKey, item.Dimension, item.Value, item.Provenance, item.CreatedUtc })
+            .ToListAsync(cancellationToken);
+        return FounderPage("evidence", language, search, anchors,
+            item => item.Id, item => item.CreatedUtc,
+            item => new[] { item.Id.ToString("D"), item.PairKey ?? "Source", item.Dimension, item.Value, item.Provenance, item.CreatedUtc.ToString("u", CultureInfo.InvariantCulture) },
+            new[] { "Anchor ID", "Scope", "Dimension", "Value", "Provenance", "Created" },
+            "No active compositional anchors match this language and filter.");
+    }
+
+    private async Task<LegendConnectFounderSectionPageSnapshot> GetRelationshipPageAsync(
+        string language,
+        string? search,
+        FounderSectionCursor? cursor,
+        CancellationToken cancellationToken)
+    {
+        var query = _db.Set<LegendLanguageStructuralRelationship>().AsNoTracking()
+            .Where(item => item.LanguageCode == language && item.SupersededUtc == null);
+        if (search is not null)
+            query = query.Where(item => item.PairKey.ToLower().Contains(search) || item.VariationDimension.ToLower().Contains(search) ||
+                item.MaturityState.ToLower().Contains(search) || item.Provenance.ToLower().Contains(search));
+        if (cursor is { } after)
+            query = query.Where(item => item.UpdatedUtc < after.UpdatedUtc ||
+                (item.UpdatedUtc == after.UpdatedUtc && item.Id.CompareTo(after.Id) < 0));
+        var relationships = await query.OrderByDescending(item => item.UpdatedUtc).ThenByDescending(item => item.Id)
+            .Take(FounderSectionPageSize + 1)
+            .Select(item => new { item.Id, item.PairKey, item.VariationDimension, item.MaturityState, item.SupportCount, item.IndependentSourceCount, item.ContradictionCount, item.IsProductionEligible, item.UpdatedUtc })
+            .ToListAsync(cancellationToken);
+        return FounderPage("relationships", language, search, relationships,
+            item => item.Id, item => item.UpdatedUtc,
+            item => new[] { item.PairKey, item.VariationDimension, item.MaturityState, item.SupportCount.ToString(CultureInfo.InvariantCulture), item.IndependentSourceCount.ToString(CultureInfo.InvariantCulture), item.ContradictionCount.ToString(CultureInfo.InvariantCulture), item.IsProductionEligible ? "Eligible" : "Closed", item.UpdatedUtc.ToString("u", CultureInfo.InvariantCulture) },
+            new[] { "Pair", "Dimension", "Maturity", "Support", "Independent", "Contradictions", "Production", "Updated" },
+            "No active structural relationships match this language and filter.");
+    }
+
+    private async Task<LegendConnectFounderSectionPageSnapshot> GetLearningPageAsync(
+        string language,
+        string? search,
+        FounderSectionCursor? cursor,
+        CancellationToken cancellationToken)
+    {
+        var query = _db.Set<LegendTranslationLearningEvent>().AsNoTracking()
+            .Where(item => item.SourceLanguageCode == language || item.TargetLanguageCode == language);
+        if (search is not null)
+            query = query.Where(item => item.PairKey.ToLower().Contains(search) || item.Provenance.ToLower().Contains(search) ||
+                item.ProcessingState.ToLower().Contains(search) || (item.FailureCode ?? string.Empty).ToLower().Contains(search));
+        if (cursor is { } after)
+            query = query.Where(item => item.CreatedUtc < after.UpdatedUtc ||
+                (item.CreatedUtc == after.UpdatedUtc && item.Id.CompareTo(after.Id) < 0));
+        var events = await query.OrderByDescending(item => item.CreatedUtc).ThenByDescending(item => item.Id)
+            .Take(FounderSectionPageSize + 1)
+            .Select(item => new { item.Id, item.PairKey, item.Provenance, item.EligibilityState, item.ProcessingState, item.AttemptCount, item.FailureCode, item.CreatedUtc })
+            .ToListAsync(cancellationToken);
+        return FounderPage("learning", language, search, events,
+            item => item.Id, item => item.CreatedUtc,
+            item => new[] { item.PairKey, item.Provenance, item.EligibilityState, item.ProcessingState, item.AttemptCount.ToString(CultureInfo.InvariantCulture), item.FailureCode ?? "—", item.CreatedUtc.ToString("u", CultureInfo.InvariantCulture) },
+            new[] { "Pair", "Provenance", "Eligibility", "State", "Attempts", "Failure", "Queued" },
+            "No learning events match this language and filter.");
+    }
+
+    private async Task<LegendConnectFounderSectionPageSnapshot> GetModelPageAsync(
+        string language,
+        string? search,
+        FounderSectionCursor? cursor,
+        CancellationToken cancellationToken)
+    {
+        var query = _db.Set<LegendConnectModelTrainingRun>().AsNoTracking();
+        if (search is not null)
+            query = query.Where(item => item.ScopeKey.ToLower().Contains(search) || item.State.ToLower().Contains(search) ||
+                item.EvaluationState.ToLower().Contains(search) || item.PromotionState.ToLower().Contains(search));
+        if (cursor is { } after)
+            query = query.Where(item => item.UpdatedUtc < after.UpdatedUtc ||
+                (item.UpdatedUtc == after.UpdatedUtc && item.Id.CompareTo(after.Id) < 0));
+        var models = await query.OrderByDescending(item => item.UpdatedUtc).ThenByDescending(item => item.Id)
+            .Take(FounderSectionPageSize + 1)
+            .Select(item => new { item.Id, item.ScopeKey, item.Generation, item.State, item.EvaluationState, item.PromotionState, item.TrainingExampleCount, item.ValidationExampleCount, item.UpdatedUtc })
+            .ToListAsync(cancellationToken);
+        return FounderPage("models", language, search, models,
+            item => item.Id, item => item.UpdatedUtc,
+            item => new[] { item.ScopeKey, item.Generation.ToString(CultureInfo.InvariantCulture), item.State, item.EvaluationState, item.PromotionState, item.TrainingExampleCount.ToString(CultureInfo.InvariantCulture), item.ValidationExampleCount.ToString(CultureInfo.InvariantCulture), item.UpdatedUtc.ToString("u", CultureInfo.InvariantCulture) },
+            new[] { "Scope", "Generation", "Training", "Evaluation", "Promotion", "Training examples", "Validation examples", "Updated" },
+            "No model lifecycle runs match this filter.");
+    }
+
+    private async Task<LegendConnectFounderSectionPageSnapshot> GetHealthPageAsync(
+        string language,
+        string? search,
+        FounderSectionCursor? cursor,
+        CancellationToken cancellationToken)
+    {
+        var query = _db.Set<LegendConnectOperationalEvent>().AsNoTracking()
+            .Where(item => item.LanguageCode == language);
+        if (search is not null)
+            query = query.Where(item => item.Category.ToLower().Contains(search) || item.Severity.ToLower().Contains(search) ||
+                item.Status.ToLower().Contains(search) || (item.ErrorCode ?? string.Empty).ToLower().Contains(search));
+        if (cursor is { } after)
+            query = query.Where(item => item.OccurredUtc < after.UpdatedUtc ||
+                (item.OccurredUtc == after.UpdatedUtc && item.Id.CompareTo(after.Id) < 0));
+        var events = await query.OrderByDescending(item => item.OccurredUtc).ThenByDescending(item => item.Id)
+            .Take(FounderSectionPageSize + 1)
+            .Select(item => new { item.Id, item.Category, item.Severity, item.Status, item.PairKey, item.ErrorCode, item.Summary, item.IsResolved, item.OccurredUtc })
+            .ToListAsync(cancellationToken);
+        return FounderPage("health", language, search, events,
+            item => item.Id, item => item.OccurredUtc,
+            item => new[] { item.Category, item.Severity, item.Status, item.PairKey ?? "—", item.ErrorCode ?? "—", item.Summary ?? "—", item.IsResolved ? "Resolved" : "Open", item.OccurredUtc.ToString("u", CultureInfo.InvariantCulture) },
+            new[] { "Category", "Severity", "Status", "Pair", "Code", "Summary", "Resolution", "Occurred" },
+            "No health events match this language and filter.");
+    }
+
+    private async Task<LegendConnectFounderSectionPageSnapshot> GetRetainedKnowledgePageAsync(
+        string language,
+        string? search,
+        FounderSectionCursor? cursor,
+        CancellationToken cancellationToken)
+    {
+        var query = _db.Set<LegendLanguageTextUnit>().AsNoTracking()
+            .Where(item => item.LanguageCode == language && item.IsTrainingEligible &&
+                item.Provenance != "ConsentedLiveTranslation");
+        if (search is not null)
+            query = query.Where(item => item.Text.ToLower().Contains(search) || item.Provenance.ToLower().Contains(search));
+        if (cursor is { } after)
+            query = query.Where(item => item.UpdatedUtc < after.UpdatedUtc ||
+                (item.UpdatedUtc == after.UpdatedUtc && item.Id.CompareTo(after.Id) < 0));
+        var entries = await query.OrderByDescending(item => item.UpdatedUtc).ThenByDescending(item => item.Id)
+            .Take(FounderSectionPageSize + 1)
+            .Select(item => new { item.Id, item.Text, item.Provenance, item.CreatedUtc, item.UpdatedUtc })
+            .ToListAsync(cancellationToken);
+        return FounderPage("retained-knowledge", language, search, entries,
+            item => item.Id, item => item.UpdatedUtc,
+            item => new[] { item.Id.ToString("D"), item.Text, item.Provenance, item.CreatedUtc.ToString("u", CultureInfo.InvariantCulture), item.UpdatedUtc.ToString("u", CultureInfo.InvariantCulture) },
+            new[] { "Text unit ID", "Canonical retained text", "Provenance", "Created", "Updated" },
+            "No retained canonical knowledge matches this language and filter.");
+    }
+
+    private async Task<LegendConnectFounderSectionPageSnapshot> GetPairPageAsync(
+        string language,
+        string? search,
+        FounderSectionCursor? cursor,
+        CancellationToken cancellationToken)
+    {
+        var query = _db.Set<LegendLanguagePair>().AsNoTracking()
+            .Where(item => item.SourceLanguageCode == language || item.TargetLanguageCode == language);
+        if (search is not null)
+            query = query.Where(item => item.PairKey.ToLower().Contains(search) || item.QualityState.ToLower().Contains(search));
+        if (cursor is { } after)
+            query = query.Where(item => item.UpdatedUtc < after.UpdatedUtc ||
+                (item.UpdatedUtc == after.UpdatedUtc && item.Id.CompareTo(after.Id) < 0));
+        var pairs = await query.OrderByDescending(item => item.UpdatedUtc).ThenByDescending(item => item.Id)
+            .Take(FounderSectionPageSize + 1)
+            .Select(item => new { item.Id, item.PairKey, item.SourceLanguageCode, item.TargetLanguageCode, item.CorpusCoverage, item.QualityState, item.IsEnabled, item.UpdatedUtc })
+            .ToListAsync(cancellationToken);
+        return FounderPage("language-pairs", language, search, pairs,
+            item => item.Id, item => item.UpdatedUtc,
+            item => new[] { item.PairKey, item.SourceLanguageCode, item.TargetLanguageCode, item.CorpusCoverage.ToString(CultureInfo.InvariantCulture), item.QualityState, item.IsEnabled ? "Enabled" : "Disabled", item.UpdatedUtc.ToString("u", CultureInfo.InvariantCulture) },
+            new[] { "Pair", "Source", "Target", "Coverage", "Quality", "State", "Updated" },
+            "No language pairs match this language and filter.");
+    }
+
+    private async Task<LegendConnectFounderSectionPageSnapshot> GetProviderObservationPageAsync(
+        string language,
+        string? search,
+        FounderSectionCursor? cursor,
+        CancellationToken cancellationToken)
+    {
+        var query =
+            from alignment in _db.Set<LegendTranslationAlignment>().AsNoTracking()
+            join source in _db.Set<LegendLanguageTextUnit>().AsNoTracking() on alignment.SourceTextUnitId equals source.Id
+            join target in _db.Set<LegendLanguageTextUnit>().AsNoTracking() on alignment.TargetTextUnitId equals target.Id
+            where alignment.Provenance == LegendConnectKnowledgeProvenance.ProviderDerived && alignment.SupersededUtc == null &&
+                source.IsTrainingEligible && target.IsTrainingEligible && source.Provenance == LegendConnectKnowledgeProvenance.FounderApproved &&
+                (source.LanguageCode == language || target.LanguageCode == language)
+            select new { alignment.Id, alignment.PairKey, Source = source.Text, Target = target.Text, alignment.QualityState, alignment.HumanVerified, alignment.UpdatedUtc };
+        if (search is not null)
+            query = query.Where(item => item.PairKey.ToLower().Contains(search) || item.Source.ToLower().Contains(search) || item.Target.ToLower().Contains(search) || item.QualityState.ToLower().Contains(search));
+        if (cursor is { } after)
+            query = query.Where(item => item.UpdatedUtc < after.UpdatedUtc ||
+                (item.UpdatedUtc == after.UpdatedUtc && item.Id.CompareTo(after.Id) < 0));
+        var observations = await query.OrderByDescending(item => item.UpdatedUtc).ThenByDescending(item => item.Id)
+            .Take(FounderSectionPageSize + 1).ToListAsync(cancellationToken);
+        return FounderPage("provider-observations", language, search, observations,
+            item => item.Id, item => item.UpdatedUtc,
+            item => new[] { item.Id.ToString("D"), item.PairKey, item.Source, item.Target, item.QualityState, item.HumanVerified ? "Human verified" : "Observation", item.UpdatedUtc.ToString("u", CultureInfo.InvariantCulture) },
+            new[] { "Alignment ID", "Pair", "Founder source", "Provider target", "Quality", "Authority", "Updated" },
+            "No provider observations match this language and filter.");
+    }
+
+    private static LegendConnectFounderSectionPageSnapshot FounderPage<T>(
+        string section,
+        string language,
+        string? search,
+        IReadOnlyList<T> values,
+        Func<T, Guid> id,
+        Func<T, DateTime> updatedUtc,
+        Func<T, IReadOnlyList<string>> map,
+        IReadOnlyList<string> columns,
+        string emptyMessage)
+    {
+        var hasMore = values.Count > FounderSectionPageSize;
+        var page = values.Take(FounderSectionPageSize).ToList();
+        var nextCursor = hasMore && page.Count > 0
+            ? FormatFounderSectionCursor(updatedUtc(page[^1]), id(page[^1]))
+            : null;
+        return new LegendConnectFounderSectionPageSnapshot(
+            section,
+            language,
+            search,
+            FounderSectionPageSize,
+            nextCursor,
+            columns,
+            page.Select(map).ToList(),
+            page.Count == 0 ? emptyMessage : null);
+    }
+
+    private static string? NormalizeFounderSectionSearch(string? search)
+    {
+        var normalized = search?.Trim();
+        return string.IsNullOrWhiteSpace(normalized)
+            ? null
+            : normalized[..Math.Min(normalized.Length, 160)].ToLowerInvariant();
+    }
+
+    private static FounderSectionCursor? ParseFounderSectionCursor(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return null;
+        try
+        {
+            var parts = Encoding.UTF8.GetString(Convert.FromBase64String(value)).Split(':', 2);
+            return parts.Length == 2 && long.TryParse(parts[0], out var ticks) && Guid.TryParseExact(parts[1], "N", out var id)
+                ? new FounderSectionCursor(new DateTime(ticks, DateTimeKind.Utc), id)
+                : throw new ArgumentException("The Founder section cursor is invalid.", nameof(value));
+        }
+        catch (FormatException)
+        {
+            throw new ArgumentException("The Founder section cursor is invalid.", nameof(value));
+        }
+    }
+
+    private static string FormatFounderSectionCursor(DateTime updatedUtc, Guid id) =>
+        Convert.ToBase64String(Encoding.UTF8.GetBytes($"{updatedUtc.Ticks}:{id:N}"));
+
+    private sealed record FounderSectionCursor(DateTime UpdatedUtc, Guid Id);
+
+    private async Task<LegendConnectOperationalState> LoadStateAsync(
+        CancellationToken cancellationToken,
+        bool includeMetricDetailRecords = false)
+    {
+        var operationalEvents = _db.Set<LegendConnectOperationalEvent>().AsNoTracking();
+        var auditEntries = _db.Set<LegendConnectKnowledgeAuditEntry>().AsNoTracking();
+        var founderTrainingSubmissions = _db.Set<LegendFounderTrainingSubmission>().AsNoTracking();
+        var founderTrainingSubmissionUnits = _db.Set<LegendFounderTrainingSubmissionUnit>().AsNoTracking();
+
+        // Dashboard and language/pair views show a bounded event feed plus
+        // aggregate governance counts. Full immutable evidence is fetched only
+        // when a Founder explicitly opens a metric-detail view.
+        var dashboardEvents = includeMetricDetailRecords
+            ? await operationalEvents.ToListAsync(cancellationToken)
+            : await operationalEvents
+                .OrderByDescending(item => item.OccurredUtc)
+                .Take(50)
+                .ToListAsync(cancellationToken);
+        IReadOnlyList<LegendConnectKnowledgeAuditEntry> dashboardAuditEntries = includeMetricDetailRecords
+            ? await auditEntries.ToListAsync(cancellationToken)
+            : Array.Empty<LegendConnectKnowledgeAuditEntry>();
+        IReadOnlyList<LegendFounderTrainingSubmission> dashboardFounderTrainingSubmissions = includeMetricDetailRecords
+            ? await founderTrainingSubmissions.ToListAsync(cancellationToken)
+            : Array.Empty<LegendFounderTrainingSubmission>();
+        IReadOnlyList<LegendFounderTrainingSubmissionUnit> dashboardFounderTrainingSubmissionUnits = includeMetricDetailRecords
+            ? await founderTrainingSubmissionUnits.ToListAsync(cancellationToken)
+            : Array.Empty<LegendFounderTrainingSubmissionUnit>();
+
+        var duplicateOperationalEventCount = includeMetricDetailRecords
+            ? dashboardEvents.LongCount(item => item.Category == "DuplicatePrevention" && item.Status == "Prevented")
+            : await operationalEvents.LongCountAsync(
+                item => item.Category == "DuplicatePrevention" && item.Status == "Prevented",
+                cancellationToken);
+        var duplicateKnowledgeAuditCount = includeMetricDetailRecords
+            ? dashboardAuditEntries.LongCount(item => item.Result == "DuplicatePrevented")
+            : await auditEntries.LongCountAsync(item => item.Result == "DuplicatePrevented", cancellationToken);
+        var founderTrainingSubmissionCount = includeMetricDetailRecords
+            ? dashboardFounderTrainingSubmissions.LongCount()
+            : await founderTrainingSubmissions.LongCountAsync(cancellationToken);
+        var founderTrainingSubmissionUnitCount = includeMetricDetailRecords
+            ? dashboardFounderTrainingSubmissionUnits.LongCount()
+            : await founderTrainingSubmissionUnits.LongCountAsync(cancellationToken);
+        var retiredLegacyFounderTrainingSubmissionCount = await (
+            from submission in founderTrainingSubmissions
+            join unit in _db.Set<LegendLanguageTextUnit>().AsNoTracking()
+                on submission.LegacySourceTextUnitId equals unit.Id
+            where submission.LegacySourceTextUnitId != null && !unit.IsTrainingEligible
+            select submission.Id)
+            .LongCountAsync(cancellationToken);
+
+        return new LegendConnectOperationalState(
+            await _db.Set<LegendLanguageDefinition>().AsNoTracking().ToListAsync(cancellationToken),
+            await _db.Set<LegendLanguagePair>().AsNoTracking().ToListAsync(cancellationToken),
+            await _db.Set<LegendLanguageTextUnit>().AsNoTracking().ToListAsync(cancellationToken),
+            await _db.Set<LegendTranslationAlignment>().AsNoTracking().ToListAsync(cancellationToken),
+            await _db.Set<LegendLanguageContextRelationship>().AsNoTracking().ToListAsync(cancellationToken),
+            await _db.Set<LegendTranslationLearningEvent>().AsNoTracking().ToListAsync(cancellationToken),
+            await _db.Set<LegendCorpusCandidate>().AsNoTracking().ToListAsync(cancellationToken),
+            await _db.Set<LegendTranslationPairDemand>().AsNoTracking().ToListAsync(cancellationToken),
+            await _db.Set<LegendTranslationSystemUsage>().AsNoTracking().ToListAsync(cancellationToken),
+            await _db.Set<LegendTranslationProviderCapacity>().AsNoTracking().ToListAsync(cancellationToken),
+            dashboardEvents,
+            dashboardAuditEntries,
+            dashboardFounderTrainingSubmissions,
+            dashboardFounderTrainingSubmissionUnits,
+            duplicateOperationalEventCount,
+            duplicateKnowledgeAuditCount,
+            founderTrainingSubmissionCount,
+            founderTrainingSubmissionUnitCount,
+            retiredLegacyFounderTrainingSubmissionCount);
+    }
 
     private static LegendLanguageDefinition? ResolveLanguage(IEnumerable<LegendLanguageDefinition> languages, string value)
     {
@@ -3103,7 +3690,12 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
         IReadOnlyList<LegendConnectOperationalEvent> OperationalEvents,
         IReadOnlyList<LegendConnectKnowledgeAuditEntry> AuditEntries,
         IReadOnlyList<LegendFounderTrainingSubmission> FounderTrainingSubmissions,
-        IReadOnlyList<LegendFounderTrainingSubmissionUnit> FounderTrainingSubmissionUnits);
+        IReadOnlyList<LegendFounderTrainingSubmissionUnit> FounderTrainingSubmissionUnits,
+        long DuplicateOperationalEventCount,
+        long DuplicateKnowledgeAuditCount,
+        long FounderTrainingSubmissionCount,
+        long FounderTrainingSubmissionUnitCount,
+        long RetiredLegacyFounderTrainingSubmissionCount);
 
     private sealed record TranslationRouteAuditRow(
         Guid MessageId,

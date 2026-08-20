@@ -182,6 +182,47 @@ public sealed class LegendLanguageContextRelationship
 }
 
 /// <summary>
+/// One governed observation that an explicitly controlled source semantic
+/// frame transforms into an explicitly controlled result semantic frame.
+/// Curriculum examples remain the only surface evidence; this record stores
+/// neither a prompt nor an answer and is reusable by any LEGEND reasoning
+/// consumer. Aggregate support, independence, contradiction, maturity, and
+/// production eligibility are derived from active observations sharing the
+/// same transition identity.
+/// </summary>
+public sealed class LegendSemanticTransitionEvidence
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public string TransitionSignature { get; set; } = string.Empty;
+    public string SourceSemanticFrameSignature { get; set; } = string.Empty;
+    public string ResultSemanticFrameSignature { get; set; } = string.Empty;
+    /// <summary>
+    /// Canonical, sorted controlled dimensions for the source frame. The
+    /// signature remains the compact identity; this payload lets the one
+    /// governed authority evaluate a generic frame without a second ontology.
+    /// </summary>
+    public string SourceSemanticFrame { get; set; } = string.Empty;
+    /// <summary>Canonical, sorted controlled dimensions for the result frame.</summary>
+    public string ResultSemanticFrame { get; set; } = string.Empty;
+    public string SourceLanguageCode { get; set; } = string.Empty;
+    public string ResultLanguageCode { get; set; } = string.Empty;
+    public Guid SourceCurriculumExampleId { get; set; }
+    public Guid ResultCurriculumExampleId { get; set; }
+    /// <summary>
+    /// A stable family-pair identity prevents repeated examples or provider
+    /// retries from manufacturing independent transition support.
+    /// </summary>
+    public string IndependentSourceIdentity { get; set; } = string.Empty;
+    /// <summary>Supported, Contradictory, or Insufficient.</summary>
+    public string ContributionState { get; set; } = "Insufficient";
+    public bool IsHumanVerifiedSupport { get; set; }
+    public string Provenance { get; set; } = "FounderApproved";
+    public DateTime? SupersededUtc { get; set; }
+    public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
+    public DateTime UpdatedUtc { get; set; } = DateTime.UtcNow;
+}
+
+/// <summary>
 /// Durable, idempotent hand-off from production translation to the optional
 /// Legend Connect learning pipeline. Source and target text are populated only
 /// when the central eligibility policy has approved their retention.

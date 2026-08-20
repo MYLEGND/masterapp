@@ -2,6 +2,21 @@ using Domain.Messaging;
 
 namespace AgentPortal.Models;
 
+/// <summary>
+/// Initial Founder page model. Detailed Legend data stays on the existing
+/// server authorities and is requested in bounded sections after the page has
+/// rendered; this model intentionally carries no corpus or evidence rows.
+/// </summary>
+public sealed class FounderLegendConnectPageVm
+{
+    public LegendConnectFounderShellSnapshot Shell { get; init; } = new(
+        Array.Empty<LegendConnectFounderLanguageOptionSnapshot>(),
+        null);
+
+    public LegendConnectRuntimePolicySnapshot RuntimePolicy { get; init; } = new(
+        false, 0, 0, 0, false, true, "Shadow", 0.98m, null, null, DateTime.MinValue);
+}
+
 public sealed class FounderLegendConnectDashboardVm
 {
     public LegendConnectDashboardSnapshot Dashboard { get; init; } = new(

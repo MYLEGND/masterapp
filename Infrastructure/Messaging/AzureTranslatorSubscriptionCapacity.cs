@@ -54,10 +54,15 @@ internal sealed class AzureTranslatorSubscriptionCapacitySource : IAzureTranslat
 {
     private const string ResourceManagerScope = "https://management.azure.com/.default";
     private static readonly TimeSpan MinimumRefreshInterval = TimeSpan.FromMinutes(2);
+    // Capacity is an operational safety signal, not a page-load dependency.
+    // Bound a cold Azure AD/ARM refresh so Founder operations fail closed
+    // promptly when Azure cannot be reached.
+    private static readonly TimeSpan RefreshTimeout = TimeSpan.FromSeconds(3);
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly IConfiguration _configuration;
     private readonly ILogger<AzureTranslatorSubscriptionCapacitySource> _logger;
     private readonly TokenCredential _credential;
+    private readonly TimeSpan _refreshTimeout;
     private readonly SemaphoreSlim _refreshLock = new(1, 1);
     private AzureTranslatorSubscriptionCapacity? _cached;
 
@@ -65,12 +70,14 @@ internal sealed class AzureTranslatorSubscriptionCapacitySource : IAzureTranslat
         IHttpClientFactory httpClientFactory,
         IConfiguration configuration,
         ILogger<AzureTranslatorSubscriptionCapacitySource> logger,
-        TokenCredential? credential = null)
+        TokenCredential? credential = null,
+        TimeSpan? refreshTimeout = null)
     {
         _httpClientFactory = httpClientFactory;
         _configuration = configuration;
         _logger = logger;
         _credential = credential ?? new DefaultAzureCredential();
+        _refreshTimeout = refreshTimeout ?? RefreshTimeout;
     }
 
     public async Task<AzureTranslatorSubscriptionCapacity> GetCurrentAsync(
@@ -93,14 +100,17 @@ internal sealed class AzureTranslatorSubscriptionCapacitySource : IAzureTranslat
 
             try
             {
+                using var refreshCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                refreshCancellation.CancelAfter(_refreshTimeout);
+                var refreshToken = refreshCancellation.Token;
                 var token = await _credential.GetTokenAsync(
-                    new TokenRequestContext([ResourceManagerScope]), cancellationToken);
+                    new TokenRequestContext([ResourceManagerScope]), refreshToken);
                 using var request = new HttpRequestMessage(
                     HttpMethod.Get,
                     resourceId + "?api-version=2024-10-01");
                 request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token.Token);
                 using var response = await _httpClientFactory.CreateClient("AzureResourceManager")
-                    .SendAsync(request, cancellationToken);
+                    .SendAsync(request, refreshToken);
                 if (!response.IsSuccessStatusCode)
                 {
                     _logger.LogWarning(
@@ -110,7 +120,7 @@ internal sealed class AzureTranslatorSubscriptionCapacitySource : IAzureTranslat
                 }
 
                 using var document = JsonDocument.Parse(
-                    await response.Content.ReadAsStreamAsync(cancellationToken));
+                    await response.Content.ReadAsStreamAsync(refreshToken));
                 var resourceName = document.RootElement.TryGetProperty("name", out var name)
                     ? name.GetString()?.Trim()
                     : null;

@@ -53,7 +53,29 @@ public sealed class LegendFounderAiProviderResilienceTests
     }
 
     [Fact]
-    public void CasualProviderBudgetIsInteractiveAndDoesNotUseGovernedRoundWindow()
+    public void BillingQuota429IsNotClassifiedAsTransientRateLimiting()
+    {
+        var method = typeof(LegendFounderAiConversationService)
+            .GetMethod("IsBillingOrQuotaRejection", BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.NotNull(method);
+
+        var billing = Assert.IsType<bool>(method!.Invoke(null, new object[]
+        {
+            HttpStatusCode.TooManyRequests,
+            """{"error":{"type":"insufficient_quota","code":"insufficient_quota"}}"""
+        }));
+        var temporary = Assert.IsType<bool>(method.Invoke(null, new object[]
+        {
+            HttpStatusCode.TooManyRequests,
+            """{"error":{"type":"rate_limit_error","code":"rate_limit_exceeded"}}"""
+        }));
+
+        Assert.True(billing);
+        Assert.False(temporary);
+    }
+
+    [Fact]
+    public void CasualProviderBudgetUsesRequestScopedWindowInsteadOfLegacyShortGuillotine()
     {
         var method = typeof(LegendFounderAiConversationService).GetMethod("ResolveProviderBudget", BindingFlags.NonPublic | BindingFlags.Static);
         Assert.NotNull(method);
@@ -67,8 +89,7 @@ public sealed class LegendFounderAiProviderResilienceTests
             TimeSpan.FromSeconds(120)
         }));
 
-        Assert.InRange(budget.TotalSeconds, 8, 18);
-        Assert.True(budget < TimeSpan.FromSeconds(20));
+        Assert.Equal(TimeSpan.FromSeconds(75), budget);
     }
 
     [Fact]

@@ -161,10 +161,38 @@ public sealed record LegendConnectCurriculumExampleSubmission(
     string Text,
     IReadOnlyDictionary<string, string> Variations);
 
+/// <summary>
+/// One explicit, language-neutral semantic frame pattern. Keys and values are
+/// Founder-controlled curriculum dimensions; a value beginning with '$' binds
+/// one semantic variable across the source and result frame.
+/// </summary>
+public sealed record LegendConnectSemanticFrameSubmission(
+    IReadOnlyDictionary<string, string> Dimensions);
+
+/// <summary>
+/// Evidence that a governed source semantic frame can transform into a
+/// governed result semantic frame. This is not a text-to-text answer mapping:
+/// individual curriculum examples supply the evidence after persistence.
+/// </summary>
+public sealed record LegendConnectSemanticTransitionSubmission(
+    LegendConnectSemanticFrameSubmission Source,
+    LegendConnectSemanticFrameSubmission Result);
+
+/// <summary>
+/// Founder-declared grounding for a non-literal source-frame dimension. It
+/// identifies the already-controlled surface dimension which carries that
+/// meaning in a source example; it is not a runtime routing rule.
+/// </summary>
+public sealed record LegendConnectSemanticSpanGroundingSubmission(
+    string SemanticDimension,
+    string SurfaceDimension);
+
 public sealed record LegendConnectCurriculumBatchSubmission(
     string FamilyKey,
     string? SemanticCategory,
-    IReadOnlyList<LegendConnectCurriculumExampleSubmission> Examples);
+    IReadOnlyList<LegendConnectCurriculumExampleSubmission> Examples,
+    IReadOnlyList<LegendConnectSemanticTransitionSubmission>? SemanticTransitions = null,
+    IReadOnlyList<LegendConnectSemanticSpanGroundingSubmission>? SemanticSpanGroundings = null);
 
 /// <summary>
 /// One Founder action may carry multiple explicitly bounded semantic families.
@@ -509,6 +537,49 @@ public sealed record LegendConnectDashboardProjectionSnapshot(
     LegendConnectPairHealthSnapshot? SelectedPair);
 
 /// <summary>
+/// Bounded initial projection for the Founder Legend Connect page. It is a
+/// navigation and summary surface only: detailed curriculum, evidence, model,
+/// and learning records are intentionally requested through the corresponding
+/// paged Founder section after the user opens it.
+/// </summary>
+public sealed record LegendConnectFounderShellSnapshot(
+    IReadOnlyList<LegendConnectFounderLanguageOptionSnapshot> Languages,
+    LegendConnectFounderLanguageSummarySnapshot? SelectedLanguage);
+
+public sealed record LegendConnectFounderLanguageOptionSnapshot(
+    string LanguageCode,
+    string DisplayName,
+    bool IsEnabled);
+
+public sealed record LegendConnectFounderLanguageSummarySnapshot(
+    string LanguageCode,
+    string DisplayName,
+    string HealthState,
+    long CanonicalEntryCount,
+    long CurriculumExampleCount,
+    long CompositionalAnchorCount,
+    long ActiveRelationshipCount,
+    long PendingLearningCount,
+    long CandidateCount,
+    long OpenIssueCount,
+    DateTime? LastCurriculumUpdateUtc);
+
+/// <summary>
+/// A single server-ranked, keyset-paginated Founder inspection page. Rows are
+/// display projections of the existing authorities, never a browser cache or
+/// a separate knowledge store. A null cursor means there is no next page.
+/// </summary>
+public sealed record LegendConnectFounderSectionPageSnapshot(
+    string Section,
+    string LanguageCode,
+    string? Search,
+    int PageSize,
+    string? NextCursor,
+    IReadOnlyList<string> Columns,
+    IReadOnlyList<IReadOnlyList<string>> Rows,
+    string? EmptyMessage = null);
+
+/// <summary>
 /// A Founder-safe, record-level explanation for one live dashboard metric.
 /// These rows are projections of the established operational ledgers and
 /// corpus records; they never create a second reporting or learning store.
@@ -645,6 +716,29 @@ public sealed record LegendConnectRetainedKnowledgeSearchSnapshot(
     IReadOnlyList<LegendConnectRetainedKnowledgeItemSnapshot> Items);
 
 /// <summary>
+/// A bounded prior turn supplied to the existing LEGEND operations authority
+/// for a read-only conversational inference attempt. It is request context,
+/// not durable chat memory.
+/// </summary>
+public sealed record LegendConnectConversationContextItem(
+    string Role,
+    string Content);
+
+/// <summary>
+/// The governed result of one native LEGEND conversational inference attempt.
+/// A successful result is backed only by canonical, contradiction-free
+/// evidence; all other states explicitly require escalation.
+/// </summary>
+public sealed record LegendConnectNativeInferenceSnapshot(
+    bool Supported,
+    decimal Confidence,
+    string? Answer,
+    string ReasonCode,
+    int EvidenceCount,
+    string AuthoritySummary,
+    bool RequiresEscalation);
+
+/// <summary>
 /// The sole read/write authority for Legend Connect operations. Presentation
 /// layers may use it only after their established Founder authorization guard
 /// succeeds; it owns neither identity authorization nor mobile contracts.
@@ -657,6 +751,18 @@ public interface ILegendConnectOperations
     Task<LegendConnectDashboardProjectionSnapshot> GetDashboardProjectionAsync(
         string? languageCode,
         string? pairKey,
+        CancellationToken cancellationToken = default);
+
+    Task<LegendConnectFounderShellSnapshot> GetFounderShellAsync(
+        string? languageCode,
+        CancellationToken cancellationToken = default);
+
+    Task<LegendConnectFounderSectionPageSnapshot> GetFounderSectionPageAsync(
+        string section,
+        string? languageCode,
+        string? search,
+        string? cursor,
+        Guid? curriculumFamilyId = null,
         CancellationToken cancellationToken = default);
 
     Task<LegendConnectProviderCapacitySnapshot> GetProviderCapacityAsync(
@@ -703,6 +809,11 @@ public interface ILegendConnectOperations
         string? sourceLanguageCode = null,
         string? targetLanguageCode = null,
         int take = 12,
+        CancellationToken cancellationToken = default);
+
+    Task<LegendConnectNativeInferenceSnapshot> TryInferConversationAsync(
+        string input,
+        IReadOnlyList<LegendConnectConversationContextItem> context,
         CancellationToken cancellationToken = default);
 
     Task<LegendConnectKnowledgeSubmissionResult> SubmitFounderKnowledgeAsync(

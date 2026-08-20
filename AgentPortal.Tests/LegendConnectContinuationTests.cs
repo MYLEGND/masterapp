@@ -421,8 +421,8 @@ public sealed class LegendConnectContinuationTests
             };
 
             var languagePage = Assert.IsType<ViewResult>(await controller.Index("en", null, CancellationToken.None));
-            var languageModel = Assert.IsType<FounderLegendConnectDashboardVm>(languagePage.Model);
-            Assert.NotNull(languageModel.SelectedLanguageKnowledge);
+            var languageModel = Assert.IsType<FounderLegendConnectPageVm>(languagePage.Model);
+            Assert.NotNull(languageModel.Shell);
             var submitted = await service.SubmitAsync(founder, new FounderLegendConnectKnowledgeInput
             {
                 SourceLanguageCode = "en", SourceText = "Correction source", TargetLanguageCode = "ht", TargetText = "Correction target", ContextCategory = "Phrase"

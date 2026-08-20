@@ -1,691 +1,92 @@
 @using AgentPortal.Models
-@model AgentPortal.Models.FounderLegendConnectDashboardVm
+@model FounderLegendConnectPageVm
 @{
     ViewData["Title"] = "Legend Connect";
-    var dashboard = Model.Dashboard;
-    var providerCapacity = dashboard.ProviderCapacity;
-    var policy = Model.RuntimePolicy;
-    var readiness = Model.ProductionReadiness;
-    var routedRequestCount = dashboard.TranslationMemoryHitCount + dashboard.StructuralInternalServeCount + dashboard.ContextualInternalServeCount + dashboard.AzureFallbackCount;
-    var focusEnabled = policy.FocusedTargetLanguageCodes.Count > 0;
-    var compositionMode = policy.ContextualCompositionMode switch
-    {
-        "Disabled" => "Disabled",
-        "Active" => "Active",
-        _ => "Shadow"
-    };
-    var compositionStateClass = compositionMode.ToLowerInvariant();
-    var focusedLanguageNames = string.Join(", ", dashboard.Languages
-        .Where(language => policy.FocusedTargetLanguageCodes.Contains(language.LanguageCode, StringComparer.OrdinalIgnoreCase))
-        .Select(language => language.DisplayName));
-    string AzureCapacityDisplay(long? value, bool isMeteredWhenNull = false) =>
-        providerCapacity?.IsSynchronized == true
-            ? value?.ToString("N0") ?? (isMeteredWhenNull ? "Metered" : "Unavailable")
-            : "Unavailable";
+    var shell = Model.Shell;
+    var selected = shell.SelectedLanguage;
 }
-
 
 @section Styles {
     <link rel="stylesheet" href="~/css/legend-connect.css" asp-append-version="true" />
 }
 
-<main class="dashboard-page-shell legend-connect-page">
+<main class="dashboard-page-shell legend-connect-page" data-legend-connect-shell data-language="@selected?.LanguageCode">
     <section class="dashboard-command-center-panel" aria-labelledby="legend-connect-title">
         <div class="dashboard-command-center-top">
             <div class="dashboard-hero-copy">
                 <span class="dashboard-eyebrow">Founder · Language intelligence</span>
                 <h1 class="dashboard-hero-title" id="legend-connect-title">Legend® Connect</h1>
-                <section class="legend-connect-production-control" aria-labelledby="production-composition-title">
-                    <div class="legend-connect-production-control-head">
-                        <span><span class="legend-connect-production-kicker">Production composition</span><span class="legend-connect-production-title" id="production-composition-title">Internal composition boundary</span></span>
-                        <span class="legend-connect-composition-status legend-connect-composition-status--@compositionStateClass" aria-label="Current server mode: @compositionMode">@compositionMode</span>
-                    </div>
-                    <div class="legend-connect-production-actions">
-                        @if (compositionMode == "Active")
-                        {
-                            <form method="post" asp-action="SetCompositionMode">
-                                @Html.AntiForgeryToken()
-                                <input type="hidden" name="ContextualCompositionMode" value="Disabled" />
-                                <button type="submit" class="legend-connect-production-primary legend-connect-production-primary--disable">Disable production composition</button>
-                            </form>
-                        }
-                        else
-                        {
-                            <button type="button" class="legend-connect-production-primary" data-bs-toggle="modal" data-bs-target="#productionCompositionConfirmationModal">Enable production composition</button>
-                        }
-                        <div class="legend-connect-composition-modes" role="group" aria-label="Select production composition mode">
-                            <form method="post" asp-action="SetCompositionMode">
-                                @Html.AntiForgeryToken()
-                                <input type="hidden" name="ContextualCompositionMode" value="Disabled" />
-                                <button type="submit" class="legend-connect-composition-mode @(compositionMode == "Disabled" ? "is-current" : null)" aria-current="@(compositionMode == "Disabled" ? "true" : null)" @(compositionMode == "Disabled" ? "disabled" : null)>Disabled</button>
-                            </form>
-                            <form method="post" asp-action="SetCompositionMode">
-                                @Html.AntiForgeryToken()
-                                <input type="hidden" name="ContextualCompositionMode" value="Shadow" />
-                                <button type="submit" class="legend-connect-composition-mode @(compositionMode == "Shadow" ? "is-current" : null)" aria-current="@(compositionMode == "Shadow" ? "true" : null)" @(compositionMode == "Shadow" ? "disabled" : null)>Shadow</button>
-                            </form>
-                            <button type="button" class="legend-connect-composition-mode legend-connect-composition-mode--active @(compositionMode == "Active" ? "is-current" : null)" aria-current="@(compositionMode == "Active" ? "true" : null)" data-bs-toggle="modal" data-bs-target="#productionCompositionConfirmationModal" @(compositionMode == "Active" ? "disabled" : null)>Active</button>
-                        </div>
-                    </div>
-                </section>
+                <p class="dashboard-section-copy">This page opens with a bounded language shell. Curriculum, evidence, relationships, learning, models, and retained knowledge load only when you open that section.</p>
+                <form method="get" asp-action="Index" class="dashboard-search-panel">
+                    <label class="dashboard-form-field"><span>Current language</span><select name="language" onchange="this.form.submit()">@foreach (var language in shell.Languages) { <option value="@language.LanguageCode" selected="@(language.LanguageCode == selected?.LanguageCode)">@language.DisplayName (@language.LanguageCode)</option> }</select></label>
+                    <noscript><button type="submit" class="dashboard-command-action btn-carrier-settings">Load language</button></noscript>
+                </form>
             </div>
-            <div class="dashboard-hero-stats legend-connect-copy-source--metrics" aria-label="Legend Connect operational snapshot" data-legend-copy-source="operational-snapshot">
-                <partial name="_CopyButton" model="@("operational-snapshot")" />
-                <div class="dashboard-stat-card is-primary @LegendConnectMetricTone.InformationalActivity(dashboard.Languages.Count)" data-legend-live-card="active-languages"><span class="dashboard-stat-label">Active languages</span><span class="dashboard-stat-value" data-legend-live-value="active-languages">@dashboard.Languages.Count.ToString("N0")</span></div>
-                <div class="dashboard-stat-card @LegendConnectMetricTone.InformationalActivity(dashboard.Pairs.Count)" data-legend-live-card="directional-pairs"><span class="dashboard-stat-label">Directional pairs</span><span class="dashboard-stat-value" data-legend-live-value="directional-pairs">@dashboard.Pairs.Count.ToString("N0")</span></div>
-                <div class="dashboard-stat-card @LegendConnectMetricTone.Failure(dashboard.FailedLearningJobCount)" data-legend-live-card="learning-failures"><span class="dashboard-stat-label">Learning failures</span><span class="dashboard-stat-value" data-legend-live-value="learning-failures">@dashboard.FailedLearningJobCount.ToString("N0")</span></div>
-                <div class="dashboard-stat-card @LegendConnectMetricTone.BeneficialActivity(dashboard.DuplicatePreventionCount)" data-legend-live-card="duplicate-prevention"><span class="dashboard-stat-label">Duplicates prevented</span><span class="dashboard-stat-value" data-legend-live-value="duplicate-prevention">@dashboard.DuplicatePreventionCount.ToString("N0")</span></div>
-            </div>
+            @if (selected is not null)
+            {
+                <div class="dashboard-hero-stats" aria-label="Selected language summary">
+                    <div class="dashboard-stat-card is-primary"><span class="dashboard-stat-label">Language health</span><span class="dashboard-stat-value">@selected.HealthState</span></div>
+                    <div class="dashboard-stat-card"><span class="dashboard-stat-label">Canonical entries</span><span class="dashboard-stat-value">@selected.CanonicalEntryCount.ToString("N0")</span></div>
+                    <div class="dashboard-stat-card"><span class="dashboard-stat-label">Curriculum examples</span><span class="dashboard-stat-value">@selected.CurriculumExampleCount.ToString("N0")</span></div>
+                    <div class="dashboard-stat-card"><span class="dashboard-stat-label">Compositional anchors</span><span class="dashboard-stat-value">@selected.CompositionalAnchorCount.ToString("N0")</span></div>
+                    <div class="dashboard-stat-card"><span class="dashboard-stat-label">Open issues</span><span class="dashboard-stat-value">@selected.OpenIssueCount.ToString("N0")</span></div>
+                </div>
+            }
         </div>
     </section>
 
-    @if (TempData["LegendConnectSuccess"] is string success)
-    {
-        <section class="dashboard-analytics-panel" role="status"><p>@success</p></section>
-    }
-    @if (TempData["LegendConnectError"] is string error)
-    {
-        <section class="dashboard-analytics-panel" role="alert"><p>@error</p></section>
-    }
+    @if (TempData["LegendConnectSuccess"] is string success) { <section class="dashboard-analytics-panel" role="status"><p>@success</p></section> }
+    @if (TempData["LegendConnectError"] is string error) { <section class="dashboard-analytics-panel" role="alert"><p>@error</p></section> }
 
-    <partial name="_CoreManagement" model="Model" />
-
-    <details class="dashboard-analytics-panel legend-connect-disclosure legend-connect-disclosure--readiness" aria-labelledby="production-readiness-title" data-legend-copy-source="production-readiness">
-        <summary class="legend-connect-disclosure-summary">
-            <span><span class="dashboard-section-title" id="production-readiness-title">Legend® Connect production readiness</span></span>
-            <span class="dashboard-status-chip">@readiness.State</span>
-        </summary>
-        <div class="legend-connect-disclosure-body">
-        <div class="legend-connect-copy-toolbar"><partial name="_CopyButton" model="@("production-readiness")" /></div>
-        <p class="dashboard-section-copy">@readiness.Summary</p>
-        <div class="dashboard-data-surface">
-            <table class="table dashboard-data-table">
-                <thead><tr><th>Gate</th><th>Status</th><th>Safe operational detail</th></tr></thead>
-                <tbody>@foreach (var check in readiness.Checks) { <tr><td>@check.Name</td><td>@check.State</td><td>@check.Detail</td></tr> }</tbody>
-            </table>
-        </div>
-        <div class="dashboard-hero-stats legend-connect-metrics legend-connect-metrics--five" aria-label="Approved corpus readiness">
-            <div class="dashboard-stat-card @LegendConnectMetricTone.BeneficialActivity(readiness.ApprovedCandidateCount)" data-legend-live-card="approved-candidates"><span class="dashboard-stat-label">Approved candidates</span><span class="dashboard-stat-value" data-legend-live-value="approved-candidates">@readiness.ApprovedCandidateCount.ToString("N0")</span></div>
-            <div class="dashboard-stat-card @LegendConnectMetricTone.PendingWork(readiness.PendingCandidateCount)" data-legend-live-card="eligible-pending"><span class="dashboard-stat-label">Eligible pending</span><span class="dashboard-stat-value" data-legend-live-value="eligible-pending">@readiness.PendingCandidateCount.ToString("N0")</span></div>
-            <div class="dashboard-stat-card @LegendConnectMetricTone.PendingWork(readiness.RejectedOrIneligibleCandidateCount)" data-legend-live-card="rejected-ineligible"><span class="dashboard-stat-label">Rejected / ineligible</span><span class="dashboard-stat-value" data-legend-live-value="rejected-ineligible">@readiness.RejectedOrIneligibleCandidateCount.ToString("N0")</span></div>
-            <div class="dashboard-stat-card @LegendConnectMetricTone.BeneficialActivity(readiness.DuplicateCandidateCount)" data-legend-live-card="readiness-duplicates-prevented"><span class="dashboard-stat-label">Duplicates prevented</span><span class="dashboard-stat-value" data-legend-live-value="readiness-duplicates-prevented">@readiness.DuplicateCandidateCount.ToString("N0")</span></div>
-            <div class="dashboard-stat-card @LegendConnectMetricTone.PendingWork(readiness.AwaitingKnowledgePairCount)" data-legend-live-card="pairs-awaiting-knowledge"><span class="dashboard-stat-label">Pairs awaiting knowledge</span><span class="dashboard-stat-value" data-legend-live-value="pairs-awaiting-knowledge">@readiness.AwaitingKnowledgePairCount.ToString("N0")</span></div>
-        </div>
-        <section class="dashboard-search-panel" aria-label="Azure Translator subscription capacity">
-            <div class="legend-connect-focus-heading">
-                <span><span class="dashboard-section-kicker">Azure resource synchronization</span><span class="dashboard-section-title">Azure Translator capacity</span></span>
-                <span class="dashboard-status-chip" data-azure-capacity-status>@(providerCapacity?.Status ?? "Unavailable")</span>
-            </div>
-            <p class="dashboard-section-copy" data-azure-capacity-resource>@(providerCapacity?.ResourceName ?? "Azure Translator") · tier @(providerCapacity?.Tier ?? "unavailable")</p>
-            <div class="dashboard-hero-stats legend-connect-metrics legend-connect-metrics--five">
-                <div class="dashboard-stat-card @LegendConnectMetricTone.CapacityLimit(providerCapacity?.MonthlyIncludedCharacterAllowance ?? 0)"><span class="dashboard-stat-label">Monthly included allowance</span><span class="dashboard-stat-value" data-azure-capacity-value="monthly-limit">@AzureCapacityDisplay(providerCapacity?.MonthlyIncludedCharacterAllowance, true)</span></div>
-                <div class="dashboard-stat-card @LegendConnectMetricTone.InformationalActivity(providerCapacity?.MonthlyCharactersConsumed ?? 0)"><span class="dashboard-stat-label">Used this billing month</span><span class="dashboard-stat-value" data-azure-capacity-value="monthly-consumed">@AzureCapacityDisplay(providerCapacity?.MonthlyCharactersConsumed)</span></div>
-                <div class="dashboard-stat-card @LegendConnectMetricTone.PendingWork(providerCapacity?.MonthlyReservedCharacters ?? 0)"><span class="dashboard-stat-label">Monthly in-flight reserved</span><span class="dashboard-stat-value" data-azure-capacity-value="monthly-reserved">@AzureCapacityDisplay(providerCapacity?.MonthlyReservedCharacters)</span></div>
-                <div class="dashboard-stat-card @LegendConnectMetricTone.Capacity(providerCapacity?.MonthlyRemainingCharacters)"><span class="dashboard-stat-label">Monthly allowance left</span><span class="dashboard-stat-value" data-azure-capacity-value="monthly-remaining">@AzureCapacityDisplay(providerCapacity?.MonthlyRemainingCharacters, true)</span></div>
-                <div class="dashboard-stat-card @LegendConnectMetricTone.Capacity(providerCapacity?.MonthlyLiveReserveCharacters)"><span class="dashboard-stat-label">Monthly protected live reserve</span><span class="dashboard-stat-value" data-azure-capacity-value="monthly-reserve">@AzureCapacityDisplay(providerCapacity?.MonthlyLiveReserveCharacters, true)</span></div>
-                <div class="dashboard-stat-card @LegendConnectMetricTone.Capacity(providerCapacity?.MaximumSafeCorpusConsumptionCharacters)"><span class="dashboard-stat-label">Maximum monthly corpus consumption</span><span class="dashboard-stat-value" data-azure-capacity-value="monthly-corpus">@AzureCapacityDisplay(providerCapacity?.MaximumSafeCorpusConsumptionCharacters, true)</span></div>
-                <div class="dashboard-stat-card @LegendConnectMetricTone.CapacityLimit(providerCapacity?.HourlyCharacterLimit ?? 0)"><span class="dashboard-stat-label">Hourly velocity capacity</span><span class="dashboard-stat-value" data-azure-capacity-value="hourly-limit">@AzureCapacityDisplay(providerCapacity?.HourlyCharacterLimit)</span></div>
-                <div class="dashboard-stat-card @LegendConnectMetricTone.InformationalActivity(providerCapacity?.HourlyCharactersConsumed ?? 0)"><span class="dashboard-stat-label">Used this rolling hour</span><span class="dashboard-stat-value" data-azure-capacity-value="hourly-consumed">@AzureCapacityDisplay(providerCapacity?.HourlyCharactersConsumed)</span></div>
-                <div class="dashboard-stat-card @LegendConnectMetricTone.Capacity(providerCapacity?.HourlyRemainingCharacters)"><span class="dashboard-stat-label">Hourly capacity left</span><span class="dashboard-stat-value" data-azure-capacity-value="hourly-remaining">@AzureCapacityDisplay(providerCapacity?.HourlyRemainingCharacters)</span></div>
-                <div class="dashboard-stat-card @LegendConnectMetricTone.Capacity(providerCapacity?.SafeAcquisitionCharacters)"><span class="dashboard-stat-label">Safe acquisition available now</span><span class="dashboard-stat-value" data-azure-capacity-value="safe">@AzureCapacityDisplay(providerCapacity?.SafeAcquisitionCharacters)</span></div>
-            </div>
-            <p class="dashboard-section-copy" data-azure-capacity-detail>@(providerCapacity?.Detail ?? "Azure Translator capacity has not synchronized. Azure-backed corpus work remains safely held until the resource can be read.")</p>
-        </section>
-        <form method="post" asp-action="UpdateRuntimePolicy" class="dashboard-search-panel">
+    <section class="dashboard-analytics-panel legend-connect-manual-training" aria-labelledby="founder-curriculum-title">
+        <div class="dashboard-section-head dashboard-section-head-tight"><div><span class="dashboard-section-kicker">Founder controls</span><h2 class="dashboard-section-title" id="founder-curriculum-title">Submit governed curriculum</h2></div></div>
+        <p class="dashboard-section-copy">Submission is accepted through the established Founder pipeline. Processing stays durable and independent of the inspection panels below.</p>
+        <form method="post" asp-action="SubmitKnowledge" class="dashboard-search-panel" data-verified-target-form>
             @Html.AntiForgeryToken()
+            <label class="dashboard-form-field"><span><input type="checkbox" name="FixTargetTranslation" value="true" data-verified-target-toggle /> Fix Target Translation</span><small data-verified-target-help>Attach a Founder-approved target only to an exact existing canonical source.</small></label>
             <div class="dashboard-form-grid">
-                <label class="dashboard-form-field"><span>Contextual minimum confidence</span><input name="ContextualMinimumConfidence" type="number" min="0.90" max="1" step="0.01" value="@policy.ContextualMinimumConfidence.ToString(System.Globalization.CultureInfo.InvariantCulture)" required /></label>
-                <label class="dashboard-form-field"><span>Learning pipeline</span><span><input name="LearningEnabled" type="checkbox" value="true" @(policy.LearningEnabled ? "checked" : null) /> Enable autonomous learning processing</span></label>
+                <label class="dashboard-form-field"><span>Source language</span><select name="SourceLanguageCode" required>@foreach (var language in shell.Languages) { <option value="@language.LanguageCode" selected="@(language.LanguageCode == selected?.LanguageCode)">@language.DisplayName</option> }</select></label>
+                <label class="dashboard-form-field"><span>Target language</span><select name="TargetLanguageCode" data-verified-target-language><option value="">Approved source seed</option>@foreach (var language in shell.Languages) { <option value="@language.LanguageCode">@language.DisplayName</option> }</select></label>
+                <label class="dashboard-form-field dashboard-form-field--wide" data-verified-target-normal-fields><span>Source training text</span><textarea name="SourceText" required maxlength="30000" data-verified-target-normal-input></textarea></label>
+                <label class="dashboard-form-field dashboard-form-field--wide" data-verified-target-normal-fields><span>Target text</span><textarea name="TargetText" maxlength="10000" data-verified-target-normal-input></textarea></label>
+                <label class="dashboard-form-field dashboard-form-field--wide" data-verified-target-rows hidden><span>Existing source | Founder-approved target</span><textarea name="TargetTranslationRows" disabled maxlength="30000" data-verified-target-rows-input></textarea></label>
             </div>
-            <div class="search-actions"><button type="submit" class="dashboard-command-action btn-carrier-settings">Save learning settings</button></div>
+            <div class="search-actions"><button type="submit" class="dashboard-command-action btn-carrier-settings" data-verified-target-submit>Save approved knowledge</button></div>
         </form>
-        <form method="post" asp-action="ActivateAutonomousAcquisition" class="legend-connect-acquisition-focus" data-language-focus-form>
-            @Html.AntiForgeryToken()
-            <div class="legend-connect-focus-heading">
-                <span><span class="dashboard-section-kicker">Step 1 of 2 · Optional</span><span class="dashboard-section-title">Focus this English learning run</span></span>
-                <span class="legend-connect-focus-status @(focusEnabled ? "legend-connect-focus-status--on" : "legend-connect-focus-status--off")" data-language-focus-status aria-live="polite"><span class="legend-connect-focus-status-dot" aria-hidden="true"></span><span data-language-focus-status-text>Focus @(focusEnabled ? "on" : "off")</span></span>
-            </div>
-            <p class="dashboard-section-copy">Optional: limit this run to selected target languages. Off returns to automatic demand-driven acquisition.</p>
-            <div class="legend-connect-focus-controls">
-                <div class="legend-connect-focus-switch-field">
-                    <span class="legend-connect-focus-label">Learning focus</span>
-                    <input id="legendConnectFocusEnabled" class="legend-connect-focus-switch-input" name="FocusEnabled" type="checkbox" value="true" role="switch" aria-describedby="language-focus-help" @(focusEnabled ? "checked" : null) />
-                    <label for="legendConnectFocusEnabled" class="legend-connect-focus-switch"><span class="legend-connect-focus-switch-track" aria-hidden="true"></span><span>Limit this run to selected languages</span></label>
-                </div>
-                <div class="legend-connect-language-field">
-                    <span class="legend-connect-focus-label" id="language-focus-label">Target languages</span>
-                    <details class="legend-connect-language-picker" data-language-picker>
-                        <summary aria-labelledby="language-focus-label" aria-describedby="language-focus-help">
-                            <span data-language-picker-summary>Select one or more languages</span>
-                            <span class="legend-connect-language-picker-chevron" aria-hidden="true"></span>
-                        </summary>
-                        <div class="legend-connect-language-picker-menu">
-                            <label class="legend-connect-language-search"><span class="visually-hidden">Find a target language</span><input type="search" data-language-picker-search autocomplete="off" placeholder="Find a language" /></label>
-                            <div class="legend-connect-language-options" role="group" aria-labelledby="language-focus-label">
-                                @foreach (var language in dashboard.Languages.Where(language => !string.Equals(language.LanguageCode, "en", StringComparison.OrdinalIgnoreCase)))
-                                {
-                                    var isFocusedLanguage = policy.FocusedTargetLanguageCodes.Contains(language.LanguageCode, StringComparer.OrdinalIgnoreCase);
-                                    <label class="legend-connect-language-option" data-language-picker-option><input name="FocusLanguageCodes" type="checkbox" value="@language.LanguageCode" data-language-choice @(isFocusedLanguage ? "checked" : null) /><span>@language.DisplayName</span></label>
-                                }
-                            </div>
-                            <p class="legend-connect-language-empty" data-language-picker-empty hidden>No enabled target language matches that search.</p>
-                        </div>
-                    </details>
-                </div>
-            </div>
-            <div class="legend-connect-focus-footer">
-                <p class="legend-connect-focus-note" id="language-focus-help" data-language-focus-help>@(focusEnabled ? $"Focused now: {focusedLanguageNames}." : "Focus is off. All enabled language pairs are prioritized by demand, coverage, and quality.")</p>
-                <button type="submit" class="dashboard-command-action btn-carrier-settings">Step 2 · Activate corpus autonomous</button>
-            </div>
-        </form>
-        <div class="search-actions"><form method="post" asp-action="PauseAutonomousAcquisition" class="dashboard-inline-command-form">@Html.AntiForgeryToken()<button type="submit" class="dashboard-command-action btn-carrier-settings">Pause autonomous acquisition</button></form></div>
-        </div>
-    </details>
-
-    <details class="dashboard-analytics-panel legend-connect-disclosure legend-connect-disclosure--internal" aria-labelledby="legend-translation-operations-title" data-legend-copy-source="legend-translation-operations" open>
-        <summary class="legend-connect-disclosure-summary">
-            <span>
-                <span class="dashboard-section-title" id="legend-translation-operations-title">Legend® Connect Translation Operations</span>
-            </span>
-            <span class="legend-connect-disclosure-status">Internal</span>
-        </summary>
-        <div class="legend-connect-disclosure-body">
-            <div class="legend-connect-copy-toolbar"><partial name="_CopyButton" model="@("legend-translation-operations")" /></div>
-            <div class="dashboard-hero-stats legend-connect-metrics legend-connect-metrics--four">
-                <div class="dashboard-stat-card @LegendConnectMetricTone.Authority" data-legend-live-card="translation-routing-audit"><span class="dashboard-stat-label">Translation route audit</span><span class="dashboard-stat-value">Open route trace</span></div>
-
-                <div class="dashboard-stat-card @LegendConnectMetricTone.BeneficialActivity(dashboard.SameLanguageBypassCount)" data-legend-live-card="same-language-bypasses"><span class="dashboard-stat-label">Same-language bypasses</span><span class="dashboard-stat-value" data-legend-live-value="same-language-bypasses">@dashboard.SameLanguageBypassCount.ToString("N0")</span></div>
-
-                <div class="dashboard-stat-card @LegendConnectMetricTone.BeneficialActivity(dashboard.TranslationMemoryHitCount)" data-legend-live-card="translation-memory-hits"><span class="dashboard-stat-label">Translation Memory hits</span><span class="dashboard-stat-value" data-legend-live-value="translation-memory-hits">@dashboard.TranslationMemoryHitCount.ToString("N0")</span></div>
-
-                <div class="dashboard-stat-card @LegendConnectMetricTone.BeneficialActivity(dashboard.StructuralInternalServeCount)" data-legend-live-card="trusted-structural-served"><span class="dashboard-stat-label">Trusted structural served</span><span class="dashboard-stat-value" data-legend-live-value="trusted-structural-served">@dashboard.StructuralInternalServeCount.ToString("N0")</span></div>
-
-                <div class="dashboard-stat-card @LegendConnectMetricTone.BeneficialActivity(dashboard.ContextualInternalServeCount)" data-legend-live-card="trusted-contextual-served"><span class="dashboard-stat-label">Trusted contextual served</span><span class="dashboard-stat-value" data-legend-live-value="trusted-contextual-served">@dashboard.ContextualInternalServeCount.ToString("N0")</span></div>
-
-                <div class="dashboard-stat-card @LegendConnectMetricTone.Avoidance(dashboard.InternalCoverageRate, routedRequestCount)" data-legend-live-card="internal-coverage"><span class="dashboard-stat-label">LEGEND internal coverage</span><span class="dashboard-stat-value" data-legend-live-value="internal-coverage">@dashboard.InternalCoverageRate.ToString("P0")</span></div>
-
-                <div class="dashboard-stat-card @LegendConnectMetricTone.Avoidance(dashboard.ProviderAvoidanceRate, routedRequestCount)" data-legend-live-card="provider-avoidance"><span class="dashboard-stat-label">Azure avoidance</span><span class="dashboard-stat-value" data-legend-live-value="provider-avoidance">@dashboard.ProviderAvoidanceRate.ToString("P0")</span></div>
-
-                <div class="dashboard-stat-card @LegendConnectMetricTone.BeneficialActivity(dashboard.SameLanguageCharactersAvoided)" data-legend-live-card="same-language-avoided"><span class="dashboard-stat-label">Same-language characters avoided</span><span class="dashboard-stat-value" data-legend-live-value="same-language-avoided">@dashboard.SameLanguageCharactersAvoided.ToString("N0")</span></div>
-
-                <div class="dashboard-stat-card @LegendConnectMetricTone.BeneficialActivity(dashboard.TranslationMemoryCharactersAvoided)" data-legend-live-card="memory-avoided"><span class="dashboard-stat-label">Memory characters avoided</span><span class="dashboard-stat-value" data-legend-live-value="memory-avoided">@dashboard.TranslationMemoryCharactersAvoided.ToString("N0")</span></div>
-
-                <div class="dashboard-stat-card @LegendConnectMetricTone.BeneficialActivity(dashboard.StructuralCompositionCharactersAvoided)" data-legend-live-card="structural-avoided"><span class="dashboard-stat-label">Structural composition characters avoided</span><span class="dashboard-stat-value" data-legend-live-value="structural-avoided">@dashboard.StructuralCompositionCharactersAvoided.ToString("N0")</span></div>
-
-                <div class="dashboard-stat-card @LegendConnectMetricTone.BeneficialActivity(dashboard.ContextualCharactersAvoided)" data-legend-live-card="context-avoided"><span class="dashboard-stat-label">Context characters avoided</span><span class="dashboard-stat-value" data-legend-live-value="context-avoided">@dashboard.ContextualCharactersAvoided.ToString("N0")</span></div>
-
-                <div class="dashboard-stat-card @LegendConnectMetricTone.BeneficialActivity(dashboard.GroupUniqueTargetReuseCount)" data-legend-live-card="group-target-reuse"><span class="dashboard-stat-label">Group target reuse</span><span class="dashboard-stat-value" data-legend-live-value="group-target-reuse">@dashboard.GroupUniqueTargetReuseCount.ToString("N0")</span></div>
-
-                <div class="dashboard-stat-card @LegendConnectMetricTone.Failure(dashboard.QuotaDeniedRequestCount)" data-legend-live-card="quota-denied"><span class="dashboard-stat-label">LEGEND entitlement denied</span><span class="dashboard-stat-value" data-legend-live-value="quota-denied">@dashboard.QuotaDeniedRequestCount.ToString("N0")</span></div>
-
-                <div class="dashboard-stat-card @LegendConnectMetricTone.PendingWork(dashboard.LearningJobCount)" data-legend-live-card="pending-learning-jobs"><span class="dashboard-stat-label">Pending learning jobs</span><span class="dashboard-stat-value" data-legend-live-value="pending-learning-jobs">@dashboard.LearningJobCount.ToString("N0")</span></div>
-            </div>
-        </div>
-    </details>
-
-    <details class="dashboard-analytics-panel legend-connect-disclosure legend-connect-disclosure--azure" aria-labelledby="azure-translation-operations-title" data-legend-copy-source="azure-translation-operations">
-        <summary class="legend-connect-disclosure-summary">
-            <span>
-                <span class="dashboard-section-title" id="azure-translation-operations-title">Azure Translation Operations</span>
-            </span>
-            <span class="legend-connect-disclosure-status">Provider</span>
-        </summary>
-        <div class="legend-connect-disclosure-body">
-            <div class="legend-connect-copy-toolbar"><partial name="_CopyButton" model="@("azure-translation-operations")" /></div>
-            <div class="dashboard-hero-stats legend-connect-metrics legend-connect-metrics--four">
-
-                <div class="dashboard-stat-card @LegendConnectMetricTone.PendingWork(dashboard.AzureFallbackCount)" data-legend-live-card="provider-fallback-required"><span class="dashboard-stat-label">Azure fallback required</span><span class="dashboard-stat-value" data-legend-live-value="provider-fallback-required">@dashboard.AzureFallbackCount.ToString("N0")</span></div>
-
-                <div class="dashboard-stat-card @LegendConnectMetricTone.InformationalActivity(dashboard.ProviderOperationCount)" data-legend-live-card="provider-operations"><span class="dashboard-stat-label">Azure provider operations</span><span class="dashboard-stat-value" data-legend-live-value="provider-operations">@dashboard.ProviderOperationCount.ToString("N0")</span></div>
-
-                <div class="dashboard-stat-card @LegendConnectMetricTone.InformationalActivity(dashboard.ProviderBillableCharacters)" data-legend-live-card="provider-billable-characters"><span class="dashboard-stat-label">Azure billable characters</span><span class="dashboard-stat-value" data-legend-live-value="provider-billable-characters">@dashboard.ProviderBillableCharacters.ToString("N0")</span></div>
-
-                <div class="dashboard-stat-card @LegendConnectMetricTone.Dependency(dashboard.AzureDependencyRate, routedRequestCount)" data-legend-live-card="provider-dependency"><span class="dashboard-stat-label">Azure dependency</span><span class="dashboard-stat-value" data-legend-live-value="provider-dependency">@dashboard.AzureDependencyRate.ToString("P0")</span></div>
-
-                <div class="dashboard-stat-card @LegendConnectMetricTone.InformationalActivity(dashboard.AzureCharactersUsed)" data-legend-live-card="azure-characters-used"><span class="dashboard-stat-label">Azure characters used</span><span class="dashboard-stat-value" data-legend-live-value="azure-characters-used">@dashboard.AzureCharactersUsed.ToString("N0")</span></div>
-
-                <div class="dashboard-stat-card @LegendConnectMetricTone.InformationalActivity(dashboard.ConsumedLiveCharacters)" data-legend-live-card="consumed-live-characters"><span class="dashboard-stat-label">Azure live characters</span><span class="dashboard-stat-value" data-legend-live-value="consumed-live-characters">@dashboard.ConsumedLiveCharacters.ToString("N0")</span></div>
-
-                <div class="dashboard-stat-card @LegendConnectMetricTone.InformationalActivity(dashboard.ConsumedCorpusCharacters)" data-legend-live-card="consumed-corpus-characters"><span class="dashboard-stat-label">Azure corpus characters</span><span class="dashboard-stat-value" data-legend-live-value="consumed-corpus-characters">@dashboard.ConsumedCorpusCharacters.ToString("N0")</span></div>
-
-                <div class="dashboard-stat-card @LegendConnectMetricTone.PendingWork(dashboard.ReservedProviderCharacters)" data-legend-live-card="provider-characters-reserved"><span class="dashboard-stat-label">Azure characters reserved</span><span class="dashboard-stat-value" data-legend-live-value="provider-characters-reserved">@dashboard.ReservedProviderCharacters.ToString("N0")</span></div>
-
-                <div class="dashboard-stat-card @LegendConnectMetricTone.Failure(dashboard.ProviderFailureCount)" data-legend-live-card="provider-failures"><span class="dashboard-stat-label">Azure provider failures</span><span class="dashboard-stat-value" data-legend-live-value="provider-failures">@dashboard.ProviderFailureCount.ToString("N0")</span></div>
-            </div>
-        </div>
-    </details>
-
-    <details class="dashboard-analytics-panel legend-connect-disclosure legend-connect-disclosure--quality" aria-labelledby="translation-quality-title" data-legend-copy-source="translation-quality">
-        <summary class="legend-connect-disclosure-summary"><span><span class="dashboard-section-title" id="translation-quality-title">Translation quality review</span></span><span class="legend-connect-disclosure-status" data-legend-live-value="translation-quality-needs-review-summary">@Model.TranslationQuality.NeedsReviewCount.ToString("N0") needs review</span></summary>
-        <div class="legend-connect-disclosure-body">
-            <div class="legend-connect-copy-toolbar"><partial name="_CopyButton" model="@("translation-quality")" /></div>
-            <p class="dashboard-section-copy">Provider output remains an observation. This queue contains only Founder-owned training material with a recorded contradiction; private-message bodies are never shown here.</p>
-            <div class="dashboard-hero-stats legend-connect-metrics legend-connect-metrics--five" aria-label="Translation quality evidence summary">
-                <div class="dashboard-stat-card @LegendConnectMetricTone.PendingWork(Model.TranslationQuality.NeedsReviewCount)" data-legend-live-card="quality-needs-review"><span class="dashboard-stat-label">Needs review</span><span class="dashboard-stat-value" data-legend-live-value="quality-needs-review">@Model.TranslationQuality.NeedsReviewCount.ToString("N0")</span></div>
-                <div class="dashboard-stat-card @LegendConnectMetricTone.InformationalActivity(Model.TranslationQuality.ProviderObservationCount)" data-legend-live-card="quality-provider-observations"><span class="dashboard-stat-label">Provider observations</span><span class="dashboard-stat-value" data-legend-live-value="quality-provider-observations">@Model.TranslationQuality.ProviderObservationCount.ToString("N0")</span></div>
-                <div class="dashboard-stat-card @LegendConnectMetricTone.BeneficialActivity(Model.TranslationQuality.SupportedObservationCount)" data-legend-live-card="quality-supported-observations"><span class="dashboard-stat-label">Supported observations</span><span class="dashboard-stat-value" data-legend-live-value="quality-supported-observations">@Model.TranslationQuality.SupportedObservationCount.ToString("N0")</span></div>
-                <div class="dashboard-stat-card @LegendConnectMetricTone.Failure(Model.TranslationQuality.ContradictionCount)" data-legend-live-card="quality-contradictions"><span class="dashboard-stat-label">Contradictions</span><span class="dashboard-stat-value" data-legend-live-value="quality-contradictions">@Model.TranslationQuality.ContradictionCount.ToString("N0")</span></div>
-                <div class="dashboard-stat-card @LegendConnectMetricTone.BeneficialActivity(Model.TranslationQuality.HumanVerifiedAlignmentCount)" data-legend-live-card="quality-human-verified"><span class="dashboard-stat-label">Human verified</span><span class="dashboard-stat-value" data-legend-live-value="quality-human-verified">@Model.TranslationQuality.HumanVerifiedAlignmentCount.ToString("N0")</span></div>
-            </div>
-            @if (Model.TranslationQuality.ReviewItems.Count == 0)
-            {
-                <p class="dashboard-section-copy">No active provider observation currently conflicts with established canonical evidence.</p>
-            }
-            else
-            {
-                <div class="dashboard-data-surface"><table class="table dashboard-data-table"><thead><tr><th>Pair</th><th>Founder source</th><th>Provider observation</th><th>Evidence</th><th>Review action</th></tr></thead><tbody>
-                @foreach (var item in Model.TranslationQuality.ReviewItems)
-                {
-                    <tr>
-                        <td>@item.PairKey<br /><small>@item.ObservedUtc.ToString("u")</small></td>
-                        <td>@item.SourceText</td>
-                        <td><strong>@item.ProviderTargetText</strong><br /><small>@item.Provider · @item.Provenance · @item.QualityState</small></td>
-                        <td>@item.SupportingEvidenceCount supporting · @item.ContradictionCount contradictory<br /><small>@item.ReasonForReview · @string.Join(", ", item.EvidenceReasons)</small></td>
-                        <td>
-                            <form method="post" asp-action="ApproveProviderObservation" class="dashboard-inline-command-form">@Html.AntiForgeryToken()<input type="hidden" name="AlignmentId" value="@item.AlignmentId" /><button type="submit" class="dashboard-command-action btn-carrier-settings">Approve</button></form>
-                            <form method="post" asp-action="LeaveProviderObservationUnresolved" class="dashboard-inline-command-form">@Html.AntiForgeryToken()<input type="hidden" name="AlignmentId" value="@item.AlignmentId" /><button type="submit" class="dashboard-command-action btn-carrier-settings">Leave unresolved</button></form>
-                            <form method="post" asp-action="RejectProviderObservation" class="dashboard-inline-command-form">@Html.AntiForgeryToken()<input type="hidden" name="AlignmentId" value="@item.AlignmentId" /><button type="submit" class="dashboard-command-action btn-carrier-settings">Reject / retire</button></form>
-                            <details class="legend-connect-account-parameters"><summary>Submit corrected target</summary><form method="post" asp-action="CorrectKnowledge" class="dashboard-search-panel">@Html.AntiForgeryToken()<input type="hidden" name="SupersededAlignmentId" value="@item.AlignmentId" /><input type="hidden" name="SourceLanguageCode" value="@item.SourceLanguageCode" /><input type="hidden" name="SourceText" value="@item.SourceText" /><input type="hidden" name="TargetLanguageCode" value="@item.TargetLanguageCode" /><label class="dashboard-form-field"><span>Human-corrected target</span><textarea name="TargetText" required maxlength="10000"></textarea></label><div class="search-actions"><button type="submit" class="dashboard-command-action btn-carrier-settings">Save correction</button></div></form></details>
-                        </td>
-                    </tr>
-                }
-                </tbody></table></div>
-            }
-        </div>
-    </details>
-
-    <details class="dashboard-analytics-panel legend-connect-disclosure legend-connect-disclosure--candidates" aria-labelledby="target-realizations-title" data-legend-copy-source="target-realizations">
-        <summary class="legend-connect-disclosure-summary"><span><span class="dashboard-section-title @LegendConnectMetricTone.Info" id="target-realizations-title">Target realization candidates</span></span><span class="legend-connect-disclosure-status @LegendConnectMetricTone.PendingWork(Model.TargetRealizations.CandidateCount - Model.TargetRealizations.FounderVerifiedCount - Model.TargetRealizations.RejectedCount)">@Model.TargetRealizations.CandidateCount.ToString("N0") retained</span></summary>
-        <div class="legend-connect-disclosure-body">
-            <div class="legend-connect-copy-toolbar"><partial name="_CopyButton" model="@("target-realizations")" /></div>
-            <p class="dashboard-section-copy">These are evidence-backed target-language hypotheses, not translations. Only a Founder verification creates a trusted canonical anchor; maturity and production eligibility remain independently gated.</p>
-            <div class="dashboard-hero-stats legend-connect-metrics legend-connect-metrics--four">
-                <div class="dashboard-stat-card @LegendConnectMetricTone.PendingWork(Model.TargetRealizations.CandidateCount - Model.TargetRealizations.FounderVerifiedCount - Model.TargetRealizations.RejectedCount)"><span class="dashboard-stat-label">Awaiting Founder review</span><span class="dashboard-stat-value">@Math.Max(0, Model.TargetRealizations.CandidateCount - Model.TargetRealizations.FounderVerifiedCount - Model.TargetRealizations.RejectedCount).ToString("N0")</span></div>
-                <div class="dashboard-stat-card @LegendConnectMetricTone.BeneficialActivity(Model.TargetRealizations.FounderVerifiedCount)"><span class="dashboard-stat-label">Founder verified anchors</span><span class="dashboard-stat-value">@Model.TargetRealizations.FounderVerifiedCount.ToString("N0")</span></div>
-                <div class="dashboard-stat-card @LegendConnectMetricTone.Failure(Model.TargetRealizations.ContradictedCount)"><span class="dashboard-stat-label">Contradicted hypotheses</span><span class="dashboard-stat-value">@Model.TargetRealizations.ContradictedCount.ToString("N0")</span></div>
-                <div class="dashboard-stat-card @LegendConnectMetricTone.InformationalActivity(Model.TargetRealizations.RejectedCount)"><span class="dashboard-stat-label">Rejected history retained</span><span class="dashboard-stat-value">@Model.TargetRealizations.RejectedCount.ToString("N0")</span></div>
-            </div>
-            @if (Model.TargetRealizations.Candidates.Count == 0)
-            {
-                <p class="dashboard-section-copy">No controlled directional contrast has yet produced a reviewable target realization. Provider observations remain separate and cannot create trusted support.</p>
-            }
-            else
-            {
-                <div class="dashboard-data-surface"><table class="table dashboard-data-table"><thead><tr><th>Directional component</th><th>Proposed target span / slot</th><th>Evidence and maturity</th><th>Founder review</th></tr></thead><tbody>
-                @foreach (var candidate in Model.TargetRealizations.Candidates)
-                {
-                    <tr>
-                        <td><strong>@candidate.PairKey</strong><br /><small class="@LegendConnectMetricTone.Info">@candidate.VariationDimension · @candidate.SemanticValue</small></td>
-                        <td><strong class="@LegendConnectMetricTone.Provenance(candidate.VerificationState, candidate.VerificationState == "FounderVerified")">@candidate.TargetRealization</strong><br /><small>Observed template: @candidate.TemplatePreview</small><br /><small>Slot: @candidate.SlotSignature</small></td>
-                        <td><span class="@LegendConnectMetricTone.Provenance(candidate.VerificationState, candidate.VerificationState == "FounderVerified")">@candidate.VerificationState</span> · <span class="@LegendConnectMetricTone.Maturity(candidate.MaturityState)">@candidate.MaturityState</span><br /><small>@candidate.SupportCount supporting · @candidate.HumanVerifiedSupportCount human-verified · @candidate.ProviderOnlySupportCount provider-only · <span class="@LegendConnectMetricTone.Contradictions(candidate.ContradictionCount)">@candidate.ContradictionCount contradiction@(candidate.ContradictionCount == 1 ? string.Empty : "s")</span> · production @candidate.IsProductionEligible</small>
-                        @if (candidate.Evidence.Count > 0)
-                        {
-                            <details class="legend-connect-account-parameters"><summary>Show @candidate.Evidence.Count retained supporting example@(candidate.Evidence.Count == 1 ? string.Empty : "s")</summary><ul>@foreach (var evidence in candidate.Evidence) { <li><span class="@LegendConnectMetricTone.Provenance(evidence.Provenance, evidence.HumanVerifiedSupport)">@evidence.Provenance</span> · @evidence.SourceText → @evidence.TargetText</li> }</ul></details>
-                        }
-                        </td>
-                        <td>
-                        @if (candidate.VerificationState is "Candidate" or "Contradicted")
-                        {
-                            <form method="post" asp-action="VerifyTargetRealizationCandidate" class="dashboard-inline-command-form">@Html.AntiForgeryToken()<input type="hidden" name="CandidateId" value="@candidate.Id" /><button type="submit" class="dashboard-command-action btn-carrier-settings">Verify target anchor</button></form>
-                            <form method="post" asp-action="RejectTargetRealizationCandidate" class="dashboard-inline-command-form">@Html.AntiForgeryToken()<input type="hidden" name="CandidateId" value="@candidate.Id" /><button type="submit" class="dashboard-command-action btn-carrier-settings">Reject candidate</button></form>
-                            <small>Leave it unchanged to defer review.</small>
-                        }
-                        else
-                        {
-                            <small>@(candidate.VerificationState == "FounderVerified" ? "Trusted anchor retained; production composition remains closed." : "Historical review state retained.")</small>
-                        }
-                        </td>
-                    </tr>
-                }
-                </tbody></table></div>
-            }
-        </div>
-    </details>
-
-    <details class="dashboard-analytics-panel legend-connect-disclosure legend-connect-disclosure--pairs" aria-labelledby="active-pairs-title" data-legend-copy-source="active-directional-pairs">
-        <summary class="legend-connect-disclosure-summary"><span><span class="dashboard-section-title" id="active-pairs-title">Active directional pairs</span></span><span class="legend-connect-disclosure-status" data-legend-live-value="active-pairs-summary">@dashboard.Pairs.Count.ToString("N0") pairs</span></summary>
-        <div class="legend-connect-disclosure-body">
-        <div class="legend-connect-copy-toolbar"><partial name="_CopyButton" model="@("active-directional-pairs")" /></div>
-        <div class="dashboard-data-surface">
-            <table class="table dashboard-data-table">
-                <thead><tr><th>Pair</th><th>Demand</th><th>LEGEND memory / structural / context</th><th>Provider fallback required</th><th>Internal coverage</th><th>Operational pair state</th><th>Approved backlog</th><th>30-day additions</th><th>Operational health</th></tr></thead>
-                <tbody>
-                @foreach (var pair in dashboard.Pairs)
-                {
-                    <tr>
-                        <td><a asp-action="Index" asp-route-pair="@pair.PairKey">@pair.PairKey</a></td><td>@pair.DemandCount</td><td>@pair.TranslationMemoryReuseCount / @pair.StructuralInternalServeCount / @pair.ContextualInternalServeCount</td><td>@pair.AzureFallbackCount (@pair.AzureDependencyRate.ToString("P0"))</td><td>@pair.InternalCoverageRate.ToString("P0")</td><td>@pair.InternalQualityConfidence.ToString("P0") · @pair.QualityState</td><td>@pair.ApprovedBacklog</td><td>@pair.CoverageAdditionsLast30Days</td><td>@pair.HealthState</td>
-                    </tr>
-                }
-                </tbody>
-            </table>
-        </div>
-        </div>
-    </details>
-
-    @if (Model.SelectedPair is { } selectedPair)
-    {
-        <details class="dashboard-analytics-panel legend-connect-disclosure legend-connect-disclosure--pair-detail" open aria-labelledby="pair-health-title" data-legend-copy-source="selected-directional-pair">
-            <summary class="legend-connect-disclosure-summary"><span><span class="dashboard-section-title" id="pair-health-title">@selectedPair.PairKey</span></span><span class="legend-connect-disclosure-status">Selected</span></summary>
-            <div class="legend-connect-disclosure-body">
-            <div class="legend-connect-copy-toolbar"><partial name="_CopyButton" model="@("selected-directional-pair")" /></div>
-            <p class="dashboard-section-copy">Operational health: @selectedPair.HealthState · Pair state: @selectedPair.QualityState · @selectedPair.FailureCount failure@(selectedPair.FailureCount == 1 ? string.Empty : "s"). Pair state reports the directional dataset pipeline; it is not a claim that every retained alignment is linguistically verified.</p>
-            @if (selectedPair.RecentAlignments.Count > 0)
-            {
-                <div class="dashboard-data-surface"><table class="table dashboard-data-table"><thead><tr><th>Retained source</th><th>Retained target</th><th>Alignment state</th><th>Updated</th></tr></thead><tbody>
-                @foreach (var alignment in selectedPair.RecentAlignments)
-                {
-                    <tr><td>@alignment.SourceText</td><td>@alignment.TargetText</td><td>@alignment.QualityState</td><td>@alignment.UpdatedUtc.ToString("u")</td></tr>
-                }
-                </tbody></table></div>
-            }
-            </div>
+        <details class="legend-connect-disclosure">
+            <summary class="legend-connect-disclosure-summary"><span><span class="dashboard-section-title">Advanced English curriculum manifest</span></span><span class="legend-connect-disclosure-status">Curriculum</span></summary>
+            <div class="legend-connect-disclosure-body"><form method="post" asp-action="SubmitCurriculum" class="dashboard-search-panel">@Html.AntiForgeryToken()<label class="dashboard-form-field dashboard-form-field--wide"><span>English semantic curriculum manifest</span><textarea name="Manifest" required maxlength="120000" spellcheck="false" placeholder="@@family conversation.example | Semantic category&#10;Controlled example | function=...; intent=...&#10;@@end"></textarea><small>Family boundaries and semantic dimensions remain explicit Founder authority. One invalid family rejects the manifest without a partial mutation.</small></label><div class="search-actions"><button type="submit" class="dashboard-command-action btn-carrier-settings">Validate and save curriculum</button></div></form></div>
         </details>
-    }
+    </section>
 
-    @if (Model.SelectedPair is { } correctionPair && correctionPair.RecentAlignments.Count > 0)
-    {
-        <details class="dashboard-analytics-panel legend-connect-disclosure legend-connect-disclosure--correction" aria-labelledby="correction-title">
-            <summary class="legend-connect-disclosure-summary"><span><span class="dashboard-section-title" id="correction-title">Supersede a pair alignment</span></span><span class="legend-connect-disclosure-status">Correction</span></summary>
-            <div class="legend-connect-disclosure-body">
-            <form method="post" asp-action="CorrectKnowledge" class="dashboard-search-panel">
-                @Html.AntiForgeryToken()
-                <input type="hidden" name="SourceLanguageCode" value="@correctionPair.SourceLanguageCode" />
-                <input type="hidden" name="TargetLanguageCode" value="@correctionPair.TargetLanguageCode" />
-                <div class="dashboard-form-grid">
-                    <label class="dashboard-form-field dashboard-form-field--wide"><span>Alignment to supersede</span><select name="SupersededAlignmentId" required>@foreach (var alignment in correctionPair.RecentAlignments) { <option value="@alignment.Id">@alignment.SourceText → @alignment.TargetText</option> }</select></label>
-                    <label class="dashboard-form-field dashboard-form-field--wide"><span>Context / category</span><input name="ContextCategory" maxlength="120" /></label>
-                    <label class="dashboard-form-field dashboard-form-field--wide"><span>Replacement source text</span><textarea name="SourceText" required maxlength="10000"></textarea></label>
-                    <label class="dashboard-form-field dashboard-form-field--wide"><span>Replacement target text</span><textarea name="TargetText" required maxlength="10000"></textarea></label>
-                </div>
-                <div class="search-actions"><button type="submit" class="dashboard-command-action btn-carrier-settings">Save correction and supersede</button></div>
-            </form>
-            </div>
-        </details>
-    }
+    <section class="dashboard-analytics-panel" aria-labelledby="founder-mode-title">
+        <div class="dashboard-section-head dashboard-section-head-tight"><div><span class="dashboard-section-kicker">Founder mode</span><h2 class="dashboard-section-title" id="founder-mode-title">Composition boundary</h2></div><span class="legend-connect-disclosure-status">@Model.RuntimePolicy.ContextualCompositionMode</span></div>
+        <p class="dashboard-section-copy">Changing this server policy leaves curriculum governance, contradiction gates, and native inference authorities unchanged.</p>
+        <div class="search-actions">@foreach (var mode in new[] { "Disabled", "Shadow", "Active" }) { <form method="post" asp-action="SetCompositionMode" class="dashboard-inline-command-form">@Html.AntiForgeryToken()<input type="hidden" name="ContextualCompositionMode" value="@mode" /><button type="submit" class="dashboard-command-action btn-carrier-settings" disabled="@(mode == Model.RuntimePolicy.ContextualCompositionMode)">@mode</button></form> }</div>
+    </section>
 
-    <details class="dashboard-analytics-panel legend-connect-disclosure legend-connect-disclosure--audit" aria-labelledby="runtime-audit-title" data-legend-copy-source="runtime-audit">
-        <summary class="legend-connect-disclosure-summary"><span><span class="dashboard-section-title" id="runtime-audit-title">Recent operational changes</span></span><span class="legend-connect-disclosure-status" data-legend-live-value="runtime-audit-entries">@Model.RuntimeAudit.Count.ToString("N0") entries</span></summary>
-        <div class="legend-connect-disclosure-body">
-        <div class="legend-connect-copy-toolbar"><partial name="_CopyButton" model="@("runtime-audit")" /></div>
-        @if (Model.RuntimeAudit.Count == 0)
+    <section class="dashboard-analytics-panel" aria-labelledby="founder-inspection-title">
+        <div class="dashboard-section-head dashboard-section-head-tight"><div><span class="dashboard-section-kicker">On-demand inspection</span><h2 class="dashboard-section-title" id="founder-inspection-title">Explore governed LEGEND state</h2></div></div>
+        <p class="dashboard-section-copy">Open one section to request its first server-ranked page. Searches run in SQL across the full eligible history; paging does not redefine what LEGEND knows.</p>
+        @foreach (var panel in new[]
         {
-            <p class="dashboard-section-copy">No Founder runtime-policy or language-focus changes have been recorded.</p>
-        }
-        else
+            ("curriculum", "Curriculum", "Semantic families; expand one family to retrieve only its examples."),
+            ("candidates", "Candidates", "Target-realization hypotheses and their governed lifecycle."),
+            ("evidence", "Evidence", "Founder-controlled compositional anchors."),
+            ("relationships", "Relationships", "Matured structural relationships and contradiction state."),
+            ("learning", "Learning", "Durable learning work and processing state."),
+            ("models", "Models", "Governed model-training lifecycle records."),
+            ("health", "Health", "Operational health events for the selected language."),
+            ("retained-knowledge", "Retained Knowledge", "Searchable, eligible canonical text only."),
+            ("language-pairs", "Language Pairs", "Directional language-pair status."),
+            ("provider-observations", "Provider Observations", "Provider-derived observations kept separate from Founder authority.")
+        })
         {
-            <div class="dashboard-data-surface"><table class="table dashboard-data-table"><thead><tr><th>When</th><th>Founder</th><th>Action</th><th>Language / pair</th><th>Result</th><th>Change</th></tr></thead><tbody>
-            @foreach (var item in Model.RuntimeAudit)
-            {
-                <tr><td>@item.OccurredUtc.ToString("u")</td><td>@item.FounderUserId</td><td>@item.Action</td><td>@(item.PairKey ?? (string.IsNullOrWhiteSpace(item.LanguageCode) ? "Global" : item.LanguageCode))</td><td>@item.Result</td><td>@item.Detail</td></tr>
-            }
-            </tbody></table></div>
+            <details class="legend-connect-disclosure" data-legend-section="@panel.Item1"><summary class="legend-connect-disclosure-summary"><span><span class="dashboard-section-title">@panel.Item2</span></span><span class="legend-connect-disclosure-status">Load on demand</span></summary><div class="legend-connect-disclosure-body" data-legend-section-body><p class="dashboard-section-copy">@panel.Item3</p></div></details>
         }
-        </div>
-    </details>
-
-    <details class="dashboard-analytics-panel legend-connect-disclosure legend-connect-disclosure--diagnostics" aria-labelledby="operational-events-title" data-legend-copy-source="operational-events">
-        <summary class="legend-connect-disclosure-summary"><span><span class="dashboard-section-title" id="operational-events-title">Recent backend events</span></span><span class="legend-connect-disclosure-status" data-legend-live-value="operational-events-summary">@dashboard.RecentOperationalEvents.Count.ToString("N0") events</span></summary>
-        <div class="legend-connect-disclosure-body">
-        <div class="legend-connect-copy-toolbar"><partial name="_CopyButton" model="@("operational-events")" /></div>
-        @if (dashboard.RecentOperationalEvents.Count == 0)
-        {
-            <p>No recorded Legend Connect operational events.</p>
-        }
-        else
-        {
-            <div class="dashboard-data-surface"><table class="table dashboard-data-table"><thead><tr><th>When</th><th>Category</th><th>Severity</th><th>Language / pair</th><th>Status</th><th>Code</th></tr></thead><tbody>
-            @foreach (var item in dashboard.RecentOperationalEvents)
-            {
-                <tr><td>@item.OccurredUtc.ToString("u")</td><td>@item.Category</td><td>@item.Severity</td><td>@(item.PairKey ?? item.LanguageCode ?? "Global")</td><td>@item.Status</td><td>@item.ErrorCode</td></tr>
-            }
-            </tbody></table></div>
-        }
-        </div>
-    </details>
+    </section>
 </main>
-
-<div class="modal fade legend-modal legend-connect-composition-modal" id="productionCompositionConfirmationModal" tabindex="-1" aria-labelledby="productionCompositionConfirmationTitle" aria-describedby="productionCompositionConfirmationDetail" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
-        <div class="modal-content">
-            <div class="modal-header">
-                <div>
-                    <span class="dashboard-section-kicker">Founder confirmation</span>
-                    <h2 class="modal-title" id="productionCompositionConfirmationTitle">Enable production composition?</h2>
-                </div>
-                <button type="button" class="dashboard-modal-close" data-bs-dismiss="modal" aria-label="Close confirmation and return to Legend Connect">×</button>
-            </div>
-            <div class="modal-body" id="productionCompositionConfirmationDetail">
-                <p>LEGEND® Connect may use existing production-eligible internal structural composition before provider fallback where the current runtime gate permits it.</p>
-                <p>This does not bypass Translation Memory rules, production eligibility, confidence thresholds, quality evidence, language isolation, Azure fallback, or consent and privacy controls.</p>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="legend-connect-modal-cancel" data-bs-dismiss="modal">Cancel</button>
-                <form method="post" asp-action="SetCompositionMode">
-                    @Html.AntiForgeryToken()
-                    <input type="hidden" name="ContextualCompositionMode" value="Active" />
-                    <button type="submit" class="legend-connect-modal-confirm">Enable production composition</button>
-                </form>
-            </div>
-        </div>
-    </div>
-</div>
-
-<div class="modal fade legend-modal dashboard-detail-modal legend-connect-summary-modal" id="legendConnectMetricSummaryModal" tabindex="-1" aria-labelledby="legendConnectMetricSummaryModalTitle" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
-        <div class="modal-content" data-legend-copy-source="metric-summary">
-            <div class="modal-header">
-                <div>
-                    <span class="dashboard-section-kicker" data-legend-summary-context>Live server summary</span>
-                    <h2 class="modal-title" id="legendConnectMetricSummaryModalTitle" data-legend-summary-title>Metric details</h2>
-                    <p class="dashboard-section-copy" data-legend-summary-description>This Founder view uses the current server-backed Legend Connect projection.</p>
-                </div>
-                <div class="legend-connect-modal-actions">
-                    <partial name="_CopyButton" model="@("metric-summary")" />
-                    <button type="button" class="dashboard-modal-close" data-bs-dismiss="modal" aria-label="Close metric details and return to Legend Connect">×</button>
-                </div>
-            </div>
-            <div class="modal-body" data-legend-summary-body aria-live="polite">
-                <p class="dashboard-section-copy">Loading the current record-level detail…</p>
-            </div>
-        </div>
-    </div>
-</div>
-
-@if (Model.SelectedLanguageKnowledge is { } languageKnowledge)
-{
-    var health = languageKnowledge.Health;
-    var canonicalDisplayed = Math.Min(health.CanonicalEntryCount, (long)languageKnowledge.DetailRecordLimit);
-    var alignmentDisplayed = Math.Min(health.TranslationMemoryRelationshipCount, (long)languageKnowledge.DetailRecordLimit);
-    var contextDisplayed = Math.Min(health.ContextRelationshipCount, (long)languageKnowledge.DetailRecordLimit);
-    var activityDisplayed = Math.Min(languageKnowledge.LearningActivityCount, (long)languageKnowledge.DetailRecordLimit);
-
-    <div class="modal fade legend-modal dashboard-detail-modal legend-connect-language-modal @LegendConnectMetricTone.Health(health.HealthState)" id="languageKnowledgeModal" tabindex="-1" aria-labelledby="languageKnowledgeModalTitle" aria-hidden="true">
-        <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
-            <div class="modal-content" data-legend-copy-source="language-dataset">
-                <div class="modal-header">
-                    <div>
-                        <span class="dashboard-section-kicker">Stored learning dataset</span>
-                        <h2 class="modal-title" id="languageKnowledgeModalTitle">@health.DisplayName (@health.LanguageCode)</h2>
-                        <p class="dashboard-section-copy"><span class="@LegendConnectMetricTone.Info">@health.StoragePartition</span> · <span class="@LegendConnectMetricTone.Health(health.HealthState)">Operational health: @health.HealthState</span> · <span class="@LegendConnectMetricTone.Quality(health.QualityState)">Pair state: @health.QualityState</span></p>
-                        <p class="dashboard-section-copy">Pair state reflects connected directional dataset health. It does not mean every retained alignment or provider observation has been linguistically verified.</p>
-                    </div>
-                    <div class="legend-connect-modal-actions">
-                        <partial name="_CopyButton" model="@("language-dataset")" />
-                        <button type="button" class="dashboard-modal-close" data-bs-dismiss="modal" aria-label="Close language details and return to Legend Connect">×</button>
-                    </div>
-                </div>
-                <div class="modal-body">
-                    <div class="dashboard-hero-stats dashboard-detail-modal-metrics" aria-label="Language dataset totals">
-                        <div class="dashboard-stat-card @LegendConnectMetricTone.BeneficialActivity(health.CanonicalEntryCount)"><span class="dashboard-stat-label">Canonical entries</span><span class="dashboard-stat-value">@health.CanonicalEntryCount</span></div>
-                        <div class="dashboard-stat-card @LegendConnectMetricTone.BeneficialActivity(health.TranslationMemoryRelationshipCount)"><span class="dashboard-stat-label">Active alignments</span><span class="dashboard-stat-value">@health.TranslationMemoryRelationshipCount</span></div>
-                        <div class="dashboard-stat-card @LegendConnectMetricTone.BeneficialActivity(health.ContextRelationshipCount)"><span class="dashboard-stat-label">Context links</span><span class="dashboard-stat-value">@health.ContextRelationshipCount</span></div>
-                        <div class="dashboard-stat-card @LegendConnectMetricTone.BeneficialActivity(languageKnowledge.LearningActivityCount)"><span class="dashboard-stat-label">Learning events</span><span class="dashboard-stat-value">@languageKnowledge.LearningActivityCount</span></div>
-                    </div>
-                    <p class="dashboard-section-copy">This is a live server projection. Approved entries, active alignments, and context links expose the actual retained learning data. Learning-event rows intentionally show only metadata so private message bodies never enter Founder operations.</p>
-
-                    <section class="dashboard-detail-modal-section" aria-labelledby="structural-patterns-title">
-                        <div class="dashboard-section-head dashboard-section-head-tight"><div><span class="dashboard-section-kicker @LegendConnectMetricTone.Info">Language-specific structural evidence</span><h3 class="dashboard-section-title @LegendConnectMetricTone.Info" id="structural-patterns-title">Curriculum patterns</h3></div></div>
-                        <p class="dashboard-section-copy">These are privacy-safe maturity records. A family shares semantic variation metadata, while each language's evidence compares only canonical examples in that language. No pattern is allowed to compose a live translation until an independent production gate is approved.</p>
-                        @if (languageKnowledge.StructuralPatterns is not { Count: > 0 })
-                        {
-                            <p class="dashboard-section-copy">No structural curriculum evidence has been recorded for this language yet.</p>
-                        }
-                        else
-                        {
-                            <div class="dashboard-data-surface"><table class="table dashboard-data-table"><thead><tr><th>Family</th><th>Semantic dimension</th><th>Maturity</th><th>Support</th><th>Contradictions</th><th>Production eligible</th><th>Updated</th></tr></thead><tbody>
-                            @foreach (var pattern in languageKnowledge.StructuralPatterns)
-                            {
-                                <tr class="@(pattern.ContradictionCount > 0 ? LegendConnectMetricTone.Danger : LegendConnectMetricTone.Maturity(pattern.MaturityState))"><td>@pattern.FamilyKey</td><td><span class="@LegendConnectMetricTone.Info">@pattern.VariationDimension</span></td><td><span class="@LegendConnectMetricTone.Maturity(pattern.MaturityState)">@pattern.MaturityState</span></td><td><span class="@LegendConnectMetricTone.Evidence(pattern.SupportCount)">@pattern.SupportCount</span></td><td><span class="@LegendConnectMetricTone.Contradictions(pattern.ContradictionCount)">@pattern.ContradictionCount</span></td><td><span class="@LegendConnectMetricTone.ProductionEligibility(pattern.IsProductionEligible)">@(pattern.IsProductionEligible ? "Yes" : "No")</span></td><td>@pattern.UpdatedUtc.ToString("u")</td></tr>
-                            }
-                            </tbody></table></div>
-                        }
-                    </section>
-
-                    <section class="dashboard-detail-modal-section" aria-labelledby="structural-relationships-title">
-                        <div class="dashboard-section-head dashboard-section-head-tight"><div><span class="dashboard-section-kicker @LegendConnectMetricTone.Authority">Cross-example structural learning</span><h3 class="dashboard-section-title @LegendConnectMetricTone.Authority" id="structural-relationships-title">Reusable structural relationships</h3></div></div>
-                        <p class="dashboard-section-copy">This is the server-owned aggregate across independent Founder-approved comparisons. Per-family pattern rows can correctly remain at Support 1 while the matching reusable relationship progresses through Observation, Candidate, and Supported. Provider-only observations remain separate and cannot create Founder-trusted support.</p>
-                        @if (languageKnowledge.StructuralRelationships is not { Count: > 0 })
-                        {
-                            <p class="dashboard-section-copy">No reusable cross-example structural relationship has been earned for this language yet.</p>
-                        }
-                        else
-                        {
-                            <div class="dashboard-data-surface"><table class="table dashboard-data-table"><thead><tr><th>Pair</th><th>Semantic dimension</th><th>Maturity</th><th>Support</th><th>Independent sources</th><th>Human verified</th><th>Provider-only</th><th>Contradictions</th><th>Production eligible</th><th>Updated</th></tr></thead><tbody>
-                            @foreach (var relationship in languageKnowledge.StructuralRelationships)
-                            {
-                                <tr class="@(relationship.ContradictionCount > 0 ? LegendConnectMetricTone.Danger : LegendConnectMetricTone.Maturity(relationship.MaturityState))"><td><span class="@LegendConnectMetricTone.Info">@(string.IsNullOrEmpty(relationship.PairKey) ? "Monolingual" : relationship.PairKey)</span></td><td><span class="@LegendConnectMetricTone.Info">@relationship.VariationDimension</span></td><td><span class="@LegendConnectMetricTone.Maturity(relationship.MaturityState)">@relationship.MaturityState</span></td><td><span class="@LegendConnectMetricTone.Evidence(relationship.SupportCount)">@relationship.SupportCount</span></td><td><span class="@LegendConnectMetricTone.Evidence(relationship.IndependentSourceCount)">@relationship.IndependentSourceCount</span></td><td><span class="@LegendConnectMetricTone.Verification(relationship.HumanVerifiedSupportCount > 0)">@relationship.HumanVerifiedSupportCount</span></td><td><span class="@LegendConnectMetricTone.Info">@relationship.ProviderOnlySupportCount</span></td><td><span class="@LegendConnectMetricTone.Contradictions(relationship.ContradictionCount)">@relationship.ContradictionCount</span></td><td><span class="@LegendConnectMetricTone.ProductionEligibility(relationship.IsProductionEligible)">@(relationship.IsProductionEligible ? "Yes" : "No")</span></td><td>@relationship.UpdatedUtc.ToString("u")</td></tr>
-                            }
-                            </tbody></table></div>
-                        }
-                    </section>
-
-                    <section class="dashboard-detail-modal-section" aria-labelledby="canonical-entries-title">
-                        <div class="dashboard-section-head dashboard-section-head-tight"><div><span class="dashboard-section-kicker @LegendConnectMetricTone.Success">Retained canonical assets</span><h3 class="dashboard-section-title @LegendConnectMetricTone.Success" id="canonical-entries-title">Entries used for learning</h3></div></div>
-                        @if (languageKnowledge.CanonicalEntries.Count == 0)
-                        {
-                            <p class="dashboard-section-copy">No retained canonical entries are stored in @health.StoragePartition yet. This is the real empty dataset state.</p>
-                        }
-                        else
-                        {
-                            <p class="dashboard-section-copy">Showing the newest @canonicalDisplayed of @health.CanonicalEntryCount retained @(health.CanonicalEntryCount == 1 ? "entry" : "entries").</p>
-                            <div class="dashboard-data-surface"><table class="table dashboard-data-table"><thead><tr><th>Retained text</th><th>Provenance</th><th>Created</th><th>Updated</th></tr></thead><tbody>
-                            @foreach (var entry in languageKnowledge.CanonicalEntries)
-                            {
-                                <tr class="@LegendConnectMetricTone.Provenance(entry.Provenance)"><td>@entry.Text</td><td><span class="@LegendConnectMetricTone.Provenance(entry.Provenance)">@entry.Provenance</span></td><td>@entry.CreatedUtc.ToString("u")</td><td>@entry.UpdatedUtc.ToString("u")</td></tr>
-                            }
-                            </tbody></table></div>
-                        }
-                    </section>
-
-                    <section class="dashboard-detail-modal-section" aria-labelledby="active-alignments-title">
-                        <div class="dashboard-section-head dashboard-section-head-tight"><div><span class="dashboard-section-kicker @LegendConnectMetricTone.Info">Directional translation memory</span><h3 class="dashboard-section-title @LegendConnectMetricTone.Info" id="active-alignments-title">Active retained alignments</h3></div></div>
-                        @if (languageKnowledge.ActiveAlignments.Count == 0)
-                        {
-                            <p class="dashboard-section-copy">No active retained directional alignments are stored for this language yet.</p>
-                        }
-                        else
-                        {
-                            <p class="dashboard-section-copy">Showing the newest @alignmentDisplayed of @health.TranslationMemoryRelationshipCount active retained alignment@(health.TranslationMemoryRelationshipCount == 1 ? string.Empty : "s"). Provider-derived observations remain retained and explicitly unverified unless a Founder verifies them.</p>
-                            <div class="dashboard-data-surface"><table class="table dashboard-data-table"><thead><tr><th>Pair</th><th>Retained source</th><th>Retained target</th><th>Provider</th><th>Confidence</th><th>Alignment state</th><th>Verification</th><th>Evidence</th><th>Updated</th></tr></thead><tbody>
-                            @foreach (var alignment in languageKnowledge.ActiveAlignments)
-                            {
-                                <tr class="@(alignment.HumanVerified ? LegendConnectMetricTone.Success : LegendConnectMetricTone.Quality(alignment.QualityState))"><td>@alignment.PairKey</td><td>@alignment.SourceText</td><td>@alignment.TargetText</td><td><span class="@LegendConnectMetricTone.Info">@alignment.Provider</span></td><td><span class="@LegendConnectMetricTone.Confidence(alignment.Confidence)">@(alignment.Confidence?.ToString("P0") ?? "Not scored")</span></td><td><span class="@LegendConnectMetricTone.Quality(alignment.QualityState)">@alignment.QualityState</span></td><td><span class="@LegendConnectMetricTone.Verification(alignment.HumanVerified)">@(alignment.HumanVerified ? "Human verified" : "Not human verified")</span></td><td><span class="@LegendConnectMetricTone.Evidence(alignment.ObservationCount)">@alignment.ObservationCount</span></td><td>@alignment.UpdatedUtc.ToString("u")</td></tr>
-                            }
-                            </tbody></table></div>
-                        }
-                    </section>
-
-                    <section class="dashboard-detail-modal-section" aria-labelledby="context-relationships-title">
-                        <div class="dashboard-section-head dashboard-section-head-tight"><div><span class="dashboard-section-kicker @LegendConnectMetricTone.Authority">Reusable context</span><h3 class="dashboard-section-title @LegendConnectMetricTone.Authority" id="context-relationships-title">Stored context relationships</h3></div></div>
-                        @if (languageKnowledge.ContextRelationships.Count == 0)
-                        {
-                            <p class="dashboard-section-copy">No active context relationships are stored for this language yet.</p>
-                        }
-                        else
-                        {
-                            <p class="dashboard-section-copy">Showing the newest @contextDisplayed of @health.ContextRelationshipCount relationship@(health.ContextRelationshipCount == 1 ? string.Empty : "s").</p>
-                            <div class="dashboard-data-surface"><table class="table dashboard-data-table"><thead><tr><th>Pair</th><th>Source asset</th><th>Related asset</th><th>Kind / provenance</th><th>Context</th><th>Usage</th><th>Relationship state</th><th>Evidence</th><th>Updated</th></tr></thead><tbody>
-                            @foreach (var relationship in languageKnowledge.ContextRelationships)
-                            {
-                                <tr class="@LegendConnectMetricTone.Quality(relationship.QualityState)"><td><span class="@LegendConnectMetricTone.Info">@(relationship.PairKey ?? "Monolingual")</span></td><td>@relationship.SourceText</td><td>@relationship.RelatedText</td><td><span class="@LegendConnectMetricTone.Info">@relationship.RelationshipKind</span><br /><small class="@LegendConnectMetricTone.Provenance(relationship.Provenance)">@relationship.Provenance</small></td><td>@(relationship.ContextCategory ?? "Not classified")</td><td>@(relationship.UsageRegister ?? "Not specified")</td><td><span class="@LegendConnectMetricTone.Quality(relationship.QualityState)">@relationship.QualityState</span></td><td><span class="@LegendConnectMetricTone.Evidence(relationship.ObservationCount)">@relationship.ObservationCount</span></td><td>@relationship.UpdatedUtc.ToString("u")</td></tr>
-                            }
-                            </tbody></table></div>
-                        }
-                    </section>
-
-                    <section class="dashboard-detail-modal-section" aria-labelledby="language-pairs-title">
-                        <div class="dashboard-section-head dashboard-section-head-tight"><div><span class="dashboard-section-kicker @LegendConnectMetricTone.Info">Directional health</span><h3 class="dashboard-section-title @LegendConnectMetricTone.Info" id="language-pairs-title">Connected language pairs</h3></div></div>
-                        @if (languageKnowledge.DirectionalPairs.Count == 0)
-                        {
-                            <p class="dashboard-section-copy">No enabled directional pair is configured for this language yet.</p>
-                        }
-                        else
-                        {
-                            <div class="dashboard-data-surface"><table class="table dashboard-data-table"><thead><tr><th>Pair</th><th>Demand</th><th>Memory reuse</th><th>Provider fallback required</th><th>Coverage</th><th>Operational pair state</th><th>Operational health</th></tr></thead><tbody>
-                            @foreach (var pair in languageKnowledge.DirectionalPairs)
-                            {
-                                <tr class="@LegendConnectMetricTone.Health(pair.HealthState)"><td>@pair.PairKey</td><td><span class="@LegendConnectMetricTone.InformationalActivity(pair.DemandCount)">@pair.DemandCount</span></td><td><span class="@LegendConnectMetricTone.BeneficialActivity(pair.TranslationMemoryReuseCount)">@pair.TranslationMemoryReuseCount</span></td><td><span class="@LegendConnectMetricTone.Dependency(pair.AzureFallbackRate, pair.DemandCount)">@pair.AzureFallbackCount (@pair.AzureFallbackRate.ToString("P0"))</span></td><td><span class="@LegendConnectMetricTone.BeneficialActivity(pair.Coverage)">@pair.Coverage</span></td><td><span class="@LegendConnectMetricTone.Quality(pair.QualityState)">@pair.QualityState</span></td><td><span class="@LegendConnectMetricTone.Health(pair.HealthState)">@pair.HealthState</span></td></tr>
-                            }
-                            </tbody></table></div>
-                        }
-                    </section>
-
-                    <section class="dashboard-detail-modal-section" aria-labelledby="learning-activity-title">
-                        <div class="dashboard-section-head dashboard-section-head-tight"><div><span class="dashboard-section-kicker @LegendConnectMetricTone.Warning">Privacy-safe pipeline audit</span><h3 class="dashboard-section-title @LegendConnectMetricTone.Warning" id="learning-activity-title">Learning activity</h3></div></div>
-                        @if (languageKnowledge.RecentLearningActivity.Count == 0)
-                        {
-                            <p class="dashboard-section-copy">No learning-pipeline activity has been recorded for this language yet.</p>
-                        }
-                        else
-                        {
-                            <p class="dashboard-section-copy">Showing the newest @activityDisplayed of @languageKnowledge.LearningActivityCount activity record@(languageKnowledge.LearningActivityCount == 1 ? string.Empty : "s"). Text is intentionally excluded here.</p>
-                            <div class="dashboard-data-surface"><table class="table dashboard-data-table"><thead><tr><th>Pair</th><th>Provenance</th><th>Eligibility</th><th>State</th><th>Outcome</th><th>Attempts</th><th>Created</th><th>Processed</th><th>Failure</th></tr></thead><tbody>
-                            @foreach (var activity in languageKnowledge.RecentLearningActivity)
-                            {
-                                <tr class="@(activity.FailureCode is null ? LegendConnectMetricTone.Lifecycle(activity.PromotionOutcome ?? activity.ProcessingState) : LegendConnectMetricTone.Danger)"><td>@activity.PairKey</td><td><span class="@LegendConnectMetricTone.Provenance(activity.Provenance)">@activity.Provenance</span></td><td><span class="@LegendConnectMetricTone.Lifecycle(activity.EligibilityState)">@activity.EligibilityState</span></td><td><span class="@LegendConnectMetricTone.Lifecycle(activity.ProcessingState)">@activity.ProcessingState</span></td><td><span class="@LegendConnectMetricTone.Lifecycle(activity.PromotionOutcome ?? "Awaiting")">@(activity.PromotionOutcome ?? "Awaiting")</span></td><td><span class="@LegendConnectMetricTone.Evidence(activity.AttemptCount)">@activity.AttemptCount</span></td><td>@activity.CreatedUtc.ToString("u")</td><td><span class="@LegendConnectMetricTone.Lifecycle(activity.ProcessedUtc.HasValue ? "Processed" : "Not processed")">@(activity.ProcessedUtc?.ToString("u") ?? "Not processed")</span></td><td><span class="@(activity.FailureCode is null ? LegendConnectMetricTone.Success : LegendConnectMetricTone.Danger)">@(activity.FailureCode ?? "None")</span></td></tr>
-                            }
-                            </tbody></table></div>
-                        }
-                    </section>
-
-                    <section class="dashboard-detail-modal-section" aria-labelledby="language-errors-title">
-                        <div class="dashboard-section-head dashboard-section-head-tight"><div><span class="dashboard-section-kicker @LegendConnectMetricTone.Danger">Bounded diagnostics</span><h3 class="dashboard-section-title @LegendConnectMetricTone.Danger" id="language-errors-title">Recent errors</h3></div></div>
-                        @if (health.RecentErrors.Count == 0)
-                        {
-                            <p class="dashboard-section-copy">No current language or directional-pair errors are recorded.</p>
-                        }
-                        else
-                        {
-                            <div class="dashboard-data-surface"><table class="table dashboard-data-table"><thead><tr><th>When</th><th>Category</th><th>Pair</th><th>State</th><th>Code</th><th>Summary</th></tr></thead><tbody>
-                            @foreach (var diagnostic in health.RecentErrors)
-                            {
-                                <tr class="@(string.IsNullOrWhiteSpace(diagnostic.ErrorCode) ? LegendConnectMetricTone.Lifecycle(diagnostic.Status) : LegendConnectMetricTone.Danger)"><td>@diagnostic.OccurredUtc.ToString("u")</td><td><span class="@LegendConnectMetricTone.Info">@diagnostic.Category</span></td><td>@(diagnostic.PairKey ?? "Language")</td><td><span class="@LegendConnectMetricTone.Lifecycle(diagnostic.Status)">@diagnostic.Status</span></td><td><span class="@(string.IsNullOrWhiteSpace(diagnostic.ErrorCode) ? LegendConnectMetricTone.Neutral : LegendConnectMetricTone.Danger)">@(diagnostic.ErrorCode ?? "None")</span></td><td>@diagnostic.Summary</td></tr>
-                            }
-                            </tbody></table></div>
-                        }
-                    </section>
-                </div>
-            </div>
-        </div>
-    </div>
-}
 
 @section Scripts {
     <script src="~/js/legend-connect.js" asp-append-version="true"></script>
-    @if (Model.SelectedLanguageKnowledge is not null)
-    {
-        <script>
-            (() => {
-                const element = document.getElementById("languageKnowledgeModal");
-                if (!element || !window.bootstrap?.Modal) return;
-                const modal = bootstrap.Modal.getOrCreateInstance(element);
-                element.addEventListener("hidden.bs.modal", () => {
-                    const url = new URL(window.location.href);
-                    url.searchParams.delete("language");
-                    window.history.replaceState({}, "", url);
-                }, { once: true });
-                modal.show();
-            })();
-        </script>
-    }
 }
