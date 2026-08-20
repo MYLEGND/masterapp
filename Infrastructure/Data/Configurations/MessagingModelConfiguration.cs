@@ -411,6 +411,8 @@ internal static class MessagingModelConfiguration
             entity.Property(item => item.Provenance).IsRequired().HasMaxLength(80);
             entity.HasIndex(item => new { item.LanguageCode, item.NormalizedHash }).IsUnique();
             entity.HasIndex(item => new { item.StoragePartition, item.CreatedUtc });
+            entity.HasIndex(item => new { item.LanguageCode, item.IsTrainingEligible, item.UpdatedUtc })
+                .HasDatabaseName("IX_LegendTextUnits_FounderLanguage");
             entity.HasOne<LegendGlobalConcept>()
                 .WithMany()
                 .HasForeignKey(item => item.GlobalConceptId)
@@ -586,6 +588,10 @@ internal static class MessagingModelConfiguration
             entity.HasIndex(item => item.IdempotencyKey).IsUnique();
             entity.HasIndex(item => new { item.ProcessingState, item.EligibilityState, item.CreatedUtc });
             entity.HasIndex(item => item.PairKey);
+            entity.HasIndex(item => new { item.SourceLanguageCode, item.CreatedUtc })
+                .HasDatabaseName("IX_LegendLearningEvents_FounderSource");
+            entity.HasIndex(item => new { item.TargetLanguageCode, item.CreatedUtc })
+                .HasDatabaseName("IX_LegendLearningEvents_FounderTarget");
         });
 
         modelBuilder.Entity<LegendCorpusCandidate>(entity =>
@@ -724,6 +730,8 @@ internal static class MessagingModelConfiguration
             entity.HasIndex(item => item.SupersededUtc);
             entity.HasIndex(item => new { item.CurriculumFamilyId, item.TextUnitId }).IsUnique();
             entity.HasIndex(item => new { item.CurriculumFamilyId, item.LanguageCode, item.UpdatedUtc });
+            entity.HasIndex(item => new { item.LanguageCode, item.SupersededUtc, item.UpdatedUtc })
+                .HasDatabaseName("IX_LegendCurriculumExamples_FounderLanguage");
             entity.HasIndex(item => item.DerivedFromCurriculumExampleId);
             entity.HasOne<LegendCurriculumFamily>()
                 .WithMany()
@@ -800,6 +808,11 @@ internal static class MessagingModelConfiguration
                 item.RelationshipSignature
             }).IsUnique();
             entity.HasIndex(item => new { item.PairKey, item.LanguageCode, item.MaturityState, item.IsProductionEligible });
+            // Founder inspection is language-scoped and chronologically
+            // paginated. The existing PairKey-leading indexes do not support
+            // that page without scanning every pair for the language.
+            entity.HasIndex(item => new { item.LanguageCode, item.SupersededUtc, item.UpdatedUtc })
+                .HasDatabaseName("IX_LegendStructuralRelationships_FounderLanguage");
         });
 
         modelBuilder.Entity<LegendFounderTrainingSubmission>(entity =>
@@ -961,6 +974,10 @@ internal static class MessagingModelConfiguration
             entity.HasIndex(item => new { item.SemanticSignature, item.SupersededUtc });
             entity.HasIndex(item => new { item.PairKey, item.SemanticSignature, item.SupersededUtc });
             entity.HasIndex(item => new { item.TextUnitId, item.SupersededUtc });
+            // The Founder evidence page filters by language and active state,
+            // then keyset-orders by CreatedUtc.
+            entity.HasIndex(item => new { item.LanguageCode, item.SupersededUtc, item.CreatedUtc })
+                .HasDatabaseName("IX_LegendCompositionalAnchors_FounderLanguage");
             entity.HasOne<LegendLanguageTextUnit>()
                 .WithMany()
                 .HasForeignKey(item => item.TextUnitId)
@@ -1002,6 +1019,12 @@ internal static class MessagingModelConfiguration
             entity.HasIndex(item => item.CandidateIdentity).IsUnique();
             entity.HasIndex(item => new { item.PairKey, item.SemanticSignature, item.ContextSignature, item.SupersededUtc });
             entity.HasIndex(item => new { item.VerificationState, item.MaturityState, item.SupersededUtc });
+            // Candidate summary and inspection can be scoped from either side
+            // of a pair; each side needs its own seekable active chronology.
+            entity.HasIndex(item => new { item.SourceLanguageCode, item.SupersededUtc, item.UpdatedUtc })
+                .HasDatabaseName("IX_LegendTargetCandidates_FounderSource");
+            entity.HasIndex(item => new { item.TargetLanguageCode, item.SupersededUtc, item.UpdatedUtc })
+                .HasDatabaseName("IX_LegendTargetCandidates_FounderTarget");
             entity.HasOne<LegendLanguageCompositionalAnchor>()
                 .WithMany()
                 .HasForeignKey(item => item.VerifiedAnchorId)

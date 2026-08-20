@@ -32,7 +32,7 @@ public sealed class FounderLegendConnectService
         _runtimePolicy = runtimePolicy;
     }
 
-    public async Task<FounderLegendConnectDashboardVm> GetDashboardAsync(
+    public async Task<FounderLegendConnectPageVm> GetDashboardAsync(
         ClaimsPrincipal user,
         string? language,
         string? pair,
@@ -40,44 +40,68 @@ public sealed class FounderLegendConnectService
         string? accountSearch = null)
     {
         _ = await ResolveFounderActorAsync(user, cancellationToken);
-        var dashboardProjection = await _operations.GetDashboardProjectionAsync(language, pair, cancellationToken);
-        var dashboard = dashboardProjection.Dashboard;
-        var translationQuality = await _operations.GetTranslationQualityAsync(cancellationToken);
-        var targetRealizations = await _operations.GetTargetRealizationReviewAsync(cancellationToken);
-        var accountDirectory = _entitlements is null
-            ? new TranslationFounderAccountSearchSnapshot(
-                Array.Empty<TranslationFounderAccountUsageSnapshot>(),
-                null,
-                false)
-            : await _entitlements.SearchFounderAccountsAsync(accountSearch, 8, cancellationToken);
-        var accountScale = _entitlements is null
-            ? new TranslationFounderScaleSnapshot(0, 0, 0, 0, 0, 0, 0, 0, 0)
-            : await _entitlements.GetFounderScaleAsync(cancellationToken);
+        // Pair/account detail remains available through scoped Founder actions;
+        // it is intentionally not loaded merely to render the page shell.
+        _ = pair;
+        _ = accountSearch;
+        var shell = await _operations.GetFounderShellAsync(language, cancellationToken);
+        var runtimePolicy = _runtimePolicy is null
+            ? new LegendConnectRuntimePolicySnapshot(false, 0, 0, 0, false, true, "Shadow", 0.98m, null, null, DateTime.MinValue)
+            : await _runtimePolicy.GetEffectiveAsync(cancellationToken);
+        return new FounderLegendConnectPageVm
+        {
+            Shell = shell,
+            RuntimePolicy = runtimePolicy
+        };
+    }
+
+    public async Task<LegendConnectFounderSectionPageSnapshot> GetSectionPageAsync(
+        ClaimsPrincipal user,
+        string section,
+        string? language,
+        string? search,
+        string? cursor,
+        Guid? curriculumFamilyId,
+        CancellationToken cancellationToken = default)
+    {
+        _ = await ResolveFounderActorAsync(user, cancellationToken);
+        return await _operations.GetFounderSectionPageAsync(
+            section,
+            language,
+            search,
+            cursor,
+            curriculumFamilyId,
+            cancellationToken);
+    }
+
+    /// <summary>
+    /// Explicit Founder-tool inspection remains separate from the page shell.
+    /// It retains the existing comprehensive operational projection only when
+    /// the caller deliberately asks the Founder tool for language state.
+    /// </summary>
+    public async Task<FounderLegendConnectDashboardVm> GetLanguageStateAsync(
+        ClaimsPrincipal user,
+        string language,
+        string? pair,
+        CancellationToken cancellationToken = default)
+    {
+        _ = await ResolveFounderActorAsync(user, cancellationToken);
+        var projection = await _operations.GetDashboardProjectionAsync(language, pair, cancellationToken);
         var runtimePolicy = _runtimePolicy is null
             ? new LegendConnectRuntimePolicySnapshot(false, 0, 0, 0, false, true, "Shadow", 0.98m, null, null, DateTime.MinValue)
             : await _runtimePolicy.GetEffectiveAsync(cancellationToken);
         var readiness = _runtimePolicy is null
             ? new LegendConnectProductionReadinessSnapshot("BLOCKED", false, "Legend Connect runtime policy authority is unavailable.", Array.Empty<LegendConnectReadinessCheck>(), 0, 0, 0, 0, 0)
             : await _runtimePolicy.GetReadinessAsync(cancellationToken);
-        var runtimeAudit = _runtimePolicy is null
-            ? Array.Empty<LegendConnectFounderOperationalAuditSnapshot>()
-            : await _runtimePolicy.GetRecentAuditAsync(cancellationToken: cancellationToken);
         return new FounderLegendConnectDashboardVm
         {
-            Dashboard = dashboard,
-            SelectedLanguage = dashboardProjection.SelectedLanguageKnowledge?.Health,
-            SelectedLanguageKnowledge = dashboardProjection.SelectedLanguageKnowledge,
-            SelectedPair = dashboardProjection.SelectedPair,
-            TranslationQuality = translationQuality,
-            TargetRealizations = targetRealizations,
-            AccountUsage = accountDirectory.Accounts,
-            AccountSearchQuery = accountDirectory.Query,
-            HasAdditionalAccountResults = accountDirectory.HasMore,
-            AccountScale = accountScale,
-            EntitlementPresets = _entitlements?.GetFounderEntitlementPresets() ?? Array.Empty<TranslationEntitlementPreset>(),
+            Dashboard = projection.Dashboard,
+            SelectedLanguage = projection.SelectedLanguageKnowledge?.Health,
+            SelectedLanguageKnowledge = projection.SelectedLanguageKnowledge,
+            SelectedPair = projection.SelectedPair,
+            TranslationQuality = await _operations.GetTranslationQualityAsync(cancellationToken),
             RuntimePolicy = runtimePolicy,
-            ProductionReadiness = readiness,
-            RuntimeAudit = runtimeAudit
+            ProductionReadiness = readiness
         };
     }
 

@@ -1,9 +1,11 @@
 using System;
 using System.Collections.Generic;
+using System.Data.Common;
 using System.Linq;
 using System.Net;
 using System.Net.Http;
 using System.Net.Http.Json;
+using System.Reflection;
 using System.Security.Claims;
 using System.Text.Encodings.Web;
 using System.Threading;
@@ -31,6 +33,7 @@ using Microsoft.AspNetCore.Mvc.ViewFeatures;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -52,6 +55,158 @@ namespace AgentPortal.Tests;
 public sealed class LegendConnectOperationalProofTests
 {
     private const string FounderHeader = "X-Legend-Connect-Founder";
+
+    [Fact]
+    public async Task FounderShellAndInspectionSections_RemainBoundedAndDiscoverHistoricalCurriculum()
+    {
+        var previousFounder = Environment.GetEnvironmentVariable("FOUNDER_OID");
+        var founderId = Guid.NewGuid().ToString();
+        Environment.SetEnvironmentVariable("FOUNDER_OID", founderId);
+        try
+        {
+            using var host = await BuildFounderHttpHostAsync(founderId);
+            await using (var scope = host.Services.CreateAsyncScope())
+            {
+                var db = scope.ServiceProvider.GetRequiredService<MasterAppDbContext>();
+                var registry = scope.ServiceProvider.GetRequiredService<ILegendLanguageRegistry>();
+                await registry.ListEnabledTranslationLanguagesAsync();
+                var start = DateTime.UtcNow.AddDays(-20);
+                var families = new List<LegendCurriculumFamily>();
+                var units = new List<LegendLanguageTextUnit>();
+                var examples = new List<LegendCurriculumExample>();
+                var anchors = new List<LegendLanguageCompositionalAnchor>();
+                for (var index = 0; index < 3_000; index++)
+                {
+                    var timestamp = start.AddSeconds(index);
+                    var text = index == 0 ? "A historical controlled curriculum example." : $"Controlled curriculum example {index}.";
+                    var family = new LegendCurriculumFamily
+                    {
+                        Id = Guid.NewGuid(),
+                        FamilyKey = index == 0 ? "historical.discoverable.family" : $"load.family.{index:D5}",
+                        SemanticCategory = "Scalability",
+                        Provenance = "FounderApproved",
+                        CreatedUtc = timestamp,
+                        UpdatedUtc = timestamp
+                    };
+                    var unit = new LegendLanguageTextUnit
+                    {
+                        Id = Guid.NewGuid(),
+                        LanguageCode = "en",
+                        StoragePartition = "Legend:en",
+                        NormalizedHash = Guid.NewGuid().ToString("N"),
+                        Text = text,
+                        Provenance = "FounderApproved",
+                        IsTrainingEligible = true,
+                        CreatedUtc = timestamp,
+                        UpdatedUtc = timestamp
+                    };
+                    var example = new LegendCurriculumExample
+                    {
+                        Id = Guid.NewGuid(),
+                        CurriculumFamilyId = family.Id,
+                        TextUnitId = unit.Id,
+                        LanguageCode = "en",
+                        Provenance = "FounderApproved",
+                        CreatedUtc = timestamp,
+                        UpdatedUtc = timestamp
+                    };
+                    families.Add(family);
+                    units.Add(unit);
+                    examples.Add(example);
+                    anchors.Add(new LegendLanguageCompositionalAnchor
+                    {
+                        Id = Guid.NewGuid(),
+                        LanguageCode = "en",
+                        TextUnitId = unit.Id,
+                        CurriculumFamilyId = family.Id,
+                        CurriculumExampleId = example.Id,
+                        Dimension = "function",
+                        Value = "scalability",
+                        AnchorSignature = Guid.NewGuid().ToString("N"),
+                        Provenance = "FounderApproved",
+                        CreatedUtc = timestamp
+                    });
+                }
+                db.AddRange(families);
+                db.AddRange(units);
+                db.AddRange(examples);
+                db.AddRange(anchors);
+                await db.SaveChangesAsync();
+            }
+
+            await using (var shellScope = host.Services.CreateAsyncScope())
+            {
+                var service = shellScope.ServiceProvider.GetRequiredService<FounderLegendConnectService>();
+                var shell = await service.GetDashboardAsync(
+                    ControllerTestHelpers.BuildUser(founderId), "en", null);
+                Assert.Equal(3_000, shell.Shell.SelectedLanguage!.CanonicalEntryCount);
+                Assert.Equal(3_000, shell.Shell.SelectedLanguage.CurriculumExampleCount);
+                Assert.Equal(3_000, shell.Shell.SelectedLanguage.CompositionalAnchorCount);
+            }
+
+            var client = host.GetTestClient();
+
+            using var shellRequest = new HttpRequestMessage(HttpMethod.Get, "/founder/legend-connect?language=en");
+            shellRequest.Headers.Add(FounderHeader, founderId);
+            using var shellResponse = await client.SendAsync(shellRequest);
+            Assert.Equal(HttpStatusCode.OK, shellResponse.StatusCode);
+            var shellHtml = await shellResponse.Content.ReadAsStringAsync();
+            Assert.Contains("data-legend-connect-shell", shellHtml, StringComparison.Ordinal);
+            Assert.Contains("data-legend-section=\"curriculum\"", shellHtml, StringComparison.Ordinal);
+            Assert.DoesNotContain("historical.discoverable.family", shellHtml, StringComparison.Ordinal);
+            Assert.DoesNotContain("A historical controlled curriculum example.", shellHtml, StringComparison.Ordinal);
+
+            using var curriculumRequest = new HttpRequestMessage(HttpMethod.Get, "/founder/legend-connect/sections?section=curriculum&language=en");
+            curriculumRequest.Headers.Add(FounderHeader, founderId);
+            using var curriculumResponse = await client.SendAsync(curriculumRequest);
+            Assert.Equal(HttpStatusCode.OK, curriculumResponse.StatusCode);
+            var curriculum = await curriculumResponse.Content.ReadFromJsonAsync<LegendConnectFounderSectionPageSnapshot>();
+            Assert.NotNull(curriculum);
+            Assert.Equal(50, curriculum!.Rows.Count);
+            Assert.NotNull(curriculum.NextCursor);
+
+            using var nextCurriculumRequest = new HttpRequestMessage(HttpMethod.Get,
+                $"/founder/legend-connect/sections?section=curriculum&language=en&cursor={Uri.EscapeDataString(curriculum.NextCursor!)}");
+            nextCurriculumRequest.Headers.Add(FounderHeader, founderId);
+            using var nextCurriculumResponse = await client.SendAsync(nextCurriculumRequest);
+            nextCurriculumResponse.EnsureSuccessStatusCode();
+            var nextCurriculum = await nextCurriculumResponse.Content.ReadFromJsonAsync<LegendConnectFounderSectionPageSnapshot>();
+            Assert.Equal(50, nextCurriculum!.Rows.Count);
+            Assert.Empty(curriculum.Rows.Select(row => row[0]).Intersect(nextCurriculum.Rows.Select(row => row[0])));
+
+            using var oldSearchRequest = new HttpRequestMessage(HttpMethod.Get, "/founder/legend-connect/sections?section=curriculum&language=en&search=historical.discoverable");
+            oldSearchRequest.Headers.Add(FounderHeader, founderId);
+            using var oldSearchResponse = await client.SendAsync(oldSearchRequest);
+            oldSearchResponse.EnsureSuccessStatusCode();
+            var oldSearch = await oldSearchResponse.Content.ReadFromJsonAsync<LegendConnectFounderSectionPageSnapshot>();
+            var row = Assert.Single(oldSearch!.Rows);
+            Assert.Equal("historical.discoverable.family", row[1]);
+
+            using var examplesRequest = new HttpRequestMessage(HttpMethod.Get,
+                $"/founder/legend-connect/sections?section=curriculum-examples&language=en&familyId={row[0]}");
+            examplesRequest.Headers.Add(FounderHeader, founderId);
+            using var examplesResponse = await client.SendAsync(examplesRequest);
+            examplesResponse.EnsureSuccessStatusCode();
+            var examplesPage = await examplesResponse.Content.ReadFromJsonAsync<LegendConnectFounderSectionPageSnapshot>();
+            Assert.Single(examplesPage!.Rows);
+            Assert.Equal("A historical controlled curriculum example.", examplesPage.Rows[0][1]);
+
+            // A lazy section failure is intentionally scoped to its own JSON
+            // response; the previously rendered shell is already independent.
+            host.Services.GetRequiredService<OptionalSectionFailureInterceptor>().FailNextCommand();
+            using var failedSectionRequest = new HttpRequestMessage(HttpMethod.Get,
+                "/founder/legend-connect/sections?section=health&language=en");
+            failedSectionRequest.Headers.Add(FounderHeader, founderId);
+            using var failedSectionResponse = await client.SendAsync(failedSectionRequest);
+            Assert.Equal(HttpStatusCode.ServiceUnavailable, failedSectionResponse.StatusCode);
+            var failureBody = await failedSectionResponse.Content.ReadAsStringAsync();
+            Assert.Contains("page shell is still available", failureBody, StringComparison.Ordinal);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("FOUNDER_OID", previousFounder);
+        }
+    }
 
     [Fact]
     public async Task FounderManualTraining_HttpPostWithAntiforgery_ReachesTheCanonicalRouteThenRedirects()
@@ -483,9 +638,8 @@ public sealed class LegendConnectOperationalProofTests
             Assert.Contains(await db.LegendConnectKnowledgeAuditEntries.ToListAsync(), item =>
                 item.Action == "FounderKnowledgeSubmitted" && item.Result == "Succeeded");
 
-            var freshDashboard = await service.GetDashboardAsync(founder, "en", "en:ht");
-            Assert.Equal(1, freshDashboard.SelectedLanguage!.CanonicalEntryCount);
-            Assert.Single(freshDashboard.SelectedPair!.RecentAlignments);
+            var freshShell = await service.GetDashboardAsync(founder, "en", "en:ht");
+            Assert.Equal(1, freshShell.Shell.SelectedLanguage!.CanonicalEntryCount);
 
             controller.TempData = NewTempData(controller.HttpContext);
             var duplicateRoute = Assert.IsType<RedirectToActionResult>(await controller.SubmitKnowledge(
@@ -1048,6 +1202,7 @@ public sealed class LegendConnectOperationalProofTests
     {
         var databaseName = "legend-connect-founder-http-" + Guid.NewGuid().ToString("N");
         var connection = new SqliteConnection($"Data Source=file:{databaseName}?mode=memory&cache=shared");
+        var optionalSectionFailure = new OptionalSectionFailureInterceptor();
         await connection.OpenAsync();
         var host = await new HostBuilder()
             .ConfigureWebHost(webBuilder => webBuilder
@@ -1055,8 +1210,11 @@ public sealed class LegendConnectOperationalProofTests
                 .ConfigureServices(services =>
                 {
                     services.AddDataProtection();
+                    services.AddHttpContextAccessor();
                     services.AddControllersWithViews()
                         .AddApplicationPart(typeof(LegendConnectController).Assembly)
+                        .AddApplicationPart(Assembly.Load("AgentPortal.Views"))
+                        .AddApplicationPart(typeof(Shared.Diagnostics.AppFailureDiagnostics).Assembly)
                         .AddApplicationPart(typeof(LegendConnectOperationalProofTests).Assembly);
                     services.AddAntiforgery(options => options.HeaderName = "RequestVerificationToken");
                     services.AddAuthentication("LegendConnectTest")
@@ -1065,7 +1223,9 @@ public sealed class LegendConnectOperationalProofTests
                         .RequireAuthenticatedUser()
                         .Build());
                     services.AddSingleton(connection);
-                    services.AddDbContext<MasterAppDbContext>(options => options.UseSqlite(connection));
+                    services.AddSingleton(optionalSectionFailure);
+                    services.AddDbContext<MasterAppDbContext>(options =>
+                        options.UseSqlite(connection).AddInterceptors(optionalSectionFailure));
                     services.AddSingleton<IConfiguration>(Configuration());
                     services.AddScoped<ILegendLanguageRegistry, LegendLanguageRegistry>();
                     services.AddScoped<LegendConnectCorpusService>();
@@ -1158,6 +1318,24 @@ public sealed class LegendConnectOperationalProofTests
             ? values.FirstOrDefault(value => value.StartsWith(".AspNetCore.Antiforgery", StringComparison.OrdinalIgnoreCase))?
                 .Split(';')[0] ?? string.Empty
             : string.Empty;
+
+    private sealed class OptionalSectionFailureInterceptor : DbCommandInterceptor
+    {
+        private int _failNextCommand;
+
+        public void FailNextCommand() => Interlocked.Exchange(ref _failNextCommand, 1);
+
+        public override ValueTask<InterceptionResult<DbDataReader>> ReaderExecutingAsync(
+            DbCommand command,
+            CommandEventData eventData,
+            InterceptionResult<DbDataReader> result,
+            CancellationToken cancellationToken = default)
+        {
+            if (Interlocked.Exchange(ref _failNextCommand, 0) == 1)
+                throw new InvalidOperationException("Controlled lazy-section database failure.");
+            return base.ReaderExecutingAsync(command, eventData, result, cancellationToken);
+        }
+    }
 
     private sealed class RecordingProvider : ITranslationProvider
     {

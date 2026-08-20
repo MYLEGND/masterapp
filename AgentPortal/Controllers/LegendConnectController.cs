@@ -72,22 +72,47 @@ public sealed class LegendConnectController : Controller
         }
     }
 
+    /// <summary>
+    /// Loads one Founder-requested inspection slice. A failed optional slice is
+    /// isolated to this response so it cannot turn the already-rendered page
+    /// shell into a process-wide Founder-page failure.
+    /// </summary>
     [HttpGet]
-    [Route("founder/legend-connect/metrics")]
-    public async Task<IActionResult> GetLiveMetrics(CancellationToken cancellationToken)
+    [Route("founder/legend-connect/sections")]
+    public async Task<IActionResult> GetSection(
+        [FromQuery] string? section,
+        [FromQuery] string? language,
+        [FromQuery] string? search,
+        [FromQuery] string? cursor,
+        [FromQuery] Guid? familyId,
+        CancellationToken cancellationToken)
     {
         try
         {
-            return Ok(await _service.GetLiveMetricsAsync(User, cancellationToken));
+            if (string.IsNullOrWhiteSpace(section))
+                return BadRequest(new { message = "A Founder section is required." });
+            return Ok(await _service.GetSectionPageAsync(
+                User,
+                section,
+                language,
+                search,
+                cursor,
+                familyId,
+                cancellationToken));
         }
         catch (ForbidResultException)
         {
             return Forbid();
         }
+        catch (ArgumentException exception)
+        {
+            return BadRequest(new { message = exception.Message });
+        }
         catch (Exception exception)
         {
-            _logger.LogError(exception, "Legend Connect live metric projection failed to load.");
-            return StatusCode(StatusCodes.Status503ServiceUnavailable);
+            _logger.LogError(exception, "Legend Connect Founder section {Section} failed to load.", section);
+            return StatusCode(StatusCodes.Status503ServiceUnavailable,
+                new { message = "This Founder section is temporarily unavailable. The page shell is still available; retry this section." });
         }
     }
 

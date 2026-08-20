@@ -537,6 +537,49 @@ public sealed record LegendConnectDashboardProjectionSnapshot(
     LegendConnectPairHealthSnapshot? SelectedPair);
 
 /// <summary>
+/// Bounded initial projection for the Founder Legend Connect page. It is a
+/// navigation and summary surface only: detailed curriculum, evidence, model,
+/// and learning records are intentionally requested through the corresponding
+/// paged Founder section after the user opens it.
+/// </summary>
+public sealed record LegendConnectFounderShellSnapshot(
+    IReadOnlyList<LegendConnectFounderLanguageOptionSnapshot> Languages,
+    LegendConnectFounderLanguageSummarySnapshot? SelectedLanguage);
+
+public sealed record LegendConnectFounderLanguageOptionSnapshot(
+    string LanguageCode,
+    string DisplayName,
+    bool IsEnabled);
+
+public sealed record LegendConnectFounderLanguageSummarySnapshot(
+    string LanguageCode,
+    string DisplayName,
+    string HealthState,
+    long CanonicalEntryCount,
+    long CurriculumExampleCount,
+    long CompositionalAnchorCount,
+    long ActiveRelationshipCount,
+    long PendingLearningCount,
+    long CandidateCount,
+    long OpenIssueCount,
+    DateTime? LastCurriculumUpdateUtc);
+
+/// <summary>
+/// A single server-ranked, keyset-paginated Founder inspection page. Rows are
+/// display projections of the existing authorities, never a browser cache or
+/// a separate knowledge store. A null cursor means there is no next page.
+/// </summary>
+public sealed record LegendConnectFounderSectionPageSnapshot(
+    string Section,
+    string LanguageCode,
+    string? Search,
+    int PageSize,
+    string? NextCursor,
+    IReadOnlyList<string> Columns,
+    IReadOnlyList<IReadOnlyList<string>> Rows,
+    string? EmptyMessage = null);
+
+/// <summary>
 /// A Founder-safe, record-level explanation for one live dashboard metric.
 /// These rows are projections of the established operational ledgers and
 /// corpus records; they never create a second reporting or learning store.
@@ -708,6 +751,18 @@ public interface ILegendConnectOperations
     Task<LegendConnectDashboardProjectionSnapshot> GetDashboardProjectionAsync(
         string? languageCode,
         string? pairKey,
+        CancellationToken cancellationToken = default);
+
+    Task<LegendConnectFounderShellSnapshot> GetFounderShellAsync(
+        string? languageCode,
+        CancellationToken cancellationToken = default);
+
+    Task<LegendConnectFounderSectionPageSnapshot> GetFounderSectionPageAsync(
+        string section,
+        string? languageCode,
+        string? search,
+        string? cursor,
+        Guid? curriculumFamilyId = null,
         CancellationToken cancellationToken = default);
 
     Task<LegendConnectProviderCapacitySnapshot> GetProviderCapacityAsync(

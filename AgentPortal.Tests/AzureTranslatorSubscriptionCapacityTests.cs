@@ -89,6 +89,27 @@ public sealed class AzureTranslatorSubscriptionCapacityTests
     }
 
     [Fact]
+    public async Task SlowAzureLookup_IsBoundedAndFailsClosed()
+    {
+        var handler = new WaitingHandler();
+        var factory = new Mock<IHttpClientFactory>(MockBehavior.Strict);
+        factory.Setup(item => item.CreateClient("AzureResourceManager"))
+            .Returns(new HttpClient(handler) { BaseAddress = new Uri("https://management.azure.com/") });
+        var source = new AzureTranslatorSubscriptionCapacitySource(
+            factory.Object,
+            Configuration(),
+            NullLogger<AzureTranslatorSubscriptionCapacitySource>.Instance,
+            new StaticTokenCredential(),
+            refreshTimeout: TimeSpan.FromMilliseconds(50));
+
+        var capacity = await source.GetCurrentAsync();
+
+        Assert.False(capacity.IsAvailable);
+        Assert.Equal("Azure capacity synchronization timed out.", capacity.Detail);
+        Assert.True(handler.CancellationObserved);
+    }
+
+    [Fact]
     public async Task CapacityAuthority_EnforcesF0MonthlyBudgetAndHourlyVelocityFromAzure()
     {
         await using var db = ControllerTestHelpers.BuildDb();
@@ -378,5 +399,26 @@ public sealed class AzureTranslatorSubscriptionCapacityTests
     {
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
             throw new TaskCanceledException("Azure Resource Manager timeout.");
+    }
+
+    private sealed class WaitingHandler : HttpMessageHandler
+    {
+        public bool CancellationObserved { get; private set; }
+
+        protected override async Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request,
+            CancellationToken cancellationToken)
+        {
+            try
+            {
+                await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+                throw new InvalidOperationException("The timeout cancellation token must end this request.");
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                CancellationObserved = true;
+                throw;
+            }
+        }
     }
 }

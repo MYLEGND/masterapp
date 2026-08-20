@@ -1609,7 +1609,7 @@ public sealed class LegendFounderAiConversationService
                     return """{"error":"language_required"}""";
 
                 var dashboard =
-                    await _legend.GetDashboardAsync(
+                    await _legend.GetLanguageStateAsync(
                         founder,
                         language,
                         pair,
