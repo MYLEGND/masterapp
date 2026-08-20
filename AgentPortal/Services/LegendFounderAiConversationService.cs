@@ -34,10 +34,6 @@ public sealed class LegendFounderAiConversationService
     private const int MinimumFinalizationReserveSeconds = 6;
     private const int MinimumFinalSynthesisWindowSeconds = 20;
     private const int MaximumProviderRoundSeconds = 75;
-    private const int MinimumCasualProviderSeconds = 8;
-    private const int MaximumCasualProviderSeconds = 18;
-    private const int MinimumCasualOutputTokens = 256;
-    private const int MaximumCasualOutputTokens = 1_200;
     private const int MinimumRetainedKnowledgeLookupSeconds = 4;
     private const int MaximumRetainedKnowledgeLookupSeconds = 12;
     private const int MinimumReadOnlyToolSeconds = 8;
@@ -266,12 +262,19 @@ public sealed class LegendFounderAiConversationService
                         TimeSpan.FromSeconds(
                             MinimumFinalSynthesisWindowSeconds);
 
+                var providerReserveSeconds =
+                    allowTools
+                        ? MinimumFinalizationReserveSeconds
+                        : 2;
+
                 var providerBudget =
-                    ResolveProviderBudget(
-                        conversation,
-                        requiresGovernedInspection,
-                        allowTools,
-                        remaining);
+                    TimeSpan.FromSeconds(
+                        Math.Min(
+                            MaximumProviderRoundSeconds,
+                            Math.Max(
+                                5,
+                                remaining.TotalSeconds -
+                                providerReserveSeconds)));
 
                 await ReportProgressAsync(
                     progress,
@@ -304,10 +307,6 @@ public sealed class LegendFounderAiConversationService
                             round,
                             requiresGovernedInspection,
                             _reasoningEffort),
-                        ResolveMaxOutputTokens(
-                            conversation,
-                            requiresGovernedInspection,
-                            _maxOutputTokens),
                         effectiveToken);
 
                 if (responseDocument is null)
@@ -457,7 +456,7 @@ public sealed class LegendFounderAiConversationService
             when (!cancellationToken.IsCancellationRequested)
         {
             return LegendFounderAiChatResponse.Failure(
-                "Legend® Ai timed out while reasoning over the current request.",
+                "Legend® Ai timed out while reasoning over the current system state.",
                 "timeout");
         }
         catch (HttpRequestException exception)
@@ -491,7 +490,6 @@ public sealed class LegendFounderAiConversationService
         bool allowTools,
         TimeSpan providerBudget,
         string reasoningEffort,
-        int maxOutputTokens,
         CancellationToken cancellationToken)
     {
         var payload = new
@@ -519,7 +517,7 @@ public sealed class LegendFounderAiConversationService
             },
 
             service_tier = _serviceTier,
-            max_output_tokens = maxOutputTokens
+            max_output_tokens = _maxOutputTokens
         };
 
         var client =
@@ -2407,61 +2405,6 @@ Never upgrade an unresolved, rejected or contradicted record merely because it a
             : MaximumProviderConversationCharacters;
 
         return Math.Min(totalCharacters, target);
-    }
-
-    private static TimeSpan ResolveProviderBudget(
-        IReadOnlyList<LegendFounderAiChatMessage> conversation,
-        bool requiresGovernedInspection,
-        bool allowTools,
-        TimeSpan remaining)
-    {
-        if (requiresGovernedInspection)
-        {
-            var providerReserveSeconds =
-                allowTools
-                    ? MinimumFinalizationReserveSeconds
-                    : 2;
-
-            return TimeSpan.FromSeconds(
-                Math.Min(
-                    MaximumProviderRoundSeconds,
-                    Math.Max(
-                        5,
-                        remaining.TotalSeconds -
-                        providerReserveSeconds)));
-        }
-
-        var totalCharacters = conversation.Sum(message => message.Content?.Length ?? 0);
-        var userTurns = conversation.Count(message => string.Equals(message.Role, "user", StringComparison.Ordinal));
-        var adaptiveSeconds = MinimumCasualProviderSeconds + totalCharacters / 4_000 + Math.Max(0, userTurns - 1);
-        var boundedSeconds = Math.Clamp(
-            adaptiveSeconds,
-            MinimumCasualProviderSeconds,
-            MaximumCasualProviderSeconds);
-
-        return TimeSpan.FromSeconds(
-            Math.Min(
-                boundedSeconds,
-                Math.Max(1, remaining.TotalSeconds - 2)));
-    }
-
-    private static int ResolveMaxOutputTokens(
-        IReadOnlyList<LegendFounderAiChatMessage> conversation,
-        bool requiresGovernedInspection,
-        int configuredMaximum)
-    {
-        if (requiresGovernedInspection)
-            return configuredMaximum;
-
-        var latest = conversation
-            .Last(message => string.Equals(message.Role, "user", StringComparison.Ordinal))
-            .Content?.Length ?? 0;
-
-        var adaptiveTokens = MinimumCasualOutputTokens + latest / 4;
-        return Math.Clamp(
-            adaptiveTokens,
-            MinimumCasualOutputTokens,
-            Math.Min(MaximumCasualOutputTokens, configuredMaximum));
     }
 
     private static int ResolveRetainedKnowledgeQueryBudget(int queryLength) =>
