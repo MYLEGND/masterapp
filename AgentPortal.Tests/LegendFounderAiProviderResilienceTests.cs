@@ -53,6 +53,57 @@ public sealed class LegendFounderAiProviderResilienceTests
     }
 
     [Fact]
+    public void CasualProviderBudgetIsInteractiveAndDoesNotUseGovernedRoundWindow()
+    {
+        var method = typeof(LegendFounderAiConversationService).GetMethod("ResolveProviderBudget", BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.NotNull(method);
+
+        IReadOnlyList<LegendFounderAiChatMessage> conversation = [new("user", "Hi")];
+        var budget = Assert.IsType<TimeSpan>(method!.Invoke(null, new object[]
+        {
+            conversation,
+            false,
+            false,
+            TimeSpan.FromSeconds(120)
+        }));
+
+        Assert.InRange(budget.TotalSeconds, 8, 18);
+        Assert.True(budget < TimeSpan.FromSeconds(20));
+    }
+
+    [Fact]
+    public void GovernedProviderBudgetRetainsDeepInspectionWindow()
+    {
+        var method = typeof(LegendFounderAiConversationService).GetMethod("ResolveProviderBudget", BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.NotNull(method);
+
+        IReadOnlyList<LegendFounderAiChatMessage> conversation = [new("user", "What is the current system state?")];
+        var budget = Assert.IsType<TimeSpan>(method!.Invoke(null, new object[]
+        {
+            conversation,
+            true,
+            true,
+            TimeSpan.FromSeconds(120)
+        }));
+
+        Assert.Equal(TimeSpan.FromSeconds(75), budget);
+    }
+
+    [Fact]
+    public void CasualOutputBudgetScalesBelowGovernedConfiguredMaximum()
+    {
+        var method = typeof(LegendFounderAiConversationService).GetMethod("ResolveMaxOutputTokens", BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.NotNull(method);
+
+        IReadOnlyList<LegendFounderAiChatMessage> conversation = [new("user", "Hi")];
+        var casual = Assert.IsType<int>(method!.Invoke(null, new object[] { conversation, false, 8_000 }));
+        var governed = Assert.IsType<int>(method.Invoke(null, new object[] { conversation, true, 8_000 }));
+
+        Assert.InRange(casual, 256, 1_200);
+        Assert.Equal(8_000, governed);
+    }
+
+    [Fact]
     public void RetainedKnowledgeQueryCarriesPriorFounderContextWhenAvailable()
     {
         var method = typeof(LegendFounderAiConversationService).GetMethod("BuildRetainedKnowledgeQuery", BindingFlags.NonPublic | BindingFlags.Static);
