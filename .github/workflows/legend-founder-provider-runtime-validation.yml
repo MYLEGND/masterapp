@@ -1,0 +1,175 @@
+name: Legend Founder AI provider runtime validation
+
+on:
+  pull_request:
+    branches:
+      - meta-authority-cleanup
+    paths:
+      - '.github/workflows/legend-founder-provider-runtime-validation.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  AZURE_WEBAPP_NAME: masterapp-portal
+  AZURE_RESOURCE_GROUP: masterapp-rg
+
+jobs:
+  validate-provider:
+    runs-on: ubuntu-latest
+    environment:
+      name: Production
+
+    steps:
+      - name: Checkout exact validation branch
+        uses: actions/checkout@v4
+
+      - name: Login to Azure with OIDC
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Resolve production OpenAI configuration without exposing secrets
+        shell: pwsh
+        run: |
+          $raw = az webapp config appsettings list --resource-group $env:AZURE_RESOURCE_GROUP --name $env:AZURE_WEBAPP_NAME --output json
+          if ($LASTEXITCODE -ne 0) { throw 'Unable to read App Service settings.' }
+          $items = $raw | ConvertFrom-Json
+          $settings = @{}
+          foreach ($item in $items) { $settings[$item.name] = [string]$item.value }
+
+          $defaults = Get-Content 'AgentPortal/appsettings.json' -Raw | ConvertFrom-Json
+          function First-Setting([string[]]$Names, [string]$Fallback = '') {
+            foreach ($name in $Names) {
+              if ($settings.ContainsKey($name) -and -not [string]::IsNullOrWhiteSpace($settings[$name])) { return $settings[$name] }
+            }
+            return $Fallback
+          }
+
+          $key = First-Setting @('OpenAI__ApiKey','OpenAI:ApiKey','OPENAI_API_KEY') ''
+          if ([string]::IsNullOrWhiteSpace($key)) { throw 'OpenAI API key is not configured in the App Service settings visible to the deployment identity.' }
+          if ($key.StartsWith('@Microsoft.KeyVault(', [System.StringComparison]::OrdinalIgnoreCase)) { throw 'OpenAI API key is a Key Vault reference and is not resolved by the deployment identity; use an App Service-hosted validation instead.' }
+          Write-Output "::add-mask::$key"
+
+          $model = First-Setting @('OpenAI__LegendFounderAiModel','OpenAI:LegendFounderAiModel') ([string]$defaults.OpenAI.LegendFounderAiModel)
+          $fallbackModel = First-Setting @('OpenAI__Model','OpenAI:Model') ([string]$defaults.OpenAI.Model)
+          $tier = First-Setting @('OpenAI__LegendFounderAiServiceTier','OpenAI:LegendFounderAiServiceTier') ([string]$defaults.OpenAI.LegendFounderAiServiceTier)
+          $baseUrl = First-Setting @('OpenAI__BaseUrl','OpenAI:BaseUrl') ([string]$defaults.OpenAI.BaseUrl)
+          if ([string]::IsNullOrWhiteSpace($baseUrl)) { $baseUrl = 'https://api.openai.com/' }
+
+          "OPENAI_API_KEY=$key" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "LEGEND_MODEL=$model" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "FALLBACK_MODEL=$fallbackModel" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "CONFIGURED_TIER=$tier" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "OPENAI_BASE_URL=$baseUrl" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+          Write-Host "Resolved model=$model fallbackModel=$fallbackModel configuredTier=$tier"
+
+      - name: Exercise exact Responses API contract with multiple real messages
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json, os, time, urllib.request, urllib.error
+
+          key = os.environ['OPENAI_API_KEY']
+          model = os.environ['LEGEND_MODEL']
+          fallback = os.environ['FALLBACK_MODEL']
+          configured_tier = os.environ.get('CONFIGURED_TIER', '') or 'auto'
+          base = os.environ.get('OPENAI_BASE_URL', 'https://api.openai.com/').rstrip('/') + '/'
+
+          prompts = [
+              'Hi Legend® Ai. Introduce yourself naturally in two short sentences and ask how you can help me today.',
+              'I have three priorities today: finish a difficult work project, exercise, and prepare for an important conversation tomorrow. Help me decide a sensible order and explain your reasoning without overcomplicating it.',
+              'Explain the difference between a plan and a strategy in plain English. Then give me one practical example showing how they work together.',
+              'I want to build a habit of thinking more clearly before making decisions. Give me a short repeatable process I can use when the stakes are meaningful but I do not have unlimited time.'
+          ]
+
+          instructions = (
+              'You are Legend® Ai speaking with the Founder. '
+              'Respond naturally, directly, and conversationally. '
+              'Use the product name exactly as "Legend® Ai" if you name yourself. '
+              'Do not invent internal system state or private data.'
+          )
+
+          def extract_text(body):
+              for item in body.get('output', []):
+                  if item.get('type') != 'message':
+                      continue
+                  for part in item.get('content', []):
+                      if part.get('type') == 'output_text' and part.get('text'):
+                          return part['text'].strip()
+              return ''
+
+          def call(test_model, tier, prompt, timeout=90):
+              payload = {
+                  'model': test_model,
+                  'store': False,
+                  'instructions': instructions,
+                  'input': [{'role': 'user', 'content': prompt}],
+                  'tools': [],
+                  'tool_choice': 'none',
+                  'parallel_tool_calls': False,
+                  'truncation': 'auto',
+                  'reasoning': {'effort': 'none'},
+                  'service_tier': tier,
+                  'max_output_tokens': 600,
+              }
+              req = urllib.request.Request(
+                  base + 'v1/responses',
+                  data=json.dumps(payload).encode('utf-8'),
+                  headers={'Authorization': 'Bearer ' + key, 'Content-Type': 'application/json'},
+                  method='POST')
+              start = time.monotonic()
+              try:
+                  with urllib.request.urlopen(req, timeout=timeout) as response:
+                      raw = response.read().decode('utf-8')
+                      body = json.loads(raw)
+                      elapsed = time.monotonic() - start
+                      text = extract_text(body)
+                      return {'ok': response.status == 200 and body.get('status') == 'completed' and bool(text),
+                              'status': response.status, 'elapsed': elapsed, 'state': body.get('status'),
+                              'tier': body.get('service_tier'), 'text': text}
+              except urllib.error.HTTPError as exc:
+                  elapsed = time.monotonic() - start
+                  body = exc.read().decode('utf-8', errors='replace')
+                  try:
+                      parsed = json.loads(body)
+                      message = parsed.get('error', {}).get('message', '')
+                  except Exception:
+                      message = body[:300]
+                  return {'ok': False, 'status': exc.code, 'elapsed': elapsed, 'state': 'http_error', 'tier': None, 'text': message[:300]}
+              except Exception as exc:
+                  return {'ok': False, 'status': 0, 'elapsed': time.monotonic() - start, 'state': type(exc).__name__, 'tier': None, 'text': str(exc)[:300]}
+
+          print('DIAGNOSTIC configured contract:')
+          diagnostic = call(model, configured_tier, prompts[0])
+          print(json.dumps({k:v for k,v in diagnostic.items() if k != 'text'}), 'preview=', diagnostic['text'][:180].replace('\n',' '))
+
+          print('PRIMARY validation: model=%s tier=auto' % model)
+          primary = []
+          for index, prompt in enumerate(prompts, 1):
+              result = call(model, 'auto', prompt)
+              primary.append(result)
+              print('prompt', index, json.dumps({k:v for k,v in result.items() if k != 'text'}), 'preview=', result['text'][:220].replace('\n',' '))
+
+          if all(item['ok'] for item in primary):
+              print('PRIMARY_PASS: all four real messages returned usable completed responses.')
+              raise SystemExit(0)
+
+          print('Primary model was not consistently usable. Testing existing configured fallback model with the same provider authority.')
+          fallback_results = []
+          for index, prompt in enumerate(prompts, 1):
+              result = call(fallback, 'auto', prompt)
+              fallback_results.append(result)
+              print('fallback prompt', index, json.dumps({k:v for k,v in result.items() if k != 'text'}), 'preview=', result['text'][:220].replace('\n',' '))
+
+          if all(item['ok'] for item in fallback_results):
+              print('FALLBACK_PASS: existing configured fallback model answered all four real messages consistently.')
+              raise SystemExit(0)
+
+          raise SystemExit('Provider validation failed: neither configured Legend model nor existing fallback model answered all four messages consistently.')
+          PY
