@@ -90,6 +90,9 @@ jobs:
           dotnet restore "${{ env.EF_PROJECT }}"
           dotnet restore "${{ env.PROJECT_PATH }}"
 
+      - name: Build EF startup project
+        run: dotnet build "${{ env.PROJECT_PATH }}" --configuration Release --no-restore
+
       - name: Login to Azure with OIDC
         uses: azure/login@v2
         with:
@@ -155,6 +158,7 @@ jobs:
             --project '${{ env.EF_PROJECT }}' `
             --startup-project '${{ env.PROJECT_PATH }}' `
             --context '${{ env.EF_CONTEXT }}' `
+            --configuration Release `
             --no-build
           if ($LASTEXITCODE -ne 0) { throw 'Production EF migration update failed.' }
 
@@ -165,6 +169,7 @@ jobs:
             --project '${{ env.EF_PROJECT }}' `
             --startup-project '${{ env.PROJECT_PATH }}' `
             --context '${{ env.EF_CONTEXT }}' `
+            --configuration Release `
             --no-build 2>&1
           if ($LASTEXITCODE -ne 0) { $output | Write-Host; throw 'Unable to verify production migrations.' }
           $output | Write-Host
