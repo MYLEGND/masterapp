@@ -12,7 +12,7 @@ on:
       - 'Shared/**'
       - 'Directory.Build.*'
       - 'Directory.Packages.props'
-      - '.github/workflows/meta-authority-cleanup_masterapp-portal.yml'
+      - '.github/workflows/agentportal-production-deploy.yml'
   workflow_dispatch:
 
 permissions:

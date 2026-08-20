@@ -114,7 +114,7 @@ The repository folder must be exactly:
 1. Audit before modifying.
 2. Read all applicable repository instructions, including every relevant `AGENTS.md`.
 3. Inspect `git status`, the active branch, and the complete existing diff before changing anything.
-4. Verify that the active branch is `meta-authority-cleanup` or clearly report if it is not.
+4. Verify that the active branch is `production` or clearly report if it is not.
 5. Do not discard, reset, stash, rewrite, clean, or overwrite existing work.
 6. Do not run `git reset --hard`.
 7. Do not run `git clean`.
