@@ -704,6 +704,7 @@ internal sealed class LegendConnectRuntimePolicyAuthority : ILegendConnectRuntim
         LegendConnectRuntimePolicy policy) => new(
         policy.TargetLanguageIntelligenceEvaluatorVersion,
         policy.CompletedLanguageIntelligenceEvaluatorVersion,
+        policy.CursorReplayCompatibilityEvaluatorVersion,
         policy.LanguageIntelligenceReevaluationPhase,
         policy.LanguageIntelligenceReevaluationCursor,
         policy.LanguageIntelligenceReevaluationStartedUtc,

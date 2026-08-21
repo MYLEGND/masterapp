@@ -11,6 +11,7 @@ namespace Infrastructure.Data;
 public class MasterAppDbContext : DbContext
 {
     public DbSet<LegendCurriculumManifestWorkItem> LegendCurriculumManifestWorkItems => Set<LegendCurriculumManifestWorkItem>();
+    public DbSet<LegendHistoricalReevaluationWorkItem> LegendHistoricalReevaluationWorkItems => Set<LegendHistoricalReevaluationWorkItem>();
 
     public MasterAppDbContext(DbContextOptions<MasterAppDbContext> options) : base(options) { }
 
@@ -229,6 +230,43 @@ public class MasterAppDbContext : DbContext
                 .HasDatabaseName("IX_LegendCurriculumManifestWorkItems_Processing");
             entity.HasIndex(item => item.CreatedUtc)
                 .HasDatabaseName("IX_LegendCurriculumManifestWorkItems_FounderStatus");
+        });
+
+        // One generic durable execution authority for historical evaluator
+        // work. It deliberately contains no canonical curriculum/evidence
+        // payload; the existing services remain the only semantic authority.
+        modelBuilder.Entity<LegendHistoricalReevaluationWorkItem>(entity =>
+        {
+            entity.ToTable("LegendHistoricalReevaluationWorkItems");
+            entity.HasKey(item => item.Id);
+            entity.Property(item => item.Phase).IsRequired().HasMaxLength(40);
+            entity.Property(item => item.WorkKind).IsRequired().HasMaxLength(24);
+            entity.Property(item => item.WorkIdentity).IsRequired().HasMaxLength(180);
+            entity.Property(item => item.SubjectScope).IsRequired().HasMaxLength(96);
+            entity.Property(item => item.DependencyIdentity).IsRequired().HasMaxLength(160);
+            entity.Property(item => item.ProcessingState).IsRequired().HasMaxLength(32);
+            entity.Property(item => item.LeaseOwner).HasMaxLength(128);
+            entity.Property(item => item.LastErrorCode).HasMaxLength(120);
+            entity.Property(item => item.LastErrorMessage).HasMaxLength(500);
+
+            entity.HasIndex(item => new { item.EvaluatorVersion, item.Phase, item.WorkKind, item.WorkIdentity })
+                .IsUnique()
+                .HasDatabaseName("IX_LegendHistoricalReevaluationWorkItems_Identity");
+            entity.HasIndex(item => new
+                {
+                    item.EvaluatorVersion,
+                    item.Phase,
+                    item.ProcessingState,
+                    item.LeaseExpiresUtc,
+                    item.CreatedUtc
+                })
+                .HasDatabaseName("IX_LegendHistoricalReevaluationWorkItems_Claim");
+            // SQL Server enforces cross-instance collision safety for the
+            // exact mutable dependency lane while a unit is actively leased.
+            entity.HasIndex(item => new { item.EvaluatorVersion, item.Phase, item.DependencyIdentity })
+                .IsUnique()
+                .HasFilter("[ProcessingState] = 'Processing'")
+                .HasDatabaseName("IX_LegendHistoricalReevaluationWorkItems_ActiveDependency");
         });
 
         modelBuilder.Entity<AccountLifecycleRecord>(entity =>

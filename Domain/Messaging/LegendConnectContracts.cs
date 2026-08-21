@@ -835,6 +835,10 @@ public interface ILegendConnectOperations
         Guid? afterId,
         CancellationToken cancellationToken = default);
 
+    Task ReconcileHistoricalOperationalTranslationAsync(
+        Guid translationId,
+        CancellationToken cancellationToken = default);
+
     Task<LegendConnectVerifiedTargetBatchResult> SubmitFounderVerifiedTargetsAsync(
         string founderUserId,
         LegendConnectVerifiedTargetSubmission submission,

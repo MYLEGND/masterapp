@@ -27,6 +27,7 @@ public static class MessagingServiceCollectionExtensions
         services.AddSingleton<IAzureTranslatorSubscriptionCapacitySource, AzureTranslatorSubscriptionCapacitySource>();
         services.AddScoped<ITranslationCapacityAuthority, TranslationCapacityAuthority>();
         services.AddScoped<ILegendConnectRuntimePolicyAuthority, LegendConnectRuntimePolicyAuthority>();
+        services.AddScoped<LegendConnectHistoricalReevaluationWorkAuthority>();
         services.AddScoped<ITranslationEntitlementAuthority, TranslationEntitlementAuthority>();
         services.AddScoped<ITranslationDemandRecorder, TranslationDemandRecorder>();
         services.AddScoped<ITranslationSystemUsageRecorder, TranslationSystemUsageRecorder>();

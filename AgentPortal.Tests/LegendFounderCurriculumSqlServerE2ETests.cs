@@ -24,6 +24,7 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
+using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -46,6 +47,1038 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
 
     public LegendFounderCurriculumSqlServerE2ETests(ITestOutputHelper output) =>
         _output = output;
+
+    [Fact]
+    public async Task LegendDirectEightPromptReleaseProof()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new[]
+            {
+                new KeyValuePair<string, string?>(
+                    "OpenAI:ApiKey",
+                    string.Empty),
+                new KeyValuePair<string, string?>(
+                    "LegendConnect:CorpusAcquisition:Enabled",
+                    "false"),
+                new KeyValuePair<string, string?>(
+                    "LegendConnect:ContextualComposition:Mode",
+                    "Shadow"),
+                new KeyValuePair<string, string?>(
+                    "LegendConnect:LanguageRegistry:Baseline:0:Code",
+                    "en"),
+                new KeyValuePair<string, string?>(
+                    "LegendConnect:LanguageRegistry:Baseline:0:Name",
+                    "English"),
+                new KeyValuePair<string, string?>(
+                    "LegendConnect:LanguageRegistry:Baseline:0:NativeName",
+                    "English")
+            })
+            .Build();
+
+        var registry =
+            new LegendLanguageRegistry(
+                db,
+                configuration);
+
+        var runtime =
+            new LegendConnectRuntimePolicyAuthority(
+                db,
+                new FounderAccess(),
+                registry,
+                configuration,
+                NullLogger<
+                    LegendConnectRuntimePolicyAuthority>.Instance);
+
+        var intelligence =
+            new LegendConnectTranslationIntelligence(
+                db,
+                configuration,
+                runtime);
+
+        var corpus =
+            new LegendConnectCorpusService(
+                db,
+                registry,
+                NullLogger<
+                    LegendConnectCorpusService>.Instance,
+                intelligence: intelligence);
+
+        var curriculum =
+            new LegendConnectCurriculumService(
+                db,
+                registry,
+                corpus);
+
+        var operations =
+            new LegendConnectOperations(
+                db,
+                registry,
+                corpus,
+                configuration,
+                runtimePolicy: runtime,
+                curriculum: curriculum,
+                intelligence: intelligence);
+
+        var founderId =
+            "45e9f238-3a36-4f2e-9610-000000000001";
+
+        var previousFounderOidForDirectProof =
+            Environment.GetEnvironmentVariable("FOUNDER_OID");
+
+        Environment.SetEnvironmentVariable(
+            "FOUNDER_OID",
+            founderId);
+
+        var founderEmail =
+            "legend-direct-release@legend.local";
+
+        db.AgentProfiles.Add(
+            new AgentProfile
+            {
+                Id = Guid.NewGuid(),
+                AgentUserId = founderId,
+                AgentUpn = founderEmail,
+                NormalizedEmail = founderEmail,
+                IsActive = true
+            });
+
+        await db.SaveChangesAsync();
+
+        var founder =
+            new ClaimsPrincipal(
+                new ClaimsIdentity(
+                    [
+                        new Claim(
+                            "oid",
+                            founderId)
+                    ],
+                    "legend-direct-proof"));
+
+        var founderLegend =
+            new FounderLegendConnectService(
+                operations,
+                new AgentProfileAccessResolver(db));
+
+        // ---------------------------------------------------------
+        // These are TEST DATA only.
+        //
+        // Three different curriculum families provide three
+        // independent Founder evidence identities for the same
+        // reusable semantic transition.
+        //
+        // There is no phrase-specific production routing.
+        // ---------------------------------------------------------
+
+        var prompts = new[]
+        {
+            "Hi there.",
+            "Hi Legend.",
+            "Hello.",
+            "Hey Legend.",
+            "Good morning.",
+            "How are you?",
+            "Nice to meet you.",
+            "What's up?"
+        };
+
+        for (var sourceIndex = 1;
+             sourceIndex <= 3;
+             sourceIndex++)
+        {
+            var examples =
+                new List<
+                    LegendConnectCurriculumExampleSubmission>();
+
+            foreach (var prompt in prompts)
+            {
+                examples.Add(
+                    new LegendConnectCurriculumExampleSubmission(
+                        prompt,
+                        new Dictionary<string, string>
+                        {
+                            ["surface_phrase"] =
+                                prompt,
+                            ["conversation_function"] =
+                                "conversation_opening"
+                        }));
+            }
+
+            var responseTexts =
+                sourceIndex switch
+                {
+                    1 => new[]
+                    {
+                        "Hello! How can I help you today?",
+                        "Hi! What can I help you with?",
+                        "Hello! What would you like to talk about?"
+                    },
+
+                    2 => new[]
+                    {
+                        "Hi there! How can I help?",
+                        "Hello! I'm ready to help.",
+                        "Hi! What can I do for you?"
+                    },
+
+                    _ => new[]
+                    {
+                        "Hello! How may I help?",
+                        "Hi! What can we work on?",
+                        "Hello! What can I help you with?"
+                    }
+                };
+
+            foreach (var response in responseTexts)
+            {
+                examples.Add(
+                    new LegendConnectCurriculumExampleSubmission(
+                        response,
+                        new Dictionary<string, string>
+                        {
+                            ["surface_phrase"] =
+                                response,
+                            ["conversation_function"] =
+                                "conversation_acknowledgement"
+                        }));
+            }
+
+            var batch =
+                new LegendConnectCurriculumBatchSubmission(
+                    $"release.direct.conversation.{sourceIndex}",
+                    $"Independent direct conversation evidence {sourceIndex}",
+                    examples,
+                    [
+                        new LegendConnectSemanticTransitionSubmission(
+                            new LegendConnectSemanticFrameSubmission(
+                                new Dictionary<string, string>
+                                {
+                                    ["conversation_function"] =
+                                        "conversation_opening"
+                                }),
+                            new LegendConnectSemanticFrameSubmission(
+                                new Dictionary<string, string>
+                                {
+                                    ["conversation_function"] =
+                                        "conversation_acknowledgement"
+                                }))
+                    ],
+                    [
+                        new LegendConnectSemanticSpanGroundingSubmission(
+                            "conversation_function",
+                            "surface_phrase")
+                    ]);
+
+            var accepted =
+                await curriculum
+                    .SubmitFounderEnglishBatchAsync(batch);
+
+            Assert.True(
+                accepted.Succeeded,
+                $"Founder evidence source {sourceIndex} failed: " +
+                accepted.Message);
+        }
+
+        // Ensure the expected evidence really exists before
+        // conversational inference is tested.
+        var activeTransitionEvidence =
+            await db.LegendSemanticTransitionEvidence
+                .Where(item =>
+                    item.SupersededUtc == null &&
+                    item.ContributionState == "Supported" &&
+                    item.IsHumanVerifiedSupport)
+                .ToListAsync();
+
+        var independentSupport =
+            activeTransitionEvidence
+                .Select(item =>
+                    item.IndependentSourceIdentity)
+                .Distinct(
+                    StringComparer.OrdinalIgnoreCase)
+                .Count();
+
+        Assert.True(
+            independentSupport >= 3,
+            $"Expected at least 3 independent Founder-supported " +
+            $"transition sources but found {independentSupport}.");
+
+        var factory =
+            new CountingHttpClientFactory();
+
+        var chat =
+            new LegendFounderAiConversationService(
+                factory,
+                configuration,
+                founderLegend,
+                NullLogger<
+                    LegendFounderAiConversationService>.Instance);
+
+        var fallbackFragments = new[]
+        {
+            "does not yet have enough governed evidence",
+            "external teacher is unavailable",
+            "No unsupported answer was produced"
+        };
+
+        var passed = 0;
+
+        _output.WriteLine("");
+        _output.WriteLine(
+            "============================================================");
+        _output.WriteLine(
+            "LEGEND® AI — 8 DIRECT CONVERSATION TRANSCRIPT");
+        _output.WriteLine(
+            "============================================================");
+
+        for (var index = 0;
+             index < prompts.Length;
+             index++)
+        {
+            var prompt =
+                prompts[index];
+
+            var source =
+                await curriculum
+                    .AnalyzeSemanticTransitionSourceSemanticsAsync(
+                        "en",
+                        prompt);
+
+            var native =
+                await founderLegend
+                    .TryInferConversationAsync(
+                        founder,
+                        prompt,
+                        Array.Empty<
+                            LegendConnectConversationContextItem>());
+
+            _output.WriteLine("");
+            _output.WriteLine(
+                $"[{index + 1}/8] USER: {prompt}");
+
+            _output.WriteLine(
+                $"SOURCE STATE: {source.State}");
+
+            _output.WriteLine(
+                "SOURCE COMPONENTS: " +
+                (
+                    source.Components.Count == 0
+                        ? "<NONE>"
+                        : string.Join(
+                            " | ",
+                            source.Components.Select(
+                                item =>
+                                    $"{item.Dimension}=" +
+                                    $"{item.Value}@" +
+                                    $"{item.SurfaceForm}"))
+                ));
+
+            _output.WriteLine(
+                $"NATIVE SUPPORTED: {native.Supported}");
+
+            _output.WriteLine(
+                $"NATIVE EVIDENCE: {native.EvidenceCount}");
+
+            _output.WriteLine(
+                $"NATIVE REASON: {native.ReasonCode}");
+
+            _output.WriteLine(
+                $"REQUIRES ESCALATION: " +
+                $"{native.RequiresEscalation}");
+
+            _output.WriteLine(
+                $"NATIVE RESPONSE: " +
+                $"{native.Answer ?? "<NULL>"}");
+
+            // Fail HERE if native LEGEND itself cannot answer.
+            // Do not allow ReplyAsync/provider behavior to obscure
+            // the native inference result.
+            Assert.True(
+                native.Supported,
+                $"LEGEND native inference failed for '{prompt}'. " +
+                $"Reason={native.ReasonCode}; " +
+                $"Evidence={native.EvidenceCount}");
+
+            Assert.False(
+                native.RequiresEscalation,
+                $"LEGEND unexpectedly requested escalation for '{prompt}'.");
+
+            Assert.True(
+                native.EvidenceCount > 0,
+                $"LEGEND had zero governed evidence for '{prompt}'.");
+
+            Assert.False(
+                string.IsNullOrWhiteSpace(native.Answer),
+                $"LEGEND produced no native answer for '{prompt}'.");
+
+            var reply =
+                await chat.ReplyAsync(
+                    founder,
+                    new LegendFounderAiChatRequest
+                    {
+                        Mode = "legend",
+                        Messages =
+                        [
+                            new LegendFounderAiChatMessage(
+                                "user",
+                                prompt)
+                        ]
+                    });
+
+            _output.WriteLine(
+                $"FINAL RESPONSE: " +
+                $"{reply.Message}");
+
+            _output.WriteLine(
+                $"EXTERNAL TEACHER CLIENT CALLS: " +
+                $"{factory.CreateClientCalls}");
+
+            // -----------------------------------------------------
+            // THIS IS THE ACTUAL RELEASE CONTRACT.
+            // -----------------------------------------------------
+
+            Assert.True(
+                native.Supported,
+                $"LEGEND failed native support for '{prompt}'. " +
+                $"Reason={native.ReasonCode}");
+
+            Assert.False(
+                native.RequiresEscalation,
+                $"LEGEND escalated '{prompt}' despite governed evidence.");
+
+            Assert.True(
+                native.EvidenceCount > 0,
+                $"LEGEND reported no governed evidence for '{prompt}'.");
+
+            Assert.False(
+                string.IsNullOrWhiteSpace(
+                    native.Answer),
+                $"LEGEND produced no native answer for '{prompt}'.");
+
+            Assert.True(
+                reply.Succeeded,
+                $"User-facing ReplyAsync failed for '{prompt}'.");
+
+            Assert.Equal(
+                native.Answer,
+                reply.Message);
+
+            Assert.False(
+                string.Equals(
+                    prompt,
+                    reply.Message,
+                    StringComparison.OrdinalIgnoreCase),
+                $"LEGEND merely echoed '{prompt}'.");
+
+            foreach (var fallback in fallbackFragments)
+            {
+                Assert.DoesNotContain(
+                    fallback,
+                    native.Answer!,
+                    StringComparison.OrdinalIgnoreCase);
+
+                Assert.DoesNotContain(
+                    fallback,
+                    reply.Message,
+                    StringComparison.OrdinalIgnoreCase);
+            }
+
+            Assert.Equal(
+                0,
+                factory.CreateClientCalls);
+
+            passed++;
+
+            _output.WriteLine(
+                "RESULT: PASS");
+        }
+
+        _output.WriteLine("");
+        _output.WriteLine(
+            "============================================================");
+
+        _output.WriteLine(
+            $"DIRECT PROMPTS PASSED: {passed}/8");
+
+        _output.WriteLine(
+            $"DIRECT PROMPTS FAILED: {8 - passed}/8");
+
+        _output.WriteLine(
+            $"EXTERNAL TEACHER CLIENT CALLS: " +
+            $"{factory.CreateClientCalls}");
+
+        _output.WriteLine(
+            "FALLBACK RESPONSES ACCEPTED: 0");
+
+        _output.WriteLine(
+            "RELEASE BEHAVIOR PROOF: PASS");
+
+        _output.WriteLine(
+            "============================================================");
+
+        Assert.Equal(
+            8,
+            passed);
+
+        Assert.Equal(
+            0,
+            factory.CreateClientCalls);
+
+        Environment.SetEnvironmentVariable(
+            "FOUNDER_OID",
+            previousFounderOidForDirectProof);
+    }
+
+    /// <summary>
+    /// A deliberately opt-in, zero-write compatibility diagnostic for the
+    /// current production corpus. It exercises the same read-only native
+    /// authority that serving uses, while a command interceptor rejects any
+    /// attempted data mutation. The connection is supplied only at execution
+    /// time by the existing App Service configuration resolver and is never
+    /// logged or persisted by the test.
+    /// </summary>
+    [Fact]
+    public async Task ProductionReadOnlyEightPromptNativeDiagnostic()
+    {
+        var connectionString = Environment.GetEnvironmentVariable(
+            "LEGEND_PRODUCTION_READONLY_CONNECTION");
+        if (string.IsNullOrWhiteSpace(connectionString))
+        {
+            _output.WriteLine(
+                "Production native diagnostic was not selected; " +
+                "LEGEND_PRODUCTION_READONLY_CONNECTION is unset.");
+            return;
+        }
+
+        var expectNative = string.Equals(
+            Environment.GetEnvironmentVariable(
+                "LEGEND_PRODUCTION_READONLY_EXPECT_NATIVE"),
+            "true",
+            StringComparison.OrdinalIgnoreCase);
+        var previousOpenAiApiKey = Environment.GetEnvironmentVariable("OPENAI_API_KEY");
+        var previousOpenAiConfigApiKey = Environment.GetEnvironmentVariable("OpenAI__ApiKey");
+        var previousFounderOid = Environment.GetEnvironmentVariable("FOUNDER_OID");
+        Environment.SetEnvironmentVariable("OPENAI_API_KEY", string.Empty);
+        Environment.SetEnvironmentVariable("OpenAI__ApiKey", string.Empty);
+        try
+        {
+        var connection = new SqlConnectionStringBuilder(connectionString)
+        {
+            ApplicationName = "LEGEND production native read-only diagnostic",
+            ApplicationIntent = ApplicationIntent.ReadOnly
+        };
+        var readOnlyGuard = new ReadOnlyLegendDbCommandInterceptor();
+        await using var db = new MasterAppDbContext(
+            new DbContextOptionsBuilder<MasterAppDbContext>()
+                .UseSqlServer(connection.ConnectionString)
+                .UseQueryTrackingBehavior(QueryTrackingBehavior.NoTracking)
+                .AddInterceptors(readOnlyGuard)
+                .Options);
+
+        // Use the App Service's configured Founder OID, not an arbitrary
+        // active profile. This retains the exact serving authorization path
+        // without emitting the opaque identity to the transcript.
+        var founderId = Environment.GetEnvironmentVariable(
+            "LEGEND_PRODUCTION_READONLY_FOUNDER_OID");
+        Assert.False(
+            string.IsNullOrWhiteSpace(founderId),
+            "Production Founder OID was not supplied to the read-only serving diagnostic.");
+        Assert.True(await db.AgentProfiles
+                .AsNoTracking()
+                .AnyAsync(item => item.IsActive &&
+                    item.AgentUserId != null &&
+                    item.AgentUserId.ToLower() == founderId!.ToLower()),
+            "The configured production Founder OID has no active AgentProfile.");
+        // FounderGuard reads the same process-level authority that App
+        // Service supplies. Scope it to this diagnostic and restore it below;
+        // this neither writes nor changes production authorization state.
+        Environment.SetEnvironmentVariable("FOUNDER_OID", founderId);
+
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new[]
+            {
+                new KeyValuePair<string, string?>("OpenAI:ApiKey", string.Empty),
+                new KeyValuePair<string, string?>("LegendConnect:CorpusAcquisition:Enabled", "false"),
+                new KeyValuePair<string, string?>("LegendConnect:ContextualComposition:Mode", "Shadow")
+            })
+            .Build();
+        var registry = new LegendLanguageRegistry(db, configuration);
+        var corpus = new LegendConnectCorpusService(
+            db,
+            registry,
+            NullLogger<LegendConnectCorpusService>.Instance);
+        var curriculum = new LegendConnectCurriculumService(db, registry, corpus);
+        var operations = new LegendConnectOperations(
+            db,
+            registry,
+            corpus,
+            configuration,
+            curriculum: curriculum);
+        var founder = new ClaimsPrincipal(
+            new ClaimsIdentity([new Claim("oid", founderId!)], "production-read-only"));
+        var founderLegend = new FounderLegendConnectService(
+            operations,
+            new AgentProfileAccessResolver(db));
+        var factory = new CountingHttpClientFactory();
+        var chat = new LegendFounderAiConversationService(
+            factory,
+            configuration,
+            founderLegend,
+            NullLogger<LegendFounderAiConversationService>.Instance);
+
+        var corpusCounts = new
+        {
+            EnglishFounderExamples = await (
+                from example in db.LegendCurriculumExamples.AsNoTracking()
+                join unit in db.LegendLanguageTextUnits.AsNoTracking()
+                    on example.TextUnitId equals unit.Id
+                where example.LanguageCode == "en" &&
+                    example.SupersededUtc == null &&
+                    example.Provenance == LegendConnectKnowledgeProvenance.FounderApproved &&
+                    unit.LanguageCode == "en" &&
+                    unit.IsTrainingEligible &&
+                    unit.Provenance == LegendConnectKnowledgeProvenance.FounderApproved
+                select example.Id).LongCountAsync(),
+            SemanticSpanAnchors = await db.LegendLanguageCompositionalAnchors
+                .AsNoTracking()
+                .LongCountAsync(item =>
+                    item.LanguageCode == "en" &&
+                    item.Provenance == LegendConnectKnowledgeProvenance.FounderApproved &&
+                    item.SupersededUtc == null &&
+                    item.LexemeId != null &&
+                    item.ComponentStartTokenIndex != null &&
+                    item.ComponentLength != null &&
+                    item.ComponentLength > 0 &&
+                    item.SemanticSignature != null &&
+                    item.SemanticSignature != string.Empty),
+            ActiveTransitionEvidence = await db.LegendSemanticTransitionEvidence
+                .AsNoTracking()
+                .LongCountAsync(item =>
+                    item.SourceLanguageCode == "en" &&
+                    item.ResultLanguageCode == "en" &&
+                    item.SupersededUtc == null &&
+                    item.Provenance == LegendConnectKnowledgeProvenance.FounderApproved),
+            SupportedHumanVerifiedTransitions = await db.LegendSemanticTransitionEvidence
+                .AsNoTracking()
+                .LongCountAsync(item =>
+                    item.SourceLanguageCode == "en" &&
+                    item.ResultLanguageCode == "en" &&
+                    item.SupersededUtc == null &&
+                    item.Provenance == LegendConnectKnowledgeProvenance.FounderApproved &&
+                    item.ContributionState == "Supported" &&
+                    item.IsHumanVerifiedSupport),
+            ActiveTargetRealizationCandidates = await db.LegendLanguageTargetRealizationCandidates
+                .AsNoTracking()
+                .LongCountAsync(item => item.SupersededUtc == null),
+            ActiveTargetRealizationEvidence = await db.LegendLanguageTargetRealizationEvidence
+                .AsNoTracking()
+                .LongCountAsync(item => item.SupersededUtc == null)
+        };
+        _output.WriteLine("============================================================");
+        _output.WriteLine("LEGEND® PRODUCTION READ-ONLY NATIVE DIAGNOSTIC");
+        _output.WriteLine("============================================================");
+        _output.WriteLine($"ACTIVE ENGLISH FOUNDER EXAMPLES: {corpusCounts.EnglishFounderExamples}");
+        _output.WriteLine($"SEMANTIC SPAN ANCHORS: {corpusCounts.SemanticSpanAnchors}");
+        _output.WriteLine($"ACTIVE TRANSITION EVIDENCE: {corpusCounts.ActiveTransitionEvidence}");
+        _output.WriteLine($"SUPPORTED HUMAN-VERIFIED TRANSITIONS: {corpusCounts.SupportedHumanVerifiedTransitions}");
+        _output.WriteLine($"ACTIVE TARGET REALIZATION CANDIDATES: {corpusCounts.ActiveTargetRealizationCandidates}");
+        _output.WriteLine($"ACTIVE TARGET REALIZATION EVIDENCE: {corpusCounts.ActiveTargetRealizationEvidence}");
+
+        var prompts = new[]
+        {
+            "Hi there.",
+            "Hi Legend.",
+            "Hello.",
+            "Hey Legend.",
+            "Good morning.",
+            "How are you?",
+            "Nice to meet you.",
+            "What's up?"
+        };
+
+        var nativePasses = 0;
+        foreach (var prompt in prompts)
+        {
+            var normalizedPrompt = LegendLanguageIdentity.NormalizeText(prompt);
+            var transitionEndpoints = await (
+                from evidence in db.LegendSemanticTransitionEvidence.AsNoTracking()
+                join sourceExample in db.LegendCurriculumExamples.AsNoTracking()
+                    on evidence.SourceCurriculumExampleId equals sourceExample.Id
+                join sourceUnit in db.LegendLanguageTextUnits.AsNoTracking()
+                    on sourceExample.TextUnitId equals sourceUnit.Id
+                join sourceFamily in db.LegendCurriculumFamilies.AsNoTracking()
+                    on sourceExample.CurriculumFamilyId equals sourceFamily.Id
+                join resultExample in db.LegendCurriculumExamples.AsNoTracking()
+                    on evidence.ResultCurriculumExampleId equals resultExample.Id
+                join resultUnit in db.LegendLanguageTextUnits.AsNoTracking()
+                    on resultExample.TextUnitId equals resultUnit.Id
+                join resultFamily in db.LegendCurriculumFamilies.AsNoTracking()
+                    on resultExample.CurriculumFamilyId equals resultFamily.Id
+                where evidence.SourceLanguageCode == "en" &&
+                    evidence.ResultLanguageCode == "en" &&
+                    evidence.SupersededUtc == null &&
+                    evidence.Provenance == LegendConnectKnowledgeProvenance.FounderApproved &&
+                    evidence.ContributionState == "Supported" &&
+                    evidence.IsHumanVerifiedSupport &&
+                    sourceExample.SupersededUtc == null &&
+                    resultExample.SupersededUtc == null &&
+                    sourceUnit.Text == normalizedPrompt
+                select new
+                {
+                    evidence.SourceCurriculumExampleId,
+                    evidence.ResultCurriculumExampleId,
+                    evidence.SourceSemanticFrame,
+                    evidence.ResultSemanticFrame,
+                    SourceFamily = sourceFamily.FamilyKey,
+                    ResultFamily = resultFamily.FamilyKey,
+                    ResultText = resultUnit.Text
+                }).ToListAsync();
+            var endpointSourceExampleIds = transitionEndpoints
+                .Select(item => item.SourceCurriculumExampleId)
+                .Distinct()
+                .ToArray();
+            var endpointSourceVariations = endpointSourceExampleIds.Length == 0
+                ? Array.Empty<string>()
+                : (await db.LegendCurriculumExampleVariations
+                    .AsNoTracking()
+                    .Where(item => endpointSourceExampleIds.Contains(item.CurriculumExampleId))
+                    .Select(item => new { item.Dimension, item.Value })
+                    .ToArrayAsync())
+                    .GroupBy(item => new { item.Dimension, item.Value })
+                    .OrderBy(group => group.Key.Dimension)
+                    .ThenBy(group => group.Key.Value)
+                    .Select(group =>
+                        $"{group.Key.Dimension}={group.Key.Value} ({group.Count()})")
+                    .ToArray();
+            var endpointSemanticAnchors = endpointSourceExampleIds.Length == 0
+                ? []
+                : (await db.LegendLanguageCompositionalAnchors
+                    .AsNoTracking()
+                    .Where(item => endpointSourceExampleIds.Contains(item.CurriculumExampleId) &&
+                        item.LanguageCode == "en" &&
+                        item.Provenance == LegendConnectKnowledgeProvenance.FounderApproved &&
+                        item.SupersededUtc == null &&
+                        item.LexemeId != null &&
+                        item.ComponentStartTokenIndex != null &&
+                        item.ComponentLength != null &&
+                        item.ComponentLength > 0 &&
+                        item.SemanticSignature != null &&
+                        item.SemanticSignature != string.Empty)
+                    .Select(group => new
+                    {
+                        group.Dimension,
+                        group.Value
+                    })
+                    .ToArrayAsync())
+                    .GroupBy(item => new { item.Dimension, item.Value })
+                    .OrderBy(group => group.Key.Dimension)
+                    .ThenBy(group => group.Key.Value)
+                    .Select(group =>
+                        $"{group.Key.Dimension}={group.Key.Value} ({group.Count()})")
+                    .ToArray();
+            var source = await curriculum
+                .AnalyzeSemanticTransitionSourceSemanticsAsync("en", prompt);
+            var native = await founderLegend.TryInferConversationAsync(
+                founder,
+                prompt,
+                Array.Empty<LegendConnectConversationContextItem>());
+            var reply = await chat.ReplyAsync(
+                founder,
+                new LegendFounderAiChatRequest
+                {
+                    Mode = "legend",
+                    Messages = [new LegendFounderAiChatMessage("user", prompt)]
+                });
+
+            _output.WriteLine("");
+            _output.WriteLine($"USER: {prompt}");
+            _output.WriteLine($"SOURCE STATE: {source.State}");
+            _output.WriteLine("SOURCE COMPONENTS: " +
+                (source.Components.Count == 0
+                    ? "<NONE>"
+                    : string.Join(" | ", source.Components.Select(item =>
+                        $"{item.Dimension}={item.Value}@{item.SurfaceForm}"))));
+            _output.WriteLine($"MATCHED TRANSITION ENDPOINTS: {transitionEndpoints.Count}");
+            foreach (var endpoint in transitionEndpoints
+                         .OrderBy(item => item.SourceFamily, StringComparer.Ordinal)
+                         .ThenBy(item => item.ResultFamily, StringComparer.Ordinal))
+            {
+                _output.WriteLine(
+                    $"TRANSITION: {endpoint.SourceFamily} -> {endpoint.ResultFamily}; " +
+                    $"SOURCE FRAME={endpoint.SourceSemanticFrame}; " +
+                    $"RESULT FRAME={endpoint.ResultSemanticFrame}; " +
+                    $"RESULT={endpoint.ResultText}");
+            }
+            _output.WriteLine("SOURCE ENDPOINT VARIATIONS: " +
+                (endpointSourceVariations.Length == 0
+                    ? "<NONE>"
+                    : string.Join(" | ", endpointSourceVariations)));
+            _output.WriteLine("SOURCE ENDPOINT LEXICAL ANCHORS: " +
+                (endpointSemanticAnchors.Length == 0
+                    ? "<NONE>"
+                    : string.Join(" | ", endpointSemanticAnchors)));
+            _output.WriteLine($"NATIVE SUPPORTED: {native.Supported}");
+            _output.WriteLine($"NATIVE REASON: {native.ReasonCode}");
+            _output.WriteLine($"NATIVE EVIDENCE: {native.EvidenceCount}");
+            _output.WriteLine($"REQUIRES ESCALATION: {native.RequiresEscalation}");
+            _output.WriteLine($"NATIVE ANSWER: {native.Answer ?? "<NULL>"}");
+            _output.WriteLine($"REPLYASYNC ANSWER: {reply.Message}");
+            _output.WriteLine($"OPENAI CLIENTS: {factory.CreateClientCalls}");
+
+            var isNativePass = native.Supported &&
+                native.EvidenceCount > 0 &&
+                !native.RequiresEscalation &&
+                !string.IsNullOrWhiteSpace(native.Answer) &&
+                reply.Succeeded &&
+                string.Equals(reply.Message, native.Answer, StringComparison.Ordinal);
+            if (isNativePass)
+                nativePasses++;
+
+            if (expectNative)
+            {
+                Assert.True(isNativePass,
+                    $"Production native inference failed for '{prompt}'. " +
+                    $"Reason={native.ReasonCode}; Evidence={native.EvidenceCount}");
+            }
+        }
+
+        Assert.Equal(0, factory.CreateClientCalls);
+        if (expectNative)
+            Assert.Equal(prompts.Length, nativePasses);
+        _output.WriteLine($"NATIVE PASSES: {nativePasses}/{prompts.Length}");
+        _output.WriteLine("OPENAI HTTP CALLS: 0");
+        _output.WriteLine("PRODUCTION WRITE COMMANDS: 0");
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("OPENAI_API_KEY", previousOpenAiApiKey);
+            Environment.SetEnvironmentVariable("OpenAI__ApiKey", previousOpenAiConfigApiKey);
+            Environment.SetEnvironmentVariable("FOUNDER_OID", previousFounderOid);
+        }
+    }
+
+    /// <summary>
+    /// Uses only a read-only production query to obtain the active governed
+    /// transition class behind known production greeting endpoints. It then
+    /// replays those exact canonical rows in an isolated local database using
+    /// the normal v16 curriculum authority. This is the forward-repair proof
+    /// for data that cannot be mutated during production diagnosis.
+    /// </summary>
+    [Fact]
+    public async Task ProductionDataDerivedV16Replay_ActivatesKnownGreetingEndpointsNatively()
+    {
+        var connectionString = Environment.GetEnvironmentVariable(
+            "LEGEND_PRODUCTION_READONLY_CONNECTION");
+        if (string.IsNullOrWhiteSpace(connectionString))
+        {
+            _output.WriteLine(
+                "Production-data-derived v16 replay proof was not selected; " +
+                "LEGEND_PRODUCTION_READONLY_CONNECTION is unset.");
+            return;
+        }
+
+        var connection = new SqlConnectionStringBuilder(connectionString)
+        {
+            ApplicationName = "LEGEND production-data-derived v16 replay proof",
+            ApplicationIntent = ApplicationIntent.ReadOnly
+        };
+        var readOnlyGuard = new ReadOnlyLegendDbCommandInterceptor();
+        await using var production = new MasterAppDbContext(
+            new DbContextOptionsBuilder<MasterAppDbContext>()
+                .UseSqlServer(connection.ConnectionString)
+                .UseQueryTrackingBehavior(QueryTrackingBehavior.NoTracking)
+                .AddInterceptors(readOnlyGuard)
+                .Options);
+
+        var prompts = new[] { "Hi there.", "Good morning." };
+        var normalizedPrompts = prompts
+            .Select(LegendLanguageIdentity.NormalizeText)
+            .ToArray();
+        var signatures = await (
+            from evidence in production.LegendSemanticTransitionEvidence.AsNoTracking()
+            join source in production.LegendCurriculumExamples.AsNoTracking()
+                on evidence.SourceCurriculumExampleId equals source.Id
+            join sourceUnit in production.LegendLanguageTextUnits.AsNoTracking()
+                on source.TextUnitId equals sourceUnit.Id
+            where evidence.SourceLanguageCode == "en" &&
+                evidence.ResultLanguageCode == "en" &&
+                evidence.SupersededUtc == null &&
+                evidence.Provenance == LegendConnectKnowledgeProvenance.FounderApproved &&
+                evidence.ContributionState == "Supported" &&
+                evidence.IsHumanVerifiedSupport &&
+                normalizedPrompts.Contains(sourceUnit.Text)
+            select evidence.TransitionSignature)
+            .Distinct()
+            .ToArrayAsync();
+        Assert.NotEmpty(signatures);
+
+        var transitions = await production.LegendSemanticTransitionEvidence
+            .AsNoTracking()
+            .Where(item => signatures.Contains(item.TransitionSignature) &&
+                item.SourceLanguageCode == "en" &&
+                item.ResultLanguageCode == "en" &&
+                item.SupersededUtc == null &&
+                item.Provenance == LegendConnectKnowledgeProvenance.FounderApproved &&
+                item.ContributionState == "Supported" &&
+                item.IsHumanVerifiedSupport)
+            .ToListAsync();
+        var exampleIds = transitions
+            .SelectMany(item => new[]
+            {
+                item.SourceCurriculumExampleId,
+                item.ResultCurriculumExampleId
+            })
+            .Distinct()
+            .ToArray();
+        var examples = await production.LegendCurriculumExamples
+            .AsNoTracking()
+            .Where(item => exampleIds.Contains(item.Id) &&
+                item.SupersededUtc == null &&
+                item.Provenance == LegendConnectKnowledgeProvenance.FounderApproved)
+            .ToListAsync();
+        Assert.Equal(exampleIds.Length, examples.Count);
+        var families = await production.LegendCurriculumFamilies
+            .AsNoTracking()
+            .Where(item => examples.Select(example => example.CurriculumFamilyId).Contains(item.Id) &&
+                item.Provenance == LegendConnectKnowledgeProvenance.FounderApproved)
+            .ToListAsync();
+        var textUnits = await production.LegendLanguageTextUnits
+            .AsNoTracking()
+            .Where(item => examples.Select(example => example.TextUnitId).Contains(item.Id) &&
+                item.LanguageCode == "en" &&
+                item.IsTrainingEligible &&
+                item.Provenance == LegendConnectKnowledgeProvenance.FounderApproved)
+            .ToListAsync();
+        var variations = await production.LegendCurriculumExampleVariations
+            .AsNoTracking()
+            .Where(item => exampleIds.Contains(item.CurriculumExampleId))
+            .ToListAsync();
+
+        await using var db = ControllerTestHelpers.BuildDb();
+        db.AddRange(families);
+        db.AddRange(textUnits);
+        db.AddRange(examples);
+        db.AddRange(variations);
+        db.AddRange(transitions);
+        await db.SaveChangesAsync();
+
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new[]
+            {
+                new KeyValuePair<string, string?>("OpenAI:ApiKey", string.Empty),
+                new KeyValuePair<string, string?>("LegendConnect:CorpusAcquisition:Enabled", "false"),
+                new KeyValuePair<string, string?>("LegendConnect:ContextualComposition:Mode", "Shadow"),
+                new KeyValuePair<string, string?>("LegendConnect:LanguageRegistry:Baseline:0:Code", "en"),
+                new KeyValuePair<string, string?>("LegendConnect:LanguageRegistry:Baseline:0:Name", "English"),
+                new KeyValuePair<string, string?>("LegendConnect:LanguageRegistry:Baseline:0:NativeName", "English")
+            })
+            .Build();
+        var registry = new LegendLanguageRegistry(db, configuration);
+        var corpus = new LegendConnectCorpusService(
+            db,
+            registry,
+            NullLogger<LegendConnectCorpusService>.Instance);
+        var curriculum = new LegendConnectCurriculumService(db, registry, corpus);
+        var operations = new LegendConnectOperations(
+            db,
+            registry,
+            corpus,
+            configuration,
+            curriculum: curriculum);
+
+        foreach (var prompt in prompts)
+        {
+            var before = await curriculum.AnalyzeSemanticTransitionSourceSemanticsAsync("en", prompt);
+            Assert.Equal(
+                LegendShadowSourceUnderstanding.SupportedForShadowEvaluation,
+                before.State);
+        }
+
+        await curriculum.ReevaluateHistoricalAlignmentsAsync(100);
+
+        const string founderId = "6fb8c6b8-7a22-408b-a0e2-6adf7c4f2232";
+        var previousFounderOid = Environment.GetEnvironmentVariable("FOUNDER_OID");
+        var previousOpenAiApiKey = Environment.GetEnvironmentVariable("OPENAI_API_KEY");
+        var previousOpenAiConfigApiKey = Environment.GetEnvironmentVariable("OpenAI__ApiKey");
+        Environment.SetEnvironmentVariable("FOUNDER_OID", founderId);
+        Environment.SetEnvironmentVariable("OPENAI_API_KEY", string.Empty);
+        Environment.SetEnvironmentVariable("OpenAI__ApiKey", string.Empty);
+        try
+        {
+            db.AgentProfiles.Add(new AgentProfile
+            {
+                Id = Guid.NewGuid(),
+                AgentUserId = founderId,
+                AgentUpn = "production-data-derived@legend.local",
+                NormalizedEmail = "production-data-derived@legend.local",
+                IsActive = true
+            });
+            await db.SaveChangesAsync();
+
+            var founder = new ClaimsPrincipal(
+                new ClaimsIdentity([new Claim("oid", founderId)], "production-data-derived"));
+            var founderLegend = new FounderLegendConnectService(
+                operations,
+                new AgentProfileAccessResolver(db));
+            var factory = new CountingHttpClientFactory();
+            var chat = new LegendFounderAiConversationService(
+                factory,
+                configuration,
+                founderLegend,
+                NullLogger<LegendFounderAiConversationService>.Instance);
+
+            _output.WriteLine("============================================================");
+            _output.WriteLine("LEGEND® PRODUCTION-DATA-DERIVED v16 REPLAY TRANSCRIPT");
+            _output.WriteLine("============================================================");
+            foreach (var prompt in prompts)
+            {
+                var source = await curriculum.AnalyzeSemanticTransitionSourceSemanticsAsync("en", prompt);
+                var native = await founderLegend.TryInferConversationAsync(
+                    founder,
+                    prompt,
+                    Array.Empty<LegendConnectConversationContextItem>());
+                var reply = await chat.ReplyAsync(
+                    founder,
+                    new LegendFounderAiChatRequest
+                    {
+                        Mode = "legend",
+                        Messages = [new LegendFounderAiChatMessage("user", prompt)]
+                    });
+
+                _output.WriteLine($"USER: {prompt}");
+                _output.WriteLine($"SOURCE STATE: {source.State}");
+                _output.WriteLine("SOURCE COMPONENTS: " + string.Join(
+                    " | ",
+                    source.Components.Select(item =>
+                        $"{item.Dimension}={item.Value}@{item.SurfaceForm}")));
+                _output.WriteLine($"NATIVE SUPPORTED: {native.Supported}");
+                _output.WriteLine($"NATIVE EVIDENCE: {native.EvidenceCount}");
+                _output.WriteLine($"NATIVE RESPONSE: {native.Answer ?? "<NULL>"}");
+                _output.WriteLine($"FINAL RESPONSE: {reply.Message}");
+
+                Assert.Equal(
+                    LegendShadowSourceUnderstanding.SupportedForShadowEvaluation,
+                    source.State);
+                Assert.True(native.Supported, native.ReasonCode);
+                Assert.True(native.EvidenceCount > 0);
+                Assert.False(native.RequiresEscalation);
+                Assert.False(string.IsNullOrWhiteSpace(native.Answer));
+                Assert.True(reply.Succeeded);
+                Assert.Equal(native.Answer, reply.Message);
+            }
+
+            Assert.Equal(0, factory.CreateClientCalls);
+            _output.WriteLine("OPENAI CLIENTS: 0");
+            _output.WriteLine("OPENAI HTTP CALLS: 0");
+            _output.WriteLine("PRODUCTION WRITE COMMANDS: 0");
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("FOUNDER_OID", previousFounderOid);
+            Environment.SetEnvironmentVariable("OPENAI_API_KEY", previousOpenAiApiKey);
+            Environment.SetEnvironmentVariable("OpenAI__ApiKey", previousOpenAiConfigApiKey);
+        }
+    }
 
     [Fact]
     public async Task ExternalFounderManifest_UsesNormalDurablePathAndRepliesNatively()
@@ -182,18 +1215,18 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
             9,
             (await runtime.GetOrStartLanguageIntelligenceReevaluationAsync(9))
                 .CompletedEvaluatorVersion);
-        var v15Start = await runtime.GetOrStartLanguageIntelligenceReevaluationAsync(
+        var currentStart = await runtime.GetOrStartLanguageIntelligenceReevaluationAsync(
             LegendConnectLanguageIntelligenceEvaluatorVersion.Current);
-        Assert.Equal(LegendConnectLanguageIntelligenceReevaluationPhases.SourceFamilies, v15Start.Phase);
-        Assert.Null(v15Start.Cursor);
+        Assert.Equal(LegendConnectLanguageIntelligenceReevaluationPhases.SourceFamilies, currentStart.Phase);
+        Assert.Null(currentStart.Cursor);
         var firstSourcePage = await curriculum.ReevaluateHistoricalAlignmentsAsync(
             1,
-            v15Start.Phase,
-            v15Start.Cursor);
+            currentStart.Phase,
+            currentStart.Cursor);
         Assert.NotNull(firstSourcePage.LastProcessedId);
         await runtime.AdvanceLanguageIntelligenceReevaluationAsync(
             LegendConnectLanguageIntelligenceEvaluatorVersion.Current,
-            v15Start.Phase,
+            currentStart.Phase,
             firstSourcePage.LastProcessedId,
             firstSourcePage.PhaseComplete);
         db.ChangeTracker.Clear();
@@ -214,14 +1247,14 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
             intelligence,
             operations,
             LegendConnectLanguageIntelligenceEvaluatorVersion.Current);
-        var v15Complete = await restartedRuntime.GetOrStartLanguageIntelligenceReevaluationAsync(
+        var currentComplete = await restartedRuntime.GetOrStartLanguageIntelligenceReevaluationAsync(
             LegendConnectLanguageIntelligenceEvaluatorVersion.Current);
-        Assert.False(v15Complete.RequiresWork);
-        Assert.Equal(LegendConnectLanguageIntelligenceEvaluatorVersion.Current, v15Complete.CompletedEvaluatorVersion);
+        Assert.False(currentComplete.RequiresWork);
+        Assert.Equal(LegendConnectLanguageIntelligenceEvaluatorVersion.Current, currentComplete.CompletedEvaluatorVersion);
         _output.WriteLine($"V9 COMPLETED EVALUATOR: 9");
-        _output.WriteLine($"V15 FIRST SOURCEFAMILIES CURSOR: {firstSourcePage.LastProcessedId:D}");
-        _output.WriteLine($"V15 RESUMED SOURCEFAMILIES CURSOR: {afterRestart.Cursor:D}");
-        _output.WriteLine($"V15 COMPLETED EVALUATOR: {v15Complete.CompletedEvaluatorVersion}");
+        _output.WriteLine($"V{LegendConnectLanguageIntelligenceEvaluatorVersion.Current} FIRST SOURCEFAMILIES CURSOR: {firstSourcePage.LastProcessedId:D}");
+        _output.WriteLine($"V{LegendConnectLanguageIntelligenceEvaluatorVersion.Current} RESUMED SOURCEFAMILIES CURSOR: {afterRestart.Cursor:D}");
+        _output.WriteLine($"V{LegendConnectLanguageIntelligenceEvaluatorVersion.Current} COMPLETED EVALUATOR: {currentComplete.CompletedEvaluatorVersion}");
 
         // The same external Founder fixture also supplies a normal raw
         // training submission. Mark only its capability watermark stale, not
@@ -444,8 +1477,33 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
         Assert.Equal(expectNative, native.Supported);
         if (expectNative)
         {
+            // DIRECT RESPONSE RELEASE ASSERTIONS
+            // The governed native authority itself must answer.
+            Assert.False(native.RequiresEscalation);
+            Assert.True(
+                native.EvidenceCount > 0,
+                $"Native inference claimed support for '{request}' without governed evidence.");
             Assert.False(string.IsNullOrWhiteSpace(native.Answer));
             Assert.False(string.Equals(request, native.Answer, StringComparison.OrdinalIgnoreCase));
+
+            Assert.False(
+                native.Answer!.Contains(
+                    "does not yet have enough governed evidence",
+                    StringComparison.OrdinalIgnoreCase));
+
+            Assert.False(
+                native.Answer.Contains(
+                    "external teacher is unavailable",
+                    StringComparison.OrdinalIgnoreCase));
+
+            Assert.False(
+                native.Answer.Contains(
+                    "No unsupported answer was produced",
+                    StringComparison.OrdinalIgnoreCase));
+
+            _output.WriteLine($"NATIVE SUPPORTED: {native.Supported}");
+            _output.WriteLine($"NATIVE EVIDENCE: {native.EvidenceCount}");
+            _output.WriteLine($"REQUIRES ESCALATION: {native.RequiresEscalation}");
         }
 
         var factory = new CountingHttpClientFactory();
@@ -462,9 +1520,32 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
 
         Assert.True(reply.Succeeded);
         if (expectNative)
-            Assert.Equal(native.Answer, reply.Message);
+        {
+            var replyMessage = Assert.IsType<string>(reply.Message);
+            Assert.Equal(native.Answer, replyMessage);
+
+            Assert.False(
+                replyMessage.Contains(
+                    "does not yet have enough governed evidence",
+                    StringComparison.OrdinalIgnoreCase));
+
+            Assert.False(
+                replyMessage.Contains(
+                    "external teacher is unavailable",
+                    StringComparison.OrdinalIgnoreCase));
+
+            Assert.False(
+                replyMessage.Contains(
+                    "No unsupported answer was produced",
+                    StringComparison.OrdinalIgnoreCase));
+        }
         else
+        {
             Assert.NotEqual(request, reply.Message);
+        }
+
+        // If this is non-zero, the external conversational provider
+        // participated and this is NOT a native LEGEND release proof.
         Assert.Equal(0, factory.CreateClientCalls);
 
         _output.WriteLine($"REQUEST: {request}");
@@ -601,10 +1682,10 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
             alignment);
         await db.SaveChangesAsync();
 
-        var v15Start = await runtime.GetOrStartLanguageIntelligenceReevaluationAsync(
+        var currentStart = await runtime.GetOrStartLanguageIntelligenceReevaluationAsync(
             LegendConnectLanguageIntelligenceEvaluatorVersion.Current);
-        Assert.Equal(9, v15Start.CompletedEvaluatorVersion);
-        Assert.Equal(LegendConnectLanguageIntelligenceReevaluationPhases.SourceFamilies, v15Start.Phase);
+        Assert.Equal(9, currentStart.CompletedEvaluatorVersion);
+        Assert.Equal(LegendConnectLanguageIntelligenceReevaluationPhases.SourceFamilies, currentStart.Phase);
         await DrainHistoricalReplayAsync(
             runtime,
             curriculum,
@@ -654,7 +1735,7 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
         });
 
         _output.WriteLine("SQL V9 COMPLETED: 9");
-        _output.WriteLine($"SQL V15 COMPLETED: {completed.CompletedEvaluatorVersion}");
+        _output.WriteLine($"SQL V{LegendConnectLanguageIntelligenceEvaluatorVersion.Current} COMPLETED: {completed.CompletedEvaluatorVersion}");
         _output.WriteLine("SQL CONFLICT VALUE RETAINED: formal");
         _output.WriteLine("SQL CONFLICT QUARANTINES: 1");
         _output.WriteLine($"SQL SECOND-RUN TEXT UNITS: {converged.TextUnits}");
@@ -1145,6 +2226,82 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
             Interlocked.Increment(ref _commands);
             return base.ScalarExecutingAsync(command, eventData, result, cancellationToken);
         }
+    }
+
+    /// <summary>
+    /// Defence in depth for the production diagnostic: no database command
+    /// other than a SELECT may leave the local process. The native authority
+    /// is read-only by design, and this turns that design requirement into an
+    /// executable invariant for the diagnostic.
+    /// </summary>
+    private sealed class ReadOnlyLegendDbCommandInterceptor : DbCommandInterceptor
+    {
+        public override InterceptionResult<int> NonQueryExecuting(
+            DbCommand command,
+            CommandEventData eventData,
+            InterceptionResult<int> result) =>
+            throw NewWriteBlocked(command);
+
+        public override ValueTask<InterceptionResult<int>> NonQueryExecutingAsync(
+            DbCommand command,
+            CommandEventData eventData,
+            InterceptionResult<int> result,
+            CancellationToken cancellationToken = default) =>
+            ValueTask.FromException<InterceptionResult<int>>(NewWriteBlocked(command));
+
+        public override InterceptionResult<DbDataReader> ReaderExecuting(
+            DbCommand command,
+            CommandEventData eventData,
+            InterceptionResult<DbDataReader> result)
+        {
+            EnsureSelect(command);
+            return result;
+        }
+
+        public override ValueTask<InterceptionResult<DbDataReader>> ReaderExecutingAsync(
+            DbCommand command,
+            CommandEventData eventData,
+            InterceptionResult<DbDataReader> result,
+            CancellationToken cancellationToken = default)
+        {
+            EnsureSelect(command);
+            return ValueTask.FromResult(result);
+        }
+
+        public override InterceptionResult<object> ScalarExecuting(
+            DbCommand command,
+            CommandEventData eventData,
+            InterceptionResult<object> result)
+        {
+            EnsureSelect(command);
+            return result;
+        }
+
+        public override ValueTask<InterceptionResult<object>> ScalarExecutingAsync(
+            DbCommand command,
+            CommandEventData eventData,
+            InterceptionResult<object> result,
+            CancellationToken cancellationToken = default)
+        {
+            EnsureSelect(command);
+            return ValueTask.FromResult(result);
+        }
+
+        private static void EnsureSelect(DbCommand command)
+        {
+            if (!command.CommandText.TrimStart().StartsWith(
+                    "SELECT",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                throw NewWriteBlocked(command);
+            }
+        }
+
+        private static InvalidOperationException NewWriteBlocked(DbCommand command) =>
+            new("Production native diagnostic rejected a non-SELECT database command: " +
+                command.CommandText.TrimStart().Split(
+                    new[] { '\r', '\n', ' ' },
+                    StringSplitOptions.RemoveEmptyEntries)[0]);
     }
 
     private sealed class FounderAccess : IControlledResourceAccessService

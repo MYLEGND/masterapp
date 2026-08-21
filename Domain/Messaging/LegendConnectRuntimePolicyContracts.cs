@@ -67,6 +67,7 @@ public sealed record LegendConnectHistoricalReevaluationProgress(
 public sealed record LegendConnectLanguageIntelligenceReevaluationSnapshot(
     int TargetEvaluatorVersion,
     int CompletedEvaluatorVersion,
+    int CursorReplayCompatibilityEvaluatorVersion,
     string Phase,
     Guid? Cursor,
     DateTime? StartedUtc,

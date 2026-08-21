@@ -2226,6 +2226,28 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
             rows.Count < pageSize);
     }
 
+    public async Task ReconcileHistoricalOperationalTranslationAsync(
+        Guid translationId,
+        CancellationToken cancellationToken = default)
+    {
+        var row = await (
+            from translation in _db.MessageTranslations
+            join message in _db.InternalMessages on translation.InternalMessageId equals message.Id
+            where translation.Id == translationId
+            select new { Translation = translation, Message = message }
+        ).SingleOrDefaultAsync(cancellationToken);
+        if (row is null)
+            return;
+
+        if (await ReconcileOperationalTranslationFromTrustedMemoryAsync(
+                row.Translation,
+                row.Message,
+                cancellationToken))
+        {
+            await _db.SaveChangesAsync(cancellationToken);
+        }
+    }
+
     /// <summary>
     /// Single reconciliation decision shared by present correction and
     /// historical replay. Only trusted exact memory may rewrite presentation.

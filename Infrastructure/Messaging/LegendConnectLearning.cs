@@ -1689,11 +1689,14 @@ internal sealed class LegendConnectCorpusService
 /// </summary>
 internal static class LegendConnectLanguageIntelligenceEvaluatorVersion
 {
-    // v15 adds governed semantic-transition/grounding capability after v14
-    // completed in existing environments. Advancing this marker is what
-    // makes retained historical evidence eligible for the established,
-    // cursor-backed evaluator lifecycle; no content-specific backfill exists.
-    internal const int Current = 15;
+    // v16 repairs historical source-frame activation for curriculum that
+    // predates explicit @ground declarations. The established replay derives
+    // a lexical semantic projection only from already production-eligible
+    // controlled transitions and exact Founder full-span controls; it does
+    // not add curriculum or a phrase-specific fallback. Advancing this
+    // marker schedules the existing bounded evaluator lifecycle without
+    // resetting completed v15 state.
+    internal const int Current = 16;
 }
 
 internal sealed class LegendConnectLearningHostedService : BackgroundService
@@ -1727,63 +1730,14 @@ internal sealed class LegendConnectLearningHostedService : BackgroundService
                 await scope.ServiceProvider
                     .GetRequiredService<LegendConnectFounderTrainingIngestionAuthority>()
                     .ReconcileLegacyAsync(25, stoppingToken);
-                // Reuse the existing learning worker for a bounded, durable
-                // evaluator-version replay. This is not a second planner,
-                // queue, or historical processor: each phase delegates to
-                // the canonical curriculum or quality authority and records
-                // only a runtime-policy cursor after that page succeeds.
                 var replay = await runtime.GetOrStartLanguageIntelligenceReevaluationAsync(
                     LegendConnectLanguageIntelligenceEvaluatorVersion.Current,
                     stoppingToken);
-                for (var replayPage = 0;
-                     replay.RequiresWork && replayPage < MaximumHistoricalReplayPagesPerTick;
-                     replayPage++)
-                {
-                    LegendConnectHistoricalReevaluationProgress progress;
-                    if (replay.Phase == LegendConnectLanguageIntelligenceReevaluationPhases.ProviderObservations)
-                    {
-                        progress = await scope.ServiceProvider
-                            .GetRequiredService<ILegendConnectTranslationIntelligence>()
-                            .ReevaluateHistoricalProviderObservationsAsync(
-                                HistoricalReplayItemsPerPage,
-                                replay.Cursor,
-                                stoppingToken);
-                    }
-                    else if (replay.Phase == LegendConnectLanguageIntelligenceReevaluationPhases.OperationalTranslations)
-                    {
-                        progress = await scope.ServiceProvider
-                            .GetRequiredService<ILegendConnectOperations>()
-                            .ReconcileHistoricalOperationalTranslationsAsync(
-                                HistoricalReplayItemsPerPage,
-                                replay.Cursor,
-                                stoppingToken);
-                    }
-                    else
-                    {
-                        progress = await scope.ServiceProvider
-                            .GetRequiredService<LegendConnectCurriculumService>()
-                            .ReevaluateHistoricalAlignmentsAsync(
-                                HistoricalReplayItemsPerPage,
-                                replay.Phase,
-                                replay.Cursor,
-                                stoppingToken);
-                    }
-
-                    await runtime.AdvanceLanguageIntelligenceReevaluationAsync(
-                        LegendConnectLanguageIntelligenceEvaluatorVersion.Current,
-                        replay.Phase,
-                        progress.LastProcessedId,
-                        progress.PhaseComplete,
-                        stoppingToken);
-
-                    // Reload after every durable advance. This is the same
-                    // runtime-policy authority a restarted worker reads, so
-                    // cancellation, faults, and leases resume exactly at the
-                    // last committed canonical identity.
-                    replay = await runtime.GetOrStartLanguageIntelligenceReevaluationAsync(
-                        LegendConnectLanguageIntelligenceEvaluatorVersion.Current,
-                        stoppingToken);
-                }
+                await ProcessHistoricalReevaluationAsync(
+                    scope.ServiceProvider,
+                    runtime,
+                    replay,
+                    stoppingToken);
                 if ((await runtime.GetEffectiveAsync(stoppingToken)).LearningEnabled)
                 {
                     await scope.ServiceProvider.GetRequiredService<LegendConnectCorpusService>()
@@ -1822,6 +1776,242 @@ internal sealed class LegendConnectLearningHostedService : BackgroundService
             }
             await Task.Delay(TimeSpan.FromMinutes(1), stoppingToken);
         }
+    }
+
+    private async Task ProcessHistoricalReevaluationAsync(
+        IServiceProvider services,
+        ILegendConnectRuntimePolicyAuthority runtime,
+        LegendConnectLanguageIntelligenceReevaluationSnapshot replay,
+        CancellationToken stoppingToken)
+    {
+        if (!replay.RequiresWork)
+            return;
+
+        var work = services.GetRequiredService<LegendConnectHistoricalReevaluationWorkAuthority>();
+        // A current evaluator that has reached ProviderObservations may retain
+        // a real legacy cursor. Adopt that exact ordered suffix atomically
+        // before choosing an executor; every new instance therefore observes
+        // either the legacy stream or the durable work boundary, never both.
+        if (replay.Phase == LegendConnectLanguageIntelligenceReevaluationPhases.ProviderObservations &&
+            LegendConnectHistoricalReevaluationWorkAuthority.UsesCursorCompatibility(replay))
+        {
+            await work.TryAdoptProviderObservationsCursorAsync(replay, stoppingToken);
+            replay = await runtime.GetOrStartLanguageIntelligenceReevaluationAsync(
+                replay.TargetEvaluatorVersion,
+                stoppingToken);
+        }
+
+        if (LegendConnectHistoricalReevaluationWorkAuthority.UsesCursorCompatibility(replay))
+        {
+            await ProcessCursorCompatibleHistoricalReplayAsync(services, runtime, replay, stoppingToken);
+            return;
+        }
+
+        await ProcessDynamicHistoricalReplayPhaseAsync(runtime, work, replay, stoppingToken);
+    }
+
+    /// <summary>
+    /// The legacy cursor executor remains for earlier sequential phases of a
+    /// replay that was already in flight at deployment. Once it reaches
+    /// ProviderObservations, the caller atomically adopts its ordered suffix
+    /// into durable work before this method can execute that phase.
+    /// </summary>
+    private static async Task ProcessCursorCompatibleHistoricalReplayAsync(
+        IServiceProvider services,
+        ILegendConnectRuntimePolicyAuthority runtime,
+        LegendConnectLanguageIntelligenceReevaluationSnapshot replay,
+        CancellationToken stoppingToken)
+    {
+        for (var replayPage = 0;
+             replay.RequiresWork && replayPage < MaximumHistoricalReplayPagesPerTick;
+             replayPage++)
+        {
+            LegendConnectHistoricalReevaluationProgress progress;
+            if (replay.Phase == LegendConnectLanguageIntelligenceReevaluationPhases.ProviderObservations)
+            {
+                progress = await services.GetRequiredService<ILegendConnectTranslationIntelligence>()
+                    .ReevaluateHistoricalProviderObservationsAsync(
+                        HistoricalReplayItemsPerPage,
+                        replay.Cursor,
+                        stoppingToken);
+            }
+            else if (replay.Phase == LegendConnectLanguageIntelligenceReevaluationPhases.OperationalTranslations)
+            {
+                progress = await services.GetRequiredService<ILegendConnectOperations>()
+                    .ReconcileHistoricalOperationalTranslationsAsync(
+                        HistoricalReplayItemsPerPage,
+                        replay.Cursor,
+                        stoppingToken);
+            }
+            else
+            {
+                progress = await services.GetRequiredService<LegendConnectCurriculumService>()
+                    .ReevaluateHistoricalAlignmentsAsync(
+                        HistoricalReplayItemsPerPage,
+                        replay.Phase,
+                        replay.Cursor,
+                        stoppingToken);
+            }
+
+            await runtime.AdvanceLanguageIntelligenceReevaluationAsync(
+                LegendConnectLanguageIntelligenceEvaluatorVersion.Current,
+                replay.Phase,
+                progress.LastProcessedId,
+                progress.PhaseComplete,
+                stoppingToken);
+            replay = await runtime.GetOrStartLanguageIntelligenceReevaluationAsync(
+                LegendConnectLanguageIntelligenceEvaluatorVersion.Current,
+                stoppingToken);
+        }
+    }
+
+    /// <summary>
+    /// Keeps a bounded phase-local pool occupied with only durable,
+    /// dependency-safe claims. The pool is scheduling capacity, never the
+    /// correctness authority: leases and filtered SQL uniqueness protect work
+    /// across process restarts and App Service instances.
+    /// </summary>
+    private async Task ProcessDynamicHistoricalReplayPhaseAsync(
+        ILegendConnectRuntimePolicyAuthority runtime,
+        LegendConnectHistoricalReevaluationWorkAuthority work,
+        LegendConnectLanguageIntelligenceReevaluationSnapshot replay,
+        CancellationToken stoppingToken)
+    {
+        var phase = replay.Phase;
+        var evaluatorVersion = replay.TargetEvaluatorVersion;
+        var workerPrefix = $"{Environment.MachineName}:historical:{Guid.NewGuid():N}";
+        while (!stoppingToken.IsCancellationRequested)
+        {
+            var seeded = await work.SeedNextBatchAsync(
+                evaluatorVersion,
+                phase,
+                workerPrefix + ":seed",
+                stoppingToken);
+            var slots = Enumerable.Range(0, work.MaximumConcurrency)
+                .Select(slot => ProcessDynamicHistoricalReplaySlotAsync(
+                    evaluatorVersion,
+                    phase,
+                    workerPrefix + ":" + slot,
+                    stoppingToken))
+                .ToArray();
+            var processed = await Task.WhenAll(slots);
+
+            var refreshed = await runtime.GetOrStartLanguageIntelligenceReevaluationAsync(
+                evaluatorVersion,
+                stoppingToken);
+            if (!refreshed.RequiresWork || !string.Equals(refreshed.Phase, phase, StringComparison.Ordinal))
+                return;
+
+            if (!seeded.MadeProgress && processed.All(count => count == 0))
+                break;
+        }
+
+        await work.TryAdvancePhaseAsync(evaluatorVersion, phase, stoppingToken);
+    }
+
+    private async Task<int> ProcessDynamicHistoricalReplaySlotAsync(
+        int evaluatorVersion,
+        string phase,
+        string workerId,
+        CancellationToken stoppingToken)
+    {
+        var processed = 0;
+        while (!stoppingToken.IsCancellationRequested)
+        {
+            using var scope = _scopes.CreateScope();
+            var work = scope.ServiceProvider.GetRequiredService<LegendConnectHistoricalReevaluationWorkAuthority>();
+            var claim = await work.TryClaimNextAsync(evaluatorVersion, phase, workerId, stoppingToken);
+            if (claim is null)
+                return processed;
+
+            try
+            {
+                if (claim.SubjectId is not Guid subjectId)
+                    throw new InvalidOperationException("A canonical historical work item requires a stable subject identity.");
+
+                // The evaluator must own a database-held execution fence for
+                // its entire canonical write interval.  A timestamp-only
+                // lease cannot guarantee this: a slow evaluator could keep
+                // writing after another instance reclaims an expired row.
+                // The guard conditionally renews the exact token and holds a
+                // SQL row lock through the evaluator and its completion.
+                await using var execution = await work.TryBeginOwnedExecutionAsync(claim, stoppingToken);
+                if (execution is null)
+                {
+                    _logger.LogWarning(
+                        "Legend historical reevaluation ownership was lost before evaluation. EvaluatorVersion={EvaluatorVersion} Phase={Phase} WorkItemId={WorkItemId}",
+                        evaluatorVersion,
+                        phase,
+                        claim.WorkItemId);
+                    return processed;
+                }
+
+                if (phase == LegendConnectLanguageIntelligenceReevaluationPhases.ProviderObservations)
+                {
+                    await scope.ServiceProvider.GetRequiredService<ILegendConnectTranslationIntelligence>()
+                        .ReevaluateHistoricalProviderObservationAsync(subjectId, stoppingToken);
+                }
+                else if (phase == LegendConnectLanguageIntelligenceReevaluationPhases.OperationalTranslations)
+                {
+                    await scope.ServiceProvider.GetRequiredService<ILegendConnectOperations>()
+                        .ReconcileHistoricalOperationalTranslationAsync(subjectId, stoppingToken);
+                }
+                else
+                {
+                    await scope.ServiceProvider.GetRequiredService<LegendConnectCurriculumService>()
+                        .ReevaluateHistoricalWorkItemAsync(
+                            phase,
+                            subjectId,
+                            claim.SubjectScope,
+                            stoppingToken);
+                }
+
+                if (!await execution.CompleteAsync(stoppingToken))
+                {
+                    await execution.AbortAsync();
+                    _logger.LogWarning(
+                        "Legend historical reevaluation ownership was lost before completion. EvaluatorVersion={EvaluatorVersion} Phase={Phase} WorkItemId={WorkItemId}",
+                        evaluatorVersion,
+                        phase,
+                        claim.WorkItemId);
+                    return processed;
+                }
+                processed++;
+            }
+            catch (OperationCanceledException) when (!stoppingToken.IsCancellationRequested)
+            {
+                // The execution transaction has already rolled canonical
+                // writes back before this conditional release makes the
+                // identity recoverable.
+                await work.ReleaseAsync(
+                    claim,
+                    "historical_reevaluation_execution_cancelled",
+                    CancellationToken.None);
+            }
+            catch (OperationCanceledException)
+            {
+                await work.ReleaseAsync(
+                    claim,
+                    "historical_reevaluation_worker_cancelled",
+                    CancellationToken.None);
+                throw;
+            }
+            catch (Exception exception)
+            {
+                await work.FailAsync(
+                    claim,
+                    "historical_reevaluation_canonical_failure",
+                    CancellationToken.None);
+                _logger.LogWarning(
+                    exception,
+                    "Legend historical reevaluation work failed safely. EvaluatorVersion={EvaluatorVersion} Phase={Phase} WorkItemId={WorkItemId}",
+                    evaluatorVersion,
+                    phase,
+                    claim.WorkItemId);
+            }
+        }
+
+        return processed;
     }
 }
 

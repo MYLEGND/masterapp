@@ -1018,6 +1018,14 @@ public sealed class LegendConnectRuntimePolicy
     public Guid? LanguageIntelligenceReevaluationCursor { get; set; }
     public DateTime? LanguageIntelligenceReevaluationStartedUtc { get; set; }
     public DateTime? LanguageIntelligenceReevaluationCompletedUtc { get; set; }
+    /// <summary>
+    /// The highest evaluator version that entered with the historical
+    /// single-cursor execution contract. Earlier phases retain that cursor;
+    /// a ProviderObservations pass is atomically adopted into durable work at
+    /// its persisted ordered boundary. It is execution compatibility state
+    /// only; canonical language evidence remains unchanged.
+    /// </summary>
+    public int CursorReplayCompatibilityEvaluatorVersion { get; set; }
     public DateTime UpdatedUtc { get; set; } = DateTime.UtcNow;
     public string? UpdatedByUserId { get; set; }
     public byte[] RowVersion { get; set; } = Array.Empty<byte>();
@@ -1079,6 +1087,51 @@ public sealed class LegendCurriculumManifestWorkItem
     public DateTime? LeaseExpiresUtc { get; set; }
     public DateTime CreatedUtc { get; set; }
     public DateTime UpdatedUtc { get; set; }
+    public DateTime? CompletedUtc { get; set; }
+}
+
+/// <summary>
+/// Durable execution state for one bounded historical language-intelligence
+/// reevaluation unit. It stores no curriculum, source text, target text, or
+/// derived evidence: every semantic decision continues through the existing
+/// canonical evaluator authorities.
+/// </summary>
+public sealed class LegendHistoricalReevaluationWorkItem
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public int EvaluatorVersion { get; set; }
+    public string Phase { get; set; } = string.Empty;
+    /// <summary>Canonical work or a bounded phase-seeding control item.</summary>
+    public string WorkKind { get; set; } = "Canonical";
+    /// <summary>
+    /// A deterministic operational identity only. It never contains source
+    /// or target text.
+    /// </summary>
+    public string WorkIdentity { get; set; } = string.Empty;
+    /// <summary>
+    /// Stable canonical identifier when this is a canonical evaluator unit.
+    /// Null is reserved for the phase-seeding control item.
+    /// </summary>
+    public Guid? SubjectId { get; set; }
+    /// <summary>
+    /// A narrow stable scope for the subject (for example a language code).
+    /// It is part of work identity, not language evidence.
+    /// </summary>
+    public string SubjectScope { get; set; } = string.Empty;
+    /// <summary>
+    /// The smallest audited mutable lane. A filtered unique index permits at
+    /// most one active lease per evaluator/phase/dependency lane.
+    /// </summary>
+    public string DependencyIdentity { get; set; } = string.Empty;
+    public string ProcessingState { get; set; } = "Pending";
+    public string? LeaseOwner { get; set; }
+    public Guid? LeaseToken { get; set; }
+    public DateTime? LeaseExpiresUtc { get; set; }
+    public int AttemptCount { get; set; }
+    public string? LastErrorCode { get; set; }
+    public string? LastErrorMessage { get; set; }
+    public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
+    public DateTime UpdatedUtc { get; set; } = DateTime.UtcNow;
     public DateTime? CompletedUtc { get; set; }
 }
 

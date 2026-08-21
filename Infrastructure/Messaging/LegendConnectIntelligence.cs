@@ -62,6 +62,10 @@ internal interface ILegendConnectTranslationIntelligence
         Guid? afterId,
         CancellationToken cancellationToken = default);
 
+    Task ReevaluateHistoricalProviderObservationAsync(
+        Guid alignmentId,
+        CancellationToken cancellationToken = default);
+
     Task<LegendConnectTranslationQualitySnapshot> GetTranslationQualityAsync(
         CancellationToken cancellationToken = default);
 
@@ -641,6 +645,11 @@ internal sealed class LegendConnectTranslationIntelligence : ILegendConnectTrans
             observationIds.Count == 0 ? null : observationIds[^1],
             observationIds.Count < pageSize);
     }
+
+    public Task ReevaluateHistoricalProviderObservationAsync(
+        Guid alignmentId,
+        CancellationToken cancellationToken = default) =>
+        EvaluateProviderObservationAsync(alignmentId, cancellationToken);
 
     public async Task<LegendConnectTranslationQualitySnapshot> GetTranslationQualityAsync(
         CancellationToken cancellationToken = default)
