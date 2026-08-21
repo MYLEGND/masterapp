@@ -7469,4 +7469,31 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
     private sealed record NormalizedCurriculumExample(
         string Text,
         IReadOnlyDictionary<string, string> Variations);
+
+    /// <summary>
+    /// A canonical target example has two incompatible Founder-controlled
+    /// values for the same semantic dimension. Historical replay may record
+    /// and quarantine this contradiction, but it must never select a value or
+    /// manufacture a derived target projection.
+    /// </summary>
+    private sealed class LegendControlledVariationConflictException : InvalidOperationException
+    {
+        public LegendControlledVariationConflictException(
+            Guid targetExampleId,
+            string dimension,
+            string existingValue,
+            string proposedValue)
+            : base("One target example cannot carry conflicting controlled semantic variation values.")
+        {
+            TargetExampleId = targetExampleId;
+            Dimension = dimension;
+            ExistingValue = existingValue;
+            ProposedValue = proposedValue;
+        }
+
+        public Guid TargetExampleId { get; }
+        public string Dimension { get; }
+        public string ExistingValue { get; }
+        public string ProposedValue { get; }
+    }
 }

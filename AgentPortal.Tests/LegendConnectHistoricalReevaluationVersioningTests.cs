@@ -286,6 +286,194 @@ public sealed class LegendConnectHistoricalReevaluationVersioningTests
         Assert.Null(await intelligence.TryGetTrustedExactMemoryAsync("x-source", "x-target", source.Text));
     }
 
+    [Fact]
+    public async Task SourceFamilies_BoundedPageRepairsOnlyItsCurrentFamily_ThenResumesFromTheDurableCursor()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var configuration = Configuration();
+        var registry = new LegendLanguageRegistry(db, configuration);
+        var runtime = new LegendConnectRuntimePolicyAuthority(
+            db, new FounderAccess(), registry, configuration,
+            NullLogger<LegendConnectRuntimePolicyAuthority>.Instance);
+        var corpus = new LegendConnectCorpusService(
+            db, registry, NullLogger<LegendConnectCorpusService>.Instance);
+        var curriculum = new LegendConnectCurriculumService(db, registry, corpus);
+
+        var first = AddHistoricalSourceFamily(
+            db,
+            Guid.Parse("00000000-0000-0000-0000-000000000101"),
+            "replay.source.first");
+        var second = AddHistoricalSourceFamily(
+            db,
+            Guid.Parse("00000000-0000-0000-0000-000000000102"),
+            "replay.source.second");
+        await db.SaveChangesAsync();
+
+        var start = await runtime.GetOrStartLanguageIntelligenceReevaluationAsync(
+            LegendConnectLanguageIntelligenceEvaluatorVersion.Current);
+        Assert.Equal(LegendConnectLanguageIntelligenceReevaluationPhases.SourceFamilies, start.Phase);
+        Assert.Null(start.Cursor);
+
+        var firstPage = await curriculum.ReevaluateHistoricalAlignmentsAsync(
+            1,
+            start.Phase,
+            start.Cursor);
+        Assert.Equal(first.FamilyId, firstPage.LastProcessedId);
+        Assert.False(firstPage.PhaseComplete);
+        await runtime.AdvanceLanguageIntelligenceReevaluationAsync(
+            LegendConnectLanguageIntelligenceEvaluatorVersion.Current,
+            start.Phase,
+            firstPage.LastProcessedId,
+            firstPage.PhaseComplete);
+
+        db.ChangeTracker.Clear();
+        Assert.NotNull((await db.LegendLanguageCompositionalAnchors
+            .SingleAsync(item => item.Id == first.AnchorId)).SemanticSignature);
+        Assert.Null((await db.LegendLanguageCompositionalAnchors
+            .SingleAsync(item => item.Id == second.AnchorId)).SemanticSignature);
+
+        // Recreate the authority to model an application/worker restart. The
+        // runtime policy, not an in-memory loop variable, owns resumption.
+        var restarted = new LegendConnectRuntimePolicyAuthority(
+            db, new FounderAccess(), new LegendLanguageRegistry(db, configuration), configuration,
+            NullLogger<LegendConnectRuntimePolicyAuthority>.Instance);
+        var resumed = await restarted.GetOrStartLanguageIntelligenceReevaluationAsync(
+            LegendConnectLanguageIntelligenceEvaluatorVersion.Current);
+        Assert.Equal(LegendConnectLanguageIntelligenceReevaluationPhases.SourceFamilies, resumed.Phase);
+        Assert.Equal(first.FamilyId, resumed.Cursor);
+
+        var secondPage = await curriculum.ReevaluateHistoricalAlignmentsAsync(
+            1,
+            resumed.Phase,
+            resumed.Cursor);
+        Assert.Equal(second.FamilyId, secondPage.LastProcessedId);
+        await restarted.AdvanceLanguageIntelligenceReevaluationAsync(
+            LegendConnectLanguageIntelligenceEvaluatorVersion.Current,
+            resumed.Phase,
+            secondPage.LastProcessedId,
+            secondPage.PhaseComplete);
+        Assert.NotNull((await db.LegendLanguageCompositionalAnchors
+            .SingleAsync(item => item.Id == second.AnchorId)).SemanticSignature);
+    }
+
+    [Fact]
+    public async Task HistoricalAlignmentConflict_IsQuarantinedWithoutSelectingAValue_AndTheCursorContinues()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var configuration = Configuration();
+        var registry = new LegendLanguageRegistry(db, configuration);
+        var runtime = new LegendConnectRuntimePolicyAuthority(
+            db, new FounderAccess(), registry, configuration,
+            NullLogger<LegendConnectRuntimePolicyAuthority>.Instance);
+        var corpus = new LegendConnectCorpusService(
+            db, registry, NullLogger<LegendConnectCorpusService>.Instance);
+        var events = new LegendConnectOperationalEventWriter(
+            db, NullLogger<LegendConnectOperationalEventWriter>.Instance);
+        var curriculum = new LegendConnectCurriculumService(db, registry, corpus, events);
+        var pair = Assert.IsType<LegendLanguagePairSnapshot>(
+            await registry.GetOrCreateEnabledPairAsync("en", "x-test"));
+
+        var family = new LegendCurriculumFamily
+        {
+            Id = Guid.NewGuid(), FamilyKey = "replay.alignment.conflict", Provenance = "FounderApproved"
+        };
+        var source = Unit("en", "A governed source.", "FounderApproved");
+        var target = Unit("x-test", "A governed target.", "FounderApproved");
+        var sourceExample = new LegendCurriculumExample
+        {
+            Id = Guid.NewGuid(), CurriculumFamilyId = family.Id, TextUnitId = source.Id,
+            LanguageCode = "en", Provenance = "FounderApproved"
+        };
+        var targetExample = new LegendCurriculumExample
+        {
+            Id = Guid.NewGuid(), CurriculumFamilyId = family.Id, TextUnitId = target.Id,
+            LanguageCode = "x-test", DerivedFromCurriculumExampleId = sourceExample.Id,
+            Provenance = "FounderApproved"
+        };
+        var conflict = new LegendTranslationAlignment
+        {
+            Id = Guid.Parse("00000000-0000-0000-0000-000000000201"),
+            PairKey = pair.PairKey,
+            SourceTextUnitId = source.Id,
+            TargetTextUnitId = target.Id,
+            Provider = "FounderApproved",
+            Provenance = "FounderApproved",
+            HumanVerified = true,
+            QualityState = "Verified",
+            Confidence = 1m,
+            ObservationCount = 1
+        };
+        db.AddRange(
+            family,
+            source,
+            target,
+            sourceExample,
+            targetExample,
+            new LegendCurriculumExampleVariation
+            {
+                Id = Guid.NewGuid(), CurriculumExampleId = sourceExample.Id,
+                Dimension = "register", Value = "warm"
+            },
+            new LegendCurriculumExampleVariation
+            {
+                Id = Guid.NewGuid(), CurriculumExampleId = targetExample.Id,
+                Dimension = "register", Value = "formal"
+            },
+            conflict);
+        await db.SaveChangesAsync();
+
+        var start = await runtime.GetOrStartLanguageIntelligenceReevaluationAsync(
+            LegendConnectLanguageIntelligenceEvaluatorVersion.Current);
+        await runtime.AdvanceLanguageIntelligenceReevaluationAsync(
+            LegendConnectLanguageIntelligenceEvaluatorVersion.Current,
+            start.Phase,
+            null,
+            phaseComplete: true);
+        var alignments = await runtime.GetOrStartLanguageIntelligenceReevaluationAsync(
+            LegendConnectLanguageIntelligenceEvaluatorVersion.Current);
+        Assert.Equal(LegendConnectLanguageIntelligenceReevaluationPhases.Alignments, alignments.Phase);
+
+        var page = await curriculum.ReevaluateHistoricalAlignmentsAsync(1, alignments.Phase, alignments.Cursor);
+        Assert.Equal(conflict.Id, page.LastProcessedId);
+        Assert.False(page.PhaseComplete);
+        await runtime.AdvanceLanguageIntelligenceReevaluationAsync(
+            LegendConnectLanguageIntelligenceEvaluatorVersion.Current,
+            alignments.Phase,
+            page.LastProcessedId,
+            page.PhaseComplete);
+        db.ChangeTracker.Clear();
+
+        var retained = await db.LegendCurriculumExampleVariations
+            .SingleAsync(item => item.CurriculumExampleId == targetExample.Id && item.Dimension == "register");
+        Assert.Equal("formal", retained.Value);
+        Assert.Equal(1, await db.LegendCurriculumExampleVariations
+            .CountAsync(item => item.CurriculumExampleId == targetExample.Id));
+        Assert.Single(await db.LegendConnectOperationalEvents.Where(item =>
+            item.Category == "HistoricalCurriculumReplay" &&
+            item.ErrorCode == "conflicting_controlled_variation" &&
+            item.CorrelationId == conflict.Id.ToString("D")).ToListAsync());
+
+        var restarted = new LegendConnectRuntimePolicyAuthority(
+            db, new FounderAccess(), new LegendLanguageRegistry(db, configuration), configuration,
+            NullLogger<LegendConnectRuntimePolicyAuthority>.Instance);
+        var resumed = await restarted.GetOrStartLanguageIntelligenceReevaluationAsync(
+            LegendConnectLanguageIntelligenceEvaluatorVersion.Current);
+        Assert.Equal(LegendConnectLanguageIntelligenceReevaluationPhases.Alignments, resumed.Phase);
+        Assert.Equal(conflict.Id, resumed.Cursor);
+
+        var tail = await curriculum.ReevaluateHistoricalAlignmentsAsync(1, resumed.Phase, resumed.Cursor);
+        Assert.True(tail.PhaseComplete);
+        await restarted.AdvanceLanguageIntelligenceReevaluationAsync(
+            LegendConnectLanguageIntelligenceEvaluatorVersion.Current,
+            resumed.Phase,
+            tail.LastProcessedId,
+            tail.PhaseComplete);
+        Assert.Equal(
+            LegendConnectLanguageIntelligenceReevaluationPhases.ProviderObservations,
+            (await restarted.GetOrStartLanguageIntelligenceReevaluationAsync(
+                LegendConnectLanguageIntelligenceEvaluatorVersion.Current)).Phase);
+    }
+
     private static async Task DrainCanonicalWorkerCycleAsync(
         LegendConnectRuntimePolicyAuthority runtime,
         LegendConnectCurriculumService curriculum,
@@ -363,6 +551,53 @@ public sealed class LegendConnectHistoricalReevaluationVersioningTests
         return new ProviderConflictSeed(provider.Id, trusted.Id, sourceLanguageCode, targetLanguageCode, sourceText);
     }
 
+    private static HistoricalSourceFamily AddHistoricalSourceFamily(
+        MasterAppDbContext db,
+        Guid familyId,
+        string familyKey)
+    {
+        var unit = Unit("en", $"Historical source {familyKey}.", "FounderApproved");
+        var example = new LegendCurriculumExample
+        {
+            Id = Guid.NewGuid(),
+            CurriculumFamilyId = familyId,
+            TextUnitId = unit.Id,
+            LanguageCode = "en",
+            Provenance = "FounderApproved"
+        };
+        var anchor = new LegendLanguageCompositionalAnchor
+        {
+            Id = Guid.NewGuid(),
+            LanguageCode = "en",
+            TextUnitId = unit.Id,
+            CurriculumFamilyId = familyId,
+            CurriculumExampleId = example.Id,
+            Dimension = "conversation_function",
+            Value = "opening",
+            SemanticSignature = null,
+            AnchorSignature = LegendLanguageIdentity.TextHash($"{example.Id:D}|opening"),
+            Provenance = "FounderApproved"
+        };
+        db.AddRange(
+            new LegendCurriculumFamily
+            {
+                Id = familyId,
+                FamilyKey = familyKey,
+                Provenance = "FounderApproved"
+            },
+            unit,
+            example,
+            new LegendCurriculumExampleVariation
+            {
+                Id = Guid.NewGuid(),
+                CurriculumExampleId = example.Id,
+                Dimension = "conversation_function",
+                Value = "opening"
+            },
+            anchor);
+        return new HistoricalSourceFamily(familyId, anchor.Id);
+    }
+
     private static async Task<List<string>> QualityShapeAsync(MasterAppDbContext db, Guid alignmentId)
     {
         var evidence = await db.LegendTranslationQualityEvidence
@@ -431,6 +666,8 @@ public sealed class LegendConnectHistoricalReevaluationVersioningTests
         string SourceLanguageCode,
         string TargetLanguageCode,
         string SourceText);
+
+    private sealed record HistoricalSourceFamily(Guid FamilyId, Guid AnchorId);
 
     private sealed class FounderAccess : IControlledResourceAccessService
     {

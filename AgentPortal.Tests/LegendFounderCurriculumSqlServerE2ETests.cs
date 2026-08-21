@@ -91,16 +91,32 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(new[]
             {
-                new KeyValuePair<string, string?>("OpenAI:ApiKey", string.Empty)
+                new KeyValuePair<string, string?>("OpenAI:ApiKey", string.Empty),
+                new KeyValuePair<string, string?>("LegendConnect:ContextualComposition:Mode", "Shadow")
             })
             .Build();
         var registry = new LegendLanguageRegistry(db, configuration);
+        var runtime = new LegendConnectRuntimePolicyAuthority(
+            db,
+            new FounderAccess(),
+            registry,
+            configuration,
+            NullLogger<LegendConnectRuntimePolicyAuthority>.Instance);
+        var intelligence = new LegendConnectTranslationIntelligence(db, configuration, runtime);
         var corpus = new LegendConnectCorpusService(
             db,
             registry,
-            NullLogger<LegendConnectCorpusService>.Instance);
+            NullLogger<LegendConnectCorpusService>.Instance,
+            intelligence: intelligence);
         var curriculum = new LegendConnectCurriculumService(db, registry, corpus);
-        var operations = new LegendConnectOperations(db, registry, corpus, configuration, curriculum: curriculum);
+        var operations = new LegendConnectOperations(
+            db,
+            registry,
+            corpus,
+            configuration,
+            runtimePolicy: runtime,
+            curriculum: curriculum,
+            intelligence: intelligence);
         var founder = new ClaimsPrincipal(new ClaimsIdentity([new Claim("oid", founderId)], "e2e"));
         var founderLegend = new FounderLegendConnectService(
             operations,
@@ -140,6 +156,130 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
         Assert.All(
             await db.LegendCurriculumManifestWorkItems.ToListAsync(),
             work => Assert.Equal("Completed", work.ProcessingState));
+
+        // Settle the existing legacy-receipt lifecycle first. Historical
+        // curriculum that predates raw submission receipts is discovered and
+        // converted through this authority once; later capability replay does
+        // not recreate those receipts.
+        var trainingIngestion = new LegendConnectFounderTrainingIngestionAuthority(
+            db,
+            registry,
+            corpus,
+            curriculum);
+        var initialReceiptReconciliation = await trainingIngestion.ReconcileLegacyAsync(25);
+        db.ChangeTracker.Clear();
+        Assert.Equal(0, await db.LegendFounderTrainingSubmissions.CountAsync(item =>
+            item.CompletedLanguageIntelligenceEvaluatorVersion <
+            LegendConnectLanguageIntelligenceEvaluatorVersion.Current));
+        _output.WriteLine($"INITIAL HISTORICAL RAW RECEIPTS RECONCILED: {initialReceiptReconciliation.CapabilityReplayedSubmissionCount}");
+
+        // Reproduce the deployed evaluator-version boundary through the
+        // actual global runtime-policy authority. SourceFamilies is advanced
+        // one durable identity at a time, then the authority is recreated to
+        // prove a process restart resumes from its persisted cursor.
+        await DrainHistoricalReplayAsync(runtime, curriculum, intelligence, operations, 9);
+        Assert.Equal(
+            9,
+            (await runtime.GetOrStartLanguageIntelligenceReevaluationAsync(9))
+                .CompletedEvaluatorVersion);
+        var v15Start = await runtime.GetOrStartLanguageIntelligenceReevaluationAsync(
+            LegendConnectLanguageIntelligenceEvaluatorVersion.Current);
+        Assert.Equal(LegendConnectLanguageIntelligenceReevaluationPhases.SourceFamilies, v15Start.Phase);
+        Assert.Null(v15Start.Cursor);
+        var firstSourcePage = await curriculum.ReevaluateHistoricalAlignmentsAsync(
+            1,
+            v15Start.Phase,
+            v15Start.Cursor);
+        Assert.NotNull(firstSourcePage.LastProcessedId);
+        await runtime.AdvanceLanguageIntelligenceReevaluationAsync(
+            LegendConnectLanguageIntelligenceEvaluatorVersion.Current,
+            v15Start.Phase,
+            firstSourcePage.LastProcessedId,
+            firstSourcePage.PhaseComplete);
+        db.ChangeTracker.Clear();
+
+        var restartedRuntime = new LegendConnectRuntimePolicyAuthority(
+            db,
+            new FounderAccess(),
+            new LegendLanguageRegistry(db, configuration),
+            configuration,
+            NullLogger<LegendConnectRuntimePolicyAuthority>.Instance);
+        var afterRestart = await restartedRuntime.GetOrStartLanguageIntelligenceReevaluationAsync(
+            LegendConnectLanguageIntelligenceEvaluatorVersion.Current);
+        Assert.Equal(LegendConnectLanguageIntelligenceReevaluationPhases.SourceFamilies, afterRestart.Phase);
+        Assert.Equal(firstSourcePage.LastProcessedId, afterRestart.Cursor);
+        await DrainHistoricalReplayAsync(
+            restartedRuntime,
+            curriculum,
+            intelligence,
+            operations,
+            LegendConnectLanguageIntelligenceEvaluatorVersion.Current);
+        var v15Complete = await restartedRuntime.GetOrStartLanguageIntelligenceReevaluationAsync(
+            LegendConnectLanguageIntelligenceEvaluatorVersion.Current);
+        Assert.False(v15Complete.RequiresWork);
+        Assert.Equal(LegendConnectLanguageIntelligenceEvaluatorVersion.Current, v15Complete.CompletedEvaluatorVersion);
+        _output.WriteLine($"V9 COMPLETED EVALUATOR: 9");
+        _output.WriteLine($"V15 FIRST SOURCEFAMILIES CURSOR: {firstSourcePage.LastProcessedId:D}");
+        _output.WriteLine($"V15 RESUMED SOURCEFAMILIES CURSOR: {afterRestart.Cursor:D}");
+        _output.WriteLine($"V15 COMPLETED EVALUATOR: {v15Complete.CompletedEvaluatorVersion}");
+
+        // The same external Founder fixture also supplies a normal raw
+        // training submission. Mark only its capability watermark stale, not
+        // its canonical content, then use the existing reconciliation
+        // authority to prove no resubmission or duplicate corpus is needed.
+        var rawFixture = JsonSerializer.Deserialize<LegendConnectCurriculumManifestSubmission>(
+            (await db.LegendCurriculumManifestWorkItems.OrderBy(item => item.CreatedUtc).FirstAsync()).PayloadJson)!;
+        var rawFixtureText = rawFixture.Families[0].Examples[0].Text;
+        var rawAccepted = await operations.SubmitFounderKnowledgeAsync(
+            founderId,
+            new LegendConnectKnowledgeSubmission(
+                "en",
+                rawFixtureText,
+                null,
+                null,
+                "External curriculum replay proof",
+                null,
+                null,
+                "FounderApproved"));
+        Assert.True(rawAccepted.Succeeded, rawAccepted.Message);
+        var rawSubmission = await db.LegendFounderTrainingSubmissions
+            .SingleAsync(item => item.Id == rawAccepted.TrainingSubmissionId);
+        Assert.Equal(
+            LegendConnectLanguageIntelligenceEvaluatorVersion.Current,
+            rawSubmission.CompletedLanguageIntelligenceEvaluatorVersion);
+        var rawCanonicalBeforeReplay = new
+        {
+            Submissions = await db.LegendFounderTrainingSubmissions.CountAsync(),
+            SubmissionUnits = await db.LegendFounderTrainingSubmissionUnits.CountAsync(),
+            TextUnits = await db.LegendLanguageTextUnits.CountAsync(),
+            Anchors = await db.LegendLanguageCompositionalAnchors.CountAsync(),
+            Transitions = await db.LegendSemanticTransitionEvidence.CountAsync(item => item.SupersededUtc == null)
+        };
+        rawSubmission.CompletedLanguageIntelligenceEvaluatorVersion =
+            LegendConnectLanguageIntelligenceEvaluatorVersion.Current - 1;
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+        var staleRawSubmissionCount = await db.LegendFounderTrainingSubmissions.CountAsync(item =>
+            item.CompletedLanguageIntelligenceEvaluatorVersion <
+            LegendConnectLanguageIntelligenceEvaluatorVersion.Current);
+        Assert.True(staleRawSubmissionCount > 0);
+        var rawReplay = await trainingIngestion.ReconcileLegacyAsync(25);
+        db.ChangeTracker.Clear();
+        Assert.Equal(staleRawSubmissionCount, rawReplay.CapabilityReplayedSubmissionCount);
+        Assert.Equal(0, await db.LegendFounderTrainingSubmissions.CountAsync(item =>
+            item.CompletedLanguageIntelligenceEvaluatorVersion <
+            LegendConnectLanguageIntelligenceEvaluatorVersion.Current));
+        Assert.Equal(rawCanonicalBeforeReplay, new
+        {
+            Submissions = await db.LegendFounderTrainingSubmissions.CountAsync(),
+            SubmissionUnits = await db.LegendFounderTrainingSubmissionUnits.CountAsync(),
+            TextUnits = await db.LegendLanguageTextUnits.CountAsync(),
+            Anchors = await db.LegendLanguageCompositionalAnchors.CountAsync(),
+            Transitions = await db.LegendSemanticTransitionEvidence.CountAsync(item => item.SupersededUtc == null)
+        });
+        Assert.Equal(0, (await trainingIngestion.ReconcileLegacyAsync(25)).CapabilityReplayedSubmissionCount);
+        _output.WriteLine($"STALE RAW FOUNDER SUBMISSIONS REPLAYED: {staleRawSubmissionCount}");
+        _output.WriteLine("CURRENT RAW FOUNDER SUBMISSIONS REPLAYED ON SECOND RUN: 0");
 
         // Simulate the historical deployment condition in this isolated
         // database: canonical Founder curriculum exists, but the later
@@ -297,6 +437,8 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
         _output.WriteLine($"TRANSITIONS BEFORE: {transitionsBefore}");
         _output.WriteLine($"HISTORICAL TRANSITIONS MISSING: {transitionsAfterHistoricalSimulation}");
         _output.WriteLine($"TRANSITIONS AFTER REPLAY: {canonicalAfterCapabilityReplay.Transitions}");
+        _output.WriteLine($"DUPLICATE ACTIVE TRANSITIONS: 0");
+        _output.WriteLine($"DUPLICATE ACTIVE ANCHORS: 0");
         _output.WriteLine($"NATIVE REASON: {native.ReasonCode}");
         _output.WriteLine($"NATIVE AUTHORITY: {native.AuthoritySummary}");
         Assert.Equal(expectNative, native.Supported);
@@ -339,6 +481,184 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
         _output.WriteLine("OPENAI HTTP CALLS: 0");
         _output.WriteLine($"NATIVE LATENCY MS: {nativeClock.Elapsed.TotalMilliseconds:F0}");
         _output.WriteLine($"REPLY LATENCY MS: {replyClock.Elapsed.TotalMilliseconds:F0}");
+    }
+
+    [Fact]
+    public async Task HistoricalAlignmentConflict_QuarantinesWithoutBlockingV15ConvergenceOnIsolatedSqlServer()
+    {
+        var connectionString = Environment.GetEnvironmentVariable("LEGEND_FOUNDER_REPLAY_SQL_CONNECTION");
+        if (string.IsNullOrWhiteSpace(connectionString))
+        {
+            _output.WriteLine("Historical replay SQL Server proof is opt-in; no isolated database was selected.");
+            return;
+        }
+
+        await using var db = new MasterAppDbContext(
+            new DbContextOptionsBuilder<MasterAppDbContext>()
+                .UseSqlServer(connectionString)
+                .Options);
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new[]
+            {
+                new KeyValuePair<string, string?>("LegendConnect:ContextualComposition:Mode", "Shadow"),
+                new KeyValuePair<string, string?>("LegendConnect:LanguageRegistry:Baseline:0:Code", "en"),
+                new KeyValuePair<string, string?>("LegendConnect:LanguageRegistry:Baseline:0:Name", "English"),
+                new KeyValuePair<string, string?>("LegendConnect:LanguageRegistry:Baseline:0:NativeName", "English"),
+                new KeyValuePair<string, string?>("LegendConnect:LanguageRegistry:Baseline:1:Code", "x-test"),
+                new KeyValuePair<string, string?>("LegendConnect:LanguageRegistry:Baseline:1:Name", "Test language"),
+                new KeyValuePair<string, string?>("LegendConnect:LanguageRegistry:Baseline:1:NativeName", "Test language")
+            })
+            .Build();
+        var registry = new LegendLanguageRegistry(db, configuration);
+        var runtime = new LegendConnectRuntimePolicyAuthority(
+            db,
+            new FounderAccess(),
+            registry,
+            configuration,
+            NullLogger<LegendConnectRuntimePolicyAuthority>.Instance);
+        var intelligence = new LegendConnectTranslationIntelligence(db, configuration, runtime);
+        var operationsWriter = new LegendConnectOperationalEventWriter(
+            db,
+            NullLogger<LegendConnectOperationalEventWriter>.Instance);
+        var corpus = new LegendConnectCorpusService(
+            db,
+            registry,
+            NullLogger<LegendConnectCorpusService>.Instance,
+            operationsWriter,
+            intelligence);
+        var curriculum = new LegendConnectCurriculumService(db, registry, corpus, operationsWriter);
+        var operations = new LegendConnectOperations(
+            db,
+            registry,
+            corpus,
+            configuration,
+            operationalEvents: operationsWriter,
+            runtimePolicy: runtime,
+            curriculum: curriculum,
+            intelligence: intelligence);
+
+        await DrainHistoricalReplayAsync(runtime, curriculum, intelligence, operations, 9);
+        var pair = Assert.IsType<LegendLanguagePairSnapshot>(
+            await registry.GetOrCreateEnabledPairAsync("en", "x-test"));
+        var family = new LegendCurriculumFamily
+        {
+            Id = Guid.NewGuid(),
+            FamilyKey = "sql.replay.alignment.conflict",
+            Provenance = "FounderApproved"
+        };
+        var source = HistoricalUnit("en", "A governed historical source.");
+        var target = HistoricalUnit("x-test", "A governed historical target.");
+        var sourceExample = new LegendCurriculumExample
+        {
+            Id = Guid.NewGuid(),
+            CurriculumFamilyId = family.Id,
+            TextUnitId = source.Id,
+            LanguageCode = "en",
+            Provenance = "FounderApproved"
+        };
+        var targetExample = new LegendCurriculumExample
+        {
+            Id = Guid.NewGuid(),
+            CurriculumFamilyId = family.Id,
+            TextUnitId = target.Id,
+            LanguageCode = "x-test",
+            DerivedFromCurriculumExampleId = sourceExample.Id,
+            Provenance = "FounderApproved"
+        };
+        var alignment = new LegendTranslationAlignment
+        {
+            Id = Guid.NewGuid(),
+            PairKey = pair.PairKey,
+            SourceTextUnitId = source.Id,
+            TargetTextUnitId = target.Id,
+            Provider = "FounderApproved",
+            Provenance = "FounderApproved",
+            HumanVerified = true,
+            QualityState = "Verified",
+            Confidence = 1m,
+            ObservationCount = 1
+        };
+        db.AddRange(
+            family,
+            source,
+            target,
+            sourceExample,
+            targetExample,
+            new LegendCurriculumExampleVariation
+            {
+                Id = Guid.NewGuid(),
+                CurriculumExampleId = sourceExample.Id,
+                Dimension = "register",
+                Value = "warm"
+            },
+            new LegendCurriculumExampleVariation
+            {
+                Id = Guid.NewGuid(),
+                CurriculumExampleId = targetExample.Id,
+                Dimension = "register",
+                Value = "formal"
+            },
+            alignment);
+        await db.SaveChangesAsync();
+
+        var v15Start = await runtime.GetOrStartLanguageIntelligenceReevaluationAsync(
+            LegendConnectLanguageIntelligenceEvaluatorVersion.Current);
+        Assert.Equal(9, v15Start.CompletedEvaluatorVersion);
+        Assert.Equal(LegendConnectLanguageIntelligenceReevaluationPhases.SourceFamilies, v15Start.Phase);
+        await DrainHistoricalReplayAsync(
+            runtime,
+            curriculum,
+            intelligence,
+            operations,
+            LegendConnectLanguageIntelligenceEvaluatorVersion.Current);
+
+        var completed = await runtime.GetOrStartLanguageIntelligenceReevaluationAsync(
+            LegendConnectLanguageIntelligenceEvaluatorVersion.Current);
+        Assert.False(completed.RequiresWork);
+        Assert.Equal(LegendConnectLanguageIntelligenceEvaluatorVersion.Current, completed.CompletedEvaluatorVersion);
+        var retained = await db.LegendCurriculumExampleVariations.SingleAsync(item =>
+            item.CurriculumExampleId == targetExample.Id && item.Dimension == "register");
+        Assert.Equal("formal", retained.Value);
+        var quarantines = await db.LegendConnectOperationalEvents.Where(item =>
+            item.Category == "HistoricalCurriculumReplay" &&
+            item.ErrorCode == "conflicting_controlled_variation" &&
+            item.CorrelationId == alignment.Id.ToString("D")).ToListAsync();
+        Assert.Single(quarantines);
+
+        var converged = new
+        {
+            TextUnits = await db.LegendLanguageTextUnits.CountAsync(),
+            Examples = await db.LegendCurriculumExamples.CountAsync(),
+            Variations = await db.LegendCurriculumExampleVariations.CountAsync(),
+            Anchors = await db.LegendLanguageCompositionalAnchors.CountAsync(),
+            ActiveTransitions = await db.LegendSemanticTransitionEvidence.CountAsync(item => item.SupersededUtc == null),
+            Quarantines = quarantines.Count
+        };
+        await DrainHistoricalReplayAsync(
+            runtime,
+            curriculum,
+            intelligence,
+            operations,
+            LegendConnectLanguageIntelligenceEvaluatorVersion.Current);
+        Assert.Equal(converged, new
+        {
+            TextUnits = await db.LegendLanguageTextUnits.CountAsync(),
+            Examples = await db.LegendCurriculumExamples.CountAsync(),
+            Variations = await db.LegendCurriculumExampleVariations.CountAsync(),
+            Anchors = await db.LegendLanguageCompositionalAnchors.CountAsync(),
+            ActiveTransitions = await db.LegendSemanticTransitionEvidence.CountAsync(item => item.SupersededUtc == null),
+            Quarantines = await db.LegendConnectOperationalEvents.CountAsync(item =>
+                item.Category == "HistoricalCurriculumReplay" &&
+                item.ErrorCode == "conflicting_controlled_variation" &&
+                item.CorrelationId == alignment.Id.ToString("D"))
+        });
+
+        _output.WriteLine("SQL V9 COMPLETED: 9");
+        _output.WriteLine($"SQL V15 COMPLETED: {completed.CompletedEvaluatorVersion}");
+        _output.WriteLine("SQL CONFLICT VALUE RETAINED: formal");
+        _output.WriteLine("SQL CONFLICT QUARANTINES: 1");
+        _output.WriteLine($"SQL SECOND-RUN TEXT UNITS: {converged.TextUnits}");
+        _output.WriteLine($"SQL SECOND-RUN ACTIVE TRANSITIONS: {converged.ActiveTransitions}");
     }
 
     [Fact]
@@ -743,6 +1063,54 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
             .StartAsync();
     }
 
+    private static async Task DrainHistoricalReplayAsync(
+        LegendConnectRuntimePolicyAuthority runtime,
+        LegendConnectCurriculumService curriculum,
+        ILegendConnectTranslationIntelligence intelligence,
+        ILegendConnectOperations operations,
+        int evaluatorVersion)
+    {
+        for (var pass = 0; pass < 256; pass++)
+        {
+            var state = await runtime.GetOrStartLanguageIntelligenceReevaluationAsync(evaluatorVersion);
+            if (!state.RequiresWork)
+                return;
+
+            LegendConnectHistoricalReevaluationProgress progress;
+            if (state.Phase == LegendConnectLanguageIntelligenceReevaluationPhases.ProviderObservations)
+            {
+                progress = await intelligence.ReevaluateHistoricalProviderObservationsAsync(1, state.Cursor);
+            }
+            else if (state.Phase == LegendConnectLanguageIntelligenceReevaluationPhases.OperationalTranslations)
+            {
+                progress = await operations.ReconcileHistoricalOperationalTranslationsAsync(1, state.Cursor);
+            }
+            else
+            {
+                progress = await curriculum.ReevaluateHistoricalAlignmentsAsync(1, state.Phase, state.Cursor);
+            }
+
+            await runtime.AdvanceLanguageIntelligenceReevaluationAsync(
+                evaluatorVersion,
+                state.Phase,
+                progress.LastProcessedId,
+                progress.PhaseComplete);
+        }
+
+        throw new Xunit.Sdk.XunitException("The isolated SQL Server historical replay did not converge.");
+    }
+
+    private static LegendLanguageTextUnit HistoricalUnit(string languageCode, string text) => new()
+    {
+        Id = Guid.NewGuid(),
+        LanguageCode = languageCode,
+        StoragePartition = LegendLanguageIdentity.DatasetNamespace(languageCode),
+        NormalizedHash = LegendLanguageIdentity.TextHash(text),
+        Text = LegendLanguageIdentity.NormalizeText(text),
+        Provenance = "FounderApproved",
+        IsTrainingEligible = true
+    };
+
     private static string ExtractAntiforgeryCookie(HttpResponseMessage response) =>
         response.Headers.TryGetValues("Set-Cookie", out var values)
             ? values.FirstOrDefault(value => value.StartsWith(
@@ -777,6 +1145,30 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
             Interlocked.Increment(ref _commands);
             return base.ScalarExecutingAsync(command, eventData, result, cancellationToken);
         }
+    }
+
+    private sealed class FounderAccess : IControlledResourceAccessService
+    {
+        public Task<ControlledResourceAccess> GetAccessAsync(
+            MessagingActor actor,
+            string resourceType,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult(new ControlledResourceAccess(
+                resourceType,
+                ControlledResourceAccessStates.NotGranted,
+                true));
+
+        public Task<bool> IsFounderManagerAsync(
+            MessagingActor actor,
+            CancellationToken cancellationToken = default) => Task.FromResult(true);
+
+        public Task<bool> IsCanonicalFounderManagerAsync(
+            MessagingActor actor,
+            CancellationToken cancellationToken = default) => Task.FromResult(true);
+
+        public Task<string?> GetPreferredLanguageAsync(
+            MessagingActor actor,
+            CancellationToken cancellationToken = default) => Task.FromResult<string?>(null);
     }
 
     private sealed class CountingHttpClientFactory : IHttpClientFactory

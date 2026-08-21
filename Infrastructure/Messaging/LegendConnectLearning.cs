@@ -1698,6 +1698,12 @@ internal static class LegendConnectLanguageIntelligenceEvaluatorVersion
 
 internal sealed class LegendConnectLearningHostedService : BackgroundService
 {
+    // A replay item is the durable checkpoint unit. Keeping the page at one
+    // stable identity means a later bad historical item can never erase
+    // already committed replay progress, while the bounded loop still gives
+    // the existing worker useful throughput in a single heartbeat.
+    private const int HistoricalReplayItemsPerPage = 1;
+    private const int MaximumHistoricalReplayPagesPerTick = 25;
     private readonly IServiceScopeFactory _scopes;
     private readonly ILogger<LegendConnectLearningHostedService> _logger;
 
@@ -1729,26 +1735,38 @@ internal sealed class LegendConnectLearningHostedService : BackgroundService
                 var replay = await runtime.GetOrStartLanguageIntelligenceReevaluationAsync(
                     LegendConnectLanguageIntelligenceEvaluatorVersion.Current,
                     stoppingToken);
-                if (replay.RequiresWork)
+                for (var replayPage = 0;
+                     replay.RequiresWork && replayPage < MaximumHistoricalReplayPagesPerTick;
+                     replayPage++)
                 {
                     LegendConnectHistoricalReevaluationProgress progress;
                     if (replay.Phase == LegendConnectLanguageIntelligenceReevaluationPhases.ProviderObservations)
                     {
                         progress = await scope.ServiceProvider
                             .GetRequiredService<ILegendConnectTranslationIntelligence>()
-                            .ReevaluateHistoricalProviderObservationsAsync(100, replay.Cursor, stoppingToken);
+                            .ReevaluateHistoricalProviderObservationsAsync(
+                                HistoricalReplayItemsPerPage,
+                                replay.Cursor,
+                                stoppingToken);
                     }
                     else if (replay.Phase == LegendConnectLanguageIntelligenceReevaluationPhases.OperationalTranslations)
                     {
                         progress = await scope.ServiceProvider
                             .GetRequiredService<ILegendConnectOperations>()
-                            .ReconcileHistoricalOperationalTranslationsAsync(100, replay.Cursor, stoppingToken);
+                            .ReconcileHistoricalOperationalTranslationsAsync(
+                                HistoricalReplayItemsPerPage,
+                                replay.Cursor,
+                                stoppingToken);
                     }
                     else
                     {
                         progress = await scope.ServiceProvider
                             .GetRequiredService<LegendConnectCurriculumService>()
-                            .ReevaluateHistoricalAlignmentsAsync(100, replay.Phase, replay.Cursor, stoppingToken);
+                            .ReevaluateHistoricalAlignmentsAsync(
+                                HistoricalReplayItemsPerPage,
+                                replay.Phase,
+                                replay.Cursor,
+                                stoppingToken);
                     }
 
                     await runtime.AdvanceLanguageIntelligenceReevaluationAsync(
@@ -1756,6 +1774,14 @@ internal sealed class LegendConnectLearningHostedService : BackgroundService
                         replay.Phase,
                         progress.LastProcessedId,
                         progress.PhaseComplete,
+                        stoppingToken);
+
+                    // Reload after every durable advance. This is the same
+                    // runtime-policy authority a restarted worker reads, so
+                    // cancellation, faults, and leases resume exactly at the
+                    // last committed canonical identity.
+                    replay = await runtime.GetOrStartLanguageIntelligenceReevaluationAsync(
+                        LegendConnectLanguageIntelligenceEvaluatorVersion.Current,
                         stoppingToken);
                 }
                 if ((await runtime.GetEffectiveAsync(stoppingToken)).LearningEnabled)
