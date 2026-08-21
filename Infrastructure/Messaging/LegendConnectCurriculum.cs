@@ -182,15 +182,18 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
     private readonly MasterAppDbContext _db;
     private readonly ILegendLanguageRegistry _languages;
     private readonly LegendConnectCorpusService _corpus;
+    private readonly ILegendConnectOperationalEventWriter? _operations;
 
     public LegendConnectCurriculumService(
         MasterAppDbContext db,
         ILegendLanguageRegistry languages,
-        LegendConnectCorpusService corpus)
+        LegendConnectCorpusService corpus,
+        ILegendConnectOperationalEventWriter? operations = null)
     {
         _db = db;
         _languages = languages;
         _corpus = corpus;
+        _operations = operations;
     }
 
     /// <summary>
@@ -1525,7 +1528,6 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
                 }
             }
 
-            await EnsureHistoricalSemanticSignaturesAsync(cancellationToken);
             return new LegendConnectHistoricalReevaluationProgress(
                 sourceFamilyIds.Count,
                 sourceFamilyIds.Count == 0 ? null : sourceFamilyIds[^1],
@@ -1550,9 +1552,26 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
         ).Take(pageSize).ToListAsync(cancellationToken);
 
         foreach (var alignmentId in alignmentIds)
-            await AttachAlignmentToCurriculumAsync(alignmentId, cancellationToken);
+        {
+            try
+            {
+                await AttachAlignmentToCurriculumAsync(alignmentId, cancellationToken);
+            }
+            catch (LegendControlledVariationConflictException exception)
+            {
+                // This is a historical data contradiction, not an instruction
+                // to choose one controlled value. Discard the incomplete
+                // attachment, retain the canonical rows, and make the exact
+                // alignment reviewable while allowing the durable cursor to
+                // move past this quarantined item.
+                _db.ChangeTracker.Clear();
+                await RecordHistoricalAlignmentConflictAsync(
+                    alignmentId,
+                    exception,
+                    cancellationToken);
+            }
+        }
 
-        await EnsureHistoricalSemanticSignaturesAsync(cancellationToken);
         return new LegendConnectHistoricalReevaluationProgress(
             alignmentIds.Count,
             alignmentIds.Count == 0 ? null : alignmentIds[^1],
@@ -2719,6 +2738,7 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
 
         var observations = await LoadActiveSemanticTransitionObservationsAsync(
             sourceLanguage,
+            transitionSignatures: null,
             cancellationToken);
         if (observations.Count == 0)
             return SemanticTransitionInsufficient("semantic_transition_evidence_unknown");
@@ -2785,6 +2805,7 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
     private async Task<IReadOnlyList<SemanticTransitionObservation>>
         LoadActiveSemanticTransitionObservationsAsync(
             string sourceLanguage,
+            IReadOnlyCollection<string>? transitionSignatures,
             CancellationToken cancellationToken)
     {
         return await (
@@ -2800,6 +2821,7 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
             where evidence.SupersededUtc == null &&
                 evidence.SourceLanguageCode == sourceLanguage &&
                 evidence.ResultLanguageCode == sourceLanguage &&
+                (transitionSignatures == null || transitionSignatures.Contains(evidence.TransitionSignature)) &&
                 (evidence.ContributionState == "Supported" ||
                  evidence.ContributionState == "Contradictory") &&
                 evidence.Provenance == LegendConnectKnowledgeProvenance.FounderApproved &&
@@ -2822,6 +2844,34 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
         ).ToListAsync(cancellationToken);
     }
 
+    /// <summary>
+    /// Read-only status support for a bounded Founder submission projection.
+    /// It reuses the exact production transition admissibility checks while
+    /// querying only signatures already referenced by that requested page.
+    /// </summary>
+    internal async Task<IReadOnlySet<string>> GetProductionEligibleSemanticTransitionSignaturesAsync(
+        string sourceLanguage,
+        IReadOnlyCollection<string> transitionSignatures,
+        CancellationToken cancellationToken = default)
+    {
+        if (transitionSignatures.Count == 0)
+            return new HashSet<string>(StringComparer.Ordinal);
+
+        var observations = await LoadActiveSemanticTransitionObservationsAsync(
+            sourceLanguage,
+            transitionSignatures,
+            cancellationToken);
+        return observations
+            .GroupBy(item => item.TransitionSignature, StringComparer.Ordinal)
+            .Where(group => TryGetProductionSemanticTransitionFrames(
+                group,
+                out _,
+                out _,
+                out _))
+            .Select(group => group.Key)
+            .ToHashSet(StringComparer.Ordinal);
+    }
+
     private static IReadOnlyList<SemanticTransitionCandidate>
         BuildProductionSemanticTransitionCandidates(
             IReadOnlyList<SemanticTransitionObservation> observations,
@@ -2831,23 +2881,11 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
         var candidates = new List<SemanticTransitionCandidate>();
         foreach (var group in observations.GroupBy(item => item.TransitionSignature, StringComparer.Ordinal))
         {
-            if (group.Any(item => string.Equals(item.ContributionState, "Contradictory", StringComparison.Ordinal)))
-                continue;
-
-            var independentEvidenceCount = group
-                .Where(item => item.IsHumanVerifiedSupport &&
-                    string.Equals(item.ContributionState, "Supported", StringComparison.Ordinal))
-                .Select(item => item.IndependentSourceIdentity)
-                .Distinct(StringComparer.Ordinal)
-                .Count();
-            if (independentEvidenceCount < 3)
-                continue;
-
-            var representative = group.First();
-            if (!TryReadSemanticFrame(representative.SourceFrame, out var sourceFrame) ||
-                !TryReadSemanticFrame(representative.ResultFrame, out var resultFrame) ||
-                group.Any(item => !string.Equals(item.SourceFrame, representative.SourceFrame, StringComparison.Ordinal) ||
-                    !string.Equals(item.ResultFrame, representative.ResultFrame, StringComparison.Ordinal)))
+            if (!TryGetProductionSemanticTransitionFrames(
+                    group,
+                    out var independentEvidenceCount,
+                    out var sourceFrame,
+                    out var resultFrame))
             {
                 continue;
             }
@@ -2864,7 +2902,7 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
             }
 
             candidates.Add(new SemanticTransitionCandidate(
-                representative.TransitionSignature,
+                group.Key,
                 sourceFrame,
                 resultFrame,
                 bindings,
@@ -2873,6 +2911,43 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
                 independentEvidenceCount));
         }
         return candidates;
+    }
+
+    private static bool TryGetProductionSemanticTransitionFrames(
+        IEnumerable<SemanticTransitionObservation> observations,
+        out int independentEvidenceCount,
+        out NormalizedSemanticFrame sourceFrame,
+        out NormalizedSemanticFrame resultFrame)
+    {
+        var group = observations as IReadOnlyList<SemanticTransitionObservation> ?? observations.ToList();
+        independentEvidenceCount = 0;
+        sourceFrame = null!;
+        resultFrame = null!;
+        if (group.Count == 0 || group.Any(item =>
+                string.Equals(item.ContributionState, "Contradictory", StringComparison.Ordinal)))
+        {
+            return false;
+        }
+
+        independentEvidenceCount = group
+            .Where(item => item.IsHumanVerifiedSupport &&
+                string.Equals(item.ContributionState, "Supported", StringComparison.Ordinal))
+            .Select(item => item.IndependentSourceIdentity)
+            .Distinct(StringComparer.Ordinal)
+            .Count();
+        if (independentEvidenceCount < 3)
+            return false;
+
+        var representative = group[0];
+        if (!TryReadSemanticFrame(representative.SourceFrame, out sourceFrame) ||
+            !TryReadSemanticFrame(representative.ResultFrame, out resultFrame) ||
+            group.Any(item => !string.Equals(item.SourceFrame, representative.SourceFrame, StringComparison.Ordinal) ||
+                !string.Equals(item.ResultFrame, representative.ResultFrame, StringComparison.Ordinal)))
+        {
+            return false;
+        }
+
+        return true;
     }
 
     private static bool HasContradictedSemanticTransition(
@@ -4268,11 +4343,24 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
             where textUnitIds.Contains(occurrence.TextUnitId) && occurrence.SupersededUtc == null
             select new { occurrence.TextUnitId, occurrence.TokenIndex, occurrence.LexemeId, lexeme.SurfaceForm }
         ).ToListAsync(cancellationToken);
-        var existingSignatures = await _db.Set<LegendLanguageCompositionalAnchor>()
+        var existingAnchors = await _db.Set<LegendLanguageCompositionalAnchor>()
             .Where(item => exampleIds.Contains(item.CurriculumExampleId))
+            .ToListAsync(cancellationToken);
+        var existingSignatures = existingAnchors
             .Select(item => item.AnchorSignature)
-            .ToHashSetAsync(cancellationToken);
+            .ToHashSet(StringComparer.Ordinal);
         var pending = false;
+        foreach (var existing in existingAnchors)
+        {
+            if (!string.IsNullOrWhiteSpace(existing.SemanticSignature))
+                continue;
+
+            // This is the bounded historical signature repair. It operates
+            // only on the source-family page currently being replayed, so a
+            // whole-corpus repair can never hold its runtime-policy cursor.
+            existing.SemanticSignature = SemanticSignature(existing.Dimension, existing.Value);
+            pending = true;
+        }
         foreach (var example in founderExamples)
         {
             if (!variationsByExample.TryGetValue(example.Id, out var variations))
@@ -5049,10 +5137,38 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
             }
             else if (!string.Equals(existing.Value, variation.Value, StringComparison.Ordinal))
             {
-                throw new InvalidOperationException(
-                    "One target example cannot carry conflicting controlled semantic variation values.");
+                throw new LegendControlledVariationConflictException(
+                    target.Id,
+                    variation.Dimension,
+                    existing.Value,
+                    variation.Value);
             }
         }
+    }
+
+    private async Task RecordHistoricalAlignmentConflictAsync(
+        Guid alignmentId,
+        LegendControlledVariationConflictException exception,
+        CancellationToken cancellationToken)
+    {
+        const string category = "HistoricalCurriculumReplay";
+        const string errorCode = "conflicting_controlled_variation";
+        var correlationId = alignmentId.ToString("D");
+        var alreadyRecorded = await _db.Set<LegendConnectOperationalEvent>()
+            .AsNoTracking()
+            .AnyAsync(item => item.Category == category && item.ErrorCode == errorCode &&
+                item.CorrelationId == correlationId && !item.IsResolved, cancellationToken);
+        if (alreadyRecorded || _operations is null)
+            return;
+
+        await _operations.TryRecordAsync(
+            category,
+            "Warning",
+            "Quarantined",
+            errorCode: errorCode,
+            correlationId: correlationId,
+            summary: $"Alignment replay was quarantined because target example {exception.TargetExampleId:D} has conflicting controlled values for '{exception.Dimension}'.",
+            cancellationToken: cancellationToken);
     }
 
     private async Task AnalyzeFamilyLanguageAsync(
@@ -6685,18 +6801,6 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
         candidate.HumanVerifiedSupportCount >= 3 &&
         candidate.ProviderOnlySupportCount == 0 &&
         candidate.ContradictionCount == 0;
-
-    private async Task EnsureHistoricalSemanticSignaturesAsync(CancellationToken cancellationToken)
-    {
-        var anchors = await _db.Set<LegendLanguageCompositionalAnchor>()
-            .Where(item => item.SupersededUtc == null && (item.SemanticSignature == null || item.SemanticSignature == string.Empty))
-            .ToListAsync(cancellationToken);
-        if (anchors.Count == 0)
-            return;
-        foreach (var anchor in anchors)
-            anchor.SemanticSignature = SemanticSignature(anchor.Dimension, anchor.Value);
-        await _db.SaveChangesAsync(cancellationToken);
-    }
 
     private static string RealizationSignature(string left, string right) =>
         $"{TextShape(left)}>{TextShape(right)}";
