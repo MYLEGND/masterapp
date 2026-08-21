@@ -1,594 +1,699 @@
 /*
- * Legend Connect Founder Control Console
- *
- * This is the single page-specific presentation authority for Legend Connect.
- * Shared dashboard styles remain untouched. All shared-component
- * specializations are scoped to .legend-connect-page.
+ * Legend Connect Founder language intelligence console.
+ * Single page-specific presentation authority.
  */
 
 .legend-connect-page {
-    --lc-gap: .7rem;
-    --lc-panel-radius: 16px;
-    --lc-control-radius: 10px;
-    --lc-compact-border: rgba(148, 163, 184, .16);
-    --lc-muted: #b9c5d8;
-    --lc-surface: rgba(5, 16, 39, .38);
-    --lc-surface-strong: rgba(5, 16, 39, .58);
+    --lc-navy-950: #061126;
+    --lc-navy-900: #091831;
+    --lc-navy-850: #0d1f3d;
+    --lc-navy-800: #11294d;
+    --lc-gold: #d7b24c;
+    --lc-gold-light: #efd88e;
+    --lc-blue: #4a9ee9;
+    --lc-green: #42cf8b;
+    --lc-amber: #e9a746;
+    --lc-red: #ef7180;
+    --lc-white: #f7f9fd;
+    --lc-muted: #a9b7cc;
+    --lc-border: rgba(176, 197, 226, .14);
+    --lc-gold-border: rgba(215, 178, 76, .33);
+
     display: grid;
-    gap: var(--lc-gap);
+    gap: .9rem;
     align-content: start;
 }
 
 .legend-connect-page > * {
-    margin-top: 0;
-    margin-bottom: 0;
-}
-
-.legend-connect-page .dashboard-command-center-panel,
-.legend-connect-page .dashboard-analytics-panel,
-.legend-connect-page .category-container {
-    margin: 0;
-    border-radius: var(--lc-panel-radius);
-}
-
-.legend-connect-page .dashboard-command-center-panel,
-.legend-connect-page > .dashboard-analytics-panel,
-.legend-connect-page > .category-container {
-    padding: .82rem .95rem;
-}
-
-.legend-connect-page .dashboard-command-center-top {
-    grid-template-columns: minmax(0, 1fr) minmax(390px, .84fr);
-    gap: .65rem .85rem;
-    align-items: start;
-}
-
-.legend-connect-page .dashboard-hero-copy {
-    gap: .12rem;
-}
-
-.legend-connect-page .dashboard-hero-title {
-    margin: 0;
-    font-size: clamp(1.7rem, 2.2vw, 2.25rem);
-    line-height: 1;
-    white-space: normal;
-}
-
-.legend-connect-page .dashboard-eyebrow,
-.legend-connect-page .dashboard-section-kicker {
-    font-size: .64rem;
-    line-height: 1;
-    letter-spacing: .045em;
-}
-
-.legend-connect-page .dashboard-section-title {
-    margin: 0;
-    font-size: clamp(1rem, 1.35vw, 1.28rem);
-    line-height: 1.08;
-}
-
-.legend-connect-page .dashboard-section-copy {
-    margin: .35rem 0 .5rem;
-    max-width: none;
-    font-size: .78rem;
-    line-height: 1.38;
-    color: var(--lc-muted);
-}
-
-.legend-connect-page .dashboard-section-head,
-.legend-connect-page .dashboard-section-head-tight {
-    margin: 0 0 .48rem;
-    gap: .5rem;
-}
-
-.legend-connect-page .dashboard-hero-stats,
-.legend-connect-page .legend-connect-metrics {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(128px, 1fr));
-    gap: .42rem;
-    align-items: stretch;
-}
-
-.legend-connect-page .dashboard-stat-card {
-    min-width: 0;
-    min-height: 54px;
-    gap: .08rem;
-    padding: .48rem .58rem;
-    border-radius: 11px;
-    align-content: center;
-}
-
-.legend-connect-page .dashboard-stat-label {
-    font-size: .61rem;
-    line-height: 1.12;
-    letter-spacing: .025em;
-}
-
-.legend-connect-page .dashboard-stat-value {
-    font-size: clamp(1.05rem, 1.45vw, 1.38rem);
-    line-height: 1;
-}
-
-.legend-connect-page .dashboard-stat-card .dashboard-command-action,
-.legend-connect-page .dashboard-stat-card a,
-.legend-connect-page .dashboard-stat-card button {
-    margin-top: .18rem;
-}
-
-/* Production composition control */
-
-.legend-connect-page .legend-connect-production-control {
-    margin-top: .48rem;
-    padding: .5rem .58rem;
-    border: 1px solid rgba(215, 178, 76, .38);
-    border-radius: 12px;
-    background: rgba(4, 14, 34, .38);
-}
-
-.legend-connect-page .legend-connect-production-control-head {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: .5rem;
-}
-
-.legend-connect-page .legend-connect-production-control-head > span:first-child {
-    display: grid;
-    gap: .08rem;
-}
-
-.legend-connect-page .legend-connect-production-kicker {
-    font-size: .58rem;
-    line-height: 1;
-}
-
-.legend-connect-page .legend-connect-production-title {
-    font-size: .8rem;
-    line-height: 1.1;
-}
-
-.legend-connect-page .legend-connect-production-actions {
-    display: flex;
-    align-items: center;
-    gap: .42rem;
-    flex-wrap: wrap;
-    margin-top: .42rem;
-}
-
-.legend-connect-page .legend-connect-production-actions form {
-    margin: 0;
-}
-
-.legend-connect-page .legend-connect-production-primary,
-.legend-connect-page .legend-connect-composition-mode {
-    min-height: 32px;
-    width: auto;
-    padding: .35rem .62rem;
-    border-radius: 9px;
-    font-size: .68rem;
-    line-height: 1;
-}
-
-.legend-connect-page .legend-connect-composition-modes {
-    display: inline-grid;
-    grid-template-columns: repeat(3, minmax(68px, 1fr));
-    gap: .28rem;
-    width: auto;
-}
-
-/* Main content panels */
-
-.legend-connect-page .legend-connect-client-management,
-.legend-connect-page .legend-connect-manual-training,
-.legend-connect-page .legend-connect-active-languages {
-    padding: .78rem .9rem;
-}
-
-.legend-connect-page .legend-connect-subsection-heading {
-    margin-top: .65rem;
-    padding-top: .55rem;
-    border-top: 1px solid var(--lc-compact-border);
-}
-
-/* Search and form surfaces */
-
-.legend-connect-page .dashboard-search-panel,
-.legend-connect-page .legend-connect-acquisition-focus {
-    width: 100%;
-    margin: .48rem 0 0;
-    padding: .55rem .62rem;
-    border-radius: 12px;
-    gap: .48rem;
-}
-
-.legend-connect-page .dashboard-form-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(185px, 1fr));
-    gap: .45rem;
-    width: 100%;
-}
-
-.legend-connect-page .dashboard-form-field {
-    display: grid;
-    gap: .18rem;
     min-width: 0;
     margin: 0;
 }
 
-.legend-connect-page .dashboard-form-field > span:first-child,
-.legend-connect-page .legend-connect-focus-label {
-    font-size: .61rem;
-    line-height: 1.1;
-    letter-spacing: .025em;
+.lc-hero,
+.lc-panel {
+    position: relative;
+    overflow: hidden;
+    border: 1px solid var(--lc-border);
+    border-radius: 22px;
+    background:
+        radial-gradient(
+            circle at 91% 0,
+            rgba(215, 178, 76, .11),
+            transparent 32%),
+        linear-gradient(
+            145deg,
+            rgba(13, 31, 61, .98),
+            rgba(6, 17, 38, .99));
+    box-shadow: 0 22px 54px rgba(2, 10, 27, .22);
 }
 
-.legend-connect-page .dashboard-form-field small {
-    margin: 0;
+.lc-hero::before,
+.lc-panel::before {
+    content: "";
+    position: absolute;
+    inset: 0 auto 0 0;
+    width: 3px;
+    background:
+        linear-gradient(
+            180deg,
+            var(--lc-gold-light),
+            var(--lc-gold),
+            transparent 88%);
+}
+
+.lc-panel-azure::before {
+    background:
+        linear-gradient(
+            180deg,
+            #94d0ff,
+            var(--lc-blue),
+            transparent 88%);
+}
+
+.lc-hero {
+    display: grid;
+    grid-template-columns:
+        minmax(0, 1.05fr)
+        minmax(360px, .95fr);
+    gap: 1rem;
+    padding: 1.2rem;
+}
+
+.lc-hero-copy {
+    display: grid;
+    gap: .72rem;
+    align-content: start;
+}
+
+.lc-eyebrow,
+.lc-kicker {
+    color: var(--lc-gold-light);
     font-size: .67rem;
-    line-height: 1.25;
+    font-weight: 850;
+    letter-spacing: .13em;
+    line-height: 1;
 }
 
-.legend-connect-page .dashboard-form-field input:not([type="checkbox"]):not([type="radio"]),
-.legend-connect-page .dashboard-form-field select,
-.legend-connect-page .dashboard-search-panel input:not([type="checkbox"]):not([type="radio"]),
-.legend-connect-page .dashboard-search-panel select {
-    min-height: 34px;
-    padding: .38rem .55rem;
-    border-radius: 9px;
-    font-size: .76rem;
+.lc-kicker-azure {
+    color: #8bc7fa;
 }
 
-.legend-connect-page .dashboard-form-field textarea,
-.legend-connect-page .dashboard-search-panel textarea {
-    min-height: 78px;
-    padding: .48rem .55rem;
-    border-radius: 9px;
-    font-size: .76rem;
-    line-height: 1.35;
+.lc-title-line,
+.lc-panel-header,
+.lc-capacity-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+}
+
+.lc-title-line h1 {
+    margin: 0;
+    color: var(--lc-white);
+    font-size: clamp(2rem, 3vw, 3.1rem);
+    font-weight: 830;
+    letter-spacing: -.045em;
+    line-height: .96;
+}
+
+.lc-title-line p,
+.lc-panel-header p,
+.lc-copy {
+    margin: .5rem 0 0;
+    max-width: 820px;
+    color: var(--lc-muted);
+    font-size: .82rem;
+    line-height: 1.5;
+}
+
+.lc-live-badge,
+.lc-status,
+.lc-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: .42rem;
+    width: max-content;
+    max-width: 100%;
+    min-height: 30px;
+    padding: .36rem .62rem;
+    border: 1px solid var(--lc-gold-border);
+    border-radius: 999px;
+    background: rgba(215, 178, 76, .08);
+    color: var(--lc-gold-light);
+    font-size: .63rem;
+    font-weight: 800;
+    letter-spacing: .035em;
+    white-space: nowrap;
+}
+
+.lc-live-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--lc-green);
+    box-shadow: 0 0 0 5px rgba(66, 207, 139, .09);
+}
+
+.lc-status-blue {
+    border-color: rgba(74, 158, 233, .33);
+    background: rgba(74, 158, 233, .08);
+    color: #a8d5fb;
+}
+
+.lc-language-selector {
+    width: min(420px, 100%);
+}
+
+.lc-language-selector label,
+.lc-field {
+    display: grid;
+    gap: .3rem;
+}
+
+.lc-language-selector label > span,
+.lc-field > span {
+    color: #cad5e5;
+    font-size: .66rem;
+    font-weight: 760;
+    letter-spacing: .03em;
+}
+
+.lc-language-selector select,
+.lc-field select,
+.lc-field input,
+.lc-field textarea,
+.lc-section-search {
+    width: 100%;
+    border: 1px solid rgba(177, 197, 225, .18);
+    border-radius: 12px;
+    outline: none;
+    background: rgba(4, 14, 34, .63);
+    color: var(--lc-white);
+}
+
+.lc-language-selector select,
+.lc-field select,
+.lc-field input,
+.lc-section-search {
+    min-height: 42px;
+    padding: .6rem .7rem;
+}
+
+.lc-field textarea {
+    min-height: 110px;
+    padding: .7rem .75rem;
+    line-height: 1.45;
     resize: vertical;
 }
 
-.legend-connect-page .search-actions {
+.lc-field .lc-manifest {
+    min-height: 225px;
+}
+
+.lc-language-selector select:focus,
+.lc-field select:focus,
+.lc-field input:focus,
+.lc-field textarea:focus,
+.lc-section-search:focus {
+    border-color: rgba(215, 178, 76, .62);
+    box-shadow: 0 0 0 3px rgba(215, 178, 76, .09);
+}
+
+.lc-hero-metrics {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: .55rem;
+}
+
+.lc-hero-metric {
+    display: grid;
+    align-content: center;
+    gap: .17rem;
+    min-height: 76px;
+    padding: .7rem .78rem;
+    border: 1px solid var(--lc-border);
+    border-radius: 14px;
+    background: rgba(4, 15, 36, .48);
+}
+
+.lc-hero-metric-primary {
+    grid-column: 1 / -1;
+    border-color: var(--lc-gold-border);
+    background:
+        linear-gradient(
+            135deg,
+            rgba(215, 178, 76, .12),
+            rgba(4, 15, 36, .48));
+}
+
+.lc-hero-metric span,
+.lc-metric span,
+.lc-capacity-grid span {
+    color: var(--lc-muted);
+    font-size: .63rem;
+    font-weight: 730;
+}
+
+.lc-hero-metric strong {
+    color: var(--lc-white);
+    font-size: 1.25rem;
+}
+
+.lc-notice {
+    padding: .75rem .95rem;
+    border-radius: 13px;
+    font-size: .78rem;
+    font-weight: 680;
+}
+
+.lc-notice-success {
+    border: 1px solid rgba(66, 207, 139, .24);
+    background: rgba(66, 207, 139, .08);
+    color: #a0ebc5;
+}
+
+.lc-notice-error {
+    border: 1px solid rgba(239, 113, 128, .25);
+    background: rgba(239, 113, 128, .08);
+    color: #f5b1ba;
+}
+
+.lc-panel {
+    padding: .95rem 1rem 1.05rem;
+}
+
+.lc-panel-header {
+    margin-bottom: .78rem;
+}
+
+.lc-panel-header h2 {
+    margin: .23rem 0 0;
+    color: var(--lc-white);
+    font-size: clamp(1.15rem, 1.8vw, 1.55rem);
+    font-weight: 800;
+    letter-spacing: -.025em;
+}
+
+.lc-metric-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: .55rem;
+}
+
+.lc-metric {
+    position: relative;
+    display: grid;
+    align-content: center;
+    gap: .18rem;
+    min-width: 0;
+    min-height: 112px;
+    padding: .74rem;
+    border: 1px solid var(--lc-border);
+    border-radius: 14px;
+    background: rgba(4, 15, 36, .5);
+}
+
+.lc-metric::after {
+    content: "";
+    position: absolute;
+    inset: auto .72rem 0;
+    height: 2px;
+    border-radius: 999px;
+}
+
+.lc-tone-green::after {
+    background: var(--lc-green);
+}
+
+.lc-tone-gold::after {
+    background: var(--lc-gold);
+}
+
+.lc-tone-blue::after {
+    background: var(--lc-blue);
+}
+
+.lc-tone-amber::after {
+    background: var(--lc-amber);
+}
+
+.lc-tone-red::after {
+    background: var(--lc-red);
+}
+
+.lc-metric strong {
+    color: var(--lc-white);
+    font-size: clamp(1.28rem, 2vw, 1.75rem);
+    line-height: 1;
+}
+
+.lc-metric small {
+    color: #8494ad;
+    font-size: .61rem;
+    line-height: 1.3;
+}
+
+.lc-capacity {
+    margin-top: .7rem;
+    padding: .78rem;
+    border: 1px solid rgba(74, 158, 233, .18);
+    border-radius: 15px;
+    background: rgba(30, 101, 166, .055);
+}
+
+.lc-capacity-head > div {
+    display: grid;
+    gap: .14rem;
+}
+
+.lc-capacity-head span {
+    color: #88b9e7;
+    font-size: .63rem;
+    font-weight: 760;
+}
+
+.lc-capacity-head strong {
+    color: var(--lc-white);
+    font-size: .87rem;
+}
+
+.lc-capacity-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: .48rem;
+    margin-top: .6rem;
+}
+
+.lc-capacity-grid > div {
+    display: grid;
+    gap: .16rem;
+    min-height: 62px;
+    align-content: center;
+    padding: .52rem .58rem;
+    border: 1px solid rgba(74, 158, 233, .13);
+    border-radius: 10px;
+    background: rgba(4, 15, 36, .4);
+}
+
+.lc-capacity-grid strong {
+    color: #bce0ff;
+    font-size: .96rem;
+}
+
+.lc-capacity > p {
+    margin: .58rem 0 0;
+    color: #839bb7;
+    font-size: .64rem;
+    line-height: 1.4;
+}
+
+.lc-form {
+    display: grid;
+    gap: .7rem;
+    padding: .8rem;
+    border: 1px solid var(--lc-border);
+    border-radius: 15px;
+    background: rgba(4, 15, 36, .42);
+}
+
+.lc-form-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: .62rem;
+}
+
+.lc-field-wide {
+    grid-column: 1 / -1;
+}
+
+.lc-field small,
+.lc-target-mode small {
+    color: #8797ae;
+    font-size: .63rem;
+    line-height: 1.35;
+}
+
+.lc-target-mode {
+    display: flex;
+    gap: .62rem;
+    align-items: flex-start;
+    padding: .66rem .72rem;
+    border: 1px solid var(--lc-gold-border);
+    border-radius: 12px;
+    background: rgba(215, 178, 76, .055);
+    cursor: pointer;
+}
+
+.lc-target-mode input {
+    margin-top: .15rem;
+}
+
+.lc-target-mode > span {
+    display: grid;
+    gap: .12rem;
+}
+
+.lc-target-mode strong {
+    color: var(--lc-gold-light);
+    font-size: .76rem;
+}
+
+.lc-actions,
+.lc-mode-row {
     display: flex;
     justify-content: flex-end;
     align-items: center;
-    gap: .35rem;
-    margin: 0;
+    gap: .42rem;
+    flex-wrap: wrap;
 }
 
-.legend-connect-page .dashboard-command-action {
-    min-height: 32px;
-    width: auto;
-    padding: .36rem .62rem;
-    border-radius: 9px;
-    font-size: .68rem;
-    line-height: 1.1;
+.lc-mode-row {
+    justify-content: flex-start;
 }
 
-/* Founder manual training is intentionally denser on desktop. */
-
-@media (min-width: 1000px) {
-    .legend-connect-page .legend-connect-manual-training
-    [data-verified-target-form] .dashboard-form-grid {
-        grid-template-columns: repeat(4, minmax(0, 1fr));
-    }
-
-    .legend-connect-page .legend-connect-manual-training
-    [data-verified-target-normal-fields] {
-        grid-column: span 2;
-    }
-
-    .legend-connect-page .legend-connect-manual-training
-    [data-verified-target-rows] {
-        grid-column: 1 / -1;
-    }
-}
-
-/* Tables */
-
-.legend-connect-page .dashboard-data-surface {
-    margin: .4rem 0 0;
+.lc-button {
+    min-height: 38px;
+    padding: .53rem .8rem;
+    border: 1px solid transparent;
     border-radius: 10px;
-    overflow: auto;
+    cursor: pointer;
+    font-size: .68rem;
+    font-weight: 820;
+    line-height: 1;
 }
 
-.legend-connect-page .dashboard-data-table {
-    margin: 0;
-    font-size: .72rem;
-    line-height: 1.22;
+.lc-button-primary {
+    border-color: rgba(237, 211, 135, .52);
+    background:
+        linear-gradient(
+            135deg,
+            #e2bf60,
+            #c99b31);
+    color: #08172f;
+    box-shadow: 0 8px 22px rgba(184, 136, 34, .13);
 }
 
-.legend-connect-page .dashboard-data-table th,
-.legend-connect-page .dashboard-data-table td {
-    padding: .34rem .42rem;
-    vertical-align: middle;
+.lc-button-mode {
+    border-color: rgba(177, 197, 225, .16);
+    background: rgba(7, 21, 47, .7);
+    color: #c8d3e4;
 }
 
-.legend-connect-page .dashboard-data-table th {
-    font-size: .6rem;
-    line-height: 1.08;
-    letter-spacing: .025em;
+.lc-button-mode.is-current,
+.lc-button-mode:disabled {
+    border-color: var(--lc-gold-border);
+    background: rgba(215, 178, 76, .1);
+    color: var(--lc-gold-light);
+    cursor: default;
 }
 
-.legend-connect-page .dashboard-data-table small {
-    font-size: .61rem;
-    line-height: 1.16;
+.lc-disclosure-list {
+    display: grid;
+    gap: .5rem;
 }
 
-/* Compact semantic disclosures */
-
-.legend-connect-page .legend-connect-disclosure {
-    --lc-accent: #d7b24c;
-    --lc-accent-soft: rgba(215, 178, 76, .11);
-    margin: 0;
-    padding: 0;
+.lc-disclosure {
     overflow: hidden;
+    margin-top: .68rem;
+    border: 1px solid var(--lc-border);
     border-radius: 14px;
-    border-left: 3px solid var(--lc-accent);
+    background: rgba(4, 15, 36, .45);
 }
 
-.legend-connect-page .legend-connect-disclosure-summary {
-    position: relative;
+.lc-disclosure-list .lc-disclosure {
+    margin-top: 0;
+}
+
+.lc-disclosure > summary {
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto 28px;
     align-items: center;
-    gap: .6rem;
-    min-height: 56px;
-    margin: 0;
-    padding: .52rem .62rem .52rem .78rem;
+    gap: .65rem;
+    min-height: 64px;
+    padding: .62rem .72rem .62rem .82rem;
     list-style: none;
     cursor: pointer;
     background:
         linear-gradient(
             90deg,
-            var(--lc-accent-soft),
-            rgba(5, 16, 39, .06) 44%
-        );
+            rgba(215, 178, 76, .06),
+            transparent 54%);
 }
 
-.legend-connect-page .legend-connect-disclosure-summary::-webkit-details-marker {
+.lc-disclosure > summary::-webkit-details-marker {
     display: none;
 }
 
-.legend-connect-page .legend-connect-disclosure-summary::after {
+.lc-disclosure > summary::after {
     content: "+";
-    grid-column: 3;
     display: grid;
     place-items: center;
-    width: 26px;
-    height: 26px;
-    border: 1px solid var(--lc-accent);
-    border-radius: 999px;
-    color: var(--lc-accent);
+    width: 27px;
+    height: 27px;
+    border: 1px solid var(--lc-gold-border);
+    border-radius: 50%;
+    color: var(--lc-gold-light);
     font-size: .95rem;
-    font-weight: 800;
-    line-height: 1;
+    font-weight: 820;
 }
 
-.legend-connect-page
-details.legend-connect-disclosure[open]
-> .legend-connect-disclosure-summary::after {
+.lc-disclosure[open] > summary::after {
     content: "−";
 }
 
-.legend-connect-page .legend-connect-disclosure-summary > span:first-child {
+.lc-disclosure summary > span:first-child {
     display: grid;
-    gap: .08rem;
+    gap: .1rem;
     min-width: 0;
 }
 
-.legend-connect-page
-.legend-connect-disclosure-summary
-.dashboard-section-kicker {
-    width: max-content;
-    max-width: 100%;
-    color: var(--lc-accent);
-    border-color: var(--lc-accent);
+.lc-disclosure summary small {
+    color: var(--lc-gold);
+    font-size: .55rem;
+    font-weight: 820;
+    letter-spacing: .08em;
 }
 
-.legend-connect-page
-.legend-connect-disclosure-summary
-.dashboard-section-title {
-    color: var(--lc-accent);
-    font-size: 1.08rem;
+.lc-disclosure summary strong {
+    color: var(--lc-white);
+    font-size: .88rem;
 }
 
-.legend-connect-page .legend-connect-disclosure-status,
-.legend-connect-page
-.legend-connect-disclosure-summary
-.dashboard-status-chip {
-    grid-column: 2;
-    margin: 0;
-    color: var(--lc-accent);
-    border-color: var(--lc-accent);
-    background: var(--lc-accent-soft);
-    white-space: nowrap;
+.lc-disclosure summary em {
+    overflow: hidden;
+    color: #8292aa;
     font-size: .61rem;
+    font-style: normal;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
-.legend-connect-page .legend-connect-disclosure-body {
-    padding: .58rem .78rem .72rem;
-    border-top: 1px solid var(--lc-compact-border);
+.lc-disclosure-body {
+    padding: .68rem .78rem .78rem;
+    border-top: 1px solid var(--lc-border);
 }
 
-.legend-connect-page .legend-connect-copy-toolbar {
+.lc-section-search-wrap {
     display: flex;
-    justify-content: flex-end;
-    margin: 0 0 .3rem;
+    gap: .4rem;
+    margin-bottom: .6rem;
 }
 
-/* Semantic disclosure identities */
-
-.legend-connect-page .legend-connect-disclosure--readiness {
-    --lc-accent: #e1b84f;
-    --lc-accent-soft: rgba(225, 184, 79, .12);
+.lc-section-search {
+    flex: 1;
 }
 
-.legend-connect-page .legend-connect-disclosure--internal {
-    --lc-accent: #4ade80;
-    --lc-accent-soft: rgba(74, 222, 128, .11);
+.lc-table-wrap {
+    overflow: auto;
+    border: 1px solid var(--lc-border);
+    border-radius: 11px;
 }
 
-.legend-connect-page .legend-connect-disclosure--azure {
-    --lc-accent: #60a5fa;
-    --lc-accent-soft: rgba(96, 165, 250, .12);
-}
-
-.legend-connect-page .legend-connect-disclosure--quality {
-    --lc-accent: #fbbf24;
-    --lc-accent-soft: rgba(251, 191, 36, .11);
-}
-
-.legend-connect-page .legend-connect-disclosure--candidates {
-    --lc-accent: #38bdf8;
-    --lc-accent-soft: rgba(56, 189, 248, .12);
-}
-
-.legend-connect-page .legend-connect-disclosure--pairs {
-    --lc-accent: #34d399;
-    --lc-accent-soft: rgba(52, 211, 153, .11);
-}
-
-.legend-connect-page .legend-connect-disclosure--pair-detail {
-    --lc-accent: #22d3ee;
-    --lc-accent-soft: rgba(34, 211, 238, .11);
-}
-
-.legend-connect-page .legend-connect-disclosure--correction {
-    --lc-accent: #fb923c;
-    --lc-accent-soft: rgba(251, 146, 60, .11);
-}
-
-.legend-connect-page .legend-connect-disclosure--audit {
-    --lc-accent: #c084fc;
-    --lc-accent-soft: rgba(192, 132, 252, .11);
-}
-
-.legend-connect-page .legend-connect-disclosure--diagnostics {
-    --lc-accent: #fb7185;
-    --lc-accent-soft: rgba(251, 113, 133, .11);
-}
-
-.legend-connect-page .legend-connect-disclosure--curriculum {
-    --lc-accent: #a78bfa;
-    --lc-accent-soft: rgba(167, 139, 250, .11);
-}
-
-/* Acquisition focus */
-
-.legend-connect-page .legend-connect-focus-heading {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    gap: .5rem;
+.lc-table {
+    width: 100%;
     margin: 0;
+    border-collapse: collapse;
+    color: #c7d2e3;
+    font-size: .66rem;
 }
 
-.legend-connect-page .legend-connect-focus-controls {
-    gap: .45rem;
+.lc-table th,
+.lc-table td {
+    padding: .48rem .54rem;
+    border-bottom: 1px solid rgba(176, 197, 226, .09);
+    text-align: left;
+    vertical-align: top;
 }
 
-.legend-connect-page .legend-connect-language-picker {
-    margin: 0;
+.lc-table th {
+    color: var(--lc-gold-light);
+    background: rgba(215, 178, 76, .05);
+    font-size: .59rem;
+    font-weight: 820;
 }
 
-/* Account parameter controls */
-
-.legend-connect-page .legend-connect-account-parameters summary {
-    font-size: .68rem;
-    line-height: 1.1;
-}
-
-.legend-connect-page .dashboard-inline-command-form {
-    gap: .3rem;
-    padding: .42rem;
-}
-
-/* Responsive compaction */
-
-@media (max-width: 980px) {
-    .legend-connect-page .dashboard-command-center-top {
-        grid-template-columns: 1fr;
+@media (max-width: 1100px) {
+    .lc-metric-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 
-    .legend-connect-page .dashboard-hero-stats,
-    .legend-connect-page .legend-connect-metrics {
-        grid-template-columns: repeat(auto-fit, minmax(118px, 1fr));
+    .lc-capacity-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+@media (max-width: 900px) {
+    .lc-hero {
+        grid-template-columns: 1fr;
     }
 }
 
 @media (max-width: 680px) {
     .legend-connect-page {
-        --lc-gap: .52rem;
+        gap: .65rem;
     }
 
-    .legend-connect-page .dashboard-command-center-panel,
-    .legend-connect-page > .dashboard-analytics-panel,
-    .legend-connect-page > .category-container,
-    .legend-connect-page .legend-connect-client-management,
-    .legend-connect-page .legend-connect-manual-training,
-    .legend-connect-page .legend-connect-active-languages {
-        padding: .65rem;
-        border-radius: 12px;
+    .lc-hero,
+    .lc-panel {
+        border-radius: 17px;
+        padding: .78rem;
     }
 
-    .legend-connect-page .dashboard-hero-stats,
-    .legend-connect-page .legend-connect-metrics {
-        grid-template-columns: repeat(2, minmax(0, 1fr));
+    .lc-title-line,
+    .lc-panel-header,
+    .lc-capacity-head {
+        display: grid;
     }
 
-    .legend-connect-page .dashboard-form-grid {
+    .lc-title-line h1 {
+        font-size: 2rem;
+    }
+
+    .lc-hero-metrics,
+    .lc-metric-grid,
+    .lc-capacity-grid,
+    .lc-form-grid {
         grid-template-columns: 1fr;
     }
 
-    .legend-connect-page .legend-connect-production-actions {
-        align-items: stretch;
+    .lc-hero-metric-primary,
+    .lc-field-wide {
+        grid-column: auto;
     }
 
-    .legend-connect-page .legend-connect-production-actions > *,
-    .legend-connect-page .legend-connect-production-primary {
-        width: 100%;
+    .lc-metric {
+        min-height: 94px;
     }
 
-    .legend-connect-page .legend-connect-composition-modes {
-        width: 100%;
+    .lc-disclosure > summary {
+        grid-template-columns: minmax(0, 1fr) 28px;
     }
 
-    .legend-connect-page .legend-connect-disclosure-summary {
-        grid-template-columns: minmax(0, 1fr) auto 26px;
-        min-height: 52px;
-        padding: .48rem .52rem .48rem .62rem;
-    }
-
-    .legend-connect-page
-    .legend-connect-disclosure-summary
-    .dashboard-section-title {
-        font-size: .96rem;
-    }
-
-    .legend-connect-page .legend-connect-disclosure-body {
-        padding: .5rem .62rem .62rem;
-    }
-}
-
-@media (max-width: 430px) {
-    .legend-connect-page .dashboard-hero-stats,
-    .legend-connect-page .legend-connect-metrics {
-        grid-template-columns: 1fr;
-    }
-
-    .legend-connect-page .legend-connect-disclosure-status,
-    .legend-connect-page
-    .legend-connect-disclosure-summary
-    .dashboard-status-chip {
+    .lc-disclosure .lc-tag {
         display: none;
     }
 
-    .legend-connect-page .legend-connect-disclosure-summary {
-        grid-template-columns: minmax(0, 1fr) 26px;
-    }
-
-    .legend-connect-page .legend-connect-disclosure-summary::after {
-        grid-column: 2;
+    .lc-section-search-wrap {
+        display: grid;
     }
 }

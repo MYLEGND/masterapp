@@ -829,6 +829,8 @@ internal static class MessagingModelConfiguration
             entity.Property(item => item.ProcessingState).IsRequired().HasMaxLength(40);
             entity.HasIndex(item => new { item.SourceLanguageCode, item.RawTextHash }).IsUnique();
             entity.HasIndex(item => new { item.ProcessingState, item.CreatedUtc });
+            entity.HasIndex(item => new { item.SourceLanguageCode, item.CreatedUtc })
+                .HasDatabaseName("IX_LegendFounderTrainingSubmissions_FounderStatus");
             entity.HasIndex(item => new
                 {
                     item.SourceLanguageCode,

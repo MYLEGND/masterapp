@@ -227,6 +227,8 @@ public class MasterAppDbContext : DbContext
                     item.CreatedUtc
                 })
                 .HasDatabaseName("IX_LegendCurriculumManifestWorkItems_Processing");
+            entity.HasIndex(item => item.CreatedUtc)
+                .HasDatabaseName("IX_LegendCurriculumManifestWorkItems_FounderStatus");
         });
 
         modelBuilder.Entity<AccountLifecycleRecord>(entity =>

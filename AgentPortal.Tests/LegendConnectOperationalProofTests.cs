@@ -152,9 +152,21 @@ public sealed class LegendConnectOperationalProofTests
             Assert.Equal(HttpStatusCode.OK, shellResponse.StatusCode);
             var shellHtml = await shellResponse.Content.ReadAsStringAsync();
             Assert.Contains("data-legend-connect-shell", shellHtml, StringComparison.Ordinal);
+            Assert.Contains("data-legend-section=\"submissions\"", shellHtml, StringComparison.Ordinal);
             Assert.Contains("data-legend-section=\"curriculum\"", shellHtml, StringComparison.Ordinal);
             Assert.DoesNotContain("historical.discoverable.family", shellHtml, StringComparison.Ordinal);
             Assert.DoesNotContain("A historical controlled curriculum example.", shellHtml, StringComparison.Ordinal);
+
+            using var submissionsRequest = new HttpRequestMessage(HttpMethod.Get,
+                "/founder/legend-connect/sections?section=submissions&language=en");
+            submissionsRequest.Headers.Add(FounderHeader, founderId);
+            using var submissionsResponse = await client.SendAsync(submissionsRequest);
+            submissionsResponse.EnsureSuccessStatusCode();
+            var submissions = await submissionsResponse.Content.ReadFromJsonAsync<LegendConnectFounderSectionPageSnapshot>();
+            Assert.NotNull(submissions);
+            Assert.Equal("submissions", submissions!.Section);
+            Assert.Contains("Evaluator target", submissions.Columns);
+            Assert.Empty(submissions.Rows);
 
             using var curriculumRequest = new HttpRequestMessage(HttpMethod.Get, "/founder/legend-connect/sections?section=curriculum&language=en");
             curriculumRequest.Headers.Add(FounderHeader, founderId);

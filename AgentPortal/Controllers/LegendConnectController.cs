@@ -117,6 +117,38 @@ public sealed class LegendConnectController : Controller
     }
 
     [HttpGet]
+    [Route("founder/legend-connect/live-metrics")]
+    public async Task<IActionResult> GetLiveMetrics(
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            return Ok(
+                await _service.GetLiveMetricsAsync(
+                    User,
+                    cancellationToken));
+        }
+        catch (ForbidResultException)
+        {
+            return Forbid();
+        }
+        catch (Exception exception)
+        {
+            _logger.LogError(
+                exception,
+                "Legend Connect live metrics projection failed to load.");
+
+            return StatusCode(
+                StatusCodes.Status503ServiceUnavailable,
+                new
+                {
+                    message =
+                        "Legend Connect live metrics are temporarily unavailable."
+                });
+        }
+    }
+
+    [HttpGet]
     [Route("founder/legend-connect/metric-details")]
     public async Task<IActionResult> GetMetricDetails(
         [FromQuery(Name = "metric")] string? metricKey,

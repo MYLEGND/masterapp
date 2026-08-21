@@ -401,6 +401,7 @@ internal sealed class LegendConnectFounderTrainingIngestionAuthority
                     item.LanguageIntelligenceReevaluationLeaseExpiresUtc == claim.LeaseExpiresUtc)
                 .ExecuteUpdateAsync(setters => setters
                     .SetProperty(item => item.CompletedLanguageIntelligenceEvaluatorVersion, evaluatorVersion)
+                    .SetProperty(item => item.ProcessedUtc, DateTime.UtcNow)
                     .SetProperty(item => item.LanguageIntelligenceReevaluationLeaseExpiresUtc, (DateTime?)null),
                     cancellationToken);
             return updated == 1;
@@ -414,6 +415,7 @@ internal sealed class LegendConnectFounderTrainingIngestionAuthority
             return false;
 
         submission.CompletedLanguageIntelligenceEvaluatorVersion = evaluatorVersion;
+        submission.ProcessedUtc = DateTime.UtcNow;
         submission.LanguageIntelligenceReevaluationLeaseExpiresUtc = null;
         await _db.SaveChangesAsync(cancellationToken);
         return true;
@@ -614,6 +616,12 @@ internal sealed class LegendConnectFounderTrainingIngestionAuthority
                 usageRegister,
                 regionalVariant,
                 cancellationToken);
+            // Retain the receipt while its inputs are authoritative. Later
+            // corpus reuse cannot reliably reconstruct whether a unit was new
+            // at the time this raw Founder submission was accepted.
+            submission.NewCanonicalUnitCount = batch.CreatedUnitCount;
+            submission.ReusedCanonicalUnitCount = batch.ReusedUnitCount;
+            submission.QueuedCoverageCount = batch.QueuedCoverageCount;
             foreach (var unit in units)
             {
                 var hash = LegendLanguageIdentity.TextHash(unit.Text);

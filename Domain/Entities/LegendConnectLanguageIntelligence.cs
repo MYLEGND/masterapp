@@ -783,6 +783,15 @@ public sealed class LegendFounderTrainingSubmission
     public int RawCharacterCount { get; set; }
     public int AtomicUnitCount { get; set; }
     /// <summary>
+    /// Ingestion-time canonicalization accounting. These nullable values are
+    /// an operational receipt, not another corpus authority: historical
+    /// submissions predate this visibility surface and must not be guessed
+    /// from later canonical state.
+    /// </summary>
+    public int? NewCanonicalUnitCount { get; set; }
+    public int? ReusedCanonicalUnitCount { get; set; }
+    public int? QueuedCoverageCount { get; set; }
+    /// <summary>
     /// The latest deployment-owned language-intelligence revision that has
     /// replayed this retained atomic source through its canonical authority.
     /// It is deliberately independent of the raw-text identity used for

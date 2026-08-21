@@ -221,6 +221,105 @@ public sealed class LegendConnectCurriculumTests
     }
 
     [Fact]
+    public async Task FounderSubmissionProcessingSection_UsesDurablePipelineStateAndCompletionVersions()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var configuration = Configuration();
+        var registry = new LegendLanguageRegistry(db, configuration);
+        var corpus = new LegendConnectCorpusService(db, registry, NullLogger<LegendConnectCorpusService>.Instance);
+        var curriculum = new LegendConnectCurriculumService(db, registry, corpus);
+        var operations = new LegendConnectOperations(db, registry, corpus, configuration, curriculum: curriculum);
+
+        var training = await operations.SubmitFounderKnowledgeAsync(
+            "founder-test",
+            new LegendConnectKnowledgeSubmission(
+                "en",
+                "First controlled source. Second controlled source.",
+                null,
+                null,
+                "Conversation",
+                null,
+                null,
+                "FounderApproved"));
+        Assert.True(training.Succeeded, training.Message);
+        Assert.NotNull(training.TrainingSubmissionId);
+
+        var manifest = await operations.SubmitFounderCurriculumManifestAsync(
+            "founder-test",
+            new LegendConnectCurriculumManifestSubmission(
+            [
+                ConversationBatch(
+                    "submission.visibility",
+                    "Submission visibility",
+                    ("Please clarify the schedule.", "clarification_request"),
+                    ("Could you clarify the schedule?", "clarification_request"))
+            ]));
+        Assert.True(manifest.Succeeded, manifest.Message);
+
+        var queuedPage = await operations.GetFounderSectionPageAsync(
+            "submissions",
+            "en",
+            null,
+            null);
+        Assert.All(queuedPage.Rows, item =>
+            Assert.Contains(item[17], new[] { "QUEUED", "PROCESSING" }));
+
+        var processor = new LegendConnectCurriculumManifestProcessor(
+            db,
+            curriculum,
+            NullLogger<LegendConnectCurriculumManifestProcessor>.Instance);
+        Assert.Equal(1, await processor.ProcessPendingAsync(1));
+        foreach (var candidate in await db.LegendCorpusCandidates.ToListAsync())
+        {
+            candidate.ProcessingState = "Processed";
+            candidate.ProcessedUtc = DateTime.UtcNow;
+        }
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        var page = await operations.GetFounderSectionPageAsync(
+            "submissions",
+            "en",
+            null,
+            null);
+
+        Assert.Equal("submissions", page.Section);
+        Assert.Contains("Evaluator target", page.Columns);
+        Assert.Contains("Transition evidence", page.Columns);
+        Assert.Equal(2, page.Rows.Count);
+
+        var trainingRow = Assert.Single(page.Rows.Where(item => item[0] == "Atomic training"));
+        Assert.Equal(training.AtomicUnitCount.ToString(), trainingRow[3]);
+        Assert.Equal(training.NewCanonicalUnitCount.ToString(), trainingRow[4]);
+        Assert.Equal(training.ReusedCanonicalUnitCount.ToString(), trainingRow[5]);
+        Assert.Equal("COMPLETED", trainingRow[17]);
+
+        var manifestRow = Assert.Single(page.Rows.Where(item => item[0] == "Semantic manifest"));
+        Assert.Contains("Completed", manifestRow[13], StringComparison.Ordinal);
+        Assert.Contains($"current v{LegendConnectLanguageIntelligenceEvaluatorVersion.Current}", manifestRow[11]);
+        Assert.Equal($"v{LegendConnectLanguageIntelligenceEvaluatorVersion.Current}", manifestRow[12]);
+        Assert.Equal("COMPLETED", manifestRow[17]);
+
+        var persistedTraining = await db.LegendFounderTrainingSubmissions
+            .SingleAsync(item => item.Id == training.TrainingSubmissionId);
+        Assert.Equal(training.NewCanonicalUnitCount, persistedTraining.NewCanonicalUnitCount);
+        Assert.Equal(training.ReusedCanonicalUnitCount, persistedTraining.ReusedCanonicalUnitCount);
+        Assert.Equal(training.QueuedCoverageCount, persistedTraining.QueuedCoverageCount);
+
+        persistedTraining.CompletedLanguageIntelligenceEvaluatorVersion--;
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        var stalePage = await operations.GetFounderSectionPageAsync(
+            "submissions",
+            "en",
+            null,
+            null);
+        var staleTraining = Assert.Single(stalePage.Rows.Where(item => item[0] == "Atomic training"));
+        Assert.Equal("QUEUED", staleTraining[17]);
+    }
+
+    [Fact]
     public async Task FounderCurriculumManifest_InvalidLaterFamilyCausesZeroPartialMutation()
     {
         await using var db = ControllerTestHelpers.BuildDb();

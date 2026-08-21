@@ -164,6 +164,7 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
         {
             "curriculum" => await GetCurriculumFamilyPageAsync(language, normalizedSearch, pageCursor, cancellationToken),
             "curriculum-examples" when curriculumFamilyId.HasValue => await GetCurriculumExamplePageAsync(language, curriculumFamilyId.Value, normalizedSearch, pageCursor, cancellationToken),
+            "submissions" => await GetFounderSubmissionProcessingPageAsync(language, normalizedSearch, pageCursor, cancellationToken),
             "candidates" => await GetCandidatePageAsync(language, normalizedSearch, pageCursor, cancellationToken),
             "evidence" => await GetAnchorPageAsync(language, normalizedSearch, pageCursor, cancellationToken),
             "relationships" => await GetRelationshipPageAsync(language, normalizedSearch, pageCursor, cancellationToken),
@@ -3220,6 +3221,428 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
         return languages.FirstOrDefault(item =>
             string.Equals(item.LanguageCode, "en", StringComparison.OrdinalIgnoreCase))?.LanguageCode
             ?? languages.FirstOrDefault()?.LanguageCode;
+    }
+
+    /// <summary>
+    /// Bounded Founder read-through of the existing submission, manifest,
+    /// evaluator, candidate, and transition authorities. It deliberately
+    /// stores no derived lifecycle state: every displayed value is calculated
+    /// from the durable records the workers already own.
+    /// </summary>
+    private async Task<LegendConnectFounderSectionPageSnapshot> GetFounderSubmissionProcessingPageAsync(
+        string language,
+        string? search,
+        FounderSectionCursor? cursor,
+        CancellationToken cancellationToken)
+    {
+        var rawQuery = _db.Set<LegendFounderTrainingSubmission>().AsNoTracking()
+            .Where(item => item.SourceLanguageCode == language);
+        if (search is not null)
+        {
+            rawQuery = rawQuery.Where(item => item.ProcessingState.ToLower().Contains(search) ||
+                item.RawTextHash.ToLower().Contains(search));
+        }
+        if (cursor is { } after)
+        {
+            rawQuery = rawQuery.Where(item => item.CreatedUtc < after.UpdatedUtc ||
+                (item.CreatedUtc == after.UpdatedUtc && item.Id.CompareTo(after.Id) < 0));
+        }
+
+        var raw = await rawQuery
+            .OrderByDescending(item => item.CreatedUtc)
+            .ThenByDescending(item => item.Id)
+            .Take(FounderSectionPageSize + 1)
+            .ToListAsync(cancellationToken);
+
+        var manifest = Array.Empty<LegendCurriculumManifestWorkItem>();
+        if (string.Equals(language, "en", StringComparison.OrdinalIgnoreCase))
+        {
+            var manifestQuery = _db.Set<LegendCurriculumManifestWorkItem>().AsNoTracking();
+            if (search is not null)
+            {
+                manifestQuery = manifestQuery.Where(item => item.ProcessingState.ToLower().Contains(search) ||
+                    item.ManifestHash.ToLower().Contains(search));
+            }
+            if (cursor is { } manifestAfter)
+            {
+                manifestQuery = manifestQuery.Where(item => item.CreatedUtc < manifestAfter.UpdatedUtc ||
+                    (item.CreatedUtc == manifestAfter.UpdatedUtc && item.Id.CompareTo(manifestAfter.Id) < 0));
+            }
+
+            manifest = await manifestQuery
+                .OrderByDescending(item => item.CreatedUtc)
+                .ThenByDescending(item => item.Id)
+                .Take(FounderSectionPageSize + 1)
+                .ToArrayAsync(cancellationToken);
+        }
+
+        var sources = raw.Select(item => FounderSubmissionStatusSource.FromTraining(item, language))
+            .Concat(manifest.Select(FounderSubmissionStatusSource.FromManifest))
+            .OrderByDescending(item => item.CreatedUtc)
+            .ThenByDescending(item => item.Id)
+            .ThenByDescending(item => item.KindOrder)
+            .Take(FounderSectionPageSize + 1)
+            .ToList();
+        var page = sources.Take(FounderSectionPageSize).ToList();
+        if (page.Count == 0)
+        {
+            return new LegendConnectFounderSectionPageSnapshot(
+                "submissions", language, search, FounderSectionPageSize, null,
+                FounderSubmissionStatusColumns,
+                Array.Empty<IReadOnlyList<string>>(),
+                "No Founder curriculum submissions match this language and filter.");
+        }
+
+        var rawIds = page.Where(item => item.Training is not null).Select(item => item.Id).ToArray();
+        var manifestSources = page.Where(item => item.Manifest is not null).ToArray();
+        var rawExampleLinks = rawIds.Length == 0
+            ? []
+            : await (
+                from submissionUnit in _db.Set<LegendFounderTrainingSubmissionUnit>().AsNoTracking()
+                join example in _db.Set<LegendCurriculumExample>().AsNoTracking()
+                    on submissionUnit.TextUnitId equals example.TextUnitId
+                where rawIds.Contains(submissionUnit.SubmissionId) &&
+                    example.LanguageCode == language && example.SupersededUtc == null
+                select new FounderExampleOwner(submissionUnit.SubmissionId, example.Id))
+                .ToListAsync(cancellationToken);
+
+        var rawCoverage = rawIds.Length == 0
+            ? []
+            : await (
+                from submissionUnit in _db.Set<LegendFounderTrainingSubmissionUnit>().AsNoTracking()
+                join unit in _db.Set<LegendLanguageTextUnit>().AsNoTracking()
+                    on submissionUnit.TextUnitId equals unit.Id
+                join candidate in _db.Set<LegendCorpusCandidate>().AsNoTracking()
+                    on unit.NormalizedHash equals candidate.SourceTextHash
+                where rawIds.Contains(submissionUnit.SubmissionId) &&
+                    candidate.SourceLanguageCode == language &&
+                    candidate.CurriculumFamilyId == null &&
+                    candidate.Provenance == LegendConnectKnowledgeProvenance.FounderApproved
+                select new FounderCoverageOwner(
+                    submissionUnit.SubmissionId,
+                    candidate.ProcessingState,
+                    candidate.ProcessedUtc))
+                .ToListAsync(cancellationToken);
+
+        var familyKeysByManifest = manifestSources.ToDictionary(
+            item => item.Id,
+            item => ReadManifestFamilyKeys(item.Manifest!.PayloadJson));
+        var familyKeys = familyKeysByManifest.Values.SelectMany(item => item)
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+        var families = familyKeys.Length == 0
+            ? []
+            : await _db.Set<LegendCurriculumFamily>().AsNoTracking()
+                .Where(item => familyKeys.Contains(item.FamilyKey))
+                .Select(item => new FounderFamilyIdentity(item.Id, item.FamilyKey))
+                .ToListAsync(cancellationToken);
+        var familyIdsByManifest = familyKeysByManifest.ToDictionary(
+            item => item.Key,
+            item => families.Where(family => item.Value.Contains(family.FamilyKey, StringComparer.Ordinal))
+                .Select(family => family.Id)
+                .ToHashSet());
+        var familyIds = familyIdsByManifest.Values.SelectMany(item => item).Distinct().ToArray();
+        var manifestExamples = familyIds.Length == 0
+            ? []
+            : await _db.Set<LegendCurriculumExample>().AsNoTracking()
+                .Where(item => familyIds.Contains(item.CurriculumFamilyId) &&
+                    item.LanguageCode == language && item.SupersededUtc == null)
+                .Select(item => new FounderManifestExample(item.CurriculumFamilyId, item.Id))
+                .ToListAsync(cancellationToken);
+        var manifestCoverage = familyIds.Length == 0
+            ? []
+            : await _db.Set<LegendCorpusCandidate>().AsNoTracking()
+                .Where(item => item.CurriculumFamilyId != null && familyIds.Contains(item.CurriculumFamilyId.Value))
+                .Select(item => new FounderManifestCoverage(
+                    item.CurriculumFamilyId!.Value,
+                    item.ProcessingState,
+                    item.ProcessedUtc))
+                .ToListAsync(cancellationToken);
+
+        var exampleOwners = new Dictionary<Guid, HashSet<Guid>>();
+        foreach (var item in rawExampleLinks)
+            AddFounderSubmissionOwner(exampleOwners, item.ExampleId, item.SubmissionId);
+        foreach (var item in manifestExamples)
+        {
+            foreach (var work in familyIdsByManifest.Where(entry => entry.Value.Contains(item.FamilyId)))
+                AddFounderSubmissionOwner(exampleOwners, item.ExampleId, work.Key);
+        }
+
+        var exampleIds = exampleOwners.Keys.ToArray();
+        var transitionEvidence = exampleIds.Length == 0
+            ? []
+            : await _db.Set<LegendSemanticTransitionEvidence>().AsNoTracking()
+                .Where(item => item.SupersededUtc == null &&
+                    item.Provenance == LegendConnectKnowledgeProvenance.FounderApproved &&
+                    (exampleIds.Contains(item.SourceCurriculumExampleId) ||
+                     exampleIds.Contains(item.ResultCurriculumExampleId)))
+                .Select(item => new FounderTransitionEvidence(
+                    item.Id,
+                    item.TransitionSignature,
+                    item.SourceCurriculumExampleId,
+                    item.ResultCurriculumExampleId))
+                .ToListAsync(cancellationToken);
+        var transitionEvidenceBySubmission = new Dictionary<Guid, HashSet<FounderTransitionEvidence>>();
+        foreach (var evidence in transitionEvidence)
+        {
+            AddFounderTransitionOwners(transitionEvidenceBySubmission, exampleOwners, evidence.SourceExampleId, evidence);
+            AddFounderTransitionOwners(transitionEvidenceBySubmission, exampleOwners, evidence.ResultExampleId, evidence);
+        }
+
+        var productionEligibleSignatures = await _curriculum
+            .GetProductionEligibleSemanticTransitionSignaturesAsync(
+                language,
+                transitionEvidence.Select(item => item.TransitionSignature).Distinct().ToArray(),
+                cancellationToken);
+        var coverageBySubmission = new Dictionary<Guid, List<FounderCoverageItem>>();
+        foreach (var item in rawCoverage)
+            AddFounderCoverageOwner(coverageBySubmission, item.SubmissionId, item.ProcessingState, item.ProcessedUtc);
+        foreach (var item in manifestCoverage)
+        {
+            foreach (var work in familyIdsByManifest.Where(entry => entry.Value.Contains(item.FamilyId)))
+                AddFounderCoverageOwner(coverageBySubmission, work.Key, item.ProcessingState, item.ProcessedUtc);
+        }
+
+        var currentEvaluatorVersion = LegendConnectLanguageIntelligenceEvaluatorVersion.Current;
+        var rows = new List<IReadOnlyList<string>>(page.Count);
+        foreach (var item in page)
+        {
+            var coverage = FounderCoverageSummary.From(
+                coverageBySubmission.GetValueOrDefault(item.Id) ?? []);
+            var transitions = transitionEvidenceBySubmission.GetValueOrDefault(item.Id) ?? [];
+            var completedVersion = item.Training?.CompletedLanguageIntelligenceEvaluatorVersion ??
+                item.Manifest!.CompletedLanguageIntelligenceEvaluatorVersion;
+            var evaluatorTarget = item.Manifest is null
+                ? $"v{currentEvaluatorVersion}"
+                : $"current v{currentEvaluatorVersion}; work v{Math.Max(0, item.Manifest.TargetLanguageIntelligenceEvaluatorVersion)}";
+            var workState = item.Training is not null
+                ? item.Training.ProcessingState
+                : $"{item.Manifest!.ProcessingState}; {item.Manifest.NextFamilyIndex:N0}/{item.Manifest.FamilyCount:N0} families; attempts {item.Manifest.AttemptCount:N0}";
+            var failure = item.Manifest?.LastErrorCode ?? (coverage.Failed > 0 ? "coverage_failed" : null);
+            var evaluatorCurrent = completedVersion >= currentEvaluatorVersion;
+            var activelyProcessing = item.Manifest?.ProcessingState == "Processing" ||
+                item.Training?.LanguageIntelligenceReevaluationLeaseExpiresUtc is not null ||
+                coverage.Processing > 0;
+            var status = DeriveFounderSubmissionStatus(
+                evaluatorCurrent,
+                activelyProcessing,
+                item.Manifest?.ProcessingState == "Failed" || coverage.Failed > 0,
+                coverage);
+            var lastProcessedUtc = MaxFounderProcessingTime(
+                item.Training?.ProcessedUtc,
+                item.Manifest?.UpdatedUtc,
+                coverage.LastProcessedUtc);
+            rows.Add(new[]
+            {
+                item.Kind,
+                item.Id.ToString("D"),
+                item.CreatedUtc.ToString("u", CultureInfo.InvariantCulture),
+                item.AcceptedUnitDisplay,
+                FormatFounderReceiptCount(item.Training?.NewCanonicalUnitCount, item.Training is not null),
+                FormatFounderReceiptCount(item.Training?.ReusedCanonicalUnitCount, item.Training is not null),
+                item.Training?.QueuedCoverageCount?.ToString(CultureInfo.InvariantCulture) ?? coverage.Total.ToString(CultureInfo.InvariantCulture),
+                coverage.Pending.ToString(CultureInfo.InvariantCulture),
+                coverage.Processing.ToString(CultureInfo.InvariantCulture),
+                coverage.Completed.ToString(CultureInfo.InvariantCulture),
+                coverage.Failed.ToString(CultureInfo.InvariantCulture),
+                evaluatorTarget,
+                $"v{completedVersion}",
+                workState,
+                transitions.Count.ToString(CultureInfo.InvariantCulture),
+                transitions.Count(item => productionEligibleSignatures.Contains(item.TransitionSignature)).ToString(CultureInfo.InvariantCulture),
+                lastProcessedUtc?.ToString("u", CultureInfo.InvariantCulture) ?? "—",
+                status,
+                failure ?? "—"
+            });
+        }
+
+        return new LegendConnectFounderSectionPageSnapshot(
+            "submissions",
+            language,
+            search,
+            FounderSectionPageSize,
+            sources.Count > FounderSectionPageSize
+                ? FormatFounderSectionCursor(page[^1].CreatedUtc, page[^1].Id)
+                : null,
+            FounderSubmissionStatusColumns,
+            rows,
+            "No Founder curriculum submissions match this language and filter.");
+    }
+
+    private static IReadOnlyList<string> ReadManifestFamilyKeys(string payloadJson)
+    {
+        try
+        {
+            return JsonSerializer.Deserialize<LegendConnectCurriculumManifestSubmission>(payloadJson)?.Families?
+                .Select(item => item.FamilyKey?.Trim().ToLowerInvariant())
+                .Where(item => !string.IsNullOrWhiteSpace(item))
+                .Cast<string>()
+                .Distinct(StringComparer.Ordinal)
+                .ToArray() ?? [];
+        }
+        catch (JsonException)
+        {
+            return [];
+        }
+    }
+
+    private static void AddFounderSubmissionOwner(
+        IDictionary<Guid, HashSet<Guid>> owners,
+        Guid exampleId,
+        Guid submissionId)
+    {
+        if (!owners.TryGetValue(exampleId, out var values))
+        {
+            values = [];
+            owners[exampleId] = values;
+        }
+        values.Add(submissionId);
+    }
+
+    private static void AddFounderTransitionOwners(
+        IDictionary<Guid, HashSet<FounderTransitionEvidence>> owners,
+        IReadOnlyDictionary<Guid, HashSet<Guid>> exampleOwners,
+        Guid exampleId,
+        FounderTransitionEvidence evidence)
+    {
+        if (!exampleOwners.TryGetValue(exampleId, out var submissionIds))
+            return;
+        foreach (var submissionId in submissionIds)
+        {
+            if (!owners.TryGetValue(submissionId, out var values))
+            {
+                values = [];
+                owners[submissionId] = values;
+            }
+            values.Add(evidence);
+        }
+    }
+
+    private static void AddFounderCoverageOwner(
+        IDictionary<Guid, List<FounderCoverageItem>> owners,
+        Guid submissionId,
+        string processingState,
+        DateTime? processedUtc)
+    {
+        if (!owners.TryGetValue(submissionId, out var values))
+        {
+            values = [];
+            owners[submissionId] = values;
+        }
+        values.Add(new FounderCoverageItem(processingState, processedUtc));
+    }
+
+    private static string DeriveFounderSubmissionStatus(
+        bool evaluatorCurrent,
+        bool activelyProcessing,
+        bool failed,
+        FounderCoverageSummary coverage)
+    {
+        if (failed)
+            return "FAILED";
+        if (evaluatorCurrent && coverage.Pending == 0 && coverage.Processing == 0 && coverage.Unresolved == 0)
+            return "COMPLETED";
+        if (activelyProcessing)
+            return "PROCESSING";
+        // A capability-version advance is not in progress merely because an
+        // earlier evaluation completed. Until the existing worker claims the
+        // stale durable record, it is accurately queued for reconciliation.
+        if (!evaluatorCurrent)
+            return "QUEUED";
+        if (coverage.Pending > 0)
+            return coverage.Completed > 0 ? "PROCESSING" : "QUEUED";
+        if (coverage.Unresolved > 0)
+            return "PROCESSING";
+        return "QUEUED";
+    }
+
+    private static string FormatFounderReceiptCount(int? value, bool isTrainingSubmission) =>
+        !isTrainingSubmission ? "—" : value?.ToString(CultureInfo.InvariantCulture) ?? "Not captured";
+
+    private static DateTime? MaxFounderProcessingTime(params DateTime?[] values)
+    {
+        var timestamps = values.Where(item => item.HasValue).Select(item => item!.Value).ToArray();
+        return timestamps.Length == 0 ? null : timestamps.Max();
+    }
+
+    private static readonly IReadOnlyList<string> FounderSubmissionStatusColumns =
+    [
+        "Submission", "Submission ID", "Accepted", "Accepted atomic units", "New units", "Reused units",
+        "Coverage queued", "Coverage pending", "Coverage processing", "Coverage completed", "Coverage failed",
+        "Evaluator target", "Evaluator completed", "Manifest / work-item state", "Transition evidence",
+        "Production-eligible transitions", "Last processed", "Status", "Failure"
+    ];
+
+    private sealed record FounderSubmissionStatusSource(
+        Guid Id,
+        string Kind,
+        int KindOrder,
+        string LanguageCode,
+        DateTime CreatedUtc,
+        string AcceptedUnitDisplay,
+        LegendFounderTrainingSubmission? Training,
+        LegendCurriculumManifestWorkItem? Manifest)
+    {
+        internal static FounderSubmissionStatusSource FromTraining(
+            LegendFounderTrainingSubmission item,
+            string language) => new(
+            item.Id,
+            "Atomic training",
+            0,
+            language,
+            item.CreatedUtc,
+            item.AtomicUnitCount.ToString(CultureInfo.InvariantCulture),
+            item,
+            null);
+
+        internal static FounderSubmissionStatusSource FromManifest(
+            LegendCurriculumManifestWorkItem item) => new(
+            item.Id,
+            "Semantic manifest",
+            1,
+            "en",
+            item.CreatedUtc,
+            $"{item.ExampleCount:N0} declared examples",
+            null,
+            item);
+    }
+
+    private sealed record FounderExampleOwner(Guid SubmissionId, Guid ExampleId);
+    private sealed record FounderFamilyIdentity(Guid Id, string FamilyKey);
+    private sealed record FounderManifestExample(Guid FamilyId, Guid ExampleId);
+    private sealed record FounderCoverageOwner(Guid SubmissionId, string ProcessingState, DateTime? ProcessedUtc);
+    private sealed record FounderManifestCoverage(Guid FamilyId, string ProcessingState, DateTime? ProcessedUtc);
+    private sealed record FounderCoverageItem(string ProcessingState, DateTime? ProcessedUtc);
+    private sealed record FounderTransitionEvidence(
+        Guid Id,
+        string TransitionSignature,
+        Guid SourceExampleId,
+        Guid ResultExampleId);
+    private sealed record FounderCoverageSummary(
+        int Total,
+        int Pending,
+        int Processing,
+        int Completed,
+        int Failed,
+        int Unresolved,
+        DateTime? LastProcessedUtc)
+    {
+        internal static FounderCoverageSummary From(IReadOnlyCollection<FounderCoverageItem> items)
+        {
+            var pending = items.Count(item => item.ProcessingState == "Pending");
+            var processing = items.Count(item => item.ProcessingState == "Processing");
+            var failed = items.Count(item => item.ProcessingState == "Failed");
+            var completed = items.Count(item => item.ProcessingState is "Processed" or "Deduplicated" or "Superseded");
+            var unresolved = items.Count - pending - processing - failed - completed;
+            return new FounderCoverageSummary(
+                items.Count,
+                pending,
+                processing,
+                completed,
+                failed,
+                unresolved,
+                MaxFounderProcessingTime(items.Select(item => item.ProcessedUtc).ToArray()));
+        }
     }
 
     private async Task<LegendConnectFounderSectionPageSnapshot> GetCurriculumFamilyPageAsync(

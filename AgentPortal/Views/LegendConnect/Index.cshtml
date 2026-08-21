@@ -4,89 +4,538 @@
     ViewData["Title"] = "Legend Connect";
     var shell = Model.Shell;
     var selected = shell.SelectedLanguage;
+    var compositionMode = Model.RuntimePolicy.ContextualCompositionMode;
 }
 
 @section Styles {
-    <link rel="stylesheet" href="~/css/legend-connect.css" asp-append-version="true" />
+    <link rel="stylesheet"
+          href="~/css/legend-connect.css"
+          asp-append-version="true" />
 }
 
-<main class="dashboard-page-shell legend-connect-page" data-legend-connect-shell data-language="@selected?.LanguageCode">
-    <section class="dashboard-command-center-panel" aria-labelledby="legend-connect-title">
-        <div class="dashboard-command-center-top">
-            <div class="dashboard-hero-copy">
-                <span class="dashboard-eyebrow">Founder · Language intelligence</span>
-                <h1 class="dashboard-hero-title" id="legend-connect-title">Legend® Connect</h1>
-                <p class="dashboard-section-copy">This page opens with a bounded language shell. Curriculum, evidence, relationships, learning, models, and retained knowledge load only when you open that section.</p>
-                <form method="get" asp-action="Index" class="dashboard-search-panel">
-                    <label class="dashboard-form-field"><span>Current language</span><select name="language" onchange="this.form.submit()">@foreach (var language in shell.Languages) { <option value="@language.LanguageCode" selected="@(language.LanguageCode == selected?.LanguageCode)">@language.DisplayName (@language.LanguageCode)</option> }</select></label>
-                    <noscript><button type="submit" class="dashboard-command-action btn-carrier-settings">Load language</button></noscript>
+<main class="dashboard-page-shell legend-connect-page"
+      data-legend-connect-shell
+      data-language="@selected?.LanguageCode">
+
+    <section class="lc-hero" aria-labelledby="legend-connect-title">
+        <div class="lc-hero-copy">
+            <span class="lc-eyebrow">FOUNDER LANGUAGE INTELLIGENCE</span>
+
+            <div class="lc-title-line">
+                <div>
+                    <h1 id="legend-connect-title">Legend® Connect</h1>
+                    <p>
+                        Govern, teach, inspect, and measure the language intelligence
+                        powering LEGEND®.
+                    </p>
+                </div>
+
+                <span class="lc-live-badge">
+                    <span class="lc-live-dot"></span>
+                    Live intelligence
+                </span>
+            </div>
+
+            <form method="get"
+                  asp-action="Index"
+                  class="lc-language-selector">
+                <label>
+                    <span>Current language</span>
+                    <select name="language" onchange="this.form.submit()">
+                        @foreach (var language in shell.Languages)
+                        {
+                            <option value="@language.LanguageCode"
+                                    selected="@(language.LanguageCode == selected?.LanguageCode)">
+                                @language.DisplayName (@language.LanguageCode)
+                            </option>
+                        }
+                    </select>
+                </label>
+            </form>
+        </div>
+
+        @if (selected is not null)
+        {
+            <div class="lc-hero-metrics">
+                <article class="lc-hero-metric lc-hero-metric-primary">
+                    <span>Language health</span>
+                    <strong>@selected.HealthState</strong>
+                </article>
+
+                <article class="lc-hero-metric">
+                    <span>Canonical entries</span>
+                    <strong>@selected.CanonicalEntryCount.ToString("N0")</strong>
+                </article>
+
+                <article class="lc-hero-metric">
+                    <span>Curriculum examples</span>
+                    <strong>@selected.CurriculumExampleCount.ToString("N0")</strong>
+                </article>
+
+                <article class="lc-hero-metric">
+                    <span>Compositional anchors</span>
+                    <strong>@selected.CompositionalAnchorCount.ToString("N0")</strong>
+                </article>
+
+                <article class="lc-hero-metric">
+                    <span>Open issues</span>
+                    <strong>@selected.OpenIssueCount.ToString("N0")</strong>
+                </article>
+            </div>
+        }
+    </section>
+
+    @if (TempData["LegendConnectSuccess"] is string success)
+    {
+        <section class="lc-notice lc-notice-success" role="status">
+            @success
+        </section>
+    }
+
+    @if (TempData["LegendConnectError"] is string error)
+    {
+        <section class="lc-notice lc-notice-error" role="alert">
+            @error
+        </section>
+    }
+
+    <section class="lc-panel lc-panel-legend">
+        <header class="lc-panel-header">
+            <div>
+                <span class="lc-kicker">INTERNAL LANGUAGE INTELLIGENCE</span>
+                <h2>Legend® Ai Translations</h2>
+                <p>
+                    Measure what LEGEND® resolves, reuses, or composes internally
+                    before Azure Translator is required.
+                </p>
+            </div>
+
+            <span class="lc-status lc-status-gold"
+                  data-live-metrics-status>
+                Loading
+            </span>
+        </header>
+
+        <div class="lc-metric-grid">
+            <article class="lc-metric lc-tone-green"
+                     data-live-metric="same-language-bypasses">
+                <span>Same-language bypasses</span>
+                <strong>—</strong>
+                <small>No translation provider call required</small>
+            </article>
+
+            <article class="lc-metric lc-tone-green"
+                     data-live-metric="translation-memory-hits">
+                <span>Translation memory hits</span>
+                <strong>—</strong>
+                <small>Trusted prior translation reused</small>
+            </article>
+
+            <article class="lc-metric lc-tone-green"
+                     data-live-metric="trusted-structural-served">
+                <span>Structural intelligence served</span>
+                <strong>—</strong>
+                <small>Reusable language structure resolved internally</small>
+            </article>
+
+            <article class="lc-metric lc-tone-green"
+                     data-live-metric="trusted-contextual-served">
+                <span>Contextual intelligence served</span>
+                <strong>—</strong>
+                <small>Context-sensitive internal realization</small>
+            </article>
+
+            <article class="lc-metric lc-tone-gold"
+                     data-live-metric="internal-coverage">
+                <span>Internal coverage</span>
+                <strong>—</strong>
+                <small>Requests served without external translation</small>
+            </article>
+
+            <article class="lc-metric lc-tone-gold"
+                     data-live-metric="provider-avoidance">
+                <span>Azure avoidance</span>
+                <strong>—</strong>
+                <small>External provider usage prevented by LEGEND®</small>
+            </article>
+
+            <article class="lc-metric lc-tone-amber"
+                     data-live-metric="provider-fallback-required">
+                <span>Azure fallback required</span>
+                <strong>—</strong>
+                <small>Requests that still need Azure Translator</small>
+            </article>
+
+            <article class="lc-metric lc-tone-amber"
+                     data-live-metric="provider-dependency">
+                <span>Provider dependency</span>
+                <strong>—</strong>
+                <small>Current external translation dependency</small>
+            </article>
+        </div>
+    </section>
+
+    <section class="lc-panel lc-panel-azure">
+        <header class="lc-panel-header">
+            <div>
+                <span class="lc-kicker lc-kicker-azure">AZURE TRANSLATOR</span>
+                <h2>Azure Translations</h2>
+                <p>
+                    Track provider consumption and protected capacity separately
+                    from LEGEND® internal translation intelligence.
+                </p>
+            </div>
+
+            <span class="lc-status lc-status-blue"
+                  data-azure-status>
+                Loading
+            </span>
+        </header>
+
+        <div class="lc-metric-grid">
+            <article class="lc-metric lc-tone-blue"
+                     data-live-metric="azure-characters-used">
+                <span>Azure characters used</span>
+                <strong>—</strong>
+                <small>Total Azure translation consumption</small>
+            </article>
+
+            <article class="lc-metric lc-tone-blue"
+                     data-live-metric="consumed-live-characters">
+                <span>Live characters</span>
+                <strong>—</strong>
+                <small>Provider usage from live communication</small>
+            </article>
+
+            <article class="lc-metric lc-tone-blue"
+                     data-live-metric="consumed-corpus-characters">
+                <span>Corpus characters</span>
+                <strong>—</strong>
+                <small>Provider usage from governed learning</small>
+            </article>
+
+            <article class="lc-metric lc-tone-amber"
+                     data-live-metric="provider-characters-reserved">
+                <span>Reserved characters</span>
+                <strong>—</strong>
+                <small>Capacity protected for current work</small>
+            </article>
+
+            <article class="lc-metric lc-tone-blue"
+                     data-live-metric="provider-operations">
+                <span>Provider operations</span>
+                <strong>—</strong>
+                <small>Azure translation operations recorded</small>
+            </article>
+
+            <article class="lc-metric lc-tone-blue"
+                     data-live-metric="provider-billable-characters">
+                <span>Billable characters</span>
+                <strong>—</strong>
+                <small>Provider-billable translation volume</small>
+            </article>
+
+            <article class="lc-metric lc-tone-red"
+                     data-live-metric="quota-denied">
+                <span>Quota denied</span>
+                <strong>—</strong>
+                <small>Requests blocked by provider protection</small>
+            </article>
+
+            <article class="lc-metric lc-tone-red"
+                     data-live-metric="provider-failures">
+                <span>Provider failures</span>
+                <strong>—</strong>
+                <small>Azure translation failures recorded</small>
+            </article>
+        </div>
+
+        <div class="lc-capacity">
+            <div class="lc-capacity-head">
+                <div>
+                    <span>Azure Translator subscription capacity</span>
+                    <strong data-azure-resource>Azure Translator</strong>
+                </div>
+                <span data-azure-tier>—</span>
+            </div>
+
+            <div class="lc-capacity-grid">
+                <div>
+                    <span>Monthly included allowance</span>
+                    <strong data-capacity="monthly-limit">—</strong>
+                </div>
+
+                <div>
+                    <span>Used this billing month</span>
+                    <strong data-capacity="monthly-consumed">—</strong>
+                </div>
+
+                <div>
+                    <span>Monthly allowance left</span>
+                    <strong data-capacity="monthly-remaining">—</strong>
+                </div>
+
+                <div>
+                    <span>Safe acquisition now</span>
+                    <strong data-capacity="safe">—</strong>
+                </div>
+            </div>
+
+            <p data-azure-detail>
+                Synchronizing Azure Translator capacity.
+            </p>
+        </div>
+    </section>
+
+    <section class="lc-panel">
+        <header class="lc-panel-header">
+            <div>
+                <span class="lc-kicker">FOUNDER CONTROLS</span>
+                <h2>Governed language training</h2>
+                <p>
+                    Submit Founder-approved material through the existing canonical
+                    ingestion authority without creating a parallel learning path.
+                </p>
+            </div>
+        </header>
+
+        <form method="post"
+              asp-action="SubmitKnowledge"
+              class="lc-form"
+              data-verified-target-form>
+
+            @Html.AntiForgeryToken()
+
+            <label class="lc-target-mode">
+                <input type="checkbox"
+                       name="FixTargetTranslation"
+                       value="true"
+                       data-verified-target-toggle />
+
+                <span>
+                    <strong>Fix Target Translation</strong>
+                    <small data-verified-target-help>
+                        Attach a Founder-approved target only to an exact existing
+                        canonical source.
+                    </small>
+                </span>
+            </label>
+
+            <div class="lc-form-grid">
+                <label class="lc-field">
+                    <span>Source language</span>
+                    <select name="SourceLanguageCode" required>
+                        @foreach (var language in shell.Languages)
+                        {
+                            <option value="@language.LanguageCode"
+                                    selected="@(language.LanguageCode == selected?.LanguageCode)">
+                                @language.DisplayName
+                            </option>
+                        }
+                    </select>
+                </label>
+
+                <label class="lc-field">
+                    <span>Target language</span>
+                    <select name="TargetLanguageCode"
+                            data-verified-target-language>
+                        <option value="">Approved source seed</option>
+
+                        @foreach (var language in shell.Languages)
+                        {
+                            <option value="@language.LanguageCode">
+                                @language.DisplayName
+                            </option>
+                        }
+                    </select>
+                </label>
+
+                <label class="lc-field lc-field-wide"
+                       data-verified-target-normal-fields>
+                    <span>Source training text</span>
+                    <textarea name="SourceText"
+                              required
+                              maxlength="30000"
+                              data-verified-target-normal-input></textarea>
+                </label>
+
+                <label class="lc-field lc-field-wide"
+                       data-verified-target-normal-fields>
+                    <span>Target text</span>
+                    <textarea name="TargetText"
+                              maxlength="10000"
+                              data-verified-target-normal-input></textarea>
+                </label>
+
+                <label class="lc-field lc-field-wide"
+                       data-verified-target-rows
+                       hidden>
+                    <span>Existing source | Founder-approved target</span>
+                    <textarea name="TargetTranslationRows"
+                              maxlength="30000"
+                              disabled
+                              data-verified-target-rows-input></textarea>
+                </label>
+            </div>
+
+            <div class="lc-actions">
+                <button type="submit"
+                        class="lc-button lc-button-primary"
+                        data-verified-target-submit>
+                    Save approved knowledge
+                </button>
+            </div>
+        </form>
+
+        <details class="lc-disclosure lc-disclosure-featured">
+            <summary>
+                <span>
+                    <small>ADVANCED CURRICULUM</small>
+                    <strong>Teach English conversation intelligence</strong>
+                </span>
+                <span class="lc-tag">Curriculum</span>
+            </summary>
+
+            <div class="lc-disclosure-body">
+                <p class="lc-copy">
+                    Train reusable meaning, realization, composition, and discourse
+                    rather than memorized sentence shells.
+                </p>
+
+                <form method="post"
+                      asp-action="SubmitCurriculum"
+                      class="lc-form">
+
+                    @Html.AntiForgeryToken()
+
+                    <label class="lc-field">
+                        <span>English semantic curriculum manifest</span>
+
+                        <textarea name="Manifest"
+                                  required
+                                  maxlength="120000"
+                                  spellcheck="false"
+                                  class="lc-manifest"
+                                  placeholder="@@family conversation.example | Semantic category&#10;Controlled example | function=...; intent=...&#10;@@end"></textarea>
+
+                        <small>
+                            Family boundaries and semantic dimensions remain explicit
+                            Founder authority. Invalid families cannot partially mutate
+                            the corpus.
+                        </small>
+                    </label>
+
+                    <div class="lc-actions">
+                        <button type="submit"
+                                class="lc-button lc-button-primary">
+                            Validate and save curriculum
+                        </button>
+                    </div>
                 </form>
             </div>
-            @if (selected is not null)
+        </details>
+    </section>
+
+    <section class="lc-panel">
+        <header class="lc-panel-header">
+            <div>
+                <span class="lc-kicker">PRODUCTION CONTROL</span>
+                <h2>Composition boundary</h2>
+                <p>
+                    Change only the established server policy. Curriculum,
+                    contradiction, evidence, quality, and Azure fallback authorities
+                    remain unchanged.
+                </p>
+            </div>
+
+            <span class="lc-status lc-status-gold">
+                @compositionMode
+            </span>
+        </header>
+
+        <div class="lc-mode-row">
+            @foreach (var mode in new[] { "Disabled", "Shadow", "Active" })
             {
-                <div class="dashboard-hero-stats" aria-label="Selected language summary">
-                    <div class="dashboard-stat-card is-primary"><span class="dashboard-stat-label">Language health</span><span class="dashboard-stat-value">@selected.HealthState</span></div>
-                    <div class="dashboard-stat-card"><span class="dashboard-stat-label">Canonical entries</span><span class="dashboard-stat-value">@selected.CanonicalEntryCount.ToString("N0")</span></div>
-                    <div class="dashboard-stat-card"><span class="dashboard-stat-label">Curriculum examples</span><span class="dashboard-stat-value">@selected.CurriculumExampleCount.ToString("N0")</span></div>
-                    <div class="dashboard-stat-card"><span class="dashboard-stat-label">Compositional anchors</span><span class="dashboard-stat-value">@selected.CompositionalAnchorCount.ToString("N0")</span></div>
-                    <div class="dashboard-stat-card"><span class="dashboard-stat-label">Open issues</span><span class="dashboard-stat-value">@selected.OpenIssueCount.ToString("N0")</span></div>
-                </div>
+                <form method="post" asp-action="SetCompositionMode">
+                    @Html.AntiForgeryToken()
+
+                    <input type="hidden"
+                           name="ContextualCompositionMode"
+                           value="@mode" />
+
+                    <button type="submit"
+                            class="lc-button lc-button-mode @(mode == compositionMode ? "is-current" : null)"
+                            disabled="@(mode == compositionMode)">
+                        @mode
+                    </button>
+                </form>
             }
         </div>
     </section>
 
-    @if (TempData["LegendConnectSuccess"] is string success) { <section class="dashboard-analytics-panel" role="status"><p>@success</p></section> }
-    @if (TempData["LegendConnectError"] is string error) { <section class="dashboard-analytics-panel" role="alert"><p>@error</p></section> }
-
-    <section class="dashboard-analytics-panel legend-connect-manual-training" aria-labelledby="founder-curriculum-title">
-        <div class="dashboard-section-head dashboard-section-head-tight"><div><span class="dashboard-section-kicker">Founder controls</span><h2 class="dashboard-section-title" id="founder-curriculum-title">Submit governed curriculum</h2></div></div>
-        <p class="dashboard-section-copy">Submission is accepted through the established Founder pipeline. Processing stays durable and independent of the inspection panels below.</p>
-        <form method="post" asp-action="SubmitKnowledge" class="dashboard-search-panel" data-verified-target-form>
-            @Html.AntiForgeryToken()
-            <label class="dashboard-form-field"><span><input type="checkbox" name="FixTargetTranslation" value="true" data-verified-target-toggle /> Fix Target Translation</span><small data-verified-target-help>Attach a Founder-approved target only to an exact existing canonical source.</small></label>
-            <div class="dashboard-form-grid">
-                <label class="dashboard-form-field"><span>Source language</span><select name="SourceLanguageCode" required>@foreach (var language in shell.Languages) { <option value="@language.LanguageCode" selected="@(language.LanguageCode == selected?.LanguageCode)">@language.DisplayName</option> }</select></label>
-                <label class="dashboard-form-field"><span>Target language</span><select name="TargetLanguageCode" data-verified-target-language><option value="">Approved source seed</option>@foreach (var language in shell.Languages) { <option value="@language.LanguageCode">@language.DisplayName</option> }</select></label>
-                <label class="dashboard-form-field dashboard-form-field--wide" data-verified-target-normal-fields><span>Source training text</span><textarea name="SourceText" required maxlength="30000" data-verified-target-normal-input></textarea></label>
-                <label class="dashboard-form-field dashboard-form-field--wide" data-verified-target-normal-fields><span>Target text</span><textarea name="TargetText" maxlength="10000" data-verified-target-normal-input></textarea></label>
-                <label class="dashboard-form-field dashboard-form-field--wide" data-verified-target-rows hidden><span>Existing source | Founder-approved target</span><textarea name="TargetTranslationRows" disabled maxlength="30000" data-verified-target-rows-input></textarea></label>
+    <section class="lc-panel">
+        <header class="lc-panel-header">
+            <div>
+                <span class="lc-kicker">GOVERNED INSPECTION</span>
+                <h2>Explore LEGEND® intelligence</h2>
+                <p>
+                    Detailed datasets remain bounded and load only when you
+                    deliberately open the relevant intelligence domain.
+                </p>
             </div>
-            <div class="search-actions"><button type="submit" class="dashboard-command-action btn-carrier-settings" data-verified-target-submit>Save approved knowledge</button></div>
-        </form>
-        <details class="legend-connect-disclosure">
-            <summary class="legend-connect-disclosure-summary"><span><span class="dashboard-section-title">Advanced English curriculum manifest</span></span><span class="legend-connect-disclosure-status">Curriculum</span></summary>
-            <div class="legend-connect-disclosure-body"><form method="post" asp-action="SubmitCurriculum" class="dashboard-search-panel">@Html.AntiForgeryToken()<label class="dashboard-form-field dashboard-form-field--wide"><span>English semantic curriculum manifest</span><textarea name="Manifest" required maxlength="120000" spellcheck="false" placeholder="@@family conversation.example | Semantic category&#10;Controlled example | function=...; intent=...&#10;@@end"></textarea><small>Family boundaries and semantic dimensions remain explicit Founder authority. One invalid family rejects the manifest without a partial mutation.</small></label><div class="search-actions"><button type="submit" class="dashboard-command-action btn-carrier-settings">Validate and save curriculum</button></div></form></div>
-        </details>
-    </section>
+        </header>
 
-    <section class="dashboard-analytics-panel" aria-labelledby="founder-mode-title">
-        <div class="dashboard-section-head dashboard-section-head-tight"><div><span class="dashboard-section-kicker">Founder mode</span><h2 class="dashboard-section-title" id="founder-mode-title">Composition boundary</h2></div><span class="legend-connect-disclosure-status">@Model.RuntimePolicy.ContextualCompositionMode</span></div>
-        <p class="dashboard-section-copy">Changing this server policy leaves curriculum governance, contradiction gates, and native inference authorities unchanged.</p>
-        <div class="search-actions">@foreach (var mode in new[] { "Disabled", "Shadow", "Active" }) { <form method="post" asp-action="SetCompositionMode" class="dashboard-inline-command-form">@Html.AntiForgeryToken()<input type="hidden" name="ContextualCompositionMode" value="@mode" /><button type="submit" class="dashboard-command-action btn-carrier-settings" disabled="@(mode == Model.RuntimePolicy.ContextualCompositionMode)">@mode</button></form> }</div>
-    </section>
+        <div class="lc-disclosure-list">
+            @foreach (var panel in new[]
+            {
+                ("submissions", "Curriculum processing",
+                    "Per-submission completion from durable submission, work-item, evaluator, coverage, and transition records."),
+                ("curriculum", "Curriculum",
+                    "Semantic families and controlled examples."),
+                ("candidates", "Candidates",
+                    "Target-realization hypotheses and their governed lifecycle."),
+                ("evidence", "Evidence",
+                    "Founder-controlled compositional anchors."),
+                ("relationships", "Relationships",
+                    "Structural relationships and contradiction state."),
+                ("learning", "Learning",
+                    "Durable learning work and processing state."),
+                ("models", "Models",
+                    "Governed model-training lifecycle records."),
+                ("health", "Health",
+                    "Operational health for the selected language."),
+                ("retained-knowledge", "Retained Knowledge",
+                    "Searchable eligible canonical knowledge."),
+                ("language-pairs", "Language Pairs",
+                    "Directional language-pair intelligence."),
+                ("provider-observations", "Provider Observations",
+                    "Provider-derived evidence isolated from Founder authority.")
+            })
+            {
+                <details class="lc-disclosure"
+                         data-legend-section="@panel.Item1">
 
-    <section class="dashboard-analytics-panel" aria-labelledby="founder-inspection-title">
-        <div class="dashboard-section-head dashboard-section-head-tight"><div><span class="dashboard-section-kicker">On-demand inspection</span><h2 class="dashboard-section-title" id="founder-inspection-title">Explore governed LEGEND state</h2></div></div>
-        <p class="dashboard-section-copy">Open one section to request its first server-ranked page. Searches run in SQL across the full eligible history; paging does not redefine what LEGEND knows.</p>
-        @foreach (var panel in new[]
-        {
-            ("curriculum", "Curriculum", "Semantic families; expand one family to retrieve only its examples."),
-            ("candidates", "Candidates", "Target-realization hypotheses and their governed lifecycle."),
-            ("evidence", "Evidence", "Founder-controlled compositional anchors."),
-            ("relationships", "Relationships", "Matured structural relationships and contradiction state."),
-            ("learning", "Learning", "Durable learning work and processing state."),
-            ("models", "Models", "Governed model-training lifecycle records."),
-            ("health", "Health", "Operational health events for the selected language."),
-            ("retained-knowledge", "Retained Knowledge", "Searchable, eligible canonical text only."),
-            ("language-pairs", "Language Pairs", "Directional language-pair status."),
-            ("provider-observations", "Provider Observations", "Provider-derived observations kept separate from Founder authority.")
-        })
-        {
-            <details class="legend-connect-disclosure" data-legend-section="@panel.Item1"><summary class="legend-connect-disclosure-summary"><span><span class="dashboard-section-title">@panel.Item2</span></span><span class="legend-connect-disclosure-status">Load on demand</span></summary><div class="legend-connect-disclosure-body" data-legend-section-body><p class="dashboard-section-copy">@panel.Item3</p></div></details>
-        }
+                    <summary>
+                        <span>
+                            <small>LEGEND® INTELLIGENCE</small>
+                            <strong>@panel.Item2</strong>
+                            <em>@panel.Item3</em>
+                        </span>
+
+                        <span class="lc-tag">Load on demand</span>
+                    </summary>
+
+                    <div class="lc-disclosure-body"
+                         data-legend-section-body>
+                        <p class="lc-copy">@panel.Item3</p>
+                    </div>
+                </details>
+            }
+        </div>
     </section>
 </main>
 
 @section Scripts {
-    <script src="~/js/legend-connect.js" asp-append-version="true"></script>
+    <script src="~/js/legend-connect.js"
+            asp-append-version="true"></script>
 }
