@@ -388,6 +388,20 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
             inference.Reasons.FirstOrDefault() ?? "semantic_transition_not_governed");
     }
 
+    /// <summary>
+    /// Observational Stage 4 boundary. It deliberately returns governed result
+    /// meaning before any surface realization and is not invoked by serving.
+    /// </summary>
+    public Task<LegendConnectResponseMeaningPlanResult> TryPlanConversationAsync(
+        string input,
+        LegendConnectDiscourseStateSnapshot? discourseState,
+        CancellationToken cancellationToken = default) =>
+        _curriculum.TryPlanResponseMeaningAsync(
+            "en",
+            input ?? string.Empty,
+            discourseState,
+            cancellationToken);
+
     private static LegendConnectNativeInferenceSnapshot NativeInferenceUnsupported(
         string reasonCode) => new(
         false,

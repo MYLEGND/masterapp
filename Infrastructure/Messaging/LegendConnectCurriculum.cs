@@ -2946,79 +2946,20 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
         IReadOnlyList<LegendConnectConversationContextItem> context,
         CancellationToken cancellationToken = default)
     {
-        var sourceLanguage = await _languages.NormalizeEnabledTranslationLanguageAsync(
-            sourceLanguageCode,
-            cancellationToken);
-        if (sourceLanguage is null)
-            return SemanticTransitionInsufficient("invalid_source_language");
-
-        var understanding = await AnalyzeSemanticTransitionSourceSemanticsAsync(
-            sourceLanguage,
-            input,
-            cancellationToken);
-        if (!string.Equals(
-                understanding.State,
-                LegendShadowSourceUnderstanding.SupportedForShadowEvaluation,
-                StringComparison.Ordinal))
-        {
-            return SemanticTransitionInsufficient(
-                understanding.Reasons.FirstOrDefault() ?? "source_semantics_not_governed");
-        }
-
-        if (!TryToUnambiguousSemanticValues(understanding.Components, out var inputValues))
-            return SemanticTransitionAmbiguous("ambiguous_source_semantic_dimension");
-
-        var observations = await LoadActiveSemanticTransitionObservationsAsync(
-            sourceLanguage,
-            transitionSignatures: null,
-            cancellationToken);
-        if (observations.Count == 0)
-            return SemanticTransitionInsufficient("semantic_transition_evidence_unknown");
-
-        var directCandidates = BuildProductionSemanticTransitionCandidates(
-            observations,
-            inputValues,
-            allowMissingVariables: false);
-        var candidates = directCandidates;
-
-        if (candidates.Count == 0)
-        {
-            if (HasContradictedSemanticTransition(observations, inputValues))
-                return SemanticTransitionContradicted("semantic_transition_contradicted");
-
-            var partialCandidates = BuildProductionSemanticTransitionCandidates(
-                observations,
-                inputValues,
-                allowMissingVariables: true)
-                .Where(item => item.MissingVariables.Count > 0 && item.DirectBindingCount > 0)
-                .ToList();
-            if (partialCandidates.Count == 0)
-                return SemanticTransitionInsufficient("semantic_transition_not_supported");
-
-            var contextFrames = await ResolveGroundedContextFramesAsync(
-                sourceLanguage,
-                context,
-                observations,
-                cancellationToken);
-            candidates = BindCandidatesFromGroundedContext(partialCandidates, contextFrames);
-            if (candidates.Count == 0)
-                return SemanticTransitionInsufficient("semantic_context_not_governed");
-        }
-
-        var resultSignatures = candidates
-            .Select(item => item.ResultFrame.Signature)
-            .Distinct(StringComparer.Ordinal)
-            .ToArray();
-        if (resultSignatures.Length != 1)
-            return SemanticTransitionAmbiguous("ambiguous_semantic_transition");
-
-        var selected = candidates
-            .OrderBy(item => item.TransitionSignature, StringComparer.Ordinal)
-            .First();
+        var selection = await SelectSemanticTransitionAsync(
+            sourceLanguageCode, input, context, discourseState: null, requireComposedGraph: false,
+            composedGraph: null, cancellationToken: cancellationToken);
+        if (selection.Selected is null)
+            return selection.IsAmbiguous
+                ? SemanticTransitionAmbiguous(selection.ReasonCode)
+                : selection.IsContradicted
+                    ? SemanticTransitionContradicted(selection.ReasonCode)
+                    : SemanticTransitionInsufficient(selection.ReasonCode);
+        var selected = selection.Selected;
         var realization = await TryRealizeSemanticTransitionResultAsync(
             selected,
-            sourceLanguage,
-            understanding.Components,
+            selection.SourceLanguageCode,
+            selection.SourceComponents,
             cancellationToken);
         if (realization.Reason is not null)
         {
@@ -3032,6 +2973,141 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
             realization.Text,
             selected.IndependentEvidenceCount + realization.LayoutEvidenceCount,
             ["independently_supported_semantic_transition", "canonical_anchor_realization"]);
+    }
+
+    internal async Task<LegendConnectResponseMeaningPlanResult> TryPlanResponseMeaningAsync(
+        string sourceLanguageCode,
+        string input,
+        LegendConnectDiscourseStateSnapshot? discourseState,
+        CancellationToken cancellationToken = default)
+    {
+        var graph = await AnalyzeReusableMeaningGraphAsync(sourceLanguageCode, input, cancellationToken);
+        var selection = await SelectSemanticTransitionAsync(
+            sourceLanguageCode, input, [], discourseState, requireComposedGraph: true,
+            composedGraph: graph, cancellationToken: cancellationToken);
+        var selected = selection.Selected;
+        if (selected is null ||
+            !TryInstantiateFrame(selected.ResultFrame, selected.Bindings, out var dimensions))
+        {
+            return new(false, selection.ReasonCode, null);
+        }
+        var activeBindings = ActiveDiscourseBindings(discourseState);
+        var resolvedBindings = discourseState?.Turns.LastOrDefault()?.Bindings
+            .Where(item => item.ResolutionState == "bound")
+            .OrderBy(item => item.EntitySemanticDimension, StringComparer.Ordinal)
+            .ThenBy(item => item.EntitySemanticSignature, StringComparer.Ordinal)
+            .ToArray() ?? [];
+        var identity = LegendLanguageIdentity.TextHash(string.Join("|",
+            MeaningGraphIdentity(graph),
+            selected.TransitionSignature,
+            selected.ResultFrame.Signature,
+            CanonicalBindings(selected.Bindings),
+            string.Join(";", activeBindings.OrderBy(item => item.Key).Select(item => item.Key + "=" + item.Value))));
+        return new(true, "response_meaning_plan_governed", new(
+            identity,
+            MeaningGraphIdentity(graph),
+            selected.TransitionSignature,
+            selected.ResultFrame.Signature,
+            dimensions,
+            resolvedBindings,
+            selected.IndependentEvidenceCount,
+            discourseState is { Turns.Count: > 0 }));
+    }
+
+    private async Task<SemanticTransitionSelection> SelectSemanticTransitionAsync(
+        string sourceLanguageCode, string input, IReadOnlyList<LegendConnectConversationContextItem> context,
+        LegendConnectDiscourseStateSnapshot? discourseState, bool requireComposedGraph,
+        LegendConnectUtteranceMeaningGraphSnapshot? composedGraph, CancellationToken cancellationToken)
+    {
+        var language = await _languages.NormalizeEnabledTranslationLanguageAsync(sourceLanguageCode, cancellationToken);
+        if (language is null) return SemanticTransitionSelection.Insufficient("invalid_source_language");
+        IReadOnlyDictionary<string, string> values;
+        IReadOnlyList<LegendShadowSourceSemanticComponent> sourceComponents;
+        if (requireComposedGraph)
+        {
+            var graph = composedGraph ?? await AnalyzeReusableMeaningGraphAsync(language, input, cancellationToken);
+            if (!graph.IsComposed) return SemanticTransitionSelection.Insufficient(graph.ReasonCode);
+            if (discourseState?.Turns.LastOrDefault()?.Bindings.Any(item => item.ResolutionState == "unresolved") == true)
+                return SemanticTransitionSelection.Insufficient("discourse_reference_unresolved");
+            if (!TryToUnambiguousSemanticValues(graph.Nodes, out values))
+                return SemanticTransitionSelection.Ambiguous("ambiguous_composed_meaning");
+            // Stage 4 intentionally selects from the composed governed graph,
+            // not from a second lexical interpretation. Surface analysis has
+            // already been admitted by AnalyzeReusableMeaningGraphAsync.
+            sourceComponents = [];
+        }
+        else
+        {
+            var understanding = await AnalyzeSemanticTransitionSourceSemanticsAsync(language, input, cancellationToken);
+            if (understanding.State != LegendShadowSourceUnderstanding.SupportedForShadowEvaluation)
+                return SemanticTransitionSelection.Insufficient(understanding.Reasons.FirstOrDefault() ?? "source_semantics_not_governed");
+            if (!TryToUnambiguousSemanticValues(understanding.Components, out values))
+                return SemanticTransitionSelection.Ambiguous("ambiguous_source_semantic_dimension", language, understanding.Components);
+            sourceComponents = understanding.Components;
+        }
+        var observations = await LoadActiveSemanticTransitionObservationsAsync(language, null, cancellationToken);
+        if (observations.Count == 0)
+            return SemanticTransitionSelection.Insufficient("semantic_transition_evidence_unknown", language, sourceComponents);
+        var candidates = BuildProductionSemanticTransitionCandidates(observations, values, allowMissingVariables: false);
+        if (candidates.Count == 0)
+        {
+            if (HasContradictedSemanticTransition(observations, values)) return SemanticTransitionSelection.Contradicted("semantic_transition_contradicted");
+            var partialCandidates = BuildProductionSemanticTransitionCandidates(
+                    observations, values, allowMissingVariables: true)
+                .Where(item => item.MissingVariables.Count > 0 && item.DirectBindingCount > 0)
+                .ToList();
+            if (partialCandidates.Count == 0)
+                return SemanticTransitionSelection.Insufficient("semantic_transition_not_supported", language, sourceComponents);
+
+            IReadOnlyList<GroundedContextFrame> contextFrames;
+            if (discourseState is not null)
+            {
+                contextFrames = ResolveGroundedContextFramesFromDiscourseState(
+                    discourseState, observations);
+            }
+            else
+            {
+                contextFrames = await ResolveGroundedContextFramesAsync(
+                    language, context, observations, cancellationToken);
+            }
+            candidates = BindCandidatesFromGroundedContext(partialCandidates, contextFrames);
+            if (candidates.Count == 0)
+                return SemanticTransitionSelection.Insufficient("semantic_context_not_governed", language, sourceComponents);
+        }
+        if (candidates.Select(item => item.ResultFrame.Signature).Distinct().Count() != 1)
+            return SemanticTransitionSelection.Ambiguous("ambiguous_semantic_transition");
+        return new(language, sourceComponents, candidates.OrderBy(item => item.TransitionSignature).First(), "response_meaning_plan_governed", false, false);
+    }
+
+    private static IReadOnlyDictionary<string, string> ActiveDiscourseBindings(LegendConnectDiscourseStateSnapshot? state) =>
+        state?.Turns.SelectMany(item => item.Bindings).Where(item => item.ResolutionState == "bound" && item.EntitySemanticValue is not null)
+            .GroupBy(item => item.EntitySemanticDimension).ToDictionary(item => item.Key, item => item.Last().EntitySemanticValue!, StringComparer.Ordinal)
+        ?? new Dictionary<string, string>(StringComparer.Ordinal);
+
+    private static string MeaningGraphIdentity(LegendConnectUtteranceMeaningGraphSnapshot graph) =>
+        LegendLanguageIdentity.TextHash(string.Join("|",
+            graph.Nodes.OrderBy(item => item.SemanticSignature, StringComparer.Ordinal)
+                .ThenBy(item => item.SemanticDimension, StringComparer.Ordinal)
+                .ThenBy(item => item.SemanticValue, StringComparer.Ordinal)
+                .Select(item => item.SemanticSignature + ":" + item.SemanticDimension + "=" + item.SemanticValue),
+            string.Join(";", graph.Relations.OrderBy(item => item.RelationSignature, StringComparer.Ordinal)
+                .ThenBy(item => item.RelationKind, StringComparer.Ordinal)
+                .Select(item => item.RelationSignature + ":" + item.RelationKind))));
+
+    private static IReadOnlyList<GroundedContextFrame> ResolveGroundedContextFramesFromDiscourseState(
+        LegendConnectDiscourseStateSnapshot state,
+        IReadOnlyList<SemanticTransitionObservation> observations)
+    {
+        var frames = new List<GroundedContextFrame>();
+        // The final persisted turn is the current input. It may supply a
+        // reference selector but can never become its own antecedent.
+        foreach (var turn in state.Turns.Take(Math.Max(0, state.Turns.Count - 1)))
+        {
+            if (!turn.IsComposed || !TryToUnambiguousSemanticValues(turn.Nodes, out var values))
+                continue;
+            AddGroundedContextFrames(frames, observations, values);
+        }
+        return frames;
     }
 
     private async Task<IReadOnlyList<SemanticTransitionObservation>>
@@ -3228,20 +3304,27 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
                 continue;
             }
 
-            var candidates = BuildProductionSemanticTransitionCandidates(
-                observations,
-                values,
-                allowMissingVariables: false);
-            if (candidates.Select(item => item.ResultFrame.Signature).Distinct(StringComparer.Ordinal).Count() != 1)
-                continue;
-            foreach (var candidate in candidates)
-            {
-                if (!TryInstantiateFrame(candidate.ResultFrame, candidate.Bindings, out var frameValues))
-                    continue;
-                frames.Add(new GroundedContextFrame(candidate.ResultFrame.Signature, frameValues));
-            }
+            AddGroundedContextFrames(frames, observations, values);
         }
         return frames;
+    }
+
+    private static void AddGroundedContextFrames(
+        ICollection<GroundedContextFrame> frames,
+        IReadOnlyList<SemanticTransitionObservation> observations,
+        IReadOnlyDictionary<string, string> values)
+    {
+        var candidates = BuildProductionSemanticTransitionCandidates(
+            observations,
+            values,
+            allowMissingVariables: false);
+        if (candidates.Select(item => item.ResultFrame.Signature).Distinct(StringComparer.Ordinal).Count() != 1)
+            return;
+        foreach (var candidate in candidates)
+        {
+            if (TryInstantiateFrame(candidate.ResultFrame, candidate.Bindings, out var frameValues))
+                frames.Add(new GroundedContextFrame(candidate.ResultFrame.Signature, frameValues));
+        }
     }
 
     private static IReadOnlyList<SemanticTransitionCandidate> BindCandidatesFromGroundedContext(
@@ -3543,9 +3626,23 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
     private static bool TryToUnambiguousSemanticValues(
         IReadOnlyList<LegendShadowSourceSemanticComponent> components,
         out IReadOnlyDictionary<string, string> values)
+        => TryToUnambiguousSemanticValues(
+            components.Select(item => new KeyValuePair<string, string>(item.Dimension, item.Value)),
+            out values);
+
+    private static bool TryToUnambiguousSemanticValues(
+        IReadOnlyList<LegendConnectUtteranceMeaningNode> nodes,
+        out IReadOnlyDictionary<string, string> values)
+        => TryToUnambiguousSemanticValues(
+            nodes.Select(item => new KeyValuePair<string, string>(item.SemanticDimension, item.SemanticValue)),
+            out values);
+
+    private static bool TryToUnambiguousSemanticValues(
+        IEnumerable<KeyValuePair<string, string>> components,
+        out IReadOnlyDictionary<string, string> values)
     {
         var resolved = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var group in components.GroupBy(item => item.Dimension, StringComparer.OrdinalIgnoreCase))
+        foreach (var group in components.GroupBy(item => item.Key, StringComparer.OrdinalIgnoreCase))
         {
             var alternatives = group.Select(item => item.Value)
                 .Distinct(StringComparer.OrdinalIgnoreCase)
@@ -8431,6 +8528,38 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
         IReadOnlyList<SemanticMissingVariable> MissingVariables,
         int DirectBindingCount,
         int IndependentEvidenceCount);
+
+    /// <summary>
+    /// The sole selection result shared by legacy native serving and the
+    /// non-serving response-plan observation.  It contains only governed
+    /// semantic state; realization remains outside this selection boundary.
+    /// </summary>
+    private sealed record SemanticTransitionSelection(
+        string SourceLanguageCode,
+        IReadOnlyList<LegendShadowSourceSemanticComponent> SourceComponents,
+        SemanticTransitionCandidate? Selected,
+        string ReasonCode,
+        bool IsAmbiguous,
+        bool IsContradicted)
+    {
+        public static SemanticTransitionSelection Insufficient(
+            string reasonCode,
+            string sourceLanguageCode = "",
+            IReadOnlyList<LegendShadowSourceSemanticComponent>? sourceComponents = null) =>
+            new(sourceLanguageCode, sourceComponents ?? [], null, reasonCode, false, false);
+
+        public static SemanticTransitionSelection Ambiguous(
+            string reasonCode,
+            string sourceLanguageCode = "",
+            IReadOnlyList<LegendShadowSourceSemanticComponent>? sourceComponents = null) =>
+            new(sourceLanguageCode, sourceComponents ?? [], null, reasonCode, true, false);
+
+        public static SemanticTransitionSelection Contradicted(
+            string reasonCode,
+            string sourceLanguageCode = "",
+            IReadOnlyList<LegendShadowSourceSemanticComponent>? sourceComponents = null) =>
+            new(sourceLanguageCode, sourceComponents ?? [], null, reasonCode, false, true);
+    }
 
     private sealed record GroundedContextFrame(
         string ResultFrameSignature,

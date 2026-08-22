@@ -199,6 +199,48 @@ public sealed class LegendFounderAiDiscourseStateService
         return active.Values.ToArray();
     }
 
+    /// <summary>
+    /// Returns the conversation's persisted, structural state for an
+    /// observational semantic planner.  The state contains governed graph and
+    /// binding identities only; it never reads transcript or response text.
+    /// </summary>
+    internal async Task<LegendConnectDiscourseStateSnapshot?> GetStateAsync(
+        ClaimsPrincipal founder,
+        string? conversationId,
+        CancellationToken cancellationToken = default)
+    {
+        if (!Guid.TryParse(conversationId, out var parsedConversationId))
+            return null;
+        var profile = await _profiles.ResolveCurrentAsync(founder, requireActive: true, cancellationToken);
+        var actor = profile?.AgentUserId?.Trim().ToLowerInvariant();
+        if (string.IsNullOrWhiteSpace(actor))
+            return null;
+
+        var turns = await GetTurnsAsync(actor, parsedConversationId, cancellationToken);
+        return new LegendConnectDiscourseStateSnapshot(
+            turns.Select(turn =>
+            {
+                var graph = DeserializeMeaning(turn.MeaningGraphJson);
+                return new LegendConnectDiscourseTurnStateSnapshot(
+                    turn.SequenceNumber,
+                    turn.Role,
+                    graph.IsComposed,
+                    graph.Nodes,
+                    graph.Relations,
+                    DeserializeBindings(turn.ResolvedBindingsJson)
+                        .Select(binding => new LegendConnectDiscourseReferenceBindingSnapshot(
+                            binding.ResolutionState,
+                            binding.ReasonCode,
+                            binding.EntitySemanticDimension,
+                            binding.EntitySemanticSignature,
+                            binding.EntitySemanticValue,
+                            binding.EntityTurnSequence,
+                            binding.EntityNodeIndex,
+                            binding.ReplacesActiveBinding))
+                        .ToArray());
+            }).ToArray());
+    }
+
     private async Task<IReadOnlyList<LegendFounderAiDiscourseReferenceBinding>> ResolveReferenceBindingsAsync(
         string role,
         LegendConnectUtteranceMeaningGraphSnapshot meaning,

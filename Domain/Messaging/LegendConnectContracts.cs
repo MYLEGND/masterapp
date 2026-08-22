@@ -816,6 +816,53 @@ public sealed record LegendConnectDiscourseReferenceRuleSnapshot(
     int IndependentSupportCount);
 
 /// <summary>
+/// A bounded, conversation-scoped projection of persisted governed meaning.
+/// It deliberately carries neither participant surface text nor a response
+/// cache; it is only admissible as semantic context for the one native
+/// transition authority.
+/// </summary>
+public sealed record LegendConnectDiscourseTurnStateSnapshot(
+    int SequenceNumber,
+    string Role,
+    bool IsComposed,
+    IReadOnlyList<LegendConnectUtteranceMeaningNode> Nodes,
+    IReadOnlyList<LegendConnectUtteranceMeaningRelation> Relations,
+    IReadOnlyList<LegendConnectDiscourseReferenceBindingSnapshot> Bindings);
+
+public sealed record LegendConnectDiscourseReferenceBindingSnapshot(
+    string ResolutionState,
+    string ReasonCode,
+    string EntitySemanticDimension,
+    string? EntitySemanticSignature,
+    string? EntitySemanticValue,
+    int? EntityTurnSequence,
+    int? EntityNodeIndex,
+    bool ReplacesActiveBinding);
+
+public sealed record LegendConnectDiscourseStateSnapshot(
+    IReadOnlyList<LegendConnectDiscourseTurnStateSnapshot> Turns);
+
+/// <summary>
+/// A text-free result meaning selected before surface realization.  It is the
+/// bridge between governed transition reasoning and realization, never a
+/// stored answer or response template.
+/// </summary>
+public sealed record LegendConnectResponseMeaningPlanSnapshot(
+    string PlanIdentity,
+    string SourceMeaningGraphIdentity,
+    string TransitionSignature,
+    string ResultSemanticFrameSignature,
+    IReadOnlyDictionary<string, string> ResultDimensions,
+    IReadOnlyList<LegendConnectDiscourseReferenceBindingSnapshot> ResolvedDiscourseBindings,
+    int IndependentEvidenceCount,
+    bool UsesDiscourseState);
+
+public sealed record LegendConnectResponseMeaningPlanResult(
+    bool Supported,
+    string ReasonCode,
+    LegendConnectResponseMeaningPlanSnapshot? Plan);
+
+/// <summary>
 /// The governed result of one native LEGEND conversational inference attempt.
 /// A successful result is backed only by canonical, contradiction-free
 /// evidence; all other states explicitly require escalation.
@@ -905,6 +952,11 @@ public interface ILegendConnectOperations
     Task<LegendConnectNativeInferenceSnapshot> TryInferConversationAsync(
         string input,
         IReadOnlyList<LegendConnectConversationContextItem> context,
+        CancellationToken cancellationToken = default);
+
+    Task<LegendConnectResponseMeaningPlanResult> TryPlanConversationAsync(
+        string input,
+        LegendConnectDiscourseStateSnapshot? discourseState,
         CancellationToken cancellationToken = default);
 
     Task<LegendConnectUtteranceMeaningGraphSnapshot> AnalyzeReusableMeaningGraphAsync(

@@ -23,6 +23,123 @@ namespace AgentPortal.Tests;
 public sealed class LegendConnectSemanticSpanGroundingTests
 {
     [Fact]
+    public async Task ResponseMeaningPlan_IsTextFreeAndUsesTheExistingGovernedTransitionAuthority()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var fixture = CreateFixture(db);
+
+        // Three independent Founder-controlled families mature the same
+        // semantic transition. The test observes plan structure only; no
+        // result text is supplied to or asserted from the planner.
+        for (var family = 1; family <= 3; family++)
+        {
+            var submitted = await fixture.Curriculum.SubmitFounderEnglishBatchAsync(
+                ResponsePlanFamily(family));
+            Assert.True(submitted.Succeeded, submitted.Message);
+        }
+
+        var surfaces = new[] { "Hi there.", "Good morning.", "Greetings friend." };
+        var plans = new List<LegendConnectResponseMeaningPlanSnapshot>();
+        foreach (var surface in surfaces)
+        {
+            var graph = await fixture.Operations.AnalyzeReusableMeaningGraphAsync(surface);
+            Assert.True(graph.IsComposed, graph.ReasonCode);
+            var planned = await fixture.Operations.TryPlanConversationAsync(
+                surface,
+                new LegendConnectDiscourseStateSnapshot([]));
+            Assert.True(planned.Supported, planned.ReasonCode);
+            plans.Add(Assert.IsType<LegendConnectResponseMeaningPlanSnapshot>(planned.Plan));
+        }
+
+        // Three surface-different inputs express the same taught meaning and
+        // must converge on the same text-free semantic plan.
+        Assert.Single(plans.Select(item => item.PlanIdentity).Distinct());
+        var plan = plans[0];
+        Assert.False(string.IsNullOrWhiteSpace(plan.PlanIdentity));
+        Assert.False(string.IsNullOrWhiteSpace(plan.SourceMeaningGraphIdentity));
+        Assert.False(string.IsNullOrWhiteSpace(plan.TransitionSignature));
+        Assert.False(string.IsNullOrWhiteSpace(plan.ResultSemanticFrameSignature));
+        Assert.Equal("acknowledgement", plan.ResultDimensions["conversation_function"]);
+        Assert.Equal(3, plan.IndependentEvidenceCount);
+        Assert.Empty(plan.ResolvedDiscourseBindings);
+
+        // A Stage 4 plan carries no surface, canonical-result identity, or
+        // realization template. Its JSON must be safe to retain for proof.
+        var serialized = System.Text.Json.JsonSerializer.Serialize(plan);
+        Assert.DoesNotContain("Acknowledged", serialized, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Hi there", serialized, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("template", serialized, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task ResponseMeaningPlan_ChangesOnlyWhenTheGovernedComposedMeaningChanges()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var fixture = CreateFixture(db);
+        for (var family = 1; family <= 3; family++)
+        {
+            var submitted = await fixture.Curriculum.SubmitFounderEnglishBatchAsync(
+                ResponsePlanPolarityFamily(family));
+            Assert.True(submitted.Succeeded, submitted.Message);
+        }
+
+        var positive = await fixture.Operations.TryPlanConversationAsync(
+            "I agree.", new LegendConnectDiscourseStateSnapshot([]));
+        var negative = await fixture.Operations.TryPlanConversationAsync(
+            "I disagree.", new LegendConnectDiscourseStateSnapshot([]));
+
+        Assert.True(positive.Supported, positive.ReasonCode);
+        Assert.True(negative.Supported, negative.ReasonCode);
+        var positivePlan = Assert.IsType<LegendConnectResponseMeaningPlanSnapshot>(positive.Plan);
+        var negativePlan = Assert.IsType<LegendConnectResponseMeaningPlanSnapshot>(negative.Plan);
+        Assert.NotEqual(positivePlan.PlanIdentity, negativePlan.PlanIdentity);
+        Assert.NotEqual(positivePlan.ResultSemanticFrameSignature, negativePlan.ResultSemanticFrameSignature);
+        Assert.Equal("positive", positivePlan.ResultDimensions["polarity"]);
+        Assert.Equal("negative", negativePlan.ResultDimensions["polarity"]);
+    }
+
+    [Fact]
+    public async Task ResponseMeaningPlan_FailsClosedForMissingOrContradictedTransitionEvidence()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var fixture = CreateFixture(db);
+
+        for (var family = 1; family <= 3; family++)
+        {
+            var unsupported = await fixture.Curriculum.SubmitFounderEnglishBatchAsync(
+                ResponsePlanNoTransitionFamily(family));
+            Assert.True(unsupported.Succeeded, unsupported.Message);
+        }
+        var noTransition = await fixture.Operations.TryPlanConversationAsync(
+            "Observe carefully.", new LegendConnectDiscourseStateSnapshot([]));
+        Assert.False(noTransition.Supported);
+        Assert.Equal("semantic_transition_evidence_unknown", noTransition.ReasonCode);
+        Assert.Null(noTransition.Plan);
+
+        for (var family = 1; family <= 3; family++)
+        {
+            var supported = await fixture.Curriculum.SubmitFounderEnglishBatchAsync(
+                ResponsePlanFamily(family));
+            Assert.True(supported.Succeeded, supported.Message);
+        }
+        var evidence = await db.LegendSemanticTransitionEvidence
+            .Where(item => item.SupersededUtc == null)
+            .OrderBy(item => item.Id)
+            .FirstAsync();
+        // This models a retained governed contradiction. It does not create
+        // a plan or response directly; the production eligibility gate must
+        // remove the existing transition from planning.
+        evidence.ContributionState = "Contradictory";
+        await db.SaveChangesAsync();
+
+        var contradicted = await fixture.Operations.TryPlanConversationAsync(
+            "Hi there.", new LegendConnectDiscourseStateSnapshot([]));
+        Assert.False(contradicted.Supported);
+        Assert.Equal("semantic_transition_contradicted", contradicted.ReasonCode);
+        Assert.Null(contradicted.Plan);
+    }
+
+    [Fact]
     public async Task ExplicitFounderGrounding_ProjectsNonLiteralGreetingMeaningOntoExactSurfaceSpan()
     {
         await using var db = ControllerTestHelpers.BuildDb();
@@ -757,6 +874,135 @@ public sealed class LegendConnectSemanticSpanGroundingTests
                         "acknowledgement"
                 }));
 
+    private static LegendConnectCurriculumBatchSubmission ResponsePlanFamily(int family) =>
+        new(
+            $"response.plan.greeting.{family}",
+            "Founder-controlled response meaning plan evidence",
+            [
+                PlanSource(family, "Hi there."),
+                PlanSource(family, "Good morning."),
+                PlanSource(family, "Greetings friend."),
+                new LegendConnectCurriculumExampleSubmission(
+                    $"Founder acknowledgement evidence {family}.",
+                    new Dictionary<string, string>
+                    {
+                        ["surface_phrase"] = $"Acknowledged {family}.",
+                        ["conversation_function"] = "acknowledgement",
+                        ["discourse_role"] = "response"
+                    })
+            ],
+            [new LegendConnectSemanticTransitionSubmission(
+                new LegendConnectSemanticFrameSubmission(new Dictionary<string, string>
+                {
+                    ["conversation_function"] = "greeting"
+                }),
+                new LegendConnectSemanticFrameSubmission(new Dictionary<string, string>
+                {
+                    ["conversation_function"] = "acknowledgement"
+                }))],
+            family == 1
+                ? [new LegendConnectSemanticSpanGroundingSubmission(
+                    "conversation_function", "greeting_surface")]
+                : []);
+
+    private static LegendConnectCurriculumExampleSubmission PlanSource(int family, string surface) =>
+        new(
+            $"Founder greeting evidence {family}: {surface}",
+            new Dictionary<string, string>
+            {
+                ["greeting_surface"] = surface,
+                ["conversation_function"] = "greeting",
+                ["discourse_role"] = "opening"
+            },
+            new LegendConnectMeaningGraphSubmission(
+                [
+                    new LegendConnectMeaningNodeSubmission("function", "conversation_function", "greeting", surface.TrimEnd('.')),
+                    new LegendConnectMeaningNodeSubmission("role", "discourse_role", "opening", surface.TrimEnd('.'))
+                ],
+                [new LegendConnectMeaningRelationSubmission("function", "realized-as", "role")]));
+
+    private static LegendConnectCurriculumBatchSubmission ResponsePlanPolarityFamily(int family) =>
+        new(
+            $"response.plan.polarity.{family}",
+            "Founder-controlled polarity response-plan evidence",
+            [
+                PlanPolaritySource(family, "I agree.", "positive"),
+                PlanPolaritySource(family, "I disagree.", "negative"),
+                new LegendConnectCurriculumExampleSubmission(
+                    $"Positive acknowledgement {family}.",
+                    new Dictionary<string, string>
+                    {
+                        ["conversation_function"] = "acknowledgement",
+                        ["polarity"] = "positive"
+                    }),
+                new LegendConnectCurriculumExampleSubmission(
+                    $"Negative acknowledgement {family}.",
+                    new Dictionary<string, string>
+                    {
+                        ["conversation_function"] = "clarification",
+                        ["polarity"] = "negative"
+                    })
+            ],
+            [
+                new LegendConnectSemanticTransitionSubmission(
+                    new LegendConnectSemanticFrameSubmission(new Dictionary<string, string>
+                    {
+                        ["conversation_function"] = "statement",
+                        ["polarity"] = "positive"
+                    }),
+                    new LegendConnectSemanticFrameSubmission(new Dictionary<string, string>
+                    {
+                        ["conversation_function"] = "acknowledgement",
+                        ["polarity"] = "positive"
+                    })),
+                new LegendConnectSemanticTransitionSubmission(
+                    new LegendConnectSemanticFrameSubmission(new Dictionary<string, string>
+                    {
+                        ["conversation_function"] = "statement",
+                        ["polarity"] = "negative"
+                    }),
+                    new LegendConnectSemanticFrameSubmission(new Dictionary<string, string>
+                    {
+                        ["conversation_function"] = "clarification",
+                        ["polarity"] = "negative"
+                    }))
+            ]);
+
+    private static LegendConnectCurriculumExampleSubmission PlanPolaritySource(
+        int family,
+        string surface,
+        string polarity) =>
+        new(
+            $"Founder polarity evidence {family}: {surface}",
+            new Dictionary<string, string>
+            {
+                ["conversation_function"] = "statement",
+                ["polarity"] = polarity
+            },
+            new LegendConnectMeaningGraphSubmission(
+                [
+                    new LegendConnectMeaningNodeSubmission("function", "conversation_function", "statement", surface.TrimEnd('.')),
+                    new LegendConnectMeaningNodeSubmission("polarity", "polarity", polarity, surface.TrimEnd('.'))
+                ],
+                [new LegendConnectMeaningRelationSubmission("function", "qualified-by", "polarity")]));
+
+    private static LegendConnectCurriculumBatchSubmission ResponsePlanNoTransitionFamily(int family) =>
+        new(
+            $"response.plan.unsupported.{family}",
+            "Founder-controlled composed meaning without transition evidence",
+            [NoTransitionSource(family, "primary"), NoTransitionSource(family, "secondary")]);
+
+    private static LegendConnectCurriculumExampleSubmission NoTransitionSource(int family, string variant) =>
+        new(
+                $"Founder unsupported-plan evidence {family} {variant}: Observe carefully.",
+                new Dictionary<string, string> { ["conversation_function"] = "observation" },
+                new LegendConnectMeaningGraphSubmission(
+                    [
+                        new LegendConnectMeaningNodeSubmission("function", "conversation_function", "observation", "Observe"),
+                        new LegendConnectMeaningNodeSubmission("register", "register", "careful", "carefully")
+                    ],
+                    [new LegendConnectMeaningRelationSubmission("function", "qualified-by", "register")]));
+
     private static GroundingFixture
         CreateFixture(
             MasterAppDbContext db)
@@ -809,10 +1055,19 @@ public sealed class LegendConnectSemanticSpanGroundingTests
                 registry,
                 corpus);
 
+        var operations = new LegendConnectOperations(
+            db,
+            registry,
+            corpus,
+            configuration,
+            curriculum: curriculum);
+
         return new GroundingFixture(
-            curriculum);
+            curriculum,
+            operations);
     }
 
     private sealed record GroundingFixture(
-        LegendConnectCurriculumService Curriculum);
+        LegendConnectCurriculumService Curriculum,
+        LegendConnectOperations Operations);
 }

@@ -188,6 +188,158 @@ public sealed class LegendConnectDiscourseReferenceBindingTests
         }
     }
 
+    [Fact]
+    public async Task ResponseMeaningPlan_ConsumesDurableGovernedDiscourseBindingsWithoutSurfaceRouting()
+    {
+        var connectionString = Environment.GetEnvironmentVariable("LEGEND_STAGE3_REFERENCE_SQL_CONNECTION");
+        if (string.IsNullOrWhiteSpace(connectionString))
+            return;
+
+        var options = new DbContextOptionsBuilder<MasterAppDbContext>()
+            .UseSqlServer(connectionString)
+            .Options;
+        await using (var migration = new MasterAppDbContext(options))
+            await migration.Database.MigrateAsync();
+
+        var actor = Guid.NewGuid().ToString("D");
+        await using (var setup = new MasterAppDbContext(options))
+        {
+            setup.AgentProfiles.Add(Profile(actor, "stage4"));
+            await setup.SaveChangesAsync();
+            var curriculum = CreateCurriculum(setup);
+            var operations = CreateOperations(setup);
+            var accepted = await operations.SubmitFounderCurriculumManifestAsync(
+                actor,
+                new LegendConnectCurriculumManifestSubmission(
+                    Enumerable.Range(1, 3).Select(ResponsePlanReferenceFamily).ToArray()));
+            Assert.True(accepted.Succeeded, accepted.Message);
+            var processor = new LegendConnectCurriculumManifestProcessor(
+                setup, curriculum, NullLogger<LegendConnectCurriculumManifestProcessor>.Instance);
+            Assert.Equal(1, await processor.ProcessPendingAsync(1));
+            Assert.Equal(1, await processor.ProcessPendingAsync(1));
+            Assert.Equal(1, await processor.ProcessPendingAsync(1));
+            Assert.Equal("Completed", await setup.LegendCurriculumManifestWorkItems
+                .Select(item => item.ProcessingState).SingleAsync());
+            var canonicalBeforeRetry = new
+            {
+                Families = await setup.LegendCurriculumFamilies.CountAsync(),
+                Examples = await setup.LegendCurriculumExamples.CountAsync(item => item.SupersededUtc == null),
+                Anchors = await setup.LegendLanguageCompositionalAnchors.CountAsync(item => item.SupersededUtc == null),
+                Transitions = await setup.LegendSemanticTransitionEvidence.CountAsync(item => item.SupersededUtc == null)
+            };
+            Assert.Equal(0, await processor.ProcessPendingAsync(1));
+            Assert.Equal(canonicalBeforeRetry.Families, await setup.LegendCurriculumFamilies.CountAsync());
+            Assert.Equal(canonicalBeforeRetry.Examples, await setup.LegendCurriculumExamples.CountAsync(item => item.SupersededUtc == null));
+            Assert.Equal(canonicalBeforeRetry.Anchors, await setup.LegendLanguageCompositionalAnchors.CountAsync(item => item.SupersededUtc == null));
+            Assert.Equal(canonicalBeforeRetry.Transitions, await setup.LegendSemanticTransitionEvidence.CountAsync(item => item.SupersededUtc == null));
+            Assert.Equal(0, await setup.LegendLanguageCompositionalAnchors
+                .Where(item => item.SupersededUtc == null)
+                .GroupBy(item => new { item.CurriculumExampleId, item.AnchorSignature })
+                .CountAsync(group => group.Count() > 1));
+            Assert.Equal(0, await setup.LegendSemanticTransitionEvidence
+                .Where(item => item.SupersededUtc == null)
+                .GroupBy(item => new
+                {
+                    item.TransitionSignature,
+                    item.SourceCurriculumExampleId,
+                    item.ResultCurriculumExampleId,
+                    item.IndependentSourceIdentity
+                })
+                .CountAsync(group => group.Count() > 1));
+            Assert.DoesNotContain(await setup.LegendCurriculumManifestWorkItems.ToListAsync(),
+                item => item.ProcessingState == "Failed");
+        }
+
+        async Task ObserveAsync(Guid conversationId, string role, string surface)
+        {
+            await using var db = new MasterAppDbContext(options);
+            var operations = CreateOperations(db);
+            var graph = await operations.AnalyzeReusableMeaningGraphAsync(surface);
+            Assert.True(graph.IsComposed, graph.ReasonCode);
+            await new LegendFounderAiDiscourseStateService(
+                    db, new AgentProfileAccessResolver(db), operations)
+                .RecordObservationAsync(ControllerTestHelpers.BuildUser(actor), conversationId.ToString(), role, graph);
+        }
+
+        async Task<LegendConnectDiscourseStateSnapshot> StateAsync(Guid conversationId)
+        {
+            await using var db = new MasterAppDbContext(options);
+            return Assert.IsType<LegendConnectDiscourseStateSnapshot>(
+                await new LegendFounderAiDiscourseStateService(
+                        db, new AgentProfileAccessResolver(db), CreateOperations(db))
+                    .GetStateAsync(ControllerTestHelpers.BuildUser(actor), conversationId.ToString()));
+        }
+
+        async Task<LegendConnectResponseMeaningPlanResult> PlanAsync(
+            string surface, LegendConnectDiscourseStateSnapshot state)
+        {
+            await using var db = new MasterAppDbContext(options);
+            return await CreateOperations(db).TryPlanConversationAsync(surface, state);
+        }
+
+        // The current wording is byte-for-byte identical. Only durable,
+        // actor/conversation-scoped semantic bindings differ.
+        const string request = "Tell me more about that.";
+        var aConversation = Guid.NewGuid();
+        var bConversation = Guid.NewGuid();
+        await ObserveAsync(aConversation, "user", "a");
+        await ObserveAsync(bConversation, "user", "b");
+        await ObserveAsync(aConversation, "user", request);
+        await ObserveAsync(bConversation, "user", request);
+        var planA = Assert.IsType<LegendConnectResponseMeaningPlanSnapshot>(
+            (await PlanAsync(request, await StateAsync(aConversation))).Plan);
+        var planB = Assert.IsType<LegendConnectResponseMeaningPlanSnapshot>(
+            (await PlanAsync(request, await StateAsync(bConversation))).Plan);
+        Assert.NotEqual(planA.PlanIdentity, planB.PlanIdentity);
+        Assert.Equal("a", Assert.Single(planA.ResolvedDiscourseBindings).EntitySemanticValue);
+        Assert.Equal("b", Assert.Single(planB.ResolvedDiscourseBindings).EntitySemanticValue);
+
+        // An assistant-established entity is available only through a
+        // Founder-declared role-permitting semantic reference rule.
+        var assistantConversation = Guid.NewGuid();
+        await ObserveAsync(assistantConversation, "assistant", "a");
+        await ObserveAsync(assistantConversation, "user", request);
+        var assistantPlan = Assert.IsType<LegendConnectResponseMeaningPlanSnapshot>(
+            (await PlanAsync(request, await StateAsync(assistantConversation))).Plan);
+        Assert.Equal("a", Assert.Single(assistantPlan.ResolvedDiscourseBindings).EntitySemanticValue);
+
+        // Correction replaces the active ordinal binding before the plan is
+        // selected; old B must never appear as the correction target.
+        var correctionConversation = Guid.NewGuid();
+        await ObserveAsync(correctionConversation, "user", "a b c");
+        await ObserveAsync(correctionConversation, "user", "the second one");
+        await ObserveAsync(correctionConversation, "user", "No, I meant the first one.");
+        var correctionPlan = Assert.IsType<LegendConnectResponseMeaningPlanSnapshot>(
+            (await PlanAsync("No, I meant the first one.", await StateAsync(correctionConversation))).Plan);
+        var correctionBinding = Assert.Single(correctionPlan.ResolvedDiscourseBindings);
+        Assert.Equal("a", correctionBinding.EntitySemanticValue);
+        Assert.True(correctionBinding.ReplacesActiveBinding);
+
+        // Ambiguity remains an explicit non-plan outcome; a plan can never
+        // invent a target simply because an eligible transition exists.
+        var ambiguousConversation = Guid.NewGuid();
+        await ObserveAsync(ambiguousConversation, "user", "a b");
+        await ObserveAsync(ambiguousConversation, "user", request);
+        var ambiguous = await PlanAsync(request, await StateAsync(ambiguousConversation));
+        Assert.False(ambiguous.Supported);
+        Assert.Equal("discourse_reference_unresolved", ambiguous.ReasonCode);
+        Assert.Null(ambiguous.Plan);
+
+        await using (var privacy = new MasterAppDbContext(options))
+        {
+            var persisted = await privacy.LegendFounderAiDiscourseTurns
+                .Select(item => item.MeaningGraphJson + item.ResolvedBindingsJson)
+                .ToArrayAsync();
+            Assert.All(persisted, item =>
+            {
+                Assert.DoesNotContain("Tell me more about that", item, StringComparison.OrdinalIgnoreCase);
+                Assert.DoesNotContain("No, I meant", item, StringComparison.OrdinalIgnoreCase);
+                Assert.DoesNotContain("provider", item, StringComparison.OrdinalIgnoreCase);
+                Assert.DoesNotContain("answercache", item, StringComparison.OrdinalIgnoreCase);
+            });
+        }
+    }
+
     private static AgentProfile Profile(string actor, string prefix) => new()
     {
         Id = Guid.NewGuid(),
@@ -226,6 +378,101 @@ public sealed class LegendConnectDiscourseReferenceBindingTests
             UniqueExample(family),
             AlternateEntityExample(family)
         ]);
+
+    private static LegendConnectCurriculumBatchSubmission ResponsePlanReferenceFamily(int family) => new(
+        $"response.plan.reference.{family}",
+        "Founder-governed response-plan and discourse-reference evidence",
+        [
+            SingleEntityExample(family, "a"),
+            SingleEntityExample(family, "b"),
+            OrderedEntityExample(family),
+            SecondOrdinalReferenceExample(family),
+            DetailRequestExample(family),
+            CorrectionRequestExample(family),
+            new LegendConnectCurriculumExampleSubmission(
+                $"Detail response {family}.",
+                new Dictionary<string, string> { ["conversation_function"] = "detail_response" }),
+            new LegendConnectCurriculumExampleSubmission(
+                $"Correction response {family}.",
+                new Dictionary<string, string> { ["conversation_function"] = "correction_acknowledgement" })
+        ],
+        [
+            new LegendConnectSemanticTransitionSubmission(
+                new LegendConnectSemanticFrameSubmission(new Dictionary<string, string>
+                {
+                    ["conversation_function"] = "detail_request"
+                }),
+                new LegendConnectSemanticFrameSubmission(new Dictionary<string, string>
+                {
+                    ["conversation_function"] = "detail_response"
+                })),
+            new LegendConnectSemanticTransitionSubmission(
+                new LegendConnectSemanticFrameSubmission(new Dictionary<string, string>
+                {
+                    ["conversation_function"] = "correction"
+                }),
+                new LegendConnectSemanticFrameSubmission(new Dictionary<string, string>
+                {
+                    ["conversation_function"] = "correction_acknowledgement"
+                }))
+        ]);
+
+    private static LegendConnectCurriculumExampleSubmission SingleEntityExample(int family, string value) =>
+        new($"Founder entity evidence {family}: {value}", Variations("establish"),
+            new LegendConnectMeaningGraphSubmission(
+                [
+                    new LegendConnectMeaningNodeSubmission("entity", "choice", value, value),
+                    new LegendConnectMeaningNodeSubmission("kind", "entity_kind", "choice", value)
+                ],
+                [new LegendConnectMeaningRelationSubmission("entity", "has-kind", "kind")]));
+
+    private static LegendConnectCurriculumExampleSubmission OrderedEntityExample(int family) =>
+        new($"Founder ordered entities {family}: a b c", Variations("establish"),
+            new LegendConnectMeaningGraphSubmission(
+                [
+                    new LegendConnectMeaningNodeSubmission("first", "choice", "a", "a"),
+                    new LegendConnectMeaningNodeSubmission("second", "choice", "b", "b"),
+                    new LegendConnectMeaningNodeSubmission("third", "choice", "c", "c")
+                ],
+                [
+                    new LegendConnectMeaningRelationSubmission("first", "ordered-with", "second"),
+                    new LegendConnectMeaningRelationSubmission("second", "ordered-with", "third")
+                ]));
+
+    private static LegendConnectCurriculumExampleSubmission SecondOrdinalReferenceExample(int family) =>
+        new($"Founder ordinal reference {family}: the second one.", Variations("reference"),
+            new LegendConnectMeaningGraphSubmission(
+                [
+                    new LegendConnectMeaningNodeSubmission("selector", "reference_selector", "ordinal_two", "second"),
+                    new LegendConnectMeaningNodeSubmission("kind", "reference_kind", "choice", "one")
+                ],
+                [new LegendConnectMeaningRelationSubmission("selector", "reference-target", "kind")],
+                [new LegendConnectDiscourseReferenceSubmission(
+                    "selector", "choice", "ordinal", 2, ["user", "assistant"])]));
+
+    private static LegendConnectCurriculumExampleSubmission DetailRequestExample(int family) =>
+        new($"Founder detail request {family}: Tell me more about that.",
+            new Dictionary<string, string> { ["conversation_function"] = "detail_request" },
+            new LegendConnectMeaningGraphSubmission(
+                [
+                    new LegendConnectMeaningNodeSubmission("function", "conversation_function", "detail_request", "Tell me more"),
+                    new LegendConnectMeaningNodeSubmission("selector", "reference_selector", "unique_choice", "that")
+                ],
+                [new LegendConnectMeaningRelationSubmission("function", "about", "selector")],
+                [new LegendConnectDiscourseReferenceSubmission(
+                    "selector", "choice", "unique", null, ["user", "assistant"])]));
+
+    private static LegendConnectCurriculumExampleSubmission CorrectionRequestExample(int family) =>
+        new($"Founder correction request {family}: No, I meant the first one.",
+            new Dictionary<string, string> { ["conversation_function"] = "correction" },
+            new LegendConnectMeaningGraphSubmission(
+                [
+                    new LegendConnectMeaningNodeSubmission("function", "conversation_function", "correction", "No I meant"),
+                    new LegendConnectMeaningNodeSubmission("selector", "reference_selector", "ordinal_one", "first")
+                ],
+                [new LegendConnectMeaningRelationSubmission("function", "corrects", "selector")],
+                [new LegendConnectDiscourseReferenceSubmission(
+                    "selector", "choice", "ordinal", 1, ["user", "assistant"], true)]));
 
     private static LegendConnectCurriculumExampleSubmission EntityExample(int family) =>
         new($"Please consider a b c variant {family}.",
