@@ -5384,11 +5384,19 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
             {
                 continue;
             }
-            var exampleAnchors = anchorsByExample.TryGetValue(
-                sourceEvidence.SourceCurriculumExampleId,
-                out var existingExampleAnchors)
-                ? existingExampleAnchors
-                : [];
+            // The persisted query above cannot see anchors staged by an
+            // earlier governed evidence row in this same evaluation.  Keep
+            // one evaluation-scoped identity set per example so repeated
+            // independent support for the same transition cannot enqueue the
+            // same canonical anchor twice before SaveChanges reaches the SQL
+            // uniqueness constraint.
+            if (!anchorsByExample.TryGetValue(
+                    sourceEvidence.SourceCurriculumExampleId,
+                    out var exampleAnchors))
+            {
+                exampleAnchors = [];
+                anchorsByExample[sourceEvidence.SourceCurriculumExampleId] = exampleAnchors;
+            }
 
             var tokenCount = SurfaceComponents(textUnit.Text).Count;
             if (tokenCount == 0)

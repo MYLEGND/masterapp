@@ -18,6 +18,12 @@ namespace Infrastructure.Messaging;
 internal sealed class LegendConnectHistoricalReevaluationWorkAuthority
 {
     private const string CanonicalWorkKind = "Canonical";
+    // Founder manifests use the same durable lease/claim table as historical
+    // reevaluation.  This is an execution kind, not a second curriculum or
+    // evidence authority: the canonical curriculum service still evaluates
+    // every family.
+    internal const string FounderManifestFamilyWorkKind = "FounderManifestFamily";
+    internal const string FounderCurriculumPhase = "FounderCurriculum";
     private const string SeedWorkKind = "PhaseSeed";
     private const string Pending = "Pending";
     private const string Processing = "Processing";
@@ -251,7 +257,13 @@ internal sealed class LegendConnectHistoricalReevaluationWorkAuthority
             await ReopenSeedAsync(seed.Id, evaluatorVersion, phase, cancellationToken);
         }
 
-        var claim = await TryClaimByIdAsync(seed.Id, evaluatorVersion, phase, workerId, cancellationToken);
+        var claim = await TryClaimByIdAsync(
+            seed.Id,
+            evaluatorVersion,
+            phase,
+            workerId,
+            SeedWorkKind,
+            cancellationToken);
         if (claim is null)
             return LegendHistoricalReevaluationSeedResult.NotApplicable;
 
@@ -330,6 +342,96 @@ internal sealed class LegendConnectHistoricalReevaluationWorkAuthority
         return candidateId is null
             ? null
             : await TryClaimByIdAsync(candidateId.Value, evaluatorVersion, phase, workerId, cancellationToken);
+    }
+
+    /// <summary>
+    /// Seeds the existing durable work authority with independently executable
+    /// Founder-manifest families.  Work identity is deterministic per retained
+    /// manifest and family index; the canonical family key is the dependency
+    /// lane so two manifests cannot mutate the same family concurrently.
+    /// </summary>
+    internal async Task<bool> SeedFounderManifestFamiliesAsync(
+        int evaluatorVersion,
+        Guid manifestId,
+        IReadOnlyList<string> familyKeys,
+        CancellationToken cancellationToken = default)
+    {
+        var existing = await WorkFor(evaluatorVersion, FounderCurriculumPhase)
+            .Where(item => item.WorkKind == FounderManifestFamilyWorkKind && item.SubjectId == manifestId)
+            .ToDictionaryAsync(item => item.SubjectScope, cancellationToken);
+        var now = DateTime.UtcNow;
+        var changed = false;
+        for (var index = 0; index < familyKeys.Count; index++)
+        {
+            var scope = index.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            var key = familyKeys[index].Trim().ToLowerInvariant();
+            if (existing.TryGetValue(scope, out var prior))
+            {
+                // Explicit Founder resubmission is the only supported way to
+                // retry a terminal manifest. Preserve canonical rows and
+                // reopen only its durable execution identity.
+                if (prior.ProcessingState == Failed)
+                {
+                    prior.ProcessingState = Pending;
+                    prior.LeaseOwner = null;
+                    prior.LeaseToken = null;
+                    prior.LeaseExpiresUtc = null;
+                    prior.AttemptCount = 0;
+                    prior.LastErrorCode = null;
+                    prior.LastErrorMessage = null;
+                    prior.UpdatedUtc = now;
+                    changed = true;
+                }
+                continue;
+            }
+
+            _db.Set<LegendHistoricalReevaluationWorkItem>().Add(new LegendHistoricalReevaluationWorkItem
+            {
+                Id = Guid.NewGuid(),
+                EvaluatorVersion = evaluatorVersion,
+                Phase = FounderCurriculumPhase,
+                WorkKind = FounderManifestFamilyWorkKind,
+                WorkIdentity = $"founder-manifest:{manifestId:D}:family:{index}",
+                SubjectId = manifestId,
+                SubjectScope = scope,
+                DependencyIdentity = $"founder-curriculum-family:{key}",
+                ProcessingState = Pending,
+                CreatedUtc = now,
+                UpdatedUtc = now
+            });
+            changed = true;
+        }
+        if (changed)
+            await _db.SaveChangesAsync(cancellationToken);
+        return changed;
+    }
+
+    internal async Task<LegendHistoricalReevaluationWorkClaim?> TryClaimNextFounderManifestFamilyAsync(
+        int evaluatorVersion,
+        string workerId,
+        CancellationToken cancellationToken = default)
+    {
+        await RequeueExpiredAsync(evaluatorVersion, FounderCurriculumPhase, cancellationToken);
+        var candidateId = await WorkFor(evaluatorVersion, FounderCurriculumPhase)
+            .AsNoTracking()
+            .Where(item => item.WorkKind == FounderManifestFamilyWorkKind && item.ProcessingState == Pending &&
+                !_db.Set<LegendHistoricalReevaluationWorkItem>().Any(active =>
+                    active.Id != item.Id && active.EvaluatorVersion == evaluatorVersion &&
+                    active.Phase == FounderCurriculumPhase && active.ProcessingState == Processing &&
+                    active.DependencyIdentity == item.DependencyIdentity))
+            .OrderBy(item => item.CreatedUtc)
+            .ThenBy(item => item.Id)
+            .Select(item => (Guid?)item.Id)
+            .FirstOrDefaultAsync(cancellationToken);
+        return candidateId is null
+            ? null
+            : await TryClaimByIdAsync(
+                candidateId.Value,
+                evaluatorVersion,
+                FounderCurriculumPhase,
+                workerId,
+                FounderManifestFamilyWorkKind,
+                cancellationToken);
     }
 
     /// <summary>
@@ -687,7 +789,7 @@ internal sealed class LegendConnectHistoricalReevaluationWorkAuthority
             item.Id == claim.WorkItemId &&
             item.EvaluatorVersion == claim.EvaluatorVersion &&
             item.Phase == claim.Phase &&
-            item.WorkKind == CanonicalWorkKind &&
+                (item.WorkKind == CanonicalWorkKind || item.WorkKind == FounderManifestFamilyWorkKind) &&
             item.ProcessingState == Processing &&
             item.LeaseToken == claim.LeaseToken,
             cancellationToken);
@@ -862,11 +964,20 @@ internal sealed class LegendConnectHistoricalReevaluationWorkAuthority
         await _db.SaveChangesAsync(cancellationToken);
     }
 
+    private Task<LegendHistoricalReevaluationWorkClaim?> TryClaimByIdAsync(
+        Guid id,
+        int evaluatorVersion,
+        string phase,
+        string workerId,
+        CancellationToken cancellationToken) =>
+        TryClaimByIdAsync(id, evaluatorVersion, phase, workerId, CanonicalWorkKind, cancellationToken);
+
     private async Task<LegendHistoricalReevaluationWorkClaim?> TryClaimByIdAsync(
         Guid id,
         int evaluatorVersion,
         string phase,
         string workerId,
+        string workKind,
         CancellationToken cancellationToken)
     {
         var now = DateTime.UtcNow;
@@ -876,7 +987,7 @@ internal sealed class LegendConnectHistoricalReevaluationWorkAuthority
             ? "historical-reevaluation"
             : workerId[..Math.Min(workerId.Length, 128)];
         var query = WorkFor(evaluatorVersion, phase)
-            .Where(item => item.Id == id && item.ProcessingState == Pending &&
+            .Where(item => item.Id == id && item.WorkKind == workKind && item.ProcessingState == Pending &&
                 !_db.Set<LegendHistoricalReevaluationWorkItem>().Any(active =>
                     active.Id != item.Id && active.EvaluatorVersion == evaluatorVersion && active.Phase == phase &&
                     active.ProcessingState == Processing &&
@@ -904,6 +1015,7 @@ internal sealed class LegendConnectHistoricalReevaluationWorkAuthority
                     WHERE [target].[Id] = {id}
                       AND [target].[EvaluatorVersion] = {evaluatorVersion}
                       AND [target].[Phase] = {phase}
+                      AND [target].[WorkKind] = {workKind}
                       AND [target].[ProcessingState] = {Pending}
                       AND NOT EXISTS
                       (

@@ -221,6 +221,64 @@ public sealed class LegendConnectCurriculumTests
     }
 
     [Fact]
+    public async Task FounderCurriculumManifest_UsesSharedDurableFamilyClaimsWithoutDuplicateCanonicalWork()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var configuration = Configuration();
+        var registry = new LegendLanguageRegistry(db, configuration);
+        var corpus = new LegendConnectCorpusService(db, registry, NullLogger<LegendConnectCorpusService>.Instance);
+        var curriculum = new LegendConnectCurriculumService(db, registry, corpus);
+        var operations = new LegendConnectOperations(db, registry, corpus, configuration, curriculum: curriculum);
+        var runtime = new LegendConnectRuntimePolicyAuthority(
+            db, new FounderAccess(), registry, configuration,
+            NullLogger<LegendConnectRuntimePolicyAuthority>.Instance);
+        var durable = new LegendConnectHistoricalReevaluationWorkAuthority(db, runtime, configuration);
+        var processor = new LegendConnectCurriculumManifestProcessor(
+            db, curriculum, NullLogger<LegendConnectCurriculumManifestProcessor>.Instance);
+
+        var accepted = await operations.SubmitFounderCurriculumManifestAsync("founder-test",
+            new LegendConnectCurriculumManifestSubmission(
+            [
+                ConversationBatch("durable.manifest.opening", "Opening", ("Blue lantern.", "opening"), ("Amber lantern.", "opening")),
+                ConversationBatch("durable.manifest.repair", "Repair", ("Please clarify.", "clarification"), ("Could you repeat that?", "clarification"))
+            ]));
+        Assert.True(accepted.Succeeded, accepted.Message);
+
+        Assert.Equal(1, await processor.SeedDurableFamilyWorkAsync(
+            durable, LegendConnectLanguageIntelligenceEvaluatorVersion.Current, 4));
+        var children = await db.LegendHistoricalReevaluationWorkItems
+            .Where(item => item.Phase == LegendConnectHistoricalReevaluationWorkAuthority.FounderCurriculumPhase)
+            .ToListAsync();
+        Assert.Equal(2, children.Count);
+        Assert.Equal(2, children.Select(item => item.WorkIdentity).Distinct().Count());
+
+        while (true)
+        {
+            var claim = await durable.TryClaimNextFounderManifestFamilyAsync(
+                LegendConnectLanguageIntelligenceEvaluatorVersion.Current, "test-worker");
+            if (claim is null)
+                break;
+            await using var execution = Assert.IsType<LegendConnectHistoricalReevaluationWorkAuthority.LegendHistoricalReevaluationOwnedExecution>(
+                await durable.TryBeginOwnedExecutionAsync(claim));
+            await processor.ProcessDurableFamilyAsync(
+                Assert.IsType<Guid>(claim.SubjectId), int.Parse(claim.SubjectScope));
+            Assert.True(await execution.CompleteAsync());
+            await processor.RefreshDurableManifestStatusAsync(
+                Assert.IsType<Guid>(claim.SubjectId), LegendConnectLanguageIntelligenceEvaluatorVersion.Current);
+        }
+
+        var manifest = Assert.Single(await db.LegendCurriculumManifestWorkItems.ToListAsync());
+        Assert.Equal("Completed", manifest.ProcessingState);
+        Assert.Equal(2, manifest.NextFamilyIndex);
+        Assert.Equal(2, await db.LegendCurriculumFamilies.CountAsync());
+        Assert.Equal(0, await db.LegendLanguageCompositionalAnchors
+            .GroupBy(item => new { item.CurriculumExampleId, item.AnchorSignature })
+            .CountAsync(group => group.Count() > 1));
+        Assert.Equal(0, await processor.SeedDurableFamilyWorkAsync(
+            durable, LegendConnectLanguageIntelligenceEvaluatorVersion.Current, 4));
+    }
+
+    [Fact]
     public async Task FounderSubmissionProcessingSection_UsesDurablePipelineStateAndCompletionVersions()
     {
         await using var db = ControllerTestHelpers.BuildDb();
@@ -724,6 +782,15 @@ public sealed class LegendConnectCurriculumTests
             TranslateCalls++;
             return Task.FromResult(new TranslationProviderResult(true, "Azure fallback result", sourceLanguage, ProviderName));
         }
+    }
+
+    private sealed class FounderAccess : IControlledResourceAccessService
+    {
+        public Task<ControlledResourceAccess> GetAccessAsync(MessagingActor actor, string resourceType, CancellationToken cancellationToken = default) =>
+            Task.FromResult(new ControlledResourceAccess(resourceType, ControlledResourceAccessStates.NotGranted, true));
+        public Task<bool> IsFounderManagerAsync(MessagingActor actor, CancellationToken cancellationToken = default) => Task.FromResult(true);
+        public Task<bool> IsCanonicalFounderManagerAsync(MessagingActor actor, CancellationToken cancellationToken = default) => Task.FromResult(true);
+        public Task<string?> GetPreferredLanguageAsync(MessagingActor actor, CancellationToken cancellationToken = default) => Task.FromResult<string?>(null);
     }
 
     private static string Suffix(string text) => text.Contains("red", StringComparison.Ordinal)
