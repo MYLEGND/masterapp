@@ -188,6 +188,22 @@ public sealed class FounderLegendConnectService
             cancellationToken);
     }
 
+    public async Task<LegendConnectNativeInferenceSnapshot>
+        TryInferConversationWithDiscourseAsync(
+            ClaimsPrincipal user,
+            string input,
+            IReadOnlyList<LegendConnectConversationContextItem> context,
+            LegendConnectDiscourseStateSnapshot? discourseState,
+            CancellationToken cancellationToken = default)
+    {
+        _ = await ResolveFounderActorAsync(user, cancellationToken);
+        return await _operations.TryInferConversationWithDiscourseAsync(
+            input,
+            context,
+            discourseState,
+            cancellationToken);
+    }
+
     /// <summary>
     /// Founder-gated read-through to the canonical observational meaning
     /// analysis. It does not serve, write curriculum, or bypass inference.
@@ -770,12 +786,60 @@ public sealed class FounderLegendConnectService
         List<LegendConnectMeaningNodeSubmission>? meaningNodes = null;
         List<LegendConnectMeaningRelationSubmission>? meaningRelations = null;
         List<LegendConnectDiscourseReferenceSubmission>? meaningReferences = null;
+        var crossExampleRelationships = new List<LegendConnectCrossExampleSemanticRelationshipSubmission>();
         IReadOnlyDictionary<string, string>? transitionSource = null;
         IReadOnlyDictionary<string, string>? transitionResult = null;
 
         for (var index = 0; index < lines.Length; index++)
         {
             var line = lines[index];
+            if (TryReadCurriculumDirective(line, "relationship", out var relationshipSuffix))
+            {
+                if (familyKey is not null || transitionSource is not null || transitionResult is not null ||
+                    meaningGraphExampleIndex is not null)
+                {
+                    error = $"Line {index + 1}: @relationship must appear after complete @family blocks, never inside a family or meaning graph.";
+                    return false;
+                }
+                if (!TryParseCrossExampleSemanticRelationship(
+                        relationshipSuffix,
+                        out var relationship,
+                        out var relationshipError))
+                {
+                    error = relationshipError ?? $"Line {index + 1}: use @relationship source_semantic_key -> result_semantic_key | semantic=controlled_relationship.";
+                    return false;
+                }
+                if (crossExampleRelationships.Any(item =>
+                        string.Equals(item.SourceSemanticExampleKey, relationship.SourceSemanticExampleKey, StringComparison.OrdinalIgnoreCase) &&
+                        string.Equals(item.RelationshipSemanticIdentity, relationship.RelationshipSemanticIdentity, StringComparison.OrdinalIgnoreCase) &&
+                        string.Equals(item.ResultSemanticExampleKey, relationship.ResultSemanticExampleKey, StringComparison.OrdinalIgnoreCase)))
+                {
+                    error = $"Line {index + 1}: the same governed cross-example relationship may appear only once per manifest.";
+                    return false;
+                }
+                crossExampleRelationships.Add(relationship);
+                continue;
+            }
+
+            if (TryReadCurriculumDirective(line, "semantic-example", out var semanticExampleSuffix))
+            {
+                if (familyKey is null || examples is null || examples.Count == 0 ||
+                    transitionSource is not null || transitionResult is not null ||
+                    meaningGraphExampleIndex is not null || string.IsNullOrWhiteSpace(semanticExampleSuffix))
+                {
+                    error = $"Line {index + 1}: @semantic-example must immediately follow one curriculum example before its @meaning block.";
+                    return false;
+                }
+                var current = examples[^1];
+                if (!string.IsNullOrWhiteSpace(current.SemanticExampleKey))
+                {
+                    error = $"Line {index + 1}: an example may declare only one opaque semantic-example identity.";
+                    return false;
+                }
+                examples[^1] = current with { SemanticExampleKey = semanticExampleSuffix.Trim() };
+                continue;
+            }
+
             if (TryReadCurriculumDirective(line, "ground", out var groundingSuffix))
             {
                 if (familyKey is null || examples is null || transitions is null ||
@@ -1101,7 +1165,36 @@ public sealed class FounderLegendConnectService
             return false;
         }
 
-        submission = new LegendConnectCurriculumManifestSubmission(families);
+        submission = new LegendConnectCurriculumManifestSubmission(
+            families,
+            crossExampleRelationships);
+        return true;
+    }
+
+    private static bool TryParseCrossExampleSemanticRelationship(
+        string input,
+        out LegendConnectCrossExampleSemanticRelationshipSubmission relationship,
+        out string? error)
+    {
+        relationship = null!;
+        error = null;
+        var parts = input.Split('|', 2, StringSplitOptions.TrimEntries);
+        var endpoints = parts[0].Split("->", 2, StringSplitOptions.TrimEntries);
+        if (parts.Length != 2 || endpoints.Length != 2 ||
+            string.IsNullOrWhiteSpace(endpoints[0]) || string.IsNullOrWhiteSpace(endpoints[1]))
+        {
+            error = "A governed cross-example relationship requires source_key -> result_key | semantic=relationship_identity.";
+            return false;
+        }
+        var semantic = parts[1].Split('=', 2, StringSplitOptions.TrimEntries);
+        if (semantic.Length != 2 || !string.Equals(semantic[0], "semantic", StringComparison.OrdinalIgnoreCase) ||
+            string.IsNullOrWhiteSpace(semantic[1]))
+        {
+            error = "A governed cross-example relationship requires the semantic=relationship_identity field.";
+            return false;
+        }
+        relationship = new LegendConnectCrossExampleSemanticRelationshipSubmission(
+            endpoints[0], semantic[1], endpoints[1]);
         return true;
     }
 

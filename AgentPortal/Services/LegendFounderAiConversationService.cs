@@ -170,15 +170,20 @@ public sealed class LegendFounderAiConversationService
                     conversation[^1].Content ?? string.Empty,
                     effectiveToken,
                     cancellationToken);
-                nativeInference = await _legend.TryInferConversationAsync(
+                var context = conversation
+                    .Take(conversation.Count - 1)
+                    .Select(message => new LegendConnectConversationContextItem(
+                        message.Role ?? string.Empty,
+                        message.Content ?? string.Empty))
+                    .ToArray();
+                var discourseState = _discourse is null
+                    ? null
+                    : await _discourse.GetStateAsync(founder, request.ConversationId, effectiveToken);
+                nativeInference = await _legend.TryInferConversationWithDiscourseAsync(
                     founder,
                     conversation[^1].Content ?? string.Empty,
-                    conversation
-                        .Take(conversation.Count - 1)
-                        .Select(message => new LegendConnectConversationContextItem(
-                            message.Role ?? string.Empty,
-                            message.Content ?? string.Empty))
-                        .ToArray(),
+                    context,
+                    discourseState,
                     effectiveToken);
             }
             catch (OperationCanceledException)

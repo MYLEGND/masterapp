@@ -87,6 +87,15 @@ internal sealed class LegendConnectCurriculumManifestProcessor
             .ThenBy(item => item.Id)
             .Take(Math.Clamp(take, 1, 32))
             .ToListAsync(cancellationToken);
+        if (manifests.Count > 0)
+        {
+            // Language-pair identity is shared by otherwise independent
+            // English families. Establish it through the existing registry
+            // before durable parallel ownership begins, so workers never
+            // contend to manufacture the same canonical pair under their
+            // long-lived canonical-mutation transactions.
+            await _curriculum.EnsureFounderEnglishExpansionPairsAsync(cancellationToken);
+        }
         var seeded = 0;
         foreach (var manifest in manifests)
         {
@@ -109,6 +118,9 @@ internal sealed class LegendConnectCurriculumManifestProcessor
                     "The durable manifest payload no longer matches its accepted family count.", cancellationToken);
                 continue;
             }
+            var semanticRelationships = payload?.CrossExampleSemanticRelationships?.ToArray() ?? [];
+
+            await _curriculum.EnsureFounderManifestLexicalPrerequisitesAsync(families, cancellationToken);
 
             // A completed prior capability revision is reevaluated from the
             // retained, validated manifest under the new evaluator. An
@@ -122,12 +134,17 @@ internal sealed class LegendConnectCurriculumManifestProcessor
                 manifest.CompletedLanguageIntelligenceEvaluatorVersion = 0;
                 parentChanged = true;
             }
-            var workChanged = await durableWork.SeedFounderManifestFamiliesAsync(
+            var familyWorkChanged = await durableWork.SeedFounderManifestFamiliesAsync(
                 evaluatorVersion,
                 manifest.Id,
                 families.Select(item => item.FamilyKey).ToArray(),
                 cancellationToken);
-            if (parentChanged || workChanged)
+            var relationshipWorkChanged = await durableWork.SeedFounderManifestSemanticRelationsAsync(
+                evaluatorVersion,
+                manifest.Id,
+                semanticRelationships.Length,
+                cancellationToken);
+            if (parentChanged || familyWorkChanged || relationshipWorkChanged)
             {
                 manifest.TargetLanguageIntelligenceEvaluatorVersion = evaluatorVersion;
                 manifest.ProcessingState = "Processing";
@@ -175,6 +192,45 @@ internal sealed class LegendConnectCurriculumManifestProcessor
         await _db.SaveChangesAsync(cancellationToken);
     }
 
+    /// <summary>
+    /// Executes one already accepted Founder semantic relationship only after
+    /// all of the manifest's governed example families have completed. The
+    /// curriculum service remains the sole relation/transition derivation
+    /// authority; this processor supplies durable bounded execution only.
+    /// </summary>
+    internal async Task ProcessDurableSemanticRelationAsync(
+        Guid manifestId,
+        int relationshipIndex,
+        int evaluatorVersion,
+        CancellationToken cancellationToken = default)
+    {
+        var manifest = await _db.Set<LegendCurriculumManifestWorkItem>()
+            .SingleAsync(item => item.Id == manifestId, cancellationToken);
+        var payload = JsonSerializer.Deserialize<LegendConnectCurriculumManifestSubmission>(manifest.PayloadJson);
+        var relationships = payload?.CrossExampleSemanticRelationships?.ToArray() ?? [];
+        if (relationshipIndex < 0 || relationshipIndex >= relationships.Length)
+            throw new InvalidOperationException("The leased Founder semantic relationship does not match its retained manifest.");
+
+        await _curriculum.PersistFounderCrossExampleSemanticRelationAsync(
+            relationships[relationshipIndex],
+            evaluatorVersion,
+            cancellationToken);
+        _db.Set<LegendConnectKnowledgeAuditEntry>().Add(new LegendConnectKnowledgeAuditEntry
+        {
+            Id = Guid.NewGuid(),
+            FounderUserId = manifest.FounderUserId,
+            Action = "FounderCrossExampleSemanticRelationProcessed",
+            Result = "Succeeded",
+            LanguageCode = "en",
+            Detail = Truncate(
+                $"Manifest {manifest.ManifestHash[..12]} semantic relationship {relationshipIndex + 1}/{relationships.Length}. " +
+                $"Evaluator v{evaluatorVersion} projected through the governed transition authority.",
+                500),
+            OccurredUtc = DateTime.UtcNow
+        });
+        await _db.SaveChangesAsync(cancellationToken);
+    }
+
     /// <summary>Derives the manifest status solely from its durable child work.</summary>
     internal async Task RefreshDurableManifestStatusAsync(
         Guid manifestId,
@@ -186,12 +242,22 @@ internal sealed class LegendConnectCurriculumManifestProcessor
         var children = await _db.Set<LegendHistoricalReevaluationWorkItem>()
             .Where(item => item.EvaluatorVersion == evaluatorVersion &&
                 item.Phase == LegendConnectHistoricalReevaluationWorkAuthority.FounderCurriculumPhase &&
-                item.WorkKind == LegendConnectHistoricalReevaluationWorkAuthority.FounderManifestFamilyWorkKind &&
+                (item.WorkKind == LegendConnectHistoricalReevaluationWorkAuthority.FounderManifestFamilyWorkKind ||
+                 item.WorkKind == LegendConnectHistoricalReevaluationWorkAuthority.FounderManifestSemanticRelationWorkKind) &&
                 item.SubjectId == manifestId)
             .ToListAsync(cancellationToken);
+        var payload = JsonSerializer.Deserialize<LegendConnectCurriculumManifestSubmission>(manifest.PayloadJson);
+        var relationshipCount = payload?.CrossExampleSemanticRelationships?.Count ?? 0;
+        var requiredWorkCount = manifest.FamilyCount + relationshipCount;
         var completed = children.Count(item => item.ProcessingState == "Completed");
+        var completedFamilies = children.Count(item =>
+            item.WorkKind == LegendConnectHistoricalReevaluationWorkAuthority.FounderManifestFamilyWorkKind &&
+            item.ProcessingState == "Completed");
         var failed = children.FirstOrDefault(item => item.ProcessingState == "Failed");
-        manifest.NextFamilyIndex = completed;
+        // This is the existing UI/progress field for family ingestion.  The
+        // later semantic-relation work belongs to the same durable manifest
+        // lifecycle, but must not make the family counter exceed FamilyCount.
+        manifest.NextFamilyIndex = completedFamilies;
         manifest.LeaseExpiresUtc = null;
         manifest.UpdatedUtc = DateTime.UtcNow;
         if (failed is not null)
@@ -201,7 +267,7 @@ internal sealed class LegendConnectCurriculumManifestProcessor
             manifest.LastErrorCode = failed.LastErrorCode ?? "curriculum_manifest_family_failed";
             manifest.LastErrorMessage = failed.LastErrorMessage;
         }
-        else if (children.Count == manifest.FamilyCount && completed == manifest.FamilyCount)
+        else if (children.Count == requiredWorkCount && completed == requiredWorkCount)
         {
             manifest.ProcessingState = "Completed";
             manifest.CompletedLanguageIntelligenceEvaluatorVersion = evaluatorVersion;
@@ -567,7 +633,7 @@ public sealed class LegendConnectCurriculumManifestHostedService : BackgroundSer
         {
             using var scope = _scopeFactory.CreateScope();
             var work = scope.ServiceProvider.GetRequiredService<LegendConnectHistoricalReevaluationWorkAuthority>();
-            var claim = await work.TryClaimNextFounderManifestFamilyAsync(
+            var claim = await work.TryClaimNextFounderManifestWorkAsync(
                 evaluatorVersion, workerId, stoppingToken);
             if (claim is null)
                 return processed;
@@ -585,7 +651,22 @@ public sealed class LegendConnectCurriculumManifestHostedService : BackgroundSer
                 var curriculum = scope.ServiceProvider.GetRequiredService<LegendConnectCurriculumService>();
                 var logger = scope.ServiceProvider.GetRequiredService<ILogger<LegendConnectCurriculumManifestProcessor>>();
                 var processor = new LegendConnectCurriculumManifestProcessor(db, curriculum, logger);
-                await processor.ProcessDurableFamilyAsync(manifestId, familyIndex, stoppingToken);
+                if (claim.WorkKind == LegendConnectHistoricalReevaluationWorkAuthority.FounderManifestFamilyWorkKind)
+                {
+                    await processor.ProcessDurableFamilyAsync(manifestId, familyIndex, stoppingToken);
+                }
+                else if (claim.WorkKind == LegendConnectHistoricalReevaluationWorkAuthority.FounderManifestSemanticRelationWorkKind)
+                {
+                    await processor.ProcessDurableSemanticRelationAsync(
+                        manifestId,
+                        familyIndex,
+                        evaluatorVersion,
+                        stoppingToken);
+                }
+                else
+                {
+                    throw new InvalidOperationException("Founder curriculum work kind is not governed by this processor.");
+                }
                 if (!await execution.CompleteAsync(stoppingToken))
                 {
                     await execution.AbortAsync();

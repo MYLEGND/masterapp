@@ -22,6 +22,7 @@ namespace AgentPortal.Tests;
 /// use the canonical curriculum submission authority only; they never supply
 /// a runtime interpretation, response, or direct graph row.
 /// </summary>
+[Collection("LegendConnectFounderEnvironment")]
 public sealed class LegendConnectMeaningGraphTests
 {
     [Fact]

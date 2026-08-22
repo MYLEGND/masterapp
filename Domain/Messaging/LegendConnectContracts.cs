@@ -209,7 +209,19 @@ public sealed record LegendConnectMeaningGraphSubmission(
 public sealed record LegendConnectCurriculumExampleSubmission(
     string Text,
     IReadOnlyDictionary<string, string> Variations,
-    LegendConnectMeaningGraphSubmission? MeaningGraph = null);
+    LegendConnectMeaningGraphSubmission? MeaningGraph = null,
+    string? SemanticExampleKey = null);
+
+/// <summary>
+/// Founder-declared edge between two controlled semantic examples. The keys
+/// identify Founder-owned meaning-graph identities, not prompt or answer
+/// text. RelationshipSemanticIdentity is a generic controlled semantic label
+/// whose meaning remains evidence until independently matured.
+/// </summary>
+public sealed record LegendConnectCrossExampleSemanticRelationshipSubmission(
+    string SourceSemanticExampleKey,
+    string RelationshipSemanticIdentity,
+    string ResultSemanticExampleKey);
 
 /// <summary>
 /// One explicit, language-neutral semantic frame pattern. Keys and values are
@@ -250,7 +262,8 @@ public sealed record LegendConnectCurriculumBatchSubmission(
 /// and is validated/persisted only by the existing Legend Connect authority.
 /// </summary>
 public sealed record LegendConnectCurriculumManifestSubmission(
-    IReadOnlyList<LegendConnectCurriculumBatchSubmission> Families);
+    IReadOnlyList<LegendConnectCurriculumBatchSubmission> Families,
+    IReadOnlyList<LegendConnectCrossExampleSemanticRelationshipSubmission>? CrossExampleSemanticRelationships = null);
 
 public sealed record LegendConnectCurriculumSubmissionResult(
     bool Succeeded,
@@ -952,6 +965,18 @@ public interface ILegendConnectOperations
     Task<LegendConnectNativeInferenceSnapshot> TryInferConversationAsync(
         string input,
         IReadOnlyList<LegendConnectConversationContextItem> context,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Native serving through the same transition authority with an optional
+    /// persisted, semantic-only discourse snapshot. This is not a second
+    /// inference engine: it supplies Stage 1–3 governed inputs to the shared
+    /// selector before the existing realization authority runs.
+    /// </summary>
+    Task<LegendConnectNativeInferenceSnapshot> TryInferConversationWithDiscourseAsync(
+        string input,
+        IReadOnlyList<LegendConnectConversationContextItem> context,
+        LegendConnectDiscourseStateSnapshot? discourseState,
         CancellationToken cancellationToken = default);
 
     Task<LegendConnectResponseMeaningPlanResult> TryPlanConversationAsync(

@@ -961,7 +961,8 @@ internal sealed class LegendConnectCorpusService
         LegendConnectKnowledgeSubmission submission,
         CancellationToken cancellationToken = default,
         Guid? reusableSourceTextUnitId = null,
-        Guid? reusableTargetTextUnitId = null)
+        Guid? reusableTargetTextUnitId = null,
+        bool queueFounderExpansion = true)
     {
         var sourceLanguage = await _languages.NormalizeEnabledTranslationLanguageAsync(
             submission.SourceLanguageCode,
@@ -1057,8 +1058,9 @@ internal sealed class LegendConnectCorpusService
 
         try
         {
+            var sourceIdentityIsNew = reusableSource is null;
             var source = reusableSource ?? NewTextUnit(sourceLanguage, sourceText, sourceHash, submission.Provenance);
-            if (reusableSource is null)
+            if (sourceIdentityIsNew)
                 _db.Set<LegendLanguageTextUnit>().Add(source);
 
             LegendLanguageTextUnit? target = null;
@@ -1106,7 +1108,8 @@ internal sealed class LegendConnectCorpusService
                     1m,
                     "Verified",
                     submission.Provenance,
-                    cancellationToken);
+                    cancellationToken,
+                    sourceIdentityIsNew);
             }
             else
             {
@@ -1120,11 +1123,12 @@ internal sealed class LegendConnectCorpusService
                     1m,
                     "Verified",
                     submission.Provenance,
-                    cancellationToken);
+                    cancellationToken,
+                    sourceIdentityIsNew);
             }
 
             await _db.SaveChangesAsync(cancellationToken);
-            if (targetLanguage is null)
+            if (targetLanguage is null && queueFounderExpansion)
             {
                 // A monolingual Founder-approved entry is an approved seed,
                 // not a terminal dead end. Project it into the existing
@@ -1135,7 +1139,8 @@ internal sealed class LegendConnectCorpusService
                     source,
                     null,
                     null,
-                    cancellationToken);
+                    cancellationToken,
+                    sourceIdentityIsNew);
             }
             if (pairKey is not null)
             {
@@ -1354,7 +1359,8 @@ internal sealed class LegendConnectCorpusService
         LegendLanguageTextUnit source,
         Guid? curriculumFamilyId,
         Guid? sourceCurriculumExampleId,
-        CancellationToken cancellationToken = default) =>
+        CancellationToken cancellationToken = default,
+        bool sourceIdentityIsNew = false) =>
         QueueSeedCandidatesAsync(
             source,
             LegendConnectKnowledgeProvenance.FounderApproved,
@@ -1362,7 +1368,8 @@ internal sealed class LegendConnectCorpusService
             "founder-seed",
             cancellationToken,
             curriculumFamilyId,
-            sourceCurriculumExampleId);
+            sourceCurriculumExampleId,
+            sourceIdentityIsNew);
 
     internal Task EnsureSystemValidatedMachineSeedCandidatesAsync(
         LegendLanguageTextUnit source,
@@ -1385,7 +1392,8 @@ internal sealed class LegendConnectCorpusService
         string idempotencyPrefix,
         CancellationToken cancellationToken,
         Guid? curriculumFamilyId = null,
-        Guid? sourceCurriculumExampleId = null)
+        Guid? sourceCurriculumExampleId = null,
+        bool sourceIdentityIsNew = false)
     {
         if (!source.IsTrainingEligible)
             return;
@@ -1442,8 +1450,14 @@ internal sealed class LegendConnectCorpusService
             // creating provenance-specific work. This prevents duplicate
             // Azure/provider calls when Founder, autonomous-gap, and machine
             // curriculum paths converge on the same missing coverage.
-            var existingCandidate =
-                await _db.Set<LegendCorpusCandidate>()
+            // A source identity that has just crossed the text-unit uniqueness
+            // boundary cannot already have any source/direction candidate.
+            // Avoid a broad candidate lookup while parallel canonical family
+            // transactions each hold unrelated new candidate rows; existing
+            // source identities continue through the normal reuse lookup.
+            var existingCandidate = sourceIdentityIsNew
+                ? null
+                : await _db.Set<LegendCorpusCandidate>()
                     .Where(item =>
                         item.SourceLanguageCode ==
                             pair.SourceLanguageCode &&
@@ -1586,19 +1600,29 @@ internal sealed class LegendConnectCorpusService
         decimal confidence,
         string qualityState,
         string provenance,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool sourceIdentityIsNew = false)
     {
         var contextSignature = LegendLanguageIdentity.ContextSignature(
             contextCategory,
             usageRegister,
             regionalVariant);
-        var existing = await _db.Set<LegendLanguageContextRelationship>()
-            .SingleOrDefaultAsync(item => item.PairKey == pairKey &&
-                item.SourceTextUnitId == source.Id &&
-                item.RelatedTextUnitId == related.Id &&
-                item.RelationshipKind == "ContextualExample" &&
-                item.ContextSignature == contextSignature && item.SupersededUtc == null,
-                cancellationToken);
+        // A newly allocated source text-unit identity cannot already own a
+        // contextual relationship.  Querying the relationship table anyway
+        // makes independent Founder families scan one another's uncommitted
+        // primary-key rows on a fresh corpus, creating a deadlock despite
+        // distinct canonical relationship identities.  The caller establishes
+        // this fact only after the text-unit uniqueness boundary has admitted
+        // a new source; existing/reused identities retain the normal lookup.
+        var existing = sourceIdentityIsNew
+            ? null
+            : await _db.Set<LegendLanguageContextRelationship>()
+                .SingleOrDefaultAsync(item => item.PairKey == pairKey &&
+                    item.SourceTextUnitId == source.Id &&
+                    item.RelatedTextUnitId == related.Id &&
+                    item.RelationshipKind == "ContextualExample" &&
+                    item.ContextSignature == contextSignature && item.SupersededUtc == null,
+                    cancellationToken);
         if (existing is not null)
         {
             existing.ObservationCount++;
@@ -1689,12 +1713,11 @@ internal sealed class LegendConnectCorpusService
 /// </summary>
 internal static class LegendConnectLanguageIntelligenceEvaluatorVersion
 {
-    // v18 prevents governed structured curriculum from being mistaken for a
-    // legacy raw source block during reconciliation. Advancing through the
-    // established evaluator lifecycle replays retained Founder manifests and
-    // restores only their declared governed projections; it neither resets
-    // canonical knowledge nor requires Founder resubmission.
-    internal const int Current = 18;
+    // v19 adds Founder-declared cross-example meaning relationships. The
+    // existing evaluator derives only their structural transition projections
+    // through the same replay/maturity authority; it neither invents a
+    // response direction from family order nor requires Founder resubmission.
+    internal const int Current = 19;
 }
 
 internal sealed class LegendConnectLearningHostedService : BackgroundService

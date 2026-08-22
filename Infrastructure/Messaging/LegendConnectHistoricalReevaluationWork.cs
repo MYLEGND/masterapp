@@ -23,6 +23,11 @@ internal sealed class LegendConnectHistoricalReevaluationWorkAuthority
     // evidence authority: the canonical curriculum service still evaluates
     // every family.
     internal const string FounderManifestFamilyWorkKind = "FounderManifestFamily";
+    // WorkKind is deliberately constrained to nvarchar(24) by the durable
+    // work schema.  This compact operational label identifies governed
+    // cross-example relation projection without widening that established
+    // schema or introducing a second queue.
+    internal const string FounderManifestSemanticRelationWorkKind = "FounderManifestRelation";
     internal const string FounderCurriculumPhase = "FounderCurriculum";
     private const string SeedWorkKind = "PhaseSeed";
     private const string Pending = "Pending";
@@ -32,6 +37,7 @@ internal sealed class LegendConnectHistoricalReevaluationWorkAuthority
     private const int DefaultSeedBatchSize = 128;
     private const int DefaultMaximumConcurrency = 4;
     private const int DefaultMaximumAttempts = 5;
+    private const int MaximumClaimContentionRetries = 8;
     private const int MaximumExpiredLeaseReclaimsPerPass = 250;
     private static readonly TimeSpan DefaultLeaseDuration = TimeSpan.FromMinutes(10);
 
@@ -335,13 +341,24 @@ internal sealed class LegendConnectHistoricalReevaluationWorkAuthority
             return null;
 
         await RequeueExpiredAsync(evaluatorVersion, phase, cancellationToken);
-        var candidateId = await SelectNextClaimableIdAsync(
-            evaluatorVersion,
-            phase,
-            cancellationToken);
-        return candidateId is null
-            ? null
-            : await TryClaimByIdAsync(candidateId.Value, evaluatorVersion, phase, workerId, cancellationToken);
+        // A conditional claim can legitimately lose a race after the
+        // candidate read. Continue scanning bounded eligible identities so
+        // independent worker slots refill instead of all returning after
+        // competing for the first row.
+        for (var attempt = 0; attempt < MaximumClaimContentionRetries; attempt++)
+        {
+            var candidateId = await SelectNextClaimableIdAsync(
+                evaluatorVersion,
+                phase,
+                cancellationToken);
+            if (candidateId is null)
+                return null;
+
+            var claim = await TryClaimByIdAsync(candidateId.Value, evaluatorVersion, phase, workerId, cancellationToken);
+            if (claim is not null)
+                return claim;
+        }
+        return null;
     }
 
     /// <summary>
@@ -406,32 +423,152 @@ internal sealed class LegendConnectHistoricalReevaluationWorkAuthority
         return changed;
     }
 
+    /// <summary>
+    /// Adds Founder-declared cross-example semantic relation projections to
+    /// the existing durable work authority. Each item is claimable only after
+    /// the manifest's family work has drained, so a relationship can never
+    /// race an endpoint meaning-graph write.
+    /// </summary>
+    internal async Task<bool> SeedFounderManifestSemanticRelationsAsync(
+        int evaluatorVersion,
+        Guid manifestId,
+        int relationshipCount,
+        CancellationToken cancellationToken = default)
+    {
+        if (relationshipCount <= 0)
+            return false;
+
+        var existing = await WorkFor(evaluatorVersion, FounderCurriculumPhase)
+            .Where(item => item.WorkKind == FounderManifestSemanticRelationWorkKind &&
+                item.SubjectId == manifestId)
+            .ToDictionaryAsync(item => item.SubjectScope, cancellationToken);
+        var now = DateTime.UtcNow;
+        var changed = false;
+        for (var index = 0; index < relationshipCount; index++)
+        {
+            var scope = index.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            if (existing.TryGetValue(scope, out var prior))
+            {
+                if (prior.ProcessingState == Failed)
+                {
+                    prior.ProcessingState = Pending;
+                    prior.LeaseOwner = null;
+                    prior.LeaseToken = null;
+                    prior.LeaseExpiresUtc = null;
+                    prior.AttemptCount = 0;
+                    prior.LastErrorCode = null;
+                    prior.LastErrorMessage = null;
+                    prior.UpdatedUtc = now;
+                    changed = true;
+                }
+                continue;
+            }
+
+            _db.Set<LegendHistoricalReevaluationWorkItem>().Add(new LegendHistoricalReevaluationWorkItem
+            {
+                Id = Guid.NewGuid(),
+                EvaluatorVersion = evaluatorVersion,
+                Phase = FounderCurriculumPhase,
+                WorkKind = FounderManifestSemanticRelationWorkKind,
+                WorkIdentity = $"founder-manifest:{manifestId:D}:semantic-relation:{index}",
+                SubjectId = manifestId,
+                SubjectScope = scope,
+                // One manifest-level lane preserves a deterministic evidence
+                // reconciliation boundary while unrelated manifests retain
+                // the normal bounded parallelism of this same authority.
+                DependencyIdentity = $"founder-manifest-semantic-relations:{manifestId:D}",
+                ProcessingState = Pending,
+                CreatedUtc = now,
+                UpdatedUtc = now
+            });
+            changed = true;
+        }
+        if (changed)
+            await _db.SaveChangesAsync(cancellationToken);
+        return changed;
+    }
+
     internal async Task<LegendHistoricalReevaluationWorkClaim?> TryClaimNextFounderManifestFamilyAsync(
         int evaluatorVersion,
         string workerId,
         CancellationToken cancellationToken = default)
     {
+        // Retain the historical method's family-only contract for existing
+        // callers. The hosted processor uses the explicit generic method
+        // below when it is authorized to execute relation work as well.
         await RequeueExpiredAsync(evaluatorVersion, FounderCurriculumPhase, cancellationToken);
-        var candidateId = await WorkFor(evaluatorVersion, FounderCurriculumPhase)
-            .AsNoTracking()
-            .Where(item => item.WorkKind == FounderManifestFamilyWorkKind && item.ProcessingState == Pending &&
-                !_db.Set<LegendHistoricalReevaluationWorkItem>().Any(active =>
-                    active.Id != item.Id && active.EvaluatorVersion == evaluatorVersion &&
-                    active.Phase == FounderCurriculumPhase && active.ProcessingState == Processing &&
-                    active.DependencyIdentity == item.DependencyIdentity))
-            .OrderBy(item => item.CreatedUtc)
-            .ThenBy(item => item.Id)
-            .Select(item => (Guid?)item.Id)
-            .FirstOrDefaultAsync(cancellationToken);
-        return candidateId is null
-            ? null
-            : await TryClaimByIdAsync(
+        for (var attempt = 0; attempt < MaximumClaimContentionRetries; attempt++)
+        {
+            var candidateId = await WorkFor(evaluatorVersion, FounderCurriculumPhase)
+                .AsNoTracking()
+                .Where(item => item.WorkKind == FounderManifestFamilyWorkKind &&
+                    item.ProcessingState == Pending &&
+                    !_db.Set<LegendHistoricalReevaluationWorkItem>().Any(active =>
+                        active.Id != item.Id && active.EvaluatorVersion == evaluatorVersion &&
+                        active.Phase == FounderCurriculumPhase && active.ProcessingState == Processing &&
+                        active.DependencyIdentity == item.DependencyIdentity))
+                .OrderBy(item => item.CreatedUtc)
+                .ThenBy(item => item.Id)
+                .Select(item => (Guid?)item.Id)
+                .FirstOrDefaultAsync(cancellationToken);
+            if (candidateId is null)
+                return null;
+
+            var claim = await TryClaimByIdAsync(
                 candidateId.Value,
                 evaluatorVersion,
                 FounderCurriculumPhase,
                 workerId,
                 FounderManifestFamilyWorkKind,
                 cancellationToken);
+            if (claim is not null)
+                return claim;
+        }
+        return null;
+    }
+
+    internal async Task<LegendHistoricalReevaluationWorkClaim?> TryClaimNextFounderManifestWorkAsync(
+        int evaluatorVersion,
+        string workerId,
+        CancellationToken cancellationToken = default)
+    {
+        await RequeueExpiredAsync(evaluatorVersion, FounderCurriculumPhase, cancellationToken);
+        for (var attempt = 0; attempt < MaximumClaimContentionRetries; attempt++)
+        {
+            var candidate = await WorkFor(evaluatorVersion, FounderCurriculumPhase)
+                .AsNoTracking()
+                .Where(item => (item.WorkKind == FounderManifestFamilyWorkKind ||
+                                 item.WorkKind == FounderManifestSemanticRelationWorkKind) &&
+                    item.ProcessingState == Pending &&
+                    !_db.Set<LegendHistoricalReevaluationWorkItem>().Any(active =>
+                        active.Id != item.Id && active.EvaluatorVersion == evaluatorVersion &&
+                        active.Phase == FounderCurriculumPhase && active.ProcessingState == Processing &&
+                        active.DependencyIdentity == item.DependencyIdentity) &&
+                    (item.WorkKind != FounderManifestSemanticRelationWorkKind ||
+                     !_db.Set<LegendHistoricalReevaluationWorkItem>().Any(family =>
+                         family.EvaluatorVersion == evaluatorVersion &&
+                         family.Phase == FounderCurriculumPhase &&
+                         family.WorkKind == FounderManifestFamilyWorkKind &&
+                         family.SubjectId == item.SubjectId &&
+                         family.ProcessingState != Completed)))
+                .OrderBy(item => item.CreatedUtc)
+                .ThenBy(item => item.Id)
+                .Select(item => new { item.Id, item.WorkKind })
+                .FirstOrDefaultAsync(cancellationToken);
+            if (candidate is null)
+                return null;
+
+            var claim = await TryClaimByIdAsync(
+                candidate.Id,
+                evaluatorVersion,
+                FounderCurriculumPhase,
+                workerId,
+                candidate.WorkKind,
+                cancellationToken);
+            if (claim is not null)
+                return claim;
+        }
+        return null;
     }
 
     /// <summary>
@@ -789,7 +926,9 @@ internal sealed class LegendConnectHistoricalReevaluationWorkAuthority
             item.Id == claim.WorkItemId &&
             item.EvaluatorVersion == claim.EvaluatorVersion &&
             item.Phase == claim.Phase &&
-                (item.WorkKind == CanonicalWorkKind || item.WorkKind == FounderManifestFamilyWorkKind) &&
+                (item.WorkKind == CanonicalWorkKind ||
+                 item.WorkKind == FounderManifestFamilyWorkKind ||
+                 item.WorkKind == FounderManifestSemanticRelationWorkKind) &&
             item.ProcessingState == Processing &&
             item.LeaseToken == claim.LeaseToken,
             cancellationToken);

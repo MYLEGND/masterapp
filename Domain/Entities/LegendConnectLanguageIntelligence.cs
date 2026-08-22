@@ -209,6 +209,20 @@ public sealed class LegendSemanticTransitionEvidence
     public Guid SourceCurriculumExampleId { get; set; }
     public Guid ResultCurriculumExampleId { get; set; }
     /// <summary>
+    /// Optional immutable Founder cross-example declaration from which this
+    /// transition observation was structurally derived.  Legacy explicit
+    /// frame declarations deliberately leave this null; both forms converge
+    /// on this one transition-evidence authority and its existing gates.
+    /// </summary>
+    public Guid? FounderSemanticExampleRelationEvidenceId { get; set; }
+    /// <summary>
+    /// Stable semantic identity of the Founder-declared relationship. It is
+    /// not a family, example, prompt, or result-text identity.
+    /// </summary>
+    public string? FounderRelationshipSemanticSignature { get; set; }
+    /// <summary>Evaluator revision that derived this governed projection.</summary>
+    public int? DerivationEvaluatorVersion { get; set; }
+    /// <summary>
     /// A stable family-pair identity prevents repeated examples or provider
     /// retries from manufacturing independent transition support.
     /// </summary>
@@ -411,8 +425,45 @@ public sealed class LegendCurriculumExample
     public Guid CurriculumFamilyId { get; set; }
     public Guid TextUnitId { get; set; }
     public string LanguageCode { get; set; } = string.Empty;
+    /// <summary>
+    /// Opaque, Founder-declared semantic-example identity. It never contains
+    /// a surface sentence and is used only to bind a cross-example semantic
+    /// relationship to one governed meaning graph.
+    /// </summary>
+    public string? SemanticExampleIdentity { get; set; }
     public Guid? DerivedFromCurriculumExampleId { get; set; }
     public string Provenance { get; set; } = "FounderApproved";
+    public DateTime? SupersededUtc { get; set; }
+    public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
+    public DateTime UpdatedUtc { get; set; } = DateTime.UtcNow;
+}
+
+/// <summary>
+/// One immutable Founder declaration that a governed source meaning graph is
+/// structurally related to a governed result meaning graph. It is evidence,
+/// never an immediately executable response rule. The existing evaluator
+/// derives any reusable transition observation through the normal maturity,
+/// contradiction, and production-eligibility gates.
+/// </summary>
+public sealed class LegendFounderSemanticExampleRelationEvidence
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public string RelationIdentity { get; set; } = string.Empty;
+    public string RelationshipSemanticIdentity { get; set; } = string.Empty;
+    public string RelationshipSemanticSignature { get; set; } = string.Empty;
+    public Guid SourceCurriculumFamilyId { get; set; }
+    public Guid SourceCurriculumExampleId { get; set; }
+    public Guid ResultCurriculumFamilyId { get; set; }
+    public Guid ResultCurriculumExampleId { get; set; }
+    public string SourceMeaningGraphSignature { get; set; } = string.Empty;
+    public string ResultMeaningGraphSignature { get; set; } = string.Empty;
+    public string LanguageCode { get; set; } = string.Empty;
+    public string IndependentSourceIdentity { get; set; } = string.Empty;
+    /// <summary>Supported, Contradictory, or Insufficient.</summary>
+    public string ContributionState { get; set; } = "Supported";
+    public bool IsHumanVerifiedSupport { get; set; }
+    public string Provenance { get; set; } = "FounderApproved";
+    public int EvaluatorVersion { get; set; }
     public DateTime? SupersededUtc { get; set; }
     public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedUtc { get; set; } = DateTime.UtcNow;

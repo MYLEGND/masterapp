@@ -34,6 +34,8 @@ public sealed class LegendConnectFounderManifestParallelSqlTests
         "LEGEND_FOUNDER_MANIFEST_SQL_CONCURRENCY_1_CONNECTION";
     private const string ConcurrencyFourConnection =
         "LEGEND_FOUNDER_MANIFEST_SQL_CONCURRENCY_4_CONNECTION";
+    private const string SharedIdentityConnection =
+        "LEGEND_FOUNDER_MANIFEST_SQL_SHARED_IDENTITY_CONNECTION";
     private readonly ITestOutputHelper _output;
 
     public LegendConnectFounderManifestParallelSqlTests(ITestOutputHelper output) =>
@@ -58,8 +60,8 @@ public sealed class LegendConnectFounderManifestParallelSqlTests
         try
         {
             Environment.SetEnvironmentVariable("FOUNDER_OID", FounderId);
-            var one = await RunManifestAsync(oneConnection, 1);
-            var four = await RunManifestAsync(fourConnection, 4);
+            var one = await RunManifestAsync(oneConnection, 1, BuildManifest(), expectedFamilyCount: 8);
+            var four = await RunManifestAsync(fourConnection, 4, BuildManifest(), expectedFamilyCount: 8);
 
             Assert.Equal(8, one.FamiliesCompleted);
             Assert.Equal(8, four.FamiliesCompleted);
@@ -69,6 +71,10 @@ public sealed class LegendConnectFounderManifestParallelSqlTests
             Assert.Equal(0, four.DuplicateAnchorIdentities);
             Assert.Equal(0, one.DuplicateWorkIdentities);
             Assert.Equal(0, four.DuplicateWorkIdentities);
+            Assert.Equal(0, one.DuplicateStructuralRelationshipIdentities);
+            Assert.Equal(0, four.DuplicateStructuralRelationshipIdentities);
+            foreach (var error in one.Errors.Concat(four.Errors))
+                _output.WriteLine("WORKER ERROR: " + error);
             Assert.Empty(one.Errors);
             Assert.Empty(four.Errors);
             Assert.True(four.MaximumObservedParallelism > 1,
@@ -93,9 +99,44 @@ public sealed class LegendConnectFounderManifestParallelSqlTests
         }
     }
 
+    [Fact]
+    public async Task FounderManifest_DurableWorkers_SerializesSharedStructuralRelationshipIdentity()
+    {
+        var connection = Environment.GetEnvironmentVariable(SharedIdentityConnection);
+        if (string.IsNullOrWhiteSpace(connection))
+        {
+            _output.WriteLine("Founder manifest shared-identity SQL proof was not selected; its isolated connection string is required.");
+            return;
+        }
+
+        var previousFounderOid = Environment.GetEnvironmentVariable("FOUNDER_OID");
+        try
+        {
+            Environment.SetEnvironmentVariable("FOUNDER_OID", FounderId);
+            var shared = await RunManifestAsync(connection, 4, BuildSharedIdentityManifest(), expectedFamilyCount: 4);
+
+            Assert.Equal(4, shared.FamiliesCompleted);
+            Assert.Equal(0, shared.FailedWork);
+            Assert.Equal(0, shared.DuplicateAnchorIdentities);
+            Assert.Equal(0, shared.DuplicateWorkIdentities);
+            Assert.Equal(0, shared.DuplicateStructuralRelationshipIdentities);
+            Assert.Empty(shared.Errors);
+            Assert.True(shared.MaximumObservedParallelism > 1);
+            Assert.Equal(4, shared.WorkerClaims.Count);
+            Assert.All(shared.WorkerClaims.Values, claimed => Assert.True(claimed > 0));
+            _output.WriteLine($"SHARED STRUCTURAL IDENTITY: completed={shared.FamiliesCompleted}/4; maxInFlight={shared.MaximumObservedParallelism}; duplicate relationships=0; errors=0.");
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("FOUNDER_OID", previousFounderOid);
+        }
+    }
+
     private static async Task<ManifestRunResult> RunManifestAsync(
         string connectionString,
-        int maxConcurrency)
+        int maxConcurrency,
+        string manifestText,
+        int expectedFamilyCount)
     {
         var options = new DbContextOptionsBuilder<MasterAppDbContext>()
             .UseSqlServer(connectionString)
@@ -127,7 +168,7 @@ public sealed class LegendConnectFounderManifestParallelSqlTests
                 new AgentProfileAccessResolver(db));
             var accepted = await founderLegend.SubmitCurriculumAsync(
                 founder,
-                new FounderLegendConnectCurriculumInput { Manifest = BuildManifest() });
+                new FounderLegendConnectCurriculumInput { Manifest = manifestText });
             Assert.True(accepted.Succeeded, accepted.Message);
             Assert.False(accepted.DuplicatePrevented);
 
@@ -178,10 +219,12 @@ public sealed class LegendConnectFounderManifestParallelSqlTests
                 item.Phase == LegendConnectHistoricalReevaluationWorkAuthority.FounderCurriculumPhase &&
                 item.WorkKind == LegendConnectHistoricalReevaluationWorkAuthority.FounderManifestFamilyWorkKind)
             .ToListAsync();
+        Assert.True(errors.IsEmpty,
+            "Durable family worker errors:" + Environment.NewLine + string.Join(Environment.NewLine, errors));
         Assert.Equal("Completed", manifest.ProcessingState);
         Assert.Equal(LegendConnectLanguageIntelligenceEvaluatorVersion.Current,
             manifest.CompletedLanguageIntelligenceEvaluatorVersion);
-        Assert.Equal(8, work.Count);
+        Assert.Equal(expectedFamilyCount, work.Count);
         Assert.All(work, item => Assert.Equal("Completed", item.ProcessingState));
 
         var canonical = new ManifestCanonicalState(
@@ -211,6 +254,16 @@ public sealed class LegendConnectFounderManifestParallelSqlTests
                 .GroupBy(item => new { item.CurriculumExampleId, item.AnchorSignature })
                 .CountAsync(group => group.Count() > 1),
             work.GroupBy(item => item.WorkIdentity).Count(group => group.Count() > 1),
+            await verification.LegendLanguageStructuralRelationships
+                .Where(item => item.SupersededUtc == null)
+                .GroupBy(item => new
+                {
+                    item.PairKey,
+                    item.LanguageCode,
+                    item.VariationDimension,
+                    item.RelationshipSignature
+                })
+                .CountAsync(group => group.Count() > 1),
             maximumObservedParallelism,
             workerClaims.ToDictionary(item => item.Key, item => item.Value),
             errors.ToArray(),
@@ -272,7 +325,7 @@ public sealed class LegendConnectFounderManifestParallelSqlTests
             }
             catch (Exception exception)
             {
-                errors.Enqueue(exception.GetType().Name + ":" + exception.Message);
+                errors.Enqueue(exception.ToString());
                 await services.Work.FailAsync(claim, "sql_manifest_parallel_proof_failure");
                 return;
             }
@@ -341,22 +394,41 @@ public sealed class LegendConnectFounderManifestParallelSqlTests
             lines.Add("@ground conversation_function -> surface_phrase");
             for (var example = 0; example < 10; example++)
             {
-                // Each word-form is intentionally distinct across families.
-                // That makes the work genuinely independent at every
-                // canonical identity layer (text unit, lexeme, occurrence,
-                // anchor, and transition), rather than treating two writers
-                // to the same lexical row as parallel-safe work.
+                // Both surface and governed semantic values are intentionally
+                // distinct across families. That makes this the required
+                // independent-work benchmark rather than treating writers to
+                // one shared semantic primitive as parallel-safe work.
                 var text = $"Aster{family:D2}a{example:D2} Beryl{family:D2}b{example:D2} Cobalt{family:D2}c{example:D2}.";
-                lines.Add(text + " | surface_phrase=" + text + "; conversation_function=greeting; discourse_role=opening; intent=start_conversation_" + family.ToString("D2") + "; register=neutral");
+                lines.Add(text + " | surface_phrase=" + text + "; conversation_function=greeting_" + family.ToString("D2") + "; discourse_role=opening_" + family.ToString("D2") + "; intent=start_conversation_" + family.ToString("D2") + "; register=neutral_" + family.ToString("D2") + "; domain_slot_" + family.ToString("D2") + "=independent_domain_" + family.ToString("D2"));
             }
             for (var example = 0; example < 10; example++)
             {
                 var text = $"Dawn{family:D2}d{example:D2} Elm{family:D2}e{example:D2} Fable{family:D2}f{example:D2}.";
-                lines.Add(text + " | surface_phrase=" + text + "; conversation_function=acknowledgement; discourse_role=response; intent=acknowledge_and_continue_" + family.ToString("D2") + "; register=neutral");
+                lines.Add(text + " | surface_phrase=" + text + "; conversation_function=acknowledgement_" + family.ToString("D2") + "; discourse_role=response_" + family.ToString("D2") + "; intent=acknowledge_and_continue_" + family.ToString("D2") + "; register=neutral_" + family.ToString("D2") + "; domain_slot_" + family.ToString("D2") + "=independent_domain_" + family.ToString("D2"));
             }
             lines.Add("@transition");
-            lines.Add("@source conversation_function=greeting; discourse_role=opening; intent=start_conversation_" + family.ToString("D2") + "; register=neutral");
-            lines.Add("@result conversation_function=acknowledgement; discourse_role=response; intent=acknowledge_and_continue_" + family.ToString("D2") + "; register=neutral");
+            lines.Add("@source conversation_function=greeting_" + family.ToString("D2") + "; discourse_role=opening_" + family.ToString("D2") + "; intent=start_conversation_" + family.ToString("D2") + "; register=neutral_" + family.ToString("D2"));
+            lines.Add("@result conversation_function=acknowledgement_" + family.ToString("D2") + "; discourse_role=response_" + family.ToString("D2") + "; intent=acknowledge_and_continue_" + family.ToString("D2") + "; register=neutral_" + family.ToString("D2"));
+            lines.Add("@endtransition");
+            lines.Add("@end");
+        }
+        return string.Join(Environment.NewLine, lines);
+    }
+
+    private static string BuildSharedIdentityManifest()
+    {
+        var lines = new List<string>();
+        for (var family = 0; family < 4; family++)
+        {
+            lines.Add($"@family shared.relationship.proof.{family:D2} | Shared reusable structural relationship contribution {family:D2}");
+            lines.Add("@ground conversation_function -> surface_phrase");
+            var greeting = $"Shared{family:D2} opening phrase.";
+            var response = $"Shared{family:D2} response phrase.";
+            lines.Add(greeting + " | surface_phrase=" + greeting + "; conversation_function=greeting; discourse_role=opening; intent=start_conversation; register=neutral");
+            lines.Add(response + " | surface_phrase=" + response + "; conversation_function=acknowledgement; discourse_role=response; intent=acknowledge_and_continue; register=neutral");
+            lines.Add("@transition");
+            lines.Add("@source conversation_function=greeting; discourse_role=opening; intent=start_conversation; register=neutral");
+            lines.Add("@result conversation_function=acknowledgement; discourse_role=response; intent=acknowledge_and_continue; register=neutral");
             lines.Add("@endtransition");
             lines.Add("@end");
         }
@@ -393,6 +465,7 @@ public sealed class LegendConnectFounderManifestParallelSqlTests
         int FailedWork,
         int DuplicateAnchorIdentities,
         int DuplicateWorkIdentities,
+        int DuplicateStructuralRelationshipIdentities,
         int MaximumObservedParallelism,
         IReadOnlyDictionary<int, int> WorkerClaims,
         IReadOnlyList<string> Errors,

@@ -102,6 +102,7 @@ public class MasterAppDbContext : DbContext
     public DbSet<LegendTranslationQualityEvidence> LegendTranslationQualityEvidence => Set<LegendTranslationQualityEvidence>();
     public DbSet<LegendLanguageContextRelationship> LegendLanguageContextRelationships => Set<LegendLanguageContextRelationship>();
     public DbSet<LegendSemanticTransitionEvidence> LegendSemanticTransitionEvidence => Set<LegendSemanticTransitionEvidence>();
+    public DbSet<LegendFounderSemanticExampleRelationEvidence> LegendFounderSemanticExampleRelationEvidence => Set<LegendFounderSemanticExampleRelationEvidence>();
     public DbSet<LegendTranslationLearningEvent> LegendTranslationLearningEvents => Set<LegendTranslationLearningEvent>();
     public DbSet<LegendCorpusCandidate> LegendCorpusCandidates => Set<LegendCorpusCandidate>();
     public DbSet<LegendLanguageTeacherProposal> LegendLanguageTeacherProposals => Set<LegendLanguageTeacherProposal>();

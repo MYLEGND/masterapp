@@ -388,6 +388,44 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
             inference.Reasons.FirstOrDefault() ?? "semantic_transition_not_governed");
     }
 
+    public async Task<LegendConnectNativeInferenceSnapshot>
+        TryInferConversationWithDiscourseAsync(
+            string input,
+            IReadOnlyList<LegendConnectConversationContextItem> context,
+            LegendConnectDiscourseStateSnapshot? discourseState,
+            CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (string.IsNullOrWhiteSpace(LegendLanguageIdentity.NormalizeText(input ?? string.Empty)))
+            return NativeInferenceUnsupported("invalid_input");
+
+        var composed = await _curriculum.TryInferComposedSemanticTransitionAsync(
+            "en", input ?? string.Empty, discourseState, cancellationToken);
+        if (string.Equals(composed.State, LegendSemanticTransitionInference.Supported, StringComparison.Ordinal) &&
+            !string.IsNullOrWhiteSpace(composed.RealizedText))
+        {
+            return new LegendConnectNativeInferenceSnapshot(
+                true,
+                0m,
+                composed.RealizedText,
+                "semantic_transition_governed_composed",
+                composed.EvidenceCount,
+                "LEGEND composed governed meaning, applied one independently supported Founder transition, and realized the governed result.",
+                false);
+        }
+
+        // Existing explicit frame evidence remains governed by the same
+        // selector and realization authority. Retain it only when the newer
+        // compositional graph cannot establish a source meaning; a composed
+        // contradiction/ambiguity must fail closed rather than be masked.
+        if (composed.State is LegendSemanticTransitionInference.Ambiguous or
+            LegendSemanticTransitionInference.Contradicted)
+        {
+            return NativeInferenceUnsupported(composed.Reasons.FirstOrDefault() ?? "semantic_transition_not_governed");
+        }
+        return await TryInferConversationAsync(input ?? string.Empty, context, cancellationToken);
+    }
+
     /// <summary>
     /// Observational Stage 4 boundary. It deliberately returns governed result
     /// meaning before any surface realization and is not invoked by serving.
@@ -2796,17 +2834,25 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
         }
 
         // Manifest-wide preflight remains synchronous and mutation-free.
-        // One invalid family rejects the complete manifest before durable
-        // acceptance. Expensive learning does not run inside the HTTP request.
-        foreach (var family in families)
-        {
-            var validation = await _curriculum.PreflightFounderEnglishBatchAsync(family, cancellationToken);
-            if (validation is not null)
-                return validation;
-        }
+        // One invalid family or cross-example semantic declaration rejects the
+        // complete manifest before durable acceptance. Expensive learning does
+        // not run inside the HTTP request.
+        var manifestValidation = await _curriculum.PreflightFounderEnglishManifestAsync(
+            new LegendConnectCurriculumManifestSubmission(
+                families,
+                submission.CrossExampleSemanticRelationships),
+            cancellationToken);
+        if (manifestValidation is not null)
+            return manifestValidation;
 
+        // Retain the complete preflighted manifest.  Cross-example semantic
+        // relationships are Founder-governed curriculum declarations just as
+        // the families are; omitting them here would make accepted durable
+        // work unable to project their governed evidence later.
         var payload = JsonSerializer.Serialize(
-            new LegendConnectCurriculumManifestSubmission(families));
+            new LegendConnectCurriculumManifestSubmission(
+                families,
+                submission.CrossExampleSemanticRelationships));
         var manifestHash = Convert.ToHexString(
             SHA256.HashData(Encoding.UTF8.GetBytes(payload))).ToLowerInvariant();
         var workIdentityBytes = SHA256.HashData(

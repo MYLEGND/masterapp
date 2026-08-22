@@ -538,6 +538,7 @@ internal static class MessagingModelConfiguration
             entity.Property(item => item.SourceLanguageCode).IsRequired().HasMaxLength(32);
             entity.Property(item => item.ResultLanguageCode).IsRequired().HasMaxLength(32);
             entity.Property(item => item.IndependentSourceIdentity).IsRequired().HasMaxLength(96);
+            entity.Property(item => item.FounderRelationshipSemanticSignature).HasMaxLength(64);
             entity.Property(item => item.ContributionState).IsRequired().HasMaxLength(40);
             entity.Property(item => item.Provenance).IsRequired().HasMaxLength(80);
             entity.HasIndex(item => new
@@ -556,6 +557,12 @@ internal static class MessagingModelConfiguration
             }).HasDatabaseName("IX_LegendSemTransEv_FrameLang");
             entity.HasIndex(item => new { item.SourceCurriculumExampleId, item.SupersededUtc });
             entity.HasIndex(item => new { item.ResultCurriculumExampleId, item.SupersededUtc });
+            entity.HasIndex(item => new
+            {
+                item.FounderRelationshipSemanticSignature,
+                item.SourceSemanticFrameSignature,
+                item.SupersededUtc
+            }).HasDatabaseName("IX_LegendSemTransEv_FounderRelationSource");
             entity.HasOne<LegendCurriculumExample>()
                 .WithMany()
                 .HasForeignKey(item => item.SourceCurriculumExampleId)
@@ -563,6 +570,10 @@ internal static class MessagingModelConfiguration
             entity.HasOne<LegendCurriculumExample>()
                 .WithMany()
                 .HasForeignKey(item => item.ResultCurriculumExampleId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<LegendFounderSemanticExampleRelationEvidence>()
+                .WithMany()
+                .HasForeignKey(item => item.FounderSemanticExampleRelationEvidenceId)
                 .OnDelete(DeleteBehavior.Restrict);
         });
 
@@ -726,6 +737,7 @@ internal static class MessagingModelConfiguration
             entity.ToTable("LegendCurriculumExamples");
             entity.HasKey(item => item.Id);
             entity.Property(item => item.LanguageCode).IsRequired().HasMaxLength(32);
+            entity.Property(item => item.SemanticExampleIdentity).HasMaxLength(64);
             entity.Property(item => item.Provenance).IsRequired().HasMaxLength(80);
             entity.HasIndex(item => item.SupersededUtc);
             entity.HasIndex(item => new { item.CurriculumFamilyId, item.TextUnitId }).IsUnique();
@@ -733,6 +745,9 @@ internal static class MessagingModelConfiguration
             entity.HasIndex(item => new { item.LanguageCode, item.SupersededUtc, item.UpdatedUtc })
                 .HasDatabaseName("IX_LegendCurriculumExamples_FounderLanguage");
             entity.HasIndex(item => item.DerivedFromCurriculumExampleId);
+            entity.HasIndex(item => item.SemanticExampleIdentity)
+                .IsUnique()
+                .HasFilter("[SemanticExampleIdentity] IS NOT NULL");
             entity.HasOne<LegendCurriculumFamily>()
                 .WithMany()
                 .HasForeignKey(item => item.CurriculumFamilyId)
@@ -744,6 +759,48 @@ internal static class MessagingModelConfiguration
             entity.HasOne<LegendCurriculumExample>()
                 .WithMany()
                 .HasForeignKey(item => item.DerivedFromCurriculumExampleId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<LegendFounderSemanticExampleRelationEvidence>(entity =>
+        {
+            entity.ToTable("LegendFounderSemanticExampleRelationEvidence");
+            entity.HasKey(item => item.Id);
+            entity.Property(item => item.RelationIdentity).IsRequired().HasMaxLength(64);
+            entity.Property(item => item.RelationshipSemanticIdentity).IsRequired().HasMaxLength(80);
+            entity.Property(item => item.RelationshipSemanticSignature).IsRequired().HasMaxLength(64);
+            entity.Property(item => item.SourceMeaningGraphSignature).IsRequired().HasMaxLength(64);
+            entity.Property(item => item.ResultMeaningGraphSignature).IsRequired().HasMaxLength(64);
+            entity.Property(item => item.LanguageCode).IsRequired().HasMaxLength(32);
+            entity.Property(item => item.IndependentSourceIdentity).IsRequired().HasMaxLength(96);
+            entity.Property(item => item.ContributionState).IsRequired().HasMaxLength(40);
+            entity.Property(item => item.Provenance).IsRequired().HasMaxLength(80);
+            entity.HasIndex(item => item.RelationIdentity).IsUnique();
+            entity.HasIndex(item => new
+            {
+                item.RelationshipSemanticSignature,
+                item.SourceMeaningGraphSignature,
+                item.ResultMeaningGraphSignature,
+                item.ContributionState,
+                item.SupersededUtc
+            }).HasDatabaseName("IX_LegendFounderSemRel_Maturity");
+            entity.HasIndex(item => new { item.SourceCurriculumExampleId, item.SupersededUtc });
+            entity.HasIndex(item => new { item.ResultCurriculumExampleId, item.SupersededUtc });
+            entity.HasOne<LegendCurriculumFamily>()
+                .WithMany()
+                .HasForeignKey(item => item.SourceCurriculumFamilyId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<LegendCurriculumExample>()
+                .WithMany()
+                .HasForeignKey(item => item.SourceCurriculumExampleId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<LegendCurriculumFamily>()
+                .WithMany()
+                .HasForeignKey(item => item.ResultCurriculumFamilyId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<LegendCurriculumExample>()
+                .WithMany()
+                .HasForeignKey(item => item.ResultCurriculumExampleId)
                 .OnDelete(DeleteBehavior.Restrict);
         });
 
