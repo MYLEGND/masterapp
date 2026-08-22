@@ -4836,8 +4836,13 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
         var existingEvidenceByIdentity = await _db.Set<LegendLanguageMeaningRelationEvidence>()
             .Where(item => exampleIds.Contains(item.CurriculumExampleId))
             .ToDictionaryAsync(item => item.EvidenceIdentity, cancellationToken);
+        var existingReferenceEvidenceByIdentity = await _db.Set<LegendLanguageDiscourseReferenceRuleEvidence>()
+            .Where(item => exampleIds.Contains(item.CurriculumExampleId))
+            .ToDictionaryAsync(item => item.EvidenceIdentity, cancellationToken);
         var relationsBySignature = new Dictionary<string, LegendLanguageMeaningRelation>(StringComparer.Ordinal);
         var affectedRelations = new HashSet<Guid>();
+        var referenceRulesBySignature = new Dictionary<string, LegendLanguageDiscourseReferenceRule>(StringComparer.Ordinal);
+        var affectedReferenceRules = new HashSet<Guid>();
 
         foreach (var item in declared)
         {
@@ -5009,12 +5014,98 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
 
                 affectedRelations.Add(relation.Id);
             }
+
+            foreach (var declaration in graph.DiscourseReferences)
+            {
+                var selector = nodes[declaration.SelectorNodeKey];
+                var ruleSignature = DiscourseReferenceRuleSignature(
+                    languageCode,
+                    selector.SemanticSignature,
+                    declaration.EntitySemanticDimension,
+                    declaration.ResolutionMode,
+                    declaration.SelectionRank,
+                    declaration.AllowedSourceRoles,
+                    declaration.ReplacesActiveBinding);
+                if (!referenceRulesBySignature.TryGetValue(ruleSignature, out var rule))
+                {
+                    rule = _db.Set<LegendLanguageDiscourseReferenceRule>().Local
+                        .SingleOrDefault(item => item.LanguageCode == languageCode && item.RuleSignature == ruleSignature)
+                        ?? await _db.Set<LegendLanguageDiscourseReferenceRule>()
+                            .SingleOrDefaultAsync(item => item.LanguageCode == languageCode && item.RuleSignature == ruleSignature,
+                                cancellationToken);
+                    if (rule is null)
+                    {
+                        rule = new LegendLanguageDiscourseReferenceRule
+                        {
+                            Id = Guid.NewGuid(),
+                            LanguageCode = languageCode,
+                            RuleSignature = ruleSignature,
+                            SelectorSemanticSignature = selector.SemanticSignature,
+                            EntitySemanticDimension = declaration.EntitySemanticDimension,
+                            ResolutionMode = declaration.ResolutionMode,
+                            SelectionRank = declaration.SelectionRank,
+                            AllowedSourceRoles = string.Join("|", declaration.AllowedSourceRoles),
+                            ReplacesActiveBinding = declaration.ReplacesActiveBinding,
+                            Provenance = LegendConnectKnowledgeProvenance.FounderApproved,
+                            CreatedUtc = DateTime.UtcNow,
+                            UpdatedUtc = DateTime.UtcNow
+                        };
+                        _db.Set<LegendLanguageDiscourseReferenceRule>().Add(rule);
+                    }
+                    else if (rule.SupersededUtc is not null)
+                    {
+                        rule.SupersededUtc = null;
+                        rule.UpdatedUtc = DateTime.UtcNow;
+                    }
+                    referenceRulesBySignature.Add(ruleSignature, rule);
+                }
+
+                var evidenceIdentity = LegendLanguageIdentity.TextHash(
+                    $"founder-discourse-reference-evidence|v1|{example.Id:D}|{selector.Id:D}|{rule.Id:D}");
+                if (!existingReferenceEvidenceByIdentity.TryGetValue(evidenceIdentity, out var evidence))
+                {
+                    evidence = new LegendLanguageDiscourseReferenceRuleEvidence
+                    {
+                        Id = Guid.NewGuid(),
+                        DiscourseReferenceRuleId = rule.Id,
+                        CurriculumFamilyId = family.Id,
+                        CurriculumExampleId = example.Id,
+                        SelectorMeaningNodeId = selector.Id,
+                        EvidenceIdentity = evidenceIdentity,
+                        IndependentSourceIdentity = family.Id.ToString("N"),
+                        ContributionState = "Supported",
+                        IsHumanVerifiedSupport = true,
+                        Provenance = LegendConnectKnowledgeProvenance.FounderApproved,
+                        CreatedUtc = DateTime.UtcNow,
+                        UpdatedUtc = DateTime.UtcNow
+                    };
+                    _db.Set<LegendLanguageDiscourseReferenceRuleEvidence>().Add(evidence);
+                    existingReferenceEvidenceByIdentity.Add(evidenceIdentity, evidence);
+                }
+                else if (evidence.DiscourseReferenceRuleId != rule.Id ||
+                    evidence.SelectorMeaningNodeId != selector.Id ||
+                    !string.Equals(evidence.Provenance, LegendConnectKnowledgeProvenance.FounderApproved,
+                        StringComparison.Ordinal))
+                {
+                    throw new InvalidOperationException("A canonical Founder discourse reference cannot silently change its governed identity.");
+                }
+                else if (evidence.SupersededUtc is not null)
+                {
+                    evidence.SupersededUtc = null;
+                    evidence.UpdatedUtc = DateTime.UtcNow;
+                }
+                affectedReferenceRules.Add(rule.Id);
+            }
         }
 
         await _db.SaveChangesAsync(cancellationToken);
         foreach (var relationId in affectedRelations)
             await RefreshMeaningRelationMaturityAsync(relationId, cancellationToken);
         if (affectedRelations.Count > 0)
+            await _db.SaveChangesAsync(cancellationToken);
+        foreach (var ruleId in affectedReferenceRules)
+            await RefreshDiscourseReferenceRuleMaturityAsync(ruleId, cancellationToken);
+        if (affectedReferenceRules.Count > 0)
             await _db.SaveChangesAsync(cancellationToken);
         await ReconcileFounderMeaningPrimitivesAsync(family.Id, languageCode, cancellationToken);
     }
@@ -5183,6 +5274,76 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
         LegendLanguageIdentity.TextHash(
             $"founder-meaning-relation|v1|{languageCode}|{sourceSemanticSignature}|" +
             $"{relationKind}|{targetSemanticSignature}|{clauseKey ?? string.Empty}");
+
+    internal async Task<IReadOnlyList<LegendConnectDiscourseReferenceRuleSnapshot>>
+        GetProductionDiscourseReferenceRulesAsync(
+            string sourceLanguageCode,
+            IReadOnlyList<string> selectorSemanticSignatures,
+            CancellationToken cancellationToken = default)
+    {
+        var languageCode = await _languages.NormalizeEnabledTranslationLanguageAsync(
+            sourceLanguageCode,
+            cancellationToken);
+        var selectors = selectorSemanticSignatures
+            .Where(item => !string.IsNullOrWhiteSpace(item))
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+        if (languageCode is null || selectors.Length == 0)
+            return [];
+
+        var rules = await _db.Set<LegendLanguageDiscourseReferenceRule>().AsNoTracking()
+            .Where(item => item.LanguageCode == languageCode && item.SupersededUtc == null &&
+                item.MaturityState == "Supported" && item.IsProductionEligible &&
+                item.ContradictionCount == 0 && item.IndependentSourceCount >= 3 &&
+                selectors.Contains(item.SelectorSemanticSignature))
+            .ToListAsync(cancellationToken);
+        return rules.Select(item => new LegendConnectDiscourseReferenceRuleSnapshot(
+                item.SelectorSemanticSignature,
+                item.EntitySemanticDimension,
+                item.ResolutionMode,
+                item.SelectionRank,
+                item.AllowedSourceRoles.Split('|', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries),
+                item.ReplacesActiveBinding,
+                item.IndependentSourceCount))
+            .ToArray();
+    }
+
+    private async Task RefreshDiscourseReferenceRuleMaturityAsync(
+        Guid ruleId,
+        CancellationToken cancellationToken)
+    {
+        var rule = await _db.Set<LegendLanguageDiscourseReferenceRule>()
+            .SingleAsync(item => item.Id == ruleId, cancellationToken);
+        var evidence = await _db.Set<LegendLanguageDiscourseReferenceRuleEvidence>()
+            .Where(item => item.DiscourseReferenceRuleId == ruleId && item.SupersededUtc == null)
+            .ToListAsync(cancellationToken);
+        var supported = evidence.Where(item => item.ContributionState == "Supported" &&
+            item.IsHumanVerifiedSupport).ToList();
+        var contradictions = evidence.Count(item => item.ContributionState == "Contradictory");
+        rule.SupportCount = supported.Count;
+        rule.ContradictionCount = contradictions;
+        rule.IndependentSourceCount = supported.Select(item => item.IndependentSourceIdentity)
+            .Distinct(StringComparer.Ordinal).Count();
+        rule.HumanVerifiedSupportCount = supported.Count;
+        rule.MaturityState = contradictions > 0 ? "Contradicted" :
+            rule.IndependentSourceCount >= 3 ? "Supported" : "Observation";
+        rule.IsProductionEligible = rule.MaturityState == "Supported" &&
+            rule.ContradictionCount == 0 && rule.HumanVerifiedSupportCount >= 3;
+        rule.UpdatedUtc = DateTime.UtcNow;
+    }
+
+    private static string DiscourseReferenceRuleSignature(
+        string languageCode,
+        string selectorSemanticSignature,
+        string entitySemanticDimension,
+        string resolutionMode,
+        int? selectionRank,
+        IReadOnlyList<string> allowedSourceRoles,
+        bool replacesActiveBinding) =>
+        LegendLanguageIdentity.TextHash(
+            $"founder-discourse-reference-rule|v1|{languageCode}|{selectorSemanticSignature}|" +
+            $"{entitySemanticDimension}|{resolutionMode}|{selectionRank?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? string.Empty}|" +
+            $"{string.Join("|", allowedSourceRoles)}|{replacesActiveBinding}");
 
     private async Task AttachExplicitFounderSemanticAnchorsAsync(
         LegendCurriculumFamily family,
@@ -8439,7 +8600,41 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
                 clauseKey));
         }
 
-        normalized = new NormalizedMeaningGraph(nodes, relations);
+        var references = new List<NormalizedDiscourseReference>(graph.DiscourseReferences?.Count ?? 0);
+        var referenceIdentities = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var reference in graph.DiscourseReferences ?? [])
+        {
+            var selectorNodeKey = NormalizeDimension(reference.SelectorNodeKey);
+            var entityDimension = NormalizeDimension(reference.EntitySemanticDimension);
+            var resolutionMode = NormalizeDimension(reference.ResolutionMode);
+            var allowedRoles = (reference.AllowedSourceRoles ?? ["user", "assistant"])
+                .Select(item => item?.Trim().ToLowerInvariant())
+                .Where(item => item is not null)
+                .Cast<string>()
+                .Distinct(StringComparer.Ordinal)
+                .OrderBy(item => item, StringComparer.Ordinal)
+                .ToArray();
+            if (selectorNodeKey is null || entityDimension is null ||
+                resolutionMode is not ("ordinal" or "unique") ||
+                !nodeKeys.Contains(selectorNodeKey) ||
+                allowedRoles.Length is < 1 or > 2 ||
+                allowedRoles.Any(item => item is not ("user" or "assistant")) ||
+                (resolutionMode == "ordinal" && reference.SelectionRank is not (>= 1 and <= 16)) ||
+                (resolutionMode == "unique" && reference.SelectionRank is not null))
+            {
+                return false;
+            }
+            var identity = string.Join("\u001f", selectorNodeKey, entityDimension, resolutionMode,
+                reference.SelectionRank?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? string.Empty,
+                string.Join("|", allowedRoles), reference.ReplacesActiveBinding ? "replace" : "set");
+            if (!referenceIdentities.Add(identity))
+                return false;
+            references.Add(new NormalizedDiscourseReference(
+                selectorNodeKey, entityDimension, resolutionMode, reference.SelectionRank,
+                allowedRoles, reference.ReplacesActiveBinding));
+        }
+
+        normalized = new NormalizedMeaningGraph(nodes, relations, references);
         return true;
     }
 
@@ -8749,7 +8944,8 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
 
     private sealed record NormalizedMeaningGraph(
         IReadOnlyList<NormalizedMeaningNode> Nodes,
-        IReadOnlyList<NormalizedMeaningRelation> Relations);
+        IReadOnlyList<NormalizedMeaningRelation> Relations,
+        IReadOnlyList<NormalizedDiscourseReference> DiscourseReferences);
 
     private sealed record NormalizedMeaningNode(
         string NodeKey,
@@ -8764,6 +8960,14 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
         string RelationKind,
         string TargetNodeKey,
         string? ClauseKey);
+
+    private sealed record NormalizedDiscourseReference(
+        string SelectorNodeKey,
+        string EntitySemanticDimension,
+        string ResolutionMode,
+        int? SelectionRank,
+        IReadOnlyList<string> AllowedSourceRoles,
+        bool ReplacesActiveBinding);
 
     /// <summary>
     /// A canonical target example has two incompatible Founder-controlled

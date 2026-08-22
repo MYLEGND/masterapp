@@ -775,8 +775,64 @@ public sealed class LegendFounderAiDiscourseTurn
     public int SequenceNumber { get; set; }
     public string Role { get; set; } = string.Empty;
     public string MeaningGraphJson { get; set; } = string.Empty;
+    /// <summary>
+    /// Resolution outcomes expressed only as governed semantic identities and
+    /// turn/node coordinates.  This never contains either participant's
+    /// surface text, provider output, or an answer cache.
+    /// </summary>
+    public string ResolvedBindingsJson { get; set; } = "[]";
     public string AnalysisReasonCode { get; set; } = string.Empty;
     public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
+}
+
+/// <summary>
+/// Aggregate over explicit Founder-declared cross-turn reference semantics.
+/// A rule becomes executable only through independent Founder support and is
+/// intentionally separate from the conversation-state persistence that uses
+/// it.
+/// </summary>
+public sealed class LegendLanguageDiscourseReferenceRule
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public string LanguageCode { get; set; } = string.Empty;
+    public string RuleSignature { get; set; } = string.Empty;
+    public string SelectorSemanticSignature { get; set; } = string.Empty;
+    public string EntitySemanticDimension { get; set; } = string.Empty;
+    public string ResolutionMode { get; set; } = string.Empty;
+    public int? SelectionRank { get; set; }
+    public string AllowedSourceRoles { get; set; } = string.Empty;
+    public bool ReplacesActiveBinding { get; set; }
+    public string MaturityState { get; set; } = "Observation";
+    public int SupportCount { get; set; }
+    public int ContradictionCount { get; set; }
+    public int IndependentSourceCount { get; set; }
+    public int HumanVerifiedSupportCount { get; set; }
+    public bool IsProductionEligible { get; set; }
+    public string Provenance { get; set; } = "FounderApproved";
+    public DateTime? SupersededUtc { get; set; }
+    public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
+    public DateTime UpdatedUtc { get; set; } = DateTime.UtcNow;
+}
+
+/// <summary>
+/// Immutable provenance for one controlled graph declaration supporting a
+/// discourse-reference rule.
+/// </summary>
+public sealed class LegendLanguageDiscourseReferenceRuleEvidence
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid DiscourseReferenceRuleId { get; set; }
+    public Guid CurriculumFamilyId { get; set; }
+    public Guid CurriculumExampleId { get; set; }
+    public Guid SelectorMeaningNodeId { get; set; }
+    public string EvidenceIdentity { get; set; } = string.Empty;
+    public string IndependentSourceIdentity { get; set; } = string.Empty;
+    public string ContributionState { get; set; } = "Supported";
+    public bool IsHumanVerifiedSupport { get; set; }
+    public string Provenance { get; set; } = "FounderApproved";
+    public DateTime? SupersededUtc { get; set; }
+    public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
+    public DateTime UpdatedUtc { get; set; } = DateTime.UtcNow;
 }
 
 /// <summary>

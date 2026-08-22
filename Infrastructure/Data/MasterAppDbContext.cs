@@ -120,6 +120,8 @@ public class MasterAppDbContext : DbContext
     public DbSet<LegendLanguageMeaningPrimitiveEvidence> LegendLanguageMeaningPrimitiveEvidence => Set<LegendLanguageMeaningPrimitiveEvidence>();
     public DbSet<LegendFounderAiDiscourseConversation> LegendFounderAiDiscourseConversations => Set<LegendFounderAiDiscourseConversation>();
     public DbSet<LegendFounderAiDiscourseTurn> LegendFounderAiDiscourseTurns => Set<LegendFounderAiDiscourseTurn>();
+    public DbSet<LegendLanguageDiscourseReferenceRule> LegendLanguageDiscourseReferenceRules => Set<LegendLanguageDiscourseReferenceRule>();
+    public DbSet<LegendLanguageDiscourseReferenceRuleEvidence> LegendLanguageDiscourseReferenceRuleEvidence => Set<LegendLanguageDiscourseReferenceRuleEvidence>();
     public DbSet<LegendLanguageMeaningRelation> LegendLanguageMeaningRelations => Set<LegendLanguageMeaningRelation>();
     public DbSet<LegendLanguageMeaningRelationEvidence> LegendLanguageMeaningRelationEvidence => Set<LegendLanguageMeaningRelationEvidence>();
     public DbSet<LegendLanguageTargetRealizationCandidate> LegendLanguageTargetRealizationCandidates => Set<LegendLanguageTargetRealizationCandidate>();

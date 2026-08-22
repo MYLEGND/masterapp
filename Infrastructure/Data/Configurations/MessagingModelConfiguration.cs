@@ -1110,11 +1110,58 @@ internal static class MessagingModelConfiguration
             entity.HasKey(item => item.Id);
             entity.Property(item => item.Role).IsRequired().HasMaxLength(24);
             entity.Property(item => item.MeaningGraphJson).IsRequired();
+            entity.Property(item => item.ResolvedBindingsJson).IsRequired().HasDefaultValue("[]");
             entity.Property(item => item.AnalysisReasonCode).IsRequired().HasMaxLength(96);
             entity.HasIndex(item => new { item.DiscourseConversationId, item.SequenceNumber }).IsUnique();
             entity.HasOne<LegendFounderAiDiscourseConversation>()
                 .WithMany()
                 .HasForeignKey(item => item.DiscourseConversationId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<LegendLanguageDiscourseReferenceRule>(entity =>
+        {
+            entity.ToTable("LegendLanguageDiscourseReferenceRules");
+            entity.HasKey(item => item.Id);
+            entity.Property(item => item.LanguageCode).IsRequired().HasMaxLength(32);
+            entity.Property(item => item.RuleSignature).IsRequired().HasMaxLength(64);
+            entity.Property(item => item.SelectorSemanticSignature).IsRequired().HasMaxLength(64);
+            entity.Property(item => item.EntitySemanticDimension).IsRequired().HasMaxLength(80);
+            entity.Property(item => item.ResolutionMode).IsRequired().HasMaxLength(32);
+            entity.Property(item => item.AllowedSourceRoles).IsRequired().HasMaxLength(48);
+            entity.Property(item => item.MaturityState).IsRequired().HasMaxLength(40);
+            entity.Property(item => item.Provenance).IsRequired().HasMaxLength(80);
+            entity.HasIndex(item => new { item.LanguageCode, item.RuleSignature }).IsUnique();
+            entity.HasIndex(item => new
+                { item.LanguageCode, item.SelectorSemanticSignature, item.MaturityState, item.IsProductionEligible, item.SupersededUtc });
+        });
+
+        modelBuilder.Entity<LegendLanguageDiscourseReferenceRuleEvidence>(entity =>
+        {
+            entity.ToTable("LegendLanguageDiscourseReferenceRuleEvidence");
+            entity.HasKey(item => item.Id);
+            entity.Property(item => item.EvidenceIdentity).IsRequired().HasMaxLength(64);
+            entity.Property(item => item.IndependentSourceIdentity).IsRequired().HasMaxLength(96);
+            entity.Property(item => item.ContributionState).IsRequired().HasMaxLength(40);
+            entity.Property(item => item.Provenance).IsRequired().HasMaxLength(80);
+            entity.HasIndex(item => item.EvidenceIdentity).IsUnique();
+            entity.HasIndex(item => new { item.DiscourseReferenceRuleId, item.ContributionState, item.SupersededUtc });
+            entity.HasIndex(item => new { item.CurriculumExampleId, item.SupersededUtc });
+            entity.HasOne<LegendLanguageDiscourseReferenceRule>()
+                .WithMany()
+                .HasForeignKey(item => item.DiscourseReferenceRuleId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<LegendCurriculumFamily>()
+                .WithMany()
+                .HasForeignKey(item => item.CurriculumFamilyId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<LegendCurriculumExample>()
+                .WithMany()
+                .HasForeignKey(item => item.CurriculumExampleId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<LegendLanguageMeaningNodeEvidence>()
+                .WithMany()
+                .HasForeignKey(item => item.SelectorMeaningNodeId)
                 .OnDelete(DeleteBehavior.Restrict);
         });
 

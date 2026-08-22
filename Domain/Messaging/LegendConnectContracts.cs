@@ -183,13 +183,28 @@ public sealed record LegendConnectMeaningRelationSubmission(
     string? ClauseKey = null);
 
 /// <summary>
+/// Founder-declared, semantic-only instruction for resolving a reference to a
+/// previously established discourse entity.  The selector is a node in the
+/// same controlled graph; it never names a prompt or an answer.  The runtime
+/// applies this only after the rule has independently matured.
+/// </summary>
+public sealed record LegendConnectDiscourseReferenceSubmission(
+    string SelectorNodeKey,
+    string EntitySemanticDimension,
+    string ResolutionMode,
+    int? SelectionRank = null,
+    IReadOnlyList<string>? AllowedSourceRoles = null,
+    bool ReplacesActiveBinding = false);
+
+/// <summary>
 /// Founder-authored utterance meaning graph attached to one controlled
 /// curriculum example.  Nodes and edges retain their example provenance so
 /// future abstraction never turns one sentence into a global rule.
 /// </summary>
 public sealed record LegendConnectMeaningGraphSubmission(
     IReadOnlyList<LegendConnectMeaningNodeSubmission> Nodes,
-    IReadOnlyList<LegendConnectMeaningRelationSubmission> Relations);
+    IReadOnlyList<LegendConnectMeaningRelationSubmission> Relations,
+    IReadOnlyList<LegendConnectDiscourseReferenceSubmission>? DiscourseReferences = null);
 
 public sealed record LegendConnectCurriculumExampleSubmission(
     string Text,
@@ -788,6 +803,19 @@ public sealed record LegendConnectUtteranceMeaningGraphSnapshot(
     string ReasonCode);
 
 /// <summary>
+/// A production-eligible, independently supported discourse-reference rule.
+/// It is a curriculum-derived semantic relation, not a surface-form map.
+/// </summary>
+public sealed record LegendConnectDiscourseReferenceRuleSnapshot(
+    string SelectorSemanticSignature,
+    string EntitySemanticDimension,
+    string ResolutionMode,
+    int? SelectionRank,
+    IReadOnlyList<string> AllowedSourceRoles,
+    bool ReplacesActiveBinding,
+    int IndependentSupportCount);
+
+/// <summary>
 /// The governed result of one native LEGEND conversational inference attempt.
 /// A successful result is backed only by canonical, contradiction-free
 /// evidence; all other states explicitly require escalation.
@@ -882,6 +910,12 @@ public interface ILegendConnectOperations
     Task<LegendConnectUtteranceMeaningGraphSnapshot> AnalyzeReusableMeaningGraphAsync(
         string input,
         CancellationToken cancellationToken = default);
+
+    Task<IReadOnlyList<LegendConnectDiscourseReferenceRuleSnapshot>>
+        GetProductionDiscourseReferenceRulesAsync(
+            string sourceLanguageCode,
+            IReadOnlyList<string> selectorSemanticSignatures,
+            CancellationToken cancellationToken = default);
 
     Task<LegendConnectKnowledgeSubmissionResult> SubmitFounderKnowledgeAsync(
         string founderUserId,

@@ -247,6 +247,7 @@ public sealed class LegendConnectMeaningGraphTests
                         @node act | predicate=explain | surface=explain | clause=main
                         @node target | request_target=option | surface=the option | clause=main
                         @edge act -> target | relation=request-target | clause=main
+                        @reference act | entity_dimension=request_target | resolution=unique
                         @endmeaning
                         Please describe the alternative. | predicate=describe; request_target=alternative; utterance_kind=request
                         @end
@@ -263,6 +264,10 @@ public sealed class LegendConnectMeaningGraphTests
             Assert.Single(await db.LegendLanguageMeaningRelations.ToListAsync());
             Assert.Equal(2, await db.LegendLanguageMeaningNodeEvidence.CountAsync());
             Assert.Single(await db.LegendLanguageMeaningRelationEvidence.ToListAsync());
+            var referenceRule = await db.LegendLanguageDiscourseReferenceRules.SingleAsync();
+            Assert.Equal("Observation", referenceRule.MaturityState);
+            Assert.False(referenceRule.IsProductionEligible);
+            Assert.Single(await db.LegendLanguageDiscourseReferenceRuleEvidence.ToListAsync());
             Assert.Equal("Completed", await db.LegendCurriculumManifestWorkItems
                 .Select(item => item.ProcessingState)
                 .SingleAsync());

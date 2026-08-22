@@ -408,6 +408,16 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
         CancellationToken cancellationToken = default) =>
         _curriculum.AnalyzeReusableMeaningGraphAsync("en", input ?? string.Empty, cancellationToken);
 
+    public Task<IReadOnlyList<LegendConnectDiscourseReferenceRuleSnapshot>>
+        GetProductionDiscourseReferenceRulesAsync(
+            string sourceLanguageCode,
+            IReadOnlyList<string> selectorSemanticSignatures,
+            CancellationToken cancellationToken = default) =>
+        _curriculum.GetProductionDiscourseReferenceRulesAsync(
+            sourceLanguageCode,
+            selectorSemanticSignatures,
+            cancellationToken);
+
     public async Task<LegendConnectRetainedKnowledgeSearchSnapshot>
         SearchRetainedKnowledgeAsync(
             string query,

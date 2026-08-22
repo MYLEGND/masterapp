@@ -769,6 +769,7 @@ public sealed class FounderLegendConnectService
         int? meaningGraphExampleIndex = null;
         List<LegendConnectMeaningNodeSubmission>? meaningNodes = null;
         List<LegendConnectMeaningRelationSubmission>? meaningRelations = null;
+        List<LegendConnectDiscourseReferenceSubmission>? meaningReferences = null;
         IReadOnlyDictionary<string, string>? transitionSource = null;
         IReadOnlyDictionary<string, string>? transitionResult = null;
 
@@ -813,6 +814,7 @@ public sealed class FounderLegendConnectService
                 meaningGraphExampleIndex = examples.Count - 1;
                 meaningNodes = [];
                 meaningRelations = [];
+                meaningReferences = [];
                 continue;
             }
 
@@ -862,10 +864,37 @@ public sealed class FounderLegendConnectService
                 continue;
             }
 
+            if (TryReadCurriculumDirective(line, "reference", out var referenceSuffix))
+            {
+                if (meaningGraphExampleIndex is null || meaningNodes is null || meaningRelations is null ||
+                    meaningReferences is null)
+                {
+                    error = $"Line {index + 1}: @reference must appear inside a @meaning ... @endmeaning block.";
+                    return false;
+                }
+                if (!TryParseDiscourseReference(referenceSuffix, out var reference, out var referenceError))
+                {
+                    error = referenceError ?? $"Line {index + 1}: use @reference selector_node | entity_dimension=controlled_dimension | resolution=ordinal|unique.";
+                    return false;
+                }
+                if (meaningReferences.Any(item =>
+                        string.Equals(item.SelectorNodeKey, reference.SelectorNodeKey, StringComparison.OrdinalIgnoreCase) &&
+                        string.Equals(item.EntitySemanticDimension, reference.EntitySemanticDimension, StringComparison.OrdinalIgnoreCase) &&
+                        string.Equals(item.ResolutionMode, reference.ResolutionMode, StringComparison.OrdinalIgnoreCase) &&
+                        item.SelectionRank == reference.SelectionRank &&
+                        item.ReplacesActiveBinding == reference.ReplacesActiveBinding))
+                {
+                    error = $"Line {index + 1}: the same governed discourse reference may appear only once per example.";
+                    return false;
+                }
+                meaningReferences.Add(reference);
+                continue;
+            }
+
             if (TryReadCurriculumDirective(line, "endmeaning", out var endMeaningSuffix) &&
                 string.IsNullOrWhiteSpace(endMeaningSuffix))
             {
-                if (meaningGraphExampleIndex is null || meaningNodes is null || meaningRelations is null ||
+                if (meaningGraphExampleIndex is null || meaningNodes is null || meaningRelations is null || meaningReferences is null ||
                     examples is null || meaningNodes.Count == 0)
                 {
                     error = $"Line {index + 1}: @endmeaning requires at least one explicit @node.";
@@ -877,11 +906,13 @@ public sealed class FounderLegendConnectService
                 {
                     MeaningGraph = new LegendConnectMeaningGraphSubmission(
                         meaningNodes.ToArray(),
-                        meaningRelations.ToArray())
+                        meaningRelations.ToArray(),
+                        meaningReferences.ToArray())
                 };
                 meaningGraphExampleIndex = null;
                 meaningNodes = null;
                 meaningRelations = null;
+                meaningReferences = null;
                 continue;
             }
 
@@ -982,6 +1013,7 @@ public sealed class FounderLegendConnectService
                 semanticSpanGroundings = [];
                 meaningNodes = null;
                 meaningRelations = null;
+                meaningReferences = null;
                 continue;
             }
 
@@ -1017,6 +1049,7 @@ public sealed class FounderLegendConnectService
                 semanticSpanGroundings = null;
                 meaningNodes = null;
                 meaningRelations = null;
+                meaningReferences = null;
                 continue;
             }
 
@@ -1217,6 +1250,91 @@ public sealed class FounderLegendConnectService
 
         relation = new LegendConnectMeaningRelationSubmission(
             endpoints[0], relationParts[1], endpoints[1], clause);
+        return true;
+    }
+
+    private static bool TryParseDiscourseReference(
+        string input,
+        out LegendConnectDiscourseReferenceSubmission reference,
+        out string? error)
+    {
+        reference = new LegendConnectDiscourseReferenceSubmission(
+            string.Empty, string.Empty, string.Empty);
+        error = null;
+        var parts = input.Split('|', StringSplitOptions.TrimEntries);
+        if (parts.Length is < 3 or > 6 || !IsSemanticDimensionName(parts[0]))
+        {
+            error = "A discourse reference must use selector_node | entity_dimension=controlled_dimension | resolution=ordinal|unique [| rank=positive_integer] [| roles=user,assistant] [| replace_active=true].";
+            return false;
+        }
+
+        string? entityDimension = null;
+        string? resolution = null;
+        int? rank = null;
+        IReadOnlyList<string>? roles = null;
+        var replaceActive = false;
+        for (var index = 1; index < parts.Length; index++)
+        {
+            var option = parts[index].Split('=', 2, StringSplitOptions.TrimEntries);
+            if (option.Length != 2)
+            {
+                error = "Each @reference option must use name=value.";
+                return false;
+            }
+            if (string.Equals(option[0], "entity_dimension", StringComparison.OrdinalIgnoreCase) &&
+                entityDimension is null && IsSemanticDimensionName(option[1]))
+            {
+                entityDimension = option[1];
+                continue;
+            }
+            if (string.Equals(option[0], "resolution", StringComparison.OrdinalIgnoreCase) &&
+                resolution is null && option[1] is "ordinal" or "unique")
+            {
+                resolution = option[1];
+                continue;
+            }
+            if (string.Equals(option[0], "rank", StringComparison.OrdinalIgnoreCase) && rank is null &&
+                int.TryParse(option[1], out var parsedRank) && parsedRank is >= 1 and <= 16)
+            {
+                rank = parsedRank;
+                continue;
+            }
+            if (string.Equals(option[0], "roles", StringComparison.OrdinalIgnoreCase) && roles is null)
+            {
+                var parsedRoles = option[1].Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                    .Select(item => item.ToLowerInvariant())
+                    .Distinct(StringComparer.Ordinal)
+                    .OrderBy(item => item, StringComparer.Ordinal)
+                    .ToArray();
+                if (parsedRoles.Length is < 1 or > 2 || parsedRoles.Any(item => item is not ("user" or "assistant")))
+                {
+                    error = "A discourse reference roles declaration may contain only user and/or assistant.";
+                    return false;
+                }
+                roles = parsedRoles;
+                continue;
+            }
+            if (string.Equals(option[0], "replace_active", StringComparison.OrdinalIgnoreCase) &&
+                !replaceActive && bool.TryParse(option[1], out var parsedReplace) && parsedReplace)
+            {
+                replaceActive = true;
+                continue;
+            }
+
+            error = "A discourse reference may declare entity_dimension, resolution, rank, roles, and replace_active=true once each.";
+            return false;
+        }
+
+        if (entityDimension is null || resolution is null ||
+            (resolution == "ordinal" && rank is null) ||
+            (resolution == "unique" && rank is not null))
+        {
+            error = "An ordinal discourse reference requires rank=positive_integer; a unique discourse reference must not declare rank.";
+            return false;
+        }
+
+        reference = new LegendConnectDiscourseReferenceSubmission(
+            parts[0], entityDimension, resolution, rank, roles ?? ["user", "assistant"], replaceActive);
         return true;
     }
 
