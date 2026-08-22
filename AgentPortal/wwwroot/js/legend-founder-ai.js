@@ -1090,6 +1090,7 @@
                             },
                             body: JSON.stringify({
                                 mode: conversation.mode,
+                                conversationId: conversation.id,
                                 messages: conversation.messages
                             })
                         }

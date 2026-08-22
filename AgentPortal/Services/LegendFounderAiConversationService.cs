@@ -47,10 +47,12 @@ public sealed class LegendFounderAiConversationService
     private const int MinimumProviderAttemptWindowSeconds = 3;
     private const int MaximumProviderCooldownSeconds = 300;
     private const int MaximumTransientProviderAttempts = 3;
+    private const int MaximumDiscourseObservationSeconds = 2;
 
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly IConfiguration _configuration;
     private readonly FounderLegendConnectService _legend;
+    private readonly LegendFounderAiDiscourseStateService? _discourse;
     private readonly ILogger<LegendFounderAiConversationService> _logger;
     private readonly int _timeoutSeconds;
     private readonly int _maxOutputTokens;
@@ -67,11 +69,13 @@ public sealed class LegendFounderAiConversationService
         IHttpClientFactory httpClientFactory,
         IConfiguration configuration,
         FounderLegendConnectService legend,
-        ILogger<LegendFounderAiConversationService> logger)
+        ILogger<LegendFounderAiConversationService> logger,
+        LegendFounderAiDiscourseStateService? discourse = null)
     {
         _httpClientFactory = httpClientFactory;
         _configuration = configuration;
         _legend = legend;
+        _discourse = discourse;
         _logger = logger;
 
         _timeoutSeconds =
@@ -159,6 +163,13 @@ public sealed class LegendFounderAiConversationService
 
             try
             {
+                await ObserveDiscourseMeaningAsync(
+                    founder,
+                    request.ConversationId,
+                    "user",
+                    conversation[^1].Content ?? string.Empty,
+                    effectiveToken,
+                    cancellationToken);
                 nativeInference = await _legend.TryInferConversationAsync(
                     founder,
                     conversation[^1].Content ?? string.Empty,
@@ -188,6 +199,16 @@ public sealed class LegendFounderAiConversationService
             if (nativeInference is { Supported: true } &&
                 !string.IsNullOrWhiteSpace(nativeInference.Answer))
             {
+                // Assistant turns participate in the same conversation state
+                // only as governed structural observations. No answer text is
+                // persisted and this never becomes a reply cache.
+                await ObserveDiscourseMeaningAsync(
+                    founder,
+                    request.ConversationId,
+                    "assistant",
+                    nativeInference.Answer,
+                    effectiveToken,
+                    cancellationToken);
                 await ReportProgressAsync(
                     progress,
                     new LegendFounderAiProgressEvent(
@@ -519,6 +540,51 @@ public sealed class LegendFounderAiConversationService
                 "LEGEND Founder AI received invalid provider JSON.");
 
             return NativeInferenceUnavailableResponse(mode, nativeInference);
+        }
+    }
+
+    private async Task ObserveDiscourseMeaningAsync(
+        ClaimsPrincipal founder,
+        string? conversationId,
+        string role,
+        string surface,
+        CancellationToken inferenceCancellationToken,
+        CancellationToken requestCancellationToken)
+    {
+        using var observationBudget = CancellationTokenSource.CreateLinkedTokenSource(
+            inferenceCancellationToken);
+        observationBudget.CancelAfter(
+            TimeSpan.FromSeconds(MaximumDiscourseObservationSeconds));
+        try
+        {
+            if (_discourse is null)
+                return;
+
+            var meaning = await _legend.AnalyzeReusableMeaningGraphAsync(
+                founder,
+                surface,
+                observationBudget.Token);
+            await _discourse.RecordObservationAsync(
+                founder,
+                conversationId,
+                role,
+                meaning,
+                observationBudget.Token);
+        }
+        catch (OperationCanceledException) when (requestCancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (OperationCanceledException)
+        {
+            _logger.LogDebug("LEGEND discourse observation reached its bounded window.");
+        }
+        catch (Exception exception)
+        {
+            // Conversation state is durable observability, not a second
+            // inference authority. A failed state write must not turn a
+            // governed native reply into a provider fallback.
+            _logger.LogWarning(exception, "LEGEND discourse observation persistence failed.");
         }
     }
 
@@ -2919,6 +2985,14 @@ public sealed record LegendFounderAiChatMessage(
 public sealed class LegendFounderAiChatRequest
 {
     public string? Mode { get; init; }
+
+    /// <summary>
+    /// Client-generated UUID that scopes durable governed discourse state to
+    /// one Founder conversation. It is never used as a knowledge key or as a
+    /// response cache; malformed or absent values retain the existing
+    /// request-scoped behavior.
+    /// </summary>
+    public string? ConversationId { get; init; }
 
     public IReadOnlyList<LegendFounderAiChatMessage>? Messages
     {

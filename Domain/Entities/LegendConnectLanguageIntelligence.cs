@@ -749,6 +749,37 @@ public sealed class LegendLanguageMeaningPrimitiveEvidence
 }
 
 /// <summary>
+/// Conversation-scoped state for Founder LEGEND AI. It contains no curriculum
+/// authority and no response text; its sole identity boundary is one active
+/// Founder actor plus one client-issued conversation UUID.
+/// </summary>
+public sealed class LegendFounderAiDiscourseConversation
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public string FounderAgentUserId { get; set; } = string.Empty;
+    public Guid ConversationId { get; set; }
+    public int NextTurnSequence { get; set; }
+    public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
+    public DateTime UpdatedUtc { get; set; } = DateTime.UtcNow;
+}
+
+/// <summary>
+/// An immutable, bounded observation of a turn's governed meaning graph.
+/// The JSON is structured node/relation data only: never prompt text, an
+/// answer string, provider output, or a response lookup key.
+/// </summary>
+public sealed class LegendFounderAiDiscourseTurn
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid DiscourseConversationId { get; set; }
+    public int SequenceNumber { get; set; }
+    public string Role { get; set; } = string.Empty;
+    public string MeaningGraphJson { get; set; } = string.Empty;
+    public string AnalysisReasonCode { get; set; } = string.Empty;
+    public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
+}
+
+/// <summary>
 /// The aggregate maturity of one explicit semantic relationship.  It is an
 /// index over auditable node-to-node evidence, not an inferred grammar rule.
 /// Phase 1 intentionally leaves IsProductionEligible false: later governed

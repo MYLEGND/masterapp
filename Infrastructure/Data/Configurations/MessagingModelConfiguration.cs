@@ -1095,6 +1095,29 @@ internal static class MessagingModelConfiguration
                 .OnDelete(DeleteBehavior.Restrict);
         });
 
+        modelBuilder.Entity<LegendFounderAiDiscourseConversation>(entity =>
+        {
+            entity.ToTable("LegendFounderAiDiscourseConversations");
+            entity.HasKey(item => item.Id);
+            entity.Property(item => item.FounderAgentUserId).IsRequired().HasMaxLength(128);
+            entity.HasIndex(item => new { item.FounderAgentUserId, item.ConversationId }).IsUnique();
+            entity.HasIndex(item => item.UpdatedUtc);
+        });
+
+        modelBuilder.Entity<LegendFounderAiDiscourseTurn>(entity =>
+        {
+            entity.ToTable("LegendFounderAiDiscourseTurns");
+            entity.HasKey(item => item.Id);
+            entity.Property(item => item.Role).IsRequired().HasMaxLength(24);
+            entity.Property(item => item.MeaningGraphJson).IsRequired();
+            entity.Property(item => item.AnalysisReasonCode).IsRequired().HasMaxLength(96);
+            entity.HasIndex(item => new { item.DiscourseConversationId, item.SequenceNumber }).IsUnique();
+            entity.HasOne<LegendFounderAiDiscourseConversation>()
+                .WithMany()
+                .HasForeignKey(item => item.DiscourseConversationId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
         modelBuilder.Entity<LegendLanguageMeaningRelationEvidence>(entity =>
         {
             entity.ToTable("LegendLanguageMeaningRelationEvidence");
