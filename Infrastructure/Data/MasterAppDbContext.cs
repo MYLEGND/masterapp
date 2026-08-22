@@ -115,6 +115,11 @@ public class MasterAppDbContext : DbContext
     public DbSet<LegendLanguageLexicalOccurrence> LegendLanguageLexicalOccurrences => Set<LegendLanguageLexicalOccurrence>();
     public DbSet<LegendLanguageLexicalRelationship> LegendLanguageLexicalRelationships => Set<LegendLanguageLexicalRelationship>();
     public DbSet<LegendLanguageCompositionalAnchor> LegendLanguageCompositionalAnchors => Set<LegendLanguageCompositionalAnchor>();
+    public DbSet<LegendLanguageMeaningNodeEvidence> LegendLanguageMeaningNodeEvidence => Set<LegendLanguageMeaningNodeEvidence>();
+    public DbSet<LegendLanguageMeaningPrimitive> LegendLanguageMeaningPrimitives => Set<LegendLanguageMeaningPrimitive>();
+    public DbSet<LegendLanguageMeaningPrimitiveEvidence> LegendLanguageMeaningPrimitiveEvidence => Set<LegendLanguageMeaningPrimitiveEvidence>();
+    public DbSet<LegendLanguageMeaningRelation> LegendLanguageMeaningRelations => Set<LegendLanguageMeaningRelation>();
+    public DbSet<LegendLanguageMeaningRelationEvidence> LegendLanguageMeaningRelationEvidence => Set<LegendLanguageMeaningRelationEvidence>();
     public DbSet<LegendLanguageTargetRealizationCandidate> LegendLanguageTargetRealizationCandidates => Set<LegendLanguageTargetRealizationCandidate>();
     public DbSet<LegendLanguageTargetRealizationEvidence> LegendLanguageTargetRealizationEvidence => Set<LegendLanguageTargetRealizationEvidence>();
     public DbSet<LegendFounderTrainingSubmission> LegendFounderTrainingSubmissions => Set<LegendFounderTrainingSubmission>();

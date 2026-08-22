@@ -1006,6 +1006,128 @@ internal static class MessagingModelConfiguration
                 .OnDelete(DeleteBehavior.Restrict);
         });
 
+        modelBuilder.Entity<LegendLanguageMeaningNodeEvidence>(entity =>
+        {
+            entity.ToTable("LegendLanguageMeaningNodeEvidence");
+            entity.HasKey(item => item.Id);
+            entity.Property(item => item.LanguageCode).IsRequired().HasMaxLength(32);
+            entity.Property(item => item.NodeKey).IsRequired().HasMaxLength(80);
+            entity.Property(item => item.SemanticSignature).IsRequired().HasMaxLength(64);
+            entity.Property(item => item.SemanticDimension).IsRequired().HasMaxLength(80);
+            entity.Property(item => item.SemanticValue).IsRequired().HasMaxLength(160);
+            entity.Property(item => item.ClauseKey).HasMaxLength(80);
+            entity.Property(item => item.Provenance).IsRequired().HasMaxLength(80);
+            entity.HasIndex(item => new { item.CurriculumExampleId, item.NodeKey }).IsUnique();
+            entity.HasIndex(item => new { item.CompositionalAnchorId, item.SupersededUtc });
+            entity.HasIndex(item => new { item.LanguageCode, item.SemanticSignature, item.SupersededUtc });
+            entity.HasOne<LegendCurriculumFamily>()
+                .WithMany()
+                .HasForeignKey(item => item.CurriculumFamilyId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<LegendCurriculumExample>()
+                .WithMany()
+                .HasForeignKey(item => item.CurriculumExampleId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<LegendLanguageCompositionalAnchor>()
+                .WithMany()
+                .HasForeignKey(item => item.CompositionalAnchorId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<LegendLanguageMeaningRelation>(entity =>
+        {
+            entity.ToTable("LegendLanguageMeaningRelations");
+            entity.HasKey(item => item.Id);
+            entity.Property(item => item.LanguageCode).IsRequired().HasMaxLength(32);
+            entity.Property(item => item.RelationSignature).IsRequired().HasMaxLength(64);
+            entity.Property(item => item.RelationKind).IsRequired().HasMaxLength(80);
+            entity.Property(item => item.SourceSemanticSignature).IsRequired().HasMaxLength(64);
+            entity.Property(item => item.TargetSemanticSignature).IsRequired().HasMaxLength(64);
+            entity.Property(item => item.ClauseKey).HasMaxLength(80);
+            entity.Property(item => item.MaturityState).IsRequired().HasMaxLength(40);
+            entity.Property(item => item.Provenance).IsRequired().HasMaxLength(80);
+            entity.Property(item => item.Confidence).HasPrecision(9, 4);
+            entity.HasIndex(item => new { item.LanguageCode, item.RelationSignature }).IsUnique();
+            entity.HasIndex(item => new { item.LanguageCode, item.MaturityState, item.IsProductionEligible, item.SupersededUtc });
+        });
+
+        modelBuilder.Entity<LegendLanguageMeaningPrimitive>(entity =>
+        {
+            entity.ToTable("LegendLanguageMeaningPrimitives");
+            entity.HasKey(item => item.Id);
+            entity.Property(item => item.LanguageCode).IsRequired().HasMaxLength(32);
+            entity.Property(item => item.SemanticSignature).IsRequired().HasMaxLength(64);
+            entity.Property(item => item.SemanticDimension).IsRequired().HasMaxLength(80);
+            entity.Property(item => item.SemanticValue).IsRequired().HasMaxLength(160);
+            entity.Property(item => item.MaturityState).IsRequired().HasMaxLength(40);
+            entity.Property(item => item.Provenance).IsRequired().HasMaxLength(80);
+            entity.Property(item => item.Confidence).HasPrecision(9, 4);
+            entity.HasIndex(item => new { item.LanguageCode, item.SemanticSignature }).IsUnique();
+            entity.HasIndex(item => new { item.LanguageCode, item.MaturityState, item.IsProductionEligible, item.SupersededUtc });
+        });
+
+        modelBuilder.Entity<LegendLanguageMeaningPrimitiveEvidence>(entity =>
+        {
+            entity.ToTable("LegendLanguageMeaningPrimitiveEvidence");
+            entity.HasKey(item => item.Id);
+            entity.Property(item => item.EvidenceIdentity).IsRequired().HasMaxLength(64);
+            entity.Property(item => item.IndependentSourceIdentity).IsRequired().HasMaxLength(96);
+            entity.Property(item => item.ContributionState).IsRequired().HasMaxLength(40);
+            entity.Property(item => item.Provenance).IsRequired().HasMaxLength(80);
+            entity.HasIndex(item => item.EvidenceIdentity).IsUnique();
+            entity.HasIndex(item => item.MeaningNodeEvidenceId).IsUnique();
+            entity.HasIndex(item => new { item.MeaningPrimitiveId, item.ContributionState, item.SupersededUtc });
+            entity.HasOne<LegendLanguageMeaningPrimitive>()
+                .WithMany()
+                .HasForeignKey(item => item.MeaningPrimitiveId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<LegendLanguageMeaningNodeEvidence>()
+                .WithMany()
+                .HasForeignKey(item => item.MeaningNodeEvidenceId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<LegendCurriculumFamily>()
+                .WithMany()
+                .HasForeignKey(item => item.CurriculumFamilyId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<LegendCurriculumExample>()
+                .WithMany()
+                .HasForeignKey(item => item.CurriculumExampleId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<LegendLanguageMeaningRelationEvidence>(entity =>
+        {
+            entity.ToTable("LegendLanguageMeaningRelationEvidence");
+            entity.HasKey(item => item.Id);
+            entity.Property(item => item.EvidenceIdentity).IsRequired().HasMaxLength(64);
+            entity.Property(item => item.IndependentSourceIdentity).IsRequired().HasMaxLength(96);
+            entity.Property(item => item.ContributionState).IsRequired().HasMaxLength(40);
+            entity.Property(item => item.Provenance).IsRequired().HasMaxLength(80);
+            entity.HasIndex(item => item.EvidenceIdentity).IsUnique();
+            entity.HasIndex(item => new { item.MeaningRelationId, item.ContributionState, item.SupersededUtc });
+            entity.HasIndex(item => new { item.CurriculumExampleId, item.SupersededUtc });
+            entity.HasOne<LegendLanguageMeaningRelation>()
+                .WithMany()
+                .HasForeignKey(item => item.MeaningRelationId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<LegendCurriculumFamily>()
+                .WithMany()
+                .HasForeignKey(item => item.CurriculumFamilyId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<LegendCurriculumExample>()
+                .WithMany()
+                .HasForeignKey(item => item.CurriculumExampleId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<LegendLanguageMeaningNodeEvidence>()
+                .WithMany()
+                .HasForeignKey(item => item.SourceMeaningNodeId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<LegendLanguageMeaningNodeEvidence>()
+                .WithMany()
+                .HasForeignKey(item => item.TargetMeaningNodeId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
         modelBuilder.Entity<LegendLanguageTargetRealizationCandidate>(entity =>
         {
             entity.ToTable("LegendLanguageTargetRealizationCandidates");

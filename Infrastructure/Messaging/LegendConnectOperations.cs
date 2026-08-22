@@ -398,6 +398,16 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
         "LEGEND could not establish one independently supported, contradiction-free semantic transition and canonical realization for this request.",
         true);
 
+    /// <summary>
+    /// Stage-2 observational composition through the one canonical curriculum
+    /// authority. This is intentionally not an alternate inference path and
+    /// cannot authorize a response.
+    /// </summary>
+    public Task<LegendConnectUtteranceMeaningGraphSnapshot> AnalyzeReusableMeaningGraphAsync(
+        string input,
+        CancellationToken cancellationToken = default) =>
+        _curriculum.AnalyzeReusableMeaningGraphAsync("en", input ?? string.Empty, cancellationToken);
+
     public async Task<LegendConnectRetainedKnowledgeSearchSnapshot>
         SearchRetainedKnowledgeAsync(
             string query,

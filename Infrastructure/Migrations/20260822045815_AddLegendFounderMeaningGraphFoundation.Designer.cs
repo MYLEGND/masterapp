@@ -4,6 +4,7 @@ using Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace Infrastructure.Migrations
 {
     [DbContext(typeof(MasterAppDbContext))]
-    partial class MasterAppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260822045815_AddLegendFounderMeaningGraphFoundation")]
+    partial class AddLegendFounderMeaningGraphFoundation
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -6121,147 +6124,6 @@ namespace Infrastructure.Migrations
                     b.ToTable("LegendLanguageMeaningNodeEvidence", (string)null);
                 });
 
-            modelBuilder.Entity("Domain.Entities.LegendLanguageMeaningPrimitive", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<decimal>("Confidence")
-                        .HasPrecision(9, 4)
-                        .HasColumnType("decimal(9,4)");
-
-                    b.Property<int>("ContradictionCount")
-                        .HasColumnType("int");
-
-                    b.Property<DateTime>("CreatedUtc")
-                        .HasColumnType("datetime2");
-
-                    b.Property<int>("HumanVerifiedSupportCount")
-                        .HasColumnType("int");
-
-                    b.Property<int>("IndependentSourceCount")
-                        .HasColumnType("int");
-
-                    b.Property<bool>("IsProductionEligible")
-                        .HasColumnType("bit");
-
-                    b.Property<string>("LanguageCode")
-                        .IsRequired()
-                        .HasMaxLength(32)
-                        .HasColumnType("nvarchar(32)");
-
-                    b.Property<string>("MaturityState")
-                        .IsRequired()
-                        .HasMaxLength(40)
-                        .HasColumnType("nvarchar(40)");
-
-                    b.Property<string>("Provenance")
-                        .IsRequired()
-                        .HasMaxLength(80)
-                        .HasColumnType("nvarchar(80)");
-
-                    b.Property<string>("SemanticDimension")
-                        .IsRequired()
-                        .HasMaxLength(80)
-                        .HasColumnType("nvarchar(80)");
-
-                    b.Property<string>("SemanticSignature")
-                        .IsRequired()
-                        .HasMaxLength(64)
-                        .HasColumnType("nvarchar(64)");
-
-                    b.Property<string>("SemanticValue")
-                        .IsRequired()
-                        .HasMaxLength(160)
-                        .HasColumnType("nvarchar(160)");
-
-                    b.Property<DateTime?>("SupersededUtc")
-                        .HasColumnType("datetime2");
-
-                    b.Property<int>("SupportCount")
-                        .HasColumnType("int");
-
-                    b.Property<DateTime>("UpdatedUtc")
-                        .HasColumnType("datetime2");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("LanguageCode", "SemanticSignature")
-                        .IsUnique();
-
-                    b.HasIndex("LanguageCode", "MaturityState", "IsProductionEligible", "SupersededUtc");
-
-                    b.ToTable("LegendLanguageMeaningPrimitives", (string)null);
-                });
-
-            modelBuilder.Entity("Domain.Entities.LegendLanguageMeaningPrimitiveEvidence", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<string>("ContributionState")
-                        .IsRequired()
-                        .HasMaxLength(40)
-                        .HasColumnType("nvarchar(40)");
-
-                    b.Property<DateTime>("CreatedUtc")
-                        .HasColumnType("datetime2");
-
-                    b.Property<Guid>("CurriculumExampleId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<Guid>("CurriculumFamilyId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<string>("EvidenceIdentity")
-                        .IsRequired()
-                        .HasMaxLength(64)
-                        .HasColumnType("nvarchar(64)");
-
-                    b.Property<string>("IndependentSourceIdentity")
-                        .IsRequired()
-                        .HasMaxLength(96)
-                        .HasColumnType("nvarchar(96)");
-
-                    b.Property<bool>("IsHumanVerifiedSupport")
-                        .HasColumnType("bit");
-
-                    b.Property<Guid>("MeaningNodeEvidenceId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<Guid>("MeaningPrimitiveId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<string>("Provenance")
-                        .IsRequired()
-                        .HasMaxLength(80)
-                        .HasColumnType("nvarchar(80)");
-
-                    b.Property<DateTime?>("SupersededUtc")
-                        .HasColumnType("datetime2");
-
-                    b.Property<DateTime>("UpdatedUtc")
-                        .HasColumnType("datetime2");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("CurriculumExampleId");
-
-                    b.HasIndex("CurriculumFamilyId");
-
-                    b.HasIndex("EvidenceIdentity")
-                        .IsUnique();
-
-                    b.HasIndex("MeaningNodeEvidenceId")
-                        .IsUnique();
-
-                    b.HasIndex("MeaningPrimitiveId", "ContributionState", "SupersededUtc");
-
-                    b.ToTable("LegendLanguageMeaningPrimitiveEvidence", (string)null);
-                });
-
             modelBuilder.Entity("Domain.Entities.LegendLanguageMeaningRelation", b =>
                 {
                     b.Property<Guid>("Id")
@@ -11477,33 +11339,6 @@ namespace Infrastructure.Migrations
                     b.HasOne("Domain.Entities.LegendCurriculumFamily", null)
                         .WithMany()
                         .HasForeignKey("CurriculumFamilyId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-                });
-
-            modelBuilder.Entity("Domain.Entities.LegendLanguageMeaningPrimitiveEvidence", b =>
-                {
-                    b.HasOne("Domain.Entities.LegendCurriculumExample", null)
-                        .WithMany()
-                        .HasForeignKey("CurriculumExampleId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.HasOne("Domain.Entities.LegendCurriculumFamily", null)
-                        .WithMany()
-                        .HasForeignKey("CurriculumFamilyId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.HasOne("Domain.Entities.LegendLanguageMeaningNodeEvidence", null)
-                        .WithMany()
-                        .HasForeignKey("MeaningNodeEvidenceId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.HasOne("Domain.Entities.LegendLanguageMeaningPrimitive", null)
-                        .WithMany()
-                        .HasForeignKey("MeaningPrimitiveId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
                 });

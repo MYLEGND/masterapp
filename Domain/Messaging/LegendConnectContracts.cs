@@ -157,9 +157,44 @@ public sealed record LegendConnectVerifiedTargetBatchResult(
 /// A controlled semantic curriculum example. Variations identify meaning that
 /// changed; their realization is learned independently in every language.
 /// </summary>
+/// <summary>
+/// One explicit Founder-controlled meaning node for a curriculum example.
+/// The node identifies a Founder-controlled semantic dimension/value and
+/// one exact surface span in that example.  It does not infer a role from
+/// word order, a dictionary, or an unreviewed parser.
+/// </summary>
+public sealed record LegendConnectMeaningNodeSubmission(
+    string NodeKey,
+    string SemanticDimension,
+    string SemanticValue,
+    string SurfaceText,
+    string? ClauseKey = null,
+    int SurfaceOccurrence = 1);
+
+/// <summary>
+/// One explicit directed relation between two named meaning nodes in the
+/// same Founder example.  RelationKind is controlled evidence, not a runtime
+/// routing rule; its production maturity is derived separately.
+/// </summary>
+public sealed record LegendConnectMeaningRelationSubmission(
+    string SourceNodeKey,
+    string RelationKind,
+    string TargetNodeKey,
+    string? ClauseKey = null);
+
+/// <summary>
+/// Founder-authored utterance meaning graph attached to one controlled
+/// curriculum example.  Nodes and edges retain their example provenance so
+/// future abstraction never turns one sentence into a global rule.
+/// </summary>
+public sealed record LegendConnectMeaningGraphSubmission(
+    IReadOnlyList<LegendConnectMeaningNodeSubmission> Nodes,
+    IReadOnlyList<LegendConnectMeaningRelationSubmission> Relations);
+
 public sealed record LegendConnectCurriculumExampleSubmission(
     string Text,
-    IReadOnlyDictionary<string, string> Variations);
+    IReadOnlyDictionary<string, string> Variations,
+    LegendConnectMeaningGraphSubmission? MeaningGraph = null);
 
 /// <summary>
 /// One explicit, language-neutral semantic frame pattern. Keys and values are
@@ -725,6 +760,34 @@ public sealed record LegendConnectConversationContextItem(
     string Content);
 
 /// <summary>
+/// An observational, provenance-carrying analysis of reusable Founder-taught
+/// meaning components in one utterance. It is deliberately separate from a
+/// serving transition until later evaluator stages establish all governing
+/// eligibility gates.
+/// </summary>
+public sealed record LegendConnectUtteranceMeaningNode(
+    string SemanticSignature,
+    string SemanticDimension,
+    string SemanticValue,
+    int StartTokenIndex,
+    int TokenLength,
+    int IndependentSupportCount);
+
+public sealed record LegendConnectUtteranceMeaningRelation(
+    string RelationSignature,
+    string RelationKind,
+    int SourceNodeIndex,
+    int TargetNodeIndex,
+    int IndependentSupportCount);
+
+public sealed record LegendConnectUtteranceMeaningGraphSnapshot(
+    bool IsComposed,
+    IReadOnlyList<LegendConnectUtteranceMeaningNode> Nodes,
+    IReadOnlyList<LegendConnectUtteranceMeaningRelation> Relations,
+    IReadOnlyList<string> UnknownSurfaceComponents,
+    string ReasonCode);
+
+/// <summary>
 /// The governed result of one native LEGEND conversational inference attempt.
 /// A successful result is backed only by canonical, contradiction-free
 /// evidence; all other states explicitly require escalation.
@@ -814,6 +877,10 @@ public interface ILegendConnectOperations
     Task<LegendConnectNativeInferenceSnapshot> TryInferConversationAsync(
         string input,
         IReadOnlyList<LegendConnectConversationContextItem> context,
+        CancellationToken cancellationToken = default);
+
+    Task<LegendConnectUtteranceMeaningGraphSnapshot> AnalyzeReusableMeaningGraphAsync(
+        string input,
         CancellationToken cancellationToken = default);
 
     Task<LegendConnectKnowledgeSubmissionResult> SubmitFounderKnowledgeAsync(

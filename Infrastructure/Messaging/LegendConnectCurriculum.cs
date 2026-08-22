@@ -1104,6 +1104,12 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
             semanticTransitions,
             semanticSpanGroundings,
             cancellationToken);
+        await AttachFounderMeaningGraphsAsync(
+            family,
+            sourceExamples,
+            examples,
+            english,
+            cancellationToken);
         await PersistFounderSemanticTransitionEvidenceAsync(
             family,
             sourceExamples,
@@ -1618,6 +1624,7 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
     {
         await ReconcileFounderApprovedSourceEvidenceAsync(familyId, languageCode, cancellationToken);
         await AnalyzeFamilyLanguageAsync(familyId, languageCode, pairKey: null, cancellationToken);
+        await ReconcileFounderMeaningPrimitivesAsync(familyId, languageCode, cancellationToken);
     }
 
     private async Task ReevaluateHistoricalAlignmentAsync(
@@ -2807,6 +2814,132 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
     /// store conversations, match prompts to answers, call a provider, or use
     /// a language-specific response template.
     /// </summary>
+    /// <summary>
+    /// Observes reusable Founder-governed primitives in a novel surface form.
+    /// It matches only independently supported exact component spans, never a
+    /// complete stored sentence, adjacency, a synonym table, or a prompt map.
+    /// This Stage-2 analysis cannot serve a response or promote an edge.
+    /// </summary>
+    internal async Task<LegendConnectUtteranceMeaningGraphSnapshot>
+        AnalyzeReusableMeaningGraphAsync(
+            string sourceLanguageCode,
+            string input,
+            CancellationToken cancellationToken = default)
+    {
+        var languageCode = await _languages.NormalizeEnabledTranslationLanguageAsync(
+            sourceLanguageCode,
+            cancellationToken);
+        var normalizedInput = LegendLanguageIdentity.NormalizeText(input);
+        var tokens = SurfaceComponents(normalizedInput);
+        if (languageCode is null || tokens.Count == 0)
+            return new(false, [], [], tokens.Select(item => item.NormalizedText).ToArray(), "meaning_graph_input_invalid");
+
+        var candidates = await (
+            from node in _db.Set<LegendLanguageMeaningNodeEvidence>().AsNoTracking()
+            join anchor in _db.Set<LegendLanguageCompositionalAnchor>().AsNoTracking()
+                on node.CompositionalAnchorId equals anchor.Id
+            join unit in _db.Set<LegendLanguageTextUnit>().AsNoTracking()
+                on anchor.TextUnitId equals unit.Id
+            join primitive in _db.Set<LegendLanguageMeaningPrimitive>().AsNoTracking()
+                on new { node.LanguageCode, node.SemanticSignature }
+                equals new { primitive.LanguageCode, primitive.SemanticSignature }
+            where node.LanguageCode == languageCode && node.SupersededUtc == null &&
+                anchor.SupersededUtc == null && unit.IsTrainingEligible &&
+                primitive.SupersededUtc == null && primitive.MaturityState == "Supported" &&
+                primitive.ContradictionCount == 0 && primitive.IndependentSourceCount >= 3
+            select new ReusableMeaningAnchorCandidate(
+                node.SemanticSignature,
+                node.SemanticDimension,
+                node.SemanticValue,
+                primitive.IndependentSourceCount,
+                unit.Text,
+                anchor.ComponentStartTokenIndex,
+                anchor.ComponentLength)
+        ).ToListAsync(cancellationToken);
+
+        var nodes = new List<LegendConnectUtteranceMeaningNode>();
+        foreach (var candidate in candidates)
+        {
+            if (candidate.StartTokenIndex is not int start || candidate.TokenLength is not int length || length <= 0)
+                continue;
+            var sourceTokens = SurfaceComponents(candidate.Text);
+            if (start < 0 || start + length > sourceTokens.Count)
+                continue;
+            var surface = sourceTokens.Skip(start).Take(length).Select(item => item.NormalizedText).ToArray();
+            for (var inputStart = 0; inputStart <= tokens.Count - surface.Length; inputStart++)
+            {
+                if (!surface.SequenceEqual(tokens.Skip(inputStart).Take(surface.Length).Select(item => item.NormalizedText), StringComparer.Ordinal))
+                    continue;
+                var node = new LegendConnectUtteranceMeaningNode(
+                    candidate.SemanticSignature,
+                    candidate.SemanticDimension,
+                    candidate.SemanticValue,
+                    inputStart,
+                    surface.Length,
+                    candidate.IndependentSupportCount);
+                if (!nodes.Any(existing => existing.SemanticSignature == node.SemanticSignature &&
+                    existing.StartTokenIndex == node.StartTokenIndex && existing.TokenLength == node.TokenLength))
+                {
+                    nodes.Add(node);
+                }
+            }
+        }
+
+        var relations = new List<LegendConnectUtteranceMeaningRelation>();
+        if (nodes.Count > 1)
+        {
+            var signatures = nodes.Select(item => item.SemanticSignature).Distinct(StringComparer.Ordinal).ToArray();
+            var learnedRelations = await _db.Set<LegendLanguageMeaningRelation>().AsNoTracking()
+                .Where(item => item.LanguageCode == languageCode && item.SupersededUtc == null &&
+                    item.MaturityState == "Supported" && item.ContradictionCount == 0 &&
+                    item.IndependentSourceCount >= 3 &&
+                    signatures.Contains(item.SourceSemanticSignature) &&
+                    signatures.Contains(item.TargetSemanticSignature))
+                .ToListAsync(cancellationToken);
+            foreach (var relation in learnedRelations)
+            {
+                for (var sourceIndex = 0; sourceIndex < nodes.Count; sourceIndex++)
+                for (var targetIndex = 0; targetIndex < nodes.Count; targetIndex++)
+                {
+                    if (sourceIndex == targetIndex ||
+                        nodes[sourceIndex].SemanticSignature != relation.SourceSemanticSignature ||
+                        nodes[targetIndex].SemanticSignature != relation.TargetSemanticSignature)
+                    {
+                        continue;
+                    }
+                    relations.Add(new LegendConnectUtteranceMeaningRelation(
+                        relation.RelationSignature,
+                        relation.RelationKind,
+                        sourceIndex,
+                        targetIndex,
+                        relation.IndependentSourceCount));
+                }
+            }
+        }
+
+        var covered = new bool[tokens.Count];
+        foreach (var node in nodes)
+            for (var index = node.StartTokenIndex; index < node.StartTokenIndex + node.TokenLength; index++)
+                covered[index] = true;
+        var unknown = tokens.Where((_, index) => !covered[index]).Select(item => item.NormalizedText).ToArray();
+        return new(
+            nodes.Count > 0 && relations.Count > 0,
+            nodes.OrderBy(item => item.StartTokenIndex).ThenBy(item => item.SemanticSignature).ToArray(),
+            relations.OrderBy(item => item.SourceNodeIndex).ThenBy(item => item.TargetNodeIndex).ToArray(),
+            unknown,
+            nodes.Count == 0 ? "meaning_graph_component_unknown" :
+                relations.Count == 0 ? "meaning_graph_relation_unproven" : "meaning_graph_observational_composed");
+    }
+
+    private sealed record ReusableMeaningAnchorCandidate(
+        string SemanticSignature,
+        string SemanticDimension,
+        string SemanticValue,
+        int IndependentSupportCount,
+        string Text,
+        int? StartTokenIndex,
+        int? TokenLength);
+
     internal async Task<LegendSemanticTransitionInference> TryInferSemanticTransitionAsync(
         string sourceLanguageCode,
         string input,
@@ -4648,6 +4781,409 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
             await _db.SaveChangesAsync(cancellationToken);
     }
 
+    /// <summary>
+    /// Persists only the explicit Founder-authored utterance meaning graph
+    /// attached to a controlled example. A node is never guessed from token
+    /// order: it must name one exact Founder-declared span (and an explicit
+    /// occurrence when that surface repeats). Its semantic identity remains
+    /// graph-local evidence until a later governed lifecycle can derive a
+    /// reusable abstraction.
+    /// Relations are likewise direct evidence between those persisted nodes.
+    /// The aggregate below is observational in Phase 1 and cannot authorize
+    /// native serving until a later versioned lifecycle adds that gate.
+    /// </summary>
+    private async Task AttachFounderMeaningGraphsAsync(
+        LegendCurriculumFamily family,
+        IReadOnlyList<LegendCurriculumExample> founderExamples,
+        IReadOnlyList<NormalizedCurriculumExample> submittedExamples,
+        string languageCode,
+        CancellationToken cancellationToken)
+    {
+        if (founderExamples.Count != submittedExamples.Count)
+            throw new InvalidOperationException("The controlled meaning graph no longer matches its canonical curriculum examples.");
+
+        var declared = founderExamples
+            .Zip(submittedExamples, (example, submission) => new { Example = example, submission.MeaningGraph })
+            .Where(item => item.MeaningGraph is not null)
+            .ToList();
+        if (declared.Count == 0)
+            return;
+
+        var exampleIds = declared.Select(item => item.Example.Id).ToArray();
+        var textUnitIds = declared.Select(item => item.Example.TextUnitId).Distinct().ToArray();
+        var unitsById = await _db.Set<LegendLanguageTextUnit>()
+            .AsNoTracking()
+            .Where(item => textUnitIds.Contains(item.Id) &&
+                item.LanguageCode == languageCode &&
+                item.IsTrainingEligible &&
+                item.Provenance == LegendConnectKnowledgeProvenance.FounderApproved)
+            .ToDictionaryAsync(item => item.Id, cancellationToken);
+        var occurrences = await _db.Set<LegendLanguageLexicalOccurrence>()
+            .AsNoTracking()
+            .Where(item => textUnitIds.Contains(item.TextUnitId) && item.SupersededUtc == null)
+            .ToListAsync(cancellationToken);
+        var lexemeByOccurrence = occurrences.ToDictionary(
+            item => (item.TextUnitId, item.TokenIndex),
+            item => item.LexemeId);
+        var anchorsBySignature = await _db.Set<LegendLanguageCompositionalAnchor>()
+            .Where(item => exampleIds.Contains(item.CurriculumExampleId))
+            .ToDictionaryAsync(item => item.AnchorSignature, cancellationToken);
+        var nodesByExampleAndKey = await _db.Set<LegendLanguageMeaningNodeEvidence>()
+            .Where(item => exampleIds.Contains(item.CurriculumExampleId))
+            .ToDictionaryAsync(
+                item => (item.CurriculumExampleId, item.NodeKey),
+                cancellationToken);
+        var existingEvidenceByIdentity = await _db.Set<LegendLanguageMeaningRelationEvidence>()
+            .Where(item => exampleIds.Contains(item.CurriculumExampleId))
+            .ToDictionaryAsync(item => item.EvidenceIdentity, cancellationToken);
+        var relationsBySignature = new Dictionary<string, LegendLanguageMeaningRelation>(StringComparer.Ordinal);
+        var affectedRelations = new HashSet<Guid>();
+
+        foreach (var item in declared)
+        {
+            var graph = item.MeaningGraph!;
+            var example = item.Example;
+            if (!unitsById.TryGetValue(example.TextUnitId, out var unit))
+                throw new InvalidOperationException("A Founder meaning graph cannot attach to an unavailable curriculum text unit.");
+
+            var nodes = new Dictionary<string, LegendLanguageMeaningNodeEvidence>(StringComparer.Ordinal);
+            foreach (var declaration in graph.Nodes)
+            {
+                if (!TryFindSurfaceSpan(
+                        unit.Text,
+                        declaration.SurfaceText,
+                        declaration.SurfaceOccurrence,
+                        out var startTokenIndex,
+                        out var tokenLength) ||
+                    !lexemeByOccurrence.TryGetValue((example.TextUnitId, startTokenIndex), out var lexemeId))
+                {
+                    throw new InvalidOperationException("A validated Founder meaning node lost its exact lexical evidence.");
+                }
+
+                var semanticSignature = SemanticSignature(
+                    declaration.SemanticDimension,
+                    declaration.SemanticValue);
+                var anchorSignature = LegendLanguageIdentity.TextHash(
+                    $"founder-meaning-node-anchor|v1|{example.Id:D}|{declaration.NodeKey}|" +
+                    $"{startTokenIndex}|{tokenLength}|{semanticSignature}");
+                if (!anchorsBySignature.TryGetValue(anchorSignature, out var anchor))
+                {
+                    anchor = new LegendLanguageCompositionalAnchor
+                    {
+                        Id = Guid.NewGuid(),
+                        LanguageCode = languageCode,
+                        TextUnitId = example.TextUnitId,
+                        LexemeId = lexemeId,
+                        ComponentStartTokenIndex = startTokenIndex,
+                        ComponentLength = tokenLength,
+                        CurriculumFamilyId = family.Id,
+                        CurriculumExampleId = example.Id,
+                        Dimension = declaration.SemanticDimension,
+                        Value = declaration.SemanticValue,
+                        SemanticSignature = semanticSignature,
+                        AnchorSignature = anchorSignature,
+                        Provenance = LegendConnectKnowledgeProvenance.FounderApproved,
+                        CreatedUtc = DateTime.UtcNow
+                    };
+                    _db.Set<LegendLanguageCompositionalAnchor>().Add(anchor);
+                    anchorsBySignature.Add(anchorSignature, anchor);
+                }
+
+                var nodeIdentity = (example.Id, declaration.NodeKey);
+                if (!nodesByExampleAndKey.TryGetValue(nodeIdentity, out var node))
+                {
+                    node = new LegendLanguageMeaningNodeEvidence
+                    {
+                        Id = Guid.NewGuid(),
+                        LanguageCode = languageCode,
+                        CurriculumFamilyId = family.Id,
+                        CurriculumExampleId = example.Id,
+                        CompositionalAnchorId = anchor.Id,
+                        NodeKey = declaration.NodeKey,
+                        SemanticSignature = semanticSignature,
+                        SemanticDimension = declaration.SemanticDimension,
+                        SemanticValue = declaration.SemanticValue,
+                        ClauseKey = declaration.ClauseKey,
+                        Provenance = LegendConnectKnowledgeProvenance.FounderApproved,
+                        CreatedUtc = DateTime.UtcNow,
+                        UpdatedUtc = DateTime.UtcNow
+                    };
+                    _db.Set<LegendLanguageMeaningNodeEvidence>().Add(node);
+                    nodesByExampleAndKey.Add(nodeIdentity, node);
+                }
+                else if (node.CompositionalAnchorId != anchor.Id ||
+                    !string.Equals(node.SemanticSignature, semanticSignature, StringComparison.Ordinal) ||
+                    !string.Equals(node.SemanticDimension, declaration.SemanticDimension, StringComparison.Ordinal) ||
+                    !string.Equals(node.SemanticValue, declaration.SemanticValue, StringComparison.Ordinal) ||
+                    !string.Equals(node.ClauseKey, declaration.ClauseKey, StringComparison.Ordinal))
+                {
+                    throw new InvalidOperationException("A canonical Founder meaning node cannot silently change its governed identity.");
+                }
+                else if (node.SupersededUtc is not null)
+                {
+                    node.SupersededUtc = null;
+                    node.UpdatedUtc = DateTime.UtcNow;
+                }
+
+                nodes.Add(declaration.NodeKey, node);
+            }
+
+            foreach (var declaration in graph.Relations)
+            {
+                var source = nodes[declaration.SourceNodeKey];
+                var target = nodes[declaration.TargetNodeKey];
+                var relationSignature = MeaningRelationSignature(
+                    languageCode,
+                    source.SemanticSignature,
+                    declaration.RelationKind,
+                    target.SemanticSignature,
+                    declaration.ClauseKey);
+                if (!relationsBySignature.TryGetValue(relationSignature, out var relation))
+                {
+                    relation = _db.Set<LegendLanguageMeaningRelation>().Local
+                        .SingleOrDefault(item => item.LanguageCode == languageCode &&
+                            item.RelationSignature == relationSignature)
+                        ?? await _db.Set<LegendLanguageMeaningRelation>()
+                            .SingleOrDefaultAsync(item => item.LanguageCode == languageCode &&
+                                item.RelationSignature == relationSignature, cancellationToken);
+                    if (relation is null)
+                    {
+                        relation = new LegendLanguageMeaningRelation
+                        {
+                            Id = Guid.NewGuid(),
+                            LanguageCode = languageCode,
+                            RelationSignature = relationSignature,
+                            RelationKind = declaration.RelationKind,
+                            SourceSemanticSignature = source.SemanticSignature,
+                            TargetSemanticSignature = target.SemanticSignature,
+                            ClauseKey = declaration.ClauseKey,
+                            Provenance = LegendConnectKnowledgeProvenance.FounderApproved,
+                            CreatedUtc = DateTime.UtcNow,
+                            UpdatedUtc = DateTime.UtcNow
+                        };
+                        _db.Set<LegendLanguageMeaningRelation>().Add(relation);
+                    }
+                    else if (relation.SupersededUtc is not null)
+                    {
+                        relation.SupersededUtc = null;
+                        relation.UpdatedUtc = DateTime.UtcNow;
+                    }
+                    relationsBySignature.Add(relationSignature, relation);
+                }
+
+                var evidenceIdentity = LegendLanguageIdentity.TextHash(
+                    $"founder-meaning-relation-evidence|v1|{example.Id:D}|{source.Id:D}|" +
+                    $"{declaration.RelationKind}|{target.Id:D}|{declaration.ClauseKey ?? string.Empty}");
+                if (!existingEvidenceByIdentity.TryGetValue(evidenceIdentity, out var evidence))
+                {
+                    evidence = new LegendLanguageMeaningRelationEvidence
+                    {
+                        Id = Guid.NewGuid(),
+                        MeaningRelationId = relation.Id,
+                        CurriculumFamilyId = family.Id,
+                        CurriculumExampleId = example.Id,
+                        SourceMeaningNodeId = source.Id,
+                        TargetMeaningNodeId = target.Id,
+                        EvidenceIdentity = evidenceIdentity,
+                        IndependentSourceIdentity = family.Id.ToString("N"),
+                        ContributionState = "Supported",
+                        IsHumanVerifiedSupport = true,
+                        Provenance = LegendConnectKnowledgeProvenance.FounderApproved,
+                        CreatedUtc = DateTime.UtcNow,
+                        UpdatedUtc = DateTime.UtcNow
+                    };
+                    _db.Set<LegendLanguageMeaningRelationEvidence>().Add(evidence);
+                    existingEvidenceByIdentity.Add(evidenceIdentity, evidence);
+                }
+                else if (evidence.MeaningRelationId != relation.Id ||
+                    evidence.SourceMeaningNodeId != source.Id || evidence.TargetMeaningNodeId != target.Id ||
+                    !string.Equals(evidence.Provenance, LegendConnectKnowledgeProvenance.FounderApproved, StringComparison.Ordinal))
+                {
+                    throw new InvalidOperationException("A canonical Founder meaning relation cannot silently change its governed identity.");
+                }
+                else if (evidence.SupersededUtc is not null)
+                {
+                    evidence.SupersededUtc = null;
+                    evidence.UpdatedUtc = DateTime.UtcNow;
+                }
+
+                affectedRelations.Add(relation.Id);
+            }
+        }
+
+        await _db.SaveChangesAsync(cancellationToken);
+        foreach (var relationId in affectedRelations)
+            await RefreshMeaningRelationMaturityAsync(relationId, cancellationToken);
+        if (affectedRelations.Count > 0)
+            await _db.SaveChangesAsync(cancellationToken);
+        await ReconcileFounderMeaningPrimitivesAsync(family.Id, languageCode, cancellationToken);
+    }
+
+    /// <summary>
+    /// Derives only a reusable index over explicit Founder graph nodes. The
+    /// same routine runs for ordinary ingestion and SourceFamilies replay, so
+    /// a later evaluator revision can rebuild derived evidence without
+    /// resubmitting or duplicating canonical curriculum.
+    /// </summary>
+    private async Task ReconcileFounderMeaningPrimitivesAsync(
+        Guid familyId,
+        string languageCode,
+        CancellationToken cancellationToken)
+    {
+        var nodes = await _db.Set<LegendLanguageMeaningNodeEvidence>()
+            .Where(item => item.CurriculumFamilyId == familyId &&
+                item.LanguageCode == languageCode && item.SupersededUtc == null &&
+                item.Provenance == LegendConnectKnowledgeProvenance.FounderApproved)
+            .ToListAsync(cancellationToken);
+        if (nodes.Count == 0)
+            return;
+
+        var signatures = nodes.Select(item => item.SemanticSignature).Distinct(StringComparer.Ordinal).ToArray();
+        var primitives = await _db.Set<LegendLanguageMeaningPrimitive>()
+            .Where(item => item.LanguageCode == languageCode && signatures.Contains(item.SemanticSignature))
+            .ToDictionaryAsync(item => item.SemanticSignature, cancellationToken);
+        var nodeIds = nodes.Select(item => item.Id).ToArray();
+        var evidenceByNode = await _db.Set<LegendLanguageMeaningPrimitiveEvidence>()
+            .Where(item => nodeIds.Contains(item.MeaningNodeEvidenceId))
+            .ToDictionaryAsync(item => item.MeaningNodeEvidenceId, cancellationToken);
+        var affected = new HashSet<Guid>();
+
+        foreach (var node in nodes)
+        {
+            if (!primitives.TryGetValue(node.SemanticSignature, out var primitive))
+            {
+                primitive = new LegendLanguageMeaningPrimitive
+                {
+                    Id = Guid.NewGuid(),
+                    LanguageCode = languageCode,
+                    SemanticSignature = node.SemanticSignature,
+                    SemanticDimension = node.SemanticDimension,
+                    SemanticValue = node.SemanticValue,
+                    Provenance = LegendConnectKnowledgeProvenance.FounderApproved,
+                    CreatedUtc = DateTime.UtcNow,
+                    UpdatedUtc = DateTime.UtcNow
+                };
+                _db.Set<LegendLanguageMeaningPrimitive>().Add(primitive);
+                primitives.Add(primitive.SemanticSignature, primitive);
+            }
+            else if (!string.Equals(primitive.SemanticDimension, node.SemanticDimension, StringComparison.Ordinal) ||
+                !string.Equals(primitive.SemanticValue, node.SemanticValue, StringComparison.Ordinal))
+            {
+                throw new InvalidOperationException("A reusable meaning primitive cannot silently change its governed semantic identity.");
+            }
+            else if (primitive.SupersededUtc is not null)
+            {
+                primitive.SupersededUtc = null;
+                primitive.UpdatedUtc = DateTime.UtcNow;
+            }
+
+            var evidenceIdentity = LegendLanguageIdentity.TextHash(
+                $"founder-meaning-primitive-evidence|v1|{node.Id:D}|{primitive.Id:D}");
+            if (!evidenceByNode.TryGetValue(node.Id, out var evidence))
+            {
+                evidence = new LegendLanguageMeaningPrimitiveEvidence
+                {
+                    Id = Guid.NewGuid(),
+                    MeaningPrimitiveId = primitive.Id,
+                    MeaningNodeEvidenceId = node.Id,
+                    CurriculumFamilyId = node.CurriculumFamilyId,
+                    CurriculumExampleId = node.CurriculumExampleId,
+                    EvidenceIdentity = evidenceIdentity,
+                    IndependentSourceIdentity = node.CurriculumFamilyId.ToString("N"),
+                    ContributionState = "Supported",
+                    IsHumanVerifiedSupport = true,
+                    Provenance = LegendConnectKnowledgeProvenance.FounderApproved,
+                    CreatedUtc = DateTime.UtcNow,
+                    UpdatedUtc = DateTime.UtcNow
+                };
+                _db.Set<LegendLanguageMeaningPrimitiveEvidence>().Add(evidence);
+                evidenceByNode.Add(node.Id, evidence);
+            }
+            else if (evidence.MeaningPrimitiveId != primitive.Id ||
+                !string.Equals(evidence.EvidenceIdentity, evidenceIdentity, StringComparison.Ordinal) ||
+                !string.Equals(evidence.Provenance, LegendConnectKnowledgeProvenance.FounderApproved, StringComparison.Ordinal))
+            {
+                throw new InvalidOperationException("A reusable meaning primitive cannot silently change its governed evidence identity.");
+            }
+            else if (evidence.SupersededUtc is not null)
+            {
+                evidence.SupersededUtc = null;
+                evidence.UpdatedUtc = DateTime.UtcNow;
+            }
+            affected.Add(primitive.Id);
+        }
+
+        await _db.SaveChangesAsync(cancellationToken);
+        foreach (var primitiveId in affected)
+            await RefreshMeaningPrimitiveMaturityAsync(primitiveId, cancellationToken);
+        if (affected.Count > 0)
+            await _db.SaveChangesAsync(cancellationToken);
+    }
+
+    private async Task RefreshMeaningPrimitiveMaturityAsync(
+        Guid primitiveId,
+        CancellationToken cancellationToken)
+    {
+        var primitive = await _db.Set<LegendLanguageMeaningPrimitive>()
+            .SingleAsync(item => item.Id == primitiveId, cancellationToken);
+        var evidence = await _db.Set<LegendLanguageMeaningPrimitiveEvidence>()
+            .Where(item => item.MeaningPrimitiveId == primitiveId && item.SupersededUtc == null)
+            .ToListAsync(cancellationToken);
+        var supported = evidence.Where(item => item.ContributionState == "Supported" && item.IsHumanVerifiedSupport).ToList();
+        var contradictions = evidence.Count(item => item.ContributionState == "Contradictory");
+        primitive.SupportCount = supported.Count;
+        primitive.ContradictionCount = contradictions;
+        primitive.IndependentSourceCount = supported.Select(item => item.IndependentSourceIdentity)
+            .Distinct(StringComparer.Ordinal).Count();
+        primitive.HumanVerifiedSupportCount = supported.Count;
+        primitive.Confidence = 0m;
+        primitive.MaturityState = contradictions > 0 ? "Contradicted" :
+            primitive.IndependentSourceCount >= 3 ? "Supported" : "Observation";
+        primitive.IsProductionEligible = false;
+        primitive.UpdatedUtc = DateTime.UtcNow;
+    }
+
+    private async Task RefreshMeaningRelationMaturityAsync(
+        Guid relationId,
+        CancellationToken cancellationToken)
+    {
+        var relation = await _db.Set<LegendLanguageMeaningRelation>()
+            .SingleAsync(item => item.Id == relationId, cancellationToken);
+        var evidence = await _db.Set<LegendLanguageMeaningRelationEvidence>()
+            .Where(item => item.MeaningRelationId == relationId && item.SupersededUtc == null)
+            .ToListAsync(cancellationToken);
+        var supported = evidence.Where(item => item.ContributionState == "Supported" &&
+            item.IsHumanVerifiedSupport).ToList();
+        var contradictions = evidence.Count(item => item.ContributionState == "Contradictory");
+        relation.SupportCount = supported.Count;
+        relation.ContradictionCount = contradictions;
+        relation.IndependentSourceCount = supported
+            .Select(item => item.IndependentSourceIdentity)
+            .Distinct(StringComparer.Ordinal)
+            .Count();
+        relation.HumanVerifiedSupportCount = supported.Count;
+        relation.Confidence = 0m;
+        relation.MaturityState = contradictions > 0
+            ? "Contradicted"
+            : relation.IndependentSourceCount >= 3
+                ? "Supported"
+                : "Observation";
+        // A mature graph relation is still not executable in Phase 1.  A
+        // later evaluator version must explicitly add serving eligibility.
+        relation.IsProductionEligible = false;
+        relation.UpdatedUtc = DateTime.UtcNow;
+    }
+
+    private static string MeaningRelationSignature(
+        string languageCode,
+        string sourceSemanticSignature,
+        string relationKind,
+        string targetSemanticSignature,
+        string? clauseKey) =>
+        LegendLanguageIdentity.TextHash(
+            $"founder-meaning-relation|v1|{languageCode}|{sourceSemanticSignature}|" +
+            $"{relationKind}|{targetSemanticSignature}|{clauseKey ?? string.Empty}");
+
     private async Task AttachExplicitFounderSemanticAnchorsAsync(
         LegendCurriculumFamily family,
         IReadOnlyList<LegendCurriculumExample> examples,
@@ -4940,7 +5476,81 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
             startTokenIndex + tokenLength <= tokens.Count &&
             valueComponents.Select(item => item.NormalizedText).SequenceEqual(
                 tokens.Skip(startTokenIndex).Take(tokenLength).Select(item => item.NormalizedText),
-                StringComparer.Ordinal);
+            StringComparer.Ordinal);
+    }
+
+    private static bool TryFindUniqueSurfaceSpan(
+        string text,
+        string value,
+        out int startTokenIndex,
+        out int tokenLength)
+    {
+        startTokenIndex = -1;
+        tokenLength = 0;
+        var tokens = SurfaceComponents(text);
+        var components = SurfaceComponents(value);
+        if (components.Count == 0 || tokens.Count < components.Count)
+            return false;
+
+        for (var start = 0; start <= tokens.Count - components.Count; start++)
+        {
+            if (!components.Select(item => item.NormalizedText).SequenceEqual(
+                    tokens.Skip(start).Take(components.Count).Select(item => item.NormalizedText),
+                    StringComparer.Ordinal))
+            {
+                continue;
+            }
+            if (startTokenIndex >= 0)
+                return false;
+            startTokenIndex = start;
+            tokenLength = components.Count;
+        }
+
+        return startTokenIndex >= 0;
+    }
+
+    /// <summary>
+    /// Resolves exactly the occurrence that a Founder named in a meaning-node
+    /// declaration. The ordinal is explicit evidence; this method never
+    /// chooses a repeated surface span by position or adjacency.
+    /// </summary>
+    private static bool TryFindSurfaceSpan(
+        string text,
+        string value,
+        int occurrence,
+        out int startTokenIndex,
+        out int tokenLength)
+    {
+        startTokenIndex = -1;
+        tokenLength = 0;
+        if (occurrence < 1)
+            return false;
+
+        var tokens = SurfaceComponents(text);
+        var components = SurfaceComponents(value);
+        if (components.Count == 0 || tokens.Count < components.Count)
+            return false;
+
+        var matched = 0;
+        for (var start = 0; start <= tokens.Count - components.Count; start++)
+        {
+            if (!components.Select(item => item.NormalizedText).SequenceEqual(
+                    tokens.Skip(start).Take(components.Count).Select(item => item.NormalizedText),
+                    StringComparer.Ordinal))
+            {
+                continue;
+            }
+
+            matched++;
+            if (matched != occurrence)
+                continue;
+
+            startTokenIndex = start;
+            tokenLength = components.Count;
+            return true;
+        }
+
+        return false;
     }
 
     private static bool HasOneExactSurfaceSpan(string text, string value)
@@ -7754,9 +8364,83 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
                 if (dimension is null || value is null || !variations.TryAdd(dimension, value))
                     return null;
             }
-            normalized.Add(new NormalizedCurriculumExample(text, variations));
+            if (!TryNormalizeMeaningGraph(example.MeaningGraph, text, out var meaningGraph))
+                return null;
+            normalized.Add(new NormalizedCurriculumExample(text, variations, meaningGraph));
         }
         return normalized;
+    }
+
+    private static bool TryNormalizeMeaningGraph(
+        LegendConnectMeaningGraphSubmission? graph,
+        string exampleText,
+        out NormalizedMeaningGraph? normalized)
+    {
+        normalized = null;
+        if (graph is null)
+            return true;
+        if (graph.Nodes is null || graph.Nodes.Count is < 1 or > 24 ||
+            graph.Relations is null || graph.Relations.Count > 64)
+        {
+            return false;
+        }
+
+        var nodes = new List<NormalizedMeaningNode>(graph.Nodes.Count);
+        var nodeKeys = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var node in graph.Nodes)
+        {
+            var nodeKey = NormalizeDimension(node.NodeKey);
+            var dimension = NormalizeDimension(node.SemanticDimension);
+            var value = NormalizeOptional(node.SemanticValue, 160);
+            var surface = LegendLanguageIdentity.NormalizeText(node.SurfaceText);
+            var clauseKey = string.IsNullOrWhiteSpace(node.ClauseKey)
+                ? null
+                : NormalizeDimension(node.ClauseKey);
+            if (nodeKey is null || dimension is null || value is null ||
+                string.IsNullOrWhiteSpace(surface) || surface.Length > 1_000 ||
+                (node.ClauseKey is not null && clauseKey is null) ||
+                !nodeKeys.Add(nodeKey) ||
+                node.SurfaceOccurrence is < 1 or > 32 ||
+                !TryFindSurfaceSpan(exampleText, surface, node.SurfaceOccurrence, out _, out _))
+            {
+                return false;
+            }
+            nodes.Add(new NormalizedMeaningNode(
+                nodeKey,
+                dimension,
+                value,
+                surface,
+                clauseKey,
+                node.SurfaceOccurrence));
+        }
+
+        var relations = new List<NormalizedMeaningRelation>(graph.Relations.Count);
+        var identities = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var relation in graph.Relations)
+        {
+            var sourceNodeKey = NormalizeDimension(relation.SourceNodeKey);
+            var targetNodeKey = NormalizeDimension(relation.TargetNodeKey);
+            var relationKind = NormalizeDimension(relation.RelationKind);
+            var clauseKey = string.IsNullOrWhiteSpace(relation.ClauseKey)
+                ? null
+                : NormalizeDimension(relation.ClauseKey);
+            if (sourceNodeKey is null || targetNodeKey is null || relationKind is null ||
+                (relation.ClauseKey is not null && clauseKey is null) ||
+                string.Equals(sourceNodeKey, targetNodeKey, StringComparison.Ordinal) ||
+                !nodeKeys.Contains(sourceNodeKey) || !nodeKeys.Contains(targetNodeKey) ||
+                !identities.Add(sourceNodeKey + "\u001f" + relationKind + "\u001f" + targetNodeKey + "\u001f" + (clauseKey ?? string.Empty)))
+            {
+                return false;
+            }
+            relations.Add(new NormalizedMeaningRelation(
+                sourceNodeKey,
+                relationKind,
+                targetNodeKey,
+                clauseKey));
+        }
+
+        normalized = new NormalizedMeaningGraph(nodes, relations);
+        return true;
     }
 
     private static IReadOnlyList<NormalizedSemanticTransition>? NormalizeSemanticTransitions(
@@ -8060,7 +8744,26 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
 
     private sealed record NormalizedCurriculumExample(
         string Text,
-        IReadOnlyDictionary<string, string> Variations);
+        IReadOnlyDictionary<string, string> Variations,
+        NormalizedMeaningGraph? MeaningGraph);
+
+    private sealed record NormalizedMeaningGraph(
+        IReadOnlyList<NormalizedMeaningNode> Nodes,
+        IReadOnlyList<NormalizedMeaningRelation> Relations);
+
+    private sealed record NormalizedMeaningNode(
+        string NodeKey,
+        string SemanticDimension,
+        string SemanticValue,
+        string SurfaceText,
+        string? ClauseKey,
+        int SurfaceOccurrence);
+
+    private sealed record NormalizedMeaningRelation(
+        string SourceNodeKey,
+        string RelationKind,
+        string TargetNodeKey,
+        string? ClauseKey);
 
     /// <summary>
     /// A canonical target example has two incompatible Founder-controlled

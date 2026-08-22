@@ -674,6 +674,132 @@ public sealed class LegendLanguageCompositionalAnchor
 }
 
 /// <summary>
+/// One Founder-authored node in an utterance meaning graph.  The node is
+/// anchored to an exact controlled span and retains the local node identity
+/// needed to represent repeated or related meanings without treating an
+/// unordered variation map as syntax.
+/// </summary>
+public sealed class LegendLanguageMeaningNodeEvidence
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public string LanguageCode { get; set; } = string.Empty;
+    public Guid CurriculumFamilyId { get; set; }
+    public Guid CurriculumExampleId { get; set; }
+    public Guid CompositionalAnchorId { get; set; }
+    /// <summary>Founder-local identity, unique within the curriculum example.</summary>
+    public string NodeKey { get; set; } = string.Empty;
+    /// <summary>Stable semantic identity shared only when Founder evidence agrees.</summary>
+    public string SemanticSignature { get; set; } = string.Empty;
+    public string SemanticDimension { get; set; } = string.Empty;
+    public string SemanticValue { get; set; } = string.Empty;
+    /// <summary>Optional Founder-declared local clause scope; never inferred.</summary>
+    public string? ClauseKey { get; set; }
+    public string Provenance { get; set; } = "FounderApproved";
+    public DateTime? SupersededUtc { get; set; }
+    public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
+    public DateTime UpdatedUtc { get; set; } = DateTime.UtcNow;
+}
+
+/// <summary>
+/// A reusable semantic primitive derived only by indexing independently
+/// governed meaning nodes. It contains no surface sentence, positional rule,
+/// or inferred role. Phase 2 deliberately keeps it observational until a
+/// later evaluator proves an eligible serving use.
+/// </summary>
+public sealed class LegendLanguageMeaningPrimitive
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public string LanguageCode { get; set; } = string.Empty;
+    public string SemanticSignature { get; set; } = string.Empty;
+    public string SemanticDimension { get; set; } = string.Empty;
+    public string SemanticValue { get; set; } = string.Empty;
+    public string MaturityState { get; set; } = "Observation";
+    public int SupportCount { get; set; }
+    public int ContradictionCount { get; set; }
+    public int IndependentSourceCount { get; set; }
+    public int HumanVerifiedSupportCount { get; set; }
+    public decimal Confidence { get; set; }
+    public bool IsProductionEligible { get; set; }
+    public string Provenance { get; set; } = "FounderApproved";
+    public DateTime? SupersededUtc { get; set; }
+    public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
+    public DateTime UpdatedUtc { get; set; } = DateTime.UtcNow;
+}
+
+/// <summary>
+/// The immutable provenance edge from an explicit graph node to its reusable
+/// primitive. A replayer may rebuild this index, but cannot manufacture a
+/// primitive from sentence adjacency or a model suggestion.
+/// </summary>
+public sealed class LegendLanguageMeaningPrimitiveEvidence
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid MeaningPrimitiveId { get; set; }
+    public Guid MeaningNodeEvidenceId { get; set; }
+    public Guid CurriculumFamilyId { get; set; }
+    public Guid CurriculumExampleId { get; set; }
+    public string EvidenceIdentity { get; set; } = string.Empty;
+    public string IndependentSourceIdentity { get; set; } = string.Empty;
+    public string ContributionState { get; set; } = "Supported";
+    public bool IsHumanVerifiedSupport { get; set; }
+    public string Provenance { get; set; } = "FounderApproved";
+    public DateTime? SupersededUtc { get; set; }
+    public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
+    public DateTime UpdatedUtc { get; set; } = DateTime.UtcNow;
+}
+
+/// <summary>
+/// The aggregate maturity of one explicit semantic relationship.  It is an
+/// index over auditable node-to-node evidence, not an inferred grammar rule.
+/// Phase 1 intentionally leaves IsProductionEligible false: later governed
+/// lifecycle work must decide when an aggregate may participate in serving.
+/// </summary>
+public sealed class LegendLanguageMeaningRelation
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public string LanguageCode { get; set; } = string.Empty;
+    public string RelationSignature { get; set; } = string.Empty;
+    public string RelationKind { get; set; } = string.Empty;
+    public string SourceSemanticSignature { get; set; } = string.Empty;
+    public string TargetSemanticSignature { get; set; } = string.Empty;
+    public string? ClauseKey { get; set; }
+    public string MaturityState { get; set; } = "Observation";
+    public int SupportCount { get; set; }
+    public int ContradictionCount { get; set; }
+    public int IndependentSourceCount { get; set; }
+    public int HumanVerifiedSupportCount { get; set; }
+    public decimal Confidence { get; set; }
+    public bool IsProductionEligible { get; set; }
+    public string Provenance { get; set; } = "FounderApproved";
+    public DateTime? SupersededUtc { get; set; }
+    public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
+    public DateTime UpdatedUtc { get; set; } = DateTime.UtcNow;
+}
+
+/// <summary>
+/// One provenance-preserving Founder observation of a directed relation in a
+/// controlled utterance graph.  Different relation identities are retained
+/// side-by-side rather than silently choosing one interpretation.
+/// </summary>
+public sealed class LegendLanguageMeaningRelationEvidence
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid MeaningRelationId { get; set; }
+    public Guid CurriculumFamilyId { get; set; }
+    public Guid CurriculumExampleId { get; set; }
+    public Guid SourceMeaningNodeId { get; set; }
+    public Guid TargetMeaningNodeId { get; set; }
+    public string EvidenceIdentity { get; set; } = string.Empty;
+    public string IndependentSourceIdentity { get; set; } = string.Empty;
+    public string ContributionState { get; set; } = "Supported";
+    public bool IsHumanVerifiedSupport { get; set; }
+    public string Provenance { get; set; } = "FounderApproved";
+    public DateTime? SupersededUtc { get; set; }
+    public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
+    public DateTime UpdatedUtc { get; set; } = DateTime.UtcNow;
+}
+
+/// <summary>
 /// A bounded, cross-example hypothesis about one directional target-language
 /// realization. This is deliberately distinct from a
 /// <see cref="LegendLanguageCompositionalAnchor"/>: candidates preserve the

@@ -188,6 +188,20 @@ public sealed class FounderLegendConnectService
             cancellationToken);
     }
 
+    /// <summary>
+    /// Founder-gated read-through to the canonical observational meaning
+    /// analysis. It does not serve, write curriculum, or bypass inference.
+    /// </summary>
+    public async Task<LegendConnectUtteranceMeaningGraphSnapshot>
+        AnalyzeReusableMeaningGraphAsync(
+            ClaimsPrincipal user,
+            string input,
+            CancellationToken cancellationToken = default)
+    {
+        _ = await ResolveFounderActorAsync(user, cancellationToken);
+        return await _operations.AnalyzeReusableMeaningGraphAsync(input, cancellationToken);
+    }
+
     public async Task<LegendConnectMachineTeachingSubmissionResult>
         QueueMachineTeachingProposalAsync(
             ClaimsPrincipal user,
@@ -712,6 +726,11 @@ public sealed class FounderLegendConnectService
     /// @family conversation.greeting.basic | Conversation greeting
     /// @ground function -> salutation
     /// Hi. | function=greeting; intent=start_conversation
+    /// @meaning
+    /// @node act | predicate=greet | surface=Hi
+    /// @node addressee | recipient=legend | surface=Legend
+    /// @edge act -> addressee | relation=recipient
+    /// @endmeaning
     /// Hello. | function=greeting; intent=start_conversation
     /// @transition
     /// @source function=request; intent=ask_information; subject=$subject
@@ -747,6 +766,9 @@ public sealed class FounderLegendConnectService
         List<LegendConnectCurriculumExampleSubmission>? examples = null;
         List<LegendConnectSemanticTransitionSubmission>? transitions = null;
         List<LegendConnectSemanticSpanGroundingSubmission>? semanticSpanGroundings = null;
+        int? meaningGraphExampleIndex = null;
+        List<LegendConnectMeaningNodeSubmission>? meaningNodes = null;
+        List<LegendConnectMeaningRelationSubmission>? meaningRelations = null;
         IReadOnlyDictionary<string, string>? transitionSource = null;
         IReadOnlyDictionary<string, string>? transitionResult = null;
 
@@ -756,7 +778,8 @@ public sealed class FounderLegendConnectService
             if (TryReadCurriculumDirective(line, "ground", out var groundingSuffix))
             {
                 if (familyKey is null || examples is null || transitions is null ||
-                    semanticSpanGroundings is null || transitionSource is not null || transitionResult is not null)
+                    semanticSpanGroundings is null || transitionSource is not null || transitionResult is not null ||
+                    meaningGraphExampleIndex is not null)
                 {
                     error = $"Line {index + 1}: @ground must appear inside a family before a @transition block.";
                     return false;
@@ -777,6 +800,91 @@ public sealed class FounderLegendConnectService
                 continue;
             }
 
+            if (TryReadCurriculumDirective(line, "meaning", out var meaningSuffix))
+            {
+                if (familyKey is null || examples is null || examples.Count == 0 ||
+                    transitionSource is not null || transitionResult is not null ||
+                    meaningGraphExampleIndex is not null || !string.IsNullOrWhiteSpace(meaningSuffix))
+                {
+                    error = $"Line {index + 1}: @meaning must immediately follow one curriculum example and cannot appear inside a transition.";
+                    return false;
+                }
+
+                meaningGraphExampleIndex = examples.Count - 1;
+                meaningNodes = [];
+                meaningRelations = [];
+                continue;
+            }
+
+            if (TryReadCurriculumDirective(line, "node", out var nodeSuffix))
+            {
+                if (meaningGraphExampleIndex is null || meaningNodes is null || meaningRelations is null)
+                {
+                    error = $"Line {index + 1}: @node must appear inside a @meaning ... @endmeaning block.";
+                    return false;
+                }
+                if (!TryParseMeaningNode(nodeSuffix, out var node, out var nodeError))
+                {
+                    error = nodeError ?? $"Line {index + 1}: use @node local_key | semantic_dimension=value | surface=exact span.";
+                    return false;
+                }
+                if (meaningNodes.Any(item => string.Equals(item.NodeKey, node.NodeKey, StringComparison.OrdinalIgnoreCase)))
+                {
+                    error = $"Line {index + 1}: meaning node '{node.NodeKey}' appears more than once in this example.";
+                    return false;
+                }
+                meaningNodes.Add(node);
+                continue;
+            }
+
+            if (TryReadCurriculumDirective(line, "edge", out var edgeSuffix))
+            {
+                if (meaningGraphExampleIndex is null || meaningNodes is null || meaningRelations is null)
+                {
+                    error = $"Line {index + 1}: @edge must appear inside a @meaning ... @endmeaning block.";
+                    return false;
+                }
+                if (!TryParseMeaningRelation(edgeSuffix, out var relation, out var relationError))
+                {
+                    error = relationError ?? $"Line {index + 1}: use @edge source_key -> target_key | relation=controlled_relation.";
+                    return false;
+                }
+                if (meaningRelations.Any(item =>
+                        string.Equals(item.SourceNodeKey, relation.SourceNodeKey, StringComparison.OrdinalIgnoreCase) &&
+                        string.Equals(item.TargetNodeKey, relation.TargetNodeKey, StringComparison.OrdinalIgnoreCase) &&
+                        string.Equals(item.RelationKind, relation.RelationKind, StringComparison.OrdinalIgnoreCase) &&
+                        string.Equals(item.ClauseKey, relation.ClauseKey, StringComparison.OrdinalIgnoreCase)))
+                {
+                    error = $"Line {index + 1}: the same directed meaning relation may appear only once per example.";
+                    return false;
+                }
+                meaningRelations.Add(relation);
+                continue;
+            }
+
+            if (TryReadCurriculumDirective(line, "endmeaning", out var endMeaningSuffix) &&
+                string.IsNullOrWhiteSpace(endMeaningSuffix))
+            {
+                if (meaningGraphExampleIndex is null || meaningNodes is null || meaningRelations is null ||
+                    examples is null || meaningNodes.Count == 0)
+                {
+                    error = $"Line {index + 1}: @endmeaning requires at least one explicit @node.";
+                    return false;
+                }
+
+                var example = examples[meaningGraphExampleIndex.Value];
+                examples[meaningGraphExampleIndex.Value] = example with
+                {
+                    MeaningGraph = new LegendConnectMeaningGraphSubmission(
+                        meaningNodes.ToArray(),
+                        meaningRelations.ToArray())
+                };
+                meaningGraphExampleIndex = null;
+                meaningNodes = null;
+                meaningRelations = null;
+                continue;
+            }
+
             if (TryReadCurriculumDirective(line, "transition", out var transitionSuffix))
             {
                 if (familyKey is null || examples is null || transitions is null)
@@ -784,7 +892,8 @@ public sealed class FounderLegendConnectService
                     error = $"Line {index + 1}: a semantic transition must be inside an explicit @family ... @end block.";
                     return false;
                 }
-                if (!string.IsNullOrWhiteSpace(transitionSuffix) || transitionSource is not null || transitionResult is not null)
+                if (!string.IsNullOrWhiteSpace(transitionSuffix) || transitionSource is not null || transitionResult is not null ||
+                    meaningGraphExampleIndex is not null)
                 {
                     error = $"Line {index + 1}: use @transition, then explicit @source and @result semantic frames, then @endtransition.";
                     return false;
@@ -844,7 +953,8 @@ public sealed class FounderLegendConnectService
 
             if (TryReadCurriculumDirective(line, "family", out var header))
             {
-                if (familyKey is not null || transitionSource is not null || transitionResult is not null)
+                if (familyKey is not null || transitionSource is not null || transitionResult is not null ||
+                    meaningGraphExampleIndex is not null)
                 {
                     error = $"Line {index + 1}: close family '{familyKey}' with @end before starting another family.";
                     return false;
@@ -870,6 +980,8 @@ public sealed class FounderLegendConnectService
                 examples = [];
                 transitions = [];
                 semanticSpanGroundings = [];
+                meaningNodes = null;
+                meaningRelations = null;
                 continue;
             }
 
@@ -886,6 +998,11 @@ public sealed class FounderLegendConnectService
                     error = $"Line {index + 1}: close the semantic transition with @endtransition before closing family '{familyKey}'.";
                     return false;
                 }
+                if (meaningGraphExampleIndex is not null)
+                {
+                    error = $"Line {index + 1}: close the meaning graph with @endmeaning before closing family '{familyKey}'.";
+                    return false;
+                }
 
                 families.Add(new LegendConnectCurriculumBatchSubmission(
                     familyKey,
@@ -898,12 +1015,19 @@ public sealed class FounderLegendConnectService
                 examples = null;
                 transitions = null;
                 semanticSpanGroundings = null;
+                meaningNodes = null;
+                meaningRelations = null;
                 continue;
             }
 
             if (familyKey is null || examples is null)
             {
                 error = $"Line {index + 1}: curriculum examples must be inside an explicit @family ... @end block.";
+                return false;
+            }
+            if (meaningGraphExampleIndex is not null)
+            {
+                error = $"Line {index + 1}: close the current @meaning block before entering another curriculum example.";
                 return false;
             }
 
@@ -931,6 +1055,11 @@ public sealed class FounderLegendConnectService
         if (transitionSource is not null || transitionResult is not null)
         {
             error = "The curriculum manifest has an unclosed semantic transition.";
+            return false;
+        }
+        if (meaningGraphExampleIndex is not null)
+        {
+            error = "The curriculum manifest has an unclosed @meaning block.";
             return false;
         }
         if (families.Count == 0)
@@ -984,6 +1113,110 @@ public sealed class FounderLegendConnectService
         }
 
         grounding = new LegendConnectSemanticSpanGroundingSubmission(parts[0], parts[1]);
+        return true;
+    }
+
+    private static bool TryParseMeaningNode(
+        string input,
+        out LegendConnectMeaningNodeSubmission node,
+        out string? error)
+    {
+        node = new LegendConnectMeaningNodeSubmission(string.Empty, string.Empty, string.Empty, string.Empty);
+        error = null;
+        var parts = input.Split('|', StringSplitOptions.TrimEntries);
+        if (parts.Length is < 3 or > 5 || !IsSemanticDimensionName(parts[0]))
+        {
+            error = "A meaning node must use local_key | semantic_dimension=value | surface=exact span [| clause=local_clause] [| occurrence=positive_integer].";
+            return false;
+        }
+
+        var semantic = parts[1].Split('=', 2, StringSplitOptions.TrimEntries);
+        var surface = parts[2].Split('=', 2, StringSplitOptions.TrimEntries);
+        if (semantic.Length != 2 || !IsSemanticDimensionName(semantic[0]) ||
+            string.IsNullOrWhiteSpace(semantic[1]) || surface.Length != 2 ||
+            !string.Equals(surface[0], "surface", StringComparison.OrdinalIgnoreCase) ||
+            string.IsNullOrWhiteSpace(surface[1]))
+        {
+            error = "A meaning node needs one valid semantic_dimension=value and one surface=exact span declaration.";
+            return false;
+        }
+
+        string? clause = null;
+        var occurrence = 1;
+        var occurrenceDeclared = false;
+        for (var partIndex = 3; partIndex < parts.Length; partIndex++)
+        {
+            var option = parts[partIndex].Split('=', 2, StringSplitOptions.TrimEntries);
+            if (option.Length != 2)
+            {
+                error = "A meaning node option must use clause=local_clause or occurrence=positive_integer.";
+                return false;
+            }
+            if (string.Equals(option[0], "clause", StringComparison.OrdinalIgnoreCase) &&
+                clause is null && IsSemanticDimensionName(option[1]))
+            {
+                clause = option[1];
+                continue;
+            }
+            if (string.Equals(option[0], "occurrence", StringComparison.OrdinalIgnoreCase) &&
+                !occurrenceDeclared && int.TryParse(option[1], out var parsedOccurrence) &&
+                parsedOccurrence is >= 1 and <= 32)
+            {
+                occurrence = parsedOccurrence;
+                occurrenceDeclared = true;
+                continue;
+            }
+
+            error = "A meaning node option must use one clause=local_clause and/or one occurrence=positive_integer.";
+            return false;
+        }
+
+        node = new LegendConnectMeaningNodeSubmission(
+            parts[0], semantic[0], semantic[1], surface[1], clause, occurrence);
+        return true;
+    }
+
+    private static bool TryParseMeaningRelation(
+        string input,
+        out LegendConnectMeaningRelationSubmission relation,
+        out string? error)
+    {
+        relation = new LegendConnectMeaningRelationSubmission(string.Empty, string.Empty, string.Empty);
+        error = null;
+        var parts = input.Split('|', StringSplitOptions.TrimEntries);
+        if (parts.Length is < 2 or > 3)
+        {
+            error = "A meaning relation must use source_key -> target_key | relation=controlled_relation [| clause=local_clause].";
+            return false;
+        }
+
+        var endpoints = parts[0].Split("->", 2, StringSplitOptions.TrimEntries);
+        var relationParts = parts[1].Split('=', 2, StringSplitOptions.TrimEntries);
+        if (endpoints.Length != 2 || !IsSemanticDimensionName(endpoints[0]) ||
+            !IsSemanticDimensionName(endpoints[1]) ||
+            string.Equals(endpoints[0], endpoints[1], StringComparison.OrdinalIgnoreCase) ||
+            relationParts.Length != 2 || !string.Equals(relationParts[0], "relation", StringComparison.OrdinalIgnoreCase) ||
+            !IsSemanticDimensionName(relationParts[1]))
+        {
+            error = "A meaning relation needs distinct valid source/target keys and relation=controlled_relation.";
+            return false;
+        }
+
+        string? clause = null;
+        if (parts.Length == 3)
+        {
+            var clauseParts = parts[2].Split('=', 2, StringSplitOptions.TrimEntries);
+            if (clauseParts.Length != 2 || !string.Equals(clauseParts[0], "clause", StringComparison.OrdinalIgnoreCase) ||
+                !IsSemanticDimensionName(clauseParts[1]))
+            {
+                error = "A meaning relation clause must use clause=local_clause.";
+                return false;
+            }
+            clause = clauseParts[1];
+        }
+
+        relation = new LegendConnectMeaningRelationSubmission(
+            endpoints[0], relationParts[1], endpoints[1], clause);
         return true;
     }
 
