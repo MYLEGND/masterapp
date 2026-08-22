@@ -113,6 +113,113 @@ public sealed class LegendConnectFounderTrainingIngestionTests
     }
 
     [Fact]
+    public async Task StructuredFounderCurriculum_IsNeverMisclassifiedAsLegacyRawTraining()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var registry = new LegendLanguageRegistry(db, Configuration());
+        var corpus = new LegendConnectCorpusService(db, registry, NullLogger<LegendConnectCorpusService>.Instance);
+        var curriculum = new LegendConnectCurriculumService(db, registry, corpus);
+        var ingestion = new LegendConnectFounderTrainingIngestionAuthority(db, registry, corpus, curriculum);
+        var submission = new LegendConnectCurriculumBatchSubmission(
+            "conversation.structured.legacy-isolation",
+            "Controlled opening and response",
+            [
+                new LegendConnectCurriculumExampleSubmission(
+                    "Hello.",
+                    new Dictionary<string, string>
+                    {
+                        ["surface_phrase"] = "hello",
+                        ["conversation_function"] = "opening"
+                    }),
+                new LegendConnectCurriculumExampleSubmission(
+                    "Hello! How can I help you today?",
+                    new Dictionary<string, string>
+                    {
+                        ["surface_phrase"] = "hello how can i help you today",
+                        ["conversation_function"] = "acknowledgement"
+                    })
+            ],
+            [
+                new LegendConnectSemanticTransitionSubmission(
+                    new LegendConnectSemanticFrameSubmission(
+                        new Dictionary<string, string>
+                        {
+                            ["conversation_function"] = "opening"
+                        }),
+                    new LegendConnectSemanticFrameSubmission(
+                        new Dictionary<string, string>
+                        {
+                            ["conversation_function"] = "acknowledgement"
+                        }))
+            ],
+            [
+                new LegendConnectSemanticSpanGroundingSubmission(
+                    "conversation_function",
+                    "surface_phrase")
+            ]);
+
+        var accepted = await curriculum.SubmitFounderEnglishBatchAsync(submission);
+        Assert.True(accepted.Succeeded, accepted.Message);
+
+        var responseUnitId = await db.LegendLanguageTextUnits
+            .Where(item => item.Text == "Hello! How can I help you today?")
+            .Select(item => item.Id)
+            .SingleAsync();
+        var activeTransitionsBefore = await db.LegendSemanticTransitionEvidence
+            .CountAsync(item => item.SupersededUtc == null);
+
+        var reconciled = await ingestion.ReconcileLegacyAsync(25);
+
+        Assert.Equal(0, reconciled.LegacyAtomicReviewedCount);
+        Assert.Equal(0, reconciled.ReconciledSubmissionCount);
+        Assert.Equal(0, reconciled.CapabilityReplayedSubmissionCount);
+        Assert.Empty(await db.LegendFounderTrainingSubmissions.ToListAsync());
+        Assert.True(await db.LegendLanguageTextUnits
+            .Where(item => item.Id == responseUnitId)
+            .Select(item => item.IsTrainingEligible)
+            .SingleAsync());
+        Assert.Equal(2, await db.LegendCurriculumExamples.CountAsync(item => item.SupersededUtc == null));
+        Assert.Equal(activeTransitionsBefore, await db.LegendSemanticTransitionEvidence
+            .CountAsync(item => item.SupersededUtc == null));
+        Assert.Equal(0, await db.LegendSemanticTransitionEvidence
+            .CountAsync(item => item.SupersededUtc != null));
+
+        var retiredAt = DateTime.UtcNow;
+        var responseUnit = await db.LegendLanguageTextUnits
+            .SingleAsync(item => item.Id == responseUnitId);
+        responseUnit.IsTrainingEligible = false;
+        responseUnit.UpdatedUtc = retiredAt;
+        foreach (var example in await db.LegendCurriculumExamples
+                     .Where(item => item.TextUnitId == responseUnitId && item.SupersededUtc == null)
+                     .ToListAsync())
+        {
+            example.SupersededUtc = retiredAt;
+            example.UpdatedUtc = retiredAt;
+        }
+        foreach (var evidence in await db.LegendSemanticTransitionEvidence
+                     .Where(item => item.SupersededUtc == null)
+                     .ToListAsync())
+        {
+            evidence.SupersededUtc = retiredAt;
+            evidence.UpdatedUtc = retiredAt;
+        }
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        var reprocessed = await curriculum.SubmitFounderEnglishBatchAsync(submission);
+        Assert.True(reprocessed.Succeeded, reprocessed.Message);
+        Assert.True(await db.LegendLanguageTextUnits
+            .Where(item => item.Id == responseUnitId)
+            .Select(item => item.IsTrainingEligible)
+            .SingleAsync());
+        Assert.Equal(2, await db.LegendCurriculumExamples.CountAsync(item => item.SupersededUtc == null));
+        Assert.Equal(activeTransitionsBefore, await db.LegendSemanticTransitionEvidence
+            .CountAsync(item => item.SupersededUtc == null));
+        Assert.Equal(activeTransitionsBefore, await db.LegendSemanticTransitionEvidence
+            .CountAsync(item => item.SupersededUtc != null));
+    }
+
+    [Fact]
     public void Segmenter_PreservesPunctuationAndDoesNotSplitKnownAbbreviations()
     {
         var units = LegendFounderTrainingSegmenter.Segment("Dr. King works in the U.S. office. Are you ready?");

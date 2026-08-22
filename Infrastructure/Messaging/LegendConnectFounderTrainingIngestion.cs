@@ -150,6 +150,16 @@ internal sealed class LegendConnectFounderTrainingIngestionAuthority
             .Where(item => !_db.Set<LegendTranslationAlignment>()
                 .Any(alignment => alignment.TargetTextUnitId == item.Id &&
                     alignment.SupersededUtc == null && alignment.HumanVerified))
+            // A controlled Founder curriculum example already has a durable
+            // semantic family, explicit variations, and its own versioned
+            // replay path. It is not a pre-curriculum raw source block.
+            // Decomposing a multi-sentence realization here would retire the
+            // governed example and its transition evidence via legacy cleanup.
+            .Where(item => !_db.Set<LegendCurriculumExample>()
+                .Any(example => example.TextUnitId == item.Id &&
+                    example.SupersededUtc == null &&
+                    example.DerivedFromCurriculumExampleId == null &&
+                    example.Provenance == LegendConnectKnowledgeProvenance.FounderApproved))
             .OrderBy(item => item.CreatedUtc)
             .Take(Math.Clamp(take, 1, 100))
             .ToListAsync(cancellationToken);

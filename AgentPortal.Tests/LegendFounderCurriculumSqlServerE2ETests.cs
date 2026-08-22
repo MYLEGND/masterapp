@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Data.Common;
 using System.Diagnostics;
@@ -28,6 +29,7 @@ using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
 using Xunit.Abstractions;
@@ -1823,6 +1825,122 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
     }
 
     [Fact]
+    public async Task AuthenticatedHttpChat_CapturesConfiguredConversationMatrixAgainstIsolatedSqlServer()
+    {
+        var connectionString = Environment.GetEnvironmentVariable("LEGEND_FOUNDER_E2E_CONNECTION");
+        var matrixJson = Environment.GetEnvironmentVariable("LEGEND_FOUNDER_E2E_CONVERSATION_MATRIX");
+        if (string.IsNullOrWhiteSpace(connectionString) || string.IsNullOrWhiteSpace(matrixJson))
+        {
+            _output.WriteLine("Configured Founder conversation matrix is opt-in; isolated SQL and request matrix are required.");
+            return;
+        }
+
+        var requests = JsonSerializer.Deserialize<List<ConversationMatrixRequest>>(
+            matrixJson,
+            new JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? [];
+        Assert.NotEmpty(requests);
+        Assert.All(requests, request => Assert.False(string.IsNullOrWhiteSpace(request.Text)));
+
+        var founderId = Environment.GetEnvironmentVariable("LEGEND_FOUNDER_E2E_FOUNDER_ID") ??
+            "e2e4d030-8d47-4a5b-a2db-5f2e50d14570";
+        var previousFounderOid = Environment.GetEnvironmentVariable("FOUNDER_OID");
+        var previousOpenAiApiKey = Environment.GetEnvironmentVariable("OPENAI_API_KEY");
+        var previousOpenAiApiKeyAlternate = Environment.GetEnvironmentVariable("OpenAI__ApiKey");
+        Environment.SetEnvironmentVariable("FOUNDER_OID", founderId);
+        // The resolver intentionally falls back to process environment
+        // variables. Clear them only for this isolated test so an unsupported
+        // prompt proves the clean native limitation without any provider path.
+        Environment.SetEnvironmentVariable("OPENAI_API_KEY", string.Empty);
+        Environment.SetEnvironmentVariable("OpenAI__ApiKey", string.Empty);
+        try
+        {
+            var configuration = new ConfigurationBuilder()
+                .AddInMemoryCollection(new[]
+                {
+                    new KeyValuePair<string, string?>("OpenAI:ApiKey", string.Empty)
+                })
+                .Build();
+            var factory = new CountingHttpClientFactory();
+            using var logCapture = new ExceptionCapturingLoggerProvider();
+            using var host = await BuildAuthenticatedHttpHostAsync(
+                connectionString,
+                configuration,
+                factory,
+                loggerProvider: logCapture);
+            var client = host.GetTestClient();
+
+            foreach (var request in requests)
+            {
+                var tokenRequest = new HttpRequestMessage(
+                    HttpMethod.Get,
+                    "/__legend-connect-proof/token");
+                tokenRequest.Headers.Add("X-Legend-Connect-Founder", founderId);
+                var tokenResponse = await client.SendAsync(tokenRequest);
+                tokenResponse.EnsureSuccessStatusCode();
+                var token = await tokenResponse.Content.ReadFromJsonAsync<AntiforgeryTokenDto>();
+                Assert.NotNull(token);
+
+                var chatRequest = new HttpRequestMessage(
+                    HttpMethod.Post,
+                    "/founder/legend-ai/chat")
+                {
+                    Content = JsonContent.Create(new LegendFounderAiChatRequest
+                    {
+                        Messages = [.. (request.History ?? []), new("user", request.Text)]
+                    })
+                };
+                chatRequest.Headers.Add("X-Legend-Connect-Founder", founderId);
+                chatRequest.Headers.Add("RequestVerificationToken", token!.RequestToken);
+                var antiforgeryCookie = ExtractAntiforgeryCookie(tokenResponse);
+                if (!string.IsNullOrWhiteSpace(antiforgeryCookie))
+                    chatRequest.Headers.Add("Cookie", antiforgeryCookie);
+
+                var response = await client.SendAsync(chatRequest);
+                if (response.StatusCode != System.Net.HttpStatusCode.OK)
+                {
+                    foreach (var exception in logCapture.Exceptions)
+                        _output.WriteLine($"MATRIX SERVER EXCEPTION: {exception}");
+                }
+                Assert.Equal(System.Net.HttpStatusCode.OK, response.StatusCode);
+                var body = await response.Content.ReadFromJsonAsync<LegendFounderAiChatResponse>();
+                Assert.NotNull(body);
+                Assert.True(body!.Succeeded);
+                Assert.Equal("legend", body.Mode);
+                Assert.False(string.IsNullOrWhiteSpace(body.Message));
+                Assert.False(string.Equals(request.Text, body.Message, StringComparison.OrdinalIgnoreCase));
+
+                var governedLimitation = body.Message!.Contains(
+                    "does not yet have enough governed evidence",
+                    StringComparison.OrdinalIgnoreCase);
+                if (request.RequireNative)
+                {
+                    Assert.False(governedLimitation, $"Expected native support for '{request.Text}'.");
+                }
+                else if (!governedLimitation)
+                {
+                    Assert.False(body.Message.Contains(
+                        "external teacher is unavailable",
+                        StringComparison.OrdinalIgnoreCase));
+                }
+
+                _output.WriteLine($"MATRIX REQUEST: {request.Text}");
+                _output.WriteLine($"MATRIX NATIVE: {!governedLimitation}");
+                _output.WriteLine($"MATRIX RESPONSE: {body.Message}");
+            }
+
+            Assert.Equal(0, factory.CreateClientCalls);
+            _output.WriteLine("MATRIX OPENAI CLIENTS: 0");
+            _output.WriteLine("MATRIX OPENAI HTTP CALLS: 0");
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("FOUNDER_OID", previousFounderOid);
+            Environment.SetEnvironmentVariable("OPENAI_API_KEY", previousOpenAiApiKey);
+            Environment.SetEnvironmentVariable("OpenAI__ApiKey", previousOpenAiApiKeyAlternate);
+        }
+    }
+
+    [Fact]
     public async Task FounderSectionPages_RemainBoundedAgainstAnIsolatedLargeSqlServerDataset()
     {
         var connectionString = Environment.GetEnvironmentVariable("LEGEND_FOUNDER_SCALABILITY_CONNECTION");
@@ -2087,7 +2205,8 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
         string connectionString,
         IConfiguration configuration,
         IHttpClientFactory factory,
-        DbCommandInterceptor? commandInterceptor = null)
+        DbCommandInterceptor? commandInterceptor = null,
+        ILoggerProvider? loggerProvider = null)
     {
         return await new HostBuilder()
             .ConfigureWebHost(webBuilder => webBuilder
@@ -2096,6 +2215,8 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
                 {
                     services.AddDataProtection();
                     services.AddLogging();
+                    if (loggerProvider is not null)
+                        services.AddSingleton(loggerProvider);
                     services.AddHttpContextAccessor();
                     services.AddControllersWithViews()
                         .AddApplicationPart(typeof(LegendFounderAiController).Assembly)
@@ -2198,6 +2319,42 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
                     ".AspNetCore.Antiforgery",
                     StringComparison.OrdinalIgnoreCase))?.Split(';')[0] ?? string.Empty
             : string.Empty;
+
+    private sealed record ConversationMatrixRequest(
+        string Text,
+        bool RequireNative,
+        IReadOnlyList<LegendFounderAiChatMessage>? History = null);
+
+    private sealed class ExceptionCapturingLoggerProvider : ILoggerProvider
+    {
+        private readonly ConcurrentQueue<Exception> _exceptions = new();
+
+        public IEnumerable<Exception> Exceptions => _exceptions;
+
+        public ILogger CreateLogger(string categoryName) => new ExceptionCapturingLogger(_exceptions);
+
+        public void Dispose() { }
+    }
+
+    private sealed class ExceptionCapturingLogger(
+        ConcurrentQueue<Exception> exceptions) : ILogger
+    {
+        public IDisposable? BeginScope<TState>(TState state)
+            where TState : notnull => null;
+
+        public bool IsEnabled(LogLevel logLevel) => logLevel >= LogLevel.Warning;
+
+        public void Log<TState>(
+            LogLevel logLevel,
+            EventId eventId,
+            TState state,
+            Exception? exception,
+            Func<TState, Exception?, string> formatter)
+        {
+            if (exception is not null)
+                exceptions.Enqueue(exception);
+        }
+    }
 
     private sealed class CountingDbCommandInterceptor : DbCommandInterceptor
     {

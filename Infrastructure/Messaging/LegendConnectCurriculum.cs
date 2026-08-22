@@ -1055,6 +1055,22 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
                         item.LanguageCode == english && item.NormalizedHash == textHash, cancellationToken);
                 createdSourceCount++;
             }
+            else if (!textUnit.IsTrainingEligible &&
+                textUnit.Provenance == LegendConnectKnowledgeProvenance.FounderApproved &&
+                await _db.Set<LegendCurriculumExample>().AnyAsync(item =>
+                    item.CurriculumFamilyId == family.Id &&
+                    item.TextUnitId == textUnit.Id &&
+                    item.DerivedFromCurriculumExampleId == null &&
+                    item.Provenance == LegendConnectKnowledgeProvenance.FounderApproved,
+                    cancellationToken))
+            {
+                // A retained controlled Founder declaration is the canonical
+                // authority to reactivate its own historical example. This
+                // covers only a governed family re-declared by its normal
+                // manifest path; it never revives unrelated legacy raw text.
+                textUnit.IsTrainingEligible = true;
+                textUnit.UpdatedUtc = DateTime.UtcNow;
+            }
 
             var curriculumExample = await GetOrCreateExampleAsync(
                 family,
@@ -7972,11 +7988,13 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
                     var exists = _db.Set<LegendSemanticTransitionEvidence>().Local.Any(item =>
                         item.TransitionSignature == transitionSignature &&
                         item.SourceCurriculumExampleId == source.Id &&
-                        item.ResultCurriculumExampleId == result.Id) ||
+                        item.ResultCurriculumExampleId == result.Id &&
+                        item.SupersededUtc == null) ||
                         await _db.Set<LegendSemanticTransitionEvidence>().AnyAsync(item =>
                             item.TransitionSignature == transitionSignature &&
                             item.SourceCurriculumExampleId == source.Id &&
-                            item.ResultCurriculumExampleId == result.Id,
+                            item.ResultCurriculumExampleId == result.Id &&
+                            item.SupersededUtc == null,
                             cancellationToken);
                     if (exists)
                         continue;

@@ -1689,12 +1689,12 @@ internal sealed class LegendConnectCorpusService
 /// </summary>
 internal static class LegendConnectLanguageIntelligenceEvaluatorVersion
 {
-    // v17 repairs the v16 historical source-frame projection's pending
-    // anchor-identity idempotency defect. Advancing through the established
-    // evaluator lifecycle leaves v16 failures and canonical history intact,
-    // then re-evaluates only through the same bounded governed authority—no
-    // manual cursor reset or Founder resubmission is required.
-    internal const int Current = 17;
+    // v18 prevents governed structured curriculum from being mistaken for a
+    // legacy raw source block during reconciliation. Advancing through the
+    // established evaluator lifecycle replays retained Founder manifests and
+    // restores only their declared governed projections; it neither resets
+    // canonical knowledge nor requires Founder resubmission.
+    internal const int Current = 18;
 }
 
 internal sealed class LegendConnectLearningHostedService : BackgroundService
