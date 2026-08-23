@@ -77,6 +77,106 @@ public sealed class LegendConnectMeaningGraphTests
     }
 
     [Fact]
+    public async Task MatureAtomicMeaningPrimitive_IsSemanticWithoutArtificialRelation()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var curriculum = CreateCurriculum(db);
+
+        // Three independent Founder families establish one reusable semantic
+        // primitive. The runtime must reason from that primitive itself; it
+        // must not require a fake second node or relation.
+        for (var family = 1; family <= 3; family++)
+        {
+            var submitted = await curriculum.SubmitFounderEnglishBatchAsync(
+                new LegendConnectCurriculumBatchSubmission(
+                    $"meaning.atomic.greeting.{family}",
+                    "Independent Founder greeting meaning",
+                    [
+                        new LegendConnectCurriculumExampleSubmission(
+                            family switch
+                            {
+                                1 => "Hello.",
+                                2 => "Hello!",
+                                _ => "Hello"
+                            },
+                            new Dictionary<string, string>
+                            {
+                                ["conversation_function"] = "greeting"
+                            },
+                            new LegendConnectMeaningGraphSubmission(
+                                [
+                                    new LegendConnectMeaningNodeSubmission(
+                                        "act",
+                                        "conversation_function",
+                                        "greeting",
+                                        "Hello",
+                                        "main")
+                                ],
+                                [])),
+                        new LegendConnectCurriculumExampleSubmission(
+                            family switch
+                            {
+                                1 => "Goodbye.",
+                                2 => "Goodbye!",
+                                _ => "Goodbye"
+                            },
+                            new Dictionary<string, string>
+                            {
+                                ["conversation_function"] = "closing"
+                            })
+                    ]));
+
+            Assert.True(submitted.Succeeded, submitted.Message);
+        }
+
+        // Reconcile through the same current source-family authority that
+        // derives reusable meaning primitives in production.
+        var familyIds = await db.LegendCurriculumFamilies
+            .Where(item =>
+                item.FamilyKey.StartsWith(
+                    "meaning.atomic.greeting."))
+            .Select(item => item.Id)
+            .ToListAsync();
+
+        foreach (var familyId in familyIds)
+        {
+            await curriculum.ReevaluateHistoricalWorkItemAsync(
+                LegendConnectLanguageIntelligenceReevaluationPhases.SourceFamilies,
+                familyId,
+                "en");
+        }
+
+        var primitive = await db.LegendLanguageMeaningPrimitives
+            .SingleAsync(item =>
+                item.LanguageCode == "en" &&
+                item.SemanticDimension == "conversation_function" &&
+                item.SemanticValue == "greeting");
+
+        Assert.Equal("Supported", primitive.MaturityState);
+        Assert.True(primitive.IndependentSourceCount >= 3);
+        Assert.Equal(0, primitive.ContradictionCount);
+
+        var graph = await curriculum.AnalyzeReusableMeaningGraphAsync(
+            "en",
+            "Hello.");
+
+        Assert.True(graph.IsComposed);
+        Assert.Equal(
+            "meaning_graph_atomic_primitive_governed",
+            graph.ReasonCode);
+
+        var node = Assert.Single(graph.Nodes);
+        Assert.Equal(
+            "conversation_function",
+            node.SemanticDimension);
+        Assert.Equal(
+            "greeting",
+            node.SemanticValue);
+
+        Assert.Empty(graph.Relations);
+    }
+
+    [Fact]
     public async Task MeaningGraph_RejectsUnknownEndpointsAndDoesNotPromoteAdjacencyIntoMeaning()
     {
         await using var db = ControllerTestHelpers.BuildDb();

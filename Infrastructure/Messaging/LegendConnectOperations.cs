@@ -435,20 +435,35 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
         {
             return NativeInferenceUnsupported(composed.Reasons.FirstOrDefault() ?? "semantic_transition_not_governed");
         }
-        // A composed graph that reached transition/content/realization
-        // evaluation has already supplied the governing source meaning. Its
-        // fail-closed outcome must be preserved: legacy frame evaluation may
-        // not discard an unresolved discourse binding, an absent governed
-        // fact, or a realization ambiguity. The existing fallback remains
-        // available only when Stage 1 could not compose any source meaning at
-        // all, where it reuses this same curriculum transition authority.
-        if (!CanFallbackFromUnavailableComposedSource(composed))
-            return NativeInferenceUnsupported(
-                composed.Reasons.FirstOrDefault() ?? "semantic_transition_not_governed");
-        return await TryInferConversationAsync(input ?? string.Empty, context, cancellationToken);
+        // V20.3: native Founder conversation inference is governed by the
+        // reusable meaning-graph authority only.
+        //
+        // Do not fall backward into the legacy source-frame evaluator when
+        // Stage 1 cannot establish reusable meaning. That older path is kept
+        // for historical diagnostics/regression compatibility, but it is no
+        // longer a production chat authority.
+        //
+        // Unknown, unproven, ambiguous, contradicted, unresolved-content, and
+        // unrealizable meaning all remain fail-closed and may use the existing
+        // external escalation path owned by LegendFounderAiConversationService.
+        var reasonCode =
+            composed.Reasons.FirstOrDefault() ??
+            "reusable_meaning_graph_not_governed";
+
+        // V20.3: once reusable source meaning has been established, a
+        // contradiction, unresolved discourse binding, unavailable governed
+        // fact, ambiguous governed content, or canonical-realization failure
+        // is a semantic fail-closed boundary. An external model may not
+        // manufacture an answer across that boundary.
+        //
+        // External escalation remains available only when Stage 1 itself
+        // cannot establish reusable source meaning.
+        return NativeInferenceUnsupported(
+            reasonCode,
+            CanEscalateFromUnavailableComposedSource(composed));
     }
 
-    private static bool CanFallbackFromUnavailableComposedSource(
+    private static bool CanEscalateFromUnavailableComposedSource(
         LegendSemanticTransitionInference inference) =>
         inference.Reasons.FirstOrDefault() is
             "meaning_graph_component_unknown" or
@@ -480,14 +495,15 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
             cancellationToken);
 
     private static LegendConnectNativeInferenceSnapshot NativeInferenceUnsupported(
-        string reasonCode) => new(
+        string reasonCode,
+        bool requiresEscalation = true) => new(
         false,
         0m,
         null,
         reasonCode,
         0,
         "LEGEND could not establish one independently supported, contradiction-free semantic transition and canonical realization for this request.",
-        true);
+        requiresEscalation);
 
     /// <summary>
     /// Stage-2 observational composition through the one canonical curriculum
@@ -3452,6 +3468,25 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
                     candidate.ProcessedUtc))
                 .ToListAsync(cancellationToken);
 
+        // V20.2: retain the canonical curriculum-family ownership of legacy
+        // atomic submissions so current-evaluator SourceFamilies durable work
+        // can be projected back to the submission that supplied the evidence.
+        // This is read-only projection metadata; it creates no processing work.
+        var rawFamilyLinks = rawIds.Length == 0
+            ? []
+            : await (
+                from submissionUnit in _db.Set<LegendFounderTrainingSubmissionUnit>().AsNoTracking()
+                join example in _db.Set<LegendCurriculumExample>().AsNoTracking()
+                    on submissionUnit.TextUnitId equals example.TextUnitId
+                where rawIds.Contains(submissionUnit.SubmissionId) &&
+                    example.LanguageCode == language &&
+                    example.SupersededUtc == null
+                select new FounderFamilyOwner(
+                    submissionUnit.SubmissionId,
+                    example.CurriculumFamilyId))
+                .Distinct()
+                .ToListAsync(cancellationToken);
+
         var familyKeysByManifest = manifestSources.ToDictionary(
             item => item.Id,
             item => ReadManifestFamilyKeys(item.Manifest!.PayloadJson));
@@ -3524,14 +3559,107 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
                 cancellationToken);
         var coverageBySubmission = new Dictionary<Guid, List<FounderCoverageItem>>();
         foreach (var item in rawCoverage)
-            AddFounderCoverageOwner(coverageBySubmission, item.SubmissionId, item.ProcessingState, item.ProcessedUtc);
+        {
+            AddFounderCoverageOwner(
+                coverageBySubmission,
+                item.SubmissionId,
+                NormalizeCorpusCoverageState(item.ProcessingState),
+                item.ProcessedUtc);
+        }
+
         foreach (var item in manifestCoverage)
         {
-            foreach (var work in familyIdsByManifest.Where(entry => entry.Value.Contains(item.FamilyId)))
-                AddFounderCoverageOwner(coverageBySubmission, work.Key, item.ProcessingState, item.ProcessedUtc);
+            foreach (var work in familyIdsByManifest.Where(
+                entry => entry.Value.Contains(item.FamilyId)))
+            {
+                AddFounderCoverageOwner(
+                    coverageBySubmission,
+                    work.Key,
+                    NormalizeCorpusCoverageState(item.ProcessingState),
+                    item.ProcessedUtc);
+            }
         }
 
         var currentEvaluatorVersion = LegendConnectLanguageIntelligenceEvaluatorVersion.Current;
+
+        // V20.2: current-evaluator durable work is the authoritative processing
+        // lifecycle when it exists. The prior projection looked only at corpus
+        // candidates, which made live V20 Pending/Processing/Completed work
+        // appear as zero on the Founder Curriculum Processing page.
+        //
+        // Preserve the existing corpus-candidate projection strictly as the
+        // compatibility fallback for submissions that do not yet have current
+        // durable descendants.
+        var durableCoverageBySubmission =
+            new Dictionary<Guid, List<FounderCoverageItem>>();
+
+        var manifestIds = manifestSources.Select(item => item.Id).ToArray();
+        if (manifestIds.Length > 0)
+        {
+            var durableManifestCoverage = await _db
+                .Set<LegendHistoricalReevaluationWorkItem>()
+                .AsNoTracking()
+                .Where(item =>
+                    item.EvaluatorVersion == currentEvaluatorVersion &&
+                    item.Phase ==
+                        LegendConnectHistoricalReevaluationWorkAuthority.FounderCurriculumPhase &&
+                    item.WorkKind ==
+                        LegendConnectHistoricalReevaluationWorkAuthority.FounderManifestFamilyWorkKind &&
+                    item.SubjectId != null &&
+                    manifestIds.Contains(item.SubjectId.Value))
+                .Select(item => new FounderDurableCoverage(
+                    item.SubjectId!.Value,
+                    item.ProcessingState,
+                    item.CompletedUtc ?? item.UpdatedUtc))
+                .ToListAsync(cancellationToken);
+
+            foreach (var item in durableManifestCoverage)
+            {
+                AddFounderCoverageOwner(
+                    durableCoverageBySubmission,
+                    item.OwnerId,
+                    NormalizeDurableCoverageState(item.ProcessingState),
+                    item.ProcessedUtc);
+            }
+        }
+
+        var rawFamilyIds = rawFamilyLinks
+            .Select(item => item.FamilyId)
+            .Distinct()
+            .ToArray();
+
+        if (rawFamilyIds.Length > 0)
+        {
+            var durableFamilyCoverage = await _db
+                .Set<LegendHistoricalReevaluationWorkItem>()
+                .AsNoTracking()
+                .Where(item =>
+                    item.EvaluatorVersion == currentEvaluatorVersion &&
+                    item.Phase ==
+                        LegendConnectLanguageIntelligenceReevaluationPhases.SourceFamilies &&
+                    item.WorkKind ==
+                        "Canonical" &&
+                    item.SubjectId != null &&
+                    rawFamilyIds.Contains(item.SubjectId.Value))
+                .Select(item => new FounderDurableCoverage(
+                    item.SubjectId!.Value,
+                    item.ProcessingState,
+                    item.CompletedUtc ?? item.UpdatedUtc))
+                .ToListAsync(cancellationToken);
+
+            foreach (var item in durableFamilyCoverage)
+            {
+                foreach (var owner in rawFamilyLinks.Where(
+                    link => link.FamilyId == item.OwnerId))
+                {
+                    AddFounderCoverageOwner(
+                        durableCoverageBySubmission,
+                        owner.SubmissionId,
+                        NormalizeDurableCoverageState(item.ProcessingState),
+                        item.ProcessedUtc);
+                }
+            }
+        }
         // One bounded global convergence projection is sufficient for this
         // page. It does not materialize per-submission evidence or create a
         // second status authority: submission completion remains derived from
@@ -3556,8 +3684,12 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
         var rows = new List<IReadOnlyList<string>>(page.Count);
         foreach (var item in page)
         {
+            var currentDurableCoverage =
+                durableCoverageBySubmission.GetValueOrDefault(item.Id);
             var coverage = FounderCoverageSummary.From(
-                coverageBySubmission.GetValueOrDefault(item.Id) ?? []);
+                currentDurableCoverage is { Count: > 0 }
+                    ? currentDurableCoverage
+                    : coverageBySubmission.GetValueOrDefault(item.Id) ?? []);
             var transitions = transitionEvidenceBySubmission.GetValueOrDefault(item.Id) ?? [];
             var completedVersion = item.Training?.CompletedLanguageIntelligenceEvaluatorVersion ??
                 item.Manifest!.CompletedLanguageIntelligenceEvaluatorVersion;
@@ -3675,7 +3807,7 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
     private static void AddFounderCoverageOwner(
         IDictionary<Guid, List<FounderCoverageItem>> owners,
         Guid submissionId,
-        string processingState,
+        FounderCoverageState state,
         DateTime? processedUtc)
     {
         if (!owners.TryGetValue(submissionId, out var values))
@@ -3683,8 +3815,42 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
             values = [];
             owners[submissionId] = values;
         }
-        values.Add(new FounderCoverageItem(processingState, processedUtc));
+
+        values.Add(new FounderCoverageItem(state, processedUtc));
     }
+
+    private static FounderCoverageState NormalizeCorpusCoverageState(
+        string processingState) =>
+        processingState switch
+        {
+            "Pending" => FounderCoverageState.Pending,
+            "Queued" => FounderCoverageState.Pending,
+            "Processing" => FounderCoverageState.Processing,
+            "Processed" => FounderCoverageState.Completed,
+            "Deduplicated" => FounderCoverageState.Completed,
+            "Superseded" => FounderCoverageState.Completed,
+            "Failed" => FounderCoverageState.Failed,
+            _ => FounderCoverageState.Unresolved
+        };
+
+    private static FounderCoverageState NormalizeDurableCoverageState(
+        string processingState) =>
+        processingState switch
+        {
+            LegendConnectHistoricalReevaluationWorkAuthority.Pending =>
+                FounderCoverageState.Pending,
+
+            LegendConnectHistoricalReevaluationWorkAuthority.Processing =>
+                FounderCoverageState.Processing,
+
+            LegendConnectHistoricalReevaluationWorkAuthority.Completed =>
+                FounderCoverageState.Completed,
+
+            LegendConnectHistoricalReevaluationWorkAuthority.Failed =>
+                FounderCoverageState.Failed,
+
+            _ => FounderCoverageState.Unresolved
+        };
 
     private static string DeriveFounderSubmissionStatus(
         bool evaluatorCurrent,
@@ -3758,6 +3924,15 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
         "Production-eligible transitions", "Last processed", "Derivation convergence", "Status", "Failure"
     ];
 
+    private sealed record FounderFamilyOwner(
+        Guid SubmissionId,
+        Guid FamilyId);
+
+    private sealed record FounderDurableCoverage(
+        Guid OwnerId,
+        string ProcessingState,
+        DateTime? ProcessedUtc);
+
     private sealed record FounderSubmissionStatusSource(
         Guid Id,
         string Kind,
@@ -3808,7 +3983,18 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
         long PlannedWork,
         string? BlockingDependency,
         DateTime UpdatedUtc);
-    private sealed record FounderCoverageItem(string ProcessingState, DateTime? ProcessedUtc);
+    private enum FounderCoverageState
+    {
+        Unresolved = 0,
+        Pending = 1,
+        Processing = 2,
+        Completed = 3,
+        Failed = 4
+    }
+
+    private sealed record FounderCoverageItem(
+        FounderCoverageState State,
+        DateTime? ProcessedUtc);
     private sealed record FounderTransitionEvidence(
         Guid Id,
         string TransitionSignature,
@@ -3825,11 +4011,20 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
     {
         internal static FounderCoverageSummary From(IReadOnlyCollection<FounderCoverageItem> items)
         {
-            var pending = items.Count(item => item.ProcessingState == "Pending");
-            var processing = items.Count(item => item.ProcessingState == "Processing");
-            var failed = items.Count(item => item.ProcessingState == "Failed");
-            var completed = items.Count(item => item.ProcessingState is "Processed" or "Deduplicated" or "Superseded");
-            var unresolved = items.Count - pending - processing - failed - completed;
+            var pending = items.Count(
+                item => item.State == FounderCoverageState.Pending);
+
+            var processing = items.Count(
+                item => item.State == FounderCoverageState.Processing);
+
+            var completed = items.Count(
+                item => item.State == FounderCoverageState.Completed);
+
+            var failed = items.Count(
+                item => item.State == FounderCoverageState.Failed);
+
+            var unresolved = items.Count(
+                item => item.State == FounderCoverageState.Unresolved);
             return new FounderCoverageSummary(
                 items.Count,
                 pending,

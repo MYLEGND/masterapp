@@ -369,6 +369,16 @@ public sealed class LegendConnectCurriculumTests
             durable,
             NullLogger<LegendConnectCurriculumManifestProcessor>.Instance);
         Assert.Equal(1, await processor.ProcessPendingAsync(1));
+
+        // V20.2: ProcessPendingAsync is deliberately bounded. Drain the
+        // remaining Founder-manifest durable descendants before asserting the
+        // terminal processing projection. The projection must report the real
+        // durable lifecycle rather than pretending one bounded pump completed
+        // every child item.
+        while (await processor.ProcessPendingAsync(32) > 0)
+        {
+        }
+
         foreach (var candidate in await db.LegendCorpusCandidates.ToListAsync())
         {
             candidate.ProcessingState = "Processed";
@@ -398,6 +408,16 @@ public sealed class LegendConnectCurriculumTests
         Assert.Contains("Completed", manifestRow[13], StringComparison.Ordinal);
         Assert.Contains($"current v{LegendConnectLanguageIntelligenceEvaluatorVersion.Current}", manifestRow[11]);
         Assert.Equal($"v{LegendConnectLanguageIntelligenceEvaluatorVersion.Current}", manifestRow[12]);
+
+        // V20.2 regression: Founder processing visibility must come from the
+        // current evaluator's durable child work whenever it exists, not from
+        // the older corpus-candidate compatibility projection.
+        Assert.Equal("1", manifestRow[6]);
+        Assert.Equal("0", manifestRow[7]);
+        Assert.Equal("0", manifestRow[8]);
+        Assert.Equal("1", manifestRow[9]);
+        Assert.Equal("0", manifestRow[10]);
+
         Assert.Equal("COMPLETED", manifestRow[18]);
 
         var persistedTraining = await db.LegendFounderTrainingSubmissions

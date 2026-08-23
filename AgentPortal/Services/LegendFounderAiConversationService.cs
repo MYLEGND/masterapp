@@ -179,12 +179,25 @@ public sealed class LegendFounderAiConversationService
                 var discourseState = _discourse is null
                     ? null
                     : await _discourse.GetStateAsync(founder, request.ConversationId, effectiveToken);
-                nativeInference = await _legend.TryInferConversationWithDiscourseAsync(
-                    founder,
-                    conversation[^1].Content ?? string.Empty,
-                    context,
-                    discourseState,
-                    effectiveToken);
+                // V20.3: use the discourse-aware native authority only when
+                // this service actually has durable discourse state available.
+                // When it does not, preserve the existing governed direct
+                // native authority rather than manufacturing an unsupported
+                // discourse result and incorrectly crossing into provider
+                // escalation. Both branches reuse existing LEGEND authorities;
+                // neither branch overrides or duplicates inference logic.
+                nativeInference = _discourse is null
+                    ? await _legend.TryInferConversationAsync(
+                        founder,
+                        conversation[^1].Content ?? string.Empty,
+                        context,
+                        effectiveToken)
+                    : await _legend.TryInferConversationWithDiscourseAsync(
+                        founder,
+                        conversation[^1].Content ?? string.Empty,
+                        context,
+                        discourseState,
+                        effectiveToken);
             }
             catch (OperationCanceledException)
                 when (cancellationToken.IsCancellationRequested)
@@ -227,6 +240,24 @@ public sealed class LegendFounderAiConversationService
                     nativeInference.Answer,
                     null);
             }
+        }
+
+        // V20.3: the native semantic authority distinguishes between
+        // genuinely unknown source meaning, which may use the configured
+        // external teacher, and a governed fail-closed boundary, which may
+        // not be crossed by generated provider content.
+        //
+        // ReplyAsync owns no reason-code policy; it consumes the existing
+        // RequiresEscalation decision returned by LEGEND operations.
+        if (nativeInference is
+            {
+                Supported: false,
+                RequiresEscalation: false
+            })
+        {
+            return NativeInferenceUnavailableResponse(
+                mode,
+                nativeInference);
         }
 
         var apiKey = OpenAiKeyResolver.Resolve(_configuration);
@@ -946,9 +977,15 @@ public sealed class LegendFounderAiConversationService
         new(
             true,
             mode,
-            nativeInference is { ReasonCode.Length: > 0 }
-                ? "LEGEND does not yet have enough governed evidence to answer this directly, and its external teacher is unavailable. No unsupported answer was produced."
-                : "LEGEND could not establish enough governed evidence for a direct answer, and its external teacher is unavailable. No unsupported answer was produced.",
+            nativeInference is
+            {
+                Supported: false,
+                RequiresEscalation: false
+            }
+                ? "LEGEND established the governed meaning of this request but does not have sufficient governed evidence to complete the answer. No unsupported answer was produced."
+                : nativeInference is { ReasonCode.Length: > 0 }
+                    ? "LEGEND does not yet have enough governed evidence to answer this directly, and its external teacher is unavailable. No unsupported answer was produced."
+                    : "LEGEND could not establish enough governed evidence for a direct answer, and its external teacher is unavailable. No unsupported answer was produced.",
             null);
 
     private static string DescribeFounderToolCall(

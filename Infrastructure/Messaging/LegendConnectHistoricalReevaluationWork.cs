@@ -36,10 +36,13 @@ internal sealed class LegendConnectHistoricalReevaluationWorkAuthority
     internal const string DerivationLedgerWorkKind = "DerivationLedger";
     internal const string FounderCurriculumPhase = "FounderCurriculum";
     private const string SeedWorkKind = "PhaseSeed";
-    private const string Pending = "Pending";
-    private const string Processing = "Processing";
-    private const string Completed = "Completed";
-    private const string Failed = "Failed";
+    // Canonical durable lifecycle states. These remain owned by the one
+    // historical-reevaluation work authority; read projections may reference
+    // them but must not redefine or reinterpret their string vocabulary.
+    internal const string Pending = "Pending";
+    internal const string Processing = "Processing";
+    internal const string Completed = "Completed";
+    internal const string Failed = "Failed";
     private const int DefaultSeedBatchSize = 128;
     private const int DependencyInventoryFamiliesPerWorkItem = 32;
     private const int DefaultMaximumConcurrency = 4;

@@ -3439,13 +3439,53 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
             .ThenBy(item => item.TargetNodeIndex)
             .ThenBy(item => item.RelationSignature, StringComparer.Ordinal)
             .ToArray();
+        // V20.3: a reusable meaning graph does not require an artificial
+        // second semantic node merely to prove that one independently mature
+        // semantic primitive has meaning.
+        //
+        // Multi-node interpretations still require independently supported
+        // relations. A one-node interpretation may stand alone because the
+        // primitive itself already passed the existing independent-support and
+        // contradiction gates above.
+        //
+        // Unknown surface material remains visible in UnknownTokens; no token
+        // is assigned a semantic value by this rule.
+        // V20.3: one independently mature primitive is a valid atomic
+        // meaning. For multi-node input, one or more independently mature
+        // relations establish the active connected semantic component.
+        //
+        // A mature primitive that is recognized elsewhere in the utterance
+        // but does not participate in that connected component must not
+        // invalidate the governed meaning. The existing semantic-value
+        // projection below already consumes only relation-participating nodes
+        // for relational meaning, so this preserves one authority rather than
+        // introducing a second completeness rule.
+        var isAtomicMeaning =
+            orderedNodes.Length == 1;
+
+        var isRelationalMeaning =
+            orderedNodes.Length > 1 &&
+            orderedRelations.Length > 0;
+
+        var isComposed =
+            isAtomicMeaning ||
+            isRelationalMeaning;
+
+        var reasonCode =
+            orderedNodes.Length == 0
+                ? "meaning_graph_component_unknown"
+                : isAtomicMeaning
+                    ? "meaning_graph_atomic_primitive_governed"
+                    : orderedRelations.Length == 0
+                        ? "meaning_graph_relation_unproven"
+                        : "meaning_graph_observational_composed";
+
         return new(
-            nodes.Count > 0 && relations.Count > 0,
+            isComposed,
             orderedNodes,
             orderedRelations,
             unknown,
-            nodes.Count == 0 ? "meaning_graph_component_unknown" :
-                relations.Count == 0 ? "meaning_graph_relation_unproven" : "meaning_graph_observational_composed");
+            reasonCode);
     }
 
     private sealed record ReusableMeaningAnchorCandidate(
@@ -4490,12 +4530,25 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
         out IReadOnlyDictionary<string, string> values)
     {
         var components = new List<KeyValuePair<string, string>>(nodes.Count + relations.Count);
-        // A composed meaning graph is defined by governed relations, not by
-        // every independently recognized surface primitive.  A dangling
+
+        // V20.3: one independently mature primitive is itself a valid semantic
+        // frame. Requiring an edge for a one-node meaning incorrectly made
+        // atomic conversational acts invisible to transition selection.
+        if (nodes.Count == 1 && relations.Count == 0)
+        {
+            components.Add(new KeyValuePair<string, string>(
+                nodes[0].SemanticDimension,
+                nodes[0].SemanticValue));
+
+            return TryToUnambiguousSemanticValues(
+                components,
+                out values);
+        }
+
+        // A multi-node composed meaning graph is defined by governed relations,
+        // not by every independently recognized surface primitive. A dangling
         // primitive can be legitimate lexical evidence for another meaning,
-        // but must not make the active connected meaning ambiguous. Multiple
-        // complete relation components are intentionally retained below and
-        // still fail closed if they conflict on a semantic dimension.
+        // but must not make the active connected meaning ambiguous.
         var participatingNodeIndexes = new HashSet<int>();
         foreach (var relation in relations)
         {

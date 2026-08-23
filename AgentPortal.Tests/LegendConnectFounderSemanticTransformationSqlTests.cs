@@ -1072,11 +1072,22 @@ public sealed class LegendConnectFounderSemanticTransformationSqlTests
             {
                 await processor.ProcessDurableFamilyAsync(claim.SubjectId!.Value, index);
             }
+            else if (claim.WorkKind == LegendConnectHistoricalReevaluationWorkAuthority.FounderManifestSemanticRelationWorkKind)
+            {
+                await processor.ProcessDurableSemanticRelationAsync(
+                    claim.SubjectId!.Value,
+                    index,
+                    evaluatorVersion);
+            }
             else
             {
-                Assert.Equal(LegendConnectHistoricalReevaluationWorkAuthority.FounderManifestSemanticRelationWorkKind,
+                Assert.Equal(
+                    LegendConnectHistoricalReevaluationWorkAuthority.DerivationLedgerWorkKind,
                     claim.WorkKind);
-                await processor.ProcessDurableSemanticRelationAsync(claim.SubjectId!.Value, index, evaluatorVersion);
+                await processor.ProcessDurableFamilyDerivationLedgerAsync(
+                    claim.SubjectId!.Value,
+                    index,
+                    evaluatorVersion);
             }
             Assert.True(await execution!.CompleteAsync());
             await processor.RefreshDurableManifestStatusAsync(claim.SubjectId!.Value, evaluatorVersion);
