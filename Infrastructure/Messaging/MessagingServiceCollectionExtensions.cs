@@ -150,6 +150,12 @@ public static class MessagingServiceCollectionExtensions
         services.AddSingleton<IMessageAttachmentStorage, MessagingAttachmentStorage>();
         services.AddSingleton<IMessagingRealtimePublisher, MessagingRealtimePublisher>();
         services.AddHostedService<MessagingRealtimeNotificationHostedService>();
+
+        // V20.1: the existing Founder curriculum manifest worker is the
+        // deployment-wide authority that seeds and drains current-evaluator
+        // durable manifest work. It must run in production alongside the
+        // learning and corpus workers.
+        services.AddHostedService<LegendConnectCurriculumManifestHostedService>();
         services.AddHostedService<LegendConnectLearningHostedService>();
         services.AddHostedService<LegendConnectCorpusAcquisitionHostedService>();
 
