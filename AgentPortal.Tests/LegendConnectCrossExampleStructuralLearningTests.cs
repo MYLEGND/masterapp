@@ -150,9 +150,36 @@ public sealed class LegendConnectCrossExampleStructuralLearningTests
             Assert.True((await fixture.Curriculum.SubmitFounderEnglishBatchAsync(batch)).Succeeded);
 
         var prior = await db.LegendLanguageStructuralRelationships.SingleAsync(item => item.VariationDimension == "agent");
-        prior.RelationshipSignature = LegendLanguageIdentity.TextHash(
+        var priorEvidence = await db.LegendLanguageStructuralEvidence
+            .Where(item => item.StructuralRelationshipId == prior.Id)
+            .ToListAsync();
+
+        // A historical relationship must not retain the current deterministic
+        // canonical ID after its semantic identity changes. Preserve the row's
+        // full scalar state and evidence, but give the historical identity its
+        // own durable primary key so replay can recreate the current canonical
+        // identity without an EF tracking or SQL primary-key collision.
+        var historical = (LegendLanguageStructuralRelationship)
+            db.Entry(prior).CurrentValues.ToObject();
+        historical.Id = Guid.NewGuid();
+        historical.RelationshipSignature = LegendLanguageIdentity.TextHash(
             "controlled-anchor-relationship|agent|agent:1|object:1|predicate:1");
+
+        db.LegendLanguageStructuralEvidence.RemoveRange(priorEvidence);
+        db.LegendLanguageStructuralRelationships.Remove(prior);
         await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        db.LegendLanguageStructuralRelationships.Add(historical);
+        foreach (var evidence in priorEvidence)
+        {
+            evidence.StructuralRelationshipId = historical.Id;
+            db.LegendLanguageStructuralEvidence.Add(evidence);
+        }
+
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+        prior = historical;
 
         await fixture.Curriculum.ReevaluateHistoricalAlignmentsAsync(100);
 

@@ -12,6 +12,10 @@ public class MasterAppDbContext : DbContext
 {
     public DbSet<LegendCurriculumManifestWorkItem> LegendCurriculumManifestWorkItems => Set<LegendCurriculumManifestWorkItem>();
     public DbSet<LegendHistoricalReevaluationWorkItem> LegendHistoricalReevaluationWorkItems => Set<LegendHistoricalReevaluationWorkItem>();
+    public DbSet<LegendLanguageDerivationContract> LegendLanguageDerivationContracts => Set<LegendLanguageDerivationContract>();
+    public DbSet<LegendLanguageDerivationContractDependency> LegendLanguageDerivationContractDependencies => Set<LegendLanguageDerivationContractDependency>();
+    public DbSet<LegendLanguageDerivationArtifact> LegendLanguageDerivationArtifacts => Set<LegendLanguageDerivationArtifact>();
+    public DbSet<LegendLanguageDerivationConvergence> LegendLanguageDerivationConvergences => Set<LegendLanguageDerivationConvergence>();
 
     public MasterAppDbContext(DbContextOptions<MasterAppDbContext> options) : base(options) { }
 
@@ -254,6 +258,7 @@ public class MasterAppDbContext : DbContext
             entity.Property(item => item.WorkIdentity).IsRequired().HasMaxLength(180);
             entity.Property(item => item.SubjectScope).IsRequired().HasMaxLength(96);
             entity.Property(item => item.DependencyIdentity).IsRequired().HasMaxLength(160);
+            entity.Property(item => item.CanonicalMutationLane).HasMaxLength(160);
             entity.Property(item => item.ProcessingState).IsRequired().HasMaxLength(32);
             entity.Property(item => item.LeaseOwner).HasMaxLength(128);
             entity.Property(item => item.LastErrorCode).HasMaxLength(120);
@@ -277,6 +282,89 @@ public class MasterAppDbContext : DbContext
                 .IsUnique()
                 .HasFilter("[ProcessingState] = 'Processing'")
                 .HasDatabaseName("IX_LegendHistoricalReevaluationWorkItems_ActiveDependency");
+            // Founder curriculum admission and historical SourceFamilies
+            // replay can both mutate one canonical family. Their scheduler
+            // phases remain distinct, but this stable family lane is not
+            // phase-scoped, so SQL Server is the final authority preventing
+            // concurrent mutation of that one family across either path.
+            entity.HasIndex(item => item.CanonicalMutationLane)
+                .IsUnique()
+                .HasFilter("[ProcessingState] = 'Processing' AND [CanonicalMutationLane] IS NOT NULL")
+                .HasDatabaseName("IX_LegendHistoricalReevaluationWorkItems_ActiveCanonicalMutationLane");
+        });
+
+        // Contract declarations are deployment metadata for the existing
+        // runtime-policy/evaluator lifecycle. They contain neither language
+        // evidence nor work payload, and their graph is intentionally
+        // separate from the semantic authority that evaluates a claim.
+        modelBuilder.Entity<LegendLanguageDerivationContract>(entity =>
+        {
+            entity.ToTable("LegendLanguageDerivationContracts");
+            entity.HasKey(item => item.Id);
+            entity.Property(item => item.DerivationKind).IsRequired().HasMaxLength(80);
+            entity.Property(item => item.ContractVersion).IsRequired().HasMaxLength(80);
+            entity.Property(item => item.ContractIdentity).IsRequired().HasMaxLength(64);
+            entity.Property(item => item.EarliestPhase).IsRequired().HasMaxLength(40);
+            entity.Property(item => item.State).IsRequired().HasMaxLength(24);
+            entity.HasIndex(item => item.ContractIdentity).IsUnique();
+            entity.HasIndex(item => new { item.DerivationKind, item.SupersededUtc });
+            entity.HasIndex(item => new { item.State, item.IntroducedEvaluatorVersion });
+        });
+
+        modelBuilder.Entity<LegendLanguageDerivationContractDependency>(entity =>
+        {
+            entity.ToTable("LegendLanguageDerivationContractDependencies");
+            entity.HasKey(item => item.Id);
+            entity.Property(item => item.DependencyDerivationKind).IsRequired().HasMaxLength(80);
+            entity.Property(item => item.DependencyContractIdentity).IsRequired().HasMaxLength(64);
+            entity.HasIndex(item => new
+            {
+                item.DependentContractId,
+                item.DependencyDerivationKind,
+                item.DependencyContractIdentity
+            }).IsUnique();
+            entity.HasIndex(item => item.DependencyContractIdentity);
+            entity.HasOne<LegendLanguageDerivationContract>()
+                .WithMany()
+                .HasForeignKey(item => item.DependentContractId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // This is a dependency projection, not a replacement evidence or
+        // curriculum store. The unique edge preserves one immutable answer
+        // to "why does this derived identity exist?" for each exact source
+        // identity and derivation contract.
+        modelBuilder.Entity<LegendLanguageDerivationArtifact>(entity =>
+        {
+            entity.ToTable("LegendLanguageDerivationArtifacts");
+            entity.HasKey(item => item.Id);
+            entity.Property(item => item.ArtifactKind).IsRequired().HasMaxLength(80);
+            entity.Property(item => item.ResultArtifactIdentity).IsRequired().HasMaxLength(160);
+            entity.Property(item => item.SourceDependencyIdentity).IsRequired().HasMaxLength(160);
+            entity.Property(item => item.SourceDependencySemanticVersion).IsRequired().HasMaxLength(64);
+            entity.Property(item => item.DerivationContractIdentity).IsRequired().HasMaxLength(64);
+            entity.Property(item => item.State).IsRequired().HasMaxLength(24);
+            entity.HasIndex(item => new
+            {
+                item.ArtifactKind,
+                item.ResultArtifactIdentity,
+                item.SourceDependencyIdentity,
+                item.DerivationContractIdentity
+            }).IsUnique();
+            entity.HasIndex(item => new { item.DerivationContractIdentity, item.State });
+            entity.HasIndex(item => new { item.ArtifactKind, item.State, item.UpdatedUtc });
+        });
+
+        modelBuilder.Entity<LegendLanguageDerivationConvergence>(entity =>
+        {
+            entity.ToTable("LegendLanguageDerivationConvergences");
+            entity.HasKey(item => item.Id);
+            entity.Property(item => item.State).IsRequired().HasMaxLength(24);
+            entity.Property(item => item.EarliestAffectedPhase).HasMaxLength(40);
+            entity.Property(item => item.BlockingDependencyIdentity).HasMaxLength(160);
+            entity.HasIndex(item => item.TargetEvaluatorVersion).IsUnique();
+            entity.HasIndex(item => new { item.RequiresDependencyInventory, item.State, item.UpdatedUtc });
+            entity.HasIndex(item => new { item.State, item.UpdatedUtc });
         });
 
         modelBuilder.Entity<AccountLifecycleRecord>(entity =>

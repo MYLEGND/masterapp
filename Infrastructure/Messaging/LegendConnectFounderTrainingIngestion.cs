@@ -310,7 +310,13 @@ internal sealed class LegendConnectFounderTrainingIngestionAuthority
                 // cross-language fallback or inferred transition path; their
                 // version watermark simply records that no English-only work
                 // applies to this isolated submission.
-                if (string.Equals(submission.SourceLanguageCode, "en", StringComparison.OrdinalIgnoreCase))
+                if (RequiresSourceCapabilityReplay(
+                        submission.CompletedLanguageIntelligenceEvaluatorVersion,
+                        evaluatorVersion) &&
+                    string.Equals(
+                        submission.SourceLanguageCode,
+                        "en",
+                        StringComparison.OrdinalIgnoreCase))
                 {
                     var sourceUnits = await (
                         from unit in _db.Set<LegendFounderTrainingSubmissionUnit>().AsNoTracking()
@@ -361,6 +367,34 @@ internal sealed class LegendConnectFounderTrainingIngestionAuthority
         }
 
         return replayed;
+    }
+
+    private static bool RequiresSourceCapabilityReplay(
+        int baselineEvaluatorVersion,
+        int targetEvaluatorVersion)
+    {
+        if (baselineEvaluatorVersion >= targetEvaluatorVersion)
+            return false;
+
+        var baselineContracts = LegendConnectDerivationContracts
+            .ForEvaluator(Math.Max(0, baselineEvaluatorVersion))
+            .ToDictionary(
+                item => item.DerivationKind,
+                StringComparer.Ordinal);
+
+        var sourcePhaseRank = LegendConnectDerivationContracts.PhaseRank(
+            LegendConnectLanguageIntelligenceReevaluationPhases.SourceFamilies);
+
+        return LegendConnectDerivationContracts
+            .ForEvaluator(targetEvaluatorVersion)
+            .Any(current =>
+                current.RequiresHistoricalWork &&
+                LegendConnectDerivationContracts.PhaseRank(current.EarliestPhase) == sourcePhaseRank &&
+                (!baselineContracts.TryGetValue(current.DerivationKind, out var prior) ||
+                 !string.Equals(
+                     prior.ContractIdentity,
+                     current.ContractIdentity,
+                     StringComparison.Ordinal)));
     }
 
     private async Task<StaleCapabilitySubmissionClaim?> TryClaimStaleCapabilitySubmissionAsync(

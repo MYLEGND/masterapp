@@ -4,6 +4,7 @@ using Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace Infrastructure.Migrations
 {
     [DbContext(typeof(MasterAppDbContext))]
-    partial class MasterAppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260822220948_AddLegendDerivationArtifactDependencyLedger")]
+    partial class AddLegendDerivationArtifactDependencyLedger
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -5779,10 +5782,6 @@ namespace Infrastructure.Migrations
                     b.Property<int>("AttemptCount")
                         .HasColumnType("int");
 
-                    b.Property<string>("CanonicalMutationLane")
-                        .HasMaxLength(160)
-                        .HasColumnType("nvarchar(160)");
-
                     b.Property<DateTime?>("CompletedUtc")
                         .HasColumnType("datetime2");
 
@@ -5847,11 +5846,6 @@ namespace Infrastructure.Migrations
                         .HasColumnType("nvarchar(24)");
 
                     b.HasKey("Id");
-
-                    b.HasIndex("CanonicalMutationLane")
-                        .IsUnique()
-                        .HasDatabaseName("IX_LegendHistoricalReevaluationWorkItems_ActiveCanonicalMutationLane")
-                        .HasFilter("[ProcessingState] = 'Processing' AND [CanonicalMutationLane] IS NOT NULL");
 
                     b.HasIndex("EvaluatorVersion", "Phase", "DependencyIdentity")
                         .IsUnique()
@@ -5933,15 +5927,12 @@ namespace Infrastructure.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("CurriculumFamilyId");
+
                     b.HasIndex("LexemeId");
 
                     b.HasIndex("CurriculumExampleId", "AnchorSignature")
                         .IsUnique();
-
-                    b.HasIndex("CurriculumFamilyId", "SupersededUtc")
-                        .HasDatabaseName("IX_LegendCompositionalAnchors_FamilyActive");
-
-                    SqlServerIndexBuilderExtensions.IncludeProperties(b.HasIndex("CurriculumFamilyId", "SupersededUtc"), new[] { "CurriculumExampleId", "AnchorSignature", "SemanticSignature" });
 
                     b.HasIndex("SemanticSignature", "SupersededUtc");
 
@@ -6046,11 +6037,6 @@ namespace Infrastructure.Migrations
                         .IsUnique()
                         .HasDatabaseName("IX_LegendLanguageContextRelationships_CanonicalIdentity")
                         .HasFilter("[SupersededUtc] IS NULL");
-
-                    b.HasIndex("CanonicalPairKey", "SourceTextUnitId", "RelatedTextUnitId", "RelationshipKind", "ContextSignature", "SupersededUtc")
-                        .HasDatabaseName("IX_LegendContextRelationships_ActiveCanonicalLookup");
-
-                    SqlServerIndexBuilderExtensions.IncludeProperties(b.HasIndex("CanonicalPairKey", "SourceTextUnitId", "RelatedTextUnitId", "RelationshipKind", "ContextSignature", "SupersededUtc"), new[] { "Confidence", "ContextCategory", "CreatedUtc", "ObservationCount", "PairKey", "Provenance", "QualityState", "RegionalVariant", "SourcePatternSignature", "UpdatedUtc", "UsageRegister" });
 
                     b.ToTable("LegendLanguageContextRelationships", (string)null);
                 });
@@ -6683,15 +6669,12 @@ namespace Infrastructure.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("CurriculumFamilyId");
+
                     b.HasIndex("CompositionalAnchorId", "SupersededUtc");
 
                     b.HasIndex("CurriculumExampleId", "NodeKey")
                         .IsUnique();
-
-                    b.HasIndex("CurriculumFamilyId", "SupersededUtc")
-                        .HasDatabaseName("IX_LegendMeaningNodes_FamilyActive");
-
-                    SqlServerIndexBuilderExtensions.IncludeProperties(b.HasIndex("CurriculumFamilyId", "SupersededUtc"), new[] { "CurriculumExampleId", "NodeKey", "SemanticSignature" });
 
                     b.HasIndex("LanguageCode", "SemanticSignature", "SupersededUtc");
 
@@ -6826,16 +6809,13 @@ namespace Infrastructure.Migrations
 
                     b.HasIndex("CurriculumExampleId");
 
+                    b.HasIndex("CurriculumFamilyId");
+
                     b.HasIndex("EvidenceIdentity")
                         .IsUnique();
 
                     b.HasIndex("MeaningNodeEvidenceId")
                         .IsUnique();
-
-                    b.HasIndex("CurriculumFamilyId", "SupersededUtc")
-                        .HasDatabaseName("IX_LegendMeaningPrimitiveEvidence_FamilyActive");
-
-                    SqlServerIndexBuilderExtensions.IncludeProperties(b.HasIndex("CurriculumFamilyId", "SupersededUtc"), new[] { "MeaningPrimitiveId", "MeaningNodeEvidenceId", "EvidenceIdentity" });
 
                     b.HasIndex("MeaningPrimitiveId", "ContributionState", "SupersededUtc");
 
@@ -6980,6 +6960,8 @@ namespace Infrastructure.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("CurriculumFamilyId");
+
                     b.HasIndex("EvidenceIdentity")
                         .IsUnique();
 
@@ -6988,11 +6970,6 @@ namespace Infrastructure.Migrations
                     b.HasIndex("TargetMeaningNodeId");
 
                     b.HasIndex("CurriculumExampleId", "SupersededUtc");
-
-                    b.HasIndex("CurriculumFamilyId", "SupersededUtc")
-                        .HasDatabaseName("IX_LegendMeaningRelationEvidence_FamilyActive");
-
-                    SqlServerIndexBuilderExtensions.IncludeProperties(b.HasIndex("CurriculumFamilyId", "SupersededUtc"), new[] { "MeaningRelationId", "EvidenceIdentity" });
 
                     b.HasIndex("MeaningRelationId", "ContributionState", "SupersededUtc");
 

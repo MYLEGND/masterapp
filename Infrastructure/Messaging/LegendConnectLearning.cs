@@ -1058,19 +1058,30 @@ internal sealed class LegendConnectCorpusService
 
         try
         {
-            var sourceIdentityIsNew = reusableSource is null;
-            var source = reusableSource ?? NewTextUnit(sourceLanguage, sourceText, sourceHash, submission.Provenance);
-            if (sourceIdentityIsNew)
-                _db.Set<LegendLanguageTextUnit>().Add(source);
+            var source = reusableSource ?? await LegendConnectCanonicalCurriculumPersistence.AdmitTextUnitAsync(
+                _db,
+                sourceLanguage,
+                sourceText,
+                sourceHash,
+                NormalizeRequired(submission.Provenance, 80),
+                LegendLanguageIdentity.DatasetNamespace(sourceLanguage),
+                cancellationToken);
+            var sourceIdentityIsNew = reusableSource is null &&
+                _db.Entry(source).State == EntityState.Added;
 
             LegendLanguageTextUnit? target = null;
             LegendTranslationAlignment? alignment = null;
             string? pairKey = null;
             if (targetLanguage is not null && targetText is not null && targetHash is not null)
             {
-                target = reusableTarget ?? NewTextUnit(targetLanguage, targetText, targetHash, submission.Provenance);
-                if (reusableTarget is null)
-                    _db.Set<LegendLanguageTextUnit>().Add(target);
+                target = reusableTarget ?? await LegendConnectCanonicalCurriculumPersistence.AdmitTextUnitAsync(
+                    _db,
+                    targetLanguage,
+                    targetText,
+                    targetHash,
+                    NormalizeRequired(submission.Provenance, 80),
+                    LegendLanguageIdentity.DatasetNamespace(targetLanguage),
+                    cancellationToken);
                 var pair = await _languages.GetOrCreateEnabledPairAsync(sourceLanguage, targetLanguage, cancellationToken);
                 if (pair is null)
                 {
@@ -1199,57 +1210,44 @@ internal sealed class LegendConnectCorpusService
             throw new ArgumentException("Founder training must contain 1–500 atomic units of at most 2,000 characters each.", nameof(sourceTexts));
 
         var hashes = normalizedByHash.Select(item => item.Hash).ToArray();
-        var existing = await _db.Set<LegendLanguageTextUnit>()
-            .Where(item => item.LanguageCode == sourceLanguage && hashes.Contains(item.NormalizedHash))
-            .ToDictionaryAsync(item => item.NormalizedHash, StringComparer.Ordinal, cancellationToken);
+        var existing = new Dictionary<string, LegendLanguageTextUnit>(StringComparer.Ordinal);
         var createdCount = 0;
         foreach (var item in normalizedByHash)
         {
-            if (existing.ContainsKey(item.Hash))
-                continue;
-            var created = NewTextUnit(sourceLanguage, item.Text, item.Hash, "FounderApproved");
-            _db.Set<LegendLanguageTextUnit>().Add(created);
-            existing[item.Hash] = created;
-            createdCount++;
+            var textUnit = await LegendConnectCanonicalCurriculumPersistence.AdmitTextUnitAsync(
+                _db,
+                sourceLanguage,
+                item.Text,
+                item.Hash,
+                "FounderApproved",
+                LegendLanguageIdentity.DatasetNamespace(sourceLanguage),
+                cancellationToken);
+            existing[item.Hash] = textUnit;
+            if (_db.Entry(textUnit).State == EntityState.Added)
+                createdCount++;
         }
         if (createdCount > 0)
             await _db.SaveChangesAsync(cancellationToken);
 
         var textUnits = normalizedByHash.ToDictionary(item => item.Hash, item => existing[item.Hash], StringComparer.Ordinal);
         var textUnitIds = textUnits.Values.Select(item => item.Id).ToArray();
-        var contextSignature = LegendLanguageIdentity.ContextSignature(contextCategory, usageRegister, regionalVariant);
-        var existingContexts = await _db.Set<LegendLanguageContextRelationship>()
-            .Where(item => item.PairKey == null && textUnitIds.Contains(item.SourceTextUnitId) &&
-                item.SourceTextUnitId == item.RelatedTextUnitId &&
-                item.RelationshipKind == "ContextualExample" &&
-                item.ContextSignature == contextSignature && item.SupersededUtc == null)
-            .Select(item => item.SourceTextUnitId)
-            .ToListAsync(cancellationToken);
-        var contextIds = existingContexts.ToHashSet();
         foreach (var source in textUnits.Values)
         {
-            if (contextIds.Contains(source.Id))
-                continue;
-            _db.Set<LegendLanguageContextRelationship>().Add(new LegendLanguageContextRelationship
-            {
-                Id = Guid.NewGuid(),
-                PairKey = null,
-                SourceTextUnitId = source.Id,
-                RelatedTextUnitId = source.Id,
-                RelationshipKind = "ContextualExample",
-                ContextSignature = contextSignature,
-                SourcePatternSignature = LegendLanguageIdentity.ContextPatternSignature(source.Text),
-                ContextCategory = NormalizeOptional(contextCategory, 120),
-                UsageRegister = NormalizeOptional(usageRegister, 80),
-                RegionalVariant = NormalizeOptional(regionalVariant, 80),
-                Confidence = 1m,
-                QualityState = "Verified",
-                Provenance = "FounderApproved",
-                ObservationCount = 1,
-                CreatedUtc = DateTime.UtcNow,
-                UpdatedUtc = DateTime.UtcNow
-            });
+            await GetOrCreateContextRelationshipAsync(
+                null,
+                source,
+                source,
+                contextCategory,
+                usageRegister,
+                regionalVariant,
+                1m,
+                "Verified",
+                "FounderApproved",
+                cancellationToken,
+                incrementExistingObservation: false);
         }
+        if (_db.ChangeTracker.HasChanges())
+            await _db.SaveChangesAsync(cancellationToken);
 
         var enabledTargets = await _languages.ListEnabledTranslationLanguagesAsync(cancellationToken);
         var pairs = new List<LegendLanguagePairSnapshot>();
@@ -1559,24 +1557,16 @@ internal sealed class LegendConnectCorpusService
         string provenance,
         CancellationToken cancellationToken)
     {
-        var existing = await _db.Set<LegendLanguageTextUnit>()
-            .SingleOrDefaultAsync(item => item.LanguageCode == languageCode && item.NormalizedHash == hash, cancellationToken);
-        if (existing is not null)
-            return existing;
-
-        var created = new LegendLanguageTextUnit
-        {
-            Id = Guid.NewGuid(),
-            LanguageCode = languageCode,
-            StoragePartition = LegendLanguageIdentity.DatasetNamespace(languageCode),
-            NormalizedHash = hash,
-            Text = LegendLanguageIdentity.NormalizeText(text),
-            Provenance = provenance,
-            IsTrainingEligible = true,
-            CreatedUtc = DateTime.UtcNow,
-            UpdatedUtc = DateTime.UtcNow
-        };
-        _db.Set<LegendLanguageTextUnit>().Add(created);
+        var created = await LegendConnectCanonicalCurriculumPersistence.AdmitTextUnitAsync(
+            _db,
+            languageCode,
+            LegendLanguageIdentity.NormalizeText(text),
+            hash,
+            NormalizeRequired(provenance, 80),
+            LegendLanguageIdentity.DatasetNamespace(languageCode),
+            cancellationToken);
+        if (_db.Entry(created).State != EntityState.Added)
+            return created;
         try
         {
             await _db.SaveChangesAsync(cancellationToken);
@@ -1601,39 +1591,19 @@ internal sealed class LegendConnectCorpusService
         string qualityState,
         string provenance,
         CancellationToken cancellationToken,
-        bool sourceIdentityIsNew = false)
+        bool sourceIdentityIsNew = false,
+        bool incrementExistingObservation = true)
     {
         var contextSignature = LegendLanguageIdentity.ContextSignature(
             contextCategory,
             usageRegister,
             regionalVariant);
-        // A newly allocated source text-unit identity cannot already own a
-        // contextual relationship.  Querying the relationship table anyway
-        // makes independent Founder families scan one another's uncommitted
-        // primary-key rows on a fresh corpus, creating a deadlock despite
-        // distinct canonical relationship identities.  The caller establishes
-        // this fact only after the text-unit uniqueness boundary has admitted
-        // a new source; existing/reused identities retain the normal lookup.
-        var existing = sourceIdentityIsNew
-            ? null
-            : await _db.Set<LegendLanguageContextRelationship>()
-                .SingleOrDefaultAsync(item => item.PairKey == pairKey &&
-                    item.SourceTextUnitId == source.Id &&
-                    item.RelatedTextUnitId == related.Id &&
-                    item.RelationshipKind == "ContextualExample" &&
-                    item.ContextSignature == contextSignature && item.SupersededUtc == null,
-                    cancellationToken);
-        if (existing is not null)
-        {
-            existing.ObservationCount++;
-            existing.Confidence = Math.Max(existing.Confidence, confidence);
-            if (qualityState == "Verified")
-                existing.QualityState = "Verified";
-            existing.UpdatedUtc = DateTime.UtcNow;
-            return existing;
-        }
-
-        var created = new LegendLanguageContextRelationship
+        // A bounded evaluator may stage this exact canonical relationship
+        // more than once before SaveChanges, so consult its tracked identity
+        // first. A genuinely new source text-unit can skip the persisted
+        // lookup, while a reused text-unit retains it; neither case may stage
+        // a second local canonical row.
+        var candidate = new LegendLanguageContextRelationship
         {
             Id = Guid.NewGuid(),
             PairKey = pairKey,
@@ -1652,26 +1622,25 @@ internal sealed class LegendConnectCorpusService
             CreatedUtc = DateTime.UtcNow,
             UpdatedUtc = DateTime.UtcNow
         };
-        _db.Set<LegendLanguageContextRelationship>().Add(created);
-        return created;
+        var existing = await LegendConnectCanonicalCurriculumPersistence.AdmitContextRelationshipAsync(
+            _db,
+            candidate,
+            cancellationToken);
+        if (existing is not null)
+        {
+            if (!ReferenceEquals(existing, candidate))
+            {
+                if (incrementExistingObservation)
+                    existing.ObservationCount++;
+                existing.Confidence = Math.Max(existing.Confidence, confidence);
+                if (qualityState == "Verified")
+                    existing.QualityState = "Verified";
+                existing.UpdatedUtc = DateTime.UtcNow;
+            }
+            return existing;
+        }
+        throw new InvalidOperationException("Canonical context admission returned no relationship.");
     }
-
-    private static LegendLanguageTextUnit NewTextUnit(
-        string languageCode,
-        string normalizedText,
-        string hash,
-        string provenance) => new()
-    {
-        Id = Guid.NewGuid(),
-        LanguageCode = languageCode,
-        StoragePartition = LegendLanguageIdentity.DatasetNamespace(languageCode),
-        NormalizedHash = hash,
-        Text = normalizedText,
-        Provenance = NormalizeRequired(provenance, 80),
-        IsTrainingEligible = true,
-        CreatedUtc = DateTime.UtcNow,
-        UpdatedUtc = DateTime.UtcNow
-    };
 
     private static LegendConnectKnowledgeSubmissionResult Duplicate(
         string sourceLanguage,
@@ -1717,7 +1686,11 @@ internal static class LegendConnectLanguageIntelligenceEvaluatorVersion
     // existing evaluator derives only their structural transition projections
     // through the same replay/maturity authority; it neither invents a
     // response direction from family order nor requires Founder resubmission.
-    internal const int Current = 19;
+    // v20 makes the existing mature Founder meaning primitives and relations
+    // eligible for the single governed Stage-6 content-binding authority.
+    // Its contract is runtime-only: converged v19 canonical evidence is
+    // reused through the dependency-driven lifecycle rather than broad replay.
+    internal const int Current = 20;
 }
 
 internal sealed class LegendConnectLearningHostedService : BackgroundService
@@ -1967,7 +1940,43 @@ internal sealed class LegendConnectLearningHostedService : BackgroundService
                     return processed;
                 }
 
-                if (phase == LegendConnectLanguageIntelligenceReevaluationPhases.ProviderObservations)
+                if (claim.WorkKind == LegendConnectHistoricalReevaluationWorkAuthority.DerivationLedgerWorkKind)
+                {
+                    if (claim.SubjectId is not Guid familyId)
+                        throw new InvalidOperationException("A derivation-ledger work item requires its canonical family identity.");
+                    await scope.ServiceProvider.GetRequiredService<LegendConnectCurriculumService>()
+                        .RefreshCurrentDerivationDependenciesForFamilyAsync(
+                            familyId,
+                            evaluatorVersion,
+                            stoppingToken);
+                }
+                else if (phase == LegendConnectLanguageIntelligenceReevaluationPhases.DependencyInventory)
+                {
+                    if (!int.TryParse(claim.SubjectScope, out var batchSize) || batchSize <= 0)
+                        throw new InvalidOperationException("Dependency inventory work requires its bounded family count.");
+                    var inventory = await scope.ServiceProvider
+                        .GetRequiredService<LegendConnectCurriculumService>()
+                        .InventoryHistoricalDerivationDependenciesBatchAsync(
+                            subjectId == Guid.Empty ? null : subjectId,
+                            evaluatorVersion,
+                            batchSize,
+                            stoppingToken);
+                    if (inventory.LastFamilyId is null)
+                        throw new InvalidOperationException("A claimed dependency inventory page had no remaining family identity.");
+                    // This cursor update and the ledger writes participate in
+                    // the same owned execution transaction. A process loss
+                    // therefore leaves neither an unrecorded page nor a
+                    // cursor that skipped canonical identities.
+                    await scope.ServiceProvider
+                        .GetRequiredService<ILegendConnectRuntimePolicyAuthority>()
+                        .AdvanceLanguageIntelligenceReevaluationAsync(
+                        evaluatorVersion,
+                        phase,
+                        inventory.LastFamilyId,
+                        phaseComplete: false,
+                        stoppingToken);
+                }
+                else if (phase == LegendConnectLanguageIntelligenceReevaluationPhases.ProviderObservations)
                 {
                     await scope.ServiceProvider.GetRequiredService<ILegendConnectTranslationIntelligence>()
                         .ReevaluateHistoricalProviderObservationAsync(subjectId, stoppingToken);
@@ -1979,12 +1988,20 @@ internal sealed class LegendConnectLearningHostedService : BackgroundService
                 }
                 else
                 {
-                    await scope.ServiceProvider.GetRequiredService<LegendConnectCurriculumService>()
-                        .ReevaluateHistoricalWorkItemAsync(
+                    var curriculum = scope.ServiceProvider.GetRequiredService<LegendConnectCurriculumService>();
+                    await curriculum.ReevaluateHistoricalWorkItemAsync(
                             phase,
                             subjectId,
                             claim.SubjectScope,
                             stoppingToken);
+                    if (phase == LegendConnectLanguageIntelligenceReevaluationPhases.SourceFamilies)
+                    {
+                        // Dependency ledger projection is a separately leased
+                        // downstream family work item.  It is queued in this
+                        // same owned transaction, then executes only after
+                        // the phase's canonical family mutations drain.
+                        await work.EnqueueFamilyDerivationLedgerAsync(claim, stoppingToken);
+                    }
                 }
 
                 if (!await execution.CompleteAsync(stoppingToken))

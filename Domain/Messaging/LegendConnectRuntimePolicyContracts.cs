@@ -40,6 +40,14 @@ public sealed record LegendConnectRuntimePolicyMutation(
 /// </summary>
 public static class LegendConnectLanguageIntelligenceReevaluationPhases
 {
+    /// <summary>
+    /// A bounded, metadata-only inventory of existing canonical identities.
+    /// It records their immutable dependency edges without re-running source
+    /// semantic projection, creating evidence, or changing eligibility.
+    /// This is used once when a completed pre-contract evaluator first enters
+    /// dependency-driven convergence.
+    /// </summary>
+    public const string DependencyInventory = "DependencyInventory";
     public const string SourceFamilies = "SourceFamilies";
     public const string Alignments = "Alignments";
     public const string ProviderObservations = "ProviderObservations";
@@ -47,7 +55,7 @@ public static class LegendConnectLanguageIntelligenceReevaluationPhases
     public const string Complete = "Complete";
 
     public static bool IsWorkPhase(string? phase) =>
-        phase is SourceFamilies or Alignments or ProviderObservations or OperationalTranslations;
+        phase is DependencyInventory or SourceFamilies or Alignments or ProviderObservations or OperationalTranslations;
 }
 
 /// <summary>

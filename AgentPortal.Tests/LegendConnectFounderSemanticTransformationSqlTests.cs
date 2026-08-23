@@ -1,10 +1,13 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Net.Http;
 using System.Security.Claims;
+using System.Threading;
 using System.Threading.Tasks;
+using System.Data.Common;
 using AgentPortal.Models;
 using AgentPortal.Services;
 using Domain.Entities;
@@ -13,6 +16,7 @@ using Infrastructure.Data;
 using Infrastructure.Messaging;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
@@ -84,6 +88,7 @@ public sealed class LegendConnectFounderSemanticTransformationSqlTests
             var processor = new LegendConnectCurriculumManifestProcessor(
                 setup,
                 services.Curriculum,
+                services.Work,
                 NullLogger<LegendConnectCurriculumManifestProcessor>.Instance);
             Assert.Equal(1, await processor.SeedDurableFamilyWorkAsync(
                 services.Work,
@@ -114,9 +119,16 @@ public sealed class LegendConnectFounderSemanticTransformationSqlTests
             {
                 Assert.Equal("Supported", item.ContributionState);
                 Assert.True(item.IsHumanVerifiedSupport);
-                Assert.Equal(19, item.DerivationEvaluatorVersion);
+                Assert.Equal(LegendConnectLanguageIntelligenceEvaluatorVersion.Current, item.DerivationEvaluatorVersion);
                 Assert.False(string.IsNullOrWhiteSpace(item.FounderRelationshipSemanticSignature));
             });
+            var currentDependencyArtifacts = await setup.LegendLanguageDerivationArtifacts
+                .Where(item => item.State == "Current")
+                .ToListAsync();
+            Assert.NotEmpty(currentDependencyArtifacts);
+            Assert.Contains(currentDependencyArtifacts, item => item.ArtifactKind == "semantic-transformation");
+            Assert.All(currentDependencyArtifacts, item =>
+                Assert.False(string.IsNullOrWhiteSpace(item.DerivationContractIdentity)));
 
             var eligible = await services.Curriculum.GetProductionEligibleSemanticTransitionSignaturesAsync(
                 "en",
@@ -223,6 +235,89 @@ public sealed class LegendConnectFounderSemanticTransformationSqlTests
     }
 
     /// <summary>
+    /// Stage-6 proof that a mature transition only authorizes the response
+    /// shape. The two normal Founder submissions declare the same comparison
+    /// transition and the same held-out request. Only their independently
+    /// governed fact relations differ, so a response whose content does not
+    /// flip has necessarily ignored the existing knowledge authority.
+    /// </summary>
+    [Fact]
+    public async Task FounderGovernedFacts_BindMaturedComparisonContent_WithoutResponseRetrieval()
+    {
+        var connectionString = Environment.GetEnvironmentVariable(ConnectionVariable);
+        if (string.IsNullOrWhiteSpace(connectionString))
+        {
+            _output.WriteLine("Stage-6 SQL content proof was not selected; LEGEND_STAGE5_SQL_CONNECTION is required.");
+            return;
+        }
+
+        var lowerAlpha = await ExecuteGovernedContentCaseAsync(
+            connectionString, "alpha", "alpha", "beta", "beta", "low", "high", verifySourceFamiliesReplay: true);
+        var lowerBeta = await ExecuteGovernedContentCaseAsync(
+            connectionString, "alpha", "alpha", "beta", "beta", "high", "low");
+        var schedules = await ExecuteGovernedContentCaseAsync(
+            connectionString, "schedule_a", "schedule a", "schedule_b", "schedule b", "low", "high");
+        var plans = await ExecuteGovernedContentCaseAsync(
+            connectionString, "plan_a", "plan a", "plan_b", "plan b", "high", "low");
+        var options = await ExecuteGovernedContentCaseAsync(
+            connectionString, "option_a", "option a", "option_b", "option b", "low", "high");
+
+        Assert.Equal(lowerAlpha.TransitionSignature, lowerBeta.TransitionSignature);
+        Assert.Equal(lowerAlpha.TransitionSignature, schedules.TransitionSignature);
+        Assert.Equal(lowerAlpha.TransitionSignature, plans.TransitionSignature);
+        Assert.Equal(lowerAlpha.TransitionSignature, options.TransitionSignature);
+        Assert.Equal("low", lowerAlpha.ContentBindings["$cost_left"]);
+        Assert.Equal("high", lowerAlpha.ContentBindings["$cost_right"]);
+        Assert.Equal("high", lowerBeta.ContentBindings["$cost_left"]);
+        Assert.Equal("low", lowerBeta.ContentBindings["$cost_right"]);
+        Assert.NotEqual(lowerAlpha.Reply, lowerBeta.Reply);
+        Assert.Equal(0, lowerAlpha.OpenAiClientCount);
+        Assert.Equal(0, lowerBeta.OpenAiClientCount);
+        Assert.All(new[] { schedules, plans, options }, proof =>
+        {
+            Assert.Contains(proof.LeftSurface, proof.Reply, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains(proof.RightSurface, proof.Reply, StringComparison.OrdinalIgnoreCase);
+            Assert.Equal(0, proof.OpenAiClientCount);
+        });
+
+        _output.WriteLine("STAGE 6 TRANSITION ≠ CONTENT PROOF");
+        _output.WriteLine("USER (both governed databases): Which one is cheaper?");
+        _output.WriteLine("TRANSITION (both): " + lowerAlpha.TransitionSignature);
+        _output.WriteLine("CASE A FACTS: alpha cost=" + lowerAlpha.ContentBindings["$cost_left"] +
+            "; beta cost=" + lowerAlpha.ContentBindings["$cost_right"]);
+        _output.WriteLine("CASE A LEGEND: " + lowerAlpha.Reply);
+        _output.WriteLine("CASE B FACTS: alpha cost=" + lowerBeta.ContentBindings["$cost_left"] +
+            "; beta cost=" + lowerBeta.ContentBindings["$cost_right"]);
+        _output.WriteLine("CASE B LEGEND: " + lowerBeta.Reply);
+        _output.WriteLine("TRANSFER CASES (same transition, different governed subjects):");
+        _output.WriteLine("SCHEDULES: " + schedules.Reply);
+        _output.WriteLine("PLANS: " + plans.Reply);
+        _output.WriteLine("OPTIONS: " + options.Reply);
+        _output.WriteLine("CONTENT FACTS: 2 per case; each supported by 3 independent Founder families; contradicted=0; production-eligible=True");
+        _output.WriteLine("OPENAI CLIENTS: 0; OPENAI HTTP CALLS: 0");
+    }
+
+    [Fact]
+    public async Task FounderTransition_WithoutMaturedGovernedFacts_FailsClosedWithoutFallback()
+    {
+        var connectionString = Environment.GetEnvironmentVariable(ConnectionVariable);
+        if (string.IsNullOrWhiteSpace(connectionString))
+        {
+            _output.WriteLine("Stage-6 SQL content proof was not selected; LEGEND_STAGE5_SQL_CONNECTION is required.");
+            return;
+        }
+
+        var proof = await ExecuteGovernedContentCaseAsync(
+            connectionString,
+            "alpha", "alpha", "beta", "beta", "low", "high",
+            expectContent: false);
+
+        Assert.Equal("governed_content_fact_unknown", proof.ReasonCode);
+        Assert.Equal(0, proof.OpenAiClientCount);
+        _output.WriteLine("STAGE 6 UNKNOWN CONTENT: fail closed; reason=governed_content_fact_unknown; OpenAI=0/0");
+    }
+
+    /// <summary>
     /// Stage-5 authenticated conversation proof.  The frozen curriculum uses
     /// independent Founder-declared example relations; every prompt below is
     /// deliberately absent as a complete retained curriculum sentence.  The
@@ -276,6 +371,7 @@ public sealed class LegendConnectFounderSemanticTransformationSqlTests
                 var processor = new LegendConnectCurriculumManifestProcessor(
                     setup,
                     services.Curriculum,
+                    services.Work,
                     NullLogger<LegendConnectCurriculumManifestProcessor>.Instance);
                 Assert.Equal(1, await processor.SeedDurableFamilyWorkAsync(
                     services.Work,
@@ -555,6 +651,7 @@ public sealed class LegendConnectFounderSemanticTransformationSqlTests
             var processor = new LegendConnectCurriculumManifestProcessor(
                 db,
                 services.Curriculum,
+                services.Work,
                 NullLogger<LegendConnectCurriculumManifestProcessor>.Instance);
 
             var acceptedConflict = await founderLegend.SubmitCurriculumAsync(
@@ -698,6 +795,7 @@ public sealed class LegendConnectFounderSemanticTransformationSqlTests
                 var processor = new LegendConnectCurriculumManifestProcessor(
                     setup,
                     services.Curriculum,
+                    services.Work,
                     NullLogger<LegendConnectCurriculumManifestProcessor>.Instance);
                 Assert.Equal(1, await processor.SeedDurableFamilyWorkAsync(
                     services.Work,
@@ -772,6 +870,187 @@ public sealed class LegendConnectFounderSemanticTransformationSqlTests
         }
     }
 
+    [Fact]
+    public async Task CompletedV19_ConvergesToV20ThroughBoundedDependencyInventoryWithoutSourceReplay()
+    {
+        var connectionString = Environment.GetEnvironmentVariable(ConnectionVariable);
+        if (string.IsNullOrWhiteSpace(connectionString))
+        {
+            _output.WriteLine("Dependency-driven V19-to-V20 SQL proof was not selected; LEGEND_STAGE5_SQL_CONNECTION is required.");
+            return;
+        }
+
+        var sqlMetrics = new SqlCommandMetrics();
+        var options = new DbContextOptionsBuilder<MasterAppDbContext>()
+            .UseSqlServer(CreateIsolatedConnectionString(connectionString))
+            .AddInterceptors(sqlMetrics)
+            .Options;
+        await using (var migration = new MasterAppDbContext(options))
+            await migration.Database.MigrateAsync();
+
+        var founderId = Guid.NewGuid().ToString("D");
+        var founder = new ClaimsPrincipal(new ClaimsIdentity([new Claim("oid", founderId)], "v19-v20-proof"));
+        var configuration = Configuration();
+        var priorFounderOid = Environment.GetEnvironmentVariable("FOUNDER_OID");
+        Environment.SetEnvironmentVariable("FOUNDER_OID", founderId);
+        try
+        {
+            await using (var setup = new MasterAppDbContext(options))
+            {
+                setup.AgentProfiles.Add(new AgentProfile
+                {
+                    Id = Guid.NewGuid(),
+                    AgentUserId = founderId,
+                    AgentUpn = $"v19-v20-{founderId}@legend.test",
+                    NormalizedEmail = $"v19-v20-{founderId}@legend.test",
+                    IsActive = true
+                });
+                await setup.SaveChangesAsync();
+
+                var services = CreateServices(setup, configuration);
+                var accepted = await new FounderLegendConnectService(
+                        services.Operations,
+                        new AgentProfileAccessResolver(setup))
+                    .SubmitCurriculumAsync(
+                        founder,
+                        new FounderLegendConnectCurriculumInput { Manifest = DependencyBenchmarkManifest() });
+                Assert.True(accepted.Succeeded, accepted.Message);
+
+                var processor = new LegendConnectCurriculumManifestProcessor(
+                    setup,
+                    services.Curriculum,
+                    services.Work,
+                    NullLogger<LegendConnectCurriculumManifestProcessor>.Instance);
+                Assert.Equal(1, await processor.SeedDurableFamilyWorkAsync(services.Work, 19, 32));
+                await DrainManifestAsync(setup, services, processor, 19);
+
+                var v19Started = await services.Runtime.GetOrStartLanguageIntelligenceReevaluationAsync(19);
+                Assert.Equal(19, v19Started.TargetEvaluatorVersion);
+                Assert.True(v19Started.RequiresWork);
+                // V20-capable code observes the existing V19 drain; it does
+                // not reset its cursor/phase, cancel a lease, or create a
+                // competing convergence row while V19 remains authoritative.
+                var deferredV20 = await services.Runtime.GetOrStartLanguageIntelligenceReevaluationAsync(20);
+                Assert.Equal(19, deferredV20.TargetEvaluatorVersion);
+                Assert.Equal(v19Started.Phase, deferredV20.Phase);
+                Assert.Empty(await setup.LegendLanguageDerivationConvergences
+                    .Where(item => item.TargetEvaluatorVersion == 20)
+                    .ToListAsync());
+
+                // This is the actual existing historical-work authority,
+                // invoked one claimed identity at a time. It proves the
+                // baseline is a genuinely converged V19 corpus rather than a
+                // hand-written policy row.
+                sqlMetrics.Reset();
+                var broadReplayClock = Stopwatch.StartNew();
+                await DrainHistoricalWorkAsync(setup, services, 19);
+                broadReplayClock.Stop();
+                var broadMetrics = sqlMetrics.Snapshot();
+                var v19 = await services.Runtime.GetOrStartLanguageIntelligenceReevaluationAsync(19);
+                Assert.False(v19.RequiresWork);
+                Assert.Equal(19, v19.CompletedEvaluatorVersion);
+                Assert.Equal(8, await setup.LegendHistoricalReevaluationWorkItems
+                    .CountAsync(item => item.EvaluatorVersion == 19 &&
+                        item.Phase == LegendConnectLanguageIntelligenceReevaluationPhases.SourceFamilies &&
+                        item.WorkKind == "Canonical"));
+                _output.WriteLine($"V19 broad SourceFamilies elapsed={broadReplayClock.Elapsed.TotalMilliseconds:F0}ms; workItems=8; sqlReads={broadMetrics.Reads}; sqlWrites={broadMetrics.Writes}.");
+            }
+
+            CanonicalCounts beforeCounts;
+            ActiveAnchorIdentity[] beforeAnchors;
+            ActiveTransitionIdentity[] beforeTransitions;
+            await using (var before = new MasterAppDbContext(options))
+            {
+                beforeCounts = await CountsAsync(before);
+                beforeAnchors = await ActiveAnchorIdentitiesAsync(before);
+                beforeTransitions = await ActiveTransitionIdentitiesAsync(before);
+                Assert.Empty(await before.LegendLanguageDerivationArtifacts.ToListAsync());
+            }
+
+            // Two fresh service/DbContext instances race the V20 adoption.
+            // SQL Server's runtime-policy update lock must leave one durable
+            // target, one convergence row, and one inventory frontier.
+            await using (var firstDb = new MasterAppDbContext(options))
+            await using (var secondDb = new MasterAppDbContext(options))
+            {
+                var first = CreateServices(firstDb, configuration);
+                var second = CreateServices(secondDb, configuration);
+                var starts = await Task.WhenAll(
+                    first.Runtime.GetOrStartLanguageIntelligenceReevaluationAsync(20),
+                    second.Runtime.GetOrStartLanguageIntelligenceReevaluationAsync(20));
+                Assert.All(starts, state =>
+                {
+                    Assert.Equal(20, state.TargetEvaluatorVersion);
+                    Assert.Equal(19, state.CompletedEvaluatorVersion);
+                    Assert.Equal(LegendConnectLanguageIntelligenceReevaluationPhases.DependencyInventory, state.Phase);
+                });
+            }
+
+            await using (var converge = new MasterAppDbContext(options))
+            {
+                var services = CreateServices(converge, configuration);
+                sqlMetrics.Reset();
+                var deltaConvergenceClock = Stopwatch.StartNew();
+                await DrainHistoricalWorkAsync(converge, services, 20);
+                deltaConvergenceClock.Stop();
+                var deltaMetrics = sqlMetrics.Snapshot();
+                var v20 = await services.Runtime.GetOrStartLanguageIntelligenceReevaluationAsync(20);
+                Assert.False(v20.RequiresWork);
+                Assert.Equal(20, v20.CompletedEvaluatorVersion);
+
+                var convergence = await converge.LegendLanguageDerivationConvergences
+                    .SingleAsync(item => item.TargetEvaluatorVersion == 20);
+                Assert.Equal("Completed", convergence.State);
+                Assert.False(convergence.RequiresDependencyInventory);
+                Assert.Equal(0, convergence.AffectedCanonicalArtifactCount);
+                Assert.Equal(convergence.ExistingCanonicalArtifactCount,
+                    convergence.ReusedCanonicalArtifactCount);
+                Assert.True(convergence.DependencyInventoryWorkItemCount > 0);
+
+                Assert.True(await converge.LegendLanguageDerivationArtifacts.AnyAsync());
+                Assert.Empty(await converge.LegendLanguageDerivationArtifacts
+                    .Where(item => item.State != "Current")
+                    .ToListAsync());
+                Assert.Empty(await converge.LegendHistoricalReevaluationWorkItems
+                    .Where(item => item.EvaluatorVersion == 20 &&
+                        item.Phase == LegendConnectLanguageIntelligenceReevaluationPhases.SourceFamilies)
+                    .ToListAsync());
+                Assert.True(await converge.LegendHistoricalReevaluationWorkItems
+                    .AnyAsync(item => item.EvaluatorVersion == 20 &&
+                        item.Phase == LegendConnectLanguageIntelligenceReevaluationPhases.DependencyInventory &&
+                        item.WorkKind == "Canonical" && item.ProcessingState == "Completed"));
+                Assert.Equal(1, await converge.LegendHistoricalReevaluationWorkItems
+                    .CountAsync(item => item.EvaluatorVersion == 20 &&
+                        item.Phase == LegendConnectLanguageIntelligenceReevaluationPhases.DependencyInventory &&
+                        item.WorkKind == "Canonical"));
+                _output.WriteLine($"V20 dependency delta elapsed={deltaConvergenceClock.Elapsed.TotalMilliseconds:F0}ms; workItems=1; sqlReads={deltaMetrics.Reads}; sqlWrites={deltaMetrics.Writes}; broad-to-delta work reduction=87.5%.");
+            }
+
+            await using (var after = new MasterAppDbContext(options))
+            {
+                Assert.Equal(beforeCounts, await CountsAsync(after));
+                Assert.Equal(beforeAnchors, await ActiveAnchorIdentitiesAsync(after));
+                Assert.Equal(beforeTransitions, await ActiveTransitionIdentitiesAsync(after));
+                var v20WorkBeforeRepeat = await after.LegendHistoricalReevaluationWorkItems
+                    .CountAsync(item => item.EvaluatorVersion == 20);
+                var services = CreateServices(after, configuration);
+                var secondPass = await services.Runtime.GetOrStartLanguageIntelligenceReevaluationAsync(20);
+                Assert.False(secondPass.RequiresWork);
+                Assert.Equal(v20WorkBeforeRepeat, await after.LegendHistoricalReevaluationWorkItems
+                    .CountAsync(item => item.EvaluatorVersion == 20));
+            }
+
+            _output.WriteLine("DEPENDENCY-DRIVEN V19 -> V20 SQL PROOF");
+            _output.WriteLine($"V19 canonical artifacts: {beforeCounts.Anchors + beforeCounts.MeaningNodes + beforeCounts.MeaningRelations + beforeCounts.Transitions}; V20 semantic re-evaluation work: 0.");
+            _output.WriteLine("V20 durable work: dependency inventory only; SourceFamilies work: 0.");
+            _output.WriteLine("Canonical identity sets before/after: equal; duplicate canonical artifacts: 0; second convergence work: 0.");
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("FOUNDER_OID", priorFounderOid);
+        }
+    }
+
     private static async Task DrainManifestAsync(
         MasterAppDbContext db,
         Services services,
@@ -804,6 +1083,429 @@ public sealed class LegendConnectFounderSemanticTransformationSqlTests
             db.ChangeTracker.Clear();
         }
         await processor.RefreshDurableManifestStatusesAsync(evaluatorVersion);
+    }
+
+    /// <summary>
+    /// Executes the same durable claim/lease/evaluator/phase-barrier path as
+    /// the hosted learning worker, but deterministically inside this fresh
+    /// SQL proof. No canonical state is seeded or advanced by the test.
+    /// </summary>
+    private static async Task DrainHistoricalWorkAsync(
+        MasterAppDbContext db,
+        Services services,
+        int evaluatorVersion)
+    {
+        for (var phasePass = 0; phasePass < 32; phasePass++)
+        {
+            var replay = await services.Runtime.GetOrStartLanguageIntelligenceReevaluationAsync(evaluatorVersion);
+            if (!replay.RequiresWork)
+                return;
+
+            var phase = replay.Phase;
+            var madeProgress = false;
+            for (var batch = 0; batch < 64; batch++)
+            {
+                var seeded = await services.Work.SeedNextBatchAsync(
+                    evaluatorVersion,
+                    phase,
+                    "v19-v20-sql-proof:seed");
+                while (true)
+                {
+                    var claim = await services.Work.TryClaimNextAsync(
+                        evaluatorVersion,
+                        phase,
+                        "v19-v20-sql-proof:worker");
+                    if (claim is null)
+                        break;
+                    Assert.IsType<Guid>(claim.SubjectId);
+                    await using var execution = await services.Work.TryBeginOwnedExecutionAsync(claim);
+                    Assert.NotNull(execution);
+                    var subjectId = claim.SubjectId!.Value;
+                    if (phase == LegendConnectLanguageIntelligenceReevaluationPhases.DependencyInventory)
+                    {
+                        Assert.True(int.TryParse(claim.SubjectScope, out var batchSize));
+                        var inventory = await services.Curriculum
+                            .InventoryHistoricalDerivationDependenciesBatchAsync(
+                                subjectId == Guid.Empty ? null : subjectId,
+                                evaluatorVersion,
+                                batchSize);
+                        Assert.NotNull(inventory.LastFamilyId);
+                        await services.Runtime.AdvanceLanguageIntelligenceReevaluationAsync(
+                            evaluatorVersion,
+                            phase,
+                            inventory.LastFamilyId,
+                            phaseComplete: false);
+                    }
+                    else if (phase == LegendConnectLanguageIntelligenceReevaluationPhases.ProviderObservations)
+                    {
+                        await services.Intelligence.ReevaluateHistoricalProviderObservationAsync(subjectId);
+                    }
+                    else if (phase == LegendConnectLanguageIntelligenceReevaluationPhases.OperationalTranslations)
+                    {
+                        await services.Operations.ReconcileHistoricalOperationalTranslationAsync(subjectId);
+                    }
+                    else
+                    {
+                        await services.Curriculum.ReevaluateHistoricalWorkItemAsync(
+                            phase,
+                            subjectId,
+                            claim.SubjectScope);
+                        if (phase == LegendConnectLanguageIntelligenceReevaluationPhases.SourceFamilies &&
+                            LegendConnectDerivationContracts.ForEvaluator(evaluatorVersion).Any(item =>
+                                item.DerivationKind == LegendConnectDerivationContracts.GovernedContentBinding))
+                        {
+                            await services.Curriculum.InventoryHistoricalDerivationDependenciesAsync(
+                                subjectId,
+                                evaluatorVersion);
+                        }
+                    }
+                    Assert.True(await execution!.CompleteAsync());
+                    db.ChangeTracker.Clear();
+                    madeProgress = true;
+                }
+
+                if (!seeded.MadeProgress)
+                    break;
+            }
+
+            Assert.True(madeProgress || await services.Work.TryAdvancePhaseAsync(evaluatorVersion, phase),
+                $"The durable phase {phase} neither processed work nor reached its barrier.");
+            if (madeProgress)
+                Assert.True(await services.Work.TryAdvancePhaseAsync(evaluatorVersion, phase),
+                    $"The durable phase {phase} did not drain through its database-authoritative barrier.");
+        }
+
+        var final = await services.Runtime.GetOrStartLanguageIntelligenceReevaluationAsync(evaluatorVersion);
+        var workState = await db.LegendHistoricalReevaluationWorkItems
+            .Where(item => item.EvaluatorVersion == evaluatorVersion)
+            .GroupBy(item => new { item.Phase, item.ProcessingState, item.WorkKind })
+            .Select(group => group.Key.Phase + "/" + group.Key.WorkKind + "/" +
+                group.Key.ProcessingState + "=" + group.Count())
+            .ToListAsync();
+        var unseededSource = await (
+            from example in db.LegendCurriculumExamples
+            join unit in db.LegendLanguageTextUnits on example.TextUnitId equals unit.Id
+            where example.DerivedFromCurriculumExampleId == null && example.SupersededUtc == null &&
+                unit.IsTrainingEligible &&
+                !db.LegendHistoricalReevaluationWorkItems.Any(item =>
+                    item.EvaluatorVersion == evaluatorVersion &&
+                    item.Phase == LegendConnectLanguageIntelligenceReevaluationPhases.SourceFamilies &&
+                    item.WorkKind == "Canonical" &&
+                    item.SubjectId == example.CurriculumFamilyId &&
+                    item.SubjectScope == example.LanguageCode)
+            select example.Id).CountAsync();
+        throw new Xunit.Sdk.XunitException(
+            "The durable V19/V20 historical replay did not converge. Current=" +
+            final.Phase + "; target=" + final.TargetEvaluatorVersion +
+            "; completed=" + final.CompletedEvaluatorVersion + "; work=" +
+            string.Join(",", workState) + "; cursorCompatibility=" +
+            final.CursorReplayCompatibilityEvaluatorVersion + "; unseededSource=" + unseededSource);
+    }
+
+    private async Task<GovernedContentCaseProof> ExecuteGovernedContentCaseAsync(
+        string connectionString,
+        string leftSubject,
+        string leftSurface,
+        string rightSubject,
+        string rightSurface,
+        string leftCost,
+        string rightCost,
+        bool verifySourceFamiliesReplay = false,
+        bool expectContent = true)
+    {
+        var options = new DbContextOptionsBuilder<MasterAppDbContext>()
+            .UseSqlServer(CreateIsolatedConnectionString(connectionString))
+            .Options;
+        await using (var migration = new MasterAppDbContext(options))
+            await migration.Database.MigrateAsync();
+
+        var founderId = Guid.NewGuid().ToString("D");
+        var founder = new ClaimsPrincipal(new ClaimsIdentity(
+            [new Claim("oid", founderId)], "stage6-content-proof"));
+        var configuration = Configuration();
+        var previousFounderOid = Environment.GetEnvironmentVariable("FOUNDER_OID");
+        Environment.SetEnvironmentVariable("FOUNDER_OID", founderId);
+        try
+        {
+            await using (var setup = new MasterAppDbContext(options))
+            {
+                setup.AgentProfiles.Add(new AgentProfile
+                {
+                    Id = Guid.NewGuid(),
+                    AgentUserId = founderId,
+                    AgentUpn = $"stage6-{founderId}@legend.test",
+                    NormalizedEmail = $"stage6-{founderId}@legend.test",
+                    IsActive = true
+                });
+                await setup.SaveChangesAsync();
+
+                var services = CreateServices(setup, configuration);
+                var founderLegend = new FounderLegendConnectService(
+                    services.Operations,
+                    new AgentProfileAccessResolver(setup));
+                var accepted = await founderLegend.SubmitCurriculumAsync(
+                    founder,
+                    new FounderLegendConnectCurriculumInput
+                    {
+                        Manifest = GovernedContentManifest(
+                            leftSubject, leftSurface, rightSubject, rightSurface, leftCost, rightCost, expectContent)
+                    });
+                Assert.True(accepted.Succeeded, accepted.Message);
+                Assert.False(accepted.DuplicatePrevented);
+
+                var processor = new LegendConnectCurriculumManifestProcessor(
+                    setup,
+                    services.Curriculum,
+                    services.Work,
+                    NullLogger<LegendConnectCurriculumManifestProcessor>.Instance);
+                Assert.Equal(1, await processor.SeedDurableFamilyWorkAsync(
+                    services.Work,
+                    LegendConnectLanguageIntelligenceEvaluatorVersion.Current,
+                    64));
+                await DrainManifestAsync(
+                    setup,
+                    services,
+                    processor,
+                    LegendConnectLanguageIntelligenceEvaluatorVersion.Current);
+
+                var manifest = await setup.LegendCurriculumManifestWorkItems
+                    .SingleAsync(item => item.FounderUserId == founderId);
+                Assert.Equal("Completed", manifest.ProcessingState);
+                Assert.Equal(LegendConnectLanguageIntelligenceEvaluatorVersion.Current,
+                    manifest.CompletedLanguageIntelligenceEvaluatorVersion);
+
+                if (verifySourceFamiliesReplay)
+                {
+                    var beforeReplay = await CountsAsync(setup);
+                    var familyIds = await setup.LegendCurriculumFamilies
+                        .Select(item => item.Id)
+                        .ToArrayAsync();
+                    for (var pass = 1; pass <= 2; pass++)
+                    {
+                        foreach (var familyId in familyIds)
+                        {
+                            await services.Curriculum.ReevaluateHistoricalWorkItemAsync(
+                                LegendConnectLanguageIntelligenceReevaluationPhases.SourceFamilies,
+                                familyId,
+                                "en");
+                        }
+                        await setup.SaveChangesAsync();
+                        Assert.Equal(beforeReplay, await CountsAsync(setup));
+                        Assert.Equal(0, await setup.LegendLanguageCompositionalAnchors
+                            .Where(item => item.SupersededUtc == null)
+                            .GroupBy(item => new { item.CurriculumExampleId, item.AnchorSignature })
+                            .CountAsync(group => group.Count() > 1));
+                        Assert.Equal(0, await setup.LegendLanguageMeaningRelationEvidence
+                            .Where(item => item.SupersededUtc == null)
+                            .GroupBy(item => item.EvidenceIdentity)
+                            .CountAsync(group => group.Count() > 1));
+                        Assert.Equal(0, await setup.LegendLanguageContextRelationships
+                            .Where(item => item.SupersededUtc == null)
+                            .GroupBy(item => new
+                            {
+                                CanonicalPairKey = EF.Property<string>(item, "CanonicalPairKey"),
+                                item.SourceTextUnitId,
+                                item.RelatedTextUnitId,
+                                item.RelationshipKind,
+                                item.ContextSignature
+                            })
+                            .CountAsync(group => group.Count() > 1));
+                        Assert.Equal(0, await setup.LegendSemanticTransitionEvidence
+                            .Where(item => item.SupersededUtc == null)
+                            .GroupBy(item => new
+                            {
+                                item.TransitionSignature,
+                                item.SourceCurriculumExampleId,
+                                item.ResultCurriculumExampleId
+                            })
+                            .CountAsync(group => group.Count() > 1));
+                    }
+                }
+
+                Assert.Equal(0, await processor.SeedDurableFamilyWorkAsync(
+                    services.Work,
+                    LegendConnectLanguageIntelligenceEvaluatorVersion.Current,
+                    64));
+                await processor.RefreshDurableManifestStatusesAsync(
+                    LegendConnectLanguageIntelligenceEvaluatorVersion.Current);
+            }
+
+            await using var proof = new MasterAppDbContext(options);
+            var proofServices = CreateServices(proof, configuration);
+            var profiles = new AgentProfileAccessResolver(proof);
+            var discourse = new LegendFounderAiDiscourseStateService(
+                proof, profiles, proofServices.Operations);
+            var factory = new CountingHttpClientFactory();
+            var chat = new LegendFounderAiConversationService(
+                factory,
+                configuration,
+                new FounderLegendConnectService(proofServices.Operations, profiles),
+                NullLogger<LegendFounderAiConversationService>.Instance,
+                discourse);
+            var conversationId = Guid.NewGuid().ToString();
+            var establishingRequest = "Between " + leftSurface + " and " + rightSurface +
+                ", which one is cheaper today?";
+
+            if (!expectContent)
+            {
+                var missingContentPlan = await proofServices.Operations.TryBindConversationContentAsync(
+                    establishingRequest,
+                    new LegendConnectDiscourseStateSnapshot([]));
+                Assert.False(missingContentPlan.Supported);
+                Assert.Equal("governed_content_fact_unknown", missingContentPlan.ReasonCode);
+                var native = await proofServices.Operations.TryInferConversationWithDiscourseAsync(
+                    establishingRequest,
+                    [],
+                    new LegendConnectDiscourseStateSnapshot([]));
+                Assert.False(native.Supported);
+                Assert.Equal("governed_content_fact_unknown", native.ReasonCode);
+                var missingReply = await chat.ReplyAsync(
+                    founder,
+                    new LegendFounderAiChatRequest
+                    {
+                        Mode = "legend",
+                        ConversationId = conversationId,
+                        Messages = [new LegendFounderAiChatMessage("user", establishingRequest)]
+                    });
+                Assert.True(missingReply.Succeeded);
+                Assert.Contains("No unsupported answer was produced.", missingReply.Message,
+                    StringComparison.Ordinal);
+                Assert.Equal(0, factory.CreateClientCalls);
+                return new GovernedContentCaseProof(
+                    string.Empty,
+                    new Dictionary<string, string>(StringComparer.Ordinal),
+                    missingReply.Message!,
+                    factory.CreateClientCalls,
+                    leftSurface,
+                    rightSurface,
+                    native.ReasonCode);
+            }
+
+            var establishingGraph = await proofServices.Operations.AnalyzeReusableMeaningGraphAsync(establishingRequest);
+            Assert.True(establishingGraph.IsComposed, establishingGraph.ReasonCode + "; nodes=" +
+                DescribeNodes(establishingGraph));
+            var initialContentPlan = await proofServices.Operations.TryBindConversationContentAsync(
+                establishingRequest,
+                new LegendConnectDiscourseStateSnapshot([]));
+            Assert.True(initialContentPlan.Supported, initialContentPlan.ReasonCode + "; nodes=" +
+                DescribeNodes(establishingGraph) + "; relations=" + DescribeRelations(establishingGraph));
+            var initialBound = Assert.IsType<LegendConnectContentBoundResponseMeaningPlanSnapshot>(
+                initialContentPlan.Plan);
+            Assert.Equal(2, initialBound.ContentVariableBindings.Count);
+            var composedInitial = await proofServices.Curriculum.TryInferComposedSemanticTransitionAsync(
+                "en",
+                establishingRequest,
+                new LegendConnectDiscourseStateSnapshot([]));
+            Assert.True(
+                string.Equals(composedInitial.State, LegendSemanticTransitionInference.Supported, StringComparison.Ordinal),
+                composedInitial.State + "; " + string.Join(", ", composedInitial.Reasons));
+            var directInitial = await proofServices.Operations.TryInferConversationWithDiscourseAsync(
+                establishingRequest,
+                [],
+                new LegendConnectDiscourseStateSnapshot([]));
+            Assert.True(directInitial.Supported, directInitial.ReasonCode + "; nodes=" +
+                DescribeNodes(establishingGraph) + "; relations=" + DescribeRelations(establishingGraph));
+
+            // This first turn establishes the two governed subject bindings.
+            // The held-out second turn deliberately contains neither subject.
+            var established = await chat.ReplyAsync(
+                founder,
+                new LegendFounderAiChatRequest
+                {
+                    Mode = "legend",
+                    ConversationId = conversationId,
+                    Messages = [new LegendFounderAiChatMessage(
+                        "user", establishingRequest)]
+                });
+            Assert.Equal(directInitial.Answer, established.Message);
+
+            const string heldOutRequest = "Which one is cheaper?";
+            Assert.DoesNotContain(await proof.LegendLanguageTextUnits
+                    .Select(item => item.Text)
+                    .ToListAsync(),
+                text => string.Equals(text, heldOutRequest, StringComparison.Ordinal));
+            var heldOutGraph = await proofServices.Operations.AnalyzeReusableMeaningGraphAsync(heldOutRequest);
+            Assert.True(heldOutGraph.IsComposed, heldOutGraph.ReasonCode + "; nodes=" +
+                DescribeNodes(heldOutGraph) + "; relations=" + DescribeRelations(heldOutGraph));
+            var reply = await chat.ReplyAsync(
+                founder,
+                new LegendFounderAiChatRequest
+                {
+                    Mode = "legend",
+                    ConversationId = conversationId,
+                    Messages = [new LegendFounderAiChatMessage("user", heldOutRequest)]
+                });
+            Assert.True(reply.Succeeded);
+            var state = await discourse.GetStateAsync(founder, conversationId);
+            Assert.NotNull(state);
+            var composedHeldOut = await proofServices.Curriculum.TryInferComposedSemanticTransitionAsync(
+                "en",
+                heldOutRequest,
+                state);
+            Assert.True(
+                string.Equals(composedHeldOut.State, LegendSemanticTransitionInference.Supported, StringComparison.Ordinal),
+                composedHeldOut.State + "; " + string.Join(", ", composedHeldOut.Reasons));
+            var nativeHeldOut = await proofServices.Operations.TryInferConversationWithDiscourseAsync(
+                heldOutRequest,
+                [],
+                state);
+            Assert.True(nativeHeldOut.Supported, nativeHeldOut.ReasonCode + "; nodes=" +
+                DescribeNodes(heldOutGraph) + "; relations=" + DescribeRelations(heldOutGraph) +
+                "; discourse=" + DescribeBindings(state!) + "; prior_turns=" +
+                string.Join(" | ", state!.Turns.Select(turn => turn.Role + ":" +
+                    DescribeNodes(new LegendConnectUtteranceMeaningGraphSnapshot(
+                        turn.IsComposed, turn.Nodes, turn.Relations, [], "persisted")))));
+            Assert.False(string.IsNullOrWhiteSpace(reply.Message));
+            Assert.Contains(leftCost, reply.Message, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains(rightCost, reply.Message, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains(leftSurface, reply.Message, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains(rightSurface, reply.Message, StringComparison.OrdinalIgnoreCase);
+            Assert.Equal(0, factory.CreateClientCalls);
+
+            // ReplyAsync records the current user graph before it selects a
+            // transition. Reconstruct that exact serving boundary from the
+            // persisted semantic state by excluding only the newly observed
+            // assistant graph; no raw transcript is used.
+            var planningState = new LegendConnectDiscourseStateSnapshot(
+                state!.Turns.Where(turn => turn.Role != "assistant" ||
+                    turn.SequenceNumber != state.Turns[^1].SequenceNumber).ToArray());
+            var contentPlan = await proofServices.Operations.TryBindConversationContentAsync(
+                heldOutRequest,
+                planningState);
+            Assert.True(contentPlan.Supported, contentPlan.ReasonCode + "; nodes=" +
+                DescribeNodes(heldOutGraph) + "; relations=" + DescribeRelations(heldOutGraph) +
+                "; discourse=" + DescribeBindings(planningState) + "; prior_turns=" +
+                string.Join(" | ", planningState.Turns.Select(turn => turn.Role + ":" +
+                    DescribeNodes(new LegendConnectUtteranceMeaningGraphSnapshot(
+                        turn.IsComposed, turn.Nodes, turn.Relations, [], "persisted")))));
+            var bound = Assert.IsType<LegendConnectContentBoundResponseMeaningPlanSnapshot>(contentPlan.Plan);
+            Assert.Equal(2, bound.ContentVariableBindings.Count);
+            Assert.Equal(2, bound.Facts.Count);
+            Assert.Equal(6, bound.ContentEvidenceCount);
+            Assert.All(bound.Facts, fact =>
+            {
+                Assert.Equal(3, fact.IndependentSourceCount);
+                Assert.Equal(0, fact.ContradictionCount);
+                Assert.Equal("Supported", fact.MaturityState);
+                Assert.True(fact.IsProductionEligible);
+            });
+            var serializedPlan = System.Text.Json.JsonSerializer.Serialize(bound);
+            Assert.DoesNotContain(heldOutRequest, serializedPlan, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain(established.Message!, serializedPlan, StringComparison.OrdinalIgnoreCase);
+
+            return new GovernedContentCaseProof(
+                bound.ResponsePlan.TransitionSignature,
+                new Dictionary<string, string>(bound.ContentVariableBindings, StringComparer.Ordinal),
+                reply.Message!,
+                factory.CreateClientCalls,
+                leftSurface,
+                rightSurface,
+                null);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("FOUNDER_OID", previousFounderOid);
+        }
     }
 
     private static string CreateIsolatedConnectionString(string connectionString)
@@ -884,8 +1586,12 @@ public sealed class LegendConnectFounderSemanticTransformationSqlTests
             runtimePolicy: runtime,
             curriculum: curriculum,
             intelligence: intelligence);
-        return new(operations, curriculum,
-            new LegendConnectHistoricalReevaluationWorkAuthority(db, runtime, configuration));
+        return new(
+            operations,
+            curriculum,
+            new LegendConnectHistoricalReevaluationWorkAuthority(db, runtime, configuration),
+            runtime,
+            intelligence);
     }
 
     private static IConfiguration Configuration() => new ConfigurationBuilder()
@@ -899,6 +1605,93 @@ public sealed class LegendConnectFounderSemanticTransformationSqlTests
             ["LegendConnect:LanguageRegistry:Baseline:0:Name"] = "English",
             ["LegendConnect:LanguageRegistry:Baseline:0:NativeName"] = "English"
         }).Build();
+
+    /// <summary>
+    /// The declaration contains one generic comparison transformation and two
+    /// independent fact sets.  The content dimensions intentionally belong
+    /// only to the result frame; no example states a lookup answer for the
+    /// held-out request.
+    /// </summary>
+    private static string GovernedContentManifest(
+        string leftSubject,
+        string leftSurface,
+        string rightSubject,
+        string rightSurface,
+        string leftCost,
+        string rightCost,
+        bool includeFactFamilies = true)
+    {
+        var lines = new List<string>();
+        for (var support = 1; support <= 3; support++)
+        {
+            var suffix = support.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            lines.Add("@family stage6.comparison." + suffix + " | Founder governed comparison response meaning");
+            lines.Add("Between " + leftSurface + " and " + rightSurface + ", which one is cheaper today? | conversation_function=comparison_request; left_subject=" + leftSubject + "; right_subject=" + rightSubject + "; comparison_attribute=cost");
+            lines.Add("@semantic-example comparison-source-" + suffix);
+            lines.Add("@meaning");
+            lines.Add("@node function | conversation_function=comparison_request | surface=which one");
+            lines.Add("@node left | left_subject=" + leftSubject + " | surface=" + leftSurface);
+            lines.Add("@node right | right_subject=" + rightSubject + " | surface=" + rightSurface);
+            lines.Add("@node attribute | comparison_attribute=cost | surface=cheaper");
+            lines.Add("@edge function -> left | relation=compares");
+            lines.Add("@edge function -> right | relation=compares");
+            lines.Add("@edge function -> attribute | relation=uses");
+            lines.Add("@endmeaning");
+            lines.Add(leftSurface + " costs " + leftCost + " while " + rightSurface + " remains " + rightCost + ". | conversation_function=comparison_response; left_subject=" + leftSubject + "; right_subject=" + rightSubject + "; cost_left=" + leftCost + "; cost_right=" + rightCost);
+            lines.Add("@semantic-example comparison-result-" + suffix);
+            lines.Add("@meaning");
+            lines.Add("@node function | conversation_function=comparison_response | surface=costs");
+            lines.Add("@node left | left_subject=" + leftSubject + " | surface=" + leftSurface);
+            lines.Add("@node costleft | cost_left=" + leftCost + " | surface=" + leftCost);
+            lines.Add("@node connector | connective=while | surface=while");
+            lines.Add("@node right | right_subject=" + rightSubject + " | surface=" + rightSurface);
+            lines.Add("@node predicate | right_predicate=remains | surface=remains");
+            lines.Add("@node costright | cost_right=" + rightCost + " | surface=" + rightCost);
+            lines.Add("@edge function -> left | relation=contains");
+            lines.Add("@edge function -> costleft | relation=contains");
+            lines.Add("@edge function -> connector | relation=contains");
+            lines.Add("@edge function -> right | relation=contains");
+            lines.Add("@edge function -> predicate | relation=contains");
+            lines.Add("@edge function -> costright | relation=contains");
+            lines.Add("@endmeaning");
+            lines.Add("@transition");
+            lines.Add("@source conversation_function=comparison_request; left_subject=$left; right_subject=$right; comparison_attribute=cost");
+            lines.Add("@result conversation_function=comparison_response; left_subject=$left; right_subject=$right; cost_left=$cost_left; cost_right=$cost_right");
+            lines.Add("@endtransition");
+            lines.Add("@end");
+        }
+
+        if (includeFactFamilies)
+        {
+            AppendGovernedFactFamilies(lines, "left_subject", leftSubject, "cost_left", leftCost, leftSurface);
+            AppendGovernedFactFamilies(lines, "right_subject", rightSubject, "cost_right", rightCost, rightSurface);
+        }
+        return string.Join(Environment.NewLine, lines);
+    }
+
+    private static void AppendGovernedFactFamilies(
+        ICollection<string> lines,
+        string subjectDimension,
+        string subjectValue,
+        string contentDimension,
+        string contentValue,
+        string subjectSurface)
+    {
+        for (var support = 1; support <= 3; support++)
+        {
+            var suffix = support.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            lines.Add("@family stage6.fact." + subjectDimension + "." + suffix + " | Founder governed comparison content");
+            lines.Add(subjectSurface + " costs " + contentValue + ". | " + subjectDimension + "=" + subjectValue + "; " + contentDimension + "=" + contentValue);
+            lines.Add("@semantic-example fact-" + subjectDimension + "-" + suffix);
+            lines.Add("@meaning");
+            lines.Add("@node subject | " + subjectDimension + "=" + subjectValue + " | surface=" + subjectSurface);
+            lines.Add("@node content | " + contentDimension + "=" + contentValue + " | surface=" + contentValue);
+            lines.Add("@edge subject -> content | relation=has_attribute");
+            lines.Add("@endmeaning");
+            lines.Add("The governed attribute remains " + contentValue + ". | " + subjectDimension + "=" + subjectValue + "; " + contentDimension + "=" + contentValue);
+            lines.Add("@end");
+        }
+    }
 
     private static string TrainingManifest()
     {
@@ -938,6 +1731,38 @@ public sealed class LegendConnectFounderSemanticTransformationSqlTests
         {
             var suffix = (index + 1).ToString(System.Globalization.CultureInfo.InvariantCulture);
             lines.Add("@relationship request-" + suffix + " -> offer-" + suffix + " | semantic=conversational-response");
+        }
+        return string.Join(Environment.NewLine, lines);
+    }
+
+    /// <summary>
+    /// A fixed 8-family / 160-example normal Founder manifest used solely to
+    /// compare a real V19 SourceFamilies pass with V20's metadata-only delta.
+    /// Its independent family dimensions prevent a shared semantic lane from
+    /// masking the number of broad historical work identities.
+    /// </summary>
+    private static string DependencyBenchmarkManifest()
+    {
+        var lines = new List<string>();
+        for (var family = 0; family < 8; family++)
+        {
+            lines.Add($"@family dependency.delta.family.{family:D2} | Independent governed historical family {family:D2}");
+            lines.Add("@ground conversation_function -> surface_phrase");
+            for (var example = 0; example < 10; example++)
+            {
+                var text = $"Aster{family:D2}a{example:D2} Beryl{family:D2}b{example:D2} Cobalt{family:D2}c{example:D2}.";
+                lines.Add(text + " | surface_phrase=" + text + "; conversation_function=greeting_" + family.ToString("D2") + "; discourse_role=opening_" + family.ToString("D2") + "; intent=start_conversation_" + family.ToString("D2") + "; register=neutral_" + family.ToString("D2") + "; domain_slot_" + family.ToString("D2") + "=independent_domain_" + family.ToString("D2"));
+            }
+            for (var example = 0; example < 10; example++)
+            {
+                var text = $"Dawn{family:D2}d{example:D2} Elm{family:D2}e{example:D2} Fable{family:D2}f{example:D2}.";
+                lines.Add(text + " | surface_phrase=" + text + "; conversation_function=acknowledgement_" + family.ToString("D2") + "; discourse_role=response_" + family.ToString("D2") + "; intent=acknowledge_and_continue_" + family.ToString("D2") + "; register=neutral_" + family.ToString("D2") + "; domain_slot_" + family.ToString("D2") + "=independent_domain_" + family.ToString("D2"));
+            }
+            lines.Add("@transition");
+            lines.Add("@source conversation_function=greeting_" + family.ToString("D2") + "; discourse_role=opening_" + family.ToString("D2") + "; intent=start_conversation_" + family.ToString("D2") + "; register=neutral_" + family.ToString("D2"));
+            lines.Add("@result conversation_function=acknowledgement_" + family.ToString("D2") + "; discourse_role=response_" + family.ToString("D2") + "; intent=acknowledge_and_continue_" + family.ToString("D2") + "; register=neutral_" + family.ToString("D2"));
+            lines.Add("@endtransition");
+            lines.Add("@end");
         }
         return string.Join(Environment.NewLine, lines);
     }
@@ -1317,6 +2142,58 @@ public sealed class LegendConnectFounderSemanticTransformationSqlTests
         string ResultFunction,
         string ResultIntent);
 
+    private sealed record GovernedContentCaseProof(
+        string TransitionSignature,
+        IReadOnlyDictionary<string, string> ContentBindings,
+        string Reply,
+        int OpenAiClientCount,
+        string LeftSurface,
+        string RightSurface,
+        string? ReasonCode);
+
+    /// <summary>
+    /// Records only SQL command classes for the delta-convergence benchmark.
+    /// It intentionally captures neither command text nor parameter values,
+    /// so this release proof cannot retain Founder or production content.
+    /// </summary>
+    private sealed class SqlCommandMetrics : DbCommandInterceptor
+    {
+        private long _reads;
+        private long _writes;
+
+        public void Reset()
+        {
+            Interlocked.Exchange(ref _reads, 0);
+            Interlocked.Exchange(ref _writes, 0);
+        }
+
+        public SqlCommandMetricSnapshot Snapshot() => new(
+            Interlocked.Read(ref _reads),
+            Interlocked.Read(ref _writes));
+
+        public override ValueTask<InterceptionResult<DbDataReader>> ReaderExecutingAsync(
+            DbCommand command,
+            CommandEventData eventData,
+            InterceptionResult<DbDataReader> result,
+            CancellationToken cancellationToken = default)
+        {
+            Interlocked.Increment(ref _reads);
+            return new ValueTask<InterceptionResult<DbDataReader>>(result);
+        }
+
+        public override ValueTask<InterceptionResult<int>> NonQueryExecutingAsync(
+            DbCommand command,
+            CommandEventData eventData,
+            InterceptionResult<int> result,
+            CancellationToken cancellationToken = default)
+        {
+            Interlocked.Increment(ref _writes);
+            return new ValueTask<InterceptionResult<int>>(result);
+        }
+    }
+
+    private sealed record SqlCommandMetricSnapshot(long Reads, long Writes);
+
     private sealed class CountingHttpClientFactory : IHttpClientFactory
     {
         public int CreateClientCalls { get; private set; }
@@ -1340,7 +2217,9 @@ public sealed class LegendConnectFounderSemanticTransformationSqlTests
     private sealed record Services(
         LegendConnectOperations Operations,
         LegendConnectCurriculumService Curriculum,
-        LegendConnectHistoricalReevaluationWorkAuthority Work);
+        LegendConnectHistoricalReevaluationWorkAuthority Work,
+        LegendConnectRuntimePolicyAuthority Runtime,
+        LegendConnectTranslationIntelligence Intelligence);
 
     private sealed record CanonicalCounts(
         int Families,

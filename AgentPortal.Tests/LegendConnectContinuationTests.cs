@@ -547,8 +547,31 @@ public sealed class LegendConnectContinuationTests
     private static TranslationCapacityAuthority Capacity(MasterAppDbContext db, IConfiguration configuration) =>
         new(db, configuration, NullLogger<TranslationCapacityAuthority>.Instance);
 
-    private static LegendConnectOperations Operations(MasterAppDbContext db, ILegendLanguageRegistry registry, IConfiguration configuration) =>
-        new(db, registry, Corpus(db, registry), configuration);
+    private static LegendConnectOperations Operations(
+        MasterAppDbContext db,
+        ILegendLanguageRegistry registry,
+        IConfiguration configuration)
+    {
+        var corpus = Corpus(db, registry);
+        var curriculum = new LegendConnectCurriculumService(db, registry, corpus);
+        var founderTraining = new LegendConnectFounderTrainingIngestionAuthority(
+            db,
+            registry,
+            corpus,
+            curriculum);
+        var intelligence = new LegendConnectTranslationIntelligence(
+            db,
+            configuration);
+
+        return new LegendConnectOperations(
+            db,
+            registry,
+            corpus,
+            configuration,
+            curriculum: curriculum,
+            founderTrainingIngestion: founderTraining,
+            intelligence: intelligence);
+    }
 
     private static LegendCorpusCandidate Candidate(string key, string source, string target, string text) => new()
     {

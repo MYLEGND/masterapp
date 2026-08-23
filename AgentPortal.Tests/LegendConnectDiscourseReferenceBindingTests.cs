@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using AgentPortal.Models;
 using AgentPortal.Services;
@@ -208,13 +209,22 @@ public sealed class LegendConnectDiscourseReferenceBindingTests
             await setup.SaveChangesAsync();
             var curriculum = CreateCurriculum(setup);
             var operations = CreateOperations(setup);
+            var configuration = Configuration();
+            var registry = new LegendLanguageRegistry(setup, configuration);
+            var runtime = new LegendConnectRuntimePolicyAuthority(
+                setup,
+                new FounderAccess(),
+                registry,
+                configuration,
+                NullLogger<LegendConnectRuntimePolicyAuthority>.Instance);
+            var durable = new LegendConnectHistoricalReevaluationWorkAuthority(setup, runtime, configuration);
             var accepted = await operations.SubmitFounderCurriculumManifestAsync(
                 actor,
                 new LegendConnectCurriculumManifestSubmission(
                     Enumerable.Range(1, 3).Select(ResponsePlanReferenceFamily).ToArray()));
             Assert.True(accepted.Succeeded, accepted.Message);
             var processor = new LegendConnectCurriculumManifestProcessor(
-                setup, curriculum, NullLogger<LegendConnectCurriculumManifestProcessor>.Instance);
+                setup, curriculum, durable, NullLogger<LegendConnectCurriculumManifestProcessor>.Instance);
             Assert.Equal(1, await processor.ProcessPendingAsync(1));
             Assert.Equal(1, await processor.ProcessPendingAsync(1));
             Assert.Equal(1, await processor.ProcessPendingAsync(1));
@@ -547,4 +557,13 @@ public sealed class LegendConnectDiscourseReferenceBindingTests
             ["LegendConnect:LanguageRegistry:Baseline:0:NativeName"] = "English"
         })
         .Build();
+
+    private sealed class FounderAccess : IControlledResourceAccessService
+    {
+        public Task<ControlledResourceAccess> GetAccessAsync(MessagingActor actor, string resourceType, CancellationToken cancellationToken = default) =>
+            Task.FromResult(new ControlledResourceAccess(resourceType, ControlledResourceAccessStates.NotGranted, true));
+        public Task<bool> IsFounderManagerAsync(MessagingActor actor, CancellationToken cancellationToken = default) => Task.FromResult(true);
+        public Task<bool> IsCanonicalFounderManagerAsync(MessagingActor actor, CancellationToken cancellationToken = default) => Task.FromResult(true);
+        public Task<string?> GetPreferredLanguageAsync(MessagingActor actor, CancellationToken cancellationToken = default) => Task.FromResult<string?>(null);
+    }
 }

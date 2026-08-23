@@ -497,6 +497,17 @@ internal static class MessagingModelConfiguration
             entity.ToTable("LegendLanguageContextRelationships");
             entity.HasKey(item => item.Id);
             entity.Property(item => item.PairKey).HasMaxLength(72);
+            // SQL Server considers NULL values distinct in a composite unique
+            // index.  Keep the historical nullable pair scope intact, but
+            // expose its deterministic, persisted canonical identity for the
+            // active-row constraint instead of relying on NULL behavior.
+            entity.Property<string>("CanonicalPairKey")
+                .HasMaxLength(72)
+                // COALESCE is accepted by both the production SQL Server
+                // provider and the relational SQLite concurrency harness.
+                // The canonical identity remains the same empty-string
+                // normalization for a null historical pair scope.
+                .HasComputedColumnSql("COALESCE([PairKey], '')", stored: true);
             entity.Property(item => item.RelationshipKind).IsRequired().HasMaxLength(80);
             entity.Property(item => item.ContextSignature).IsRequired().HasMaxLength(320);
             entity.Property(item => item.SourcePatternSignature).IsRequired().HasMaxLength(1_000);
@@ -507,14 +518,36 @@ internal static class MessagingModelConfiguration
             entity.Property(item => item.QualityState).IsRequired().HasMaxLength(40);
             entity.Property(item => item.Provenance).IsRequired().HasMaxLength(80);
             entity.HasIndex(item => item.SupersededUtc);
-            entity.HasIndex(item => new
-            {
-                item.PairKey,
-                item.SourceTextUnitId,
-                item.RelatedTextUnitId,
-                item.RelationshipKind,
-                item.ContextSignature
-            }).IsUnique();
+            entity.HasIndex("CanonicalPairKey", nameof(LegendLanguageContextRelationship.SourceTextUnitId),
+                    nameof(LegendLanguageContextRelationship.RelatedTextUnitId),
+                    nameof(LegendLanguageContextRelationship.RelationshipKind),
+                    nameof(LegendLanguageContextRelationship.ContextSignature))
+                .IsUnique()
+                .HasDatabaseName("IX_LegendLanguageContextRelationships_CanonicalIdentity")
+                .HasFilter("[SupersededUtc] IS NULL");
+            // Canonical admission mutates existing relationship support when
+            // the active identity is reused.  Keep that one authoritative
+            // lookup covering under an owned family transaction so it never
+            // falls back to clustered-key scans of unrelated relationships.
+            // This is a read-path companion to (not a replacement for) the
+            // filtered unique canonical identity constraint above.
+            entity.HasIndex("CanonicalPairKey", nameof(LegendLanguageContextRelationship.SourceTextUnitId),
+                    nameof(LegendLanguageContextRelationship.RelatedTextUnitId),
+                    nameof(LegendLanguageContextRelationship.RelationshipKind),
+                    nameof(LegendLanguageContextRelationship.ContextSignature),
+                    nameof(LegendLanguageContextRelationship.SupersededUtc))
+                .IncludeProperties(nameof(LegendLanguageContextRelationship.Confidence),
+                    nameof(LegendLanguageContextRelationship.ContextCategory),
+                    nameof(LegendLanguageContextRelationship.CreatedUtc),
+                    nameof(LegendLanguageContextRelationship.ObservationCount),
+                    nameof(LegendLanguageContextRelationship.PairKey),
+                    nameof(LegendLanguageContextRelationship.Provenance),
+                    nameof(LegendLanguageContextRelationship.QualityState),
+                    nameof(LegendLanguageContextRelationship.RegionalVariant),
+                    nameof(LegendLanguageContextRelationship.SourcePatternSignature),
+                    nameof(LegendLanguageContextRelationship.UpdatedUtc),
+                    nameof(LegendLanguageContextRelationship.UsageRegister))
+                .HasDatabaseName("IX_LegendContextRelationships_ActiveCanonicalLookup");
             entity.HasIndex(item => new { item.PairKey, item.SourcePatternSignature, item.QualityState });
             entity.HasOne<LegendLanguageTextUnit>()
                 .WithMany()
@@ -1041,6 +1074,18 @@ internal static class MessagingModelConfiguration
             entity.HasIndex(item => new { item.SemanticSignature, item.SupersededUtc });
             entity.HasIndex(item => new { item.PairKey, item.SemanticSignature, item.SupersededUtc });
             entity.HasIndex(item => new { item.TextUnitId, item.SupersededUtc });
+            // The dependency-inventory authority reads all active canonical
+            // artifacts for one owned family.  Keep that read family-scoped
+            // so independent durable family owners never range-scan one
+            // another's anchors while holding canonical write ownership.
+            entity.HasIndex(item => new { item.CurriculumFamilyId, item.SupersededUtc })
+                .IncludeProperties(item => new
+                {
+                    item.CurriculumExampleId,
+                    item.AnchorSignature,
+                    item.SemanticSignature
+                })
+                .HasDatabaseName("IX_LegendCompositionalAnchors_FamilyActive");
             // The Founder evidence page filters by language and active state,
             // then keyset-orders by CreatedUtc.
             entity.HasIndex(item => new { item.LanguageCode, item.SupersededUtc, item.CreatedUtc })
@@ -1077,6 +1122,14 @@ internal static class MessagingModelConfiguration
             entity.HasIndex(item => new { item.CurriculumExampleId, item.NodeKey }).IsUnique();
             entity.HasIndex(item => new { item.CompositionalAnchorId, item.SupersededUtc });
             entity.HasIndex(item => new { item.LanguageCode, item.SemanticSignature, item.SupersededUtc });
+            entity.HasIndex(item => new { item.CurriculumFamilyId, item.SupersededUtc })
+                .IncludeProperties(item => new
+                {
+                    item.CurriculumExampleId,
+                    item.NodeKey,
+                    item.SemanticSignature
+                })
+                .HasDatabaseName("IX_LegendMeaningNodes_FamilyActive");
             entity.HasOne<LegendCurriculumFamily>()
                 .WithMany()
                 .HasForeignKey(item => item.CurriculumFamilyId)
@@ -1134,6 +1187,14 @@ internal static class MessagingModelConfiguration
             entity.HasIndex(item => item.EvidenceIdentity).IsUnique();
             entity.HasIndex(item => item.MeaningNodeEvidenceId).IsUnique();
             entity.HasIndex(item => new { item.MeaningPrimitiveId, item.ContributionState, item.SupersededUtc });
+            entity.HasIndex(item => new { item.CurriculumFamilyId, item.SupersededUtc })
+                .IncludeProperties(item => new
+                {
+                    item.MeaningPrimitiveId,
+                    item.MeaningNodeEvidenceId,
+                    item.EvidenceIdentity
+                })
+                .HasDatabaseName("IX_LegendMeaningPrimitiveEvidence_FamilyActive");
             entity.HasOne<LegendLanguageMeaningPrimitive>()
                 .WithMany()
                 .HasForeignKey(item => item.MeaningPrimitiveId)
@@ -1233,6 +1294,13 @@ internal static class MessagingModelConfiguration
             entity.HasIndex(item => item.EvidenceIdentity).IsUnique();
             entity.HasIndex(item => new { item.MeaningRelationId, item.ContributionState, item.SupersededUtc });
             entity.HasIndex(item => new { item.CurriculumExampleId, item.SupersededUtc });
+            entity.HasIndex(item => new { item.CurriculumFamilyId, item.SupersededUtc })
+                .IncludeProperties(item => new
+                {
+                    item.MeaningRelationId,
+                    item.EvidenceIdentity
+                })
+                .HasDatabaseName("IX_LegendMeaningRelationEvidence_FamilyActive");
             entity.HasOne<LegendLanguageMeaningRelation>()
                 .WithMany()
                 .HasForeignKey(item => item.MeaningRelationId)

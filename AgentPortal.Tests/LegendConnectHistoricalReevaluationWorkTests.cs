@@ -35,6 +35,17 @@ public sealed class LegendConnectHistoricalReevaluationWorkTests
         AddSourceFamily(fixture.Db, "es", "third", 103);
         await fixture.Db.SaveChangesAsync();
 
+        Assert.Equal(3, await (
+            from example in fixture.Db.LegendCurriculumExamples
+            join unit in fixture.Db.LegendLanguageTextUnits on example.TextUnitId equals unit.Id
+            where example.DerivedFromCurriculumExampleId == null && example.SupersededUtc == null &&
+                unit.IsTrainingEligible
+            select new { example.CurriculumFamilyId, example.LanguageCode }).Distinct().CountAsync());
+
+        var replayBeforeSeed = await fixture.Runtime
+            .GetOrStartLanguageIntelligenceReevaluationAsync(EvaluatorVersion);
+        Assert.Equal(LegendConnectLanguageIntelligenceReevaluationPhases.SourceFamilies, replayBeforeSeed.Phase);
+
         var seeded = await fixture.Work.SeedNextBatchAsync(
             EvaluatorVersion,
             LegendConnectLanguageIntelligenceReevaluationPhases.SourceFamilies,
@@ -256,8 +267,13 @@ public sealed class LegendConnectHistoricalReevaluationWorkTests
             compatible.Phase)).Total);
 
         var future = await fixture.Runtime.GetOrStartLanguageIntelligenceReevaluationAsync(EvaluatorVersion + 1);
-        Assert.False(LegendConnectHistoricalReevaluationWorkAuthority.UsesCursorCompatibility(future));
-        Assert.Null(future.Cursor);
+        // A forward evaluator request may never discard a live legacy cursor
+        // or reset an earlier active phase. The existing evaluator remains
+        // authoritative until its durable drain completes; only then can the
+        // dependency-contract frontier for the newer evaluator be planned.
+        Assert.True(LegendConnectHistoricalReevaluationWorkAuthority.UsesCursorCompatibility(future));
+        Assert.Equal(EvaluatorVersion, future.TargetEvaluatorVersion);
+        Assert.Equal(cursor, future.Cursor);
         Assert.Equal(LegendConnectLanguageIntelligenceReevaluationPhases.SourceFamilies, future.Phase);
         _ = initial;
     }

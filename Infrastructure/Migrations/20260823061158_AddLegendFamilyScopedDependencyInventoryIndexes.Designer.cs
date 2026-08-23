@@ -4,6 +4,7 @@ using Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace Infrastructure.Migrations
 {
     [DbContext(typeof(MasterAppDbContext))]
-    partial class MasterAppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260823061158_AddLegendFamilyScopedDependencyInventoryIndexes")]
+    partial class AddLegendFamilyScopedDependencyInventoryIndexes
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -6046,11 +6049,6 @@ namespace Infrastructure.Migrations
                         .IsUnique()
                         .HasDatabaseName("IX_LegendLanguageContextRelationships_CanonicalIdentity")
                         .HasFilter("[SupersededUtc] IS NULL");
-
-                    b.HasIndex("CanonicalPairKey", "SourceTextUnitId", "RelatedTextUnitId", "RelationshipKind", "ContextSignature", "SupersededUtc")
-                        .HasDatabaseName("IX_LegendContextRelationships_ActiveCanonicalLookup");
-
-                    SqlServerIndexBuilderExtensions.IncludeProperties(b.HasIndex("CanonicalPairKey", "SourceTextUnitId", "RelatedTextUnitId", "RelationshipKind", "ContextSignature", "SupersededUtc"), new[] { "Confidence", "ContextCategory", "CreatedUtc", "ObservationCount", "PairKey", "Provenance", "QualityState", "RegionalVariant", "SourcePatternSignature", "UpdatedUtc", "UsageRegister" });
 
                     b.ToTable("LegendLanguageContextRelationships", (string)null);
                 });

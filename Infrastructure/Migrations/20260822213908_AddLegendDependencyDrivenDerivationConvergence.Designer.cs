@@ -4,6 +4,7 @@ using Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace Infrastructure.Migrations
 {
     [DbContext(typeof(MasterAppDbContext))]
-    partial class MasterAppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260822213908_AddLegendDependencyDrivenDerivationConvergence")]
+    partial class AddLegendDependencyDrivenDerivationConvergence
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -5779,10 +5782,6 @@ namespace Infrastructure.Migrations
                     b.Property<int>("AttemptCount")
                         .HasColumnType("int");
 
-                    b.Property<string>("CanonicalMutationLane")
-                        .HasMaxLength(160)
-                        .HasColumnType("nvarchar(160)");
-
                     b.Property<DateTime?>("CompletedUtc")
                         .HasColumnType("datetime2");
 
@@ -5847,11 +5846,6 @@ namespace Infrastructure.Migrations
                         .HasColumnType("nvarchar(24)");
 
                     b.HasKey("Id");
-
-                    b.HasIndex("CanonicalMutationLane")
-                        .IsUnique()
-                        .HasDatabaseName("IX_LegendHistoricalReevaluationWorkItems_ActiveCanonicalMutationLane")
-                        .HasFilter("[ProcessingState] = 'Processing' AND [CanonicalMutationLane] IS NOT NULL");
 
                     b.HasIndex("EvaluatorVersion", "Phase", "DependencyIdentity")
                         .IsUnique()
@@ -5933,15 +5927,12 @@ namespace Infrastructure.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("CurriculumFamilyId");
+
                     b.HasIndex("LexemeId");
 
                     b.HasIndex("CurriculumExampleId", "AnchorSignature")
                         .IsUnique();
-
-                    b.HasIndex("CurriculumFamilyId", "SupersededUtc")
-                        .HasDatabaseName("IX_LegendCompositionalAnchors_FamilyActive");
-
-                    SqlServerIndexBuilderExtensions.IncludeProperties(b.HasIndex("CurriculumFamilyId", "SupersededUtc"), new[] { "CurriculumExampleId", "AnchorSignature", "SemanticSignature" });
 
                     b.HasIndex("SemanticSignature", "SupersededUtc");
 
@@ -6047,11 +6038,6 @@ namespace Infrastructure.Migrations
                         .HasDatabaseName("IX_LegendLanguageContextRelationships_CanonicalIdentity")
                         .HasFilter("[SupersededUtc] IS NULL");
 
-                    b.HasIndex("CanonicalPairKey", "SourceTextUnitId", "RelatedTextUnitId", "RelationshipKind", "ContextSignature", "SupersededUtc")
-                        .HasDatabaseName("IX_LegendContextRelationships_ActiveCanonicalLookup");
-
-                    SqlServerIndexBuilderExtensions.IncludeProperties(b.HasIndex("CanonicalPairKey", "SourceTextUnitId", "RelatedTextUnitId", "RelationshipKind", "ContextSignature", "SupersededUtc"), new[] { "Confidence", "ContextCategory", "CreatedUtc", "ObservationCount", "PairKey", "Provenance", "QualityState", "RegionalVariant", "SourcePatternSignature", "UpdatedUtc", "UsageRegister" });
-
                     b.ToTable("LegendLanguageContextRelationships", (string)null);
                 });
 
@@ -6117,63 +6103,6 @@ namespace Infrastructure.Migrations
                     b.HasIndex("IsEnabled", "IsTranslationEnabled");
 
                     b.ToTable("LegendLanguageDefinitions", (string)null);
-                });
-
-            modelBuilder.Entity("Domain.Entities.LegendLanguageDerivationArtifact", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<string>("ArtifactKind")
-                        .IsRequired()
-                        .HasMaxLength(80)
-                        .HasColumnType("nvarchar(80)");
-
-                    b.Property<DateTime>("CreatedUtc")
-                        .HasColumnType("datetime2");
-
-                    b.Property<string>("DerivationContractIdentity")
-                        .IsRequired()
-                        .HasMaxLength(64)
-                        .HasColumnType("nvarchar(64)");
-
-                    b.Property<string>("ResultArtifactIdentity")
-                        .IsRequired()
-                        .HasMaxLength(160)
-                        .HasColumnType("nvarchar(160)");
-
-                    b.Property<string>("SourceDependencyIdentity")
-                        .IsRequired()
-                        .HasMaxLength(160)
-                        .HasColumnType("nvarchar(160)");
-
-                    b.Property<string>("SourceDependencySemanticVersion")
-                        .IsRequired()
-                        .HasMaxLength(64)
-                        .HasColumnType("nvarchar(64)");
-
-                    b.Property<string>("State")
-                        .IsRequired()
-                        .HasMaxLength(24)
-                        .HasColumnType("nvarchar(24)");
-
-                    b.Property<DateTime?>("SupersededUtc")
-                        .HasColumnType("datetime2");
-
-                    b.Property<DateTime>("UpdatedUtc")
-                        .HasColumnType("datetime2");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("DerivationContractIdentity", "State");
-
-                    b.HasIndex("ArtifactKind", "State", "UpdatedUtc");
-
-                    b.HasIndex("ArtifactKind", "ResultArtifactIdentity", "SourceDependencyIdentity", "DerivationContractIdentity")
-                        .IsUnique();
-
-                    b.ToTable("LegendLanguageDerivationArtifacts", (string)null);
                 });
 
             modelBuilder.Entity("Domain.Entities.LegendLanguageDerivationContract", b =>
@@ -6291,9 +6220,6 @@ namespace Infrastructure.Migrations
                     b.Property<DateTime>("CreatedUtc")
                         .HasColumnType("datetime2");
 
-                    b.Property<long>("DependencyInventoryWorkItemCount")
-                        .HasColumnType("bigint");
-
                     b.Property<string>("EarliestAffectedPhase")
                         .HasMaxLength(40)
                         .HasColumnType("nvarchar(40)");
@@ -6303,9 +6229,6 @@ namespace Infrastructure.Migrations
 
                     b.Property<long>("PlannedWorkItemCount")
                         .HasColumnType("bigint");
-
-                    b.Property<bool>("RequiresDependencyInventory")
-                        .HasColumnType("bit");
 
                     b.Property<long>("ReusedCanonicalArtifactCount")
                         .HasColumnType("bigint");
@@ -6330,8 +6253,6 @@ namespace Infrastructure.Migrations
                         .IsUnique();
 
                     b.HasIndex("State", "UpdatedUtc");
-
-                    b.HasIndex("RequiresDependencyInventory", "State", "UpdatedUtc");
 
                     b.ToTable("LegendLanguageDerivationConvergences", (string)null);
                 });
@@ -6683,15 +6604,12 @@ namespace Infrastructure.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("CurriculumFamilyId");
+
                     b.HasIndex("CompositionalAnchorId", "SupersededUtc");
 
                     b.HasIndex("CurriculumExampleId", "NodeKey")
                         .IsUnique();
-
-                    b.HasIndex("CurriculumFamilyId", "SupersededUtc")
-                        .HasDatabaseName("IX_LegendMeaningNodes_FamilyActive");
-
-                    SqlServerIndexBuilderExtensions.IncludeProperties(b.HasIndex("CurriculumFamilyId", "SupersededUtc"), new[] { "CurriculumExampleId", "NodeKey", "SemanticSignature" });
 
                     b.HasIndex("LanguageCode", "SemanticSignature", "SupersededUtc");
 
@@ -6826,16 +6744,13 @@ namespace Infrastructure.Migrations
 
                     b.HasIndex("CurriculumExampleId");
 
+                    b.HasIndex("CurriculumFamilyId");
+
                     b.HasIndex("EvidenceIdentity")
                         .IsUnique();
 
                     b.HasIndex("MeaningNodeEvidenceId")
                         .IsUnique();
-
-                    b.HasIndex("CurriculumFamilyId", "SupersededUtc")
-                        .HasDatabaseName("IX_LegendMeaningPrimitiveEvidence_FamilyActive");
-
-                    SqlServerIndexBuilderExtensions.IncludeProperties(b.HasIndex("CurriculumFamilyId", "SupersededUtc"), new[] { "MeaningPrimitiveId", "MeaningNodeEvidenceId", "EvidenceIdentity" });
 
                     b.HasIndex("MeaningPrimitiveId", "ContributionState", "SupersededUtc");
 
@@ -6980,6 +6895,8 @@ namespace Infrastructure.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("CurriculumFamilyId");
+
                     b.HasIndex("EvidenceIdentity")
                         .IsUnique();
 
@@ -6988,11 +6905,6 @@ namespace Infrastructure.Migrations
                     b.HasIndex("TargetMeaningNodeId");
 
                     b.HasIndex("CurriculumExampleId", "SupersededUtc");
-
-                    b.HasIndex("CurriculumFamilyId", "SupersededUtc")
-                        .HasDatabaseName("IX_LegendMeaningRelationEvidence_FamilyActive");
-
-                    SqlServerIndexBuilderExtensions.IncludeProperties(b.HasIndex("CurriculumFamilyId", "SupersededUtc"), new[] { "MeaningRelationId", "EvidenceIdentity" });
 
                     b.HasIndex("MeaningRelationId", "ContributionState", "SupersededUtc");
 

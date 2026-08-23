@@ -1,6 +1,7 @@
 using Domain.Entities;
 using Domain.Messaging;
 using Infrastructure.Data;
+using System.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
@@ -395,62 +396,444 @@ internal sealed class LegendConnectRuntimePolicyAuthority : ILegendConnectRuntim
         if (evaluatorVersion <= 0)
             throw new ArgumentOutOfRangeException(nameof(evaluatorVersion), "Evaluator version must be positive.");
 
+        // In-memory tests use the tracked policy directly. Relational
+        // deployments take an update lock on the one policy row while they
+        // compare contracts and advance the target. That makes adoption one
+        // database-authoritative decision: two App Service instances cannot
+        // independently seed the same evaluator frontier from a stale
+        // snapshot.
         if (!_db.Database.IsRelational())
         {
             var inMemoryPolicy = await GetTrackedPolicyAsync(cancellationToken);
-            if (inMemoryPolicy.CompletedLanguageIntelligenceEvaluatorVersion >= evaluatorVersion &&
-                inMemoryPolicy.LanguageIntelligenceReevaluationPhase == LegendConnectLanguageIntelligenceReevaluationPhases.Complete)
-            {
-                return ToReevaluationSnapshot(inMemoryPolicy);
-            }
-
-            if (inMemoryPolicy.TargetLanguageIntelligenceEvaluatorVersion != evaluatorVersion ||
-                !LegendConnectLanguageIntelligenceReevaluationPhases.IsWorkPhase(
-                    inMemoryPolicy.LanguageIntelligenceReevaluationPhase))
-            {
-                inMemoryPolicy.TargetLanguageIntelligenceEvaluatorVersion = evaluatorVersion;
-                inMemoryPolicy.LanguageIntelligenceReevaluationPhase = LegendConnectLanguageIntelligenceReevaluationPhases.SourceFamilies;
-                inMemoryPolicy.LanguageIntelligenceReevaluationCursor = null;
-                inMemoryPolicy.LanguageIntelligenceReevaluationStartedUtc = DateTime.UtcNow;
-                inMemoryPolicy.LanguageIntelligenceReevaluationCompletedUtc = null;
-                inMemoryPolicy.UpdatedUtc = DateTime.UtcNow;
-                await _db.SaveChangesAsync(cancellationToken);
-            }
-
-            return ToReevaluationSnapshot(inMemoryPolicy);
+            return await GetOrStartLanguageIntelligenceReevaluationCoreAsync(
+                inMemoryPolicy,
+                evaluatorVersion,
+                cancellationToken);
         }
 
-        var policy = await GetLanguageIntelligencePolicyAsync(cancellationToken);
+        // Bootstrap occurs before the adoption transaction so the unique
+        // ScopeKey constraint remains the authority when two first-starting
+        // instances race to create the singleton.
+        _ = await GetLanguageIntelligencePolicyAsync(cancellationToken);
+        if (_db.Database.CurrentTransaction is not null)
+        {
+            var participatingPolicy = await GetLockedLanguageIntelligencePolicyAsync(cancellationToken);
+            return await GetOrStartLanguageIntelligenceReevaluationCoreAsync(
+                participatingPolicy,
+                evaluatorVersion,
+                cancellationToken);
+        }
+        await using var transaction = await _db.Database.BeginTransactionAsync(
+            IsolationLevel.Serializable,
+            cancellationToken);
+        var policy = await GetLockedLanguageIntelligencePolicyAsync(cancellationToken);
+        var snapshot = await GetOrStartLanguageIntelligenceReevaluationCoreAsync(
+            policy,
+            evaluatorVersion,
+            cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        return snapshot;
+    }
+
+    private async Task<LegendConnectLanguageIntelligenceReevaluationSnapshot>
+        GetOrStartLanguageIntelligenceReevaluationCoreAsync(
+            LegendConnectRuntimePolicy policy,
+            int evaluatorVersion,
+            CancellationToken cancellationToken)
+    {
         if (policy.CompletedLanguageIntelligenceEvaluatorVersion >= evaluatorVersion &&
             policy.LanguageIntelligenceReevaluationPhase == LegendConnectLanguageIntelligenceReevaluationPhases.Complete)
         {
             return ToReevaluationSnapshot(policy);
         }
 
-        var phaseIsValid = LegendConnectLanguageIntelligenceReevaluationPhases.IsWorkPhase(
-            policy.LanguageIntelligenceReevaluationPhase);
-        if (policy.TargetLanguageIntelligenceEvaluatorVersion != evaluatorVersion || !phaseIsValid)
+        // A newer binary must never reset, cancel, or silently replace a
+        // durable in-flight older evaluator.  Its existing owner remains the
+        // sole executor until its authoritative phase drain reaches Complete;
+        // only then may dependency planning begin for the later contract.
+        if (policy.TargetLanguageIntelligenceEvaluatorVersion > 0 &&
+            policy.TargetLanguageIntelligenceEvaluatorVersion < evaluatorVersion &&
+            LegendConnectLanguageIntelligenceReevaluationPhases.IsWorkPhase(
+                policy.LanguageIntelligenceReevaluationPhase))
         {
-            var now = DateTime.UtcNow;
-            await _db.Set<LegendConnectRuntimePolicy>()
-                .Where(item => item.ScopeKey == GlobalScope)
-                .ExecuteUpdateAsync(setters => setters
-                    .SetProperty(item => item.TargetLanguageIntelligenceEvaluatorVersion, evaluatorVersion)
-                    .SetProperty(item => item.LanguageIntelligenceReevaluationPhase,
-                        LegendConnectLanguageIntelligenceReevaluationPhases.SourceFamilies)
-                    .SetProperty(item => item.LanguageIntelligenceReevaluationCursor, (Guid?)null)
-                    .SetProperty(item => item.LanguageIntelligenceReevaluationStartedUtc, now)
-                    .SetProperty(item => item.LanguageIntelligenceReevaluationCompletedUtc, (DateTime?)null)
-                    .SetProperty(item => item.UpdatedUtc, now), cancellationToken);
-            policy.TargetLanguageIntelligenceEvaluatorVersion = evaluatorVersion;
-            policy.LanguageIntelligenceReevaluationPhase = LegendConnectLanguageIntelligenceReevaluationPhases.SourceFamilies;
-            policy.LanguageIntelligenceReevaluationCursor = null;
-            policy.LanguageIntelligenceReevaluationStartedUtc = now;
-            policy.LanguageIntelligenceReevaluationCompletedUtc = null;
-            policy.UpdatedUtc = now;
+            return ToReevaluationSnapshot(policy);
         }
 
+        if (policy.TargetLanguageIntelligenceEvaluatorVersion == evaluatorVersion &&
+            LegendConnectLanguageIntelligenceReevaluationPhases.IsWorkPhase(
+                policy.LanguageIntelligenceReevaluationPhase))
+        {
+            return ToReevaluationSnapshot(policy);
+        }
+
+        return await StartDependencyDrivenConvergenceAsync(policy, evaluatorVersion, cancellationToken);
+    }
+
+    /// <summary>
+    /// Plans one forward evaluator convergence by comparing durable
+    /// derivation-contract declarations.  This is the existing runtime-policy
+    /// authority deciding the starting phase for the existing durable worker;
+    /// it neither evaluates curriculum nor introduces a second scheduler.
+    /// </summary>
+    private async Task<LegendConnectLanguageIntelligenceReevaluationSnapshot>
+        StartDependencyDrivenConvergenceAsync(
+            LegendConnectRuntimePolicy policy,
+            int evaluatorVersion,
+            CancellationToken cancellationToken)
+    {
+        var baselineVersion = policy.CompletedLanguageIntelligenceEvaluatorVersion;
+        var targetContracts = LegendConnectDerivationContracts.ForEvaluator(evaluatorVersion);
+
+        // A previously completed evaluator predates contract persistence only
+        // on its first upgrade. Bootstrap its declared contract set as durable
+        // historical provenance. This is metadata-only reuse: no canonical
+        // evidence is rebuilt, altered, or reclassified.
+        if (baselineVersion > 0)
+        {
+            await EnsureContractDeclarationsAsync(
+                LegendConnectDerivationContracts.ForEvaluator(baselineVersion),
+                cancellationToken);
+        }
+
+        var activeContracts = await _db.Set<LegendLanguageDerivationContract>()
+            .Where(item => item.SupersededUtc == null)
+            .ToListAsync(cancellationToken);
+        var activeByKind = activeContracts
+            .GroupBy(item => item.DerivationKind, StringComparer.Ordinal)
+            .ToDictionary(group => group.Key, group => group.OrderByDescending(item => item.IntroducedEvaluatorVersion)
+                .ThenByDescending(item => item.CreatedUtc).First(), StringComparer.Ordinal);
+
+        var directChanges = targetContracts
+            .Where(definition => !activeByKind.TryGetValue(definition.DerivationKind, out var existing) ||
+                !string.Equals(existing.ContractIdentity, definition.ContractIdentity, StringComparison.Ordinal))
+            .ToArray();
+        var affectedKinds = ExpandAffectedContractKinds(targetContracts, directChanges);
+        var affectedContracts = targetContracts
+            .Where(item => affectedKinds.Contains(item.DerivationKind))
+            .ToArray();
+        var materializedAffectedContracts = affectedContracts
+            .Where(item => item.RequiresHistoricalWork)
+            .ToArray();
+        var earliestPhase = materializedAffectedContracts
+            .OrderBy(item => LegendConnectDerivationContracts.PhaseRank(item.EarliestPhase))
+            .Select(item => item.EarliestPhase)
+            .FirstOrDefault();
+        var artifacts = await CountCanonicalArtifactsAsync(cancellationToken);
+        // The contract declaration, rather than an evaluator number or a
+        // feature-specific branch, determines whether retained canonical
+        // identities need the compact dependency inventory on first use.
+        var dependencyInventoryRequired = baselineVersion > 0 && artifacts.Total > 0 &&
+            targetContracts.Any(item => item.RequiresDependencyInventory) &&
+            !await _db.Set<LegendLanguageDerivationArtifact>()
+                .AnyAsync(cancellationToken);
+        var affectedArtifacts = materializedAffectedContracts.Length == 0
+            ? 0
+            : CountAffectedArtifacts(
+                materializedAffectedContracts
+                    .SelectMany(item => item.ArtifactKinds)
+                    .ToHashSet(StringComparer.Ordinal),
+                artifacts);
+        var reusedArtifacts = artifacts.Total - affectedArtifacts;
+
+        await PersistCurrentContractsAsync(
+            activeByKind,
+            targetContracts,
+            cancellationToken);
+        var convergence = await UpsertConvergenceAsync(
+            evaluatorVersion,
+            baselineVersion,
+            directChanges.Length,
+            targetContracts.Count - directChanges.Length,
+            artifacts.Total,
+            reusedArtifacts,
+            affectedArtifacts,
+            earliestPhase,
+            dependencyInventoryRequired,
+            cancellationToken);
+
+        var now = DateTime.UtcNow;
+        policy.TargetLanguageIntelligenceEvaluatorVersion = evaluatorVersion;
+        policy.LanguageIntelligenceReevaluationCursor = null;
+        policy.LanguageIntelligenceReevaluationStartedUtc = now;
+        policy.UpdatedUtc = now;
+        if (dependencyInventoryRequired)
+        {
+            // A pre-contract completed evaluator must first receive its
+            // bounded dependency ledger. This is not SourceFamilies replay:
+            // the canonical curriculum and all maturity/eligibility rows are
+            // only read and mapped to their existing stable identities.
+            policy.LanguageIntelligenceReevaluationPhase =
+                LegendConnectLanguageIntelligenceReevaluationPhases.DependencyInventory;
+            policy.LanguageIntelligenceReevaluationCompletedUtc = null;
+            convergence.State = "Queued";
+            convergence.BlockingDependencyIdentity = "derivation-dependency-inventory";
+            convergence.UpdatedUtc = now;
+        }
+        else if (earliestPhase is null)
+        {
+            // Runtime-only contracts (such as Stage 6 governed content
+            // binding) create no historical canonical artifact. They are
+            // immediately current after their existing dependencies have
+            // already converged, with the durable convergence record exposing
+            // that all prior artifacts were reused.
+            policy.CompletedLanguageIntelligenceEvaluatorVersion = evaluatorVersion;
+            policy.LanguageIntelligenceReevaluationPhase = LegendConnectLanguageIntelligenceReevaluationPhases.Complete;
+            policy.LanguageIntelligenceReevaluationCompletedUtc = now;
+            convergence.State = "Reused";
+            convergence.CompletedUtc = now;
+            convergence.UpdatedUtc = now;
+        }
+        else
+        {
+            policy.LanguageIntelligenceReevaluationPhase = earliestPhase;
+            policy.LanguageIntelligenceReevaluationCompletedUtc = null;
+            convergence.State = "Queued";
+            convergence.UpdatedUtc = now;
+        }
+        await _db.SaveChangesAsync(cancellationToken);
         return ToReevaluationSnapshot(policy);
+    }
+
+    private async Task EnsureContractDeclarationsAsync(
+        IReadOnlyList<LegendConnectDerivationContractDefinition> declarations,
+        CancellationToken cancellationToken)
+    {
+        var existingIdentities = await _db.Set<LegendLanguageDerivationContract>()
+            .Select(item => item.ContractIdentity)
+            .ToHashSetAsync(cancellationToken);
+        var changed = false;
+        foreach (var declaration in declarations)
+        {
+            if (existingIdentities.Contains(declaration.ContractIdentity))
+                continue;
+            _db.Set<LegendLanguageDerivationContract>().Add(NewContract(declaration));
+            existingIdentities.Add(declaration.ContractIdentity);
+            changed = true;
+        }
+        if (changed)
+            await _db.SaveChangesAsync(cancellationToken);
+    }
+
+    private async Task PersistCurrentContractsAsync(
+        IReadOnlyDictionary<string, LegendLanguageDerivationContract> activeByKind,
+        IReadOnlyList<LegendConnectDerivationContractDefinition> targetContracts,
+        CancellationToken cancellationToken)
+    {
+        var now = DateTime.UtcNow;
+        var supersededContractIdentities = new List<string>();
+        var allContracts = await _db.Set<LegendLanguageDerivationContract>().ToListAsync(cancellationToken);
+        var byIdentity = allContracts.ToDictionary(item => item.ContractIdentity, StringComparer.Ordinal);
+        var changed = false;
+        foreach (var definition in targetContracts)
+        {
+            if (activeByKind.TryGetValue(definition.DerivationKind, out var active) &&
+                !string.Equals(active.ContractIdentity, definition.ContractIdentity, StringComparison.Ordinal))
+            {
+                active.State = "Superseded";
+                active.SupersededUtc = now;
+                active.UpdatedUtc = now;
+                supersededContractIdentities.Add(active.ContractIdentity);
+                changed = true;
+            }
+
+            if (!byIdentity.TryGetValue(definition.ContractIdentity, out var current))
+            {
+                current = NewContract(definition);
+                _db.Set<LegendLanguageDerivationContract>().Add(current);
+                byIdentity.Add(current.ContractIdentity, current);
+                changed = true;
+            }
+            else if (current.SupersededUtc is not null || current.State != "Current")
+            {
+                current.SupersededUtc = null;
+                current.State = "Current";
+                current.UpdatedUtc = now;
+                changed = true;
+            }
+        }
+        if (changed)
+            await _db.SaveChangesAsync(cancellationToken);
+
+        // The dependency ledger records freshness without touching the
+        // canonical evidence it describes. A changed contract therefore
+        // makes only its own projection edges stale; the subsequent durable
+        // phase recreates current edges after the canonical evaluator has
+        // completed under the new contract.
+        if (supersededContractIdentities.Count > 0)
+        {
+            var staleArtifacts = await _db.Set<LegendLanguageDerivationArtifact>()
+                .Where(item => supersededContractIdentities.Contains(item.DerivationContractIdentity) &&
+                    item.State == "Current")
+                .ToListAsync(cancellationToken);
+            foreach (var artifact in staleArtifacts)
+            {
+                artifact.State = "Stale";
+                artifact.UpdatedUtc = now;
+            }
+            if (staleArtifacts.Count > 0)
+                await _db.SaveChangesAsync(cancellationToken);
+        }
+
+        // Dependency rows are immutable contract provenance. Existing rows
+        // remain historical; a new contract identity receives its exact
+        // direct declarations once, independent of evaluator replay work.
+        var dependencies = await _db.Set<LegendLanguageDerivationContractDependency>()
+            .Select(item => new { item.DependentContractId, item.DependencyDerivationKind, item.DependencyContractIdentity })
+            .ToListAsync(cancellationToken);
+        var dependencyChanged = false;
+        foreach (var definition in targetContracts)
+        {
+            var contract = byIdentity[definition.ContractIdentity];
+            foreach (var dependencyKind in definition.DependencyKinds)
+            {
+                var dependency = targetContracts.Single(item =>
+                    string.Equals(item.DerivationKind, dependencyKind, StringComparison.Ordinal));
+                if (dependencies.Any(item => item.DependentContractId == contract.Id &&
+                    item.DependencyDerivationKind == dependencyKind &&
+                    item.DependencyContractIdentity == dependency.ContractIdentity))
+                {
+                    continue;
+                }
+                _db.Set<LegendLanguageDerivationContractDependency>().Add(new()
+                {
+                    Id = Guid.NewGuid(),
+                    DependentContractId = contract.Id,
+                    DependencyDerivationKind = dependencyKind,
+                    DependencyContractIdentity = dependency.ContractIdentity,
+                    CreatedUtc = now
+                });
+                dependencyChanged = true;
+            }
+        }
+        if (dependencyChanged)
+            await _db.SaveChangesAsync(cancellationToken);
+    }
+
+    private async Task<LegendLanguageDerivationConvergence> UpsertConvergenceAsync(
+        int targetEvaluatorVersion,
+        int baselineEvaluatorVersion,
+        int changedContractCount,
+        int reusedContractCount,
+        long existingArtifacts,
+        long reusedArtifacts,
+        long affectedArtifacts,
+        string? earliestPhase,
+        bool requiresDependencyInventory,
+        CancellationToken cancellationToken)
+    {
+        var existing = await _db.Set<LegendLanguageDerivationConvergence>()
+            .SingleOrDefaultAsync(item => item.TargetEvaluatorVersion == targetEvaluatorVersion, cancellationToken);
+        if (existing is null)
+        {
+            existing = new LegendLanguageDerivationConvergence
+            {
+                Id = Guid.NewGuid(),
+                TargetEvaluatorVersion = targetEvaluatorVersion,
+                CreatedUtc = DateTime.UtcNow
+            };
+            _db.Set<LegendLanguageDerivationConvergence>().Add(existing);
+        }
+        existing.BaselineEvaluatorVersion = baselineEvaluatorVersion;
+        existing.EarliestAffectedPhase = earliestPhase;
+        existing.ChangedContractCount = changedContractCount;
+        existing.ReusedContractCount = reusedContractCount;
+        existing.ExistingCanonicalArtifactCount = existingArtifacts;
+        existing.ReusedCanonicalArtifactCount = reusedArtifacts;
+        existing.AffectedCanonicalArtifactCount = affectedArtifacts;
+        existing.RequiresDependencyInventory = requiresDependencyInventory;
+        existing.DependencyInventoryWorkItemCount = 0;
+        existing.PlannedWorkItemCount = 0;
+        existing.BlockingDependencyIdentity = earliestPhase is null
+            ? null
+            : "derivation-contract-phase:" + earliestPhase;
+        existing.UpdatedUtc = DateTime.UtcNow;
+        return existing;
+    }
+
+    private static HashSet<string> ExpandAffectedContractKinds(
+        IReadOnlyList<LegendConnectDerivationContractDefinition> contracts,
+        IReadOnlyList<LegendConnectDerivationContractDefinition> directChanges)
+    {
+        var affected = directChanges.Select(item => item.DerivationKind)
+            .ToHashSet(StringComparer.Ordinal);
+        var changed = true;
+        while (changed)
+        {
+            changed = false;
+            foreach (var contract in contracts)
+            {
+                if (affected.Contains(contract.DerivationKind) ||
+                    !contract.DependencyKinds.Any(affected.Contains))
+                {
+                    continue;
+                }
+                affected.Add(contract.DerivationKind);
+                changed = true;
+            }
+        }
+        return affected;
+    }
+
+    private static LegendLanguageDerivationContract NewContract(
+        LegendConnectDerivationContractDefinition definition) => new()
+    {
+        Id = Guid.NewGuid(),
+        DerivationKind = definition.DerivationKind,
+        ContractVersion = definition.ContractVersion,
+        ContractIdentity = definition.ContractIdentity,
+        EarliestPhase = definition.EarliestPhase,
+        RequiresHistoricalWork = definition.RequiresHistoricalWork,
+        IntroducedEvaluatorVersion = definition.IntroducedEvaluatorVersion,
+        State = "Current",
+        CreatedUtc = DateTime.UtcNow,
+        UpdatedUtc = DateTime.UtcNow
+    };
+
+    private async Task<CanonicalArtifactCounts> CountCanonicalArtifactsAsync(CancellationToken cancellationToken)
+    {
+        var anchors = await _db.Set<LegendLanguageCompositionalAnchor>()
+            .LongCountAsync(item => item.SupersededUtc == null, cancellationToken);
+        var nodes = await _db.Set<LegendLanguageMeaningNodeEvidence>()
+            .LongCountAsync(item => item.SupersededUtc == null, cancellationToken);
+        var relations = await _db.Set<LegendLanguageMeaningRelationEvidence>()
+            .LongCountAsync(item => item.SupersededUtc == null, cancellationToken);
+        var transformations = await _db.Set<LegendSemanticTransitionEvidence>()
+            .LongCountAsync(item => item.SupersededUtc == null, cancellationToken);
+        var alignments = await _db.Set<LegendTranslationAlignment>()
+            .LongCountAsync(item => item.SupersededUtc == null, cancellationToken);
+        var provider = await _db.Set<LegendTranslationQualityEvidence>()
+            .LongCountAsync(item => item.SupersededUtc == null, cancellationToken);
+        var operational = await _db.MessageTranslations.LongCountAsync(cancellationToken);
+        return new(anchors, nodes, relations, transformations, alignments, provider, operational);
+    }
+
+    private static long CountAffectedArtifacts(
+        IReadOnlySet<string> artifactKinds,
+        CanonicalArtifactCounts counts) => artifactKinds.Sum(counts.ForArtifactKind);
+
+    private sealed record CanonicalArtifactCounts(
+        long Anchors,
+        long MeaningNodes,
+        long MeaningRelations,
+        long Transformations,
+        long Alignments,
+        long ProviderEvidence,
+        long OperationalTranslations)
+    {
+        internal long Total => Anchors + MeaningNodes + MeaningRelations + Transformations +
+            Alignments + ProviderEvidence + OperationalTranslations;
+
+        internal long ForArtifactKind(string artifactKind) => artifactKind switch
+        {
+            "compositional-anchor" => Anchors,
+            "meaning-node" => MeaningNodes,
+            "meaning-relation" => MeaningRelations,
+            "semantic-transformation" => Transformations,
+            "translation-alignment" => Alignments,
+            "provider-observation" => ProviderEvidence,
+            "operational-translation" => OperationalTranslations,
+            _ => 0
+        };
     }
 
     public async Task AdvanceLanguageIntelligenceReevaluationAsync(
@@ -477,20 +860,18 @@ internal sealed class LegendConnectRuntimePolicyAuthority : ILegendConnectRuntim
             if (phaseComplete)
             {
                 inMemoryPolicy.LanguageIntelligenceReevaluationCursor = null;
-                inMemoryPolicy.LanguageIntelligenceReevaluationPhase = phase switch
-                {
-                    LegendConnectLanguageIntelligenceReevaluationPhases.SourceFamilies =>
-                        LegendConnectLanguageIntelligenceReevaluationPhases.Alignments,
-                    LegendConnectLanguageIntelligenceReevaluationPhases.Alignments =>
-                        LegendConnectLanguageIntelligenceReevaluationPhases.ProviderObservations,
-                    LegendConnectLanguageIntelligenceReevaluationPhases.ProviderObservations =>
-                        LegendConnectLanguageIntelligenceReevaluationPhases.OperationalTranslations,
-                    _ => LegendConnectLanguageIntelligenceReevaluationPhases.Complete
-                };
+                inMemoryPolicy.LanguageIntelligenceReevaluationPhase =
+                    await ResolveNextReevaluationPhaseAsync(evaluatorVersion, phase, cancellationToken);
+                if (phase == LegendConnectLanguageIntelligenceReevaluationPhases.DependencyInventory)
+                    await MarkDependencyInventoryCompletedAsync(
+                        evaluatorVersion,
+                        inMemoryPolicy.LanguageIntelligenceReevaluationPhase,
+                        cancellationToken);
                 if (inMemoryPolicy.LanguageIntelligenceReevaluationPhase == LegendConnectLanguageIntelligenceReevaluationPhases.Complete)
                 {
                     inMemoryPolicy.CompletedLanguageIntelligenceEvaluatorVersion = evaluatorVersion;
                     inMemoryPolicy.LanguageIntelligenceReevaluationCompletedUtc = DateTime.UtcNow;
+                    await CompleteDerivationConvergenceAsync(evaluatorVersion, cancellationToken);
                 }
             }
 
@@ -499,58 +880,148 @@ internal sealed class LegendConnectRuntimePolicyAuthority : ILegendConnectRuntim
             return;
         }
 
-        var policy = await GetLanguageIntelligencePolicyAsync(cancellationToken);
-        // A newer deployment may have already begun another evaluator pass;
-        // stale worker pages must not move its durable cursor backward.
-        if (policy.TargetLanguageIntelligenceEvaluatorVersion != evaluatorVersion ||
-            !string.Equals(policy.LanguageIntelligenceReevaluationPhase, phase, StringComparison.Ordinal))
+        // Progress and adoption share the singleton policy lock. A detached
+        // snapshot plus ExecuteUpdate can report success while a concurrent
+        // transaction has already changed the row, which leaves a completed
+        // durable phase stranded. Hold the policy row for the full guarded
+        // transition instead: either this owner advances exactly its current
+        // phase or it observes another owner and does nothing.
+        var ownsTransaction = _db.Database.CurrentTransaction is null;
+        await using var transaction = ownsTransaction
+            ? await _db.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken)
+            : null;
+        try
         {
+            var policy = await GetLockedLanguageIntelligencePolicyAsync(cancellationToken);
+            if (policy.TargetLanguageIntelligenceEvaluatorVersion != evaluatorVersion ||
+                !string.Equals(policy.LanguageIntelligenceReevaluationPhase, phase, StringComparison.Ordinal))
+            {
+                if (ownsTransaction)
+                    await transaction!.RollbackAsync(CancellationToken.None);
+                return;
+            }
+
+            var now = DateTime.UtcNow;
+            var nextPhase = phase;
+            if (lastProcessedId.HasValue)
+                policy.LanguageIntelligenceReevaluationCursor = lastProcessedId;
+            if (phaseComplete)
+            {
+                nextPhase = await ResolveNextReevaluationPhaseAsync(evaluatorVersion, phase, cancellationToken);
+                policy.LanguageIntelligenceReevaluationCursor = null;
+                policy.LanguageIntelligenceReevaluationPhase = nextPhase;
+                if (nextPhase == LegendConnectLanguageIntelligenceReevaluationPhases.Complete)
+                {
+                    policy.CompletedLanguageIntelligenceEvaluatorVersion = evaluatorVersion;
+                    policy.LanguageIntelligenceReevaluationCompletedUtc = now;
+                }
+            }
+            policy.UpdatedUtc = now;
+            await _db.SaveChangesAsync(cancellationToken);
+
+            if (phaseComplete && phase == LegendConnectLanguageIntelligenceReevaluationPhases.DependencyInventory)
+                await MarkDependencyInventoryCompletedAsync(evaluatorVersion, nextPhase, cancellationToken);
+            if (phaseComplete && nextPhase == LegendConnectLanguageIntelligenceReevaluationPhases.Complete)
+                await CompleteDerivationConvergenceAsync(evaluatorVersion, cancellationToken);
+
+            if (ownsTransaction)
+                await transaction!.CommitAsync(cancellationToken);
+        }
+        catch
+        {
+            if (ownsTransaction)
+                await transaction!.RollbackAsync(CancellationToken.None);
+            throw;
+        }
+    }
+
+    private async Task<string> ResolveNextReevaluationPhaseAsync(
+        int evaluatorVersion,
+        string phase,
+        CancellationToken cancellationToken)
+    {
+        if (phase == LegendConnectLanguageIntelligenceReevaluationPhases.DependencyInventory)
+        {
+            var convergence = await _db.Set<LegendLanguageDerivationConvergence>()
+                .AsNoTracking()
+                .SingleOrDefaultAsync(item => item.TargetEvaluatorVersion == evaluatorVersion, cancellationToken);
+            return convergence?.EarliestAffectedPhase ??
+                LegendConnectLanguageIntelligenceReevaluationPhases.Complete;
+        }
+
+        return phase switch
+        {
+            LegendConnectLanguageIntelligenceReevaluationPhases.SourceFamilies =>
+                LegendConnectLanguageIntelligenceReevaluationPhases.Alignments,
+            LegendConnectLanguageIntelligenceReevaluationPhases.Alignments =>
+                LegendConnectLanguageIntelligenceReevaluationPhases.ProviderObservations,
+            LegendConnectLanguageIntelligenceReevaluationPhases.ProviderObservations =>
+                LegendConnectLanguageIntelligenceReevaluationPhases.OperationalTranslations,
+            _ => LegendConnectLanguageIntelligenceReevaluationPhases.Complete
+        };
+    }
+
+    private async Task MarkDependencyInventoryCompletedAsync(
+        int evaluatorVersion,
+        string nextPhase,
+        CancellationToken cancellationToken)
+    {
+        var now = DateTime.UtcNow;
+        var query = _db.Set<LegendLanguageDerivationConvergence>()
+            .Where(item => item.TargetEvaluatorVersion == evaluatorVersion &&
+                item.RequiresDependencyInventory);
+        if (_db.Database.IsRelational())
+        {
+            await query.ExecuteUpdateAsync(setters => setters
+                .SetProperty(item => item.RequiresDependencyInventory, false)
+                .SetProperty(item => item.State,
+                    nextPhase == LegendConnectLanguageIntelligenceReevaluationPhases.Complete
+                        ? "Completed"
+                        : "Queued")
+                .SetProperty(item => item.CompletedUtc,
+                    nextPhase == LegendConnectLanguageIntelligenceReevaluationPhases.Complete
+                        ? now
+                        : (DateTime?)null)
+                .SetProperty(item => item.UpdatedUtc, now), cancellationToken);
             return;
         }
 
+        var convergence = await query.SingleOrDefaultAsync(cancellationToken);
+        if (convergence is null)
+            return;
+        convergence.RequiresDependencyInventory = false;
+        convergence.State = nextPhase == LegendConnectLanguageIntelligenceReevaluationPhases.Complete
+            ? "Completed"
+            : "Queued";
+        convergence.CompletedUtc = nextPhase == LegendConnectLanguageIntelligenceReevaluationPhases.Complete
+            ? now
+            : null;
+        convergence.UpdatedUtc = now;
+    }
+
+    private async Task CompleteDerivationConvergenceAsync(
+        int evaluatorVersion,
+        CancellationToken cancellationToken)
+    {
         var now = DateTime.UtcNow;
-        var nextPhase = phase;
-        var completedVersion = policy.CompletedLanguageIntelligenceEvaluatorVersion;
-        var completedUtc = policy.LanguageIntelligenceReevaluationCompletedUtc;
-        if (phaseComplete)
+        var query = _db.Set<LegendLanguageDerivationConvergence>()
+            .Where(item => item.TargetEvaluatorVersion == evaluatorVersion &&
+                (item.State == "Queued" || item.State == "Processing"));
+        if (_db.Database.IsRelational())
         {
-            nextPhase = phase switch
-            {
-                LegendConnectLanguageIntelligenceReevaluationPhases.SourceFamilies =>
-                    LegendConnectLanguageIntelligenceReevaluationPhases.Alignments,
-                LegendConnectLanguageIntelligenceReevaluationPhases.Alignments =>
-                    LegendConnectLanguageIntelligenceReevaluationPhases.ProviderObservations,
-                LegendConnectLanguageIntelligenceReevaluationPhases.ProviderObservations =>
-                    LegendConnectLanguageIntelligenceReevaluationPhases.OperationalTranslations,
-                _ => LegendConnectLanguageIntelligenceReevaluationPhases.Complete
-            };
-            if (nextPhase == LegendConnectLanguageIntelligenceReevaluationPhases.Complete)
-            {
-                completedVersion = evaluatorVersion;
-                completedUtc = now;
-            }
+            await query.ExecuteUpdateAsync(setters => setters
+                .SetProperty(item => item.State, "Completed")
+                .SetProperty(item => item.CompletedUtc, now)
+                .SetProperty(item => item.UpdatedUtc, now), cancellationToken);
+            return;
         }
 
-        // Heartbeats update this singleton too. A conditional update avoids a
-        // row-version collision after a successful canonical evaluator page.
-        var update = _db.Set<LegendConnectRuntimePolicy>()
-            .Where(item => item.ScopeKey == GlobalScope &&
-                item.TargetLanguageIntelligenceEvaluatorVersion == evaluatorVersion &&
-                item.LanguageIntelligenceReevaluationPhase == phase);
-        var updated = phaseComplete
-            ? await update.ExecuteUpdateAsync(setters => setters
-                .SetProperty(item => item.LanguageIntelligenceReevaluationCursor, (Guid?)null)
-                .SetProperty(item => item.LanguageIntelligenceReevaluationPhase, nextPhase)
-                .SetProperty(item => item.CompletedLanguageIntelligenceEvaluatorVersion, completedVersion)
-                .SetProperty(item => item.LanguageIntelligenceReevaluationCompletedUtc, completedUtc)
-                .SetProperty(item => item.UpdatedUtc, now), cancellationToken)
-            : lastProcessedId.HasValue
-            ? await update.ExecuteUpdateAsync(setters => setters
-                .SetProperty(item => item.LanguageIntelligenceReevaluationCursor, lastProcessedId)
-                .SetProperty(item => item.UpdatedUtc, now), cancellationToken)
-            : await update.ExecuteUpdateAsync(setters => setters
-                .SetProperty(item => item.UpdatedUtc, now), cancellationToken);
-        _ = updated;
+        var convergence = await query.SingleOrDefaultAsync(cancellationToken);
+        if (convergence is null)
+            return;
+        convergence.State = "Completed";
+        convergence.CompletedUtc = now;
+        convergence.UpdatedUtc = now;
     }
 
     public async Task<IReadOnlyList<LegendConnectFounderOperationalAuditSnapshot>> GetRecentAuditAsync(
@@ -664,6 +1135,28 @@ internal sealed class LegendConnectRuntimePolicyAuthority : ILegendConnectRuntim
 
         _ = await GetTrackedPolicyAsync(cancellationToken);
         return await _db.Set<LegendConnectRuntimePolicy>().AsNoTracking()
+            .SingleAsync(item => item.ScopeKey == GlobalScope, cancellationToken);
+    }
+
+    /// <summary>
+    /// Returns the singleton runtime policy as a tracked row while the
+    /// caller owns a serializable transaction. SQL Server uses an update lock
+    /// so an adoption planner cannot race another planner or a phase advance
+    /// from a different application instance. Other relational providers
+    /// still receive the serializable transaction; the model itself contains
+    /// no provider-specific replay behavior.
+    /// </summary>
+    private async Task<LegendConnectRuntimePolicy> GetLockedLanguageIntelligencePolicyAsync(
+        CancellationToken cancellationToken)
+    {
+        if (_db.Database.IsSqlServer())
+        {
+            return await _db.Set<LegendConnectRuntimePolicy>()
+                .FromSqlInterpolated($"SELECT * FROM [LegendConnectRuntimePolicies] WITH (UPDLOCK, HOLDLOCK) WHERE [ScopeKey] = {GlobalScope}")
+                .SingleAsync(cancellationToken);
+        }
+
+        return await _db.Set<LegendConnectRuntimePolicy>()
             .SingleAsync(item => item.ScopeKey == GlobalScope, cancellationToken);
     }
 

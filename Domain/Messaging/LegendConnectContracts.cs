@@ -868,12 +868,51 @@ public sealed record LegendConnectResponseMeaningPlanSnapshot(
     IReadOnlyDictionary<string, string> ResultDimensions,
     IReadOnlyList<LegendConnectDiscourseReferenceBindingSnapshot> ResolvedDiscourseBindings,
     int IndependentEvidenceCount,
-    bool UsesDiscourseState);
+    bool UsesDiscourseState,
+    IReadOnlyDictionary<string, string>? BoundSemanticVariables = null,
+    IReadOnlyDictionary<string, string>? UnboundResultVariables = null);
 
 public sealed record LegendConnectResponseMeaningPlanResult(
     bool Supported,
     string ReasonCode,
     LegendConnectResponseMeaningPlanSnapshot? Plan);
+
+/// <summary>
+/// One content fact assembled exclusively from existing Founder-approved
+/// meaning-node and meaning-relation evidence.  It contains controlled
+/// semantic identities and provenance state, never a curriculum sentence or
+/// a proposed response string.
+/// </summary>
+public sealed record LegendConnectGovernedContentFactSnapshot(
+    string FactIdentity,
+    string SubjectSemanticSignature,
+    string ContentSemanticSignature,
+    string SubjectDimension,
+    string SubjectValue,
+    string ContentDimension,
+    string ContentValue,
+    string RelationSignature,
+    int SupportCount,
+    int IndependentSourceCount,
+    int ContradictionCount,
+    string MaturityState,
+    bool IsProductionEligible);
+
+/// <summary>
+/// A text-free Stage-6 response meaning plan.  The selected transition
+/// authorizes the response shape; independently matured governed facts supply
+/// only the unbound result semantics.  Surface realization remains downstream.
+/// </summary>
+public sealed record LegendConnectContentBoundResponseMeaningPlanSnapshot(
+    LegendConnectResponseMeaningPlanSnapshot ResponsePlan,
+    IReadOnlyDictionary<string, string> ContentVariableBindings,
+    IReadOnlyList<LegendConnectGovernedContentFactSnapshot> Facts,
+    int ContentEvidenceCount);
+
+public sealed record LegendConnectContentBoundResponseMeaningPlanResult(
+    bool Supported,
+    string ReasonCode,
+    LegendConnectContentBoundResponseMeaningPlanSnapshot? Plan);
 
 /// <summary>
 /// The governed result of one native LEGEND conversational inference attempt.
@@ -980,6 +1019,16 @@ public interface ILegendConnectOperations
         CancellationToken cancellationToken = default);
 
     Task<LegendConnectResponseMeaningPlanResult> TryPlanConversationAsync(
+        string input,
+        LegendConnectDiscourseStateSnapshot? discourseState,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Binds the text-free Stage-4 response plan to mature, governed semantic
+    /// facts through the same curriculum authority.  It never performs
+    /// retained-text retrieval or surface realization.
+    /// </summary>
+    Task<LegendConnectContentBoundResponseMeaningPlanResult> TryBindConversationContentAsync(
         string input,
         LegendConnectDiscourseStateSnapshot? discourseState,
         CancellationToken cancellationToken = default);

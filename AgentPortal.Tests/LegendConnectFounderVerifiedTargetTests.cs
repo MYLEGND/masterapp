@@ -302,12 +302,14 @@ public sealed class LegendConnectFounderVerifiedTargetTests
             NullLogger<LegendConnectCorpusService>.Instance,
             intelligence: intelligence);
         var curriculum = new LegendConnectCurriculumService(db, registry, corpus);
+        var founderTraining = new LegendConnectFounderTrainingIngestionAuthority(db, registry, corpus, curriculum);
         var operations = new LegendConnectOperations(
             db,
             registry,
             corpus,
             configuration,
             curriculum: curriculum,
+            founderTrainingIngestion: founderTraining,
             intelligence: intelligence);
         return new Fixture(configuration, registry, intelligence, curriculum, operations);
     }

@@ -303,8 +303,27 @@ public sealed class LegendConnectRuntimePolicyTests
 
         Assert.Equal("ACTIVE — NO ELIGIBLE WORK", (await policy.ActivateAsync("founder")).State);
 
-        var corpus = new LegendConnectCorpusService(db, registry, NullLogger<LegendConnectCorpusService>.Instance);
-        var operations = new LegendConnectOperations(db, registry, corpus, configuration);
+        var corpus = new LegendConnectCorpusService(
+            db,
+            registry,
+            NullLogger<LegendConnectCorpusService>.Instance);
+        var curriculum = new LegendConnectCurriculumService(db, registry, corpus);
+        var founderTraining = new LegendConnectFounderTrainingIngestionAuthority(
+            db,
+            registry,
+            corpus,
+            curriculum);
+        var intelligence = new LegendConnectTranslationIntelligence(
+            db,
+            configuration);
+        var operations = new LegendConnectOperations(
+            db,
+            registry,
+            corpus,
+            configuration,
+            curriculum: curriculum,
+            founderTrainingIngestion: founderTraining,
+            intelligence: intelligence);
         var seed = await operations.SubmitFounderKnowledgeAsync("founder", new LegendConnectKnowledgeSubmission(
             "en", "Please bring the approved meeting agenda.", null, null,
             "Founder operations", "Formal", null, "FounderApproved"));

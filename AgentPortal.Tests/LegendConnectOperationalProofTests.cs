@@ -682,7 +682,29 @@ public sealed class LegendConnectOperationalProofTests
         var configuration = Configuration(corpusAcquisitionEnabled: true);
         var registry = new LegendLanguageRegistry(db, configuration);
         var corpus = new LegendConnectCorpusService(db, registry, NullLogger<LegendConnectCorpusService>.Instance);
-        var operations = new LegendConnectOperations(db, registry, corpus, configuration);
+        var intelligence = new LegendConnectTranslationIntelligence(
+            db,
+            configuration);
+        var governedCorpus = new LegendConnectCorpusService(
+            db,
+            registry,
+            NullLogger<LegendConnectCorpusService>.Instance,
+            intelligence: intelligence);
+        var curriculum = new LegendConnectCurriculumService(db, registry, governedCorpus);
+        var founderTraining = new LegendConnectFounderTrainingIngestionAuthority(
+            db,
+            registry,
+            governedCorpus,
+            curriculum,
+            operations: null);
+        var operations = new LegendConnectOperations(
+            db,
+            registry,
+            governedCorpus,
+            configuration,
+            curriculum: curriculum,
+            founderTrainingIngestion: founderTraining,
+            intelligence: intelligence);
 
         var seed = await operations.SubmitFounderKnowledgeAsync("founder", new LegendConnectKnowledgeSubmission(
             "en", "Are you coming over for dinner tonight?", null, null, "Conversation", "Everyday", null, "FounderApproved"));
@@ -919,8 +941,40 @@ public sealed class LegendConnectOperationalProofTests
     private static LegendConnectOperations Operations(
         MasterAppDbContext db,
         ILegendLanguageRegistry registry,
-        IConfiguration configuration) =>
-        new(db, registry, new LegendConnectCorpusService(db, registry, NullLogger<LegendConnectCorpusService>.Instance), configuration);
+        IConfiguration configuration)
+    {
+        var intelligence = new LegendConnectTranslationIntelligence(
+            db,
+            configuration);
+
+        var corpus = new LegendConnectCorpusService(
+            db,
+            registry,
+            NullLogger<LegendConnectCorpusService>.Instance,
+            intelligence: intelligence);
+
+        var curriculum = new LegendConnectCurriculumService(
+            db,
+            registry,
+            corpus);
+
+        var founderTraining = new LegendConnectFounderTrainingIngestionAuthority(
+            db,
+            registry,
+            corpus,
+            curriculum,
+            operations: null);
+
+        return new LegendConnectOperations(
+            db,
+            registry,
+            corpus,
+            configuration,
+            curriculum: curriculum,
+            founderTrainingIngestion: founderTraining,
+            intelligence: intelligence);
+    }
+
 
     private static LegendLanguageStructuralEvidence StructuralEvidence(
         LegendLanguageStructuralPattern pattern,
@@ -998,7 +1052,29 @@ public sealed class LegendConnectOperationalProofTests
         var configuration = Configuration();
         var registry = new LegendLanguageRegistry(db, configuration);
         var corpus = new LegendConnectCorpusService(db, registry, NullLogger<LegendConnectCorpusService>.Instance);
-        var operations = new LegendConnectOperations(db, registry, corpus, configuration);
+        var intelligence = new LegendConnectTranslationIntelligence(
+            db,
+            configuration);
+        var governedCorpus = new LegendConnectCorpusService(
+            db,
+            registry,
+            NullLogger<LegendConnectCorpusService>.Instance,
+            intelligence: intelligence);
+        var curriculum = new LegendConnectCurriculumService(db, registry, governedCorpus);
+        var founderTraining = new LegendConnectFounderTrainingIngestionAuthority(
+            db,
+            registry,
+            governedCorpus,
+            curriculum,
+            operations: null);
+        var operations = new LegendConnectOperations(
+            db,
+            registry,
+            governedCorpus,
+            configuration,
+            curriculum: curriculum,
+            founderTrainingIngestion: founderTraining,
+            intelligence: intelligence);
         var today = DateOnly.FromDateTime(DateTime.UtcNow);
 
         db.LegendTranslationSystemUsages.Add(new LegendTranslationSystemUsage
@@ -1046,7 +1122,29 @@ public sealed class LegendConnectOperationalProofTests
         var configuration = Configuration();
         var registry = new LegendLanguageRegistry(db, configuration);
         var corpus = new LegendConnectCorpusService(db, registry, NullLogger<LegendConnectCorpusService>.Instance);
-        var operations = new LegendConnectOperations(db, registry, corpus, configuration);
+        var intelligence = new LegendConnectTranslationIntelligence(
+            db,
+            configuration);
+        var governedCorpus = new LegendConnectCorpusService(
+            db,
+            registry,
+            NullLogger<LegendConnectCorpusService>.Instance,
+            intelligence: intelligence);
+        var curriculum = new LegendConnectCurriculumService(db, registry, governedCorpus);
+        var founderTraining = new LegendConnectFounderTrainingIngestionAuthority(
+            db,
+            registry,
+            governedCorpus,
+            curriculum,
+            operations: null);
+        var operations = new LegendConnectOperations(
+            db,
+            registry,
+            governedCorpus,
+            configuration,
+            curriculum: curriculum,
+            founderTrainingIngestion: founderTraining,
+            intelligence: intelligence);
         var now = DateTime.UtcNow;
         var conversation = new MessageConversation
         {
@@ -1171,11 +1269,33 @@ public sealed class LegendConnectOperationalProofTests
         await using var db = ControllerTestHelpers.BuildDb();
         var configuration = Configuration();
         var registry = new LegendLanguageRegistry(db, configuration);
+        var corpus = new LegendConnectCorpusService(
+            db,
+            registry,
+            NullLogger<LegendConnectCorpusService>.Instance);
+        var intelligence = new LegendConnectTranslationIntelligence(
+            db,
+            configuration);
+        var governedCorpus = new LegendConnectCorpusService(
+            db,
+            registry,
+            NullLogger<LegendConnectCorpusService>.Instance,
+            intelligence: intelligence);
+        var curriculum = new LegendConnectCurriculumService(db, registry, governedCorpus);
+        var founderTraining = new LegendConnectFounderTrainingIngestionAuthority(
+            db,
+            registry,
+            governedCorpus,
+            curriculum,
+            operations: null);
         var operations = new LegendConnectOperations(
             db,
             registry,
-            new LegendConnectCorpusService(db, registry, NullLogger<LegendConnectCorpusService>.Instance),
-            configuration);
+            governedCorpus,
+            configuration,
+            curriculum: curriculum,
+            founderTrainingIngestion: founderTraining,
+            intelligence: intelligence);
         var keys = new[]
         {
             "active-languages", "directional-pairs", "learning-failures", "duplicate-prevention",
@@ -1240,8 +1360,25 @@ public sealed class LegendConnectOperationalProofTests
                         options.UseSqlite(connection).AddInterceptors(optionalSectionFailure));
                     services.AddSingleton<IConfiguration>(Configuration());
                     services.AddScoped<ILegendLanguageRegistry, LegendLanguageRegistry>();
+                    services.AddScoped<LegendConnectRuntimePolicyAuthority>();
+                    services.AddScoped<ILegendConnectRuntimePolicyAuthority>(
+                        serviceProvider => serviceProvider.GetRequiredService<LegendConnectRuntimePolicyAuthority>());
+                    services.AddScoped<LegendConnectTranslationIntelligence>();
+                    services.AddScoped<ILegendConnectTranslationIntelligence>(
+                        serviceProvider => serviceProvider.GetRequiredService<LegendConnectTranslationIntelligence>());
                     services.AddScoped<LegendConnectCorpusService>();
-                    services.AddScoped<ILegendConnectOperations, LegendConnectOperations>();
+                    services.AddScoped<LegendConnectCurriculumService>();
+                    services.AddScoped<LegendConnectFounderTrainingIngestionAuthority>();
+                    services.AddScoped<ILegendConnectOperations>(serviceProvider =>
+                        new LegendConnectOperations(
+                            serviceProvider.GetRequiredService<MasterAppDbContext>(),
+                            serviceProvider.GetRequiredService<ILegendLanguageRegistry>(),
+                            serviceProvider.GetRequiredService<LegendConnectCorpusService>(),
+                            serviceProvider.GetRequiredService<IConfiguration>(),
+                            runtimePolicy: serviceProvider.GetRequiredService<LegendConnectRuntimePolicyAuthority>(),
+                            curriculum: serviceProvider.GetRequiredService<LegendConnectCurriculumService>(),
+                            founderTrainingIngestion: serviceProvider.GetRequiredService<LegendConnectFounderTrainingIngestionAuthority>(),
+                            intelligence: serviceProvider.GetRequiredService<LegendConnectTranslationIntelligence>()));
                     services.AddScoped<AgentProfileAccessResolver>();
                     services.AddScoped<IControlledResourceAccessService, ControlledResourceAccessService>();
                     services.AddScoped<ITranslationEntitlementAuthority, TranslationEntitlementAuthority>();

@@ -29,9 +29,9 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
     private readonly IConfiguration _configuration;
     private readonly ILegendConnectOperationalEventWriter? _operationalEvents;
     private readonly ILegendConnectRuntimePolicyAuthority? _runtimePolicy;
-    private readonly LegendConnectCurriculumService _curriculum;
-    private readonly LegendConnectFounderTrainingIngestionAuthority _founderTrainingIngestion;
-    private readonly ILegendConnectTranslationIntelligence _intelligence;
+    private readonly LegendConnectCurriculumService? _curriculum;
+    private readonly LegendConnectFounderTrainingIngestionAuthority? _founderTrainingIngestion;
+    private readonly ILegendConnectTranslationIntelligence? _intelligence;
     private readonly ITranslationCapacityAuthority? _capacityAuthority;
     private readonly LegendConnectAutonomousLearningService? _autonomousLearning;
 
@@ -54,13 +54,25 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
         _configuration = configuration;
         _operationalEvents = operationalEvents;
         _runtimePolicy = runtimePolicy;
-        _curriculum = curriculum ?? new LegendConnectCurriculumService(_db, _registry, _corpus);
-        _founderTrainingIngestion = founderTrainingIngestion ?? new LegendConnectFounderTrainingIngestionAuthority(
-            _db, _registry, _corpus, _curriculum, _operationalEvents);
-        _intelligence = intelligence ?? new LegendConnectTranslationIntelligence(_db, _configuration, _runtimePolicy);
+        // The production graph supplies these concrete authorities through
+        // DI. Operations intentionally owns no constructor-created fallback:
+        // a missing authority must fail at its explicit use boundary rather
+        // than silently creating a competing curriculum or intelligence path.
+        _curriculum = curriculum;
+        _founderTrainingIngestion = founderTrainingIngestion;
+        _intelligence = intelligence;
         _capacityAuthority = capacityAuthority;
         _autonomousLearning = autonomousLearning;
     }
+
+    private LegendConnectCurriculumService Curriculum => _curriculum ??
+        throw new InvalidOperationException("Legend Connect curriculum authority is not available from the DI service graph.");
+
+    private LegendConnectFounderTrainingIngestionAuthority FounderTrainingIngestion => _founderTrainingIngestion ??
+        throw new InvalidOperationException("Legend Connect Founder-training ingestion authority is not available from the DI service graph.");
+
+    private ILegendConnectTranslationIntelligence Intelligence => _intelligence ??
+        throw new InvalidOperationException("Legend Connect translation-intelligence authority is not available from the DI service graph.");
 
     public async Task<LegendConnectDashboardSnapshot> GetDashboardAsync(
         CancellationToken cancellationToken = default)
@@ -361,7 +373,7 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
         // evidence query is language-partitioned throughout; no English record
         // can authorize a different language, and an unavailable language
         // simply returns unsupported.
-        var inference = await _curriculum.TryInferSemanticTransitionAsync(
+        var inference = await Curriculum.TryInferSemanticTransitionAsync(
             "en",
             input ?? string.Empty,
             context ?? [],
@@ -399,7 +411,7 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
         if (string.IsNullOrWhiteSpace(LegendLanguageIdentity.NormalizeText(input ?? string.Empty)))
             return NativeInferenceUnsupported("invalid_input");
 
-        var composed = await _curriculum.TryInferComposedSemanticTransitionAsync(
+        var composed = await Curriculum.TryInferComposedSemanticTransitionAsync(
             "en", input ?? string.Empty, discourseState, cancellationToken);
         if (string.Equals(composed.State, LegendSemanticTransitionInference.Supported, StringComparison.Ordinal) &&
             !string.IsNullOrWhiteSpace(composed.RealizedText))
@@ -423,8 +435,24 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
         {
             return NativeInferenceUnsupported(composed.Reasons.FirstOrDefault() ?? "semantic_transition_not_governed");
         }
+        // A composed graph that reached transition/content/realization
+        // evaluation has already supplied the governing source meaning. Its
+        // fail-closed outcome must be preserved: legacy frame evaluation may
+        // not discard an unresolved discourse binding, an absent governed
+        // fact, or a realization ambiguity. The existing fallback remains
+        // available only when Stage 1 could not compose any source meaning at
+        // all, where it reuses this same curriculum transition authority.
+        if (!CanFallbackFromUnavailableComposedSource(composed))
+            return NativeInferenceUnsupported(
+                composed.Reasons.FirstOrDefault() ?? "semantic_transition_not_governed");
         return await TryInferConversationAsync(input ?? string.Empty, context, cancellationToken);
     }
+
+    private static bool CanFallbackFromUnavailableComposedSource(
+        LegendSemanticTransitionInference inference) =>
+        inference.Reasons.FirstOrDefault() is
+            "meaning_graph_component_unknown" or
+            "meaning_graph_relation_unproven";
 
     /// <summary>
     /// Observational Stage 4 boundary. It deliberately returns governed result
@@ -434,7 +462,18 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
         string input,
         LegendConnectDiscourseStateSnapshot? discourseState,
         CancellationToken cancellationToken = default) =>
-        _curriculum.TryPlanResponseMeaningAsync(
+        Curriculum.TryPlanResponseMeaningAsync(
+            "en",
+            input ?? string.Empty,
+            discourseState,
+            cancellationToken);
+
+    public Task<LegendConnectContentBoundResponseMeaningPlanResult>
+        TryBindConversationContentAsync(
+            string input,
+            LegendConnectDiscourseStateSnapshot? discourseState,
+            CancellationToken cancellationToken = default) =>
+        Curriculum.TryBindResponseContentAsync(
             "en",
             input ?? string.Empty,
             discourseState,
@@ -458,14 +497,14 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
     public Task<LegendConnectUtteranceMeaningGraphSnapshot> AnalyzeReusableMeaningGraphAsync(
         string input,
         CancellationToken cancellationToken = default) =>
-        _curriculum.AnalyzeReusableMeaningGraphAsync("en", input ?? string.Empty, cancellationToken);
+        Curriculum.AnalyzeReusableMeaningGraphAsync("en", input ?? string.Empty, cancellationToken);
 
     public Task<IReadOnlyList<LegendConnectDiscourseReferenceRuleSnapshot>>
         GetProductionDiscourseReferenceRulesAsync(
             string sourceLanguageCode,
             IReadOnlyList<string> selectorSemanticSignatures,
             CancellationToken cancellationToken = default) =>
-        _curriculum.GetProductionDiscourseReferenceRulesAsync(
+        Curriculum.GetProductionDiscourseReferenceRulesAsync(
             sourceLanguageCode,
             selectorSemanticSignatures,
             cancellationToken);
@@ -1323,7 +1362,7 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
         var evidence = await _db.Set<LegendTranslationQualityEvidence>().AsNoTracking()
             .OrderByDescending(item => item.UpdatedUtc)
             .ToListAsync(cancellationToken);
-        var quality = await _intelligence.GetTranslationQualityAsync(cancellationToken);
+        var quality = await Intelligence.GetTranslationQualityAsync(cancellationToken);
         if (key == "quality-needs-review")
             return Detail(key, TitleFor(key), "Translation quality evidence authority",
                 "These are the actual provider observations the existing quality authority has placed in review; the modal does not approve, reject, or modify them.",
@@ -2028,11 +2067,11 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
 
     public Task<LegendConnectTranslationQualitySnapshot> GetTranslationQualityAsync(
         CancellationToken cancellationToken = default) =>
-        _intelligence.GetTranslationQualityAsync(cancellationToken);
+        Intelligence.GetTranslationQualityAsync(cancellationToken);
 
     public Task<LegendTargetRealizationReviewSnapshot> GetTargetRealizationReviewAsync(
         CancellationToken cancellationToken = default) =>
-        _curriculum.GetTargetRealizationReviewAsync(cancellationToken);
+        Curriculum.GetTargetRealizationReviewAsync(cancellationToken);
 
     public async Task<LegendTargetRealizationReviewActionResult> VerifyTargetRealizationCandidateAsync(
         string founderUserId,
@@ -2044,7 +2083,7 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
             return new LegendTargetRealizationReviewActionResult(
                 false, "founder_identity_required", "A verified Founder identity is required.", candidateId, "Unavailable", null);
 
-        var result = await _curriculum.VerifyTargetRealizationCandidateAsync(founder, candidateId, cancellationToken);
+        var result = await Curriculum.VerifyTargetRealizationCandidateAsync(founder, candidateId, cancellationToken);
         await WriteTargetRealizationReviewAuditAsync(founder, "FounderTargetRealizationVerified", result, cancellationToken);
         return result;
     }
@@ -2059,7 +2098,7 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
             return new LegendTargetRealizationReviewActionResult(
                 false, "founder_identity_required", "A verified Founder identity is required.", candidateId, "Unavailable", null);
 
-        var result = await _curriculum.RejectTargetRealizationCandidateAsync(founder, candidateId, cancellationToken);
+        var result = await Curriculum.RejectTargetRealizationCandidateAsync(founder, candidateId, cancellationToken);
         await WriteTargetRealizationReviewAuditAsync(founder, "FounderTargetRealizationRejected", result, cancellationToken);
         return result;
     }
@@ -2086,14 +2125,14 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
             var result = string.IsNullOrWhiteSpace(approved.TargetText)
                 && string.IsNullOrWhiteSpace(approved.TargetLanguageCode)
                 && reusableSourceTextUnitId is null
-                ? await _founderTrainingIngestion.SubmitAsync(founder, approved, cancellationToken)
+                ? await FounderTrainingIngestion.SubmitAsync(founder, approved, cancellationToken)
                 : await _corpus.SubmitApprovedKnowledgeAsync(
                     approved,
                     cancellationToken,
                     reusableSourceTextUnitId,
                     reusableTargetTextUnitId);
             if (result.Succeeded && result.AlignmentId is { } alignmentId)
-                await _curriculum.AttachValidatedAlignmentAsync(alignmentId, cancellationToken);
+                await Curriculum.AttachValidatedAlignmentAsync(alignmentId, cancellationToken);
             await WriteAuditAsync(founder, "FounderKnowledgeSubmitted", result, null, cancellationToken);
             if (result.DuplicatePrevented && _operationalEvents is not null)
             {
@@ -2218,22 +2257,22 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
             }
 
             await _db.SaveChangesAsync(cancellationToken);
-            await _curriculum.ReconcileSupersededAlignmentAsync(
+            await Curriculum.ReconcileSupersededAlignmentAsync(
                 prior.PairKey,
                 prior.SourceTextUnitId,
                 prior.TargetTextUnitId,
                 cancellationToken);
             if (string.Equals(prior.Provenance, LegendConnectKnowledgeProvenance.ProviderDerived, StringComparison.Ordinal))
             {
-                var retiredTargetTextUnitId = await _intelligence.RecordHumanCorrectionAsync(
+                var retiredTargetTextUnitId = await Intelligence.RecordHumanCorrectionAsync(
                     prior.Id,
                     result.AlignmentId.Value,
                     cancellationToken);
                 if (retiredTargetTextUnitId is not null)
-                    await _curriculum.ReconcileSupersededExamplesAsync([retiredTargetTextUnitId.Value], cancellationToken);
+                    await Curriculum.ReconcileSupersededExamplesAsync([retiredTargetTextUnitId.Value], cancellationToken);
             }
             await _corpus.RefreshPairCoverageAsync(prior.PairKey, cancellationToken);
-            await _curriculum.AttachValidatedAlignmentAsync(result.AlignmentId.Value, cancellationToken);
+            await Curriculum.AttachValidatedAlignmentAsync(result.AlignmentId.Value, cancellationToken);
             await WriteAuditAsync(founder, "FounderKnowledgeCorrected", result, supersededAlignmentId, cancellationToken);
             if (transaction is not null)
                 await transaction.CommitAsync(cancellationToken);
@@ -2354,7 +2393,7 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
             return false;
         }
 
-        var trusted = await _intelligence.TryGetTrustedExactMemoryAsync(
+        var trusted = await Intelligence.TryGetTrustedExactMemoryAsync(
             sourceLanguage,
             targetLanguage,
             message.Body,
@@ -2761,10 +2800,10 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
         if (founder is null || alignmentId == Guid.Empty)
             return InvalidQualityReviewAction();
 
-        var result = await _intelligence.ApproveProviderObservationAsync(alignmentId, cancellationToken);
+        var result = await Intelligence.ApproveProviderObservationAsync(alignmentId, cancellationToken);
         if (result.Succeeded)
         {
-            await _curriculum.AttachValidatedAlignmentAsync(alignmentId, cancellationToken);
+            await Curriculum.AttachValidatedAlignmentAsync(alignmentId, cancellationToken);
             await WriteQualityReviewAuditAsync(founder, "FounderProviderObservationApproved", result, alignmentId, cancellationToken);
         }
         return ToQualityReviewActionResult(result);
@@ -2779,11 +2818,11 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
         if (founder is null || alignmentId == Guid.Empty)
             return InvalidQualityReviewAction();
 
-        var result = await _intelligence.RejectProviderObservationAsync(alignmentId, cancellationToken);
+        var result = await Intelligence.RejectProviderObservationAsync(alignmentId, cancellationToken);
         if (result.Succeeded)
         {
             if (result.RetiredTargetTextUnitId is not null)
-                await _curriculum.ReconcileSupersededExamplesAsync([result.RetiredTargetTextUnitId.Value], cancellationToken);
+                await Curriculum.ReconcileSupersededExamplesAsync([result.RetiredTargetTextUnitId.Value], cancellationToken);
             await WriteQualityReviewAuditAsync(founder, "FounderProviderObservationRejected", result, alignmentId, cancellationToken);
         }
         return ToQualityReviewActionResult(result);
@@ -2798,7 +2837,7 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
         if (founder is null || alignmentId == Guid.Empty)
             return InvalidQualityReviewAction();
 
-        var result = await _intelligence.LeaveProviderObservationUnresolvedAsync(alignmentId, cancellationToken);
+        var result = await Intelligence.LeaveProviderObservationUnresolvedAsync(alignmentId, cancellationToken);
         if (result.Succeeded)
             await WriteQualityReviewAuditAsync(founder, "FounderProviderObservationLeftUnresolved", result, alignmentId, cancellationToken);
         return ToQualityReviewActionResult(result);
@@ -2837,7 +2876,7 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
         // One invalid family or cross-example semantic declaration rejects the
         // complete manifest before durable acceptance. Expensive learning does
         // not run inside the HTTP request.
-        var manifestValidation = await _curriculum.PreflightFounderEnglishManifestAsync(
+        var manifestValidation = await Curriculum.PreflightFounderEnglishManifestAsync(
             new LegendConnectCurriculumManifestSubmission(
                 families,
                 submission.CrossExampleSemanticRelationships),
@@ -2945,26 +2984,13 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
         LegendConnectCurriculumBatchSubmission submission,
         CancellationToken cancellationToken = default)
     {
-        var founder = NormalizeFounder(founderUserId);
-        if (founder is null)
-        {
-            return new LegendConnectCurriculumSubmissionResult(
-                false, false, "founder_identity_required", "A verified Founder identity is required.", null, null, 0, 0);
-        }
-
-        var result = await _curriculum.SubmitFounderEnglishBatchAsync(submission, cancellationToken);
-        _db.Set<LegendConnectKnowledgeAuditEntry>().Add(new LegendConnectKnowledgeAuditEntry
-        {
-            Id = Guid.NewGuid(),
-            FounderUserId = founder,
-            Action = "FounderCurriculumSubmitted",
-            Result = result.DuplicatePrevented ? "DuplicatePrevented" : result.Succeeded ? "Succeeded" : result.ErrorCode ?? "Rejected",
-            LanguageCode = "en",
-            Detail = Bound(result.Message ?? result.ErrorCode, 500),
-            OccurredUtc = DateTime.UtcNow
-        });
-        await _db.SaveChangesAsync(cancellationToken);
-        return result;
+        // Compatibility surface only: one-family submissions enter the same
+        // retained manifest and durable work authority as every other Founder
+        // curriculum submission. No HTTP path may mutate a family directly.
+        return await SubmitFounderCurriculumManifestAsync(
+            founderUserId,
+            new LegendConnectCurriculumManifestSubmission([submission], []),
+            cancellationToken);
     }
 
     private async Task WriteAuditAsync(
@@ -3491,7 +3517,7 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
             AddFounderTransitionOwners(transitionEvidenceBySubmission, exampleOwners, evidence.ResultExampleId, evidence);
         }
 
-        var productionEligibleSignatures = await _curriculum
+        var productionEligibleSignatures = await Curriculum
             .GetProductionEligibleSemanticTransitionSignaturesAsync(
                 language,
                 transitionEvidence.Select(item => item.TransitionSignature).Distinct().ToArray(),
@@ -3506,6 +3532,27 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
         }
 
         var currentEvaluatorVersion = LegendConnectLanguageIntelligenceEvaluatorVersion.Current;
+        // One bounded global convergence projection is sufficient for this
+        // page. It does not materialize per-submission evidence or create a
+        // second status authority: submission completion remains derived from
+        // its existing durable child work, while this row explains whether a
+        // newer evaluator reused prior contracts or has a real dependency
+        // frontier in flight.
+        var convergence = await _db.Set<LegendLanguageDerivationConvergence>()
+            .AsNoTracking()
+            .Where(item => item.TargetEvaluatorVersion == currentEvaluatorVersion)
+            .Select(item => new FounderDerivationConvergence(
+                item.State,
+                item.EarliestAffectedPhase,
+                item.ExistingCanonicalArtifactCount,
+                item.ReusedCanonicalArtifactCount,
+                item.AffectedCanonicalArtifactCount,
+                item.RequiresDependencyInventory,
+                item.DependencyInventoryWorkItemCount,
+                item.PlannedWorkItemCount,
+                item.BlockingDependencyIdentity,
+                item.UpdatedUtc))
+            .SingleOrDefaultAsync(cancellationToken);
         var rows = new List<IReadOnlyList<string>>(page.Count);
         foreach (var item in page)
         {
@@ -3534,6 +3581,10 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
                 item.Training?.ProcessedUtc,
                 item.Manifest?.UpdatedUtc,
                 coverage.LastProcessedUtc);
+            var convergenceState = FormatFounderDerivationConvergence(
+                convergence,
+                completedVersion,
+                currentEvaluatorVersion);
             rows.Add(new[]
             {
                 item.Kind,
@@ -3553,6 +3604,7 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
                 transitions.Count.ToString(CultureInfo.InvariantCulture),
                 transitions.Count(item => productionEligibleSignatures.Contains(item.TransitionSignature)).ToString(CultureInfo.InvariantCulture),
                 lastProcessedUtc?.ToString("u", CultureInfo.InvariantCulture) ?? "—",
+                convergenceState,
                 status,
                 failure ?? "—"
             });
@@ -3667,12 +3719,43 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
         return timestamps.Length == 0 ? null : timestamps.Max();
     }
 
+    private static string FormatFounderDerivationConvergence(
+        FounderDerivationConvergence? convergence,
+        int completedEvaluatorVersion,
+        int currentEvaluatorVersion)
+    {
+        if (convergence is null)
+        {
+            return completedEvaluatorVersion >= currentEvaluatorVersion
+                ? "CURRENT — pre-contract baseline"
+                : "STALE — awaiting dependency assessment";
+        }
+
+        var reuse = convergence.ExistingArtifacts == 0
+            ? "0/0 reused"
+            : $"{convergence.ReusedArtifacts:N0}/{convergence.ExistingArtifacts:N0} reused";
+        if (convergence.RequiresDependencyInventory)
+        {
+            return convergence.State == "Processing"
+                ? $"PROCESSING — dependency inventory; {convergence.DependencyInventoryWork:N0} bounded item(s); {reuse}"
+                : $"QUEUED — dependency inventory; {reuse}";
+        }
+        return convergence.State switch
+        {
+            "Reused" => $"REUSED — NO REEVALUATION REQUIRED; {reuse}",
+            "Completed" => $"COMPLETED — {reuse}; {convergence.AffectedArtifacts:N0} affected",
+            "Processing" => $"PROCESSING — {convergence.EarliestPhase ?? "dependency"}; {convergence.PlannedWork:N0} queued",
+            "Queued" => $"QUEUED — {convergence.EarliestPhase ?? "dependency"}; {convergence.BlockingDependency ?? "dependency frontier"}",
+            _ => $"{convergence.State.ToUpperInvariant()} — {convergence.EarliestPhase ?? "dependency"}"
+        };
+    }
+
     private static readonly IReadOnlyList<string> FounderSubmissionStatusColumns =
     [
         "Submission", "Submission ID", "Accepted", "Accepted atomic units", "New units", "Reused units",
         "Coverage queued", "Coverage pending", "Coverage processing", "Coverage completed", "Coverage failed",
         "Evaluator target", "Evaluator completed", "Manifest / work-item state", "Transition evidence",
-        "Production-eligible transitions", "Last processed", "Status", "Failure"
+        "Production-eligible transitions", "Last processed", "Derivation convergence", "Status", "Failure"
     ];
 
     private sealed record FounderSubmissionStatusSource(
@@ -3714,6 +3797,17 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
     private sealed record FounderManifestExample(Guid FamilyId, Guid ExampleId);
     private sealed record FounderCoverageOwner(Guid SubmissionId, string ProcessingState, DateTime? ProcessedUtc);
     private sealed record FounderManifestCoverage(Guid FamilyId, string ProcessingState, DateTime? ProcessedUtc);
+    private sealed record FounderDerivationConvergence(
+        string State,
+        string? EarliestPhase,
+        long ExistingArtifacts,
+        long ReusedArtifacts,
+        long AffectedArtifacts,
+        bool RequiresDependencyInventory,
+        long DependencyInventoryWork,
+        long PlannedWork,
+        string? BlockingDependency,
+        DateTime UpdatedUtc);
     private sealed record FounderCoverageItem(string ProcessingState, DateTime? ProcessedUtc);
     private sealed record FounderTransitionEvidence(
         Guid Id,

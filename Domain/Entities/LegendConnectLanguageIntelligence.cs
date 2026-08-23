@@ -1387,6 +1387,15 @@ public sealed class LegendHistoricalReevaluationWorkItem
     /// most one active lease per evaluator/phase/dependency lane.
     /// </summary>
     public string DependencyIdentity { get; set; } = string.Empty;
+    /// <summary>
+    /// Optional cross-phase ownership fence for a canonical artifact that can
+    /// be mutated by more than one durable work phase.  Unlike
+    /// <see cref="DependencyIdentity"/>, this lane is not phase-scoped: when
+    /// present, one evaluator may hold at most one active lease for it across
+    /// the entire durable work authority.  It contains only a stable canonical
+    /// identity, never Founder text or a response surface.
+    /// </summary>
+    public string? CanonicalMutationLane { get; set; }
     public string ProcessingState { get; set; } = "Pending";
     public string? LeaseOwner { get; set; }
     public Guid? LeaseToken { get; set; }
@@ -1394,6 +1403,105 @@ public sealed class LegendHistoricalReevaluationWorkItem
     public int AttemptCount { get; set; }
     public string? LastErrorCode { get; set; }
     public string? LastErrorMessage { get; set; }
+    public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
+    public DateTime UpdatedUtc { get; set; } = DateTime.UtcNow;
+    public DateTime? CompletedUtc { get; set; }
+}
+
+/// <summary>
+/// A deployment-declared semantic derivation contract.  It describes how an
+/// existing derived artifact class was produced, not curriculum content or a
+/// second evaluator.  The single runtime-policy and durable-work lifecycle
+/// compare these durable declarations to determine the earliest genuinely
+/// affected historical layer on a later deployment.
+/// </summary>
+public sealed class LegendLanguageDerivationContract
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public string DerivationKind { get; set; } = string.Empty;
+    public string ContractVersion { get; set; } = string.Empty;
+    public string ContractIdentity { get; set; } = string.Empty;
+    public string EarliestPhase { get; set; } = string.Empty;
+    public bool RequiresHistoricalWork { get; set; }
+    public int IntroducedEvaluatorVersion { get; set; }
+    public string State { get; set; } = "Current";
+    public DateTime? SupersededUtc { get; set; }
+    public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
+    public DateTime UpdatedUtc { get; set; } = DateTime.UtcNow;
+}
+
+/// <summary>
+/// A durable edge in the evaluator's derivation contract graph.  Both ends
+/// are contract identities, never text, family keys, prompt strings, or
+/// answer surfaces.  It makes invalidation transitive without introducing an
+/// additional learning or replay authority.
+/// </summary>
+public sealed class LegendLanguageDerivationContractDependency
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid DependentContractId { get; set; }
+    public string DependencyDerivationKind { get; set; } = string.Empty;
+    public string DependencyContractIdentity { get; set; } = string.Empty;
+    public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
+}
+
+/// <summary>
+/// A compact provenance edge from one retained canonical source identity to
+/// one derived identity under an immutable derivation contract. It contains
+/// identifiers and semantic-version markers only: never Founder surface text,
+/// a prompt, a provider payload, or a response. The existing evidence rows
+/// remain the semantic authority; this table makes their contract dependency
+/// explicit so a future evaluator can invalidate precisely the affected
+/// downstream projection rather than treating its evaluator number as a
+/// reason to rebuild the corpus.
+/// </summary>
+public sealed class LegendLanguageDerivationArtifact
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public string ArtifactKind { get; set; } = string.Empty;
+    /// <summary>Canonical identity of the resulting derived artifact.</summary>
+    public string ResultArtifactIdentity { get; set; } = string.Empty;
+    /// <summary>Canonical upstream evidence/node/relationship identity.</summary>
+    public string SourceDependencyIdentity { get; set; } = string.Empty;
+    /// <summary>
+    /// The semantic version of the source identity where an upstream semantic
+    /// declaration—not merely evaluator code—has an independent revision.
+    /// </summary>
+    public string SourceDependencySemanticVersion { get; set; } = string.Empty;
+    public string DerivationContractIdentity { get; set; } = string.Empty;
+    /// <summary>Current, Stale, or Superseded. Canonical evidence is never deleted.</summary>
+    public string State { get; set; } = "Current";
+    public DateTime? SupersededUtc { get; set; }
+    public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
+    public DateTime UpdatedUtc { get; set; } = DateTime.UtcNow;
+}
+
+/// <summary>
+/// An observable durable plan for one evaluator convergence.  Counts are
+/// derived from canonical identities at planning time; this row contains no
+/// evidence payload and cannot alter curriculum maturity or eligibility.
+/// </summary>
+public sealed class LegendLanguageDerivationConvergence
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public int TargetEvaluatorVersion { get; set; }
+    public int BaselineEvaluatorVersion { get; set; }
+    public string State { get; set; } = "Queued";
+    public string? EarliestAffectedPhase { get; set; }
+    public int ChangedContractCount { get; set; }
+    public int ReusedContractCount { get; set; }
+    public long ExistingCanonicalArtifactCount { get; set; }
+    public long ReusedCanonicalArtifactCount { get; set; }
+    public long AffectedCanonicalArtifactCount { get; set; }
+    /// <summary>
+    /// A completed evaluator that predates the dependency ledger receives a
+    /// bounded metadata-only inventory before any semantic frontier runs.
+    /// This does not mark canonical evidence stale or re-evaluate it.
+    /// </summary>
+    public bool RequiresDependencyInventory { get; set; }
+    public long DependencyInventoryWorkItemCount { get; set; }
+    public long PlannedWorkItemCount { get; set; }
+    public string? BlockingDependencyIdentity { get; set; }
     public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedUtc { get; set; } = DateTime.UtcNow;
     public DateTime? CompletedUtc { get; set; }

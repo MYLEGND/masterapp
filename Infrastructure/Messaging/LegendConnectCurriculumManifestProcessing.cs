@@ -11,20 +11,20 @@ namespace Infrastructure.Messaging;
 
 internal sealed class LegendConnectCurriculumManifestProcessor
 {
-    private const int MaximumAttempts = 5;
-    private static readonly TimeSpan LeaseDuration = TimeSpan.FromMinutes(10);
-
     private readonly MasterAppDbContext _db;
     private readonly LegendConnectCurriculumService _curriculum;
+    private readonly LegendConnectHistoricalReevaluationWorkAuthority _durableWork;
     private readonly ILogger<LegendConnectCurriculumManifestProcessor> _logger;
 
     public LegendConnectCurriculumManifestProcessor(
         MasterAppDbContext db,
         LegendConnectCurriculumService curriculum,
+        LegendConnectHistoricalReevaluationWorkAuthority durableWork,
         ILogger<LegendConnectCurriculumManifestProcessor> logger)
     {
         _db = db;
         _curriculum = curriculum;
+        _durableWork = durableWork;
         _logger = logger;
     }
 
@@ -32,39 +32,137 @@ internal sealed class LegendConnectCurriculumManifestProcessor
         int take,
         CancellationToken cancellationToken = default)
     {
-        var now = DateTime.UtcNow;
         var evaluatorVersion = LegendConnectLanguageIntelligenceEvaluatorVersion.Current;
-        var candidateIds = await _db.Set<LegendCurriculumManifestWorkItem>()
-            .AsNoTracking()
-            .Where(item =>
-                item.ProcessingState == "Pending" ||
-                (item.ProcessingState == "Processing" &&
-                 item.LeaseExpiresUtc != null &&
-                 item.LeaseExpiresUtc < now) ||
-                (item.ProcessingState == "Completed" &&
-                 item.CompletedLanguageIntelligenceEvaluatorVersion < evaluatorVersion))
-            // Preserve prompt handling for new work. Historical capability
-            // replays are still durable and bounded, but never starve newly
-            // accepted Founder curriculum.
-            .OrderBy(item => item.ProcessingState == "Completed")
-            .ThenBy(item => item.CreatedUtc)
-            .ThenBy(item => item.Id)
-            .Take(Math.Clamp(take, 1, 4))
-            .Select(item => item.Id)
-            .ToListAsync(cancellationToken);
-
+        await SeedDurableFamilyWorkAsync(
+            _durableWork,
+            evaluatorVersion,
+            Math.Clamp(take, 1, 32),
+            cancellationToken);
         var processed = 0;
-        foreach (var id in candidateIds)
+        for (var index = 0; index < Math.Clamp(take, 1, 32); index++)
         {
-            var claimed = await TryClaimAsync(id, cancellationToken);
-            if (claimed is null)
-                continue;
-
-            await ProcessOneFamilyAsync(claimed, cancellationToken);
+            if (!await ProcessNextDurableAsync(
+                    evaluatorVersion,
+                    "founder-manifest-compatibility",
+                    cancellationToken))
+                break;
             processed++;
         }
-
+        // A receipt can be behind its already completed durable children
+        // after a capability/version metadata repair. The durable child rows
+        // remain the sole execution record; reconcile the parent projection
+        // from that authority instead of reopening completed family work.
+        await RefreshDurableManifestStatusesAsync(evaluatorVersion, cancellationToken);
         return processed;
+    }
+
+    /// <summary>
+    /// Pumps exactly one Founder-manifest item through the sole durable work
+    /// authority. This contains no independent claim, lease, retry, or
+    /// completion semantics: those all remain database-authoritative in
+    /// <see cref="LegendConnectHistoricalReevaluationWorkAuthority"/>.
+    /// </summary>
+    internal async Task<bool> ProcessNextDurableAsync(
+        int evaluatorVersion,
+        string workerId,
+        CancellationToken cancellationToken = default)
+    {
+        var claim = await _durableWork.TryClaimNextFounderManifestWorkAsync(
+            evaluatorVersion,
+            workerId,
+            cancellationToken);
+        if (claim is null)
+            return false;
+
+        try
+        {
+            if (claim.SubjectId is not Guid manifestId ||
+                !int.TryParse(claim.SubjectScope, out var familyOrRelationIndex))
+                throw new InvalidOperationException(
+                    "Founder curriculum work requires a manifest identity and durable item index.");
+
+            var completed = false;
+            await using (var execution = await _durableWork.TryBeginOwnedExecutionAsync(
+                claim,
+                cancellationToken))
+            {
+                if (execution is null)
+                    return false;
+
+                if (claim.WorkKind == LegendConnectHistoricalReevaluationWorkAuthority.FounderManifestFamilyWorkKind)
+                {
+                    await ProcessDurableFamilyAsync(manifestId, familyOrRelationIndex, cancellationToken);
+                }
+                else if (claim.WorkKind == LegendConnectHistoricalReevaluationWorkAuthority.FounderManifestSemanticRelationWorkKind)
+                {
+                    await ProcessDurableSemanticRelationAsync(
+                        manifestId,
+                        familyOrRelationIndex,
+                        evaluatorVersion,
+                        cancellationToken);
+                }
+                else if (claim.WorkKind == LegendConnectHistoricalReevaluationWorkAuthority.DerivationLedgerWorkKind)
+                {
+                    await ProcessDurableFamilyDerivationLedgerAsync(
+                        manifestId,
+                        familyOrRelationIndex,
+                        evaluatorVersion,
+                        cancellationToken);
+                }
+                else
+                {
+                    throw new InvalidOperationException("Founder curriculum work kind is not governed by this processor.");
+                }
+
+                if (!await execution.CompleteAsync(cancellationToken))
+                {
+                    await execution.AbortAsync();
+                    return false;
+                }
+                completed = true;
+            }
+
+            if (!completed)
+                return false;
+            // The receipt is a read projection.  It must run after the
+            // owned canonical/ledger transaction commits, never while an
+            // evaluator still owns row locks for the family work item.
+            await RefreshDurableManifestStatusAsync(manifestId, evaluatorVersion, cancellationToken);
+            return true;
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            await _durableWork.ReleaseAsync(
+                claim,
+                "founder_manifest_execution_cancelled",
+                CancellationToken.None);
+            return true;
+        }
+        catch (OperationCanceledException)
+        {
+            await _durableWork.ReleaseAsync(
+                claim,
+                "founder_manifest_worker_cancelled",
+                CancellationToken.None);
+            throw;
+        }
+        catch (Exception exception)
+        {
+            await _durableWork.FailAsync(
+                claim,
+                "founder_manifest_family_failure",
+                CancellationToken.None);
+            if (claim.SubjectId is Guid manifestId)
+                await RefreshDurableManifestStatusAsync(
+                    manifestId,
+                    evaluatorVersion,
+                    CancellationToken.None);
+            _logger.LogWarning(
+                exception,
+                "Legend Connect Founder curriculum durable work failed safely. WorkItemId={WorkItemId}",
+                claim.WorkItemId);
+            return true;
+        }
     }
 
     /// <summary>
@@ -122,29 +220,33 @@ internal sealed class LegendConnectCurriculumManifestProcessor
 
             await _curriculum.EnsureFounderManifestLexicalPrerequisitesAsync(families, cancellationToken);
 
-            // A completed prior capability revision is reevaluated from the
-            // retained, validated manifest under the new evaluator. An
-            // interrupted manifest retains its already completed child work.
+            // The parent manifest is a projection of durable child work.
+            // Do not reopen a completed receipt merely because its projection
+            // records an older evaluator. Existing current-evaluator children
+            // are the execution authority and may already prove completion.
             var parentChanged = manifest.ProcessingState != "Processing" ||
                 manifest.TargetLanguageIntelligenceEvaluatorVersion != evaluatorVersion;
-            if (manifest.ProcessingState == "Completed")
-            {
-                manifest.NextFamilyIndex = 0;
-                manifest.CompletedUtc = null;
-                manifest.CompletedLanguageIntelligenceEvaluatorVersion = 0;
-                parentChanged = true;
-            }
             var familyWorkChanged = await durableWork.SeedFounderManifestFamiliesAsync(
                 evaluatorVersion,
                 manifest.Id,
-                families.Select(item => item.FamilyKey).ToArray(),
+                BuildFamilyWorkSeeds(families),
                 cancellationToken);
             var relationshipWorkChanged = await durableWork.SeedFounderManifestSemanticRelationsAsync(
                 evaluatorVersion,
                 manifest.Id,
                 semanticRelationships.Length,
                 cancellationToken);
-            if (parentChanged || familyWorkChanged || relationshipWorkChanged)
+            var ledgerWorkChanged = false;
+            if (LegendConnectDerivationContracts.ForEvaluator(evaluatorVersion)
+                .Any(item => item.RequiresDependencyInventory))
+            {
+                ledgerWorkChanged = await durableWork.SeedFounderManifestDerivationLedgersAsync(
+                    evaluatorVersion,
+                    manifest.Id,
+                    BuildFamilyWorkSeeds(families),
+                    cancellationToken);
+            }
+            if (parentChanged || familyWorkChanged || relationshipWorkChanged || ledgerWorkChanged)
             {
                 manifest.TargetLanguageIntelligenceEvaluatorVersion = evaluatorVersion;
                 manifest.ProcessingState = "Processing";
@@ -156,6 +258,57 @@ internal sealed class LegendConnectCurriculumManifestProcessor
         if (seeded > 0)
             await _db.SaveChangesAsync(cancellationToken);
         return seeded;
+    }
+
+    private static IReadOnlyList<LegendFounderManifestFamilyWorkSeed> BuildFamilyWorkSeeds(
+        IReadOnlyList<LegendConnectCurriculumBatchSubmission> families)
+    {
+        // This is not curriculum interpretation: each identity is an exact,
+        // normalized Founder-declared dimension/value already accepted by the
+        // manifest parser. Surface carrier dimensions are explicitly marked
+        // by the same @ground declaration and cannot make semantic families
+        // appear to collide merely because their prose happens to match.
+        var declaredSemanticIdentities = families
+            .Select(family => family.Examples
+                .SelectMany(example => example.Variations)
+                .Where(variation => !(family.SemanticSpanGroundings ?? [])
+                    .Select(grounding => grounding.SurfaceDimension)
+                    .Contains(variation.Key, StringComparer.Ordinal))
+                .Select(variation =>
+                    $"{variation.Key.Trim().ToLowerInvariant()}\u001f{variation.Value.Trim().ToLowerInvariant()}")
+                .ToHashSet(StringComparer.Ordinal))
+            .ToArray();
+
+        var sharesDeclaredSemanticIdentity = new bool[families.Count];
+        for (var left = 0; left < declaredSemanticIdentities.Length - 1; left++)
+        {
+            for (var right = left + 1; right < declaredSemanticIdentities.Length; right++)
+            {
+                if (!declaredSemanticIdentities[left].Overlaps(declaredSemanticIdentities[right]))
+                    continue;
+
+                sharesDeclaredSemanticIdentity[left] = true;
+                sharesDeclaredSemanticIdentity[right] = true;
+            }
+        }
+
+        return families
+            .Select((family, index) => new LegendFounderManifestFamilyWorkSeed(
+                family.FamilyKey,
+                sharesDeclaredSemanticIdentity[index]
+                    // A bounded manifest-local collision must be serialized
+                    // before any family begins its owned mutation transaction.
+                    // All genuinely independent families retain individual
+                    // lanes and keep the configured worker parallelism.
+                    ? "founder-curriculum-semantic-collision:en"
+                    : $"founder-curriculum-family:{family.FamilyKey.Trim().ToLowerInvariant()}",
+                // This is deliberately distinct from the phase-local
+                // dependency lane. It is the one stable ownership fence that
+                // SourceFamilies replay and normal Founder intake share for
+                // the same canonical family.
+                LegendConnectHistoricalReevaluationWorkAuthority.CanonicalFamilyMutationLane(
+                    family.FamilyKey)))
+            .ToArray();
     }
 
     /// <summary>Runs one leased manifest family through the unchanged canonical curriculum authority.</summary>
@@ -190,6 +343,39 @@ internal sealed class LegendConnectCurriculumManifestProcessor
             OccurredUtc = DateTime.UtcNow
         });
         await _db.SaveChangesAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// Projects compact derivation dependencies only after the manifest's
+    /// canonical family and cross-example relation work has committed.  This
+    /// delegates to the same curriculum ledger writer used by historical
+    /// dependency convergence; it has no independent semantic mutation path.
+    /// </summary>
+    internal async Task ProcessDurableFamilyDerivationLedgerAsync(
+        Guid manifestId,
+        int familyIndex,
+        int evaluatorVersion,
+        CancellationToken cancellationToken = default)
+    {
+        var manifest = await _db.Set<LegendCurriculumManifestWorkItem>()
+            .SingleAsync(item => item.Id == manifestId, cancellationToken);
+        var payload = JsonSerializer.Deserialize<LegendConnectCurriculumManifestSubmission>(manifest.PayloadJson);
+        var families = payload?.Families?.ToArray() ?? [];
+        if (families.Length != manifest.FamilyCount || familyIndex < 0 || familyIndex >= families.Length)
+            throw new InvalidOperationException("The leased Founder dependency ledger does not match its retained family.");
+
+        var familyKey = families[familyIndex].FamilyKey.Trim().ToLowerInvariant();
+        var familyId = await _db.Set<LegendCurriculumFamily>()
+            .Where(item => item.FamilyKey == familyKey)
+            .Select(item => (Guid?)item.Id)
+            .SingleOrDefaultAsync(cancellationToken);
+        if (familyId is null)
+            throw new InvalidOperationException("The retained Founder family was not canonically admitted before dependency inventory.");
+
+        await _curriculum.RefreshCurrentDerivationDependenciesForFamilyAsync(
+            familyId.Value,
+            evaluatorVersion,
+            cancellationToken);
     }
 
     /// <summary>
@@ -239,6 +425,12 @@ internal sealed class LegendConnectCurriculumManifestProcessor
     {
         var manifest = await _db.Set<LegendCurriculumManifestWorkItem>()
             .SingleAsync(item => item.Id == manifestId, cancellationToken);
+        // The Founder manifest receipt represents canonical curriculum
+        // admission plus its governed cross-example semantic relationships.
+        // Dependency inventory is a downstream derivation-convergence concern
+        // with its own durable work/state. It must not reopen or prolong the
+        // accepted Founder manifest receipt merely because a newer evaluator
+        // requires metadata projection.
         var children = await _db.Set<LegendHistoricalReevaluationWorkItem>()
             .Where(item => item.EvaluatorVersion == evaluatorVersion &&
                 item.Phase == LegendConnectHistoricalReevaluationWorkAuthority.FounderCurriculumPhase &&
@@ -306,213 +498,6 @@ internal sealed class LegendConnectCurriculumManifestProcessor
         return manifestIds.Count;
     }
 
-    private async Task<LegendCurriculumManifestWorkItem?> TryClaimAsync(
-        Guid id,
-        CancellationToken cancellationToken)
-    {
-        var now = DateTime.UtcNow;
-        var leaseExpires = now.Add(LeaseDuration);
-        var evaluatorVersion = LegendConnectLanguageIntelligenceEvaluatorVersion.Current;
-
-        if (_db.Database.IsRelational())
-        {
-            var updated = await _db.Set<LegendCurriculumManifestWorkItem>()
-                .Where(item => item.Id == id &&
-                    (item.ProcessingState == "Pending" ||
-                     (item.ProcessingState == "Processing" &&
-                      item.LeaseExpiresUtc != null &&
-                      item.LeaseExpiresUtc < now) ||
-                     (item.ProcessingState == "Completed" &&
-                      item.CompletedLanguageIntelligenceEvaluatorVersion < evaluatorVersion)))
-                .ExecuteUpdateAsync(setters => setters
-                    .SetProperty(item => item.ProcessingState, "Processing")
-                    // A completed historical work item is the only case that
-                    // restarts at family zero. Interrupted normal/replay work
-                    // retains its exact durable cursor and target version.
-                    .SetProperty(item => item.NextFamilyIndex,
-                        item => item.ProcessingState == "Completed" ? 0 : item.NextFamilyIndex)
-                    .SetProperty(item => item.TargetLanguageIntelligenceEvaluatorVersion,
-                        item => item.ProcessingState == "Completed"
-                            ? evaluatorVersion
-                            : item.TargetLanguageIntelligenceEvaluatorVersion > 0
-                                ? item.TargetLanguageIntelligenceEvaluatorVersion
-                                : evaluatorVersion)
-                    .SetProperty(item => item.LeaseExpiresUtc, leaseExpires)
-                    .SetProperty(item => item.CompletedUtc,
-                        item => item.ProcessingState == "Completed" ? null : item.CompletedUtc)
-                    .SetProperty(item => item.UpdatedUtc, now),
-                    cancellationToken);
-            if (updated != 1)
-                return null;
-
-            _db.ChangeTracker.Clear();
-            return await _db.Set<LegendCurriculumManifestWorkItem>()
-                .SingleAsync(item => item.Id == id, cancellationToken);
-        }
-
-        var item = await _db.Set<LegendCurriculumManifestWorkItem>()
-            .SingleOrDefaultAsync(candidate => candidate.Id == id &&
-                (candidate.ProcessingState == "Pending" ||
-                 (candidate.ProcessingState == "Processing" &&
-                  candidate.LeaseExpiresUtc != null &&
-                  candidate.LeaseExpiresUtc < now) ||
-                 (candidate.ProcessingState == "Completed" &&
-                  candidate.CompletedLanguageIntelligenceEvaluatorVersion < evaluatorVersion)),
-                cancellationToken);
-        if (item is null)
-            return null;
-
-        if (item.ProcessingState == "Completed")
-        {
-            item.NextFamilyIndex = 0;
-            item.TargetLanguageIntelligenceEvaluatorVersion = evaluatorVersion;
-            item.CompletedUtc = null;
-        }
-        else if (item.TargetLanguageIntelligenceEvaluatorVersion <= 0)
-        {
-            item.TargetLanguageIntelligenceEvaluatorVersion = evaluatorVersion;
-        }
-        item.ProcessingState = "Processing";
-        item.LeaseExpiresUtc = leaseExpires;
-        item.UpdatedUtc = now;
-        await _db.SaveChangesAsync(cancellationToken);
-        return item;
-    }
-
-    private async Task ProcessOneFamilyAsync(
-        LegendCurriculumManifestWorkItem work,
-        CancellationToken cancellationToken)
-    {
-        LegendConnectCurriculumManifestSubmission? manifest;
-        try
-        {
-            manifest = JsonSerializer.Deserialize<LegendConnectCurriculumManifestSubmission>(work.PayloadJson);
-        }
-        catch (Exception exception)
-        {
-            await MarkFailedAsync(
-                work.Id,
-                "curriculum_manifest_payload_invalid",
-                exception.Message,
-                cancellationToken);
-            return;
-        }
-
-        var families = manifest?.Families?.ToArray() ?? [];
-        if (families.Length != work.FamilyCount || families.Length == 0)
-        {
-            await MarkFailedAsync(
-                work.Id,
-                "curriculum_manifest_payload_mismatch",
-                "The durable manifest payload no longer matches its accepted family count.",
-                cancellationToken);
-            return;
-        }
-
-        if (work.NextFamilyIndex >= families.Length)
-        {
-            await MarkCompletedAsync(work.Id, cancellationToken);
-            return;
-        }
-
-        var familyIndex = work.NextFamilyIndex;
-        var family = families[familyIndex];
-
-        try
-        {
-            // Canonical learning behavior is unchanged. Only execution timing
-            // changed: one bounded family outside the Founder HTTP request.
-            var result = await _curriculum.SubmitFounderEnglishBatchAsync(
-                family,
-                cancellationToken);
-
-            if (!result.Succeeded)
-            {
-                await MarkFailedAsync(
-                    work.Id,
-                    result.ErrorCode ?? "curriculum_family_processing_rejected",
-                    result.Message ?? $"Family {family.FamilyKey} was rejected by the canonical curriculum authority.",
-                    cancellationToken);
-                return;
-            }
-
-            _db.ChangeTracker.Clear();
-            var current = await _db.Set<LegendCurriculumManifestWorkItem>()
-                .SingleAsync(item => item.Id == work.Id, cancellationToken);
-            current.NextFamilyIndex = familyIndex + 1;
-            current.AttemptCount = 0;
-            current.LastErrorCode = null;
-            current.LastErrorMessage = null;
-            current.LeaseExpiresUtc = null;
-            current.UpdatedUtc = DateTime.UtcNow;
-
-            var isCompleted = current.NextFamilyIndex >= current.FamilyCount;
-            current.ProcessingState = isCompleted ? "Completed" : "Pending";
-            current.CompletedUtc = isCompleted ? DateTime.UtcNow : null;
-            if (isCompleted)
-            {
-                current.CompletedLanguageIntelligenceEvaluatorVersion =
-                    current.TargetLanguageIntelligenceEvaluatorVersion > 0
-                        ? current.TargetLanguageIntelligenceEvaluatorVersion
-                        : LegendConnectLanguageIntelligenceEvaluatorVersion.Current;
-            }
-
-            _db.Set<LegendConnectKnowledgeAuditEntry>().Add(new LegendConnectKnowledgeAuditEntry
-            {
-                Id = Guid.NewGuid(),
-                FounderUserId = current.FounderUserId,
-                Action = "FounderCurriculumFamilyProcessed",
-                Result = result.DuplicatePrevented ? "CanonicalReuse" : "Succeeded",
-                LanguageCode = "en",
-                Detail = Truncate(
-                    $"Manifest {current.ManifestHash[..12]} family {familyIndex + 1}/{current.FamilyCount}: {family.FamilyKey}. " +
-                    $"Evaluator v{current.TargetLanguageIntelligenceEvaluatorVersion}. " +
-                    (result.Message ?? "Canonical curriculum processing completed."),
-                    500),
-                OccurredUtc = DateTime.UtcNow
-            });
-
-            await _db.SaveChangesAsync(cancellationToken);
-        }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-        {
-            throw;
-        }
-        catch (Exception exception)
-        {
-            _logger.LogError(
-                exception,
-                "Legend Connect curriculum manifest family processing failed. WorkId={WorkId} FamilyIndex={FamilyIndex}",
-                work.Id,
-                familyIndex);
-
-            await MarkRetryableAsync(
-                work.Id,
-                exception.GetType().Name,
-                exception.Message,
-                cancellationToken);
-        }
-    }
-
-    private async Task MarkRetryableAsync(
-        Guid id,
-        string errorCode,
-        string message,
-        CancellationToken cancellationToken)
-    {
-        _db.ChangeTracker.Clear();
-        var work = await _db.Set<LegendCurriculumManifestWorkItem>()
-            .SingleAsync(item => item.Id == id, cancellationToken);
-
-        work.AttemptCount++;
-        work.LastErrorCode = Truncate(errorCode, 120);
-        work.LastErrorMessage = Truncate(message, 1000);
-        work.LeaseExpiresUtc = null;
-        work.UpdatedUtc = DateTime.UtcNow;
-        work.ProcessingState = work.AttemptCount >= MaximumAttempts ? "Failed" : "Pending";
-        await _db.SaveChangesAsync(cancellationToken);
-    }
-
     private async Task MarkFailedAsync(
         Guid id,
         string errorCode,
@@ -526,25 +511,6 @@ internal sealed class LegendConnectCurriculumManifestProcessor
         work.LastErrorCode = Truncate(errorCode, 120);
         work.LastErrorMessage = Truncate(message, 1000);
         work.LeaseExpiresUtc = null;
-        work.UpdatedUtc = DateTime.UtcNow;
-        await _db.SaveChangesAsync(cancellationToken);
-    }
-
-    private async Task MarkCompletedAsync(
-        Guid id,
-        CancellationToken cancellationToken)
-    {
-        _db.ChangeTracker.Clear();
-        var work = await _db.Set<LegendCurriculumManifestWorkItem>()
-            .SingleAsync(item => item.Id == id, cancellationToken);
-        work.NextFamilyIndex = work.FamilyCount;
-        work.ProcessingState = "Completed";
-        work.CompletedLanguageIntelligenceEvaluatorVersion =
-            work.TargetLanguageIntelligenceEvaluatorVersion > 0
-                ? work.TargetLanguageIntelligenceEvaluatorVersion
-                : LegendConnectLanguageIntelligenceEvaluatorVersion.Current;
-        work.LeaseExpiresUtc = null;
-        work.CompletedUtc = DateTime.UtcNow;
         work.UpdatedUtc = DateTime.UtcNow;
         await _db.SaveChangesAsync(cancellationToken);
     }
@@ -578,16 +544,10 @@ public sealed class LegendConnectCurriculumManifestHostedService : BackgroundSer
             try
             {
                 using var scope = _scopeFactory.CreateScope();
-                var db = scope.ServiceProvider.GetRequiredService<MasterAppDbContext>();
-                var curriculum = scope.ServiceProvider.GetRequiredService<LegendConnectCurriculumService>();
-                var processorLogger = scope.ServiceProvider
-                    .GetRequiredService<ILogger<LegendConnectCurriculumManifestProcessor>>();
                 var durableWork = scope.ServiceProvider
                     .GetRequiredService<LegendConnectHistoricalReevaluationWorkAuthority>();
-                var processor = new LegendConnectCurriculumManifestProcessor(
-                    db,
-                    curriculum,
-                    processorLogger);
+                var processor = scope.ServiceProvider
+                    .GetRequiredService<LegendConnectCurriculumManifestProcessor>();
                 var evaluatorVersion = LegendConnectLanguageIntelligenceEvaluatorVersion.Current;
                 var seeded = await processor.SeedDurableFamilyWorkAsync(
                     durableWork, evaluatorVersion, durableWork.MaximumConcurrency * 2, stoppingToken);
@@ -632,71 +592,14 @@ public sealed class LegendConnectCurriculumManifestHostedService : BackgroundSer
         while (!stoppingToken.IsCancellationRequested)
         {
             using var scope = _scopeFactory.CreateScope();
-            var work = scope.ServiceProvider.GetRequiredService<LegendConnectHistoricalReevaluationWorkAuthority>();
-            var claim = await work.TryClaimNextFounderManifestWorkAsync(
-                evaluatorVersion, workerId, stoppingToken);
-            if (claim is null)
+            var processor = scope.ServiceProvider
+                .GetRequiredService<LegendConnectCurriculumManifestProcessor>();
+            if (!await processor.ProcessNextDurableAsync(
+                    evaluatorVersion,
+                    workerId,
+                    stoppingToken))
                 return processed;
-            try
-            {
-                if (claim.SubjectId is not Guid manifestId ||
-                    !int.TryParse(claim.SubjectScope, out var familyIndex))
-                    throw new InvalidOperationException("Founder curriculum work requires a manifest identity and family index.");
-
-                await using var execution = await work.TryBeginOwnedExecutionAsync(claim, stoppingToken);
-                if (execution is null)
-                    return processed;
-
-                var db = scope.ServiceProvider.GetRequiredService<MasterAppDbContext>();
-                var curriculum = scope.ServiceProvider.GetRequiredService<LegendConnectCurriculumService>();
-                var logger = scope.ServiceProvider.GetRequiredService<ILogger<LegendConnectCurriculumManifestProcessor>>();
-                var processor = new LegendConnectCurriculumManifestProcessor(db, curriculum, logger);
-                if (claim.WorkKind == LegendConnectHistoricalReevaluationWorkAuthority.FounderManifestFamilyWorkKind)
-                {
-                    await processor.ProcessDurableFamilyAsync(manifestId, familyIndex, stoppingToken);
-                }
-                else if (claim.WorkKind == LegendConnectHistoricalReevaluationWorkAuthority.FounderManifestSemanticRelationWorkKind)
-                {
-                    await processor.ProcessDurableSemanticRelationAsync(
-                        manifestId,
-                        familyIndex,
-                        evaluatorVersion,
-                        stoppingToken);
-                }
-                else
-                {
-                    throw new InvalidOperationException("Founder curriculum work kind is not governed by this processor.");
-                }
-                if (!await execution.CompleteAsync(stoppingToken))
-                {
-                    await execution.AbortAsync();
-                    return processed;
-                }
-                await processor.RefreshDurableManifestStatusAsync(manifestId, evaluatorVersion, stoppingToken);
-                processed++;
-            }
-            catch (OperationCanceledException) when (!stoppingToken.IsCancellationRequested)
-            {
-                await work.ReleaseAsync(claim, "founder_manifest_execution_cancelled", CancellationToken.None);
-            }
-            catch (OperationCanceledException)
-            {
-                await work.ReleaseAsync(claim, "founder_manifest_worker_cancelled", CancellationToken.None);
-                throw;
-            }
-            catch (Exception exception)
-            {
-                await work.FailAsync(claim, "founder_manifest_family_failure", CancellationToken.None);
-                if (claim.SubjectId is Guid manifestId)
-                {
-                    var db = scope.ServiceProvider.GetRequiredService<MasterAppDbContext>();
-                    var curriculum = scope.ServiceProvider.GetRequiredService<LegendConnectCurriculumService>();
-                    var logger = scope.ServiceProvider.GetRequiredService<ILogger<LegendConnectCurriculumManifestProcessor>>();
-                    await new LegendConnectCurriculumManifestProcessor(db, curriculum, logger)
-                        .RefreshDurableManifestStatusAsync(manifestId, evaluatorVersion, CancellationToken.None);
-                }
-                _logger.LogWarning(exception, "Legend Connect Founder curriculum family work failed safely. WorkItemId={WorkItemId}", claim.WorkItemId);
-            }
+            processed++;
         }
         return processed;
     }

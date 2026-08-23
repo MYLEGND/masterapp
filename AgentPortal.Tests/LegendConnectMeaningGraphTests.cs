@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Data;
 using System.Linq;
 using System.Net.Http;
+using System.Threading;
 using System.Threading.Tasks;
 using AgentPortal.Models;
 using AgentPortal.Services;
@@ -218,6 +219,13 @@ public sealed class LegendConnectMeaningGraphTests
                 registry,
                 NullLogger<LegendConnectCorpusService>.Instance);
             var curriculum = new LegendConnectCurriculumService(db, registry, corpus);
+            var runtime = new LegendConnectRuntimePolicyAuthority(
+                db,
+                new FounderAccess(),
+                registry,
+                configuration,
+                NullLogger<LegendConnectRuntimePolicyAuthority>.Instance);
+            var durable = new LegendConnectHistoricalReevaluationWorkAuthority(db, runtime, configuration);
             var operations = new LegendConnectOperations(
                 db,
                 registry,
@@ -259,6 +267,7 @@ public sealed class LegendConnectMeaningGraphTests
             var processor = new LegendConnectCurriculumManifestProcessor(
                 db,
                 curriculum,
+                durable,
                 NullLogger<LegendConnectCurriculumManifestProcessor>.Instance);
             Assert.Equal(1, await processor.ProcessPendingAsync(1));
 
@@ -739,5 +748,14 @@ public sealed class LegendConnectMeaningGraphTests
             CreateClientCalls++;
             throw new InvalidOperationException("OpenAI must not be constructed for fail-closed native inference.");
         }
+    }
+
+    private sealed class FounderAccess : IControlledResourceAccessService
+    {
+        public Task<ControlledResourceAccess> GetAccessAsync(MessagingActor actor, string resourceType, CancellationToken cancellationToken = default) =>
+            Task.FromResult(new ControlledResourceAccess(resourceType, ControlledResourceAccessStates.NotGranted, true));
+        public Task<bool> IsFounderManagerAsync(MessagingActor actor, CancellationToken cancellationToken = default) => Task.FromResult(true);
+        public Task<bool> IsCanonicalFounderManagerAsync(MessagingActor actor, CancellationToken cancellationToken = default) => Task.FromResult(true);
+        public Task<string?> GetPreferredLanguageAsync(MessagingActor actor, CancellationToken cancellationToken = default) => Task.FromResult<string?>(null);
     }
 }

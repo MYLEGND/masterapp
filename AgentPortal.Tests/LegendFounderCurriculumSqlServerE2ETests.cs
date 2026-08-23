@@ -1144,6 +1144,7 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
             NullLogger<LegendConnectCorpusService>.Instance,
             intelligence: intelligence);
         var curriculum = new LegendConnectCurriculumService(db, registry, corpus);
+        var durable = new LegendConnectHistoricalReevaluationWorkAuthority(db, runtime, configuration);
         var operations = new LegendConnectOperations(
             db,
             registry,
@@ -1175,6 +1176,7 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
         var processor = new LegendConnectCurriculumManifestProcessor(
             db,
             curriculum,
+            durable,
             NullLogger<LegendConnectCurriculumManifestProcessor>.Instance);
         for (var pass = 0; pass < 64; pass++)
         {

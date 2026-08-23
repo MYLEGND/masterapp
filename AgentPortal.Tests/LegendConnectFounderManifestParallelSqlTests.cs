@@ -121,10 +121,14 @@ public sealed class LegendConnectFounderManifestParallelSqlTests
             Assert.Equal(0, shared.DuplicateWorkIdentities);
             Assert.Equal(0, shared.DuplicateStructuralRelationshipIdentities);
             Assert.Empty(shared.Errors);
-            Assert.True(shared.MaximumObservedParallelism > 1);
-            Assert.Equal(4, shared.WorkerClaims.Count);
-            Assert.All(shared.WorkerClaims.Values, claimed => Assert.True(claimed > 0));
-            _output.WriteLine($"SHARED STRUCTURAL IDENTITY: completed={shared.FamiliesCompleted}/4; maxInFlight={shared.MaximumObservedParallelism}; duplicate relationships=0; errors=0.");
+            // The exact same controlled semantic identities intentionally
+            // occupy one database-authoritative dependency lane. This is the
+            // complementary proof to the independent 1-vs-4 test above:
+            // workers refill in parallel where they can, but never overlap a
+            // shared canonical write lane.
+            Assert.Equal(1, shared.MaximumObservedParallelism);
+            Assert.NotEmpty(shared.WorkerClaims);
+            _output.WriteLine($"SHARED STRUCTURAL IDENTITY: completed={shared.FamiliesCompleted}/4; maxInFlight={shared.MaximumObservedParallelism}; sharedLaneSerialized=true; duplicate relationships=0; errors=0.");
         }
         finally
         {
@@ -175,6 +179,7 @@ public sealed class LegendConnectFounderManifestParallelSqlTests
             var seeded = await new LegendConnectCurriculumManifestProcessor(
                     db,
                     services.Curriculum,
+                    services.Work,
                     NullLogger<LegendConnectCurriculumManifestProcessor>.Instance)
                 .SeedDurableFamilyWorkAsync(
                     services.Work,
@@ -207,6 +212,7 @@ public sealed class LegendConnectFounderManifestParallelSqlTests
         var processor = new LegendConnectCurriculumManifestProcessor(
             verification,
             verificationServices.Curriculum,
+            verificationServices.Work,
             NullLogger<LegendConnectCurriculumManifestProcessor>.Instance);
         // This is the normal bounded worker's post-drain receipt projection.
         // It uses fresh SQL state rather than a worker's concurrent snapshot.
@@ -284,7 +290,7 @@ public sealed class LegendConnectFounderManifestParallelSqlTests
         {
             await using var db = new MasterAppDbContext(options);
             var services = CreateServices(db, configuration);
-            var claim = await services.Work.TryClaimNextFounderManifestFamilyAsync(
+            var claim = await services.Work.TryClaimNextFounderManifestWorkAsync(
                 LegendConnectLanguageIntelligenceEvaluatorVersion.Current,
                 $"sql-manifest-proof:{slot}");
             if (claim is null)
@@ -299,28 +305,64 @@ public sealed class LegendConnectFounderManifestParallelSqlTests
                     throw new InvalidOperationException("A Founder manifest claim did not retain its stable family identity.");
                 }
 
-                await using var execution = await services.Work.TryBeginOwnedExecutionAsync(claim);
-                if (execution is null)
-                    throw new InvalidOperationException("A claimed Founder manifest family lost durable ownership before evaluation.");
+                var completed = false;
+                await using (var execution = await services.Work.TryBeginOwnedExecutionAsync(claim))
+                {
+                    if (execution is null)
+                        throw new InvalidOperationException("A claimed Founder manifest family lost durable ownership before evaluation.");
 
-                var active = enterExecution();
-                observeParallelism(active);
-                try
+                    var active = enterExecution();
+                    observeParallelism(active);
+                    try
+                    {
+                        var processor = new LegendConnectCurriculumManifestProcessor(
+                            db,
+                            services.Curriculum,
+                            services.Work,
+                            NullLogger<LegendConnectCurriculumManifestProcessor>.Instance);
+                        if (claim.WorkKind == LegendConnectHistoricalReevaluationWorkAuthority.FounderManifestFamilyWorkKind)
+                        {
+                            await processor.ProcessDurableFamilyAsync(manifestId, familyIndex);
+                        }
+                        else if (claim.WorkKind == LegendConnectHistoricalReevaluationWorkAuthority.FounderManifestSemanticRelationWorkKind)
+                        {
+                            await processor.ProcessDurableSemanticRelationAsync(
+                                manifestId,
+                                familyIndex,
+                                LegendConnectLanguageIntelligenceEvaluatorVersion.Current);
+                        }
+                        else if (claim.WorkKind == LegendConnectHistoricalReevaluationWorkAuthority.DerivationLedgerWorkKind)
+                        {
+                            await processor.ProcessDurableFamilyDerivationLedgerAsync(
+                                manifestId,
+                                familyIndex,
+                                LegendConnectLanguageIntelligenceEvaluatorVersion.Current);
+                        }
+                        else
+                        {
+                            throw new InvalidOperationException("The durable manifest proof claimed an unsupported work kind.");
+                        }
+
+                        Assert.True(await execution.CompleteAsync(),
+                            "The durable owner lost its canonical completion token.");
+                        completed = true;
+                    }
+                    finally
+                    {
+                        _ = leaveExecution();
+                    }
+                }
+
+                if (completed)
                 {
                     var processor = new LegendConnectCurriculumManifestProcessor(
                         db,
                         services.Curriculum,
+                        services.Work,
                         NullLogger<LegendConnectCurriculumManifestProcessor>.Instance);
-                    await processor.ProcessDurableFamilyAsync(manifestId, familyIndex);
-                    Assert.True(await execution.CompleteAsync(),
-                        "The durable owner lost its canonical completion token.");
                     await processor.RefreshDurableManifestStatusAsync(
                         manifestId,
                         LegendConnectLanguageIntelligenceEvaluatorVersion.Current);
-                }
-                finally
-                {
-                    _ = leaveExecution();
                 }
             }
             catch (Exception exception)

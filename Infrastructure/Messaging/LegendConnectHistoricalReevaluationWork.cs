@@ -28,6 +28,12 @@ internal sealed class LegendConnectHistoricalReevaluationWorkAuthority
     // cross-example relation projection without widening that established
     // schema or introducing a second queue.
     internal const string FounderManifestSemanticRelationWorkKind = "FounderManifestRelation";
+    // A bounded, post-canonical ledger projection.  It is deliberately a
+    // durable work kind in this same authority rather than an inline read
+    // inside a family mutation transaction.  The projection owns no language
+    // semantics; it records the dependencies of already committed canonical
+    // evidence for the evaluator contract.
+    internal const string DerivationLedgerWorkKind = "DerivationLedger";
     internal const string FounderCurriculumPhase = "FounderCurriculum";
     private const string SeedWorkKind = "PhaseSeed";
     private const string Pending = "Pending";
@@ -35,6 +41,7 @@ internal sealed class LegendConnectHistoricalReevaluationWorkAuthority
     private const string Completed = "Completed";
     private const string Failed = "Failed";
     private const int DefaultSeedBatchSize = 128;
+    private const int DependencyInventoryFamiliesPerWorkItem = 32;
     private const int DefaultMaximumConcurrency = 4;
     private const int DefaultMaximumAttempts = 5;
     private const int MaximumClaimContentionRetries = 8;
@@ -293,13 +300,25 @@ internal sealed class LegendConnectHistoricalReevaluationWorkAuthority
                     SubjectId = candidate.SubjectId,
                     SubjectScope = candidate.SubjectScope,
                     DependencyIdentity = candidate.DependencyIdentity,
+                    CanonicalMutationLane = candidate.CanonicalMutationLane,
                     ProcessingState = Pending,
                     CreatedUtc = DateTime.UtcNow,
                     UpdatedUtc = DateTime.UtcNow
                 });
             }
             if (candidates.Count > 0)
+            {
                 await _db.SaveChangesAsync(cancellationToken);
+                // This is observability only. The immutable work identities
+                // above remain the sole scheduler authority; recording their
+                // bounded count lets Founder inspection distinguish a true
+                // dependency delta from a broad historical replay.
+                await RecordSeededConvergenceWorkAsync(
+                    evaluatorVersion,
+                    phase,
+                    candidates.Count,
+                    cancellationToken);
+            }
 
             if (hasMore)
             {
@@ -347,14 +366,20 @@ internal sealed class LegendConnectHistoricalReevaluationWorkAuthority
         // competing for the first row.
         for (var attempt = 0; attempt < MaximumClaimContentionRetries; attempt++)
         {
-            var candidateId = await SelectNextClaimableIdAsync(
+            var candidate = await SelectNextClaimableWorkAsync(
                 evaluatorVersion,
                 phase,
                 cancellationToken);
-            if (candidateId is null)
+            if (candidate is null)
                 return null;
 
-            var claim = await TryClaimByIdAsync(candidateId.Value, evaluatorVersion, phase, workerId, cancellationToken);
+            var claim = await TryClaimByIdAsync(
+                candidate.WorkItemId,
+                evaluatorVersion,
+                phase,
+                workerId,
+                candidate.WorkKind,
+                cancellationToken);
             if (claim is not null)
                 return claim;
         }
@@ -363,14 +388,16 @@ internal sealed class LegendConnectHistoricalReevaluationWorkAuthority
 
     /// <summary>
     /// Seeds the existing durable work authority with independently executable
-    /// Founder-manifest families.  Work identity is deterministic per retained
-    /// manifest and family index; the canonical family key is the dependency
-    /// lane so two manifests cannot mutate the same family concurrently.
+    /// Founder-manifest families. Work identity is deterministic per retained
+    /// manifest and family index. The caller supplies the bounded, declared
+    /// canonical write lane: ordinary independent families retain their own
+    /// lane while a manifest-local controlled semantic collision shares one
+    /// lane before any canonical mutation begins.
     /// </summary>
     internal async Task<bool> SeedFounderManifestFamiliesAsync(
         int evaluatorVersion,
         Guid manifestId,
-        IReadOnlyList<string> familyKeys,
+        IReadOnlyList<LegendFounderManifestFamilyWorkSeed> families,
         CancellationToken cancellationToken = default)
     {
         var existing = await WorkFor(evaluatorVersion, FounderCurriculumPhase)
@@ -378,10 +405,10 @@ internal sealed class LegendConnectHistoricalReevaluationWorkAuthority
             .ToDictionaryAsync(item => item.SubjectScope, cancellationToken);
         var now = DateTime.UtcNow;
         var changed = false;
-        for (var index = 0; index < familyKeys.Count; index++)
+        for (var index = 0; index < families.Count; index++)
         {
             var scope = index.ToString(System.Globalization.CultureInfo.InvariantCulture);
-            var key = familyKeys[index].Trim().ToLowerInvariant();
+            var family = families[index];
             if (existing.TryGetValue(scope, out var prior))
             {
                 // Explicit Founder resubmission is the only supported way to
@@ -411,7 +438,8 @@ internal sealed class LegendConnectHistoricalReevaluationWorkAuthority
                 WorkIdentity = $"founder-manifest:{manifestId:D}:family:{index}",
                 SubjectId = manifestId,
                 SubjectScope = scope,
-                DependencyIdentity = $"founder-curriculum-family:{key}",
+                DependencyIdentity = family.DependencyIdentity,
+                CanonicalMutationLane = family.CanonicalMutationLane,
                 ProcessingState = Pending,
                 CreatedUtc = now,
                 UpdatedUtc = now
@@ -488,43 +516,120 @@ internal sealed class LegendConnectHistoricalReevaluationWorkAuthority
         return changed;
     }
 
-    internal async Task<LegendHistoricalReevaluationWorkClaim?> TryClaimNextFounderManifestFamilyAsync(
+    /// <summary>
+    /// Seeds one post-canonical derivation-ledger identity per retained Founder
+    /// family.  These rows are intentionally created before processing starts
+    /// but cannot be claimed until every canonical family and declared
+    /// cross-example relationship in the same manifest is committed.  This
+    /// makes dependency inventory a downstream durable step, never a read
+    /// interleaved with a sibling family's canonical mutation transaction.
+    /// </summary>
+    internal async Task<bool> SeedFounderManifestDerivationLedgersAsync(
         int evaluatorVersion,
-        string workerId,
+        Guid manifestId,
+        IReadOnlyList<LegendFounderManifestFamilyWorkSeed> families,
         CancellationToken cancellationToken = default)
     {
-        // Retain the historical method's family-only contract for existing
-        // callers. The hosted processor uses the explicit generic method
-        // below when it is authorized to execute relation work as well.
-        await RequeueExpiredAsync(evaluatorVersion, FounderCurriculumPhase, cancellationToken);
-        for (var attempt = 0; attempt < MaximumClaimContentionRetries; attempt++)
+        var existing = await WorkFor(evaluatorVersion, FounderCurriculumPhase)
+            .Where(item => item.WorkKind == DerivationLedgerWorkKind && item.SubjectId == manifestId)
+            .ToDictionaryAsync(item => item.SubjectScope, cancellationToken);
+        var now = DateTime.UtcNow;
+        var changed = false;
+        for (var index = 0; index < families.Count; index++)
         {
-            var candidateId = await WorkFor(evaluatorVersion, FounderCurriculumPhase)
-                .AsNoTracking()
-                .Where(item => item.WorkKind == FounderManifestFamilyWorkKind &&
-                    item.ProcessingState == Pending &&
-                    !_db.Set<LegendHistoricalReevaluationWorkItem>().Any(active =>
-                        active.Id != item.Id && active.EvaluatorVersion == evaluatorVersion &&
-                        active.Phase == FounderCurriculumPhase && active.ProcessingState == Processing &&
-                        active.DependencyIdentity == item.DependencyIdentity))
-                .OrderBy(item => item.CreatedUtc)
-                .ThenBy(item => item.Id)
-                .Select(item => (Guid?)item.Id)
-                .FirstOrDefaultAsync(cancellationToken);
-            if (candidateId is null)
-                return null;
+            var scope = index.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            if (existing.TryGetValue(scope, out var prior))
+            {
+                if (prior.ProcessingState == Failed)
+                {
+                    prior.ProcessingState = Pending;
+                    prior.LeaseOwner = null;
+                    prior.LeaseToken = null;
+                    prior.LeaseExpiresUtc = null;
+                    prior.AttemptCount = 0;
+                    prior.LastErrorCode = null;
+                    prior.LastErrorMessage = null;
+                    prior.UpdatedUtc = now;
+                    changed = true;
+                }
+                continue;
+            }
 
-            var claim = await TryClaimByIdAsync(
-                candidateId.Value,
-                evaluatorVersion,
-                FounderCurriculumPhase,
-                workerId,
-                FounderManifestFamilyWorkKind,
-                cancellationToken);
-            if (claim is not null)
-                return claim;
+            var family = families[index];
+            _db.Set<LegendHistoricalReevaluationWorkItem>().Add(new LegendHistoricalReevaluationWorkItem
+            {
+                Id = Guid.NewGuid(),
+                EvaluatorVersion = evaluatorVersion,
+                Phase = FounderCurriculumPhase,
+                WorkKind = DerivationLedgerWorkKind,
+                WorkIdentity = $"founder-manifest:{manifestId:D}:derivation-ledger:{index}",
+                SubjectId = manifestId,
+                SubjectScope = scope,
+                DependencyIdentity = $"founder-manifest-ledger:{manifestId:D}:family:{index}",
+                CanonicalMutationLane = family.CanonicalMutationLane,
+                ProcessingState = Pending,
+                CreatedUtc = now,
+                UpdatedUtc = now
+            });
+            changed = true;
         }
-        return null;
+        if (changed)
+            await _db.SaveChangesAsync(cancellationToken);
+        return changed;
+    }
+
+    /// <summary>
+    /// Appends the post-canonical ledger work for a SourceFamilies evaluator
+    /// item while its canonical family owner still holds the durable execution
+    /// transaction.  The child has the exact same canonical-family lane and
+    /// cannot execute until every source-family canonical item in this phase
+    /// has committed.  Thus normal intake, replay, and convergence all use
+    /// one ownership model: mutate the family first, then project its compact
+    /// dependency ledger through separately leased durable work.
+    /// </summary>
+    internal async Task EnqueueFamilyDerivationLedgerAsync(
+        LegendHistoricalReevaluationWorkClaim parent,
+        CancellationToken cancellationToken = default)
+    {
+        if (!LegendConnectDerivationContracts.ForEvaluator(parent.EvaluatorVersion)
+                .Any(item => item.RequiresDependencyInventory) ||
+            parent.WorkKind != CanonicalWorkKind ||
+            parent.SubjectId is not Guid familyId ||
+            !string.Equals(parent.Phase,
+                LegendConnectLanguageIntelligenceReevaluationPhases.SourceFamilies,
+                StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        var parentItem = await WorkFor(parent.EvaluatorVersion, parent.Phase)
+            .AsNoTracking()
+            .SingleAsync(item => item.Id == parent.WorkItemId &&
+                item.ProcessingState == Processing && item.LeaseToken == parent.LeaseToken,
+                cancellationToken);
+        var workIdentity = $"derivation-ledger:{parentItem.WorkIdentity}";
+        var exists = await WorkFor(parent.EvaluatorVersion, parent.Phase)
+            .AnyAsync(item => item.WorkIdentity == workIdentity, cancellationToken);
+        if (exists)
+            return;
+
+        var now = DateTime.UtcNow;
+        _db.Set<LegendHistoricalReevaluationWorkItem>().Add(new LegendHistoricalReevaluationWorkItem
+        {
+            Id = Guid.NewGuid(),
+            EvaluatorVersion = parent.EvaluatorVersion,
+            Phase = parent.Phase,
+            WorkKind = DerivationLedgerWorkKind,
+            WorkIdentity = workIdentity,
+            SubjectId = familyId,
+            SubjectScope = parent.SubjectScope,
+            DependencyIdentity = $"derivation-ledger:family:{familyId:D}:{parent.SubjectScope}",
+            CanonicalMutationLane = parentItem.CanonicalMutationLane,
+            ProcessingState = Pending,
+            CreatedUtc = now,
+            UpdatedUtc = now
+        });
+        await _db.SaveChangesAsync(cancellationToken);
     }
 
     internal async Task<LegendHistoricalReevaluationWorkClaim?> TryClaimNextFounderManifestWorkAsync(
@@ -538,19 +643,39 @@ internal sealed class LegendConnectHistoricalReevaluationWorkAuthority
             var candidate = await WorkFor(evaluatorVersion, FounderCurriculumPhase)
                 .AsNoTracking()
                 .Where(item => (item.WorkKind == FounderManifestFamilyWorkKind ||
-                                 item.WorkKind == FounderManifestSemanticRelationWorkKind) &&
+                                 item.WorkKind == FounderManifestSemanticRelationWorkKind ||
+                                 item.WorkKind == DerivationLedgerWorkKind) &&
                     item.ProcessingState == Pending &&
                     !_db.Set<LegendHistoricalReevaluationWorkItem>().Any(active =>
                         active.Id != item.Id && active.EvaluatorVersion == evaluatorVersion &&
                         active.Phase == FounderCurriculumPhase && active.ProcessingState == Processing &&
                         active.DependencyIdentity == item.DependencyIdentity) &&
+                    (item.CanonicalMutationLane == null ||
+                     !_db.Set<LegendHistoricalReevaluationWorkItem>().Any(active =>
+                         active.Id != item.Id &&
+                         active.ProcessingState == Processing &&
+                         active.CanonicalMutationLane == item.CanonicalMutationLane)) &&
                     (item.WorkKind != FounderManifestSemanticRelationWorkKind ||
                      !_db.Set<LegendHistoricalReevaluationWorkItem>().Any(family =>
                          family.EvaluatorVersion == evaluatorVersion &&
                          family.Phase == FounderCurriculumPhase &&
                          family.WorkKind == FounderManifestFamilyWorkKind &&
                          family.SubjectId == item.SubjectId &&
-                         family.ProcessingState != Completed)))
+                         family.ProcessingState != Completed)) &&
+                    // Ledger projection is a manifest-local downstream
+                    // boundary: it starts only after all canonical family and
+                    // relationship work for this retained submission commits.
+                    // This preserves independent family parallelism while
+                    // forbidding a dependency read from interleaving with a
+                    // sibling canonical write in the same manifest.
+                    (item.WorkKind != DerivationLedgerWorkKind ||
+                     !_db.Set<LegendHistoricalReevaluationWorkItem>().Any(prerequisite =>
+                         prerequisite.EvaluatorVersion == evaluatorVersion &&
+                         prerequisite.Phase == FounderCurriculumPhase &&
+                         prerequisite.SubjectId == item.SubjectId &&
+                         (prerequisite.WorkKind == FounderManifestFamilyWorkKind ||
+                          prerequisite.WorkKind == FounderManifestSemanticRelationWorkKind) &&
+                         prerequisite.ProcessingState != Completed)))
                 .OrderBy(item => item.CreatedUtc)
                 .ThenBy(item => item.Id)
                 .Select(item => new { item.Id, item.WorkKind })
@@ -809,7 +934,8 @@ internal sealed class LegendConnectHistoricalReevaluationWorkAuthority
     {
         var now = DateTime.UtcNow;
         var work = WorkFor(evaluatorVersion, phase).AsNoTracking()
-            .Where(item => item.WorkKind == CanonicalWorkKind);
+            .Where(item => item.WorkKind == CanonicalWorkKind ||
+                item.WorkKind == DerivationLedgerWorkKind);
         var total = await work.LongCountAsync(cancellationToken);
         var pending = await work.LongCountAsync(item => item.ProcessingState == Pending, cancellationToken);
         var processing = await work.LongCountAsync(item => item.ProcessingState == Processing, cancellationToken);
@@ -927,6 +1053,7 @@ internal sealed class LegendConnectHistoricalReevaluationWorkAuthority
             item.EvaluatorVersion == claim.EvaluatorVersion &&
             item.Phase == claim.Phase &&
                 (item.WorkKind == CanonicalWorkKind ||
+                 item.WorkKind == DerivationLedgerWorkKind ||
                  item.WorkKind == FounderManifestFamilyWorkKind ||
                  item.WorkKind == FounderManifestSemanticRelationWorkKind) &&
             item.ProcessingState == Processing &&
@@ -1119,6 +1246,9 @@ internal sealed class LegendConnectHistoricalReevaluationWorkAuthority
         string workKind,
         CancellationToken cancellationToken)
     {
+        var ledgerRequiresPhaseCanonicalDrain =
+            string.Equals(phase, LegendConnectLanguageIntelligenceReevaluationPhases.SourceFamilies,
+                StringComparison.Ordinal);
         var now = DateTime.UtcNow;
         var token = Guid.NewGuid();
         var expires = now.Add(LeaseDuration);
@@ -1130,18 +1260,30 @@ internal sealed class LegendConnectHistoricalReevaluationWorkAuthority
                 !_db.Set<LegendHistoricalReevaluationWorkItem>().Any(active =>
                     active.Id != item.Id && active.EvaluatorVersion == evaluatorVersion && active.Phase == phase &&
                     active.ProcessingState == Processing &&
-                    active.DependencyIdentity == item.DependencyIdentity));
+                    active.DependencyIdentity == item.DependencyIdentity) &&
+                (item.CanonicalMutationLane == null ||
+                 !_db.Set<LegendHistoricalReevaluationWorkItem>().Any(active =>
+                     active.Id != item.Id &&
+                     active.ProcessingState == Processing &&
+                     active.CanonicalMutationLane == item.CanonicalMutationLane)))
+            .Where(item => !ledgerRequiresPhaseCanonicalDrain || item.WorkKind != DerivationLedgerWorkKind ||
+                (_db.Set<LegendHistoricalReevaluationWorkItem>().Any(seed =>
+                    seed.EvaluatorVersion == evaluatorVersion && seed.Phase == phase &&
+                    seed.WorkKind == SeedWorkKind && seed.ProcessingState == Completed) &&
+                 !_db.Set<LegendHistoricalReevaluationWorkItem>().Any(canonical =>
+                    canonical.EvaluatorVersion == evaluatorVersion && canonical.Phase == phase &&
+                    canonical.WorkKind == CanonicalWorkKind && canonical.ProcessingState != Completed)));
 
         if (_db.Database.IsSqlServer())
         {
             try
             {
-                // NOLOCK is intentionally limited to the dependency-lane
-                // admission observation. A live owned transaction is
-                // conservatively visible as Processing without waiting on it;
-                // a stale observation can only defer this bounded retry. The
-                // filtered unique index remains the final cross-instance
-                // collision authority.
+                // Claim only the exact pending row.  The filtered unique
+                // indexes are the database-authoritative collision fence for
+                // both the dependency lane and the cross-phase canonical
+                // family lane; no dirty-read admission observation is needed.
+                // A losing claimant performs no evaluator work and simply
+                // leaves the identity for the normal bounded scheduler.
                 var updated = await _db.Database.ExecuteSqlInterpolatedAsync($"""
                     UPDATE [target] WITH (ROWLOCK)
                     SET [ProcessingState] = {Processing},
@@ -1156,15 +1298,31 @@ internal sealed class LegendConnectHistoricalReevaluationWorkAuthority
                       AND [target].[Phase] = {phase}
                       AND [target].[WorkKind] = {workKind}
                       AND [target].[ProcessingState] = {Pending}
-                      AND NOT EXISTS
+                      AND
                       (
-                          SELECT 1
-                          FROM [LegendHistoricalReevaluationWorkItems] AS [active] WITH (NOLOCK)
-                          WHERE [active].[Id] <> [target].[Id]
-                            AND [active].[EvaluatorVersion] = {evaluatorVersion}
-                            AND [active].[Phase] = {phase}
-                            AND [active].[ProcessingState] = {Processing}
-                            AND [active].[DependencyIdentity] = [target].[DependencyIdentity]
+                          {ledgerRequiresPhaseCanonicalDrain} = CAST(0 AS bit)
+                          OR [target].[WorkKind] <> {DerivationLedgerWorkKind}
+                          OR
+                          (
+                              EXISTS
+                              (
+                                  SELECT 1
+                                  FROM [LegendHistoricalReevaluationWorkItems] AS [seed]
+                                  WHERE [seed].[EvaluatorVersion] = {evaluatorVersion}
+                                    AND [seed].[Phase] = {phase}
+                                    AND [seed].[WorkKind] = {SeedWorkKind}
+                                    AND [seed].[ProcessingState] = {Completed}
+                              )
+                              AND NOT EXISTS
+                              (
+                                  SELECT 1
+                                  FROM [LegendHistoricalReevaluationWorkItems] AS [canonical]
+                                  WHERE [canonical].[EvaluatorVersion] = {evaluatorVersion}
+                                    AND [canonical].[Phase] = {phase}
+                                    AND [canonical].[WorkKind] = {CanonicalWorkKind}
+                                    AND [canonical].[ProcessingState] <> {Completed}
+                              )
+                          )
                       )
                     """, cancellationToken);
                 if (updated != 1)
@@ -1223,7 +1381,7 @@ internal sealed class LegendConnectHistoricalReevaluationWorkAuthority
         return ToClaim(item, token, expires);
     }
 
-    private async Task<Guid?> SelectNextClaimableIdAsync(
+    private async Task<LegendClaimCandidate?> SelectNextClaimableWorkAsync(
         int evaluatorVersion,
         string phase,
         CancellationToken cancellationToken)
@@ -1238,22 +1396,37 @@ internal sealed class LegendConnectHistoricalReevaluationWorkAuthority
                         FROM [LegendHistoricalReevaluationWorkItems] AS [item] WITH (ROWLOCK, NOWAIT)
                         WHERE [item].[EvaluatorVersion] = {evaluatorVersion}
                           AND [item].[Phase] = {phase}
-                          AND [item].[WorkKind] = {CanonicalWorkKind}
+                          AND [item].[WorkKind] IN ({CanonicalWorkKind}, {DerivationLedgerWorkKind})
                           AND [item].[ProcessingState] = {Pending}
-                          AND NOT EXISTS
+                          AND
                           (
-                              SELECT 1
-                              FROM [LegendHistoricalReevaluationWorkItems] AS [active] WITH (NOLOCK)
-                              WHERE [active].[Id] <> [item].[Id]
-                                AND [active].[EvaluatorVersion] = {evaluatorVersion}
-                                AND [active].[Phase] = {phase}
-                                AND [active].[ProcessingState] = {Processing}
-                                AND [active].[DependencyIdentity] = [item].[DependencyIdentity]
+                              [item].[WorkKind] <> {DerivationLedgerWorkKind}
+                              OR
+                              (
+                                  EXISTS
+                                  (
+                                      SELECT 1
+                                      FROM [LegendHistoricalReevaluationWorkItems] AS [seed]
+                                      WHERE [seed].[EvaluatorVersion] = {evaluatorVersion}
+                                        AND [seed].[Phase] = {phase}
+                                        AND [seed].[WorkKind] = {SeedWorkKind}
+                                        AND [seed].[ProcessingState] = {Completed}
+                                  )
+                                  AND NOT EXISTS
+                                  (
+                                      SELECT 1
+                                      FROM [LegendHistoricalReevaluationWorkItems] AS [canonical]
+                                      WHERE [canonical].[EvaluatorVersion] = {evaluatorVersion}
+                                        AND [canonical].[Phase] = {phase}
+                                        AND [canonical].[WorkKind] = {CanonicalWorkKind}
+                                        AND [canonical].[ProcessingState] <> {Completed}
+                                  )
+                              )
                           )
                         ORDER BY [item].[CreatedUtc], [item].[Id]
                         """)
                     .AsNoTracking()
-                    .Select(item => (Guid?)item.Id)
+                    .Select(item => new LegendClaimCandidate(item.Id, item.WorkKind))
                     .FirstOrDefaultAsync(cancellationToken);
             }
             catch (SqlException exception) when (exception.Number == 1222)
@@ -1264,16 +1437,30 @@ internal sealed class LegendConnectHistoricalReevaluationWorkAuthority
 
         return await WorkFor(evaluatorVersion, phase)
             .AsNoTracking()
-            .Where(item => item.WorkKind == CanonicalWorkKind && item.ProcessingState == Pending)
+            .Where(item => (item.WorkKind == CanonicalWorkKind ||
+                            item.WorkKind == DerivationLedgerWorkKind) &&
+                item.ProcessingState == Pending)
             .Where(item => !_db.Set<LegendHistoricalReevaluationWorkItem>().Any(active =>
                 active.Id != item.Id &&
                 active.EvaluatorVersion == evaluatorVersion &&
                 active.Phase == phase &&
                 active.ProcessingState == Processing &&
                 active.DependencyIdentity == item.DependencyIdentity))
+            .Where(item => item.CanonicalMutationLane == null ||
+                !_db.Set<LegendHistoricalReevaluationWorkItem>().Any(active =>
+                    active.Id != item.Id &&
+                    active.ProcessingState == Processing &&
+                    active.CanonicalMutationLane == item.CanonicalMutationLane))
+            .Where(item => item.WorkKind != DerivationLedgerWorkKind ||
+                (_db.Set<LegendHistoricalReevaluationWorkItem>().Any(seed =>
+                    seed.EvaluatorVersion == evaluatorVersion && seed.Phase == phase &&
+                    seed.WorkKind == SeedWorkKind && seed.ProcessingState == Completed) &&
+                 !_db.Set<LegendHistoricalReevaluationWorkItem>().Any(canonical =>
+                    canonical.EvaluatorVersion == evaluatorVersion && canonical.Phase == phase &&
+                    canonical.WorkKind == CanonicalWorkKind && canonical.ProcessingState != Completed)))
             .OrderBy(item => item.CreatedUtc)
             .ThenBy(item => item.Id)
-            .Select(item => (Guid?)item.Id)
+            .Select(item => new LegendClaimCandidate(item.Id, item.WorkKind))
             .FirstOrDefaultAsync(cancellationToken);
     }
 
@@ -1315,6 +1502,48 @@ internal sealed class LegendConnectHistoricalReevaluationWorkAuthority
         CancellationToken cancellationToken) =>
         (await SelectUnseededEligibleWorkAsync(evaluatorVersion, phase, 1, cancellationToken)).Count > 0;
 
+    /// <summary>
+    /// The convergence row is strictly an inspection projection; durable work
+    /// identities remain the scheduler authority. Keep this update provider
+    /// safe so the in-memory lifecycle contract exercises the same phase and
+    /// work decisions instead of turning a read-model update into a seeded
+    /// work failure.
+    /// </summary>
+    private async Task RecordSeededConvergenceWorkAsync(
+        int evaluatorVersion,
+        string phase,
+        int seededCount,
+        CancellationToken cancellationToken)
+    {
+        var now = DateTime.UtcNow;
+        var query = _db.Set<LegendLanguageDerivationConvergence>()
+            .Where(item => item.TargetEvaluatorVersion == evaluatorVersion &&
+                (item.State == "Queued" || item.State == "Processing"));
+        if (_db.Database.IsRelational())
+        {
+            await query.ExecuteUpdateAsync(setters => setters
+                .SetProperty(item => item.PlannedWorkItemCount,
+                    item => item.PlannedWorkItemCount + seededCount)
+                .SetProperty(item => item.DependencyInventoryWorkItemCount,
+                    item => phase == LegendConnectLanguageIntelligenceReevaluationPhases.DependencyInventory
+                        ? item.DependencyInventoryWorkItemCount + seededCount
+                        : item.DependencyInventoryWorkItemCount)
+                .SetProperty(item => item.State, "Processing")
+                .SetProperty(item => item.UpdatedUtc, now), cancellationToken);
+            return;
+        }
+
+        var convergence = await query.SingleOrDefaultAsync(cancellationToken);
+        if (convergence is null)
+            return;
+        convergence.PlannedWorkItemCount += seededCount;
+        if (phase == LegendConnectLanguageIntelligenceReevaluationPhases.DependencyInventory)
+            convergence.DependencyInventoryWorkItemCount += seededCount;
+        convergence.State = "Processing";
+        convergence.UpdatedUtc = now;
+        await _db.SaveChangesAsync(cancellationToken);
+    }
+
     private async Task<List<HistoricalWorkSeedCandidate>> SelectUnseededEligibleWorkAsync(
         int evaluatorVersion,
         string phase,
@@ -1323,18 +1552,52 @@ internal sealed class LegendConnectHistoricalReevaluationWorkAuthority
     {
         var bounded = Math.Clamp(take, 1, 251);
         var work = _db.Set<LegendHistoricalReevaluationWorkItem>();
+        if (phase == LegendConnectLanguageIntelligenceReevaluationPhases.DependencyInventory)
+        {
+            // This is a bounded metadata-only inventory for evaluators that
+            // completed before dependency edges were introduced. It never
+            // calls SourceFamilies analysis and never changes canonical
+            // evidence; the family identity merely gives the existing work
+            // authority a resumable, language-safe partition.
+            var cursor = await GetDependencyInventoryCursorAsync(cancellationToken);
+            var cursorIdentity = cursor?.ToString("D") ?? "origin";
+            var workIdentity = $"dependency-inventory:after:{cursorIdentity}";
+            var exists = await work.AnyAsync(candidate => candidate.EvaluatorVersion == evaluatorVersion &&
+                candidate.Phase == phase && candidate.WorkKind == CanonicalWorkKind &&
+                candidate.WorkIdentity == workIdentity, cancellationToken);
+            if (exists)
+                return [];
+
+            var rows = await _db.Set<LegendCurriculumExample>().AsNoTracking()
+                .Where(item => item.SupersededUtc == null &&
+                    (!cursor.HasValue || item.CurriculumFamilyId.CompareTo(cursor.Value) > 0))
+                .Select(item => item.CurriculumFamilyId)
+                .Distinct()
+                .OrderBy(item => item)
+                .Take(1)
+                .ToListAsync(cancellationToken);
+            return rows.Select(_ => new HistoricalWorkSeedCandidate(
+                cursor ?? Guid.Empty,
+                DependencyInventoryFamiliesPerWorkItem.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                workIdentity,
+                "dependency-inventory"))
+                .ToList();
+        }
+
         if (phase == LegendConnectLanguageIntelligenceReevaluationPhases.SourceFamilies)
         {
             var rows = await (
                 from example in _db.Set<LegendCurriculumExample>().AsNoTracking()
                 join unit in _db.Set<LegendLanguageTextUnit>().AsNoTracking()
                     on example.TextUnitId equals unit.Id
+                join family in _db.Set<LegendCurriculumFamily>().AsNoTracking()
+                    on example.CurriculumFamilyId equals family.Id
                 where example.DerivedFromCurriculumExampleId == null && example.SupersededUtc == null &&
                     unit.IsTrainingEligible &&
                     !work.Any(item => item.EvaluatorVersion == evaluatorVersion && item.Phase == phase &&
                         item.WorkKind == CanonicalWorkKind && item.SubjectId == example.CurriculumFamilyId &&
                         item.SubjectScope == example.LanguageCode)
-                select new { example.CurriculumFamilyId, example.LanguageCode }
+                select new { example.CurriculumFamilyId, example.LanguageCode, family.FamilyKey }
             ).Distinct()
                 .OrderBy(item => item.CurriculumFamilyId)
                 .ThenBy(item => item.LanguageCode)
@@ -1344,7 +1607,8 @@ internal sealed class LegendConnectHistoricalReevaluationWorkAuthority
                 item.CurriculumFamilyId,
                 item.LanguageCode,
                 $"source-family:{item.CurriculumFamilyId:D}|language:{item.LanguageCode}",
-                $"source-language:{item.LanguageCode}")).ToList();
+                $"source-language:{item.LanguageCode}",
+                CanonicalFamilyMutationLane(item.FamilyKey))).ToList();
         }
 
         if (phase == LegendConnectLanguageIntelligenceReevaluationPhases.Alignments)
@@ -1423,6 +1687,15 @@ internal sealed class LegendConnectHistoricalReevaluationWorkAuthority
             .Select(item => item.SubjectId)
             .SingleOrDefaultAsync(cancellationToken);
 
+    private Task<Guid?> GetDependencyInventoryCursorAsync(
+        CancellationToken cancellationToken) => _db.Set<LegendConnectRuntimePolicy>()
+        .AsNoTracking()
+        .Where(item => item.ScopeKey == "Global" &&
+            item.LanguageIntelligenceReevaluationPhase ==
+                LegendConnectLanguageIntelligenceReevaluationPhases.DependencyInventory)
+        .Select(item => item.LanguageIntelligenceReevaluationCursor)
+        .SingleOrDefaultAsync(cancellationToken);
+
     private static LegendHistoricalReevaluationWorkClaim ToClaim(
         LegendHistoricalReevaluationWorkItem item,
         Guid leaseToken,
@@ -1441,11 +1714,15 @@ internal sealed class LegendConnectHistoricalReevaluationWorkAuthority
         "historical_reevaluation_" + exception.GetType().Name
             .ToLowerInvariant()[..Math.Min(exception.GetType().Name.Length, 80)];
 
+    internal static string CanonicalFamilyMutationLane(string familyKey) =>
+        "canonical-family:" + familyKey.Trim().ToLowerInvariant();
+
     private sealed record HistoricalWorkSeedCandidate(
         Guid SubjectId,
         string SubjectScope,
         string WorkIdentity,
-        string DependencyIdentity);
+        string DependencyIdentity,
+        string? CanonicalMutationLane = null);
 
     /// <summary>
     /// Lifetime of the database ownership fence for one canonical evaluator.
@@ -1520,6 +1797,18 @@ internal sealed record LegendHistoricalReevaluationWorkClaim(
     string DependencyIdentity,
     Guid LeaseToken,
     DateTime LeaseExpiresUtc);
+
+internal sealed record LegendClaimCandidate(Guid WorkItemId, string WorkKind);
+
+/// <summary>
+/// One retained Founder family routed through the existing durable work
+/// authority. DependencyIdentity is execution metadata only; it is derived
+/// from validated manifest declarations and cannot alter curriculum meaning.
+/// </summary>
+internal sealed record LegendFounderManifestFamilyWorkSeed(
+    string FamilyKey,
+    string DependencyIdentity,
+    string CanonicalMutationLane);
 
 internal sealed record LegendHistoricalReevaluationSeedResult(
     int SeededCount,

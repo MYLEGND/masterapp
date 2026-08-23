@@ -22,15 +22,39 @@ namespace AgentPortal.Tests;
 public sealed class LegendConnectHistoricalReevaluationVersioningTests
 {
     [Fact]
-    public void CurrentEvaluatorVersion_IsNineteenForFounderSemanticTransformationReplay()
+    public void CurrentEvaluatorVersion_IsTwentyForFounderGovernedContentBindingReplay()
     {
         Assert.Equal(
-            19,
+            20,
             LegendConnectLanguageIntelligenceEvaluatorVersion.Current);
     }
 
     [Fact]
-    public async Task MaterialEvaluatorVersionAdvanceReplaysAllActiveHistoryOnceAndThenConverges()
+    public async Task InFlightV19_IsNeverResetOrReclassifiedWhenV20CodeStarts()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var configuration = Configuration();
+        var registry = new LegendLanguageRegistry(db, configuration);
+        var runtime = new LegendConnectRuntimePolicyAuthority(
+            db, new FounderAccess(), registry, configuration,
+            NullLogger<LegendConnectRuntimePolicyAuthority>.Instance);
+
+        var v19 = await runtime.GetOrStartLanguageIntelligenceReevaluationAsync(19);
+        Assert.True(v19.RequiresWork);
+        Assert.Equal(19, v19.TargetEvaluatorVersion);
+        Assert.Equal(LegendConnectLanguageIntelligenceReevaluationPhases.SourceFamilies, v19.Phase);
+
+        var v20Request = await runtime.GetOrStartLanguageIntelligenceReevaluationAsync(20);
+        Assert.Equal(19, v20Request.TargetEvaluatorVersion);
+        Assert.Equal(v19.Phase, v20Request.Phase);
+        Assert.Equal(v19.CompletedEvaluatorVersion, v20Request.CompletedEvaluatorVersion);
+        Assert.Empty(await db.LegendLanguageDerivationConvergences
+            .Where(item => item.TargetEvaluatorVersion == 20)
+            .ToListAsync());
+    }
+
+    [Fact]
+    public async Task UnchangedDerivationContracts_AdvanceWithoutBroadHistoricalReplay()
     {
         await using var db = ControllerTestHelpers.BuildDb();
         var configuration = Configuration();
@@ -90,24 +114,24 @@ public sealed class LegendConnectHistoricalReevaluationVersioningTests
             TextUnits = await db.LegendLanguageTextUnits.CountAsync(),
             Alignments = await db.LegendTranslationAlignments.CountAsync(),
             Submissions = await db.LegendFounderTrainingSubmissions.CountAsync(),
-            SubmissionUnits = await db.LegendFounderTrainingSubmissionUnits.CountAsync()
+            SubmissionUnits = await db.LegendFounderTrainingSubmissionUnits.CountAsync(),
+            QualityEvidence = await db.LegendTranslationQualityEvidence.CountAsync()
         };
         var pattern = await db.LegendLanguageStructuralPatterns.FirstAsync();
         pattern.MaturityState = "StaleTestState";
         pattern.SupportCount = 99;
         await db.SaveChangesAsync();
 
-        // This is the Version N -> N+1 simulation. A future material change
-        // advances the deployed marker; the same historical evidence resumes
-        // through the existing worker-owned phases from their durable start.
+        // A version number alone is not semantic invalidation. The contract
+        // graph is unchanged from v1 to v2, so all canonical evidence must be
+        // reused rather than rebuilding SourceFamilies merely because the
+        // deployment marker advanced.
         var versionTwoStart = await runtime.GetOrStartLanguageIntelligenceReevaluationAsync(2);
-        Assert.True(versionTwoStart.RequiresWork);
-        Assert.Equal(1, versionTwoStart.CompletedEvaluatorVersion);
+        Assert.False(versionTwoStart.RequiresWork);
+        Assert.Equal(2, versionTwoStart.CompletedEvaluatorVersion);
         Assert.Equal(2, versionTwoStart.TargetEvaluatorVersion);
-        Assert.Equal(LegendConnectLanguageIntelligenceReevaluationPhases.SourceFamilies, versionTwoStart.Phase);
+        Assert.Equal(LegendConnectLanguageIntelligenceReevaluationPhases.Complete, versionTwoStart.Phase);
         Assert.Null(versionTwoStart.Cursor);
-
-        await DrainCanonicalWorkerCycleAsync(runtime, curriculum, intelligence, operations, 2, take: 1);
 
         var versionTwo = await runtime.GetOrStartLanguageIntelligenceReevaluationAsync(2);
         var sourceLineageAfter = new
@@ -115,18 +139,24 @@ public sealed class LegendConnectHistoricalReevaluationVersioningTests
             TextUnits = await db.LegendLanguageTextUnits.CountAsync(),
             Alignments = await db.LegendTranslationAlignments.CountAsync(),
             Submissions = await db.LegendFounderTrainingSubmissions.CountAsync(),
-            SubmissionUnits = await db.LegendFounderTrainingSubmissionUnits.CountAsync()
+            SubmissionUnits = await db.LegendFounderTrainingSubmissionUnits.CountAsync(),
+            QualityEvidence = await db.LegendTranslationQualityEvidence.CountAsync()
         };
-        var recomputed = await db.LegendLanguageStructuralPatterns.SingleAsync(item => item.Id == pattern.Id);
+        var unrecomputed = await db.LegendLanguageStructuralPatterns.SingleAsync(item => item.Id == pattern.Id);
 
         Assert.False(versionTwo.RequiresWork);
         Assert.Equal(2, versionTwo.CompletedEvaluatorVersion);
         Assert.Equal(sourceLineageBefore, sourceLineageAfter);
-        Assert.NotEqual("StaleTestState", recomputed.MaturityState);
-        Assert.NotEqual(99, recomputed.SupportCount);
+        Assert.Equal("StaleTestState", unrecomputed.MaturityState);
+        Assert.Equal(99, unrecomputed.SupportCount);
         Assert.False((await db.LegendTranslationAlignments.SingleAsync(item => item.Id == providerAlignment.Id)).HumanVerified);
-        Assert.Contains(await db.LegendTranslationQualityEvidence.ToListAsync(), item =>
-            item.ObservedAlignmentId == providerAlignment.Id && item.Signal == "Insufficient");
+        Assert.Equal(sourceLineageBefore.QualityEvidence,
+            await db.LegendTranslationQualityEvidence.CountAsync());
+        var convergence = await db.LegendLanguageDerivationConvergences
+            .SingleAsync(item => item.TargetEvaluatorVersion == 2);
+        Assert.Equal("Reused", convergence.State);
+        Assert.Equal(0, convergence.AffectedCanonicalArtifactCount);
+        Assert.Equal(convergence.ExistingCanonicalArtifactCount, convergence.ReusedCanonicalArtifactCount);
 
         var converged = new
         {
@@ -135,7 +165,6 @@ public sealed class LegendConnectHistoricalReevaluationVersioningTests
             Quality = await db.LegendTranslationQualityEvidence.CountAsync(),
             Relationships = await db.LegendLanguageStructuralRelationships.CountAsync()
         };
-        await DrainCanonicalWorkerCycleAsync(runtime, curriculum, intelligence, operations, 2, take: 1);
         var secondPass = new
         {
             Patterns = await db.LegendLanguageStructuralPatterns.CountAsync(),
@@ -144,6 +173,61 @@ public sealed class LegendConnectHistoricalReevaluationVersioningTests
             Relationships = await db.LegendLanguageStructuralRelationships.CountAsync()
         };
         Assert.Equal(converged, secondPass);
+    }
+
+    [Fact]
+    public async Task ChangedEarlyDerivationContract_ExpandsOnlyThroughItsDeclaredDownstreamDependencies()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var configuration = Configuration();
+        var registry = new LegendLanguageRegistry(db, configuration);
+        var runtime = new LegendConnectRuntimePolicyAuthority(
+            db, new FounderAccess(), registry, configuration,
+            NullLogger<LegendConnectRuntimePolicyAuthority>.Instance);
+        var intelligence = new LegendConnectTranslationIntelligence(db, configuration, runtime);
+        var corpus = new LegendConnectCorpusService(
+            db, registry, NullLogger<LegendConnectCorpusService>.Instance, intelligence: intelligence);
+        var curriculum = new LegendConnectCurriculumService(db, registry, corpus);
+        var operations = new LegendConnectOperations(
+            db, registry, corpus, configuration, runtimePolicy: runtime,
+            curriculum: curriculum, intelligence: intelligence);
+
+        var submitted = await curriculum.SubmitFounderEnglishBatchAsync(new LegendConnectCurriculumBatchSubmission(
+            "dependency.frontier", "Controlled historical evidence",
+            [
+                new LegendConnectCurriculumExampleSubmission(
+                    "I compare the governed state.", new Dictionary<string, string>
+                    {
+                        ["actor"] = "I", ["intent"] = "compare"
+                    }),
+                new LegendConnectCurriculumExampleSubmission(
+                    "You compare the governed state.", new Dictionary<string, string>
+                    {
+                        ["actor"] = "You", ["intent"] = "compare"
+                    })
+            ]));
+        Assert.True(submitted.Succeeded, submitted.Message);
+
+        await EstablishCompletedContractBaselineAsync(
+            db,
+            19,
+            LegendConnectDerivationContracts.SourceSemanticProjection);
+        var start = await runtime.GetOrStartLanguageIntelligenceReevaluationAsync(20);
+        Assert.True(start.RequiresWork);
+        Assert.Equal(LegendConnectLanguageIntelligenceReevaluationPhases.DependencyInventory, start.Phase);
+        Assert.Equal(19, start.CompletedEvaluatorVersion);
+
+        await DrainCanonicalWorkerCycleAsync(runtime, curriculum, intelligence, operations, 20, take: 1);
+        var completed = await runtime.GetOrStartLanguageIntelligenceReevaluationAsync(20);
+        Assert.False(completed.RequiresWork);
+        Assert.Equal(20, completed.CompletedEvaluatorVersion);
+        var convergence = await db.LegendLanguageDerivationConvergences
+            .SingleAsync(item => item.TargetEvaluatorVersion == 20);
+        Assert.Equal("Completed", convergence.State);
+        Assert.Equal(LegendConnectLanguageIntelligenceReevaluationPhases.SourceFamilies,
+            convergence.EarliestAffectedPhase);
+        Assert.True(convergence.AffectedCanonicalArtifactCount > 0);
+        Assert.True(convergence.ReusedCanonicalArtifactCount < convergence.ExistingCanonicalArtifactCount);
     }
 
     [Fact]
@@ -179,10 +263,12 @@ public sealed class LegendConnectHistoricalReevaluationVersioningTests
             3,
             take: 1);
         var historicalSeed = await SeedFounderConflictAsync(historicalDb, historicalRegistry);
+        await EstablishCompletedContractBaselineAsync(historicalDb, 19, corruptedKind:
+            LegendConnectDerivationContracts.ProviderObservationProjection);
         var replay = await historicalRuntime.GetOrStartLanguageIntelligenceReevaluationAsync(
             LegendConnectLanguageIntelligenceEvaluatorVersion.Current);
         Assert.True(replay.RequiresWork);
-        Assert.Equal(LegendConnectLanguageIntelligenceReevaluationPhases.SourceFamilies, replay.Phase);
+        Assert.Equal(LegendConnectLanguageIntelligenceReevaluationPhases.DependencyInventory, replay.Phase);
 
         await DrainCanonicalWorkerCycleAsync(
             historicalRuntime,
@@ -488,7 +574,21 @@ public sealed class LegendConnectHistoricalReevaluationVersioningTests
             if (!state.RequiresWork)
                 return;
             LegendConnectHistoricalReevaluationProgress progress;
-            if (state.Phase == LegendConnectLanguageIntelligenceReevaluationPhases.ProviderObservations)
+            if (state.Phase == LegendConnectLanguageIntelligenceReevaluationPhases.DependencyInventory)
+            {
+                var familyIds = await curriculum.GetHistoricalDependencyInventoryFamilyIdsAsync();
+                foreach (var familyId in familyIds)
+                {
+                    await curriculum.InventoryHistoricalDerivationDependenciesAsync(
+                        familyId,
+                        evaluatorVersion);
+                }
+                progress = new LegendConnectHistoricalReevaluationProgress(
+                    familyIds.Count,
+                    familyIds.Count == 0 ? null : familyIds[^1],
+                    PhaseComplete: true);
+            }
+            else if (state.Phase == LegendConnectLanguageIntelligenceReevaluationPhases.ProviderObservations)
             {
                 progress = await intelligence.ReevaluateHistoricalProviderObservationsAsync(
                     take,
@@ -512,6 +612,63 @@ public sealed class LegendConnectHistoricalReevaluationVersioningTests
         }
 
         throw new Xunit.Sdk.XunitException("The bounded canonical historical replay did not converge.");
+    }
+
+    /// <summary>
+    /// Models a completed pre-contract evaluator without re-evaluating or
+    /// rewriting any canonical evidence.  A selected legacy identity is the
+    /// test declaration of a genuine semantic-contract change; the runtime
+    /// then derives the affected frontier from its normal contract graph.
+    /// </summary>
+    private static async Task EstablishCompletedContractBaselineAsync(
+        MasterAppDbContext db,
+        int evaluatorVersion,
+        string? corruptedKind = null)
+    {
+        var policy = await db.LegendConnectRuntimePolicies.SingleOrDefaultAsync();
+        if (policy is null)
+        {
+            policy = new LegendConnectRuntimePolicy
+            {
+                Id = Guid.NewGuid(),
+                ScopeKey = "Global",
+                LearningEnabled = true,
+                ContextualCompositionMode = "Disabled",
+                UpdatedUtc = DateTime.UtcNow
+            };
+            db.LegendConnectRuntimePolicies.Add(policy);
+        }
+        policy.TargetLanguageIntelligenceEvaluatorVersion = evaluatorVersion;
+        policy.CompletedLanguageIntelligenceEvaluatorVersion = evaluatorVersion;
+        policy.LanguageIntelligenceReevaluationPhase = LegendConnectLanguageIntelligenceReevaluationPhases.Complete;
+        policy.LanguageIntelligenceReevaluationCursor = null;
+        policy.LanguageIntelligenceReevaluationCompletedUtc = DateTime.UtcNow;
+        foreach (var definition in LegendConnectDerivationContracts.ForEvaluator(evaluatorVersion))
+        {
+            var isCorrupted = string.Equals(definition.DerivationKind, corruptedKind, StringComparison.Ordinal);
+            var contract = await db.LegendLanguageDerivationContracts
+                .SingleOrDefaultAsync(item => item.DerivationKind == definition.DerivationKind &&
+                    item.SupersededUtc == null)
+                ?? new LegendLanguageDerivationContract
+                {
+                    Id = Guid.NewGuid(),
+                    DerivationKind = definition.DerivationKind,
+                    CreatedUtc = DateTime.UtcNow
+                };
+            if (db.Entry(contract).State == EntityState.Detached)
+                db.LegendLanguageDerivationContracts.Add(contract);
+            contract.ContractVersion = isCorrupted ? "legacy-test-contract" : definition.ContractVersion;
+            contract.ContractIdentity = isCorrupted
+                ? LegendLanguageIdentity.TextHash("legacy-test-contract|" + definition.DerivationKind)
+                : definition.ContractIdentity;
+            contract.EarliestPhase = definition.EarliestPhase;
+            contract.RequiresHistoricalWork = definition.RequiresHistoricalWork;
+            contract.IntroducedEvaluatorVersion = evaluatorVersion;
+            contract.State = "Current";
+            contract.SupersededUtc = null;
+            contract.UpdatedUtc = DateTime.UtcNow;
+        }
+        await db.SaveChangesAsync();
     }
 
     private static async Task<ProviderConflictSeed> SeedFounderConflictAsync(

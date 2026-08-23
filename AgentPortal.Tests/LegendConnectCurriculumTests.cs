@@ -179,7 +179,19 @@ public sealed class LegendConnectCurriculumTests
         var registry = new LegendLanguageRegistry(db, configuration);
         var corpus = new LegendConnectCorpusService(db, registry, NullLogger<LegendConnectCorpusService>.Instance);
         var curriculum = new LegendConnectCurriculumService(db, registry, corpus);
-        var operations = new LegendConnectOperations(db, registry, corpus, configuration, curriculum: curriculum);
+        var founderTraining = new LegendConnectFounderTrainingIngestionAuthority(
+            db, registry, corpus, curriculum, operations: null);
+        var operations = new LegendConnectOperations(
+            db,
+            registry,
+            corpus,
+            configuration,
+            curriculum: curriculum,
+            founderTrainingIngestion: founderTraining);
+        var runtime = new LegendConnectRuntimePolicyAuthority(
+            db, new FounderAccess(), registry, configuration,
+            NullLogger<LegendConnectRuntimePolicyAuthority>.Instance);
+        var durable = new LegendConnectHistoricalReevaluationWorkAuthority(db, runtime, configuration);
 
         var result = await operations.SubmitFounderCurriculumManifestAsync(
             "founder-test",
@@ -205,6 +217,7 @@ public sealed class LegendConnectCurriculumTests
         var processor = new LegendConnectCurriculumManifestProcessor(
             db,
             curriculum,
+            durable,
             NullLogger<LegendConnectCurriculumManifestProcessor>.Instance);
 
         Assert.Equal(1, await processor.ProcessPendingAsync(1));
@@ -228,13 +241,21 @@ public sealed class LegendConnectCurriculumTests
         var registry = new LegendLanguageRegistry(db, configuration);
         var corpus = new LegendConnectCorpusService(db, registry, NullLogger<LegendConnectCorpusService>.Instance);
         var curriculum = new LegendConnectCurriculumService(db, registry, corpus);
-        var operations = new LegendConnectOperations(db, registry, corpus, configuration, curriculum: curriculum);
+        var founderTraining = new LegendConnectFounderTrainingIngestionAuthority(
+            db, registry, corpus, curriculum, operations: null);
+        var operations = new LegendConnectOperations(
+            db,
+            registry,
+            corpus,
+            configuration,
+            curriculum: curriculum,
+            founderTrainingIngestion: founderTraining);
         var runtime = new LegendConnectRuntimePolicyAuthority(
             db, new FounderAccess(), registry, configuration,
             NullLogger<LegendConnectRuntimePolicyAuthority>.Instance);
         var durable = new LegendConnectHistoricalReevaluationWorkAuthority(db, runtime, configuration);
         var processor = new LegendConnectCurriculumManifestProcessor(
-            db, curriculum, NullLogger<LegendConnectCurriculumManifestProcessor>.Instance);
+            db, curriculum, durable, NullLogger<LegendConnectCurriculumManifestProcessor>.Instance);
 
         var accepted = await operations.SubmitFounderCurriculumManifestAsync("founder-test",
             new LegendConnectCurriculumManifestSubmission(
@@ -247,14 +268,16 @@ public sealed class LegendConnectCurriculumTests
         Assert.Equal(1, await processor.SeedDurableFamilyWorkAsync(
             durable, LegendConnectLanguageIntelligenceEvaluatorVersion.Current, 4));
         var children = await db.LegendHistoricalReevaluationWorkItems
-            .Where(item => item.Phase == LegendConnectHistoricalReevaluationWorkAuthority.FounderCurriculumPhase)
+            .Where(item =>
+                item.Phase == LegendConnectHistoricalReevaluationWorkAuthority.FounderCurriculumPhase &&
+                item.WorkKind == LegendConnectHistoricalReevaluationWorkAuthority.FounderManifestFamilyWorkKind)
             .ToListAsync();
         Assert.Equal(2, children.Count);
         Assert.Equal(2, children.Select(item => item.WorkIdentity).Distinct().Count());
 
         while (true)
         {
-            var claim = await durable.TryClaimNextFounderManifestFamilyAsync(
+            var claim = await durable.TryClaimNextFounderManifestWorkAsync(
                 LegendConnectLanguageIntelligenceEvaluatorVersion.Current, "test-worker");
             if (claim is null)
                 break;
@@ -286,7 +309,19 @@ public sealed class LegendConnectCurriculumTests
         var registry = new LegendLanguageRegistry(db, configuration);
         var corpus = new LegendConnectCorpusService(db, registry, NullLogger<LegendConnectCorpusService>.Instance);
         var curriculum = new LegendConnectCurriculumService(db, registry, corpus);
-        var operations = new LegendConnectOperations(db, registry, corpus, configuration, curriculum: curriculum);
+        var founderTraining = new LegendConnectFounderTrainingIngestionAuthority(
+            db, registry, corpus, curriculum, operations: null);
+        var operations = new LegendConnectOperations(
+            db,
+            registry,
+            corpus,
+            configuration,
+            curriculum: curriculum,
+            founderTrainingIngestion: founderTraining);
+        var runtime = new LegendConnectRuntimePolicyAuthority(
+            db, new FounderAccess(), registry, configuration,
+            NullLogger<LegendConnectRuntimePolicyAuthority>.Instance);
+        var durable = new LegendConnectHistoricalReevaluationWorkAuthority(db, runtime, configuration);
 
         var training = await operations.SubmitFounderKnowledgeAsync(
             "founder-test",
@@ -320,11 +355,18 @@ public sealed class LegendConnectCurriculumTests
             null,
             null);
         Assert.All(queuedPage.Rows, item =>
-            Assert.Contains(item[17], new[] { "QUEUED", "PROCESSING" }));
+            Assert.Contains(item[18], new[]
+            {
+                "QUEUED",
+                "PROCESSING",
+                "STALE — awaiting dependency assessment",
+                "CURRENT — pre-contract baseline"
+            }));
 
         var processor = new LegendConnectCurriculumManifestProcessor(
             db,
             curriculum,
+            durable,
             NullLogger<LegendConnectCurriculumManifestProcessor>.Instance);
         Assert.Equal(1, await processor.ProcessPendingAsync(1));
         foreach (var candidate in await db.LegendCorpusCandidates.ToListAsync())
@@ -350,13 +392,13 @@ public sealed class LegendConnectCurriculumTests
         Assert.Equal(training.AtomicUnitCount.ToString(), trainingRow[3]);
         Assert.Equal(training.NewCanonicalUnitCount.ToString(), trainingRow[4]);
         Assert.Equal(training.ReusedCanonicalUnitCount.ToString(), trainingRow[5]);
-        Assert.Equal("COMPLETED", trainingRow[17]);
+        Assert.Equal("COMPLETED", trainingRow[18]);
 
         var manifestRow = Assert.Single(page.Rows.Where(item => item[0] == "Semantic manifest"));
         Assert.Contains("Completed", manifestRow[13], StringComparison.Ordinal);
         Assert.Contains($"current v{LegendConnectLanguageIntelligenceEvaluatorVersion.Current}", manifestRow[11]);
         Assert.Equal($"v{LegendConnectLanguageIntelligenceEvaluatorVersion.Current}", manifestRow[12]);
-        Assert.Equal("COMPLETED", manifestRow[17]);
+        Assert.Equal("COMPLETED", manifestRow[18]);
 
         var persistedTraining = await db.LegendFounderTrainingSubmissions
             .SingleAsync(item => item.Id == training.TrainingSubmissionId);
@@ -374,7 +416,8 @@ public sealed class LegendConnectCurriculumTests
             null,
             null);
         var staleTraining = Assert.Single(stalePage.Rows.Where(item => item[0] == "Atomic training"));
-        Assert.Equal("QUEUED", staleTraining[17]);
+        Assert.Equal("STALE — awaiting dependency assessment", staleTraining[17]);
+        Assert.Equal("QUEUED", staleTraining[18]);
     }
 
     [Fact]
@@ -563,9 +606,14 @@ public sealed class LegendConnectCurriculumTests
         var corpus = new LegendConnectCorpusService(db, registry, NullLogger<LegendConnectCorpusService>.Instance);
         var curriculum = new LegendConnectCurriculumService(db, registry, corpus);
         var operations = new LegendConnectOperations(db, registry, corpus, configuration, curriculum: curriculum);
+        var runtime = new LegendConnectRuntimePolicyAuthority(
+            db, new FounderAccess(), registry, configuration,
+            NullLogger<LegendConnectRuntimePolicyAuthority>.Instance);
+        var durable = new LegendConnectHistoricalReevaluationWorkAuthority(db, runtime, configuration);
         var processor = new LegendConnectCurriculumManifestProcessor(
             db,
             curriculum,
+            durable,
             NullLogger<LegendConnectCurriculumManifestProcessor>.Instance);
 
         var manifest = new LegendConnectCurriculumManifestSubmission(
@@ -608,6 +656,24 @@ public sealed class LegendConnectCurriculumTests
         Assert.Single(await db.Set<LegendCurriculumManifestWorkItem>().ToListAsync());
         Assert.Equal(2, await db.LegendCurriculumFamilies.CountAsync());
 
+        // Bring the current evaluator completely to convergence before
+        // deliberately staling only the parent receipt. V20 owns one bounded
+        // downstream derivation-ledger item per retained family; those items
+        // are metadata projection, not canonical curriculum replay.
+        while (await processor.ProcessPendingAsync(1) > 0)
+        {
+        }
+
+        var currentLedgerWork = await db.LegendHistoricalReevaluationWorkItems
+            .Where(item =>
+                item.EvaluatorVersion == LegendConnectLanguageIntelligenceEvaluatorVersion.Current &&
+                item.Phase == LegendConnectHistoricalReevaluationWorkAuthority.FounderCurriculumPhase &&
+                item.WorkKind == LegendConnectHistoricalReevaluationWorkAuthority.DerivationLedgerWorkKind)
+            .ToListAsync();
+
+        Assert.Equal(2, currentLedgerWork.Count);
+        Assert.All(currentLedgerWork, item => Assert.Equal("Completed", item.ProcessingState));
+
         var canonicalBeforeCapabilityReplay = new
         {
             Families = await db.LegendCurriculumFamilies.CountAsync(),
@@ -625,21 +691,11 @@ public sealed class LegendConnectCurriculumTests
         Assert.True(staleDuplicate.DuplicatePrevented);
         Assert.Contains("evaluator", staleDuplicate.Message!, StringComparison.OrdinalIgnoreCase);
 
-        // The existing processor claims one historical family, then an
-        // expired lease proves the same durable cursor resumes rather than
-        // rebuilding or duplicating the canonical curriculum.
-        Assert.Equal(1, await processor.ProcessPendingAsync(1));
-        var replayInProgress = Assert.Single(await db.Set<LegendCurriculumManifestWorkItem>().ToListAsync());
-        Assert.Equal("Pending", replayInProgress.ProcessingState);
-        Assert.Equal(1, replayInProgress.NextFamilyIndex);
-        Assert.Equal(
-            LegendConnectLanguageIntelligenceEvaluatorVersion.Current,
-            replayInProgress.TargetLanguageIntelligenceEvaluatorVersion);
-
-        replayInProgress.ProcessingState = "Processing";
-        replayInProgress.LeaseExpiresUtc = DateTime.UtcNow.AddMinutes(-1);
-        await db.SaveChangesAsync();
-        Assert.Equal(1, await processor.ProcessPendingAsync(1));
+        // Only the parent projection is stale. All current-evaluator
+        // canonical and downstream derivation work is already completed.
+        // Reconciliation must therefore reuse existing durable state and
+        // perform zero new work.
+        Assert.Equal(0, await processor.ProcessPendingAsync(1));
         db.ChangeTracker.Clear();
 
         var replayCompleted = Assert.Single(await db.Set<LegendCurriculumManifestWorkItem>().ToListAsync());
