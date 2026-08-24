@@ -778,7 +778,7 @@ public sealed class LegendConnectCurriculumTests
         Assert.Equal(5, failed.AttemptCount);
         Assert.Equal("founder_manifest_family_failure", failed.LastErrorCode);
         Assert.Equal("Transient governed evaluator failure.", failed.LastErrorMessage);
-        Assert.Null(failed.CompletedLanguageIntelligenceEvaluatorVersion);
+        Assert.Equal(0, failed.CompletedLanguageIntelligenceEvaluatorVersion);
         Assert.Empty(await db.LegendCurriculumFamilies.ToListAsync());
         Assert.Empty(await db.LegendHistoricalReevaluationWorkItems
             .Where(item => item.SubjectId == failed.Id &&
