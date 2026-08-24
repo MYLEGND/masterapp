@@ -6,15 +6,17 @@
     <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
     <Nullable>enable</Nullable>
     <!-- Directory.Build.props disables NuGet project-extension props globally.
-         Tests require the restored runner package props so VSTest can discover xUnit cases. -->
+         Tests require restored package build props so VSTest can discover xUnit cases. -->
     <ImportProjectExtensionProps>true</ImportProjectExtensionProps>
   </PropertyGroup>
 
   <ItemGroup>
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.0.1" />
-    <PackageReference Include="xunit" Version="2.6.4" />
+    <PackageReference Include="xunit" Version="2.6.4">
+      <ExcludeAssets>analyzers</ExcludeAssets>
+    </PackageReference>
     <PackageReference Include="xunit.runner.visualstudio" Version="3.1.5">
-      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; buildtransitive</IncludeAssets>
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
     <PackageReference Include="Microsoft.TestPlatform.TestHost" Version="18.0.1" />
