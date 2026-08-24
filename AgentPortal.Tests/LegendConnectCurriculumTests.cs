@@ -502,14 +502,25 @@ public sealed class LegendConnectCurriculumTests
     }
 
     [Fact]
-    public async Task FounderCurriculumManifest_RejectsConflictingSemanticCategoryForExistingFamily()
+    public async Task FounderCurriculumManifest_ReusesExistingFamilyAndPreservesCanonicalCategory()
     {
         await using var db = ControllerTestHelpers.BuildDb();
         var configuration = Configuration();
         var registry = new LegendLanguageRegistry(db, configuration);
-        var corpus = new LegendConnectCorpusService(db, registry, NullLogger<LegendConnectCorpusService>.Instance);
-        var curriculum = new LegendConnectCurriculumService(db, registry, corpus);
-        var operations = new LegendConnectOperations(db, registry, corpus, configuration, curriculum: curriculum);
+        var corpus = new LegendConnectCorpusService(
+            db,
+            registry,
+            NullLogger<LegendConnectCorpusService>.Instance);
+        var curriculum = new LegendConnectCurriculumService(
+            db,
+            registry,
+            corpus);
+        var operations = new LegendConnectOperations(
+            db,
+            registry,
+            corpus,
+            configuration,
+            curriculum: curriculum);
 
         var first = await curriculum.SubmitFounderEnglishBatchAsync(
             ConversationBatch(
@@ -517,8 +528,30 @@ public sealed class LegendConnectCurriculumTests
                 "Conversation greeting",
                 ("Hi.", "greeting"),
                 ("Hello.", "greeting")));
+
         Assert.True(first.Succeeded, first.Message);
-        var originalTextUnitCount = await db.LegendLanguageTextUnits.CountAsync();
+        Assert.False(first.DuplicatePrevented);
+
+        var existingFamily = Assert.Single(
+            await db.LegendCurriculumFamilies.ToListAsync());
+
+        Assert.Equal(
+            "conversation.greeting.basic",
+            existingFamily.FamilyKey);
+
+        Assert.Equal(
+            "Conversation greeting",
+            existingFamily.SemanticCategory);
+
+        Assert.Equal(
+            2,
+            await db.LegendCurriculumExamples.CountAsync(
+                item =>
+                    item.CurriculumFamilyId == existingFamily.Id &&
+                    item.LanguageCode == "en"));
+
+        var originalTextUnitCount =
+            await db.LegendLanguageTextUnits.CountAsync();
 
         var result = await operations.SubmitFounderCurriculumManifestAsync(
             "founder-test",
@@ -526,15 +559,102 @@ public sealed class LegendConnectCurriculumTests
             [
                 ConversationBatch(
                     "conversation.greeting.basic",
-                    "Unrelated apology category",
+                    "Conversation greeting — additional opening variation",
                     ("Hey.", "greeting"),
                     ("Hey there.", "greeting"))
             ]));
 
-        Assert.False(result.Succeeded);
-        Assert.Equal("curriculum_family_category_conflict", result.ErrorCode);
-        Assert.Equal(originalTextUnitCount, await db.LegendLanguageTextUnits.CountAsync());
-        Assert.Single(await db.LegendCurriculumFamilies.ToListAsync());
+        Assert.True(result.Succeeded, result.Message);
+        Assert.False(result.DuplicatePrevented);
+
+        // Manifest acceptance is durable-only. It must not perform
+        // synchronous curriculum learning in the browser request.
+        Assert.Equal(
+            originalTextUnitCount,
+            await db.LegendLanguageTextUnits.CountAsync());
+
+        Assert.Single(
+            await db.LegendCurriculumFamilies.ToListAsync());
+
+        var runtime = new LegendConnectRuntimePolicyAuthority(
+            db,
+            new FounderAccess(),
+            registry,
+            configuration,
+            NullLogger<LegendConnectRuntimePolicyAuthority>.Instance);
+
+        var durable =
+            new LegendConnectHistoricalReevaluationWorkAuthority(
+                db,
+                runtime,
+                configuration);
+
+        var processor =
+            new LegendConnectCurriculumManifestProcessor(
+                db,
+                curriculum,
+                durable,
+                NullLogger<LegendConnectCurriculumManifestProcessor>.Instance);
+
+        Assert.Equal(
+            1,
+            await processor.ProcessPendingAsync(1));
+
+        db.ChangeTracker.Clear();
+
+        var canonicalFamily = Assert.Single(
+            await db.LegendCurriculumFamilies.ToListAsync());
+
+        // V20.4: FamilyKey owns canonical family identity.
+        // Incoming category wording may enrich that existing family,
+        // but it may not rename or duplicate the canonical authority.
+        Assert.Equal(
+            existingFamily.Id,
+            canonicalFamily.Id);
+
+        Assert.Equal(
+            "conversation.greeting.basic",
+            canonicalFamily.FamilyKey);
+
+        Assert.Equal(
+            "Conversation greeting",
+            canonicalFamily.SemanticCategory);
+
+        var englishExamples = await db.LegendCurriculumExamples
+            .Where(item =>
+                item.CurriculumFamilyId == canonicalFamily.Id &&
+                item.LanguageCode == "en")
+            .ToListAsync();
+
+        Assert.Equal(4, englishExamples.Count);
+
+        Assert.Equal(
+            4,
+            englishExamples
+                .Select(item => item.TextUnitId)
+                .Distinct()
+                .Count());
+
+        Assert.Equal(
+            1,
+            await db.LegendCurriculumFamilies.CountAsync(
+                item =>
+                    item.FamilyKey ==
+                    "conversation.greeting.basic"));
+
+        var englishTextUnitIds = englishExamples
+            .Select(item => item.TextUnitId)
+            .ToArray();
+
+        var englishTexts = await db.LegendLanguageTextUnits
+            .Where(item => englishTextUnitIds.Contains(item.Id))
+            .Select(item => item.Text)
+            .ToListAsync();
+
+        Assert.Contains("Hi.", englishTexts);
+        Assert.Contains("Hello.", englishTexts);
+        Assert.Contains("Hey.", englishTexts);
+        Assert.Contains("Hey there.", englishTexts);
     }
 
 

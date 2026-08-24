@@ -942,21 +942,6 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
             }
         }
 
-        var semanticCategory = NormalizeOptional(submission.SemanticCategory, 120);
-        var existingFamily = await _db.Set<LegendCurriculumFamily>()
-            .AsNoTracking()
-            .SingleOrDefaultAsync(item => item.FamilyKey == familyKey, cancellationToken);
-        if (existingFamily is not null &&
-            !string.IsNullOrWhiteSpace(existingFamily.SemanticCategory) &&
-            !string.IsNullOrWhiteSpace(semanticCategory) &&
-            !string.Equals(existingFamily.SemanticCategory, semanticCategory, StringComparison.OrdinalIgnoreCase))
-        {
-            return Rejected(
-                "curriculum_family_category_conflict",
-                $"Family '{familyKey}' is already classified as '{existingFamily.SemanticCategory}'. Use the existing semantic category or a different deliberate family key.",
-                familyKey);
-        }
-
         return null;
     }
 
