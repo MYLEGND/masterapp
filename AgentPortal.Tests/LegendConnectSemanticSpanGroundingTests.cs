@@ -647,6 +647,13 @@ public sealed class LegendConnectSemanticSpanGroundingTests
             Assert.True(accepted.Succeeded, accepted.Message);
         }
 
+        // The submission that completes independent production eligibility
+        // can immediately converge its own source endpoint through the
+        // canonical source-evidence authority. Earlier families were processed
+        // before that transition became eligible, so the bounded historical
+        // SourceFamilies replay remains responsible for bringing those
+        // already-governed endpoints forward. This preserves incremental
+        // ingestion without introducing a broad synchronous backfill.
         var beforeReplay = await db.LegendLanguageCompositionalAnchors
             .CountAsync(item =>
                 item.Dimension == "function" &&
@@ -655,8 +662,9 @@ public sealed class LegendConnectSemanticSpanGroundingTests
                 item.ComponentStartTokenIndex != null &&
                 item.ComponentLength != null &&
                 item.ComponentLength > 0 &&
+                item.Provenance == LegendConnectKnowledgeProvenance.FounderApproved &&
                 item.SupersededUtc == null);
-        Assert.Equal(0, beforeReplay);
+        Assert.Equal(1, beforeReplay);
 
         var beforeInference = await fixture.Curriculum
             .TryInferSemanticTransitionAsync(

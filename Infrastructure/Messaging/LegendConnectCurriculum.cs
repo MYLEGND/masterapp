@@ -1236,6 +1236,18 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
             newlyCreatedSourceExampleIds,
             cancellationToken);
 
+        // Ordinary Founder ingestion and historical replay must converge
+        // through the same canonical source-evidence authority. Once retained
+        // semantic-transition evidence becomes independently production
+        // eligible, this reconciliation materializes any missing governed
+        // source-frame projection from that existing evidence. It does not
+        // infer semantic values from text, introduce phrase-specific logic, or
+        // create a competing evidence path.
+        await ReconcileFounderApprovedSourceEvidenceAsync(
+            family.Id,
+            english,
+            cancellationToken);
+
         // This is the existing expansion authority. It is idempotent by source
         // asset and directional pair, and it carries curriculum lineage only as
         // metadata for the already-approved work.
@@ -2090,15 +2102,146 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
         int ProcessedFamilyCount,
         Guid? LastFamilyId);
 
+    /// <summary>
+    /// Replays retained same-family Founder semantic-transition declarations
+    /// through the one canonical transition persistence authority.
+    ///
+    /// The retained transition evidence is the durable declaration projection:
+    /// its source/result frames came directly from the Founder-approved
+    /// submission. Historical replay may expand that already-governed
+    /// declaration across the family's current compatible examples, but it
+    /// must never infer a new transition, manufacture a frame, or consume
+    /// cross-example relationship-derived transitions owned by their separate
+    /// canonical reconciliation authority.
+    /// </summary>
+    private async Task ReconcileFounderSemanticTransitionEvidenceAsync(
+        Guid familyId,
+        string languageCode,
+        CancellationToken cancellationToken)
+    {
+        var family = await _db.Set<LegendCurriculumFamily>()
+            .SingleOrDefaultAsync(
+                item => item.Id == familyId &&
+                    item.Provenance == LegendConnectKnowledgeProvenance.FounderApproved,
+                cancellationToken);
+        if (family is null)
+            return;
+
+        var examples = await _db.Set<LegendCurriculumExample>()
+            .Where(item =>
+                item.CurriculumFamilyId == familyId &&
+                item.LanguageCode == languageCode &&
+                item.DerivedFromCurriculumExampleId == null &&
+                item.SupersededUtc == null &&
+                item.Provenance == LegendConnectKnowledgeProvenance.FounderApproved)
+            .OrderBy(item => item.Id)
+            .ToListAsync(cancellationToken);
+
+        if (examples.Count < 2)
+            return;
+
+        var exampleIds = examples.Select(item => item.Id).ToArray();
+
+        var retainedFrames = await _db.Set<LegendSemanticTransitionEvidence>()
+            .AsNoTracking()
+            .Where(item =>
+                item.SupersededUtc == null &&
+                item.FounderSemanticExampleRelationEvidenceId == null &&
+                item.SourceLanguageCode == languageCode &&
+                item.ResultLanguageCode == languageCode &&
+                exampleIds.Contains(item.SourceCurriculumExampleId) &&
+                exampleIds.Contains(item.ResultCurriculumExampleId) &&
+                item.Provenance == LegendConnectKnowledgeProvenance.FounderApproved)
+            .Select(item => new
+            {
+                item.SourceSemanticFrame,
+                item.ResultSemanticFrame
+            })
+            .Distinct()
+            .ToListAsync(cancellationToken);
+
+        if (retainedFrames.Count == 0)
+            return;
+
+        var transitions = new List<NormalizedSemanticTransition>(
+            retainedFrames.Count);
+
+        foreach (var retained in retainedFrames)
+        {
+            if (!TryReadSemanticFrame(
+                    retained.SourceSemanticFrame,
+                    out var sourceFrame) ||
+                !TryReadSemanticFrame(
+                    retained.ResultSemanticFrame,
+                    out var resultFrame))
+            {
+                throw new InvalidOperationException(
+                    "Retained Founder semantic-transition evidence contains an invalid governed frame.");
+            }
+
+            if (string.Equals(
+                    sourceFrame.Signature,
+                    resultFrame.Signature,
+                    StringComparison.Ordinal))
+            {
+                throw new InvalidOperationException(
+                    "Retained Founder semantic-transition evidence collapsed to an identical source/result frame.");
+            }
+
+            transitions.Add(
+                new NormalizedSemanticTransition(
+                    sourceFrame,
+                    resultFrame));
+        }
+
+        await PersistFounderSemanticTransitionEvidenceAsync(
+            family,
+            examples,
+            transitions,
+            languageCode,
+            knownVariationsByExample: null,
+            knownNewCurriculumExampleIds: null,
+            cancellationToken);
+    }
+
     private async Task ReevaluateHistoricalSourceFamilyLanguageAsync(
         Guid familyId,
         string languageCode,
         CancellationToken cancellationToken)
     {
-        await ReconcileFounderApprovedSourceEvidenceAsync(familyId, languageCode, cancellationToken);
-        await AnalyzeFamilyLanguageAsync(familyId, languageCode, pairKey: null, cancellationToken);
-        await ReconcileFounderMeaningPrimitivesAsync(familyId, languageCode, cancellationToken);
-        await ReconcileFounderCrossExampleSemanticRelationsAsync(familyId, languageCode, cancellationToken);
+        await ReconcileFounderApprovedSourceEvidenceAsync(
+            familyId,
+            languageCode,
+            cancellationToken);
+
+        // Same-family transition declarations are ordinarily materialized
+        // during Founder ingestion. Historical SourceFamilies replay must pass
+        // retained declarations through that exact authority as well so an
+        // evaluator revision or newly reconciled source example cannot leave
+        // old curriculum permanently under-materialized.
+        await ReconcileFounderSemanticTransitionEvidenceAsync(
+            familyId,
+            languageCode,
+            cancellationToken);
+
+        await AnalyzeFamilyLanguageAsync(
+            familyId,
+            languageCode,
+            pairKey: null,
+            cancellationToken);
+
+        await ReconcileFounderMeaningPrimitivesAsync(
+            familyId,
+            languageCode,
+            cancellationToken);
+
+        // Cross-example semantic relationships retain and replay their own
+        // governed declaration evidence. They intentionally remain separate
+        // from the same-family declaration reconciliation above.
+        await ReconcileFounderCrossExampleSemanticRelationsAsync(
+            familyId,
+            languageCode,
+            cancellationToken);
     }
 
     private async Task ReevaluateHistoricalAlignmentAsync(
@@ -10821,6 +10964,7 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
             ? []
             : await _db.Set<LegendSemanticTransitionEvidence>()
                 .Where(item => item.SupersededUtc == null &&
+                    item.FounderSemanticExampleRelationEvidenceId == null &&
                     exampleIds.Contains(item.SourceCurriculumExampleId) &&
                     exampleIds.Contains(item.ResultCurriculumExampleId) &&
                     !currentTransitionSignatures.Contains(item.TransitionSignature))

@@ -26,7 +26,7 @@ internal static class LegendConnectDerivationContracts
     [
         new(
             SourceSemanticProjection,
-            "1",
+            "2",
             LegendConnectLanguageIntelligenceReevaluationPhases.SourceFamilies,
             RequiresHistoricalWork: true,
             IntroducedEvaluatorVersion: 1,
