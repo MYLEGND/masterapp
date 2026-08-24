@@ -53,6 +53,75 @@ public sealed class LegendFounderAiConversationRoutingTests
         Assert.True(Assert.IsType<bool>(method!.Invoke(null, new object[] { conversation, "teacher" })));
     }
 
+    [Theory]
+    [InlineData("legend", true)]
+    [InlineData("teacher", false)]
+    public void ConversationMode_ExplicitlyControlsNativeInference(string mode, bool expected)
+    {
+        var method = typeof(LegendFounderAiConversationService)
+            .GetMethod("ShouldAttemptNativeInference", BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.NotNull(method);
+        Assert.Equal(expected, Assert.IsType<bool>(method!.Invoke(null, new object[] { mode })));
+    }
+
+    [Fact]
+    public void OpenAiTeacherInstructions_DeclareDirectRoleAndNativeBypass()
+    {
+        var method = typeof(LegendFounderAiConversationService)
+            .GetMethod("BuildInstructions", BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.NotNull(method);
+        var instructions = Assert.IsType<string>(method!.Invoke(null, new object[] { "teacher" }));
+        Assert.Contains("external OpenAI Teacher speaking directly with the Founder", instructions);
+        Assert.Contains("Native LEGEND conversational inference is bypassed in this mode", instructions);
+        Assert.Contains("existing governed tools", instructions);
+        Assert.Contains("execute that tool rather than merely describing", instructions);
+    }
+
+    [Fact]
+    public void CasualNativeEscalation_EntersGovernedDiagnosticTeacherPath()
+    {
+        var method = typeof(LegendFounderAiConversationService)
+            .GetMethod("RequiresProviderGovernedInspection", BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.NotNull(method);
+        IReadOnlyList<LegendFounderAiChatMessage> conversation = [new("user", "Hi")];
+        var snapshot = new LegendConnectNativeInferenceSnapshot(
+            false, 0m, null, "ambiguous_composed_meaning", 0,
+            "No unique governed semantic transition could be selected.", true);
+        Assert.True(Assert.IsType<bool>(method!.Invoke(null, new object?[] { conversation, "legend", snapshot, null })));
+    }
+
+    [Fact]
+    public void CasualNativeSuccess_DoesNotEnterProviderInspectionPath()
+    {
+        var method = typeof(LegendFounderAiConversationService)
+            .GetMethod("RequiresProviderGovernedInspection", BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.NotNull(method);
+        IReadOnlyList<LegendFounderAiChatMessage> conversation = [new("user", "How are you?")];
+        var snapshot = new LegendConnectNativeInferenceSnapshot(
+            true, 1m, "I'm doing great, thanks.", "supported", 4,
+            "Governed native response selected.", false);
+        Assert.False(Assert.IsType<bool>(method!.Invoke(null, new object?[] { conversation, "legend", snapshot, null })));
+    }
+
+    [Fact]
+    public void NativeGapContext_RequiresEvidenceFirstRetentionWithoutSelfPromotion()
+    {
+        var method = typeof(LegendFounderAiConversationService)
+            .GetMethod("BuildNativeDiagnosticTeachingContext", BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.NotNull(method);
+        var snapshot = new LegendConnectNativeInferenceSnapshot(
+            false, 0m, null, "meaning_graph_component_unknown", 0,
+            "A required meaning component was unknown.", true);
+        var context = Assert.IsType<string>(method!.Invoke(null, new object?[] { snapshot, null }));
+        Assert.Contains("LEGEND_NATIVE_GAP_CONTEXT", context);
+        Assert.Contains("meaning_graph_component_unknown", context);
+        Assert.Contains("legend_search_retained_knowledge", context);
+        Assert.Contains("legend_submit_machine_learning_candidate", context);
+        Assert.Contains("MachineProposed", context);
+        Assert.Contains("independent critic", context);
+        Assert.Contains("instead of inventing", context, StringComparison.OrdinalIgnoreCase);
+    }
+
     [Fact]
     public void NativeFailureResponse_ExposesGovernedReasonAndProviderFailureDetail()
     {
