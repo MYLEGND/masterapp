@@ -34,6 +34,11 @@ jobs:
           end=source.index("          PY\n\n      - name: Verify patch shape", start)
           code=source[start:end]
           code='\n'.join(line[10:] if line.startswith('          ') else line for line in code.splitlines())
+          # The embedded triple-quoted C# fixtures are YAML-indented in the source
+          # workflow. Normalize only those three exact fixture bodies after extraction.
+          code=code.replace("family_old = '''            if", "family_old = '''if")
+          code=code.replace("relation_old = '''            if", "relation_old = '''if")
+          code=code.replace("family_new = '''            //", "family_new = '''//")
           Path('/tmp/repair.py').write_text(code+'\n')
           PY
           python /tmp/repair.py
