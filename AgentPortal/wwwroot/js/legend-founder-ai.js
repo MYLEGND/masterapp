@@ -338,19 +338,34 @@
             return;
         }
 
-        const conversation = activeConversation();
-
-        conversation.mode =
+        const requestedMode =
             nextMode === 'teacher'
                 ? 'teacher'
                 : 'legend';
 
-        conversation.updatedUtc =
-            new Date().toISOString();
+        const current = activeConversation();
 
+        if (current.mode === requestedMode) {
+            return;
+        }
+
+        // One browser conversation has exactly one responder identity. Never
+        // relabel an existing Legend® Ai transcript as OpenAI Teacher (or the
+        // reverse), because that would feed one AI's prior responses to the
+        // other under the wrong role. A mode change starts a clean thread while
+        // preserving both histories independently.
+        const conversation = newConversationRecord(requestedMode);
+        state.conversations.unshift(conversation);
+        state.activeConversationId = conversation.id;
         saveState();
+        setSidebarOpen(false);
         setReadingMode(false);
-        renderAll({ forceBottom: false });
+        renderAll({ forceBottom: true });
+
+        if (status) {
+            status.textContent = '';
+        }
+
         focusComposer();
     }
 
@@ -512,8 +527,8 @@
         if (subtitle) {
             subtitle.textContent =
                 conversation.mode === 'teacher'
-                    ? 'External language teacher & strategy'
-                    : 'Governed intelligence conversation';
+                    ? 'Direct OpenAI Teacher · LEGEND native inference bypassed'
+                    : 'Legend® Ai · governed native intelligence first';
         }
 
         if (input) {

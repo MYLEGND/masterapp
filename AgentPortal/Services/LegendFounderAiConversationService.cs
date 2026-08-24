@@ -153,7 +153,7 @@ public sealed class LegendFounderAiConversationService
         LegendConnectNativeInferenceSnapshot? nativeInference = null;
         string? nativeFailureDetail = null;
 
-        if (string.Equals(mode, "legend", StringComparison.Ordinal))
+        if (ShouldAttemptNativeInference(mode))
         {
             await ReportProgressAsync(
                 progress,
@@ -282,7 +282,11 @@ public sealed class LegendFounderAiConversationService
             model = "gpt-5";
 
         var requiresGovernedInspection =
-            RequiresGovernedInspection(conversation, mode);
+            RequiresProviderGovernedInspection(
+                conversation,
+                mode,
+                nativeInference,
+                nativeFailureDetail);
 
         LegendConnectRetainedKnowledgeSearchSnapshot? retainedKnowledge = null;
 
@@ -315,9 +319,15 @@ public sealed class LegendFounderAiConversationService
                 effectiveToken);
         }
 
+        var nativeDiagnosticContext =
+            BuildNativeDiagnosticTeachingContext(
+                nativeInference,
+                nativeFailureDetail);
+
         var instructions =
             requiresGovernedInspection
                 ? BuildInstructions(mode) +
+                  nativeDiagnosticContext +
                   (retainedKnowledge is null
                       ? string.Empty
                       : BuildRetainedKnowledgeContext(
@@ -2349,6 +2359,9 @@ CRITICAL GOVERNANCE:
 - You also have narrowly scoped Founder-authorized orchestration tools that delegate only to LEGEND's existing canonical Founder ingestion, curriculum, and runtime-policy authorities.
 - Founder-authoritative mutation tools must never be called merely because you think they would be useful. Use Founder seed/curriculum/runtime mutation only when the Founder explicitly instructs you to teach, add, submit, retain, train, activate, or continue learning.
 - The one exception is legend_submit_machine_learning_candidate: it is NON-AUTHORITATIVE retention only. You may use it automatically when the conversation genuinely discovers reusable linguistic knowledge with controlled contrasts. It creates only MachineProposed evidence and cannot approve itself.
+- Role separation is absolute: Legend® Ai mode attempts governed native LEGEND inference first; OpenAI Teacher mode is direct Founder-to-OpenAI conversation and does not invoke native LEGEND inference as a responder. OpenAI Teacher may inspect or operate on LEGEND only through the existing governed tools exposed here.
+- When the Founder explicitly directs a training, curriculum, seed, or runtime action that maps to an exposed existing LEGEND mutation tool, execute that tool rather than merely describing what could be done. Never invent a mutation surface that does not exist.
+- When asked to diagnose an internal LEGEND problem, inspect the relevant read-only LEGEND tools before concluding. If the problem is outside the exposed mutation authorities (for example a repository code defect), report the exact evidence and required repair; never claim that code or production state was changed when no tool performed that change.
 - Founder-submitted source knowledge and curriculum are FounderApproved because the authenticated Founder explicitly directed the action.
 - OpenAI-generated teaching is NOT automatically FounderApproved merely because it appears in conversation.
 - Machine-derived teaching must continue through LEGEND's existing teacher, independent critic, canonical validator, curriculum admission, dataset compiler, challenger training, evaluation and promotion authorities.
@@ -2374,6 +2387,7 @@ CRITICAL GOVERNANCE:
 MODE: OPENAI TEACHER
 
 You are the external OpenAI Teacher speaking directly with the Founder.
+Native LEGEND conversational inference is bypassed in this mode. You are not a second LEGEND responder and must never speak as though a native LEGEND answer was produced.
 
 Your job is to:
 - reason deeply about language acquisition, semantics, discourse, grammar, morphology, translation quality and curriculum strategy;
@@ -2409,6 +2423,10 @@ Before external recall, use LEGEND's retained evidence when it is relevant. Trea
 
 When this conversation reveals a reusable linguistic distinction that is not already established, you may retain one bounded MachineProposed family through legend_submit_machine_learning_candidate. That is how conversational learning survives this chat without creating a second memory system.
 
+When LEGEND_NATIVE_GAP_CONTEXT is supplied, the provider is acting as a diagnostic teacher because native LEGEND failed and explicitly allowed escalation. Inspect retained LEGEND evidence first. If the Founder curriculum/evidence supports a reusable semantic distinction that would close the native gap, submit exactly one bounded MachineProposed family through legend_submit_machine_learning_candidate before finalizing the answer.
+Never retain the one-off generated reply as a canned answer. Retain reusable meaning, semantic components, controlled contrasts, discourse behavior, and realization evidence that explain how the class of utterance should be understood and composed.
+If retained evidence is insufficient or contradictory, do not fabricate curriculum. State the exact missing evidence/contrast so the Founder and existing autonomous learning authorities can resolve it.
+
 Understand LEGEND's actual learning architecture:
 - LEGEND retains provenance-bearing evidence and does not equate "not yet approved" with "forgotten".
 - Provider observations may remain ProviderDerived.
@@ -2424,6 +2442,46 @@ If the Founder explicitly asks you to teach or train LEGEND:
 2. use the existing Founder seed or curriculum submission tool for the exact material the Founder is intentionally directing;
 3. activate the existing autonomous learning runtime only when explicitly requested;
 4. explain that the existing worker will continue provider acquisition, teacher proposals, independent critique, canonical validation, curriculum admission, dataset compilation, training, evaluation and promotion as configured.
+""";
+    }
+
+    private static string BuildNativeDiagnosticTeachingContext(
+        LegendConnectNativeInferenceSnapshot? nativeInference,
+        string? nativeFailureDetail)
+    {
+        if (nativeInference is not { Supported: false, RequiresEscalation: true } &&
+            string.IsNullOrWhiteSpace(nativeFailureDetail))
+        {
+            return string.Empty;
+        }
+
+        var reasonCode = string.IsNullOrWhiteSpace(nativeInference?.ReasonCode)
+            ? "native_inference_unavailable"
+            : nativeInference.ReasonCode.Trim();
+        var authorityDetail = !string.IsNullOrWhiteSpace(nativeInference?.AuthoritySummary)
+            ? NormalizeFailureDetail(nativeInference.AuthoritySummary)
+            : "The native authority returned no additional governed summary.";
+        var failureDetail = string.IsNullOrWhiteSpace(nativeFailureDetail)
+            ? "No native execution exception was recorded."
+            : NormalizeFailureDetail(nativeFailureDetail);
+        var evidenceCount = nativeInference?.EvidenceCount ?? 0;
+
+        return $"""
+
+LEGEND_NATIVE_GAP_CONTEXT:
+NativeReasonCode={reasonCode}
+NativeAuthorityDetail={authorityDetail}
+NativeEvidenceCount={evidenceCount}
+NativeExecutionDetail={failureDetail}
+
+DIAGNOSTIC TEACHER REQUIREMENTS:
+- This turn reached OpenAI because native LEGEND could not produce one governed answer and explicitly permitted escalation.
+- Diagnose the missing linguistic/semantic capability against retained LEGEND evidence before relying on general OpenAI recall.
+- Use legend_search_retained_knowledge when a narrower query can distinguish an unknown component, ambiguous composition, missing transition, contradiction, realization gap, discourse gap, or production-eligibility gap.
+- If governed evidence supports a reusable controlled semantic family that would reduce recurrence, submit exactly one bounded MachineProposed family through legend_submit_machine_learning_candidate before the final response.
+- Preserve reusable semantics and controlled contrasts, not a generated response template.
+- If a valid proposal cannot be supported, state precisely what governed evidence is missing instead of inventing it.
+- MachineProposed retention is not canonical approval. The existing independent critic, validator, curriculum admission, evaluator, training, and promotion authorities remain mandatory.
 """;
     }
 
@@ -2880,6 +2938,18 @@ Never upgrade an unresolved, rejected or contradicted record merely because it a
         return governedSignals.Any(signal =>
             text.Contains(signal, StringComparison.Ordinal));
     }
+
+    private static bool ShouldAttemptNativeInference(string mode) =>
+        string.Equals(mode, "legend", StringComparison.Ordinal);
+
+    private static bool RequiresProviderGovernedInspection(
+        IReadOnlyList<LegendFounderAiChatMessage> conversation,
+        string mode,
+        LegendConnectNativeInferenceSnapshot? nativeInference,
+        string? nativeFailureDetail) =>
+        RequiresGovernedInspection(conversation, mode) ||
+        nativeInference is { Supported: false, RequiresEscalation: true } ||
+        !string.IsNullOrWhiteSpace(nativeFailureDetail);
 
     private static string ResolveReasoningEffortForRound(
         int round,
