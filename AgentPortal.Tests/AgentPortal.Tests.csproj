@@ -5,9 +5,6 @@
     <IsTestProject>true</IsTestProject>
     <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
     <Nullable>enable</Nullable>
-    <!-- Directory.Build.props disables NuGet project-extension props globally.
-         Tests require restored package build props so VSTest can discover xUnit cases. -->
-    <ImportProjectExtensionProps>true</ImportProjectExtensionProps>
   </PropertyGroup>
 
   <ItemGroup>
