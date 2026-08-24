@@ -1277,7 +1277,9 @@ public sealed class LegendFounderAiConversationService
     private static bool IsReadOnlyFounderTool(
         string name) =>
         name is
+            "legend_capabilities" or
             "legend_system_overview" or
+            "legend_operational_diagnostics" or
             "legend_provider_capacity" or
             "legend_language_knowledge" or
             "legend_pair_health" or
@@ -1307,6 +1309,31 @@ public sealed class LegendFounderAiConversationService
                         cancellationToken);
 
                 return SerializeUnbounded(snapshot);
+            }
+
+            case "legend_operational_diagnostics":
+            {
+                var state = await _legend.GetLanguageStateAsync(
+                    founder,
+                    "en",
+                    null,
+                    cancellationToken);
+                var capacity = await _legend.GetProviderCapacityAsync(
+                    founder,
+                    cancellationToken);
+                return SerializeUnbounded(new
+                {
+                    state.RuntimePolicy,
+                    state.ProductionReadiness,
+                    ProviderCapacity = capacity,
+                    acquisitionContract = new
+                    {
+                        queueAuthority = "LegendCorpusCandidate",
+                        downstreamLearningEvent = "LegendTranslationLearningEvent",
+                        rule = "Approved candidates are claimed directly by the existing acquisition worker. Learning events are downstream results, not a prerequisite job queue.",
+                        safety = "BLOCKED or DEGRADED readiness intentionally prevents new acquisition claims. Never bypass historical convergence, worker health, capacity, live reserve, or language-registry gates."
+                    }
+                });
             }
 
             case "legend_provider_capacity":
@@ -1854,6 +1881,10 @@ public sealed class LegendFounderAiConversationService
                 description,
                 access = mutation ? "founder_governed_mutation" : "founder_governed_read",
                 sourceOfTruth = "BuildFounderTools",
+                requiresExplicitFounderCommand = mutation,
+                canOverrideAuthorities = false,
+                canModifyRepository = false,
+                canDeploy = false,
                 arbitrarySql = false,
                 arbitraryShell = false,
                 arbitraryCodeExecution = false
@@ -1948,6 +1979,21 @@ public sealed class LegendFounderAiConversationService
                         }
                     },
                     required = new[] { "metric_key" },
+                    additionalProperties = false
+                },
+                strict = true
+            },
+            new
+            {
+                type = "function",
+                name = "legend_operational_diagnostics",
+                description =
+                    "Read the existing runtime-policy readiness gates, provider capacity, and acquisition contract together. Use this before diagnosing a candidate backlog. A nonzero candidate backlog with zero downstream learning events is not by itself a broken handoff: approved candidates are the durable acquisition queue, and BLOCKED/DEGRADED readiness intentionally prevents claims. This tool is read-only and cannot reset rows, bypass gates, edit code, or deploy.",
+                parameters = new
+                {
+                    type = "object",
+                    properties = new { },
+                    required = Array.Empty<string>(),
                     additionalProperties = false
                 },
                 strict = true

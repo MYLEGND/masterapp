@@ -738,7 +738,7 @@ public sealed class LegendConnectCurriculumTests
     }
 
     [Fact]
-    public async Task FounderCurriculumManifest_TerminalReceipt_IsRetiredWithoutResumingFamilyWork()
+    public async Task FounderCurriculumManifest_TerminalReceipt_RemainsFailedWithoutInventingDurableFamilyWork()
     {
         await using var db = ControllerTestHelpers.BuildDb();
         var configuration = Configuration();
@@ -772,16 +772,16 @@ public sealed class LegendConnectCurriculumTests
 
         Assert.Equal(0, await processor.ProcessPendingAsync(1));
 
-        var retired = Assert.Single(await db.Set<LegendCurriculumManifestWorkItem>().ToListAsync());
-        Assert.Equal("Retired", retired.ProcessingState);
-        Assert.Equal(0, retired.NextFamilyIndex);
-        Assert.Equal(5, retired.AttemptCount);
-        Assert.Equal("founder_manifest_family_failure", retired.LastErrorCode);
-        Assert.Equal("Transient governed evaluator failure.", retired.LastErrorMessage);
-        Assert.Null(retired.CompletedLanguageIntelligenceEvaluatorVersion);
+        var failed = Assert.Single(await db.Set<LegendCurriculumManifestWorkItem>().ToListAsync());
+        Assert.Equal("Failed", failed.ProcessingState);
+        Assert.Equal(0, failed.NextFamilyIndex);
+        Assert.Equal(5, failed.AttemptCount);
+        Assert.Equal("founder_manifest_family_failure", failed.LastErrorCode);
+        Assert.Equal("Transient governed evaluator failure.", failed.LastErrorMessage);
+        Assert.Null(failed.CompletedLanguageIntelligenceEvaluatorVersion);
         Assert.Empty(await db.LegendCurriculumFamilies.ToListAsync());
         Assert.Empty(await db.LegendHistoricalReevaluationWorkItems
-            .Where(item => item.SubjectId == retired.Id &&
+            .Where(item => item.SubjectId == failed.Id &&
                 item.WorkKind == LegendConnectHistoricalReevaluationWorkAuthority.FounderManifestFamilyWorkKind)
             .ToListAsync());
     }

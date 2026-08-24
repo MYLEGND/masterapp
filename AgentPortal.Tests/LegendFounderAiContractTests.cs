@@ -324,9 +324,13 @@ public sealed class LegendFounderAiContractTests
             .ToHashSet(System.StringComparer.Ordinal);
         Assert.Equal(executableNames, discoveredNames);
         Assert.Contains("legend_capabilities", discoveredNames);
+        Assert.Contains("legend_operational_diagnostics", discoveredNames);
         Assert.Contains("legend_submit_machine_learning_candidate", discoveredNames);
         Assert.All(capabilityDocument.RootElement.EnumerateArray(), item =>
         {
+            Assert.False(item.GetProperty("canOverrideAuthorities").GetBoolean());
+            Assert.False(item.GetProperty("canModifyRepository").GetBoolean());
+            Assert.False(item.GetProperty("canDeploy").GetBoolean());
             Assert.False(item.GetProperty("arbitrarySql").GetBoolean());
             Assert.False(item.GetProperty("arbitraryShell").GetBoolean());
             Assert.False(item.GetProperty("arbitraryCodeExecution").GetBoolean());
