@@ -1,0 +1,348 @@
+from pathlib import Path
+
+service_path = Path('AgentPortal/Services/LegendFounderAiConversationService.cs')
+tests_path = Path('AgentPortal.Tests/LegendFounderAiConversationRoutingTests.cs')
+js_path = Path('AgentPortal/wwwroot/js/legend-founder-ai.js')
+modal_path = Path('AgentPortal/Views/Shared/_LegendFounderAiModal.cshtml')
+
+service = service_path.read_text()
+tests = tests_path.read_text()
+js = js_path.read_text()
+modal = modal_path.read_text()
+
+
+def once(text: str, old: str, new: str, label: str) -> str:
+    count = text.count(old)
+    if count != 1:
+        raise SystemExit(f'{label}: expected exactly 1 match, found {count}')
+    return text.replace(old, new, 1)
+
+
+service = once(
+    service,
+    '''        if (string.Equals(mode, "legend", StringComparison.Ordinal))
+''',
+    '''        if (ShouldAttemptNativeInference(mode))
+''',
+    'native mode boundary')
+
+service = once(
+    service,
+    '''        var requiresGovernedInspection =
+            RequiresGovernedInspection(conversation, mode);
+''',
+    '''        var requiresGovernedInspection =
+            RequiresProviderGovernedInspection(
+                conversation,
+                mode,
+                nativeInference,
+                nativeFailureDetail);
+''',
+    'provider governed inspection routing')
+
+service = once(
+    service,
+    '''        var instructions =
+            requiresGovernedInspection
+                ? BuildInstructions(mode) +
+                  (retainedKnowledge is null
+                      ? string.Empty
+                      : BuildRetainedKnowledgeContext(
+                          retainedKnowledge,
+                          ResolveRetainedContextBudget(conversation)))
+                : BuildCasualInstructions();
+''',
+    '''        var nativeDiagnosticContext =
+            BuildNativeDiagnosticTeachingContext(
+                nativeInference,
+                nativeFailureDetail);
+
+        var instructions =
+            requiresGovernedInspection
+                ? BuildInstructions(mode) +
+                  nativeDiagnosticContext +
+                  (retainedKnowledge is null
+                      ? string.Empty
+                      : BuildRetainedKnowledgeContext(
+                          retainedKnowledge,
+                          ResolveRetainedContextBudget(conversation)))
+                : BuildCasualInstructions();
+''',
+    'native diagnostic context wiring')
+
+governance_marker = '''- The one exception is legend_submit_machine_learning_candidate: it is NON-AUTHORITATIVE retention only. You may use it automatically when the conversation genuinely discovers reusable linguistic knowledge with controlled contrasts. It creates only MachineProposed evidence and cannot approve itself.
+'''
+service = once(
+    service,
+    governance_marker,
+    governance_marker + '''- Role separation is absolute: Legend® Ai mode attempts governed native LEGEND inference first; OpenAI Teacher mode is direct Founder-to-OpenAI conversation and does not invoke native LEGEND inference as a responder. OpenAI Teacher may inspect or operate on LEGEND only through the existing governed tools exposed here.
+- When the Founder explicitly directs a training, curriculum, seed, or runtime action that maps to an exposed existing LEGEND mutation tool, execute that tool rather than merely describing what could be done. Never invent a mutation surface that does not exist.
+- When asked to diagnose an internal LEGEND problem, inspect the relevant read-only LEGEND tools before concluding. If the problem is outside the exposed mutation authorities (for example a repository code defect), report the exact evidence and required repair; never claim that code or production state was changed when no tool performed that change.
+''',
+    'role governance')
+
+retention_marker = '''- When this conversation reveals a reusable linguistic distinction that is not already established, you may retain one bounded MachineProposed family through legend_submit_machine_learning_candidate. That is how conversational learning survives this chat without creating a second memory system.
+'''
+service = once(
+    service,
+    retention_marker,
+    retention_marker + '''- When LEGEND_NATIVE_GAP_CONTEXT is supplied, the provider is acting as a diagnostic teacher because native LEGEND failed and explicitly allowed escalation. Inspect retained LEGEND evidence first. If the Founder curriculum/evidence supports a reusable semantic distinction that would close the native gap, submit exactly one bounded MachineProposed family through legend_submit_machine_learning_candidate before finalizing the answer.
+- Never retain the one-off generated reply as a canned answer. Retain reusable meaning, semantic components, controlled contrasts, discourse behavior, and realization evidence that explain how the class of utterance should be understood and composed.
+- If retained evidence is insufficient or contradictory, do not fabricate curriculum. State the exact missing evidence/contrast so the Founder and existing autonomous learning authorities can resolve it.
+''',
+    'native gap retention governance')
+
+service = once(
+    service,
+    '''MODE: OPENAI TEACHER
+
+You are the external OpenAI Teacher speaking directly with the Founder.
+''',
+    '''MODE: OPENAI TEACHER
+
+You are the external OpenAI Teacher speaking directly with the Founder.
+Native LEGEND conversational inference is bypassed in this mode. You are not a second LEGEND responder and must never speak as though a native LEGEND answer was produced.
+''',
+    'teacher direct role')
+
+helper_marker = '''    private static string BuildCasualInstructions() =>
+'''
+helper = '''    private static string BuildNativeDiagnosticTeachingContext(
+        LegendConnectNativeInferenceSnapshot? nativeInference,
+        string? nativeFailureDetail)
+    {
+        if (nativeInference is not { Supported: false, RequiresEscalation: true } &&
+            string.IsNullOrWhiteSpace(nativeFailureDetail))
+        {
+            return string.Empty;
+        }
+
+        var reasonCode = string.IsNullOrWhiteSpace(nativeInference?.ReasonCode)
+            ? "native_inference_unavailable"
+            : nativeInference.ReasonCode.Trim();
+        var authorityDetail = !string.IsNullOrWhiteSpace(nativeInference?.AuthoritySummary)
+            ? NormalizeFailureDetail(nativeInference.AuthoritySummary)
+            : "The native authority returned no additional governed summary.";
+        var failureDetail = string.IsNullOrWhiteSpace(nativeFailureDetail)
+            ? "No native execution exception was recorded."
+            : NormalizeFailureDetail(nativeFailureDetail);
+        var evidenceCount = nativeInference?.EvidenceCount ?? 0;
+
+        return $"""
+
+LEGEND_NATIVE_GAP_CONTEXT:
+NativeReasonCode={reasonCode}
+NativeAuthorityDetail={authorityDetail}
+NativeEvidenceCount={evidenceCount}
+NativeExecutionDetail={failureDetail}
+
+DIAGNOSTIC TEACHER REQUIREMENTS:
+- This turn reached OpenAI because native LEGEND could not produce one governed answer and explicitly permitted escalation.
+- Diagnose the missing linguistic/semantic capability against retained LEGEND evidence before relying on general OpenAI recall.
+- Use legend_search_retained_knowledge when a narrower query can distinguish an unknown component, ambiguous composition, missing transition, contradiction, realization gap, discourse gap, or production-eligibility gap.
+- If governed evidence supports a reusable controlled semantic family that would reduce recurrence, submit exactly one bounded MachineProposed family through legend_submit_machine_learning_candidate before the final response.
+- Preserve reusable semantics and controlled contrasts, not a generated response template.
+- If a valid proposal cannot be supported, state precisely what governed evidence is missing instead of inventing it.
+- MachineProposed retention is not canonical approval. The existing independent critic, validator, curriculum admission, evaluator, training, and promotion authorities remain mandatory.
+""";
+    }
+
+'''
+service = once(service, helper_marker, helper + helper_marker, 'diagnostic teaching context helper')
+
+routing_marker = '''    private static string ResolveReasoningEffortForRound(
+'''
+routing_helpers = '''    private static bool ShouldAttemptNativeInference(string mode) =>
+        string.Equals(mode, "legend", StringComparison.Ordinal);
+
+    private static bool RequiresProviderGovernedInspection(
+        IReadOnlyList<LegendFounderAiChatMessage> conversation,
+        string mode,
+        LegendConnectNativeInferenceSnapshot? nativeInference,
+        string? nativeFailureDetail) =>
+        RequiresGovernedInspection(conversation, mode) ||
+        nativeInference is { Supported: false, RequiresEscalation: true } ||
+        !string.IsNullOrWhiteSpace(nativeFailureDetail);
+
+'''
+service = once(service, routing_marker, routing_helpers + routing_marker, 'mode and provider routing helpers')
+
+set_mode_old = '''    function setMode(nextMode) {
+        if (busy) {
+            return;
+        }
+
+        const conversation = activeConversation();
+
+        conversation.mode =
+            nextMode === 'teacher'
+                ? 'teacher'
+                : 'legend';
+
+        conversation.updatedUtc =
+            new Date().toISOString();
+
+        saveState();
+        setReadingMode(false);
+        renderAll({ forceBottom: false });
+        focusComposer();
+    }
+'''
+set_mode_new = '''    function setMode(nextMode) {
+        if (busy) {
+            return;
+        }
+
+        const requestedMode =
+            nextMode === 'teacher'
+                ? 'teacher'
+                : 'legend';
+
+        const current = activeConversation();
+
+        if (current.mode === requestedMode) {
+            return;
+        }
+
+        // One browser conversation has exactly one responder identity. Never
+        // relabel an existing Legend® Ai transcript as OpenAI Teacher (or the
+        // reverse), because that would feed one AI's prior responses to the
+        // other under the wrong role. A mode change starts a clean thread while
+        // preserving both histories independently.
+        const conversation = newConversationRecord(requestedMode);
+        state.conversations.unshift(conversation);
+        state.activeConversationId = conversation.id;
+        saveState();
+        setSidebarOpen(false);
+        setReadingMode(false);
+        renderAll({ forceBottom: true });
+
+        if (status) {
+            status.textContent = '';
+        }
+
+        focusComposer();
+    }
+'''
+js = once(js, set_mode_old, set_mode_new, 'immutable UI role switch')
+
+js = once(
+    js,
+    '''                conversation.mode === 'teacher'
+                    ? 'External language teacher & strategy'
+                    : 'Governed intelligence conversation';
+''',
+    '''                conversation.mode === 'teacher'
+                    ? 'Direct OpenAI Teacher · LEGEND native inference bypassed'
+                    : 'Legend® Ai · governed native intelligence first';
+''',
+    'mode subtitle clarity')
+
+modal = once(
+    modal,
+    '''                            OpenAI Teacher
+                        </button>
+''',
+    '''                            OpenAI Teacher
+                            <span class="visually-hidden">Direct OpenAI mode; native LEGEND responder bypassed</span>
+                        </button>
+''',
+    'teacher button accessibility label')
+
+modal = once(
+    modal,
+    '''                            <p>
+                                Inspect governed knowledge, language gaps,
+                                evidence, training generations, model state,
+                                readiness, provider dependence, and the next
+                                legitimate V14 learning step.
+                            </p>
+''',
+    '''                            <p>
+                                Legend® Ai mode uses governed native intelligence first.
+                                OpenAI Teacher mode is a direct Founder-to-OpenAI channel
+                                that can inspect and teach through the existing governed
+                                LEGEND tools without becoming a second authority.
+                            </p>
+''',
+    'welcome role explanation')
+
+test_marker = '''    [Fact]
+    public void NativeFailureResponse_ExposesGovernedReasonAndProviderFailureDetail()
+'''
+new_tests = '''    [Theory]
+    [InlineData("legend", true)]
+    [InlineData("teacher", false)]
+    public void ConversationMode_ExplicitlyControlsNativeInference(string mode, bool expected)
+    {
+        var method = typeof(LegendFounderAiConversationService)
+            .GetMethod("ShouldAttemptNativeInference", BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.NotNull(method);
+        Assert.Equal(expected, Assert.IsType<bool>(method!.Invoke(null, new object[] { mode })));
+    }
+
+    [Fact]
+    public void OpenAiTeacherInstructions_DeclareDirectRoleAndNativeBypass()
+    {
+        var method = typeof(LegendFounderAiConversationService)
+            .GetMethod("BuildInstructions", BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.NotNull(method);
+        var instructions = Assert.IsType<string>(method!.Invoke(null, new object[] { "teacher" }));
+        Assert.Contains("external OpenAI Teacher speaking directly with the Founder", instructions);
+        Assert.Contains("Native LEGEND conversational inference is bypassed in this mode", instructions);
+        Assert.Contains("existing governed tools", instructions);
+        Assert.Contains("execute that tool rather than merely describing", instructions);
+    }
+
+    [Fact]
+    public void CasualNativeEscalation_EntersGovernedDiagnosticTeacherPath()
+    {
+        var method = typeof(LegendFounderAiConversationService)
+            .GetMethod("RequiresProviderGovernedInspection", BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.NotNull(method);
+        IReadOnlyList<LegendFounderAiChatMessage> conversation = [new("user", "Hi")];
+        var snapshot = new LegendConnectNativeInferenceSnapshot(
+            false, 0m, null, "ambiguous_composed_meaning", 0,
+            "No unique governed semantic transition could be selected.", true);
+        Assert.True(Assert.IsType<bool>(method!.Invoke(null, new object?[] { conversation, "legend", snapshot, null })));
+    }
+
+    [Fact]
+    public void CasualNativeSuccess_DoesNotEnterProviderInspectionPath()
+    {
+        var method = typeof(LegendFounderAiConversationService)
+            .GetMethod("RequiresProviderGovernedInspection", BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.NotNull(method);
+        IReadOnlyList<LegendFounderAiChatMessage> conversation = [new("user", "How are you?")];
+        var snapshot = new LegendConnectNativeInferenceSnapshot(
+            true, 1m, "I'm doing great, thanks.", "supported", 4,
+            "Governed native response selected.", false);
+        Assert.False(Assert.IsType<bool>(method!.Invoke(null, new object?[] { conversation, "legend", snapshot, null })));
+    }
+
+    [Fact]
+    public void NativeGapContext_RequiresEvidenceFirstRetentionWithoutSelfPromotion()
+    {
+        var method = typeof(LegendFounderAiConversationService)
+            .GetMethod("BuildNativeDiagnosticTeachingContext", BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.NotNull(method);
+        var snapshot = new LegendConnectNativeInferenceSnapshot(
+            false, 0m, null, "meaning_graph_component_unknown", 0,
+            "A required meaning component was unknown.", true);
+        var context = Assert.IsType<string>(method!.Invoke(null, new object?[] { snapshot, null }));
+        Assert.Contains("LEGEND_NATIVE_GAP_CONTEXT", context);
+        Assert.Contains("meaning_graph_component_unknown", context);
+        Assert.Contains("legend_search_retained_knowledge", context);
+        Assert.Contains("legend_submit_machine_learning_candidate", context);
+        Assert.Contains("MachineProposed", context);
+        Assert.Contains("independent critic", context);
+        Assert.Contains("instead of inventing", context, StringComparison.OrdinalIgnoreCase);
+    }
+
+'''
+tests = once(tests, test_marker, new_tests + test_marker, 'role and learning regression tests')
+
+service_path.write_text(service)
+tests_path.write_text(tests)
+js_path.write_text(js)
+modal_path.write_text(modal)
