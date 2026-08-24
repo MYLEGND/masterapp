@@ -1,40 +1,387 @@
 LEGEND PRODUCTION READ-ONLY DIAGNOSTIC
-Commit: 9a352fe6eef540559122b22772fb1d02c77b210d
+Commit: e2f6fcb61e9b1f59a4bac7680cca98847b3d792f
 RestoreOutcome: success
 BuildOutcome: success
+ReplayStatusOutcome: failure
 DiagnosticOutcome: success
 NativeExit: 99
 ShadowExit: 99
 
+=== LIVE REPLAY / CURRICULUM STATUS ===
+D:\a\masterapp\masterapp\diagnostics\LegendProductionReplayStatus.cs.csproj : warning NU1903: Package 'System.Security.Cryptography.Xml' 8.0.2 has a known high severity vulnerability, https://github.com/advisories/GHSA-23rf-6693-g89p
+D:\a\masterapp\masterapp\diagnostics\LegendProductionReplayStatus.cs.csproj : warning NU1903: Package 'System.Security.Cryptography.Xml' 8.0.2 has a known high severity vulnerability, https://github.com/advisories/GHSA-37gx-xxp4-5rgx
+D:\a\masterapp\masterapp\diagnostics\LegendProductionReplayStatus.cs.csproj : warning NU1903: Package 'System.Security.Cryptography.Xml' 8.0.2 has a known high severity vulnerability, https://github.com/advisories/GHSA-6588-8gv4-xfgh
+D:\a\masterapp\masterapp\diagnostics\LegendProductionReplayStatus.cs.csproj : warning NU1903: Package 'System.Security.Cryptography.Xml' 8.0.2 has a known high severity vulnerability, https://github.com/advisories/GHSA-8q5v-6pqq-x66h
+D:\a\masterapp\masterapp\diagnostics\LegendProductionReplayStatus.cs.csproj : warning NU1903: Package 'System.Security.Cryptography.Xml' 8.0.2 has a known high severity vulnerability, https://github.com/advisories/GHSA-cvvh-rhrc-wg4q
+D:\a\masterapp\masterapp\diagnostics\LegendProductionReplayStatus.cs.csproj : warning NU1903: Package 'System.Security.Cryptography.Xml' 8.0.2 has a known high severity vulnerability, https://github.com/advisories/GHSA-g8r8-53c2-pm3f
+D:\a\masterapp\masterapp\diagnostics\LegendProductionReplayStatus.cs.csproj : warning NU1903: Package 'System.Security.Cryptography.Xml' 8.0.2 has a known high severity vulnerability, https://github.com/advisories/GHSA-mmjf-rqrv-855v
+D:\a\masterapp\masterapp\diagnostics\LegendProductionReplayStatus.cs.csproj : warning NU1903: Package 'System.Security.Cryptography.Xml' 8.0.2 has a known high severity vulnerability, https://github.com/advisories/GHSA-w3x6-4m5h-cxqf
+D:\a\masterapp\masterapp\diagnostics\LegendProductionReplayStatus.cs.csproj : warning NU1903: Package 'System.Security.Cryptography.Xml' 8.0.2 has a known high severity vulnerability, https://github.com/advisories/GHSA-23rf-6693-g89p
+D:\a\masterapp\masterapp\diagnostics\LegendProductionReplayStatus.cs.csproj : warning NU1903: Package 'System.Security.Cryptography.Xml' 8.0.2 has a known high severity vulnerability, https://github.com/advisories/GHSA-37gx-xxp4-5rgx
+D:\a\masterapp\masterapp\diagnostics\LegendProductionReplayStatus.cs.csproj : warning NU1903: Package 'System.Security.Cryptography.Xml' 8.0.2 has a known high severity vulnerability, https://github.com/advisories/GHSA-6588-8gv4-xfgh
+D:\a\masterapp\masterapp\diagnostics\LegendProductionReplayStatus.cs.csproj : warning NU1903: Package 'System.Security.Cryptography.Xml' 8.0.2 has a known high severity vulnerability, https://github.com/advisories/GHSA-8q5v-6pqq-x66h
+D:\a\masterapp\masterapp\diagnostics\LegendProductionReplayStatus.cs.csproj : warning NU1903: Package 'System.Security.Cryptography.Xml' 8.0.2 has a known high severity vulnerability, https://github.com/advisories/GHSA-cvvh-rhrc-wg4q
+D:\a\masterapp\masterapp\diagnostics\LegendProductionReplayStatus.cs.csproj : warning NU1903: Package 'System.Security.Cryptography.Xml' 8.0.2 has a known high severity vulnerability, https://github.com/advisories/GHSA-g8r8-53c2-pm3f
+D:\a\masterapp\masterapp\diagnostics\LegendProductionReplayStatus.cs.csproj : warning NU1903: Package 'System.Security.Cryptography.Xml' 8.0.2 has a known high severity vulnerability, https://github.com/advisories/GHSA-mmjf-rqrv-855v
+D:\a\masterapp\masterapp\diagnostics\LegendProductionReplayStatus.cs.csproj : warning NU1903: Package 'System.Security.Cryptography.Xml' 8.0.2 has a known high severity vulnerability, https://github.com/advisories/GHSA-w3x6-4m5h-cxqf
+=== RUNTIME REEVALUATION POLICY ===
+TargetEvaluator=21 | CompletedEvaluator=21 | CurrentPhase=SourceFamilies | ReplayStartedUtc=08/24/2026 07:56:33 | ReplayCompletedUtc=<NULL> | CursorCompatibilityEvaluator=15
+
+=== HISTORICAL WORK BY STATE ===
+EvaluatorVersion=21 | Phase=FounderCurriculum | WorkKind=DerivationLedger | ProcessingState=Completed | WorkCount=321 | OldestCreatedUtc=08/24/2026 04:16:48 | LatestUpdatedUtc=08/24/2026 08:39:16 | ExpiredProcessingLeases=0
+EvaluatorVersion=21 | Phase=FounderCurriculum | WorkKind=DerivationLedger | ProcessingState=Pending | WorkCount=111 | OldestCreatedUtc=08/24/2026 06:21:17 | LatestUpdatedUtc=08/24/2026 07:54:03 | ExpiredProcessingLeases=0
+EvaluatorVersion=21 | Phase=FounderCurriculum | WorkKind=FounderManifestFamily | ProcessingState=Completed | WorkCount=333 | OldestCreatedUtc=08/24/2026 04:16:43 | LatestUpdatedUtc=08/24/2026 08:38:36 | ExpiredProcessingLeases=0
+EvaluatorVersion=21 | Phase=FounderCurriculum | WorkKind=FounderManifestFamily | ProcessingState=Failed | WorkCount=4 | OldestCreatedUtc=08/24/2026 07:53:49 | LatestUpdatedUtc=08/24/2026 16:43:27 | ExpiredProcessingLeases=0
+EvaluatorVersion=21 | Phase=FounderCurriculum | WorkKind=FounderManifestFamily | ProcessingState=Pending | WorkCount=95 | OldestCreatedUtc=08/24/2026 06:21:17 | LatestUpdatedUtc=08/24/2026 16:43:29 | ExpiredProcessingLeases=0
+EvaluatorVersion=21 | Phase=FounderCurriculum | WorkKind=FounderManifestRelation | ProcessingState=Completed | WorkCount=309 | OldestCreatedUtc=08/24/2026 04:16:47 | LatestUpdatedUtc=08/24/2026 05:43:31 | ExpiredProcessingLeases=0
+EvaluatorVersion=21 | Phase=FounderCurriculum | WorkKind=FounderManifestRelation | ProcessingState=Pending | WorkCount=60 | OldestCreatedUtc=08/24/2026 07:53:50 | LatestUpdatedUtc=08/24/2026 07:53:50 | ExpiredProcessingLeases=0
+EvaluatorVersion=21 | Phase=SourceFamilies | WorkKind=Canonical | ProcessingState=Completed | WorkCount=393 | OldestCreatedUtc=08/24/2026 07:56:42 | LatestUpdatedUtc=08/24/2026 09:50:58 | ExpiredProcessingLeases=0
+EvaluatorVersion=21 | Phase=SourceFamilies | WorkKind=Canonical | ProcessingState=Failed | WorkCount=1 | OldestCreatedUtc=08/24/2026 08:19:15 | LatestUpdatedUtc=08/24/2026 08:31:26 | ExpiredProcessingLeases=0
+EvaluatorVersion=21 | Phase=SourceFamilies | WorkKind=DerivationLedger | ProcessingState=Pending | WorkCount=393 | OldestCreatedUtc=08/24/2026 07:57:47 | LatestUpdatedUtc=08/24/2026 09:50:58 | ExpiredProcessingLeases=0
+EvaluatorVersion=21 | Phase=SourceFamilies | WorkKind=PhaseSeed | ProcessingState=Completed | WorkCount=1 | OldestCreatedUtc=08/24/2026 07:56:35 | LatestUpdatedUtc=08/24/2026 09:45:03 | ExpiredProcessingLeases=0
+EvaluatorVersion=20 | Phase=FounderCurriculum | WorkKind=DerivationLedger | ProcessingState=Completed | WorkCount=316 | OldestCreatedUtc=08/23/2026 23:11:43 | LatestUpdatedUtc=08/24/2026 04:06:39 | ExpiredProcessingLeases=0
+EvaluatorVersion=20 | Phase=FounderCurriculum | WorkKind=DerivationLedger | ProcessingState=Pending | WorkCount=116 | OldestCreatedUtc=08/24/2026 01:18:38 | LatestUpdatedUtc=08/24/2026 03:26:22 | ExpiredProcessingLeases=0
+EvaluatorVersion=20 | Phase=FounderCurriculum | WorkKind=FounderManifestFamily | ProcessingState=Completed | WorkCount=399 | OldestCreatedUtc=08/23/2026 23:11:43 | LatestUpdatedUtc=08/24/2026 05:53:19 | ExpiredProcessingLeases=0
+EvaluatorVersion=20 | Phase=FounderCurriculum | WorkKind=FounderManifestFamily | ProcessingState=Failed | WorkCount=29 | OldestCreatedUtc=08/24/2026 01:18:37 | LatestUpdatedUtc=08/24/2026 04:05:59 | ExpiredProcessingLeases=0
+EvaluatorVersion=20 | Phase=FounderCurriculum | WorkKind=FounderManifestFamily | ProcessingState=Pending | WorkCount=3 | OldestCreatedUtc=08/24/2026 03:26:22 | LatestUpdatedUtc=08/24/2026 03:26:22 | ExpiredProcessingLeases=0
+EvaluatorVersion=20 | Phase=FounderCurriculum | WorkKind=FounderManifestFamily | ProcessingState=Processing | WorkCount=1 | OldestCreatedUtc=08/24/2026 03:26:21 | LatestUpdatedUtc=08/24/2026 06:34:39 | ExpiredProcessingLeases=1
+EvaluatorVersion=20 | Phase=FounderCurriculum | WorkKind=FounderManifestRelation | ProcessingState=Completed | WorkCount=309 | OldestCreatedUtc=08/23/2026 23:11:43 | LatestUpdatedUtc=08/24/2026 02:46:51 | ExpiredProcessingLeases=0
+EvaluatorVersion=20 | Phase=FounderCurriculum | WorkKind=FounderManifestRelation | ProcessingState=Pending | WorkCount=60 | OldestCreatedUtc=08/24/2026 01:18:37 | LatestUpdatedUtc=08/24/2026 01:18:37 | ExpiredProcessingLeases=0
+EvaluatorVersion=19 | Phase=Alignments | WorkKind=PhaseSeed | ProcessingState=Completed | WorkCount=1 | OldestCreatedUtc=08/23/2026 22:26:42 | LatestUpdatedUtc=08/23/2026 22:26:45 | ExpiredProcessingLeases=0
+EvaluatorVersion=19 | Phase=OperationalTranslations | WorkKind=Canonical | ProcessingState=Completed | WorkCount=184 | OldestCreatedUtc=08/23/2026 22:41:01 | LatestUpdatedUtc=08/23/2026 22:42:11 | ExpiredProcessingLeases=0
+EvaluatorVersion=19 | Phase=OperationalTranslations | WorkKind=PhaseSeed | ProcessingState=Completed | WorkCount=1 | OldestCreatedUtc=08/23/2026 22:41:01 | LatestUpdatedUtc=08/23/2026 22:41:45 | ExpiredProcessingLeases=0
+EvaluatorVersion=19 | Phase=ProviderObservations | WorkKind=Canonical | ProcessingState=Completed | WorkCount=2447 | OldestCreatedUtc=08/23/2026 22:28:08 | LatestUpdatedUtc=08/23/2026 22:39:38 | ExpiredProcessingLeases=0
+EvaluatorVersion=19 | Phase=ProviderObservations | WorkKind=PhaseSeed | ProcessingState=Completed | WorkCount=1 | OldestCreatedUtc=08/23/2026 22:28:08 | LatestUpdatedUtc=08/23/2026 22:39:27 | ExpiredProcessingLeases=0
+EvaluatorVersion=19 | Phase=SourceFamilies | WorkKind=PhaseSeed | ProcessingState=Completed | WorkCount=1 | OldestCreatedUtc=08/22/2026 18:18:57 | LatestUpdatedUtc=08/22/2026 18:29:53 | ExpiredProcessingLeases=0
+EvaluatorVersion=18 | Phase=Alignments | WorkKind=Canonical | ProcessingState=Completed | WorkCount=694 | OldestCreatedUtc=08/22/2026 09:23:46 | LatestUpdatedUtc=08/22/2026 14:09:53 | ExpiredProcessingLeases=0
+EvaluatorVersion=18 | Phase=Alignments | WorkKind=PhaseSeed | ProcessingState=Completed | WorkCount=1 | OldestCreatedUtc=08/22/2026 09:23:41 | LatestUpdatedUtc=08/22/2026 14:02:45 | ExpiredProcessingLeases=0
+EvaluatorVersion=18 | Phase=OperationalTranslations | WorkKind=Canonical | ProcessingState=Completed | WorkCount=184 | OldestCreatedUtc=08/22/2026 14:16:56 | LatestUpdatedUtc=08/22/2026 14:17:12 | ExpiredProcessingLeases=0
+EvaluatorVersion=18 | Phase=OperationalTranslations | WorkKind=PhaseSeed | ProcessingState=Completed | WorkCount=1 | OldestCreatedUtc=08/22/2026 14:16:56 | LatestUpdatedUtc=08/22/2026 14:17:08 | ExpiredProcessingLeases=0
+EvaluatorVersion=18 | Phase=ProviderObservations | WorkKind=Canonical | ProcessingState=Completed | WorkCount=2401 | OldestCreatedUtc=08/22/2026 14:11:13 | LatestUpdatedUtc=08/22/2026 14:15:38 | ExpiredProcessingLeases=0
+EvaluatorVersion=18 | Phase=ProviderObservations | WorkKind=PhaseSeed | ProcessingState=Completed | WorkCount=1 | OldestCreatedUtc=08/22/2026 14:11:13 | LatestUpdatedUtc=08/22/2026 14:15:28 | ExpiredProcessingLeases=0
+EvaluatorVersion=18 | Phase=SourceFamilies | WorkKind=PhaseSeed | ProcessingState=Completed | WorkCount=1 | OldestCreatedUtc=08/22/2026 04:48:17 | LatestUpdatedUtc=08/22/2026 04:54:11 | ExpiredProcessingLeases=0
+EvaluatorVersion=17 | Phase=SourceFamilies | WorkKind=PhaseSeed | ProcessingState=Completed | WorkCount=1 | OldestCreatedUtc=08/22/2026 02:38:52 | LatestUpdatedUtc=08/22/2026 03:50:05 | ExpiredProcessingLeases=0
+EvaluatorVersion=16 | Phase=SourceFamilies | WorkKind=PhaseSeed | ProcessingState=Completed | WorkCount=1 | OldestCreatedUtc=08/21/2026 22:33:18 | LatestUpdatedUtc=08/22/2026 02:22:06 | ExpiredProcessingLeases=0
+
+=== FAILED HISTORICAL WORK CODES ===
+EvaluatorVersion=20 | Phase=FounderCurriculum | WorkKind=FounderManifestFamily | LastErrorCode=founder_manifest_family_failure | FailureCount=29 | LatestUpdatedUtc=08/24/2026 04:05:59
+EvaluatorVersion=21 | Phase=FounderCurriculum | WorkKind=FounderManifestFamily | LastErrorCode=founder_manifest_family_failure | FailureCount=4 | LatestUpdatedUtc=08/24/2026 16:43:27
+EvaluatorVersion=21 | Phase=SourceFamilies | WorkKind=Canonical | LastErrorCode=historical_reevaluation_canonical_failure | FailureCount=1 | LatestUpdatedUtc=08/24/2026 08:31:26
+
+=== FOUNDER CURRICULUM MANIFEST STATUS ===
+TargetEvaluator=21 | CompletedEvaluator=21 | ProcessingState=Completed | ManifestCount=9 | FamilyCount=314 | OldestCreatedUtc=08/23/2026 23:11:33 | LatestUpdatedUtc=08/24/2026 08:39:16
+TargetEvaluator=21 | CompletedEvaluator=0 | ProcessingState=Failed | ManifestCount=1 | FamilyCount=60 | OldestCreatedUtc=08/24/2026 01:18:26 | LatestUpdatedUtc=08/24/2026 16:43:29
+TargetEvaluator=21 | CompletedEvaluator=0 | ProcessingState=Processing | ManifestCount=3 | FamilyCount=51 | OldestCreatedUtc=08/24/2026 02:14:18 | LatestUpdatedUtc=08/24/2026 07:54:04
+TargetEvaluator=20 | CompletedEvaluator=21 | ProcessingState=Completed | ManifestCount=3 | FamilyCount=7 | OldestCreatedUtc=08/24/2026 02:45:05 | LatestUpdatedUtc=08/24/2026 07:19:42
+
+=== FOUNDER RAW SUBMISSION REPLAY STATUS ===
+Unhandled exception. Microsoft.Data.SqlClient.SqlException (0x80131904): Invalid column name 'UpdatedUtc'.
+   at Microsoft.Data.SqlClient.SqlConnection.OnError(SqlException exception, Boolean breakConnection, Action`1 wrapCloseInAction)
+   at Microsoft.Data.SqlClient.SqlInternalConnection.OnError(SqlException exception, Boolean breakConnection, Action`1 wrapCloseInAction)
+   at Microsoft.Data.SqlClient.TdsParser.ThrowExceptionAndWarning(TdsParserStateObject stateObj, SqlCommand command, Boolean callerHasConnectionLock, Boolean asyncClose)
+   at Microsoft.Data.SqlClient.TdsParser.TryRun(RunBehavior runBehavior, SqlCommand cmdHandler, SqlDataReader dataStream, BulkCopySimpleResultSet bulkCopyHandler, TdsParserStateObject stateObj, Boolean& dataReady)
+   at Microsoft.Data.SqlClient.SqlDataReader.TryConsumeMetaData()
+   at Microsoft.Data.SqlClient.SqlDataReader.get_MetaData()
+   at Microsoft.Data.SqlClient.SqlCommand.FinishExecuteReader(SqlDataReader ds, RunBehavior runBehavior, String resetOptionsString, Boolean isInternal, Boolean forDescribeParameterEncryption, Boolean shouldCacheForAlwaysEncrypted)
+   at Microsoft.Data.SqlClient.SqlCommand.CompleteAsyncExecuteReader(Boolean isInternal, Boolean forDescribeParameterEncryption)
+   at Microsoft.Data.SqlClient.SqlCommand.InternalEndExecuteReader(IAsyncResult asyncResult, Boolean isInternal, String endMethod)
+   at Microsoft.Data.SqlClient.SqlCommand.EndExecuteReaderInternal(IAsyncResult asyncResult)
+   at Microsoft.Data.SqlClient.SqlCommand.EndExecuteReaderAsync(IAsyncResult asyncResult)
+   at Microsoft.Data.SqlClient.SqlCommand.<>c.<InternalExecuteReaderAsync>b__201_1(IAsyncResult asyncResult)
+   at System.Threading.Tasks.TaskFactory`1.FromAsyncCoreLogic(IAsyncResult iar, Func`2 endFunction, Action`1 endAction, Task`1 promise, Boolean requiresSynchronization)
+--- End of stack trace from previous location ---
+   at Program.<<Main>$>g__PrintQueryAsync|0_0(SqlConnection connection, String title, String sql) in D:\a\masterapp\masterapp\diagnostics\LegendProductionReplayStatus.cs:line 26
+   at Program.<<Main>$>g__PrintQueryAsync|0_0(SqlConnection connection, String title, String sql) in D:\a\masterapp\masterapp\diagnostics\LegendProductionReplayStatus.cs:line 40
+   at Program.<Main>$(String[] args) in D:\a\masterapp\masterapp\diagnostics\LegendProductionReplayStatus.cs:line 97
+   at Program.<Main>$(String[] args) in D:\a\masterapp\masterapp\diagnostics\LegendProductionReplayStatus.cs:line 121
+   at Program.<Main>(String[] args)
+ClientConnectionId:58ab0acf-b7db-4a52-9d2e-dea1c8d9b7e5
+Error Number:207,State:1,Class:16
+ClientConnectionId before routing:264a9b37-9630-44a1-9a4e-277463218278
+Routing Destination:d59b85152131.tr14811.centralus1-a.worker.database.windows.net,11052
+
 === TEST PREFLIGHT ===
 Test run for D:\tmp\masterapp\bin\AgentPortal.Tests\Release\net10.0\AgentPortal.Tests.dll (.NETCoreApp,Version=v10.0)
 The following Tests are available:
+Logging Vstest Diagnostics in file: D:\a\masterapp\masterapp\diagnostics\vstest-discovery.txt
 No test is available in D:\tmp\masterapp\bin\AgentPortal.Tests\Release\net10.0\AgentPortal.Tests.dll. Make sure that test discoverer & executors are registered and platform & framework version settings are appropriate and try again.
-Exception: D:\a\_temp\f5e8c01d-90d9-474d-a3e9-ae1d8ce3e821.ps1:15
+Exception: D:\a\_temp\7c57f4f9-3541-4be6-82ea-d00318a4bd15.ps1:13
 Line |
-  15 |  … gnostic') { throw 'Native production diagnostic was not discovered.'  …
+  13 |  … gnostic') { throw 'Native production diagnostic was not discovered.'  …
      |                ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
      | Native production diagnostic was not discovered.
 
 
 
+=== VSTEST DISCOVERY DIAGNOSTIC ===
+TpTrace Information: 0 : 5236, 2, 2026/08/24, 16:43:34.596, 6404697733, vstest.console.dll, AssemblyResolver.OnResolve: Microsoft.Bcl.AsyncInterfaces: Searching in: 'C:\Program Files\dotnet\sdk\10.0.400'.
+TpTrace Information: 0 : 5236, 2, 2026/08/24, 16:43:34.596, 6404698123, vstest.console.dll, AssemblyResolver.OnResolve: Microsoft.Bcl.AsyncInterfaces: Assembly path does not exist: 'C:\Program Files\dotnet\sdk\10.0.400\Microsoft.Bcl.AsyncInterfaces.dll', returning.
+TpTrace Information: 0 : 5236, 2, 2026/08/24, 16:43:34.596, 6404698453, vstest.console.dll, AssemblyResolver.OnResolve: Microsoft.Bcl.AsyncInterfaces: Assembly path does not exist: 'C:\Program Files\dotnet\sdk\10.0.400\Microsoft.Bcl.AsyncInterfaces.exe', returning.
+TpTrace Information: 0 : 5236, 2, 2026/08/24, 16:43:34.596, 6404698663, vstest.console.dll, AssemblyResolver.OnResolve: Microsoft.Bcl.AsyncInterfaces: Failed to load assembly.
+TpTrace Verbose: 0 : 5236, 2, 2026/08/24, 16:43:34.597, 6404699206, vstest.console.dll, CurrentDomainAssemblyResolve: Resolving assembly 'Microsoft.Bcl.AsyncInterfaces'.
+TpTrace Information: 0 : 5236, 2, 2026/08/24, 16:43:34.597, 6404699666, vstest.console.dll, AssemblyResolver.OnResolve: Microsoft.Bcl.AsyncInterfaces: Resolving assembly.
+TpTrace Information: 0 : 5236, 2, 2026/08/24, 16:43:34.597, 6404699892, vstest.console.dll, AssemblyResolver.OnResolve: Microsoft.Bcl.AsyncInterfaces: Resolved from cache.
+TpTrace Verbose: 0 : 5236, 2, 2026/08/24, 16:43:34.597, 6404700039, vstest.console.dll, CurrentDomainAssemblyResolve: Resolving assembly 'Microsoft.Bcl.AsyncInterfaces'.
+TpTrace Verbose: 0 : 5236, 2, 2026/08/24, 16:43:34.597, 6404700314, vstest.console.dll, CurrentDomainAssemblyResolve: Failed to resolve assembly 'Microsoft.Bcl.AsyncInterfaces'.
+TpTrace Verbose: 0 : 5236, 2, 2026/08/24, 16:43:34.597, 6404706722, vstest.console.dll, CurrentDomainAssemblyResolve: Failed to resolve assembly 'Microsoft.Bcl.AsyncInterfaces'.
+TpTrace Information: 0 : 5236, 2, 2026/08/24, 16:43:34.603, 6404760535, vstest.console.dll, AssemblyResolver.OnResolve: Microsoft.Bcl.AsyncInterfaces: Resolving assembly.
+TpTrace Information: 0 : 5236, 2, 2026/08/24, 16:43:34.603, 6404761215, vstest.console.dll, AssemblyResolver.OnResolve: Microsoft.Bcl.AsyncInterfaces: Resolved from cache.
+TpTrace Verbose: 0 : 5236, 2, 2026/08/24, 16:43:34.603, 6404761413, vstest.console.dll, CurrentDomainAssemblyResolve: Resolving assembly 'Microsoft.Bcl.AsyncInterfaces'.
+TpTrace Verbose: 0 : 5236, 2, 2026/08/24, 16:43:34.603, 6404761565, vstest.console.dll, CurrentDomainAssemblyResolve: Failed to resolve assembly 'Microsoft.Bcl.AsyncInterfaces'.
+TpTrace Information: 0 : 5236, 2, 2026/08/24, 16:43:34.735, 6406087471, vstest.console.dll, AssemblyResolver.OnResolve: Microsoft.Bcl.AsyncInterfaces: Resolving assembly.
+TpTrace Information: 0 : 5236, 2, 2026/08/24, 16:43:34.735, 6406088797, vstest.console.dll, AssemblyResolver.OnResolve: Microsoft.Bcl.AsyncInterfaces: Resolved from cache.
+TpTrace Verbose: 0 : 5236, 2, 2026/08/24, 16:43:34.736, 6406089077, vstest.console.dll, CurrentDomainAssemblyResolve: Resolving assembly 'Microsoft.Bcl.AsyncInterfaces'.
+TpTrace Verbose: 0 : 5236, 2, 2026/08/24, 16:43:34.736, 6406089247, vstest.console.dll, CurrentDomainAssemblyResolve: Failed to resolve assembly 'Microsoft.Bcl.AsyncInterfaces'.
+TpTrace Warning: 0 : 5236, 2, 2026/08/24, 16:43:34.806, 6406791878, vstest.console.dll, TestPluginDiscoverer: Failed to get types from assembly 'Microsoft.Diagnostics.NETCore.Client, Version=0.2.14.38015, Culture=neutral, PublicKeyToken=31bf3856ad364e35'. Error: System.Reflection.ReflectionTypeLoadException: Unable to load one or more of the requested types.
+Could not load file or assembly 'Microsoft.Bcl.AsyncInterfaces, Version=9.0.0.8, Culture=neutral, PublicKeyToken=cc7b13ffcd2ddd51'. The system cannot find the file specified.
+Could not load file or assembly 'Microsoft.Bcl.AsyncInterfaces, Version=9.0.0.8, Culture=neutral, PublicKeyToken=cc7b13ffcd2ddd51'. The system cannot find the file specified.
+Could not load file or assembly 'Microsoft.Bcl.AsyncInterfaces, Version=9.0.0.8, Culture=neutral, PublicKeyToken=cc7b13ffcd2ddd51'. The system cannot find the file specified.
+   at System.Reflection.RuntimeModule.GetDefinedTypes()
+   at System.Reflection.RuntimeModule.GetTypes()
+   at Microsoft.VisualStudio.TestPlatform.Common.ExtensionFramework.TestPluginDiscoverer.GetTestExtensionsFromAssembly[TPluginInfo,TExtension](Assembly assembly, Dictionary`2 pluginInfos, String filePath) in /_/src/vstest/src/Microsoft.TestPlatform.Common/ExtensionFramework/TestPluginDiscoverer.cs:line 159
+System.IO.FileNotFoundException: Could not load file or assembly 'Microsoft.Bcl.AsyncInterfaces, Version=9.0.0.8, Culture=neutral, PublicKeyToken=cc7b13ffcd2ddd51'. The system cannot find the file specified.
+File name: 'Microsoft.Bcl.AsyncInterfaces, Version=9.0.0.8, Culture=neutral, PublicKeyToken=cc7b13ffcd2ddd51'
+ ---> System.IO.FileNotFoundException: Could not load file or assembly 'Microsoft.Bcl.AsyncInterfaces, Culture=neutral, PublicKeyToken=null'. The system cannot find the file specified.
+File name: 'Microsoft.Bcl.AsyncInterfaces, Culture=neutral, PublicKeyToken=null'
+   at System.Reflection.RuntimeAssembly.InternalLoad(AssemblyName assemblyName, StackCrawlMark& stackMark, AssemblyLoadContext assemblyLoadContext, RuntimeAssembly requestingAssembly, Boolean throwOnFileNotFound)
+   at System.Reflection.Assembly.Load(AssemblyName assemblyRef)
+   at Microsoft.VisualStudio.TestPlatform.Common.ExtensionFramework.TestPluginCache.CurrentDomainAssemblyResolve(Object sender, AssemblyResolveEventArgs args) in /_/src/vstest/src/Microsoft.TestPlatform.Common/ExtensionFramework/TestPluginCache.cs:line 514
+   at System.Runtime.Loader.AssemblyLoadContext.GetFirstResolvedAssemblyFromResolvingEvent(AssemblyName assemblyName)
+   at System.Runtime.Loader.AssemblyLoadContext.ResolveUsingEvent(AssemblyName assemblyName)
+System.IO.FileNotFoundException: Could not load file or assembly 'Microsoft.Bcl.AsyncInterfaces, Version=9.0.0.8, Culture=neutral, PublicKeyToken=cc7b13ffcd2ddd51'. The system cannot find the file specified.
+File name: 'Microsoft.Bcl.AsyncInterfaces, Version=9.0.0.8, Culture=neutral, PublicKeyToken=cc7b13ffcd2ddd51'
+System.IO.FileNotFoundException: Could not load file or assembly 'Microsoft.Bcl.AsyncInterfaces, Version=9.0.0.8, Culture=neutral, PublicKeyToken=cc7b13ffcd2ddd51'. The system cannot find the file specified.
+File name: 'Microsoft.Bcl.AsyncInterfaces, Version=9.0.0.8, Culture=neutral, PublicKeyToken=cc7b13ffcd2ddd51'
+TpTrace Warning: 0 : 5236, 2, 2026/08/24, 16:43:34.806, 6406795717, vstest.console.dll, LoaderExceptions: System.IO.FileNotFoundException: Could not load file or assembly 'Microsoft.Bcl.AsyncInterfaces, Version=9.0.0.8, Culture=neutral, PublicKeyToken=cc7b13ffcd2ddd51'. The system cannot find the file specified.
+File name: 'Microsoft.Bcl.AsyncInterfaces, Version=9.0.0.8, Culture=neutral, PublicKeyToken=cc7b13ffcd2ddd51'
+ ---> System.IO.FileNotFoundException: Could not load file or assembly 'Microsoft.Bcl.AsyncInterfaces, Culture=neutral, PublicKeyToken=null'. The system cannot find the file specified.
+File name: 'Microsoft.Bcl.AsyncInterfaces, Culture=neutral, PublicKeyToken=null'
+   at System.Reflection.RuntimeAssembly.InternalLoad(AssemblyName assemblyName, StackCrawlMark& stackMark, AssemblyLoadContext assemblyLoadContext, RuntimeAssembly requestingAssembly, Boolean throwOnFileNotFound)
+   at System.Reflection.Assembly.Load(AssemblyName assemblyRef)
+   at Microsoft.VisualStudio.TestPlatform.Common.ExtensionFramework.TestPluginCache.CurrentDomainAssemblyResolve(Object sender, AssemblyResolveEventArgs args) in /_/src/vstest/src/Microsoft.TestPlatform.Common/ExtensionFramework/TestPluginCache.cs:line 514
+   at System.Runtime.Loader.AssemblyLoadContext.GetFirstResolvedAssemblyFromResolvingEvent(AssemblyName assemblyName)
+   at System.Runtime.Loader.AssemblyLoadContext.ResolveUsingEvent(AssemblyName assemblyName)
+TpTrace Warning: 0 : 5236, 2, 2026/08/24, 16:43:34.806, 6406796677, vstest.console.dll, LoaderExceptions: System.IO.FileNotFoundException: Could not load file or assembly 'Microsoft.Bcl.AsyncInterfaces, Version=9.0.0.8, Culture=neutral, PublicKeyToken=cc7b13ffcd2ddd51'. The system cannot find the file specified.
+File name: 'Microsoft.Bcl.AsyncInterfaces, Version=9.0.0.8, Culture=neutral, PublicKeyToken=cc7b13ffcd2ddd51'
+TpTrace Warning: 0 : 5236, 2, 2026/08/24, 16:43:34.806, 6406796885, vstest.console.dll, LoaderExceptions: System.IO.FileNotFoundException: Could not load file or assembly 'Microsoft.Bcl.AsyncInterfaces, Version=9.0.0.8, Culture=neutral, PublicKeyToken=cc7b13ffcd2ddd51'. The system cannot find the file specified.
+File name: 'Microsoft.Bcl.AsyncInterfaces, Version=9.0.0.8, Culture=neutral, PublicKeyToken=cc7b13ffcd2ddd51'
+TpTrace Information: 0 : 5236, 2, 2026/08/24, 16:43:34.806, 6406798073, vstest.console.dll, AssemblyResolver.OnResolve: Microsoft.TestPlatform.Extensions.BlameDataCollector: Resolving assembly.
+TpTrace Information: 0 : 5236, 2, 2026/08/24, 16:43:34.806, 6406798323, vstest.console.dll, AssemblyResolver.OnResolve: Microsoft.TestPlatform.Extensions.BlameDataCollector: Searching in: 'C:\Program Files\dotnet\sdk\10.0.400\Extensions'.
+TpTrace Information: 0 : 5236, 2, 2026/08/24, 16:43:34.824, 6406969392, vstest.console.dll, AssemblyResolver.OnResolve: Microsoft.TestPlatform.Extensions.BlameDataCollector: Loading assembly 'C:\Program Files\dotnet\sdk\10.0.400\Extensions\Microsoft.TestPlatform.Extensions.BlameDataCollector.dll'.
+TpTrace Information: 0 : 5236, 2, 2026/08/24, 16:43:34.825, 6406984782, vstest.console.dll, AssemblyResolver.TrackProvidedDependency: Resolved 'Microsoft.TestPlatform.Extensions.BlameDataCollector' from 'C:\Program Files\dotnet\sdk\10.0.400\Extensions' for 'unknown'.
+TpTrace Information: 0 : 5236, 2, 2026/08/24, 16:43:34.825, 6406985587, vstest.console.dll, AssemblyResolver.OnResolve: Resolved assembly: Microsoft.TestPlatform.Extensions.BlameDataCollector, from path: C:\Program Files\dotnet\sdk\10.0.400\Extensions\Microsoft.TestPlatform.Extensions.BlameDataCollector.dll
+TpTrace Verbose: 0 : 5236, 2, 2026/08/24, 16:43:34.825, 6406986221, vstest.console.dll, MetadataReaderExtensionsHelper: Discovering extensions inside assembly 'Microsoft.TestPlatform.Extensions.BlameDataCollector, Version=15.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a' file path 'C:\Program Files\dotnet\sdk\10.0.400\Extensions\Microsoft.TestPlatform.Extensions.BlameDataCollector.dll'
+TpTrace Information: 0 : 5236, 2, 2026/08/24, 16:43:34.828, 6407012993, vstest.console.dll, AssemblyResolver.OnResolve: Microsoft.TestPlatform.Extensions.EventLogCollector: Resolving assembly.
+TpTrace Information: 0 : 5236, 2, 2026/08/24, 16:43:34.828, 6407013785, vstest.console.dll, AssemblyResolver.OnResolve: Microsoft.TestPlatform.Extensions.EventLogCollector: Searching in: 'C:\Program Files\dotnet\sdk\10.0.400\Extensions'.
+TpTrace Information: 0 : 5236, 2, 2026/08/24, 16:43:34.833, 6407068640, vstest.console.dll, AssemblyResolver.OnResolve: Microsoft.TestPlatform.Extensions.EventLogCollector: Loading assembly 'C:\Program Files\dotnet\sdk\10.0.400\Extensions\Microsoft.TestPlatform.Extensions.EventLogCollector.dll'.
+TpTrace Information: 0 : 5236, 2, 2026/08/24, 16:43:34.834, 6407072960, vstest.console.dll, AssemblyResolver.TrackProvidedDependency: Resolved 'Microsoft.TestPlatform.Extensions.EventLogCollector' from 'C:\Program Files\dotnet\sdk\10.0.400\Extensions' for 'unknown'.
+TpTrace Information: 0 : 5236, 2, 2026/08/24, 16:43:34.834, 6407073366, vstest.console.dll, AssemblyResolver.OnResolve: Resolved assembly: Microsoft.TestPlatform.Extensions.EventLogCollector, from path: C:\Program Files\dotnet\sdk\10.0.400\Extensions\Microsoft.TestPlatform.Extensions.EventLogCollector.dll
+TpTrace Verbose: 0 : 5236, 2, 2026/08/24, 16:43:34.834, 6407073780, vstest.console.dll, MetadataReaderExtensionsHelper: Discovering extensions inside assembly 'Microsoft.TestPlatform.Extensions.EventLogCollector, Version=15.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a' file path 'C:\Program Files\dotnet\sdk\10.0.400\Extensions\Microsoft.TestPlatform.Extensions.EventLogCollector.dll'
+TpTrace Information: 0 : 5236, 2, 2026/08/24, 16:43:34.869, 6407424986, vstest.console.dll, AssemblyResolver.OnResolve: Microsoft.TestPlatform.TestHostRuntimeProvider: Resolving assembly.
+TpTrace Information: 0 : 5236, 2, 2026/08/24, 16:43:34.869, 6407425996, vstest.console.dll, AssemblyResolver.OnResolve: Microsoft.TestPlatform.TestHostRuntimeProvider: Searching in: 'C:\Program Files\dotnet\sdk\10.0.400\Extensions'.
+TpTrace Information: 0 : 5236, 2, 2026/08/24, 16:43:34.990, 6408636849, vstest.console.dll, AssemblyResolver.OnResolve: Microsoft.TestPlatform.TestHostRuntimeProvider: Loading assembly 'C:\Program Files\dotnet\sdk\10.0.400\Extensions\Microsoft.TestPlatform.TestHostRuntimeProvider.dll'.
+TpTrace Information: 0 : 5236, 2, 2026/08/24, 16:43:34.991, 6408643937, vstest.console.dll, AssemblyResolver.TrackProvidedDependency: Resolved 'Microsoft.TestPlatform.TestHostRuntimeProvider' from 'C:\Program Files\dotnet\sdk\10.0.400\Extensions' for 'unknown'.
+TpTrace Information: 0 : 5236, 2, 2026/08/24, 16:43:34.991, 6408644443, vstest.console.dll, AssemblyResolver.OnResolve: Resolved assembly: Microsoft.TestPlatform.TestHostRuntimeProvider, from path: C:\Program Files\dotnet\sdk\10.0.400\Extensions\Microsoft.TestPlatform.TestHostRuntimeProvider.dll
+TpTrace Verbose: 0 : 5236, 2, 2026/08/24, 16:43:34.991, 6408644968, vstest.console.dll, MetadataReaderExtensionsHelper: Discovering extensions inside assembly 'Microsoft.TestPlatform.TestHostRuntimeProvider, Version=15.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a' file path 'C:\Program Files\dotnet\sdk\10.0.400\Extensions\Microsoft.TestPlatform.TestHostRuntimeProvider.dll'
+TpTrace Information: 0 : 5236, 2, 2026/08/24, 16:43:34.993, 6408667753, vstest.console.dll, GetTestExtensionFromType: Register extension with identifier data 'HostProvider://DefaultTestHost' and type 'Microsoft.VisualStudio.TestPlatform.CrossPlatEngine.Hosting.DefaultTestHostManager, Microsoft.TestPlatform.TestHostRuntimeProvider, Version=15.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a' inside file 'C:\Program Files\dotnet\sdk\10.0.400\Extensions\Microsoft.TestPlatform.TestHostRuntimeProvider.dll'
+TpTrace Information: 0 : 5236, 2, 2026/08/24, 16:43:34.994, 6408671382, vstest.console.dll, GetTestExtensionFromType: Register extension with identifier data 'HostProvider://DotnetTestHost' and type 'Microsoft.VisualStudio.TestPlatform.CrossPlatEngine.Hosting.DotnetTestHostManager, Microsoft.TestPlatform.TestHostRuntimeProvider, Version=15.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a' inside file 'C:\Program Files\dotnet\sdk\10.0.400\Extensions\Microsoft.TestPlatform.TestHostRuntimeProvider.dll'
+TpTrace Information: 0 : 5236, 2, 2026/08/24, 16:43:34.994, 6408672379, vstest.console.dll, AssemblyResolver.OnResolve: Microsoft.VisualStudio.TestPlatform.Extensions.Html.TestLogger: Resolving assembly.
+TpTrace Information: 0 : 5236, 2, 2026/08/24, 16:43:34.994, 6408672645, vstest.console.dll, AssemblyResolver.OnResolve: Microsoft.VisualStudio.TestPlatform.Extensions.Html.TestLogger: Searching in: 'C:\Program Files\dotnet\sdk\10.0.400\Extensions'.
+TpTrace Information: 0 : 5236, 2, 2026/08/24, 16:43:35.009, 6408819348, vstest.console.dll, AssemblyResolver.OnResolve: Microsoft.VisualStudio.TestPlatform.Extensions.Html.TestLogger: Loading assembly 'C:\Program Files\dotnet\sdk\10.0.400\Extensions\Microsoft.VisualStudio.TestPlatform.Extensions.Html.TestLogger.dll'.
+TpTrace Information: 0 : 5236, 2, 2026/08/24, 16:43:35.010, 6408831581, vstest.console.dll, AssemblyResolver.TrackProvidedDependency: Resolved 'Microsoft.VisualStudio.TestPlatform.Extensions.Html.TestLogger' from 'C:\Program Files\dotnet\sdk\10.0.400\Extensions' for 'unknown'.
+TpTrace Information: 0 : 5236, 2, 2026/08/24, 16:43:35.010, 6408832294, vstest.console.dll, AssemblyResolver.OnResolve: Resolved assembly: Microsoft.VisualStudio.TestPlatform.Extensions.Html.TestLogger, from path: C:\Program Files\dotnet\sdk\10.0.400\Extensions\Microsoft.VisualStudio.TestPlatform.Extensions.Html.TestLogger.dll
+TpTrace Verbose: 0 : 5236, 2, 2026/08/24, 16:43:35.010, 6408832767, vstest.console.dll, MetadataReaderExtensionsHelper: Discovering extensions inside assembly 'Microsoft.VisualStudio.TestPlatform.Extensions.Html.TestLogger, Version=15.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a' file path 'C:\Program Files\dotnet\sdk\10.0.400\Extensions\Microsoft.VisualStudio.TestPlatform.Extensions.Html.TestLogger.dll'
+TpTrace Information: 0 : 5236, 2, 2026/08/24, 16:43:35.011, 6408840934, vstest.console.dll, AssemblyResolver.OnResolve: Microsoft.VisualStudio.TestPlatform.Extensions.Trx.TestLogger: Resolving assembly.
+TpTrace Information: 0 : 5236, 2, 2026/08/24, 16:43:35.011, 6408841575, vstest.console.dll, AssemblyResolver.OnResolve: Microsoft.VisualStudio.TestPlatform.Extensions.Trx.TestLogger: Searching in: 'C:\Program Files\dotnet\sdk\10.0.400\Extensions'.
+TpTrace Information: 0 : 5236, 2, 2026/08/24, 16:43:35.026, 6408991352, vstest.console.dll, AssemblyResolver.OnResolve: Microsoft.VisualStudio.TestPlatform.Extensions.Trx.TestLogger: Loading assembly 'C:\Program Files\dotnet\sdk\10.0.400\Extensions\Microsoft.VisualStudio.TestPlatform.Extensions.Trx.TestLogger.dll'.
+TpTrace Information: 0 : 5236, 2, 2026/08/24, 16:43:35.097, 6409706424, vstest.console.dll, AssemblyResolver.TrackProvidedDependency: Resolved 'Microsoft.VisualStudio.TestPlatform.Extensions.Trx.TestLogger' from 'C:\Program Files\dotnet\sdk\10.0.400\Extensions' for 'unknown'.
+TpTrace Information: 0 : 5236, 2, 2026/08/24, 16:43:35.097, 6409707447, vstest.console.dll, AssemblyResolver.OnResolve: Resolved assembly: Microsoft.VisualStudio.TestPlatform.Extensions.Trx.TestLogger, from path: C:\Program Files\dotnet\sdk\10.0.400\Extensions\Microsoft.VisualStudio.TestPlatform.Extensions.Trx.TestLogger.dll
+TpTrace Verbose: 0 : 5236, 2, 2026/08/24, 16:43:35.097, 6409708006, vstest.console.dll, MetadataReaderExtensionsHelper: Discovering extensions inside assembly 'Microsoft.VisualStudio.TestPlatform.Extensions.Trx.TestLogger, Version=15.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a' file path 'C:\Program Files\dotnet\sdk\10.0.400\Extensions\Microsoft.VisualStudio.TestPlatform.Extensions.Trx.TestLogger.dll'
+TpTrace Verbose: 0 : 5236, 2, 2026/08/24, 16:43:35.105, 6409787347, vstest.console.dll, TestPluginCache: Discovered the extensions using extension path ''.
+TpTrace Verbose: 0 : 5236, 2, 2026/08/24, 16:43:35.105, 6409788287, vstest.console.dll, TestPluginCache: Discoverers are ''.
+TpTrace Verbose: 0 : 5236, 2, 2026/08/24, 16:43:35.105, 6409788468, vstest.console.dll, TestPluginCache: Executors are ''.
+TpTrace Verbose: 0 : 5236, 2, 2026/08/24, 16:43:35.105, 6409788617, vstest.console.dll, TestPluginCache: Executors2 are ''.
+TpTrace Verbose: 0 : 5236, 2, 2026/08/24, 16:43:35.105, 6409788759, vstest.console.dll, TestPluginCache: Setting providers are ''.
+TpTrace Verbose: 0 : 5236, 2, 2026/08/24, 16:43:35.106, 6409788970, vstest.console.dll, TestPluginCache: Loggers are ''.
+TpTrace Verbose: 0 : 5236, 2, 2026/08/24, 16:43:35.106, 6409790626, vstest.console.dll, TestPluginCache: TestHosts are 'HostProvider://DefaultTestHost,HostProvider://DotnetTestHost'.
+TpTrace Verbose: 0 : 5236, 2, 2026/08/24, 16:43:35.106, 6409790848, vstest.console.dll, TestPluginCache: DataCollectors are ''.
+TpTrace Information: 0 : 5236, 2, 2026/08/24, 16:43:35.112, 6409856367, vstest.console.dll, FilePatternParser: The given file D:\tmp\masterapp\bin\AgentPortal.Tests\Release\net10.0\AgentPortal.Tests.dll is a full path.
+TpTrace Information: 0 : 5236, 2, 2026/08/24, 16:43:35.114, 6409874813, vstest.console.dll, TestRequestManager.DiscoverTests: Discovery tests started.
+TpTrace Information: 0 : 5236, 2, 2026/08/24, 16:43:35.116, 6409892160, vstest.console.dll, AssemblyMetadataProvider.GetFrameworkName: Determined framework:'.NETCoreApp,Version=v10.0' for source: 'D:\tmp\masterapp\bin\AgentPortal.Tests\Release\net10.0\AgentPortal.Tests.dll'
+TpTrace Information: 0 : 5236, 2, 2026/08/24, 16:43:35.116, 6409893793, vstest.console.dll, Determined framework for all sources: .NETCoreApp,Version=v10.0
+TpTrace Verbose: 0 : 5236, 2, 2026/08/24, 16:43:35.118, 6409909058, vstest.console.dll, TestRequestManager.UpdateRunSettingsIfRequired: Default architecture: X64 IsDefaultTargetArchitecture: True, Current process architecture: X64 OperatingSystem: Windows.
+TpTrace Information: 0 : 5236, 2, 2026/08/24, 16:43:35.119, 6409926213, vstest.console.dll, AssemblyMetadataProvider.GetArchitecture: Determined architecture:AnyCPU info for assembly: D:\tmp\masterapp\bin\AgentPortal.Tests\Release\net10.0\AgentPortal.Tests.dll
+TpTrace Information: 0 : 5236, 2, 2026/08/24, 16:43:35.119, 6409926824, vstest.console.dll, Determined platform for source 'D:\tmp\masterapp\bin\AgentPortal.Tests\Release\net10.0\AgentPortal.Tests.dll' was AnyCPU and it will use the default plaform X64.
+TpTrace Information: 0 : 5236, 2, 2026/08/24, 16:43:35.119, 6409926998, vstest.console.dll, None of the sources provided any runnable platform, using the default platform: X64
+TpTrace Information: 0 : 5236, 2, 2026/08/24, 16:43:35.119, 6409928458, vstest.console.dll, Platform was updated to 'X64'.
+TpTrace Information: 0 : 5236, 2, 2026/08/24, 16:43:35.121, 6409947455, vstest.console.dll, Compatible sources list: 
+TpTrace Information: 0 : 5236, 2, 2026/08/24, 16:43:35.121, 6409948327, vstest.console.dll, D:\tmp\masterapp\bin\AgentPortal.Tests\Release\net10.0\AgentPortal.Tests.dll
+TpTrace Information: 0 : 5236, 2, 2026/08/24, 16:43:35.124, 6409978464, vstest.console.dll, TestRequestManager.DiscoverTests: Synchronization context taken
+TpTrace Verbose: 0 : 5236, 2, 2026/08/24, 16:43:35.222, 6410953623, vstest.console.dll, TestEngine: Initializing Parallel Execution as MaxCpuCount is set to: 1
+TpTrace Information: 0 : 5236, 2, 2026/08/24, 16:43:35.229, 6411024864, vstest.console.dll, TestPluginManager.CreateTestExtension: Attempting to load test extension: Microsoft.VisualStudio.TestPlatform.CrossPlatEngine.Hosting.DefaultTestHostManager
+TpTrace Information: 0 : 5236, 2, 2026/08/24, 16:43:35.230, 6411032666, vstest.console.dll, TestPluginManager.CreateTestExtension: Attempting to load test extension: Microsoft.VisualStudio.TestPlatform.CrossPlatEngine.Hosting.DotnetTestHostManager
+TpTrace Verbose: 0 : 5236, 2, 2026/08/24, 16:43:35.230, 6411034885, vstest.console.dll, TestHostManagerCallbacks.ctor: Forwarding output is enabled.
+TpTrace Information: 0 : 5236, 2, 2026/08/24, 16:43:35.231, 6411040222, vstest.console.dll, InferRunSettingsHelper.IsTestSettingsEnabled: Unable to navigate to RunSettings/MSTest. Current node: RunSettings
+TpTrace Verbose: 0 : 5236, 2, 2026/08/24, 16:43:35.487, 6413607965, vstest.console.dll, ParallelOperationManager.ClearSlots: Clearing all slots. Slots should accept more work: True
+TpTrace Verbose: 0 : 5236, 2, 2026/08/24, 16:43:35.489, 6413622979, vstest.console.dll, ParallelOperationManager.SetOccupiedSlotCount: Setting slot counts AvailableSlotCount = 1, OccupiedSlotCount = 0.
+TpTrace Verbose: 0 : 5236, 2, 2026/08/24, 16:43:35.489, 6413627317, vstest.console.dll, Occupied slots:
+
+TpTrace Verbose: 0 : 5236, 2, 2026/08/24, 16:43:35.493, 6413664078, vstest.console.dll, TestPlatform.GetSkipDefaultAdapters: Not skipping default adapters SkipDefaultAdapters was false.
+TpTrace Verbose: 0 : 5236, 2, 2026/08/24, 16:43:35.493, 6413666755, vstest.console.dll, DiscoveryRequest.DiscoverAsync: Starting.
+TpTrace Verbose: 0 : 5236, 2, 2026/08/24, 16:43:35.494, 6413670795, vstest.console.dll, MulticastDelegateUtilities.SafeInvoke: DiscoveryRequest.DiscoveryStart: Invoking callback 1/1 for Microsoft.VisualStudio.TestPlatform.CommandLine.TestPlatformHelpers.TestRequestManager., took 0 ms.
+TpTrace Verbose: 0 : 5236, 2, 2026/08/24, 16:43:35.495, 6413680218, vstest.console.dll, ParallelProxyDiscoveryManager.DiscoverTests: Start discovery. Total sources: 1
+TpTrace Verbose: 0 : 5236, 2, 2026/08/24, 16:43:35.496, 6413689207, vstest.console.dll, DiscoveryDataAggregator.MarkSourcesWithStatus: Adding D:\tmp\masterapp\bin\AgentPortal.Tests\Release\net10.0\AgentPortal.Tests.dll with status: 'NotDiscovered'.
+TpTrace Verbose: 0 : 5236, 2, 2026/08/24, 16:43:35.496, 6413696828, vstest.console.dll, ParallelOperationManager.StartWork: Starting adding 1 workloads.
+TpTrace Verbose: 0 : 5236, 2, 2026/08/24, 16:43:35.496, 6413697652, vstest.console.dll, ParallelOperationManager.ClearSlots: Clearing all slots. Slots should accept more work: True
+TpTrace Verbose: 0 : 5236, 2, 2026/08/24, 16:43:35.496, 6413698340, vstest.console.dll, ParallelOperationManager.SetOccupiedSlotCount: Setting slot counts AvailableSlotCount = 1, OccupiedSlotCount = 0.
+TpTrace Verbose: 0 : 5236, 2, 2026/08/24, 16:43:35.496, 6413698576, vstest.console.dll, Occupied slots:
+
+TpTrace Verbose: 0 : 5236, 2, 2026/08/24, 16:43:35.498, 6413711137, vstest.console.dll, TestHostManagerCallbacks.ctor: Forwarding output is enabled.
+TpTrace Verbose: 0 : 5236, 2, 2026/08/24, 16:43:35.498, 6413713182, vstest.console.dll, TestRequestSender is acting as server.
+TpTrace Verbose: 0 : 5236, 2, 2026/08/24, 16:43:35.498, 6413715450, vstest.console.dll, ParallelOperationManager.RunWorkInParallel: Adding 1 workload to slot, remaining workloads 0.
+TpTrace Verbose: 0 : 5236, 2, 2026/08/24, 16:43:35.498, 6413715877, vstest.console.dll, ParallelOperationManager.SetOccupiedSlotCount: Setting slot counts AvailableSlotCount = 0, OccupiedSlotCount = 1.
+TpTrace Verbose: 0 : 5236, 2, 2026/08/24, 16:43:35.498, 6413716408, vstest.console.dll, Occupied slots:
+0: D:\tmp\masterapp\bin\AgentPortal.Tests\Release\net10.0\AgentPortal.Tests.dll
+TpTrace Verbose: 0 : 5236, 2, 2026/08/24, 16:43:35.499, 6413728819, vstest.console.dll, ParallelOperationManager.RunWorkInParallel: Started host in slot number 0 for work (source): D:\tmp\masterapp\bin\AgentPortal.Tests\Release\net10.0\AgentPortal.Tests.dll.
+TpTrace Verbose: 0 : 5236, 2, 2026/08/24, 16:43:35.500, 6413738232, vstest.console.dll, ProxyParallelDiscoveryManager.DiscoverTestsOnConcurrentManager: No sources available for discovery.
+TpTrace Verbose: 0 : 5236, 2, 2026/08/24, 16:43:35.501, 6413739335, vstest.console.dll, ParallelOperationManager.RunWorkInParallel: We started 1 work items, which is the max parallel level. Won't start more work.
+TpTrace Verbose: 0 : 5236, 2, 2026/08/24, 16:43:35.501, 6413739996, vstest.console.dll, ParallelOperationManager.RunWorkInParallel: We started 1 work items in here, returning True.
+TpTrace Information: 0 : 5236, 2, 2026/08/24, 16:43:35.501, 6413740383, vstest.console.dll, DiscoveryRequest.DiscoverAsync: Started.
+TpTrace Verbose: 0 : 5236, 2, 2026/08/24, 16:43:35.501, 6413741064, vstest.console.dll, DiscoveryRequest.WaitForCompletion: Waiting with timeout -1.
+TpTrace Verbose: 0 : 5236, 5, 2026/08/24, 16:43:35.501, 6413746510, vstest.console.dll, ParallelProxyDiscoveryManager: Discovery started.
+TpTrace Verbose: 0 : 5236, 5, 2026/08/24, 16:43:35.501, 6413747259, vstest.console.dll, ProxyParallelDiscoveryManager.DiscoverTestsOnConcurrentManager: Initialize right before run: D:\tmp\masterapp\bin\AgentPortal.Tests\Release\net10.0\AgentPortal.Tests.dll
+TpTrace Verbose: 0 : 5236, 5, 2026/08/24, 16:43:35.503, 6413759693, vstest.console.dll, TestRequestSender.InitializeCommunication: initialize communication. 
+TpTrace Information: 0 : 5236, 5, 2026/08/24, 16:43:35.511, 6413843223, vstest.console.dll, SocketServer.Start: Listening on endpoint : 127.0.0.1:55545
+TpTrace Verbose: 0 : 5236, 5, 2026/08/24, 16:43:35.516, 6413896085, vstest.console.dll, DotnetTestHostmanager.GetTestHostProcessStartInfo: Platform environment 'X64' target architecture 'X64' framework '.NETCoreApp,Version=v10.0' OS 'Windows'
+TpTrace Verbose: 0 : 5236, 5, 2026/08/24, 16:43:35.516, 6413897173, vstest.console.dll, DotnetTestHostmanager.LaunchTestHostAsync: VSTEST_DOTNET_ROOT_PATH=C:\Program Files\dotnet
+TpTrace Verbose: 0 : 5236, 5, 2026/08/24, 16:43:35.516, 6413897510, vstest.console.dll, DotnetTestHostmanager.LaunchTestHostAsync: VSTEST_DOTNET_ROOT_ARCHITECTURE=X64
+TpTrace Verbose: 0 : 5236, 5, 2026/08/24, 16:43:35.516, 6413898823, vstest.console.dll, DotnetTestHostManager.SetDotnetRootForArchitecture: Adding DOTNET_ROOT_X64=C:\Program Files\dotnet to testhost start info.
+TpTrace Verbose: 0 : 5236, 5, 2026/08/24, 16:43:35.517, 6413899977, vstest.console.dll, DotnetTestHostmanager: File D:\tmp\masterapp\bin\AgentPortal.Tests\Release\net10.0\AgentPortal.Tests.runtimeconfig.json, does not exist
+TpTrace Verbose: 0 : 5236, 5, 2026/08/24, 16:43:35.517, 6413900318, vstest.console.dll, DotnetTestHostmanager: Adding  --depsfile "D:\tmp\masterapp\bin\AgentPortal.Tests\Release\net10.0\AgentPortal.Tests.deps.json" in args
+TpTrace Verbose: 0 : 5236, 5, 2026/08/24, 16:43:35.517, 6413902643, vstest.console.dll, DotnetTestHostmanager.IsWinOnArm: Current PROCESSOR_ARCHITECTURE from environment variable 'AMD64'
+TpTrace Verbose: 0 : 5236, 5, 2026/08/24, 16:43:35.517, 6413903020, vstest.console.dll, DotnetTestHostmanager.IsWinOnArm: Is Windows on ARM 'False'
+TpTrace Information: 0 : 5236, 5, 2026/08/24, 16:43:35.517, 6413903834, vstest.console.dll, AssemblyResolver.OnResolve: Microsoft.Extensions.DependencyModel: Resolving assembly.
+TpTrace Information: 0 : 5236, 5, 2026/08/24, 16:43:35.517, 6413904130, vstest.console.dll, AssemblyResolver.OnResolve: Microsoft.Extensions.DependencyModel: Searching in: 'C:\Program Files\dotnet\sdk\10.0.400\Extensions'.
+TpTrace Information: 0 : 5236, 5, 2026/08/24, 16:43:35.517, 6413904610, vstest.console.dll, AssemblyResolver.OnResolve: Microsoft.Extensions.DependencyModel: Assembly path does not exist: 'C:\Program Files\dotnet\sdk\10.0.400\Extensions\Microsoft.Extensions.DependencyModel.dll', returning.
+TpTrace Information: 0 : 5236, 5, 2026/08/24, 16:43:35.517, 6413904902, vstest.console.dll, AssemblyResolver.OnResolve: Microsoft.Extensions.DependencyModel: Assembly path does not exist: 'C:\Program Files\dotnet\sdk\10.0.400\Extensions\Microsoft.Extensions.DependencyModel.exe', returning.
+TpTrace Information: 0 : 5236, 5, 2026/08/24, 16:43:35.517, 6413905069, vstest.console.dll, AssemblyResolver.OnResolve: Microsoft.Extensions.DependencyModel: Searching in: 'C:\Program Files\dotnet\sdk\10.0.400'.
+TpTrace Information: 0 : 5236, 5, 2026/08/24, 16:43:35.519, 6413923143, vstest.console.dll, AssemblyResolver.OnResolve: Microsoft.Extensions.DependencyModel: Loading assembly 'C:\Program Files\dotnet\sdk\10.0.400\Microsoft.Extensions.DependencyModel.dll'.
+TpTrace Information: 0 : 5236, 5, 2026/08/24, 16:43:35.519, 6413926360, vstest.console.dll, AssemblyResolver.TrackProvidedDependency: Resolved 'Microsoft.Extensions.DependencyModel' from 'C:\Program Files\dotnet\sdk\10.0.400' for 'unknown'.
+TpTrace Information: 0 : 5236, 5, 2026/08/24, 16:43:35.519, 6413926675, vstest.console.dll, AssemblyResolver.OnResolve: Resolved assembly: Microsoft.Extensions.DependencyModel, from path: C:\Program Files\dotnet\sdk\10.0.400\Microsoft.Extensions.DependencyModel.dll
+TpTrace Verbose: 0 : 5236, 5, 2026/08/24, 16:43:35.520, 6413930849, vstest.console.dll, DotnetTestHostmanager: Runtimeconfig.dev.json D:\tmp\masterapp\bin\AgentPortal.Tests\Release\net10.0\AgentPortal.Tests.runtimeconfig.dev.json does not exist.
+TpTrace Verbose: 0 : 5236, 5, 2026/08/24, 16:43:35.520, 6413931236, vstest.console.dll, DotnetTestHostManager: Found testhost.dll in source directory: D:\tmp\masterapp\bin\AgentPortal.Tests\Release\net10.0\testhost.dll.
+TpTrace Verbose: 0 : 5236, 5, 2026/08/24, 16:43:35.520, 6413931632, vstest.console.dll, DotnetTestHostmanager: Current process architetcure 'X64'
+TpTrace Verbose: 0 : 5236, 5, 2026/08/24, 16:43:35.520, 6413932974, vstest.console.dll, DotnetTestHostmanager.LaunchTestHostAsync: Compatible muxer architecture of running process 'X64' and target architecture 'X64'
+TpTrace Verbose: 0 : 5236, 5, 2026/08/24, 16:43:35.520, 6413933206, vstest.console.dll, DotnetTestHostmanager: Full path of testhost.dll is D:\tmp\masterapp\bin\AgentPortal.Tests\Release\net10.0\testhost.dll
+TpTrace Verbose: 0 : 5236, 5, 2026/08/24, 16:43:35.520, 6413933494, vstest.console.dll, DotnetTestHostmanager: Full path of host exe is C:\Program Files\dotnet\dotnet.exe
+TpTrace Verbose: 0 : 5236, 5, 2026/08/24, 16:43:35.521, 6413942192, vstest.console.dll, DotnetTestHostManager: Starting process '0' with command line '1' and DOTNET environment: DOTNET_ROOT_X64=C:\Program Files\dotnet 
+TpTrace Verbose: 0 : 5236, 5, 2026/08/24, 16:43:35.521, 6413942826, vstest.console.dll, DotnetTestHostManager: Launching testhost with CreateNoWindow=True
+TpTrace Verbose: 0 : 5236, 5, 2026/08/24, 16:43:35.526, 6413992171, vstest.console.dll, Test Runtime launched
+TpTrace Verbose: 0 : 5236, 5, 2026/08/24, 16:43:35.526, 6413993215, vstest.console.dll, MulticastDelegateUtilities.SafeInvoke: HostProviderEvents.OnHostLaunched: Invoking callback 1/1 for Microsoft.VisualStudio.TestPlatform.CrossPlatEngine.Client.ProxyOperationManager., took 0 ms.
+TpTrace Verbose: 0 : 5236, 5, 2026/08/24, 16:43:35.526, 6413996160, vstest.console.dll, TestRequestSender.WaitForRequestHandlerConnection: waiting for connection with timeout: 90000.
+TpTrace Verbose: 0 : 5236, 10, 2026/08/24, 16:43:35.669, 6415422611, vstest.console.dll, MulticastDelegateUtilities.SafeInvoke: SocketServer: ClientConnected: Invoking callback 1/1 for Microsoft.VisualStudio.TestPlatform.CommunicationUtilities.TestRequestSender., took 0 ms.
+TpTrace Verbose: 0 : 5236, 5, 2026/08/24, 16:43:35.669, 6415422611, vstest.console.dll, TestRequestSender.WaitForRequestHandlerConnection: waiting took 142 ms, with timeout 90000 ms, and result 0, which is success.
+TpTrace Verbose: 0 : 5236, 10, 2026/08/24, 16:43:35.669, 6415424091, vstest.console.dll, SocketServer.OnClientConnected: Client connected for endPoint: 127.0.0.1:55545, starting MessageLoopAsync:
+TpTrace Verbose: 0 : 5236, 10, 2026/08/24, 16:43:35.670, 6415430216, vstest.console.dll, TcpClientExtensions.MessageLoopAsync: Polling on remoteEndPoint: 127.0.0.1:55546 localEndPoint: 127.0.0.1:55545 after 0 ms
+TpTrace Verbose: 0 : 5236, 5, 2026/08/24, 16:43:35.704, 6415770728, vstest.console.dll, TestRequestSender.CheckVersionWithTestHost: Sending check version message: {"MessageType":"ProtocolVersion","Payload":7}
+TpTrace Verbose: 0 : 5236, 10, 2026/08/24, 16:43:35.782, 6416557630, vstest.console.dll, TcpClientExtensions.MessageLoopAsync: NotifyDataAvailable remoteEndPoint: 127.0.0.1:55546 localEndPoint: 127.0.0.1:55545
+TpTrace Verbose: 0 : 5236, 10, 2026/08/24, 16:43:35.783, 6416562199, vstest.console.dll, TestRequestSender.CheckVersionWithTestHost: onMessageReceived received message: (ProtocolVersion) -> {"MessageType":"ProtocolVersion","Payload":7}
+TpTrace Verbose: 0 : 5236, 10, 2026/08/24, 16:43:35.787, 6416605830, vstest.console.dll, MulticastDelegateUtilities.SafeInvoke: LengthPrefixCommunicationChannel: MessageReceived: Invoking callback 1/1 for Microsoft.VisualStudio.TestPlatform.CommunicationUtilities.TestRequestSender+<>c__DisplayClass29_0., took 4 ms.
+TpTrace Verbose: 0 : 5236, 10, 2026/08/24, 16:43:35.787, 6416607088, vstest.console.dll, TcpClientExtensions.MessageLoopAsync: Polling on remoteEndPoint: 127.0.0.1:55546 localEndPoint: 127.0.0.1:55545 after 117 ms
+TpTrace Verbose: 0 : 5236, 5, 2026/08/24, 16:43:35.787, 6416607698, vstest.console.dll, TestPluginCache.GetExtensionPaths: Filtered extension paths: 
+TpTrace Verbose: 0 : 5236, 10, 2026/08/24, 16:43:35.787, 6416607881, vstest.console.dll, TcpClientExtensions.MessageLoopAsync: NotifyDataAvailable remoteEndPoint: 127.0.0.1:55546 localEndPoint: 127.0.0.1:55545
+TpTrace Verbose: 0 : 5236, 5, 2026/08/24, 16:43:35.787, 6416608298, vstest.console.dll, TestPluginCache.GetExtensionPaths: Added default extension paths: C:\Program Files\dotnet\sdk\10.0.400\Extensions\Microsoft.Diagnostics.NETCore.Client.dll
+C:\Program Files\dotnet\sdk\10.0.400\Extensions\Microsoft.TestPlatform.Extensions.BlameDataCollector.dll
+C:\Program Files\dotnet\sdk\10.0.400\Extensions\Microsoft.TestPlatform.Extensions.EventLogCollector.dll
+C:\Program Files\dotnet\sdk\10.0.400\Extensions\Microsoft.TestPlatform.TestHostRuntimeProvider.dll
+C:\Program Files\dotnet\sdk\10.0.400\Extensions\Microsoft.VisualStudio.TestPlatform.Extensions.Html.TestLogger.dll
+C:\Program Files\dotnet\sdk\10.0.400\Extensions\Microsoft.VisualStudio.TestPlatform.Extensions.Trx.TestLogger.dll
+TpTrace Verbose: 0 : 5236, 5, 2026/08/24, 16:43:35.788, 6416609278, vstest.console.dll, TestPluginCache.GetExtensionPaths: Added unfilterableExtensionPaths: 
+TpTrace Verbose: 0 : 5236, 5, 2026/08/24, 16:43:35.788, 6416617152, vstest.console.dll, ProxyParallelDiscoveryManager.DiscoverTestsOnConcurrentManager: Run: D:\tmp\masterapp\bin\AgentPortal.Tests\Release\net10.0\AgentPortal.Tests.dll
+TpTrace Verbose: 0 : 5236, 10, 2026/08/24, 16:43:35.789, 6416624233, vstest.console.dll, TestRequestSender.OnDiscoveryMessageReceived: Received message: {"Version":7,"MessageType":"TestSession.Message","Payload":{"MessageLevel":0,"Message":"Logging TestHost Diagnostics in file: D:\\a\\masterapp\\masterapp\\diagnostics\\vstest-discovery.host.26-08-24_16-43-35_51628_5.txt"}}
+TpTrace Verbose: 0 : 5236, 10, 2026/08/24, 16:43:35.794, 6416670914, vstest.console.dll, DiscoveryRequest.HandleLogMessage: Starting.
+TpTrace Verbose: 0 : 5236, 10, 2026/08/24, 16:43:35.794, 6416672793, vstest.console.dll, MulticastDelegateUtilities.SafeInvoke: DiscoveryRequest.OnTestMessageRecieved: Invoking callbacks was skipped because there are no subscribers.
+TpTrace Information: 0 : 5236, 10, 2026/08/24, 16:43:35.794, 6416673197, vstest.console.dll, DiscoveryRequest.HandleLogMessage: Completed.
+TpTrace Verbose: 0 : 5236, 10, 2026/08/24, 16:43:35.794, 6416673535, vstest.console.dll, MulticastDelegateUtilities.SafeInvoke: LengthPrefixCommunicationChannel: MessageReceived: Invoking callback 1/1 for Microsoft.VisualStudio.TestPlatform.CommunicationUtilities.TestRequestSender+<>c__DisplayClass31_0., took 5 ms.
+TpTrace Verbose: 0 : 5236, 10, 2026/08/24, 16:43:35.794, 6416673918, vstest.console.dll, TcpClientExtensions.MessageLoopAsync: Polling on remoteEndPoint: 127.0.0.1:55546 localEndPoint: 127.0.0.1:55545 after 6 ms
+TpTrace Verbose: 0 : 5236, 4, 2026/08/24, 16:43:35.794, 6416674065, vstest.console.dll, MulticastDelegateUtilities.SafeInvoke: InternalTestLoggerEvents.SendDiscoveryMessage: Invoking callback 1/1 for Microsoft.VisualStudio.TestPlatform.CommandLine.Internal.ConsoleLogger., took 0 ms.
+TpTrace Verbose: 0 : 5236, 5, 2026/08/24, 16:43:35.796, 6416697643, vstest.console.dll, TestRequestSender.DiscoverTests: Sending discover tests with message: {"Version":7,"MessageType":"TestDiscovery.Start","Payload":{"Package":null,"AdapterSourceMap":{"_none_":["D:\\tmp\\masterapp\\bin\\AgentPortal.Tests\\Release\\net10.0\\AgentPortal.Tests.dll"]},"FrequencyOfDiscoveredTestsEvent":1000,"DiscoveredTestEventTimeout":"00:00:01.5000000","RunSettings":"<RunSettings>\r\n  <RunConfiguration>\r\n    <ResultsDirectory>D:\\a\\masterapp\\masterapp\\AgentPortal.Tests\\TestResults</ResultsDirectory>\r\n    <TargetPlatform>X64</TargetPlatform>\r\n    <TargetFrameworkVersion>.NETCoreApp,Version=v10.0</TargetFrameworkVersion>\r\n    <DesignMode>False</DesignMode>\r\n    <CollectSourceInformation>False</CollectSourceInformation>\r\n    <BatchSize>1000</BatchSize>\r\n  </RunConfiguration>\r\n  <LoggerRunSettings>\r\n    <Loggers>\r\n      <Logger friendlyName=\"Console\" assemblyQualifiedName=\"Microsoft.VisualStudio.TestPlatform.CommandLine.Internal.ConsoleLogger, vstest.console, Version=15.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a\" codeBase=\"C:\\Program Files\\dotnet\\sdk\\10.0.400\\vstest.console.dll\" enabled=\"True\">\r\n        <Configuration>\r\n          <Verbosity>minimal</Verbosity>\r\n        </Configuration>\r\n      </Logger>\r\n    </Loggers>\r\n  </LoggerRunSettings>\r\n</RunSettings>","TestCaseFilter":null,"TestSessionInfo":null}}
+TpTrace Verbose: 0 : 5236, 10, 2026/08/24, 16:43:35.860, 6417334127, vstest.console.dll, TcpClientExtensions.MessageLoopAsync: NotifyDataAvailable remoteEndPoint: 127.0.0.1:55546 localEndPoint: 127.0.0.1:55545
+TpTrace Verbose: 0 : 5236, 10, 2026/08/24, 16:43:35.860, 6417336187, vstest.console.dll, TestRequestSender.OnDiscoveryMessageReceived: Received message: {"Version":7,"MessageType":"TestSession.Message","Payload":{"MessageLevel":1,"Message":"No test is available in D:\\tmp\\masterapp\\bin\\AgentPortal.Tests\\Release\\net10.0\\AgentPortal.Tests.dll. Make sure that test discoverer & executors are registered and platform & framework version settings are appropriate and try again."}}
+TpTrace Verbose: 0 : 5236, 10, 2026/08/24, 16:43:35.861, 6417339592, vstest.console.dll, DiscoveryRequest.HandleLogMessage: Starting.
+TpTrace Verbose: 0 : 5236, 10, 2026/08/24, 16:43:35.861, 6417340893, vstest.console.dll, MulticastDelegateUtilities.SafeInvoke: DiscoveryRequest.OnTestMessageRecieved: Invoking callbacks was skipped because there are no subscribers.
+TpTrace Information: 0 : 5236, 10, 2026/08/24, 16:43:35.861, 6417341248, vstest.console.dll, DiscoveryRequest.HandleLogMessage: Completed.
+TpTrace Verbose: 0 : 5236, 10, 2026/08/24, 16:43:35.861, 6417341511, vstest.console.dll, MulticastDelegateUtilities.SafeInvoke: LengthPrefixCommunicationChannel: MessageReceived: Invoking callback 1/1 for Microsoft.VisualStudio.TestPlatform.CommunicationUtilities.TestRequestSender+<>c__DisplayClass31_0., took 0 ms.
+TpTrace Verbose: 0 : 5236, 10, 2026/08/24, 16:43:35.861, 6417341840, vstest.console.dll, TcpClientExtensions.MessageLoopAsync: Polling on remoteEndPoint: 127.0.0.1:55546 localEndPoint: 127.0.0.1:55545 after 66 ms
+TpTrace Verbose: 0 : 5236, 4, 2026/08/24, 16:43:35.861, 6417345716, vstest.console.dll, MulticastDelegateUtilities.SafeInvoke: InternalTestLoggerEvents.SendDiscoveryMessage: Invoking callback 1/1 for Microsoft.VisualStudio.TestPlatform.CommandLine.Internal.ConsoleLogger., took 0 ms.
+TpTrace Verbose: 0 : 5236, 10, 2026/08/24, 16:43:35.877, 6417508583, vstest.console.dll, TcpClientExtensions.MessageLoopAsync: NotifyDataAvailable remoteEndPoint: 127.0.0.1:55546 localEndPoint: 127.0.0.1:55545
+TpTrace Verbose: 0 : 5236, 10, 2026/08/24, 16:43:35.878, 6417510136, vstest.console.dll, TestRequestSender.OnDiscoveryMessageReceived: Received message: {"Version":7,"MessageType":"TestDiscovery.Completed","Payload":{"TotalTests":0,"LastDiscoveredTests":[],"IsAborted":false,"Metrics":{},"FullyDiscoveredSources":["D:\\tmp\\masterapp\\bin\\AgentPortal.Tests\\Release\\net10.0\\AgentPortal.Tests.dll"],"PartiallyDiscoveredSources":[],"NotDiscoveredSources":[],"SkippedDiscoverySources":[],"DiscoveredExtensions":{"TestDiscoverers":[],"TestSettingsProviders":[]}}}
+TpTrace Verbose: 0 : 5236, 10, 2026/08/24, 16:43:35.878, 6417510926, vstest.console.dll, TestRequestSender.EndSession: Sending end session.
+TpTrace Verbose: 0 : 5236, 10, 2026/08/24, 16:43:35.878, 6417512333, vstest.console.dll, ProxyOperationManager.Close: waiting for test host to exit for 100 ms
+TpTrace Verbose: 0 : 5236, 12, 2026/08/24, 16:43:35.882, 6417556716, vstest.console.dll, TestHostManagerCallbacks.StandardOutputReceivedCallback Test host standard output line: 
+TpTrace Warning: 0 : 5236, 11, 2026/08/24, 16:43:35.882, 6417556829, vstest.console.dll, TestHostManagerCallbacks.ErrorReceivedCallback Test host standard error line: 
+TpTrace Verbose: 0 : 5236, 11, 2026/08/24, 16:43:35.890, 6417638365, vstest.console.dll, TestHostProvider.ExitCallBack: Host exited starting callback.
+TpTrace Information: 0 : 5236, 11, 2026/08/24, 16:43:35.891, 6417639416, vstest.console.dll, TestHostManagerCallbacks.ExitCallBack: Testhost processId: 4080 exited with exitcode: 0 error: ''
+TpTrace Verbose: 0 : 5236, 11, 2026/08/24, 16:43:35.891, 6417639657, vstest.console.dll, DotnetTestHostManager.OnHostExited: invoking OnHostExited callback
+TpTrace Verbose: 0 : 5236, 11, 2026/08/24, 16:43:35.891, 6417642102, vstest.console.dll, CrossPlatEngine.TestHostManagerHostExited: calling on client process exit callback.
+TpTrace Information: 0 : 5236, 11, 2026/08/24, 16:43:35.891, 6417643018, vstest.console.dll, TestRequestSender.OnClientProcessExit: Test host process exited. Standard error: 
+TpTrace Information: 0 : 5236, 11, 2026/08/24, 16:43:35.891, 6417643392, vstest.console.dll, SocketServer.Stop: Stop server endPoint: 127.0.0.1:55545
+TpTrace Information: 0 : 5236, 10, 2026/08/24, 16:43:35.891, 6417643373, vstest.console.dll, SocketServer.Stop: Stop server endPoint: 127.0.0.1:55545
+TpTrace Information: 0 : 5236, 10, 2026/08/24, 16:43:35.891, 6417644205, vstest.console.dll, SocketServer.Stop: Cancellation requested. Stopping message loop.
+TpTrace Information: 0 : 5236, 11, 2026/08/24, 16:43:35.891, 6417644251, vstest.console.dll, SocketServer.Stop: Cancellation requested. Stopping message loop.
+TpTrace Verbose: 0 : 5236, 11, 2026/08/24, 16:43:35.891, 6417644681, vstest.console.dll, MulticastDelegateUtilities.SafeInvoke: HostProviderEvents.OnHostExited: Invoking callback 1/1 for Microsoft.VisualStudio.TestPlatform.CrossPlatEngine.Client.ProxyOperationManager., took 0 ms.
+TpTrace Information: 0 : 5236, 10, 2026/08/24, 16:43:35.891, 6417645516, vstest.console.dll, Closing the connection
+TpTrace Verbose: 0 : 5236, 10, 2026/08/24, 16:43:35.900, 6417735353, vstest.console.dll, DiscoveryDataAggregator.MarkSourcesWithStatus: Upgrading D:\tmp\masterapp\bin\AgentPortal.Tests\Release\net10.0\AgentPortal.Tests.dll status from 'NotDiscovered' to 'FullyDiscovered'.
+TpTrace Verbose: 0 : 5236, 10, 2026/08/24, 16:43:35.901, 6417741086, vstest.console.dll, DiscoveryRequest.HandleDiscoveredTests: Starting.
+TpTrace Verbose: 0 : 5236, 10, 2026/08/24, 16:43:35.901, 6417742280, vstest.console.dll, MulticastDelegateUtilities.SafeInvoke: DiscoveryRequest.OnDiscoveredTests: Invoking callback 1/1 for Microsoft.VisualStudio.TestPlatform.CommandLine.Processors.ListTestsArgumentExecutor+DiscoveryEventsRegistrar., took 0 ms.
+TpTrace Information: 0 : 5236, 10, 2026/08/24, 16:43:35.901, 6417742494, vstest.console.dll, DiscoveryRequest.HandleDiscoveredTests: Completed.
+TpTrace Verbose: 0 : 5236, 10, 2026/08/24, 16:43:35.901, 6417742783, vstest.console.dll, ParallelProxyDiscoveryManager.HandlePartialDiscoveryComplete: Total completed clients = 1, Discovery complete = True, Aborted = False, Abort requested: False.
+TpTrace Verbose: 0 : 5236, 10, 2026/08/24, 16:43:35.901, 6417742992, vstest.console.dll, ParallelOperationManager.StopAllManagers: Stopping all managers.
+TpTrace Verbose: 0 : 5236, 10, 2026/08/24, 16:43:35.901, 6417743202, vstest.console.dll, ParallelOperationManager.ClearSlots: Clearing all slots. Slots should accept more work: False
+TpTrace Verbose: 0 : 5236, 10, 2026/08/24, 16:43:35.901, 6417743460, vstest.console.dll, ParallelOperationManager.SetOccupiedSlotCount: Setting slot counts AvailableSlotCount = 1, OccupiedSlotCount = 0.
+TpTrace Verbose: 0 : 5236, 10, 2026/08/24, 16:43:35.901, 6417743665, vstest.console.dll, Occupied slots:
+
+TpTrace Verbose: 0 : 5236, 10, 2026/08/24, 16:43:35.901, 6417743797, vstest.console.dll, ParallelProxyDiscoveryManager.HandlePartialDiscoveryComplete: All sources were discovered.
+TpTrace Verbose: 0 : 5236, 10, 2026/08/24, 16:43:35.905, 6417785708, vstest.console.dll, ParallelDiscoveryEventsHandler.HandleDiscoveryComplete: Sending discovery complete message to IDE.
+TpTrace Verbose: 0 : 5236, 10, 2026/08/24, 16:43:35.907, 6417801639, vstest.console.dll, ParallelDiscoveryEventsHandler.HandleDiscoveryComplete: Sending discovery complete event to clients.
+TpTrace Verbose: 0 : 5236, 10, 2026/08/24, 16:43:35.907, 6417802695, vstest.console.dll, DiscoveryRequest.HandleDiscoveryComplete: Begin processing discovery complete notification. Aborted: False, TotalTests: 0
+TpTrace Verbose: 0 : 5236, 10, 2026/08/24, 16:43:35.907, 6417803633, vstest.console.dll, ParallelOperationManager.DoActionOnAllManagers: Calling an action on all managers.
+TpTrace Verbose: 0 : 5236, 10, 2026/08/24, 16:43:35.908, 6417816406, vstest.console.dll, TestLoggerManager.HandleDiscoveryComplete: Ignoring as the object is disposed.
+TpTrace Verbose: 0 : 5236, 10, 2026/08/24, 16:43:35.908, 6417817135, vstest.console.dll, MulticastDelegateUtilities.SafeInvoke: DiscoveryRequest.HandleDiscoveryComplete: Invoking callbacks was skipped because there are no subscribers.
+TpTrace Verbose: 0 : 5236, 10, 2026/08/24, 16:43:35.908, 6417817581, vstest.console.dll, DiscoveryRequest.HandleDiscoveryComplete: Notified the discovery complete event.
+TpTrace Verbose: 0 : 5236, 2, 2026/08/24, 16:43:35.908, 6417818144, vstest.console.dll, DiscoveryRequest.Dispose: Starting.
+TpTrace Information: 0 : 5236, 10, 2026/08/24, 16:43:35.908, 6417818241, vstest.console.dll, DiscoveryRequest.HandleDiscoveryComplete: Finished processing discovery complete notification.
+TpTrace Information: 0 : 5236, 2, 2026/08/24, 16:43:35.908, 6417818940, vstest.console.dll, DiscoveryRequest.Dispose: Completed.
+TpTrace Information: 0 : 5236, 2, 2026/08/24, 16:43:35.909, 6417819271, vstest.console.dll, TestRequestManager.DiscoverTests: Discovery tests completed.
+TpTrace Verbose: 0 : 5236, 10, 2026/08/24, 16:43:35.909, 6417819399, vstest.console.dll, TestRequestSender.SetOperationComplete: Setting operation complete.
+TpTrace Information: 0 : 5236, 10, 2026/08/24, 16:43:35.909, 6417819676, vstest.console.dll, SocketServer.Stop: Stop server endPoint: 127.0.0.1:55545
+TpTrace Information: 0 : 5236, 10, 2026/08/24, 16:43:35.909, 6417819818, vstest.console.dll, SocketServer.Stop: Cancellation requested. Stopping message loop.
+TpTrace Verbose: 0 : 5236, 10, 2026/08/24, 16:43:35.909, 6417820002, vstest.console.dll, MulticastDelegateUtilities.SafeInvoke: LengthPrefixCommunicationChannel: MessageReceived: Invoking callback 1/1 for Microsoft.VisualStudio.TestPlatform.CommunicationUtilities.TestRequestSender+<>c__DisplayClass31_0., took 31 ms.
+TpTrace Verbose: 0 : 5236, 2, 2026/08/24, 16:43:35.909, 6417820173, vstest.console.dll, Executor.Execute: Exiting with exit code of 0
+TpTrace Information: 0 : 5236, 10, 2026/08/24, 16:43:35.909, 6417820300, vstest.console.dll, SocketServer.PrivateStop: Stopping server endPoint: 127.0.0.1:55545 error: 
+TpTrace Verbose: 0 : 5236, 10, 2026/08/24, 16:43:35.909, 6417824128, vstest.console.dll, LengthPrefixCommunicationChannel.Dispose: Dispose reader and writer.
+TpTrace Information: 0 : 5236, 10, 2026/08/24, 16:43:35.909, 6417825258, vstest.console.dll, SocketServer.Stop: Raise disconnected event endPoint: 127.0.0.1:55545 error: 
+TpTrace Verbose: 0 : 5236, 10, 2026/08/24, 16:43:35.909, 6417825828, vstest.console.dll, TestRequestSender.OnDiscoveryAbort: Operation is already complete. Skip error message.
+TpTrace Verbose: 0 : 5236, 10, 2026/08/24, 16:43:35.909, 6417826011, vstest.console.dll, MulticastDelegateUtilities.SafeInvoke: SocketServer: ClientDisconnected: Invoking callback 1/1 for Microsoft.VisualStudio.TestPlatform.CommunicationUtilities.TestRequestSender., took 0 ms.
+TpTrace Verbose: 0 : 5236, 10, 2026/08/24, 16:43:35.909, 6417826276, vstest.console.dll, TcpClientExtensions.MessageLoopAsync: exiting MessageLoopAsync remoteEndPoint: 127.0.0.1:55546 localEndPoint: 127.0.0.1:55545
+
 === RESTORE ===
   Determining projects to restore...
-  Restored D:\a\masterapp\masterapp\SHARED\Shared.csproj (in 194 ms).
-  Restored D:\a\masterapp\masterapp\Domain\Domain.csproj (in 194 ms).
-  Restored D:\a\masterapp\masterapp\Protect-Website\ProtectWebsite.csproj (in 50.67 sec).
-  Restored D:\a\masterapp\masterapp\AgentPortal.Tests\AgentPortal.Tests.csproj (in 1.02 min).
-  Restored D:\a\masterapp\masterapp\Infrastructure\Infrastructure.csproj (in 4.66 sec).
-  Restored D:\a\masterapp\masterapp\ParfaitApp\ParfaitApp.csproj (in 15.12 sec).
-  Restored D:\a\masterapp\masterapp\ClientApp\ClientApp.csproj (in 1.1 min).
-  Restored D:\a\masterapp\masterapp\AgentPortal\AgentPortal.csproj (in 1.09 min).
+  Restored D:\a\masterapp\masterapp\Domain\Domain.csproj (in 214 ms).
+  Restored D:\a\masterapp\masterapp\AgentPortal.Tests\AgentPortal.Tests.csproj (in 2.35 min).
+  Restored D:\a\masterapp\masterapp\ClientApp\ClientApp.csproj (in 2.56 min).
+  Restored D:\a\masterapp\masterapp\Infrastructure\Infrastructure.csproj (in 2.56 min).
+  Restored D:\a\masterapp\masterapp\ParfaitApp\ParfaitApp.csproj (in 12.07 sec).
+  Restored D:\a\masterapp\masterapp\AgentPortal\AgentPortal.csproj (in 2.56 min).
+  Restored D:\a\masterapp\masterapp\SHARED\Shared.csproj (in 2 ms).
+  Restored D:\a\masterapp\masterapp\Protect-Website\ProtectWebsite.csproj (in 3.16 sec).
 
 === BUILD ===
   Shared -> D:\tmp\masterapp\bin\Shared\Release\net10.0\Shared.dll
   Domain -> D:\tmp\masterapp\bin\Domain\Release\net10.0\Domain.dll
   Infrastructure -> D:\tmp\masterapp\bin\Infrastructure\Release\net10.0\Infrastructure.dll
-  ProtectWebsite -> D:\tmp\masterapp\bin\ProtectWebsite\Release\net10.0\ProtectWebsite.dll
   ParfaitApp -> D:\tmp\masterapp\bin\ParfaitApp\Release\net10.0\ParfaitApp.dll
+  ProtectWebsite -> D:\tmp\masterapp\bin\ProtectWebsite\Release\net10.0\ProtectWebsite.dll
   ClientApp -> D:\tmp\masterapp\bin\ClientApp\Release\net10.0\ClientApp.dll
   ClientApp -> D:\tmp\masterapp\bin\ClientApp\Release\net10.0\ClientApp.Views.dll
   AgentPortal -> D:\tmp\masterapp\bin\AgentPortal\Release\AgentPortal.dll
@@ -45,7 +392,7 @@ Build succeeded.
     0 Warning(s)
     0 Error(s)
 
-Time Elapsed 00:02:08.18
+Time Elapsed 00:02:05.46
 
 === NATIVE LIVE DATABASE DIAGNOSTIC ===
 
