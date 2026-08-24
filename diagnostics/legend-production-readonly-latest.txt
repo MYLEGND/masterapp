@@ -1,5 +1,5 @@
 LEGEND PRODUCTION READ-ONLY DIAGNOSTIC
-Commit: ae8382ec63ed8ed3186c97baeb554eb769e5a411
+Commit: bf75fac29042177c426ad578110b86e84539f6dc
 RestoreOutcome: success
 BuildOutcome: success
 DiagnosticOutcome: failure
@@ -8,21 +8,21 @@ ShadowExit:
 
 === RESTORE ===
   Determining projects to restore...
-  Restored D:\a\masterapp\masterapp\Domain\Domain.csproj (in 175 ms).
-  Restored D:\a\masterapp\masterapp\AgentPortal.Tests\AgentPortal.Tests.csproj (in 48.2 sec).
-  Restored D:\a\masterapp\masterapp\Infrastructure\Infrastructure.csproj (in 8.97 sec).
-  Restored D:\a\masterapp\masterapp\AgentPortal\AgentPortal.csproj (in 57.2 sec).
-  Restored D:\a\masterapp\masterapp\ClientApp\ClientApp.csproj (in 57.19 sec).
-  Restored D:\a\masterapp\masterapp\ParfaitApp\ParfaitApp.csproj (in 56.82 sec).
+  Restored D:\a\masterapp\masterapp\Domain\Domain.csproj (in 227 ms).
+  Restored D:\a\masterapp\masterapp\ParfaitApp\ParfaitApp.csproj (in 39.7 sec).
+  Restored D:\a\masterapp\masterapp\Infrastructure\Infrastructure.csproj (in 39.16 sec).
   Restored D:\a\masterapp\masterapp\SHARED\Shared.csproj (in 2 ms).
-  Restored D:\a\masterapp\masterapp\Protect-Website\ProtectWebsite.csproj (in 2.8 sec).
+  Restored D:\a\masterapp\masterapp\AgentPortal\AgentPortal.csproj (in 43.71 sec).
+  Restored D:\a\masterapp\masterapp\ClientApp\ClientApp.csproj (in 6.54 sec).
+  Restored D:\a\masterapp\masterapp\Protect-Website\ProtectWebsite.csproj (in 13.24 sec).
+  Restored D:\a\masterapp\masterapp\AgentPortal.Tests\AgentPortal.Tests.csproj (in 53.76 sec).
 
 === BUILD ===
   Shared -> D:\tmp\masterapp\bin\Shared\Release\net10.0\Shared.dll
   Domain -> D:\tmp\masterapp\bin\Domain\Release\net10.0\Domain.dll
   Infrastructure -> D:\tmp\masterapp\bin\Infrastructure\Release\net10.0\Infrastructure.dll
-  ParfaitApp -> D:\tmp\masterapp\bin\ParfaitApp\Release\net10.0\ParfaitApp.dll
   ProtectWebsite -> D:\tmp\masterapp\bin\ProtectWebsite\Release\net10.0\ProtectWebsite.dll
+  ParfaitApp -> D:\tmp\masterapp\bin\ParfaitApp\Release\net10.0\ParfaitApp.dll
   ClientApp -> D:\tmp\masterapp\bin\ClientApp\Release\net10.0\ClientApp.dll
   ClientApp -> D:\tmp\masterapp\bin\ClientApp\Release\net10.0\ClientApp.Views.dll
   AgentPortal -> D:\tmp\masterapp\bin\AgentPortal\Release\AgentPortal.dll
@@ -33,7 +33,7 @@ Build succeeded.
     0 Warning(s)
     0 Error(s)
 
-Time Elapsed 00:02:22.34
+Time Elapsed 00:02:28.38
 
 === NATIVE LIVE DATABASE DIAGNOSTIC ===
 
