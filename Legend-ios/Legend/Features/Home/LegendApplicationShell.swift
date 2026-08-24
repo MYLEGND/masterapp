@@ -10137,6 +10137,7 @@ private struct LegendFounderAiAccessResponse: Decodable {
 private struct LegendFounderAiChatRequest: Encodable {
     let mode: String
     let messages: [LegendFounderAiChatMessage]
+    let conversationId: String
 }
 
 private struct LegendFounderAiChatResponse: Decodable {
@@ -10175,6 +10176,7 @@ final class LegendFounderAiStore: ObservableObject {
     private let participantType: ParticipantType
     private let accessTokenProvider: () async throws -> String
     private var availabilityResolved = false
+    private var conversationID = UUID()
 
     init(
         client: MobileHTTPClient?,
@@ -10277,7 +10279,8 @@ final class LegendFounderAiStore: ObservableObject {
                                 mode == "teacher"
                                     ? "teacher"
                                     : "legend",
-                            messages: messages),
+                            messages: messages,
+                            conversationId: conversationID.uuidString),
                     accessToken: token,
                     headers: chatHeaders,
                     response:
@@ -10313,6 +10316,7 @@ final class LegendFounderAiStore: ObservableObject {
         }
 
         messages.removeAll()
+        conversationID = UUID()
         progressMessage = nil
         failureMessage = nil
     }
