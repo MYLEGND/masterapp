@@ -444,7 +444,15 @@ internal sealed class LegendConnectRuntimePolicyAuthority : ILegendConnectRuntim
         if (policy.CompletedLanguageIntelligenceEvaluatorVersion >= evaluatorVersion &&
             policy.LanguageIntelligenceReevaluationPhase == LegendConnectLanguageIntelligenceReevaluationPhases.Complete)
         {
-            return ToReevaluationSnapshot(policy);
+            // A version watermark is only a checkpoint, never proof that the
+            // deployment contract which produced a projection is current.
+            // This matters when a corrected compiler ships under the same
+            // evaluator generation as a previously completed binary.  The
+            // singleton policy lock held by the caller makes this comparison
+            // and any resulting replay adoption one database-authoritative
+            // decision across all application instances.
+            if (!await HasDerivationContractDriftAsync(evaluatorVersion, cancellationToken))
+                return ToReevaluationSnapshot(policy);
         }
 
         // A newer binary must never reset, cancel, or silently replace a
@@ -488,25 +496,33 @@ internal sealed class LegendConnectRuntimePolicyAuthority : ILegendConnectRuntim
         // on its first upgrade. Bootstrap its declared contract set as durable
         // historical provenance. This is metadata-only reuse: no canonical
         // evidence is rebuilt, altered, or reclassified.
-        if (baselineVersion > 0)
+        var hasDurableContractHistory = await _db.Set<LegendLanguageDerivationContract>()
+            .AnyAsync(cancellationToken);
+        if (baselineVersion > 0 && !hasDurableContractHistory)
         {
-            await EnsureContractDeclarationsAsync(
-                LegendConnectDerivationContracts.ForEvaluator(baselineVersion),
-                cancellationToken);
+            // If a completed watermark already equals the target evaluator,
+            // bootstrap from the immediately preceding declared contract.
+            // The durable rows were absent, so treating today's declaration
+            // as historical would falsely make a changed compiler reusable.
+            var historicalContractVersion = Math.Min(
+                baselineVersion,
+                Math.Max(0, evaluatorVersion - 1));
+            if (historicalContractVersion > 0)
+            {
+                await EnsureContractDeclarationsAsync(
+                    LegendConnectDerivationContracts.ForEvaluator(historicalContractVersion),
+                    cancellationToken);
+            }
         }
 
         var activeContracts = await _db.Set<LegendLanguageDerivationContract>()
             .Where(item => item.SupersededUtc == null)
             .ToListAsync(cancellationToken);
-        var activeByKind = activeContracts
-            .GroupBy(item => item.DerivationKind, StringComparer.Ordinal)
-            .ToDictionary(group => group.Key, group => group.OrderByDescending(item => item.IntroducedEvaluatorVersion)
-                .ThenByDescending(item => item.CreatedUtc).First(), StringComparer.Ordinal);
 
-        var directChanges = targetContracts
-            .Where(definition => !activeByKind.TryGetValue(definition.DerivationKind, out var existing) ||
-                !string.Equals(existing.ContractIdentity, definition.ContractIdentity, StringComparison.Ordinal))
-            .ToArray();
+        var directChanges = await GetDirectContractChangesAsync(
+            targetContracts,
+            activeContracts,
+            cancellationToken);
         var affectedKinds = ExpandAffectedContractKinds(targetContracts, directChanges);
         var affectedContracts = targetContracts
             .Where(item => affectedKinds.Contains(item.DerivationKind))
@@ -536,14 +552,14 @@ internal sealed class LegendConnectRuntimePolicyAuthority : ILegendConnectRuntim
         var reusedArtifacts = artifacts.Total - affectedArtifacts;
 
         await PersistCurrentContractsAsync(
-            activeByKind,
             targetContracts,
+            affectedContracts,
             cancellationToken);
         var convergence = await UpsertConvergenceAsync(
             evaluatorVersion,
             baselineVersion,
-            directChanges.Length,
-            targetContracts.Count - directChanges.Length,
+            directChanges.Count,
+            targetContracts.Count - directChanges.Count,
             artifacts.Total,
             reusedArtifacts,
             affectedArtifacts,
@@ -615,8 +631,8 @@ internal sealed class LegendConnectRuntimePolicyAuthority : ILegendConnectRuntim
     }
 
     private async Task PersistCurrentContractsAsync(
-        IReadOnlyDictionary<string, LegendLanguageDerivationContract> activeByKind,
         IReadOnlyList<LegendConnectDerivationContractDefinition> targetContracts,
+        IReadOnlyList<LegendConnectDerivationContractDefinition> affectedContracts,
         CancellationToken cancellationToken)
     {
         var now = DateTime.UtcNow;
@@ -626,8 +642,15 @@ internal sealed class LegendConnectRuntimePolicyAuthority : ILegendConnectRuntim
         var changed = false;
         foreach (var definition in targetContracts)
         {
-            if (activeByKind.TryGetValue(definition.DerivationKind, out var active) &&
-                !string.Equals(active.ContractIdentity, definition.ContractIdentity, StringComparison.Ordinal))
+            // A prior deployment may have written the newly declared identity
+            // as Current without replaying its artifacts. Supersede every
+            // other active identity for this derivation kind, not merely an
+            // arbitrary newest row, so duplicate Current rows cannot hide a
+            // stale projection on the next comparison.
+            foreach (var active in allContracts.Where(item =>
+                         item.SupersededUtc == null &&
+                         string.Equals(item.DerivationKind, definition.DerivationKind, StringComparison.Ordinal) &&
+                         !string.Equals(item.ContractIdentity, definition.ContractIdentity, StringComparison.Ordinal)))
             {
                 active.State = "Superseded";
                 active.SupersededUtc = now;
@@ -654,16 +677,20 @@ internal sealed class LegendConnectRuntimePolicyAuthority : ILegendConnectRuntim
         if (changed)
             await _db.SaveChangesAsync(cancellationToken);
 
-        // The dependency ledger records freshness without touching the
-        // canonical evidence it describes. A changed contract therefore
-        // makes only its own projection edges stale; the subsequent durable
-        // phase recreates current edges after the canonical evaluator has
-        // completed under the new contract.
-        if (supersededContractIdentities.Count > 0)
+        // The dependency ledger records freshness without touching canonical
+        // evidence.  Mark the complete affected contract frontier stale: a
+        // direct source projection change invalidates each declared dependent
+        // phase, but the existing leased worker is still the only authority
+        // allowed to rebuild their projections.
+        var affectedArtifactKinds = affectedContracts
+            .SelectMany(item => item.ArtifactKinds)
+            .ToHashSet(StringComparer.Ordinal);
+        if (supersededContractIdentities.Count > 0 || affectedArtifactKinds.Count > 0)
         {
             var staleArtifacts = await _db.Set<LegendLanguageDerivationArtifact>()
-                .Where(item => supersededContractIdentities.Contains(item.DerivationContractIdentity) &&
-                    item.State == "Current")
+                .Where(item => item.State == "Current" &&
+                    (supersededContractIdentities.Contains(item.DerivationContractIdentity) ||
+                     affectedArtifactKinds.Contains(item.ArtifactKind)))
                 .ToListAsync(cancellationToken);
             foreach (var artifact in staleArtifacts)
             {
@@ -707,6 +734,73 @@ internal sealed class LegendConnectRuntimePolicyAuthority : ILegendConnectRuntim
         }
         if (dependencyChanged)
             await _db.SaveChangesAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// Determines whether the durable artifact ledger proves that the active
+    /// projection was produced under the deployment declaration.  Contract
+    /// rows alone are insufficient: an interrupted older deployment can have
+    /// recorded a new Current declaration while every retained artifact still
+    /// carries the prior contract identity.
+    /// </summary>
+    private async Task<bool> HasDerivationContractDriftAsync(
+        int evaluatorVersion,
+        CancellationToken cancellationToken)
+    {
+        var targetContracts = LegendConnectDerivationContracts.ForEvaluator(evaluatorVersion);
+        var activeContracts = await _db.Set<LegendLanguageDerivationContract>()
+            .Where(item => item.SupersededUtc == null)
+            .ToListAsync(cancellationToken);
+        return (await GetDirectContractChangesAsync(
+            targetContracts,
+            activeContracts,
+            cancellationToken)).Count > 0;
+    }
+
+    private async Task<IReadOnlyList<LegendConnectDerivationContractDefinition>>
+        GetDirectContractChangesAsync(
+            IReadOnlyList<LegendConnectDerivationContractDefinition> targetContracts,
+            IReadOnlyList<LegendLanguageDerivationContract> activeContracts,
+            CancellationToken cancellationToken)
+    {
+        var knownContracts = await _db.Set<LegendLanguageDerivationContract>()
+            .AsNoTracking()
+            .Select(item => new { item.DerivationKind, item.ContractIdentity })
+            .ToListAsync(cancellationToken);
+        var kindByIdentity = knownContracts
+            .GroupBy(item => item.ContractIdentity, StringComparer.Ordinal)
+            .ToDictionary(
+                group => group.Key,
+                group => group.Select(item => item.DerivationKind)
+                    .Distinct(StringComparer.Ordinal)
+                    .ToHashSet(StringComparer.Ordinal),
+                StringComparer.Ordinal);
+        var currentArtifactContractIdentities = await _db.Set<LegendLanguageDerivationArtifact>()
+            .AsNoTracking()
+            .Where(item => item.State == "Current")
+            .Select(item => item.DerivationContractIdentity)
+            .Distinct()
+            .ToListAsync(cancellationToken);
+
+        return targetContracts
+            .Where(definition =>
+                !activeContracts.Any(item =>
+                    string.Equals(item.DerivationKind, definition.DerivationKind, StringComparison.Ordinal) &&
+                    string.Equals(item.ContractIdentity, definition.ContractIdentity, StringComparison.Ordinal)) ||
+                currentArtifactContractIdentities.Any(identity =>
+                    !string.Equals(identity, definition.ContractIdentity, StringComparison.Ordinal) &&
+                    ((kindByIdentity.TryGetValue(identity, out var kinds) &&
+                      kinds.Contains(definition.DerivationKind)) ||
+                     // A failed/interrupted predecessor can leave a valid
+                     // old artifact identity without a corresponding durable
+                     // contract declaration.  The immutable deployment
+                     // catalog still knows that identity's kind, so do not
+                     // incorrectly reuse it merely because C4 recorded the
+                     // newer declaration first.
+                     LegendConnectDerivationContracts
+                         .KnownContractIdentitiesFor(definition.DerivationKind)
+                         .Contains(identity))))
+            .ToArray();
     }
 
     private async Task<LegendLanguageDerivationConvergence> UpsertConvergenceAsync(

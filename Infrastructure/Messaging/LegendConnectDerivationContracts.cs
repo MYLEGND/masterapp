@@ -26,10 +26,23 @@ internal static class LegendConnectDerivationContracts
     [
         new(
             SourceSemanticProjection,
-            "3",
+            "2",
             LegendConnectLanguageIntelligenceReevaluationPhases.SourceFamilies,
             RequiresHistoricalWork: true,
             IntroducedEvaluatorVersion: 1,
+            DependencyKinds: [],
+            ArtifactKinds: ["compositional-anchor", "meaning-node", "meaning-relation", "semantic-transformation"],
+            RequiresDependencyInventory: false),
+        // V21 changes the source-family compiler itself.  Keep the prior
+        // declaration in this catalog: a completed pre-V21 policy must be
+        // compared to the contract that actually produced its artifacts,
+        // never to a retroactively edited declaration.
+        new(
+            SourceSemanticProjection,
+            "3",
+            LegendConnectLanguageIntelligenceReevaluationPhases.SourceFamilies,
+            RequiresHistoricalWork: true,
+            IntroducedEvaluatorVersion: 21,
             DependencyKinds: [],
             ArtifactKinds: ["compositional-anchor", "meaning-node", "meaning-relation", "semantic-transformation"],
             RequiresDependencyInventory: false),
@@ -108,6 +121,22 @@ internal static class LegendConnectDerivationContracts
         string derivationKind) => ForEvaluator(evaluatorVersion)
         .Single(item => string.Equals(item.DerivationKind, derivationKind, StringComparison.Ordinal))
         .ContractIdentity;
+
+    /// <summary>
+    /// Returns every declaration identity ever known for one derivation kind,
+    /// including a superseded declaration that an interrupted deployment did
+    /// not persist to the contract table.  The runtime uses this only to
+    /// classify an artifact's durable identity; it never infers curriculum
+    /// content or treats an unknown identity as belonging to a contract.
+    /// </summary>
+    internal static IReadOnlySet<string> KnownContractIdentitiesFor(
+        string derivationKind) => Declarations
+        .Where(item => string.Equals(
+            item.DerivationKind,
+            derivationKind,
+            StringComparison.Ordinal))
+        .Select(item => item.ContractIdentity)
+        .ToHashSet(StringComparer.Ordinal);
 }
 
 /// <summary>

@@ -860,6 +860,298 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
     }
 
     /// <summary>
+    /// A production-data shadow rebuild for pre-deployment proof.  The source
+    /// context is SQL Server with a read-only connection and an interceptor
+    /// that rejects every non-SELECT command.  The second context is an
+    /// ephemeral in-process snapshot only: it exists so the unchanged
+    /// canonical V21 planner, replay, compiler, and serving authorities can
+    /// be exercised without mutating a production row or invoking a provider.
+    /// </summary>
+    [Fact]
+    public async Task ProductionReadOnlyV21ShadowRebuild_UsesLiveFounderEvidenceWithoutWrites()
+    {
+        var connectionString = Environment.GetEnvironmentVariable(
+            "LEGEND_PRODUCTION_READONLY_CONNECTION");
+        if (string.IsNullOrWhiteSpace(connectionString))
+        {
+            _output.WriteLine("Production V21 shadow rebuild was not selected; LEGEND_PRODUCTION_READONLY_CONNECTION is unset.");
+            return;
+        }
+
+        var founderId = Environment.GetEnvironmentVariable(
+            "LEGEND_PRODUCTION_READONLY_FOUNDER_OID");
+        Assert.False(string.IsNullOrWhiteSpace(founderId),
+            "Production Founder OID was not supplied to the shadow rebuild.");
+        var previousFounderOid = Environment.GetEnvironmentVariable("FOUNDER_OID");
+        var previousOpenAiApiKey = Environment.GetEnvironmentVariable("OPENAI_API_KEY");
+        var previousOpenAiConfigApiKey = Environment.GetEnvironmentVariable("OpenAI__ApiKey");
+        Environment.SetEnvironmentVariable("FOUNDER_OID", founderId);
+        Environment.SetEnvironmentVariable("OPENAI_API_KEY", string.Empty);
+        Environment.SetEnvironmentVariable("OpenAI__ApiKey", string.Empty);
+        try
+        {
+            var connection = new SqlConnectionStringBuilder(connectionString)
+            {
+                ApplicationName = "LEGEND production V21 read-only shadow rebuild",
+                ApplicationIntent = ApplicationIntent.ReadOnly
+            };
+            var readOnlyGuard = new ReadOnlyLegendDbCommandInterceptor();
+            await using var production = new MasterAppDbContext(
+                new DbContextOptionsBuilder<MasterAppDbContext>()
+                    .UseSqlServer(connection.ConnectionString)
+                    .UseQueryTrackingBehavior(QueryTrackingBehavior.NoTracking)
+                    .AddInterceptors(readOnlyGuard)
+                    .Options);
+
+            Assert.True(await production.AgentProfiles.AsNoTracking().AnyAsync(item =>
+                    item.IsActive && item.AgentUserId != null &&
+                    item.AgentUserId.ToLower() == founderId!.ToLower()),
+                "The configured production Founder OID has no active AgentProfile.");
+
+            var liveBefore = await ReadShadowCountsAsync(production);
+            var liveContracts = await production.LegendLanguageDerivationContracts
+                .AsNoTracking()
+                .Where(item => item.SupersededUtc == null)
+                .GroupBy(item => new { item.DerivationKind, item.ContractVersion, item.State })
+                .OrderBy(group => group.Key.DerivationKind)
+                .Select(group => new { group.Key, Count = group.LongCount() })
+                .ToListAsync();
+            var liveSourceV20Artifacts = await production.LegendLanguageDerivationArtifacts
+                .AsNoTracking()
+                .LongCountAsync(item => item.State == "Current" &&
+                    item.DerivationContractIdentity == LegendConnectDerivationContracts.ContractIdentityFor(
+                        20,
+                        LegendConnectDerivationContracts.SourceSemanticProjection));
+            var recoverableManifest = await production.LegendCurriculumManifestWorkItems
+                .AsNoTracking()
+                .Where(item => item.ProcessingState == "Failed" &&
+                    item.LastErrorCode != "curriculum_manifest_payload_invalid" &&
+                    item.LastErrorCode != "curriculum_manifest_payload_mismatch")
+                .OrderBy(item => item.CreatedUtc)
+                .Select(item => new { item.Id, item.FamilyCount, item.LastErrorCode })
+                .FirstOrDefaultAsync();
+
+            _output.WriteLine("============================================================");
+            _output.WriteLine("LEGEND® V21 LIVE-DATA READ-ONLY SHADOW REBUILD");
+            _output.WriteLine("============================================================");
+            WriteShadowCounts("LIVE BEFORE", liveBefore);
+            _output.WriteLine($"LIVE V20 SOURCE-PROJECTION ARTIFACTS: {liveSourceV20Artifacts}");
+            _output.WriteLine("LIVE ACTIVE CONTRACTS: " + string.Join(" | ", liveContracts.Select(item =>
+                $"{item.Key.DerivationKind}:v{item.Key.ContractVersion}:{item.Key.State}={item.Count}")));
+            _output.WriteLine("LIVE RECOVERABLE FAILED MANIFEST: " +
+                (recoverableManifest is null
+                    ? "<NONE>"
+                    : $"family-count={recoverableManifest.FamilyCount}; error={recoverableManifest.LastErrorCode ?? "<NONE>"}"));
+
+            Assert.True(liveSourceV20Artifacts > 0,
+                "The live production snapshot contains no current V20 source-projection artifact to validate V21 invalidation.");
+            Assert.NotNull(recoverableManifest);
+
+            await using var shadow = ControllerTestHelpers.BuildDb();
+            var copied = await CopyLiveCurriculumSnapshotAsync(production, shadow, founderId!);
+            _output.WriteLine("SHADOW SNAPSHOT ROWS: " + string.Join(" | ", copied.Select(item =>
+                item.Key + "=" + item.Value)));
+
+            var configuration = ShadowConfiguration();
+            var registry = new LegendLanguageRegistry(shadow, configuration);
+            var runtime = new LegendConnectRuntimePolicyAuthority(
+                shadow,
+                new FounderAccess(),
+                registry,
+                configuration,
+                NullLogger<LegendConnectRuntimePolicyAuthority>.Instance);
+            var intelligence = new LegendConnectTranslationIntelligence(shadow, configuration, runtime);
+            var corpus = new LegendConnectCorpusService(
+                shadow,
+                registry,
+                NullLogger<LegendConnectCorpusService>.Instance,
+                intelligence: intelligence);
+            var curriculum = new LegendConnectCurriculumService(shadow, registry, corpus);
+            var operations = new LegendConnectOperations(
+                shadow,
+                registry,
+                corpus,
+                configuration,
+                runtimePolicy: runtime,
+                curriculum: curriculum,
+                intelligence: intelligence);
+
+            var replay = await runtime.GetOrStartLanguageIntelligenceReevaluationAsync(
+                LegendConnectLanguageIntelligenceEvaluatorVersion.Current);
+            var convergence = await shadow.LegendLanguageDerivationConvergences
+                .AsNoTracking()
+                .SingleAsync(item => item.TargetEvaluatorVersion ==
+                    LegendConnectLanguageIntelligenceEvaluatorVersion.Current);
+            var staleSourceArtifacts = await shadow.LegendLanguageDerivationArtifacts
+                .LongCountAsync(item => item.State == "Stale" &&
+                    item.DerivationContractIdentity == LegendConnectDerivationContracts.ContractIdentityFor(
+                        20,
+                        LegendConnectDerivationContracts.SourceSemanticProjection));
+            _output.WriteLine($"SHADOW REPLAY PLAN: target=v{replay.TargetEvaluatorVersion}; completed=v{replay.CompletedEvaluatorVersion}; phase={replay.Phase}; requires-work={replay.RequiresWork}");
+            _output.WriteLine($"SHADOW CONVERGENCE: state={convergence.State}; earliest={convergence.EarliestAffectedPhase}; changed-contracts={convergence.ChangedContractCount}; affected={convergence.AffectedCanonicalArtifactCount}; reused={convergence.ReusedCanonicalArtifactCount}");
+            _output.WriteLine($"SHADOW STALE V20 SOURCE ARTIFACTS: {staleSourceArtifacts}");
+            Assert.True(replay.RequiresWork);
+            Assert.Equal(LegendConnectLanguageIntelligenceReevaluationPhases.SourceFamilies, replay.Phase);
+            Assert.True(convergence.AffectedCanonicalArtifactCount > 0);
+            Assert.True(staleSourceArtifacts > 0);
+
+            // The shadow executes the same bounded canonical compiler that
+            // the durable worker owns.  It does not write production and it
+            // never changes a contract, manifest, or work item by hand.
+            await DrainShadowCurriculumPhaseAsync(
+                curriculum,
+                LegendConnectLanguageIntelligenceReevaluationPhases.SourceFamilies);
+            await DrainShadowCurriculumPhaseAsync(
+                curriculum,
+                LegendConnectLanguageIntelligenceReevaluationPhases.Alignments);
+            var shadowAfterFirstReplay = await ReadShadowCountsAsync(shadow);
+            WriteShadowCounts("SHADOW AFTER FIRST CANONICAL REPLAY", shadowAfterFirstReplay);
+            Assert.True(shadowAfterFirstReplay.ActiveTargetRealizationCandidates > 0,
+                "The live-data shadow compiler produced no target-realization candidates.");
+            Assert.True(shadowAfterFirstReplay.TargetCandidatesWithEvidence ==
+                        shadowAfterFirstReplay.ActiveTargetRealizationCandidates,
+                "Every shadow target-realization candidate must retain active evidence.");
+
+            var sourceV21Contract = LegendConnectDerivationContracts.ContractIdentityFor(
+                LegendConnectLanguageIntelligenceEvaluatorVersion.Current,
+                LegendConnectDerivationContracts.SourceSemanticProjection);
+            // Candidate evidence itself has exact source example, target
+            // example, and alignment identities. The compact source ledger
+            // below is refreshed through its existing authority to retain the
+            // corresponding V21 contract provenance without creating a
+            // candidate-specific authority.
+            var familyIds = await shadow.LegendCurriculumExamples.AsNoTracking()
+                .Where(item => item.SupersededUtc == null)
+                .Select(item => item.CurriculumFamilyId)
+                .Distinct()
+                .ToListAsync();
+            foreach (var familyId in familyIds)
+                await curriculum.RefreshCurrentDerivationDependenciesForFamilyAsync(
+                    familyId,
+                    LegendConnectLanguageIntelligenceEvaluatorVersion.Current);
+            var activeV21Artifacts = await shadow.LegendLanguageDerivationArtifacts
+                .LongCountAsync(item => item.State == "Current" &&
+                    item.DerivationContractIdentity == sourceV21Contract);
+            Assert.True(activeV21Artifacts > 0,
+                "The shadow replay produced no V21 source-contract lineage artifacts.");
+            var candidatesWithSourceContractLineage = await (
+                from candidate in shadow.LegendLanguageTargetRealizationCandidates.AsNoTracking()
+                join evidence in shadow.LegendLanguageTargetRealizationEvidence.AsNoTracking()
+                    on candidate.Id equals evidence.CandidateId
+                where candidate.SupersededUtc == null && evidence.SupersededUtc == null &&
+                    shadow.LegendLanguageDerivationArtifacts.Any(artifact =>
+                        artifact.State == "Current" &&
+                        artifact.DerivationContractIdentity == sourceV21Contract &&
+                        artifact.ArtifactKind == "compositional-anchor" &&
+                        artifact.ResultArtifactIdentity.StartsWith(
+                            "anchor:" + evidence.SourceCurriculumExampleId.ToString() + ":"))
+                select candidate.Id).Distinct().LongCountAsync();
+            _output.WriteLine($"SHADOW TARGET CANDIDATES WITH V21 SOURCE CONTRACT LINEAGE: {candidatesWithSourceContractLineage}");
+            Assert.Equal(shadowAfterFirstReplay.ActiveTargetRealizationCandidates,
+                candidatesWithSourceContractLineage);
+
+            var manifestShadow = await BuildRecoverableManifestShadowAsync(
+                production,
+                recoverableManifest!.Id,
+                founderId!);
+            await using (manifestShadow)
+            {
+                var manifestRegistry = new LegendLanguageRegistry(manifestShadow, configuration);
+                var manifestRuntime = new LegendConnectRuntimePolicyAuthority(
+                    manifestShadow, new FounderAccess(), manifestRegistry, configuration,
+                    NullLogger<LegendConnectRuntimePolicyAuthority>.Instance);
+                var manifestCorpus = new LegendConnectCorpusService(
+                    manifestShadow, manifestRegistry,
+                    NullLogger<LegendConnectCorpusService>.Instance);
+                var manifestCurriculum = new LegendConnectCurriculumService(
+                    manifestShadow, manifestRegistry, manifestCorpus);
+                var durable = new LegendConnectHistoricalReevaluationWorkAuthority(
+                    manifestShadow, manifestRuntime, configuration);
+                var processor = new LegendConnectCurriculumManifestProcessor(
+                    manifestShadow, manifestCurriculum, durable,
+                    NullLogger<LegendConnectCurriculumManifestProcessor>.Instance);
+                var firstAdmitted = await processor.SeedDurableFamilyWorkAsync(
+                    durable, LegendConnectLanguageIntelligenceEvaluatorVersion.Current, 1);
+                var firstWorkCount = await manifestShadow.LegendHistoricalReevaluationWorkItems
+                    .LongCountAsync(item => item.SubjectId == recoverableManifest.Id &&
+                        item.EvaluatorVersion == LegendConnectLanguageIntelligenceEvaluatorVersion.Current);
+                var secondAdmitted = await processor.SeedDurableFamilyWorkAsync(
+                    durable, LegendConnectLanguageIntelligenceEvaluatorVersion.Current, 1);
+                var secondWorkCount = await manifestShadow.LegendHistoricalReevaluationWorkItems
+                    .LongCountAsync(item => item.SubjectId == recoverableManifest.Id &&
+                        item.EvaluatorVersion == LegendConnectLanguageIntelligenceEvaluatorVersion.Current);
+                _output.WriteLine($"SHADOW RECOVERABLE MANIFEST ADMISSION: first={firstAdmitted}; second={secondAdmitted}; work={firstWorkCount}/{secondWorkCount}");
+                Assert.True(firstAdmitted > 0);
+                Assert.Equal(0, secondAdmitted);
+                Assert.True(firstWorkCount > 0);
+                Assert.Equal(firstWorkCount, secondWorkCount);
+            }
+
+            var promptMatrix = await BuildShadowPromptMatrixAsync(shadow);
+            var founder = new ClaimsPrincipal(new ClaimsIdentity(
+                [new Claim("oid", founderId!)], "production-shadow-founder"));
+            var founderLegend = new FounderLegendConnectService(
+                operations,
+                new AgentProfileAccessResolver(shadow));
+            var factory = new CountingHttpClientFactory();
+            var chat = new LegendFounderAiConversationService(
+                factory,
+                configuration,
+                founderLegend,
+                NullLogger<LegendFounderAiConversationService>.Instance);
+            var nativePasses = 0;
+            foreach (var request in promptMatrix)
+            {
+                var source = await curriculum.AnalyzeSemanticTransitionSourceSemanticsAsync("en", request.Text);
+                var graph = await operations.AnalyzeReusableMeaningGraphAsync(request.Text);
+                var plan = await operations.TryPlanConversationAsync(request.Text, null);
+                var binding = await operations.TryBindConversationContentAsync(request.Text, null);
+                var native = await founderLegend.TryInferConversationAsync(
+                    founder, request.Text, Array.Empty<LegendConnectConversationContextItem>());
+                var response = await chat.ReplyAsync(founder, new LegendFounderAiChatRequest
+                {
+                    Mode = "legend",
+                    Messages = [new LegendFounderAiChatMessage("user", request.Text)]
+                });
+                WriteShadowPromptTrace(request, source, graph, plan, binding, native, response, factory.CreateClientCalls);
+                var passed = native.Supported && native.EvidenceCount > 0 && !native.RequiresEscalation &&
+                    !string.IsNullOrWhiteSpace(native.Answer) && response.Succeeded &&
+                    string.Equals(native.Answer, response.Message, StringComparison.Ordinal);
+                if (request.ExpectNative)
+                {
+                    Assert.True(passed, $"Shadow native inference failed for {request.Reference}; reason={native.ReasonCode}");
+                    nativePasses++;
+                }
+                else
+                {
+                    Assert.False(native.Supported, $"Shadow fail-closed prompt unexpectedly served for {request.Reference}.");
+                    Assert.True(native.RequiresEscalation);
+                }
+            }
+            Assert.Equal(promptMatrix.Count(item => item.ExpectNative), nativePasses);
+            Assert.Equal(0, factory.CreateClientCalls);
+
+            await DrainShadowCurriculumPhaseAsync(
+                curriculum,
+                LegendConnectLanguageIntelligenceReevaluationPhases.SourceFamilies);
+            await DrainShadowCurriculumPhaseAsync(
+                curriculum,
+                LegendConnectLanguageIntelligenceReevaluationPhases.Alignments);
+            var shadowAfterSecondReplay = await ReadShadowCountsAsync(shadow);
+            WriteShadowCounts("SHADOW AFTER SECOND CANONICAL REPLAY", shadowAfterSecondReplay);
+            Assert.Equal(shadowAfterFirstReplay, shadowAfterSecondReplay);
+            _output.WriteLine("OPENAI HTTP CALLS: 0");
+            _output.WriteLine("PRODUCTION WRITE COMMANDS: 0");
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("FOUNDER_OID", previousFounderOid);
+            Environment.SetEnvironmentVariable("OPENAI_API_KEY", previousOpenAiApiKey);
+            Environment.SetEnvironmentVariable("OpenAI__ApiKey", previousOpenAiConfigApiKey);
+        }
+    }
+
+    /// <summary>
     /// Uses only a read-only production query to obtain the active governed
     /// transition class behind known production greeting endpoints. It then
     /// replays those exact canonical rows in an isolated local database using
@@ -2302,6 +2594,315 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
         }
 
         throw new Xunit.Sdk.XunitException("The isolated SQL Server historical replay did not converge.");
+    }
+
+    private static IConfiguration ShadowConfiguration() => new ConfigurationBuilder()
+        .AddInMemoryCollection(new[]
+        {
+            new KeyValuePair<string, string?>("OpenAI:ApiKey", string.Empty),
+            new KeyValuePair<string, string?>("LegendConnect:CorpusAcquisition:Enabled", "false"),
+            new KeyValuePair<string, string?>("LegendConnect:ContextualComposition:Mode", "Shadow"),
+            new KeyValuePair<string, string?>("LegendConnect:LanguageRegistry:Baseline:0:Code", "en"),
+            new KeyValuePair<string, string?>("LegendConnect:LanguageRegistry:Baseline:0:Name", "English"),
+            new KeyValuePair<string, string?>("LegendConnect:LanguageRegistry:Baseline:0:NativeName", "English")
+        })
+        .Build();
+
+    private sealed record ShadowCorpusCounts(
+        long FounderExamples,
+        long SourceAnchors,
+        long TransitionEvidence,
+        long CurrentArtifacts,
+        long StaleArtifacts,
+        long ActiveTargetRealizationCandidates,
+        long ActiveTargetRealizationEvidence,
+        long TargetCandidatesWithEvidence,
+        long ActiveAlignments,
+        long ManifestWorkItems,
+        long HistoricalWorkItems);
+
+    private sealed record ShadowPrompt(
+        string Reference,
+        string Text,
+        bool ExpectNative);
+
+    private static async Task<ShadowCorpusCounts> ReadShadowCountsAsync(
+        MasterAppDbContext db) => new(
+        await db.LegendCurriculumExamples.AsNoTracking().LongCountAsync(item =>
+            item.SupersededUtc == null &&
+            item.Provenance == LegendConnectKnowledgeProvenance.FounderApproved &&
+            item.LanguageCode == "en"),
+        await db.LegendLanguageCompositionalAnchors.AsNoTracking().LongCountAsync(item =>
+            item.SupersededUtc == null && item.LanguageCode == "en" &&
+            item.Provenance == LegendConnectKnowledgeProvenance.FounderApproved),
+        await db.LegendSemanticTransitionEvidence.AsNoTracking().LongCountAsync(item =>
+            item.SupersededUtc == null &&
+            item.Provenance == LegendConnectKnowledgeProvenance.FounderApproved),
+        await db.LegendLanguageDerivationArtifacts.AsNoTracking().LongCountAsync(item => item.State == "Current"),
+        await db.LegendLanguageDerivationArtifacts.AsNoTracking().LongCountAsync(item => item.State == "Stale"),
+        await db.LegendLanguageTargetRealizationCandidates.AsNoTracking().LongCountAsync(item =>
+            item.SupersededUtc == null),
+        await db.LegendLanguageTargetRealizationEvidence.AsNoTracking().LongCountAsync(item =>
+            item.SupersededUtc == null),
+        await (
+            from candidate in db.LegendLanguageTargetRealizationCandidates.AsNoTracking()
+            where candidate.SupersededUtc == null &&
+                db.LegendLanguageTargetRealizationEvidence.Any(evidence =>
+                    evidence.CandidateId == candidate.Id && evidence.SupersededUtc == null)
+            select candidate.Id).LongCountAsync(),
+        await db.LegendTranslationAlignments.AsNoTracking().LongCountAsync(item => item.SupersededUtc == null),
+        await db.LegendCurriculumManifestWorkItems.AsNoTracking().LongCountAsync(),
+        await db.LegendHistoricalReevaluationWorkItems.AsNoTracking().LongCountAsync());
+
+    private void WriteShadowCounts(string label, ShadowCorpusCounts counts)
+    {
+        _output.WriteLine(
+            $"{label}: examples={counts.FounderExamples}; anchors={counts.SourceAnchors}; transitions={counts.TransitionEvidence}; " +
+            $"artifacts=current:{counts.CurrentArtifacts},stale:{counts.StaleArtifacts}; " +
+            $"target-candidates={counts.ActiveTargetRealizationCandidates}; target-evidence={counts.ActiveTargetRealizationEvidence}; " +
+            $"candidates-with-evidence={counts.TargetCandidatesWithEvidence}; alignments={counts.ActiveAlignments}; " +
+            $"manifests={counts.ManifestWorkItems}; historical-work={counts.HistoricalWorkItems}");
+    }
+
+    private static async Task<IReadOnlyDictionary<string, int>> CopyLiveCurriculumSnapshotAsync(
+        MasterAppDbContext production,
+        MasterAppDbContext shadow,
+        string founderId)
+    {
+        var copied = new Dictionary<string, int>(StringComparer.Ordinal);
+        // The shadow is deliberately complete for the governed Founder scope,
+        // not for unrelated provider-only corpus history.  This preserves
+        // every active Founder source family plus every human-verified
+        // directional dependency that can affect its V21 compilation, while
+        // avoiding an unindexed in-memory replay of unrelated history.
+        var founderSources = await (
+            from example in production.LegendCurriculumExamples.AsNoTracking()
+            join unit in production.LegendLanguageTextUnits.AsNoTracking()
+                on example.TextUnitId equals unit.Id
+            where example.DerivedFromCurriculumExampleId == null &&
+                example.SupersededUtc == null && unit.IsTrainingEligible &&
+                example.Provenance == LegendConnectKnowledgeProvenance.FounderApproved &&
+                unit.Provenance == LegendConnectKnowledgeProvenance.FounderApproved
+            select new { example.Id, example.CurriculumFamilyId, example.TextUnitId })
+            .ToListAsync();
+        var sourceExampleIds = founderSources.Select(item => item.Id).ToArray();
+        var familyIds = founderSources.Select(item => item.CurriculumFamilyId).Distinct().ToArray();
+        var sourceTextUnitIds = founderSources.Select(item => item.TextUnitId).Distinct().ToArray();
+        var verifiedAlignments = await production.LegendTranslationAlignments.AsNoTracking()
+            .Where(item => item.SupersededUtc == null && item.HumanVerified &&
+                sourceTextUnitIds.Contains(item.SourceTextUnitId))
+            .ToListAsync();
+        var alignmentIds = verifiedAlignments.Select(item => item.Id).ToArray();
+        var pairKeys = verifiedAlignments.Select(item => item.PairKey).Distinct().ToArray();
+        var targetTextUnitIds = verifiedAlignments.Select(item => item.TargetTextUnitId).Distinct().ToArray();
+        var replayTextUnitIds = sourceTextUnitIds.Concat(targetTextUnitIds).Distinct().ToArray();
+        var replayExamples = await production.LegendCurriculumExamples.AsNoTracking()
+            .Where(item => sourceExampleIds.Contains(item.Id) ||
+                (item.DerivedFromCurriculumExampleId != null &&
+                 sourceExampleIds.Contains(item.DerivedFromCurriculumExampleId.Value) &&
+                 targetTextUnitIds.Contains(item.TextUnitId)))
+            .Select(item => item.Id)
+            .ToListAsync();
+        var replayExampleIds = replayExamples.ToArray();
+        await CopySnapshotSetAsync<AgentProfile>(
+            production, shadow, copied, "founder-profile",
+            query => query.Where(item => item.IsActive && item.AgentUserId != null &&
+                item.AgentUserId.ToLower() == founderId.ToLower()));
+        await CopySnapshotSetAsync<LegendLanguageDefinition>(production, shadow, copied, "languages");
+        await CopySnapshotSetAsync<LegendLanguagePair>(production, shadow, copied, "pairs",
+            query => query.Where(item => pairKeys.Contains(item.PairKey) || item.PairKey == "en:en"));
+        await CopySnapshotSetAsync<LegendLanguageTextUnit>(
+            production, shadow, copied, "training-text-units",
+            query => query.Where(item => replayTextUnitIds.Contains(item.Id)));
+        await CopySnapshotSetAsync<LegendCurriculumFamily>(production, shadow, copied, "families",
+            query => query.Where(item => familyIds.Contains(item.Id)));
+        await CopySnapshotSetAsync<LegendCurriculumExample>(production, shadow, copied, "examples",
+            query => query.Where(item => replayExampleIds.Contains(item.Id)));
+        await CopySnapshotSetAsync<LegendCurriculumExampleVariation>(production, shadow, copied, "variations",
+            query => query.Where(item => replayExampleIds.Contains(item.CurriculumExampleId)));
+        await CopySnapshotSetAsync<LegendTranslationAlignment>(production, shadow, copied, "alignments",
+            query => query.Where(item => alignmentIds.Contains(item.Id)));
+        await CopySnapshotSetAsync<LegendTranslationQualityEvidence>(production, shadow, copied, "quality-evidence",
+            query => query.Where(item => alignmentIds.Contains(item.ObservedAlignmentId)));
+        await CopySnapshotSetAsync<LegendLanguageContextRelationship>(production, shadow, copied, "contexts",
+            query => query.Where(item => replayTextUnitIds.Contains(item.SourceTextUnitId) &&
+                replayTextUnitIds.Contains(item.RelatedTextUnitId)));
+        await CopySnapshotSetAsync<LegendSemanticTransitionEvidence>(production, shadow, copied, "transitions",
+            query => query.Where(item => replayExampleIds.Contains(item.SourceCurriculumExampleId) &&
+                replayExampleIds.Contains(item.ResultCurriculumExampleId)));
+        await CopySnapshotSetAsync<LegendFounderSemanticExampleRelationEvidence>(production, shadow, copied, "founder-relations",
+            query => query.Where(item => replayExampleIds.Contains(item.SourceCurriculumExampleId) &&
+                replayExampleIds.Contains(item.ResultCurriculumExampleId)));
+        await CopySnapshotSetAsync<LegendLanguageStructuralPattern>(production, shadow, copied, "structural-patterns",
+            query => query.Where(item => familyIds.Contains(item.CurriculumFamilyId)));
+        await CopySnapshotSetAsync<LegendLanguageStructuralRelationship>(production, shadow, copied, "structural-relationships");
+        await CopySnapshotSetAsync<LegendLanguageStructuralEvidence>(production, shadow, copied, "structural-evidence",
+            query => query.Where(item => familyIds.Contains(item.CurriculumFamilyId)));
+        await CopySnapshotSetAsync<LegendLanguageLexeme>(production, shadow, copied, "lexemes");
+        await CopySnapshotSetAsync<LegendLanguageLexicalOccurrence>(production, shadow, copied, "lexical-occurrences",
+            query => query.Where(item => replayTextUnitIds.Contains(item.TextUnitId)));
+        await CopySnapshotSetAsync<LegendLanguageLexicalRelationship>(production, shadow, copied, "lexical-relationships",
+            query => query.Where(item => replayTextUnitIds.Contains(item.TextUnitId)));
+        await CopySnapshotSetAsync<LegendLanguageCompositionalAnchor>(production, shadow, copied, "anchors",
+            query => query.Where(item => replayExampleIds.Contains(item.CurriculumExampleId)));
+        await CopySnapshotSetAsync<LegendLanguageMeaningNodeEvidence>(production, shadow, copied, "meaning-nodes",
+            query => query.Where(item => replayExampleIds.Contains(item.CurriculumExampleId)));
+        await CopySnapshotSetAsync<LegendLanguageMeaningPrimitive>(production, shadow, copied, "meaning-primitives");
+        await CopySnapshotSetAsync<LegendLanguageMeaningPrimitiveEvidence>(production, shadow, copied, "meaning-primitive-evidence",
+            query => query.Where(item => replayExampleIds.Contains(item.CurriculumExampleId)));
+        await CopySnapshotSetAsync<LegendLanguageMeaningRelation>(production, shadow, copied, "meaning-relations");
+        await CopySnapshotSetAsync<LegendLanguageMeaningRelationEvidence>(production, shadow, copied, "meaning-relation-evidence",
+            query => query.Where(item => replayExampleIds.Contains(item.CurriculumExampleId)));
+        await CopySnapshotSetAsync<LegendLanguageDiscourseReferenceRule>(production, shadow, copied, "reference-rules");
+        await CopySnapshotSetAsync<LegendLanguageDiscourseReferenceRuleEvidence>(production, shadow, copied, "reference-rule-evidence",
+            query => query.Where(item => replayExampleIds.Contains(item.CurriculumExampleId)));
+        await CopySnapshotSetAsync<LegendLanguageTargetRealizationCandidate>(production, shadow, copied, "target-candidates");
+        await CopySnapshotSetAsync<LegendLanguageTargetRealizationEvidence>(production, shadow, copied, "target-evidence");
+        await CopySnapshotSetAsync<LegendConnectRuntimePolicy>(production, shadow, copied, "runtime-policy");
+        await CopySnapshotSetAsync<LegendLanguageDerivationContract>(production, shadow, copied, "contracts");
+        await CopySnapshotSetAsync<LegendLanguageDerivationContractDependency>(production, shadow, copied, "contract-dependencies");
+        await CopySnapshotSetAsync<LegendLanguageDerivationArtifact>(production, shadow, copied, "artifacts");
+        await CopySnapshotSetAsync<LegendLanguageDerivationConvergence>(production, shadow, copied, "convergences");
+        return copied;
+    }
+
+    private static async Task<MasterAppDbContext> BuildRecoverableManifestShadowAsync(
+        MasterAppDbContext production,
+        Guid manifestId,
+        string founderId)
+    {
+        var shadow = ControllerTestHelpers.BuildDb();
+        var copied = new Dictionary<string, int>(StringComparer.Ordinal);
+        await CopySnapshotSetAsync<AgentProfile>(production, shadow, copied, "founder-profile",
+            query => query.Where(item => item.IsActive && item.AgentUserId != null &&
+                item.AgentUserId.ToLower() == founderId.ToLower()));
+        await CopySnapshotSetAsync<LegendLanguageDefinition>(production, shadow, copied, "languages");
+        await CopySnapshotSetAsync<LegendLanguagePair>(production, shadow, copied, "pairs");
+        await CopySnapshotSetAsync<LegendCurriculumManifestWorkItem>(production, shadow, copied, "manifest",
+            query => query.Where(item => item.Id == manifestId));
+        await CopySnapshotSetAsync<LegendHistoricalReevaluationWorkItem>(production, shadow, copied, "manifest-work",
+            query => query.Where(item => item.SubjectId == manifestId));
+        return shadow;
+    }
+
+    private static async Task CopySnapshotSetAsync<TEntity>(
+        MasterAppDbContext production,
+        MasterAppDbContext shadow,
+        IDictionary<string, int> copied,
+        string label,
+        Func<IQueryable<TEntity>, IQueryable<TEntity>>? scope = null)
+        where TEntity : class
+    {
+        IQueryable<TEntity> query = production.Set<TEntity>().AsNoTracking();
+        if (scope is not null)
+            query = scope(query);
+        var rows = await query.ToListAsync();
+        copied[label] = rows.Count;
+        if (rows.Count == 0)
+            return;
+        shadow.Set<TEntity>().AddRange(rows);
+        await shadow.SaveChangesAsync();
+        shadow.ChangeTracker.Clear();
+    }
+
+    private static async Task<int> DrainShadowCurriculumPhaseAsync(
+        LegendConnectCurriculumService curriculum,
+        string phase)
+    {
+        Guid? cursor = null;
+        var processed = 0;
+        for (var page = 0; page < 512; page++)
+        {
+            var progress = await curriculum.ReevaluateHistoricalAlignmentsAsync(
+                250,
+                phase,
+                cursor);
+            processed += progress.ProcessedCount;
+            if (progress.PhaseComplete)
+                return processed;
+            Assert.NotNull(progress.LastProcessedId);
+            cursor = progress.LastProcessedId;
+        }
+        throw new Xunit.Sdk.XunitException(
+            $"The live-data shadow rebuild did not drain canonical {phase} work within its bounded page limit.");
+    }
+
+    private static async Task<IReadOnlyList<ShadowPrompt>> BuildShadowPromptMatrixAsync(
+        MasterAppDbContext shadow)
+    {
+        const string heldOutGreeting = "Greetings, Legend.";
+        var heldOutNormalized = LegendLanguageIdentity.NormalizeText(heldOutGreeting);
+        Assert.False(await shadow.LegendLanguageTextUnits.AsNoTracking().AnyAsync(item =>
+            item.IsTrainingEligible && item.LanguageCode == "en" && item.Text == heldOutNormalized),
+            "The held-out greeting must not already be a complete stored curriculum sentence.");
+
+        var knownGreetingTexts = new HashSet<string>(StringComparer.Ordinal)
+        {
+            LegendLanguageIdentity.NormalizeText("Hi"),
+            LegendLanguageIdentity.NormalizeText("Hello"),
+            LegendLanguageIdentity.NormalizeText("Hey Legend"),
+            LegendLanguageIdentity.NormalizeText("What's up?"),
+            LegendLanguageIdentity.NormalizeText("How's it going?"),
+            heldOutNormalized
+        };
+        var governedReasoning = await (
+            from transition in shadow.LegendSemanticTransitionEvidence.AsNoTracking()
+            join source in shadow.LegendCurriculumExamples.AsNoTracking()
+                on transition.SourceCurriculumExampleId equals source.Id
+            join unit in shadow.LegendLanguageTextUnits.AsNoTracking()
+                on source.TextUnitId equals unit.Id
+            join family in shadow.LegendCurriculumFamilies.AsNoTracking()
+                on source.CurriculumFamilyId equals family.Id
+            where transition.SupersededUtc == null &&
+                transition.ContributionState == "Supported" &&
+                transition.IsHumanVerifiedSupport &&
+                transition.Provenance == LegendConnectKnowledgeProvenance.FounderApproved &&
+                source.SupersededUtc == null && unit.IsTrainingEligible &&
+                !knownGreetingTexts.Contains(unit.Text) &&
+                !family.FamilyKey.StartsWith("conversation.")
+            orderby family.FamilyKey, unit.NormalizedHash
+            select new { unit.Text, unit.NormalizedHash }).FirstOrDefaultAsync();
+        Assert.NotNull(governedReasoning);
+
+        return
+        [
+            new("greeting-hi", "Hi", true),
+            new("greeting-hello", "Hello", true),
+            new("greeting-hey-legend", "Hey Legend", true),
+            new("greeting-whats-up", "What's up?", true),
+            new("greeting-hows-it-going", "How's it going?", true),
+            new("greeting-held-out", heldOutGreeting, true),
+            new("curriculum-reasoning-" + governedReasoning!.NormalizedHash[..12], governedReasoning.Text, true),
+            new("ambiguous-request", "Hello or goodbye?", false),
+            new("contradictory-request", "Please greet me and do not greet me.", false)
+        ];
+    }
+
+    private void WriteShadowPromptTrace(
+        ShadowPrompt request,
+        LegendShadowSourceUnderstanding source,
+        LegendConnectUtteranceMeaningGraphSnapshot graph,
+        LegendConnectResponseMeaningPlanResult plan,
+        LegendConnectContentBoundResponseMeaningPlanResult binding,
+        LegendConnectNativeInferenceSnapshot native,
+        LegendFounderAiChatResponse response,
+        int providerClientCalls)
+    {
+        _output.WriteLine($"SHADOW REQUEST: {request.Reference}; language=en; expected-native={request.ExpectNative}");
+        _output.WriteLine($"  source-state={source.State}; source-reasons={string.Join(",", source.Reasons)}");
+        _output.WriteLine("  source-components=" + (source.Components.Count == 0
+            ? "<NONE>"
+            : string.Join(" | ", source.Components.Select(item =>
+                item.Dimension + "=" + item.Value + "@" + item.SurfaceForm + "#" + item.SemanticSignature[..12]))));
+        _output.WriteLine($"  graph=composed:{graph.IsComposed}; reason={graph.ReasonCode}; unknown={string.Join(",", graph.UnknownSurfaceComponents)}");
+        _output.WriteLine("  graph-nodes=" + (graph.Nodes.Count == 0
+            ? "<NONE>"
+            : string.Join(" | ", graph.Nodes.Select(item =>
+                item.SemanticDimension + "=" + item.SemanticValue + "#" + item.SemanticSignature[..12]))));
+        _output.WriteLine($"  graph-relations={graph.Relations.Count}; plan=supported:{plan.Supported},reason:{plan.ReasonCode},transition:{plan.Plan?.TransitionSignature[..12] ?? "<NONE>"}");
+        _output.WriteLine($"  content-binding=supported:{binding.Supported},reason:{binding.ReasonCode},facts:{binding.Plan?.Facts.Count ?? 0}");
+        _output.WriteLine($"  native=supported:{native.Supported},reason:{native.ReasonCode},evidence:{native.EvidenceCount},escalation:{native.RequiresEscalation}");
+        _output.WriteLine($"  realization=succeeded:{response.Succeeded},failure:{response.FailureKind ?? "<NONE>"},provider-clients:{providerClientCalls}");
     }
 
     private static LegendLanguageTextUnit HistoricalUnit(string languageCode, string text) => new()

@@ -178,7 +178,15 @@ internal sealed class LegendConnectCurriculumManifestProcessor
         CancellationToken cancellationToken = default)
     {
         var manifests = await _db.Set<LegendCurriculumManifestWorkItem>()
-            .Where(item => item.ProcessingState != "Failed" &&
+            .Where(item =>
+                // A payload rejected before canonical processing has an
+                // exact actionable error and must remain fail-closed. Other
+                // terminal receipts are safely resumed through their existing
+                // deterministic durable child identities after a corrected
+                // evaluator deployment; no row is manually rewritten.
+                (item.ProcessingState != "Failed" ||
+                 (item.LastErrorCode != "curriculum_manifest_payload_invalid" &&
+                  item.LastErrorCode != "curriculum_manifest_payload_mismatch")) &&
                 (item.ProcessingState != "Completed" ||
                  item.CompletedLanguageIntelligenceEvaluatorVersion < evaluatorVersion))
             .OrderBy(item => item.CreatedUtc)

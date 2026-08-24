@@ -231,6 +231,187 @@ public sealed class LegendConnectHistoricalReevaluationVersioningTests
     }
 
     [Fact]
+    public async Task CompletedV21_WithV20SourceArtifacts_ReopensTheCanonicalSourceFrontierExactlyOnce()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var configuration = Configuration();
+        var registry = new LegendLanguageRegistry(db, configuration);
+        var runtime = new LegendConnectRuntimePolicyAuthority(
+            db, new FounderAccess(), registry, configuration,
+            NullLogger<LegendConnectRuntimePolicyAuthority>.Instance);
+
+        // Model the failed V21 deployment shape precisely: v3 was recorded
+        // as Current, but retained source artifacts still carry the v2
+        // identity and the policy watermark was incorrectly marked complete.
+        await EstablishCompletedContractBaselineAsync(db, 20);
+        var sourceV2 = LegendConnectDerivationContracts.ContractIdentityFor(
+            20,
+            LegendConnectDerivationContracts.SourceSemanticProjection);
+        var sourceV3 = LegendConnectDerivationContracts.ContractIdentityFor(
+            LegendConnectLanguageIntelligenceEvaluatorVersion.Current,
+            LegendConnectDerivationContracts.SourceSemanticProjection);
+        db.LegendLanguageDerivationContracts.Add(new LegendLanguageDerivationContract
+        {
+            Id = Guid.NewGuid(),
+            DerivationKind = LegendConnectDerivationContracts.SourceSemanticProjection,
+            ContractVersion = "3",
+            ContractIdentity = sourceV3,
+            EarliestPhase = LegendConnectLanguageIntelligenceReevaluationPhases.SourceFamilies,
+            RequiresHistoricalWork = true,
+            IntroducedEvaluatorVersion = LegendConnectLanguageIntelligenceEvaluatorVersion.Current,
+            State = "Current",
+            CreatedUtc = DateTime.UtcNow,
+            UpdatedUtc = DateTime.UtcNow
+        });
+        db.LegendLanguageDerivationArtifacts.Add(new LegendLanguageDerivationArtifact
+        {
+            Id = Guid.NewGuid(),
+            ArtifactKind = "compositional-anchor",
+            ResultArtifactIdentity = "anchor:historical-v20",
+            SourceDependencyIdentity = "anchor-evidence:historical-v20",
+            SourceDependencySemanticVersion = "historical-v20",
+            DerivationContractIdentity = sourceV2,
+            State = "Current",
+            CreatedUtc = DateTime.UtcNow,
+            UpdatedUtc = DateTime.UtcNow
+        });
+        db.LegendLanguageCompositionalAnchors.Add(new LegendLanguageCompositionalAnchor
+        {
+            Id = Guid.NewGuid(),
+            LanguageCode = "en",
+            TextUnitId = Guid.NewGuid(),
+            CurriculumFamilyId = Guid.NewGuid(),
+            CurriculumExampleId = Guid.NewGuid(),
+            Dimension = "intent",
+            Value = "historical",
+            AnchorSignature = "historical-v20-anchor",
+            Provenance = "FounderApproved"
+        });
+        var policy = await db.LegendConnectRuntimePolicies.SingleAsync();
+        policy.TargetLanguageIntelligenceEvaluatorVersion = LegendConnectLanguageIntelligenceEvaluatorVersion.Current;
+        policy.CompletedLanguageIntelligenceEvaluatorVersion = LegendConnectLanguageIntelligenceEvaluatorVersion.Current;
+        policy.LanguageIntelligenceReevaluationPhase = LegendConnectLanguageIntelligenceReevaluationPhases.Complete;
+        await db.SaveChangesAsync();
+
+        var first = await runtime.GetOrStartLanguageIntelligenceReevaluationAsync(
+            LegendConnectLanguageIntelligenceEvaluatorVersion.Current);
+        var second = await runtime.GetOrStartLanguageIntelligenceReevaluationAsync(
+            LegendConnectLanguageIntelligenceEvaluatorVersion.Current);
+
+        Assert.True(first.RequiresWork);
+        Assert.Equal(LegendConnectLanguageIntelligenceReevaluationPhases.SourceFamilies, first.Phase);
+        Assert.Equal(first, second);
+        Assert.Equal("Stale", (await db.LegendLanguageDerivationArtifacts.SingleAsync()).State);
+        Assert.Single(await db.LegendLanguageDerivationConvergences
+            .Where(item => item.TargetEvaluatorVersion == LegendConnectLanguageIntelligenceEvaluatorVersion.Current)
+            .ToListAsync());
+        var convergence = await db.LegendLanguageDerivationConvergences.SingleAsync(
+            item => item.TargetEvaluatorVersion == LegendConnectLanguageIntelligenceEvaluatorVersion.Current);
+        Assert.Equal(LegendConnectLanguageIntelligenceReevaluationPhases.SourceFamilies,
+            convergence.EarliestAffectedPhase);
+        Assert.True(convergence.AffectedCanonicalArtifactCount > 0);
+    }
+
+    [Fact]
+    public async Task MatchingV21ContractAndArtifacts_AreSafelyReusedWithoutReplay()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var configuration = Configuration();
+        var registry = new LegendLanguageRegistry(db, configuration);
+        var runtime = new LegendConnectRuntimePolicyAuthority(
+            db, new FounderAccess(), registry, configuration,
+            NullLogger<LegendConnectRuntimePolicyAuthority>.Instance);
+        var evaluator = LegendConnectLanguageIntelligenceEvaluatorVersion.Current;
+        await EstablishCompletedContractBaselineAsync(db, evaluator);
+        var sourceIdentity = LegendConnectDerivationContracts.ContractIdentityFor(
+            evaluator,
+            LegendConnectDerivationContracts.SourceSemanticProjection);
+        db.LegendLanguageDerivationArtifacts.Add(new LegendLanguageDerivationArtifact
+        {
+            Id = Guid.NewGuid(),
+            ArtifactKind = "compositional-anchor",
+            ResultArtifactIdentity = "anchor:current-v21",
+            SourceDependencyIdentity = "anchor-evidence:current-v21",
+            SourceDependencySemanticVersion = "current-v21",
+            DerivationContractIdentity = sourceIdentity,
+            State = "Current",
+            CreatedUtc = DateTime.UtcNow,
+            UpdatedUtc = DateTime.UtcNow
+        });
+        await db.SaveChangesAsync();
+
+        var replay = await runtime.GetOrStartLanguageIntelligenceReevaluationAsync(evaluator);
+
+        Assert.False(replay.RequiresWork);
+        Assert.Equal(LegendConnectLanguageIntelligenceReevaluationPhases.Complete, replay.Phase);
+        Assert.Empty(await db.LegendLanguageDerivationConvergences.ToListAsync());
+        Assert.Equal("Current", (await db.LegendLanguageDerivationArtifacts.SingleAsync()).State);
+    }
+
+    [Fact]
+    public async Task CompletedV21_WithAnUnpersistedV20Declaration_StillDetectsTheStaleSourceArtifact()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var configuration = Configuration();
+        var registry = new LegendLanguageRegistry(db, configuration);
+        var runtime = new LegendConnectRuntimePolicyAuthority(
+            db, new FounderAccess(), registry, configuration,
+            NullLogger<LegendConnectRuntimePolicyAuthority>.Instance);
+        var evaluator = LegendConnectLanguageIntelligenceEvaluatorVersion.Current;
+
+        // This is the production-shaped interrupted deployment: the newer
+        // declaration was persisted as Current, but the older declaration
+        // was never recorded even though its artifact remained current.
+        foreach (var definition in LegendConnectDerivationContracts.ForEvaluator(evaluator))
+        {
+            db.LegendLanguageDerivationContracts.Add(new LegendLanguageDerivationContract
+            {
+                Id = Guid.NewGuid(),
+                DerivationKind = definition.DerivationKind,
+                ContractVersion = definition.ContractVersion,
+                ContractIdentity = definition.ContractIdentity,
+                EarliestPhase = definition.EarliestPhase,
+                RequiresHistoricalWork = definition.RequiresHistoricalWork,
+                IntroducedEvaluatorVersion = definition.IntroducedEvaluatorVersion,
+                State = "Current",
+                CreatedUtc = DateTime.UtcNow,
+                UpdatedUtc = DateTime.UtcNow
+            });
+        }
+        var v20SourceIdentity = LegendConnectDerivationContracts.ContractIdentityFor(
+            20,
+            LegendConnectDerivationContracts.SourceSemanticProjection);
+        db.LegendLanguageDerivationArtifacts.Add(new LegendLanguageDerivationArtifact
+        {
+            Id = Guid.NewGuid(),
+            ArtifactKind = "compositional-anchor",
+            ResultArtifactIdentity = "anchor:unpersisted-v20-contract",
+            SourceDependencyIdentity = "anchor-evidence:unpersisted-v20-contract",
+            SourceDependencySemanticVersion = "unpersisted-v20-contract",
+            DerivationContractIdentity = v20SourceIdentity,
+            State = "Current",
+            CreatedUtc = DateTime.UtcNow,
+            UpdatedUtc = DateTime.UtcNow
+        });
+        db.LegendConnectRuntimePolicies.Add(new LegendConnectRuntimePolicy
+        {
+            Id = Guid.NewGuid(),
+            ScopeKey = "Global",
+            TargetLanguageIntelligenceEvaluatorVersion = evaluator,
+            CompletedLanguageIntelligenceEvaluatorVersion = evaluator,
+            LanguageIntelligenceReevaluationPhase = LegendConnectLanguageIntelligenceReevaluationPhases.Complete,
+            UpdatedUtc = DateTime.UtcNow
+        });
+        await db.SaveChangesAsync();
+
+        var replay = await runtime.GetOrStartLanguageIntelligenceReevaluationAsync(evaluator);
+
+        Assert.True(replay.RequiresWork);
+        Assert.Equal(LegendConnectLanguageIntelligenceReevaluationPhases.SourceFamilies, replay.Phase);
+        Assert.Equal("Stale", (await db.LegendLanguageDerivationArtifacts.SingleAsync()).State);
+    }
+
+    [Fact]
     public async Task CurrentVersion_ReplaysHistoricalProviderSemanticConflictsWithoutAnEnglishPivot_AndConverges()
     {
         await using var historicalDb = ControllerTestHelpers.BuildDb();

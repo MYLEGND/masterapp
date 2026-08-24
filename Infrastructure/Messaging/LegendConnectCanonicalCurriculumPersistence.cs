@@ -130,15 +130,29 @@ internal static class LegendConnectCanonicalCurriculumPersistence
         // owned execution transactions, even when the actual relationships
         // are independent.
         var canonicalPairKey = candidate.PairKey ?? string.Empty;
+        var unscopedPair = string.IsNullOrEmpty(canonicalPairKey);
         var existing = db.Set<LegendLanguageContextRelationship>().Local
-            .SingleOrDefault(item => item.PairKey == candidate.PairKey &&
+            .SingleOrDefault(item =>
+                (unscopedPair
+                    ? string.IsNullOrEmpty(item.PairKey)
+                    : item.PairKey == candidate.PairKey) &&
                 item.SourceTextUnitId == candidate.SourceTextUnitId &&
                 item.RelatedTextUnitId == candidate.RelatedTextUnitId &&
                 item.RelationshipKind == candidate.RelationshipKind &&
                 item.ContextSignature == candidate.ContextSignature &&
                 item.SupersededUtc == null)
-            ?? await db.Set<LegendLanguageContextRelationship>()
-                .SingleOrDefaultAsync(item => EF.Property<string>(item, "CanonicalPairKey") == canonicalPairKey &&
+            ?? await (db.Database.IsRelational()
+                ? db.Set<LegendLanguageContextRelationship>()
+                    .Where(item => EF.Property<string>(item, "CanonicalPairKey") == canonicalPairKey)
+                // The in-memory safety harness has no computed-column value.
+                // Mirror SQL Server's COALESCE identity only for that test
+                // provider; production continues to use the indexed shadow
+                // column above.
+                : db.Set<LegendLanguageContextRelationship>()
+                    .Where(item => unscopedPair
+                        ? string.IsNullOrEmpty(item.PairKey)
+                        : item.PairKey == candidate.PairKey))
+                .SingleOrDefaultAsync(item =>
                     item.SourceTextUnitId == candidate.SourceTextUnitId &&
                     item.RelatedTextUnitId == candidate.RelatedTextUnitId &&
                     item.RelationshipKind == candidate.RelationshipKind &&

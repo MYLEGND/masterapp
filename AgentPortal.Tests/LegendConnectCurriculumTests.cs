@@ -738,6 +738,54 @@ public sealed class LegendConnectCurriculumTests
     }
 
     [Fact]
+    public async Task FounderCurriculumManifest_RecoverableTerminalReceipt_ResumesThroughExistingDurableFamilyWork()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var configuration = Configuration();
+        var registry = new LegendLanguageRegistry(db, configuration);
+        var corpus = new LegendConnectCorpusService(db, registry, NullLogger<LegendConnectCorpusService>.Instance);
+        var curriculum = new LegendConnectCurriculumService(db, registry, corpus);
+        var operations = new LegendConnectOperations(db, registry, corpus, configuration, curriculum: curriculum);
+        var runtime = new LegendConnectRuntimePolicyAuthority(
+            db, new FounderAccess(), registry, configuration,
+            NullLogger<LegendConnectRuntimePolicyAuthority>.Instance);
+        var durable = new LegendConnectHistoricalReevaluationWorkAuthority(db, runtime, configuration);
+        var processor = new LegendConnectCurriculumManifestProcessor(
+            db, curriculum, durable,
+            NullLogger<LegendConnectCurriculumManifestProcessor>.Instance);
+        var manifest = new LegendConnectCurriculumManifestSubmission(
+        [
+            ConversationBatch(
+                "conversation.recoverable.failure",
+                "Recoverable durable receipt",
+                ("Please repeat that.", "repeat"),
+                ("Could you repeat that?", "repeat"))
+        ]);
+
+        Assert.True((await operations.SubmitFounderCurriculumManifestAsync("founder-test", manifest)).Succeeded);
+        var receipt = Assert.Single(await db.Set<LegendCurriculumManifestWorkItem>().ToListAsync());
+        receipt.ProcessingState = "Failed";
+        receipt.LastErrorCode = "founder_manifest_family_failure";
+        receipt.LastErrorMessage = "Transient governed evaluator failure.";
+        receipt.AttemptCount = 5;
+        await db.SaveChangesAsync();
+
+        Assert.Equal(1, await processor.ProcessPendingAsync(1));
+
+        var resumed = Assert.Single(await db.Set<LegendCurriculumManifestWorkItem>().ToListAsync());
+        Assert.Equal("Completed", resumed.ProcessingState);
+        Assert.Equal(1, resumed.NextFamilyIndex);
+        Assert.Equal(LegendConnectLanguageIntelligenceEvaluatorVersion.Current,
+            resumed.CompletedLanguageIntelligenceEvaluatorVersion);
+        Assert.Single(await db.LegendCurriculumFamilies.ToListAsync());
+        var child = Assert.Single(await db.LegendHistoricalReevaluationWorkItems
+            .Where(item => item.SubjectId == resumed.Id &&
+                item.WorkKind == LegendConnectHistoricalReevaluationWorkAuthority.FounderManifestFamilyWorkKind)
+            .ToListAsync());
+        Assert.Equal("Completed", child.ProcessingState);
+    }
+
+    [Fact]
     public async Task FounderCurriculumManifest_ExpiredLeaseResumesWithoutDuplicateFamilyKnowledge()
     {
         await using var db = ControllerTestHelpers.BuildDb();
