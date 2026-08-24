@@ -133,26 +133,17 @@ jobs:
           $shadowExit = 99
 
           try {
-            $globalPackagesLine = dotnet nuget locals global-packages --list | Select-Object -First 1
-            if ([string]::IsNullOrWhiteSpace($globalPackagesLine) -or $globalPackagesLine -notmatch 'global-packages:\s*(.+)$') {
-              throw 'Unable to resolve the NuGet global-packages directory.'
-            }
-            $globalPackages = $Matches[1].Trim()
-            $adapter = Get-ChildItem -Path (Join-Path $globalPackages 'xunit.runner.visualstudio\2.8.0') `
-              -Filter 'xunit.runner.visualstudio.testadapter.dll' -Recurse -File | Select-Object -First 1
-            if ($null -eq $adapter) { throw 'Unable to locate xUnit Visual Studio adapter in the restored NuGet package.' }
-            $adapterPath = $adapter.Directory.FullName
-
-            @(
-              "NuGetGlobalPackages=$globalPackages"
-              "AdapterPath=$adapterPath"
-              "AdapterPresent=$(Test-Path $adapter.FullName)"
-            ) | Set-Content -Path $preflight -Encoding utf8
+            dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj `
+              -c Release --no-build --list-tests 2>&1 | Tee-Object -FilePath $preflight
+            $listExit = $LASTEXITCODE
+            $listText = Get-Content $preflight -Raw
+            if ($listExit -ne 0) { throw "Test discovery preflight failed with exit code $listExit." }
+            if ($listText -notmatch 'ProductionReadOnlyEightPromptNativeDiagnostic') { throw 'Native production diagnostic was not discovered.' }
+            if ($listText -notmatch 'ProductionReadOnlyV21ShadowRebuild_UsesLiveFounderEvidenceWithoutWrites') { throw 'V21 shadow production diagnostic was not discovered.' }
 
             dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj `
               -c Release `
               --no-build `
-              --test-adapter-path $adapterPath `
               --filter 'FullyQualifiedName~LegendFounderCurriculumSqlServerE2ETests.ProductionReadOnlyEightPromptNativeDiagnostic' `
               --logger 'console;verbosity=detailed' 2>&1 | Tee-Object -FilePath $native
             $nativeExit = $LASTEXITCODE
@@ -163,7 +154,6 @@ jobs:
             dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj `
               -c Release `
               --no-build `
-              --test-adapter-path $adapterPath `
               --filter 'FullyQualifiedName~LegendFounderCurriculumSqlServerE2ETests.ProductionReadOnlyV21ShadowRebuild_UsesLiveFounderEvidenceWithoutWrites' `
               --logger 'console;verbosity=detailed' 2>&1 | Tee-Object -FilePath $shadow
             $shadowExit = $LASTEXITCODE
