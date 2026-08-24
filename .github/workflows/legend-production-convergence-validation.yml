@@ -1,0 +1,40 @@
+name: LEGEND production convergence validation
+
+on:
+  push:
+    branches:
+      - fix/legend-production-convergence-20260824
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout repair branch
+        uses: actions/checkout@v4
+
+      - name: Set up .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.x'
+
+      - name: Restore
+        run: dotnet restore AgentPortal.Tests/AgentPortal.Tests.csproj
+
+      - name: Build
+        run: dotnet build AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-restore
+
+      - name: Prove xUnit discovery
+        shell: pwsh
+        run: |
+          dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-build --list-tests 2>&1 | Tee-Object -FilePath test-list.txt
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $text = Get-Content test-list.txt -Raw
+          if ($text -match 'No test is available') { throw 'xUnit discovery returned zero tests.' }
+          if ($text -notmatch 'LegendFounderCurriculumSqlServerE2ETests') { throw 'LEGEND SQL E2E tests were not discovered.' }
+
+      - name: Run non-production LEGEND regression tests
+        run: dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-build --filter "FullyQualifiedName~LegendConnectHistoricalReevaluationWorkTests|FullyQualifiedName~LegendConnectHistoricalReevaluationVersioningTests|FullyQualifiedName~LegendConnectRuntimePolicyTests|FullyQualifiedName~LegendConnectMeaningGraphTests|FullyQualifiedName~LegendConnectCurriculumTests"
