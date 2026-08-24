@@ -738,7 +738,7 @@ public sealed class LegendConnectCurriculumTests
     }
 
     [Fact]
-    public async Task FounderCurriculumManifest_RecoverableTerminalReceipt_ResumesThroughExistingDurableFamilyWork()
+    public async Task FounderCurriculumManifest_TerminalReceipt_RemainsFailedWithoutInventingDurableFamilyWork()
     {
         await using var db = ControllerTestHelpers.BuildDb();
         var configuration = Configuration();
@@ -770,19 +770,20 @@ public sealed class LegendConnectCurriculumTests
         receipt.AttemptCount = 5;
         await db.SaveChangesAsync();
 
-        Assert.Equal(1, await processor.ProcessPendingAsync(1));
+        Assert.Equal(0, await processor.ProcessPendingAsync(1));
 
-        var resumed = Assert.Single(await db.Set<LegendCurriculumManifestWorkItem>().ToListAsync());
-        Assert.Equal("Completed", resumed.ProcessingState);
-        Assert.Equal(1, resumed.NextFamilyIndex);
-        Assert.Equal(LegendConnectLanguageIntelligenceEvaluatorVersion.Current,
-            resumed.CompletedLanguageIntelligenceEvaluatorVersion);
-        Assert.Single(await db.LegendCurriculumFamilies.ToListAsync());
-        var child = Assert.Single(await db.LegendHistoricalReevaluationWorkItems
-            .Where(item => item.SubjectId == resumed.Id &&
+        var failed = Assert.Single(await db.Set<LegendCurriculumManifestWorkItem>().ToListAsync());
+        Assert.Equal("Failed", failed.ProcessingState);
+        Assert.Equal(0, failed.NextFamilyIndex);
+        Assert.Equal(5, failed.AttemptCount);
+        Assert.Equal("founder_manifest_family_failure", failed.LastErrorCode);
+        Assert.Equal("Transient governed evaluator failure.", failed.LastErrorMessage);
+        Assert.Equal(0, failed.CompletedLanguageIntelligenceEvaluatorVersion);
+        Assert.Empty(await db.LegendCurriculumFamilies.ToListAsync());
+        Assert.Empty(await db.LegendHistoricalReevaluationWorkItems
+            .Where(item => item.SubjectId == failed.Id &&
                 item.WorkKind == LegendConnectHistoricalReevaluationWorkAuthority.FounderManifestFamilyWorkKind)
             .ToListAsync());
-        Assert.Equal("Completed", child.ProcessingState);
     }
 
     [Fact]

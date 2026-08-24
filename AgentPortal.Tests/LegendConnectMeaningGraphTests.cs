@@ -703,7 +703,9 @@ public sealed class LegendConnectMeaningGraphTests
                 });
 
             Assert.True(response.Succeeded);
-            Assert.Contains("does not yet have enough governed evidence", response.Message, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("LEGEND could not complete this response.", response.Message, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("NativeFailure=", response.Message, StringComparison.Ordinal);
+            Assert.Contains("EvidenceCount=0", response.Message, StringComparison.Ordinal);
             Assert.Equal(0, factory.CreateClientCalls);
             var turns = await new LegendFounderAiDiscourseStateService(db, profiles)
                 .GetTurnsAsync(founderId, conversationId);

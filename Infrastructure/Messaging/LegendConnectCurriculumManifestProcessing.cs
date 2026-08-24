@@ -180,6 +180,7 @@ internal sealed class LegendConnectCurriculumManifestProcessor
     {
         var manifests = await _db.Set<LegendCurriculumManifestWorkItem>()
             .Where(item =>
+                item.ProcessingState != LegendConnectHistoricalReevaluationWorkAuthority.Retired &&
                 // A payload rejected before canonical processing has an
                 // exact actionable error and must remain fail-closed. Other
                 // terminal receipts are safely resumed through their existing
@@ -468,7 +469,13 @@ internal sealed class LegendConnectCurriculumManifestProcessor
         manifest.UpdatedUtc = DateTime.UtcNow;
         if (failed is not null)
         {
-            manifest.ProcessingState = "Failed";
+            // The parent is only a projection of the durable child authority.
+            // A terminal child must therefore retire the parent in place too,
+            // preserving the same historical identity/error without making the
+            // receipt executable or seedable again.
+            manifest.ProcessingState = failed.ProcessingState == LegendConnectHistoricalReevaluationWorkAuthority.Retired
+                ? LegendConnectHistoricalReevaluationWorkAuthority.Retired
+                : "Failed";
             manifest.AttemptCount = failed.AttemptCount;
             manifest.LastErrorCode = failed.LastErrorCode ?? "curriculum_manifest_family_failed";
             manifest.LastErrorMessage = failed.LastErrorMessage;

@@ -300,4 +300,41 @@ public sealed class LegendFounderAiContractTests
                     "legend_submit_machine_learning_candidate");
     }
 
+    [Fact]
+    public void FounderCapabilities_AreDiscoveredFromTheExecutableToolRegistry()
+    {
+        var buildTools = typeof(LegendFounderAiConversationService)
+            .GetMethod("BuildFounderTools", BindingFlags.NonPublic | BindingFlags.Static);
+        var describe = typeof(LegendFounderAiConversationService)
+            .GetMethod("DescribeFounderCapabilities", BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.NotNull(buildTools);
+        Assert.NotNull(describe);
+        var tools = Assert.IsAssignableFrom<IReadOnlyList<object>>(buildTools!.Invoke(null, null));
+        using var toolsDocument = JsonDocument.Parse(JsonSerializer.Serialize(tools));
+        var executableNames = toolsDocument.RootElement.EnumerateArray()
+            .Where(tool => tool.TryGetProperty("type", out var type) && type.GetString() == "function")
+            .Select(tool => tool.GetProperty("name").GetString())
+            .Where(name => !string.IsNullOrWhiteSpace(name))
+            .ToHashSet(System.StringComparer.Ordinal);
+        var capabilities = Assert.IsAssignableFrom<IReadOnlyList<object>>(describe!.Invoke(null, null));
+        using var capabilityDocument = JsonDocument.Parse(JsonSerializer.Serialize(capabilities));
+        var discoveredNames = capabilityDocument.RootElement.EnumerateArray()
+            .Select(item => item.GetProperty("name").GetString())
+            .Where(name => !string.IsNullOrWhiteSpace(name))
+            .ToHashSet(System.StringComparer.Ordinal);
+        Assert.Equal(executableNames, discoveredNames);
+        Assert.Contains("legend_capabilities", discoveredNames);
+        Assert.Contains("legend_operational_diagnostics", discoveredNames);
+        Assert.Contains("legend_submit_machine_learning_candidate", discoveredNames);
+        Assert.All(capabilityDocument.RootElement.EnumerateArray(), item =>
+        {
+            Assert.False(item.GetProperty("canOverrideAuthorities").GetBoolean());
+            Assert.False(item.GetProperty("canModifyRepository").GetBoolean());
+            Assert.False(item.GetProperty("canDeploy").GetBoolean());
+            Assert.False(item.GetProperty("arbitrarySql").GetBoolean());
+            Assert.False(item.GetProperty("arbitraryShell").GetBoolean());
+            Assert.False(item.GetProperty("arbitraryCodeExecution").GetBoolean());
+        });
+    }
+
 }

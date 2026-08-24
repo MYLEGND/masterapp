@@ -40,8 +40,31 @@ jobs:
             exit 1
           fi
 
+      - name: Test discovery preflight
+        run: |
+          set -o pipefail
+          dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Debug --no-build --list-tests 2>&1 | tee test-discovery.log
+          if grep -q "No test is available" test-discovery.log; then
+            echo "::error::xUnit discovery returned zero tests."
+            exit 1
+          fi
+          if ! grep -q "FounderCapabilities_AreDiscoveredFromTheExecutableToolRegistry" test-discovery.log; then
+            echo "::error::The governed Founder capability regression test was not discovered."
+            exit 1
+          fi
+
       - name: Test (full suite incl. all security regression suites)
-        run: dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Debug --no-build
+        run: |
+          set -o pipefail
+          dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Debug --no-build 2>&1 | tee test.log
+          if grep -q "No test is available" test.log; then
+            echo "::error::The test runner completed without discovering tests."
+            exit 1
+          fi
+          if ! grep -qE 'Passed![[:space:]]+-[[:space:]]+Failed:[[:space:]]+0,' test.log; then
+            echo "::error::The full AgentPortal regression did not report a successful non-empty xUnit run."
+            exit 1
+          fi
 
       - name: Database migration validation
         env:
