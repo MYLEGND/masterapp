@@ -152,7 +152,7 @@ public sealed class LegendConnectHistoricalReevaluationWorkTests
     }
 
     [Fact]
-    public async Task RetryAccounting_IsDeterministic_AndTerminalFailureBlocksThePhase()
+    public async Task RetryAccounting_IsDeterministic_AndTerminalFailureRetiresWithoutBlockingThePhase()
     {
         await using var fixture = await Fixture.CreateAsync(maximumAttempts: 2);
         await fixture.StartAsync(EvaluatorVersion);
@@ -168,7 +168,7 @@ public sealed class LegendConnectHistoricalReevaluationWorkTests
                 EvaluatorVersion,
                 LegendConnectLanguageIntelligenceReevaluationPhases.SourceFamilies,
                 "worker-a"));
-        await fixture.Work.FailAsync(first, "test_failure");
+        await fixture.Work.FailAsync(first, "test_failure", errorMessage: "first exact failure");
         var afterFirst = await fixture.Db.LegendHistoricalReevaluationWorkItems
             .SingleAsync(item => item.Id == first.WorkItemId);
         Assert.Equal(1, afterFirst.AttemptCount);
@@ -179,14 +179,93 @@ public sealed class LegendConnectHistoricalReevaluationWorkTests
                 EvaluatorVersion,
                 LegendConnectLanguageIntelligenceReevaluationPhases.SourceFamilies,
                 "worker-b"));
-        await fixture.Work.FailAsync(second, "test_failure");
+        await fixture.Work.FailAsync(second, "test_failure", errorMessage: "second exact terminal failure");
         var afterSecond = await fixture.Db.LegendHistoricalReevaluationWorkItems
             .SingleAsync(item => item.Id == first.WorkItemId);
         Assert.Equal(2, afterSecond.AttemptCount);
-        Assert.Equal("Failed", afterSecond.ProcessingState);
-        Assert.False(await fixture.Work.TryAdvancePhaseAsync(
+        Assert.Equal(LegendConnectHistoricalReevaluationWorkAuthority.Retired, afterSecond.ProcessingState);
+        Assert.Equal("test_failure", afterSecond.LastErrorCode);
+        Assert.Equal("second exact terminal failure", afterSecond.LastErrorMessage);
+        Assert.Null(await fixture.Work.TryClaimNextAsync(
+            EvaluatorVersion,
+            LegendConnectLanguageIntelligenceReevaluationPhases.SourceFamilies,
+            "worker-c"));
+        Assert.True(await fixture.Work.TryAdvancePhaseAsync(
             EvaluatorVersion,
             LegendConnectLanguageIntelligenceReevaluationPhases.SourceFamilies));
+    }
+
+    [Fact]
+    public async Task HistoricalTerminalFailure_IsRetiredInPlace_AndCannotBeReseeded()
+    {
+        await using var fixture = await Fixture.CreateAsync(maximumAttempts: 2);
+        await fixture.StartAsync(EvaluatorVersion);
+        AddSourceFamily(fixture.Db, "en", "historical", 402);
+        await fixture.Db.SaveChangesAsync();
+        await fixture.Work.SeedNextBatchAsync(
+            EvaluatorVersion,
+            LegendConnectLanguageIntelligenceReevaluationPhases.SourceFamilies,
+            "test-seeder");
+
+        var historical = await fixture.Db.LegendHistoricalReevaluationWorkItems
+            .SingleAsync(item => item.WorkKind == "Canonical");
+        historical.ProcessingState = "Failed";
+        historical.AttemptCount = 2;
+        historical.LastErrorCode = "historic_failure";
+        historical.LastErrorMessage = "preserved historical detail";
+        await fixture.Db.SaveChangesAsync();
+
+        var seedResult = await fixture.Work.SeedNextBatchAsync(
+            EvaluatorVersion,
+            LegendConnectLanguageIntelligenceReevaluationPhases.SourceFamilies,
+            "test-seeder-2");
+        var retired = await fixture.Db.LegendHistoricalReevaluationWorkItems
+            .SingleAsync(item => item.Id == historical.Id);
+
+        Assert.Equal(LegendConnectHistoricalReevaluationWorkAuthority.Retired, retired.ProcessingState);
+        Assert.Equal(2, retired.AttemptCount);
+        Assert.Equal("historic_failure", retired.LastErrorCode);
+        Assert.Equal("preserved historical detail", retired.LastErrorMessage);
+        Assert.Equal(0, seedResult.SeededCount);
+        Assert.Null(await fixture.Work.TryClaimNextAsync(
+            EvaluatorVersion,
+            LegendConnectLanguageIntelligenceReevaluationPhases.SourceFamilies,
+            "worker-after-retirement"));
+    }
+
+    [Fact]
+    public async Task FounderSeed_DoesNotResurrectRetiredDeterministicIdentity()
+    {
+        await using var fixture = await Fixture.CreateAsync(maximumAttempts: 2);
+        var manifestId = Guid.NewGuid();
+        var seeds = new[]
+        {
+            new LegendFounderManifestFamilyWorkSeed(
+                "family.test",
+                "dependency:test",
+                "canonical:test")
+        };
+
+        Assert.True(await fixture.Work.SeedFounderManifestFamiliesAsync(
+            EvaluatorVersion,
+            manifestId,
+            seeds));
+        var work = await fixture.Db.LegendHistoricalReevaluationWorkItems.SingleAsync();
+        work.ProcessingState = LegendConnectHistoricalReevaluationWorkAuthority.Retired;
+        work.AttemptCount = 2;
+        work.LastErrorCode = "terminal";
+        work.LastErrorMessage = "do not resurrect";
+        await fixture.Db.SaveChangesAsync();
+
+        Assert.False(await fixture.Work.SeedFounderManifestFamiliesAsync(
+            EvaluatorVersion,
+            manifestId,
+            seeds));
+        var preserved = await fixture.Db.LegendHistoricalReevaluationWorkItems.SingleAsync();
+        Assert.Equal(LegendConnectHistoricalReevaluationWorkAuthority.Retired, preserved.ProcessingState);
+        Assert.Equal(2, preserved.AttemptCount);
+        Assert.Equal("terminal", preserved.LastErrorCode);
+        Assert.Equal("do not resurrect", preserved.LastErrorMessage);
     }
 
     [Fact]

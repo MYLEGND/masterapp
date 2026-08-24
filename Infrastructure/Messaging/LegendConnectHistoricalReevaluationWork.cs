@@ -43,6 +43,10 @@ internal sealed class LegendConnectHistoricalReevaluationWorkAuthority
     internal const string Processing = "Processing";
     internal const string Completed = "Completed";
     internal const string Failed = "Failed";
+    // Terminal execution tombstone. Retired work is deleted from the active
+    // scheduler after the configured retry ceiling while its immutable work
+    // identity, attempts, and exact failure remain in this same historical table.
+    internal const string Retired = "Retired";
     private const int DefaultSeedBatchSize = 128;
     private const int DependencyInventoryFamiliesPerWorkItem = 32;
     private const int DefaultMaximumConcurrency = 4;
@@ -145,6 +149,137 @@ internal sealed class LegendConnectHistoricalReevaluationWorkAuthority
             cancellationToken);
     }
 
+
+    /// <summary>
+    /// Converts terminal historical failures into non-executable tombstones.
+    /// The row is deliberately retained in this same durable authority so its
+    /// identity, retry count and exact failure remain auditable and, critically,
+    /// so a phase seeder cannot rediscover and recreate the poisoned identity.
+    /// No curriculum/evidence row is rewritten and no replay is restarted.
+    /// </summary>
+    internal async Task<int> RetireTerminalFailuresAsync(
+        int evaluatorVersion,
+        string phase,
+        CancellationToken cancellationToken = default)
+    {
+        var now = DateTime.UtcNow;
+        var terminal = WorkFor(evaluatorVersion, phase)
+            .Where(item => item.WorkKind != SeedWorkKind &&
+                item.ProcessingState == Failed &&
+                item.AttemptCount >= MaximumAttempts);
+
+        var retired = 0;
+        if (_db.Database.IsRelational())
+        {
+            retired = await terminal.ExecuteUpdateAsync(setters => setters
+                .SetProperty(item => item.ProcessingState, Retired)
+                .SetProperty(item => item.LeaseOwner, (string?)null)
+                .SetProperty(item => item.LeaseToken, (Guid?)null)
+                .SetProperty(item => item.LeaseExpiresUtc, (DateTime?)null)
+                .SetProperty(item => item.UpdatedUtc, now), cancellationToken);
+        }
+        else
+        {
+            var items = await terminal.ToListAsync(cancellationToken);
+            foreach (var item in items)
+            {
+                item.ProcessingState = Retired;
+                item.LeaseOwner = null;
+                item.LeaseToken = null;
+                item.LeaseExpiresUtc = null;
+                item.UpdatedUtc = now;
+            }
+            if (items.Count > 0)
+                await _db.SaveChangesAsync(cancellationToken);
+            retired = items.Count;
+        }
+
+        return retired + await RetireBlockedDependentsAsync(
+            evaluatorVersion,
+            phase,
+            cancellationToken);
+    }
+
+    private async Task<int> RetireBlockedDependentsAsync(
+        int evaluatorVersion,
+        string phase,
+        CancellationToken cancellationToken)
+    {
+        IQueryable<LegendHistoricalReevaluationWorkItem>? blocked = null;
+
+        if (string.Equals(
+                phase,
+                LegendConnectLanguageIntelligenceReevaluationPhases.SourceFamilies,
+                StringComparison.Ordinal))
+        {
+            blocked = WorkFor(evaluatorVersion, phase)
+                .Where(item => item.WorkKind == DerivationLedgerWorkKind &&
+                    item.ProcessingState == Pending &&
+                    _db.Set<LegendHistoricalReevaluationWorkItem>().Any(parent =>
+                        parent.EvaluatorVersion == evaluatorVersion &&
+                        parent.Phase == phase &&
+                        parent.WorkKind == CanonicalWorkKind &&
+                        parent.ProcessingState == Retired &&
+                        parent.SubjectId == item.SubjectId &&
+                        parent.SubjectScope == item.SubjectScope));
+        }
+        else if (string.Equals(phase, FounderCurriculumPhase, StringComparison.Ordinal))
+        {
+            blocked = WorkFor(evaluatorVersion, phase)
+                .Where(item => item.ProcessingState == Pending &&
+                    ((item.WorkKind == FounderManifestSemanticRelationWorkKind &&
+                      _db.Set<LegendHistoricalReevaluationWorkItem>().Any(parent =>
+                          parent.EvaluatorVersion == evaluatorVersion &&
+                          parent.Phase == FounderCurriculumPhase &&
+                          parent.SubjectId == item.SubjectId &&
+                          parent.WorkKind == FounderManifestFamilyWorkKind &&
+                          parent.ProcessingState == Retired)) ||
+                     (item.WorkKind == DerivationLedgerWorkKind &&
+                      _db.Set<LegendHistoricalReevaluationWorkItem>().Any(parent =>
+                          parent.EvaluatorVersion == evaluatorVersion &&
+                          parent.Phase == FounderCurriculumPhase &&
+                          parent.SubjectId == item.SubjectId &&
+                          (parent.WorkKind == FounderManifestFamilyWorkKind ||
+                           parent.WorkKind == FounderManifestSemanticRelationWorkKind) &&
+                          parent.ProcessingState == Retired))));
+        }
+
+        if (blocked is null)
+            return 0;
+
+        var now = DateTime.UtcNow;
+        const string code = "historical_reevaluation_prerequisite_retired";
+        const string message =
+            "A required upstream work identity reached its retry ceiling and was retired; this dependent identity was retired without execution.";
+
+        if (_db.Database.IsRelational())
+        {
+            return await blocked.ExecuteUpdateAsync(setters => setters
+                .SetProperty(item => item.ProcessingState, Retired)
+                .SetProperty(item => item.LeaseOwner, (string?)null)
+                .SetProperty(item => item.LeaseToken, (Guid?)null)
+                .SetProperty(item => item.LeaseExpiresUtc, (DateTime?)null)
+                .SetProperty(item => item.LastErrorCode, code)
+                .SetProperty(item => item.LastErrorMessage, message)
+                .SetProperty(item => item.UpdatedUtc, now), cancellationToken);
+        }
+
+        var items = await blocked.ToListAsync(cancellationToken);
+        foreach (var item in items)
+        {
+            item.ProcessingState = Retired;
+            item.LeaseOwner = null;
+            item.LeaseToken = null;
+            item.LeaseExpiresUtc = null;
+            item.LastErrorCode = code;
+            item.LastErrorMessage = message;
+            item.UpdatedUtc = now;
+        }
+        if (items.Count > 0)
+            await _db.SaveChangesAsync(cancellationToken);
+        return items.Count;
+    }
+
     /// <summary>
     /// Reclaims expired durable leases before any new claim. An expired owner
     /// can no longer complete its old lease token, so recovery is safe across
@@ -155,6 +290,7 @@ internal sealed class LegendConnectHistoricalReevaluationWorkAuthority
         string phase,
         CancellationToken cancellationToken = default)
     {
+        await RetireTerminalFailuresAsync(evaluatorVersion, phase, cancellationToken);
         var now = DateTime.UtcNow;
         var query = WorkFor(evaluatorVersion, phase)
             .Where(item => item.ProcessingState == Processing &&
@@ -348,7 +484,7 @@ internal sealed class LegendConnectHistoricalReevaluationWorkAuthority
         }
         catch (Exception exception) when (!cancellationToken.IsCancellationRequested)
         {
-            await FailAsync(claim, FailureCode(exception), cancellationToken);
+            await FailAsync(claim, FailureCode(exception), cancellationToken, exception.ToString());
             return LegendHistoricalReevaluationSeedResult.NotApplicable;
         }
     }
@@ -412,25 +548,12 @@ internal sealed class LegendConnectHistoricalReevaluationWorkAuthority
         {
             var scope = index.ToString(System.Globalization.CultureInfo.InvariantCulture);
             var family = families[index];
-            if (existing.TryGetValue(scope, out var prior))
-            {
-                // Explicit Founder resubmission is the only supported way to
-                // retry a terminal manifest. Preserve canonical rows and
-                // reopen only its durable execution identity.
-                if (prior.ProcessingState == Failed)
-                {
-                    prior.ProcessingState = Pending;
-                    prior.LeaseOwner = null;
-                    prior.LeaseToken = null;
-                    prior.LeaseExpiresUtc = null;
-                    prior.AttemptCount = 0;
-                    prior.LastErrorCode = null;
-                    prior.LastErrorMessage = null;
-                    prior.UpdatedUtc = now;
-                    changed = true;
-                }
+            // Existing deterministic identities are authoritative in every terminal
+            // state. Ordinary worker seeding must never reset attempts or resurrect a
+            // failed/retired identity. A corrected Founder submission receives its own
+            // accepted manifest identity; a later evaluator receives its own versioned work.
+            if (existing.ContainsKey(scope))
                 continue;
-            }
 
             _db.Set<LegendHistoricalReevaluationWorkItem>().Add(new LegendHistoricalReevaluationWorkItem
             {
@@ -478,22 +601,8 @@ internal sealed class LegendConnectHistoricalReevaluationWorkAuthority
         for (var index = 0; index < relationshipCount; index++)
         {
             var scope = index.ToString(System.Globalization.CultureInfo.InvariantCulture);
-            if (existing.TryGetValue(scope, out var prior))
-            {
-                if (prior.ProcessingState == Failed)
-                {
-                    prior.ProcessingState = Pending;
-                    prior.LeaseOwner = null;
-                    prior.LeaseToken = null;
-                    prior.LeaseExpiresUtc = null;
-                    prior.AttemptCount = 0;
-                    prior.LastErrorCode = null;
-                    prior.LastErrorMessage = null;
-                    prior.UpdatedUtc = now;
-                    changed = true;
-                }
+            if (existing.ContainsKey(scope))
                 continue;
-            }
 
             _db.Set<LegendHistoricalReevaluationWorkItem>().Add(new LegendHistoricalReevaluationWorkItem
             {
@@ -541,22 +650,8 @@ internal sealed class LegendConnectHistoricalReevaluationWorkAuthority
         for (var index = 0; index < families.Count; index++)
         {
             var scope = index.ToString(System.Globalization.CultureInfo.InvariantCulture);
-            if (existing.TryGetValue(scope, out var prior))
-            {
-                if (prior.ProcessingState == Failed)
-                {
-                    prior.ProcessingState = Pending;
-                    prior.LeaseOwner = null;
-                    prior.LeaseToken = null;
-                    prior.LeaseExpiresUtc = null;
-                    prior.AttemptCount = 0;
-                    prior.LastErrorCode = null;
-                    prior.LastErrorMessage = null;
-                    prior.UpdatedUtc = now;
-                    changed = true;
-                }
+            if (existing.ContainsKey(scope))
                 continue;
-            }
 
             var family = families[index];
             _db.Set<LegendHistoricalReevaluationWorkItem>().Add(new LegendHistoricalReevaluationWorkItem
@@ -870,9 +965,11 @@ internal sealed class LegendConnectHistoricalReevaluationWorkAuthority
     internal async Task FailAsync(
         LegendHistoricalReevaluationWorkClaim claim,
         string errorCode,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        string? errorMessage = null)
     {
         var now = DateTime.UtcNow;
+        var failureMessage = NormalizeFailureMessage(errorMessage);
         var query = WorkFor(claim.EvaluatorVersion, claim.Phase)
             .Where(item => item.Id == claim.WorkItemId &&
                 item.ProcessingState == Processing && item.LeaseToken == claim.LeaseToken);
@@ -880,13 +977,14 @@ internal sealed class LegendConnectHistoricalReevaluationWorkAuthority
         {
             await query.ExecuteUpdateAsync(setters => setters
                 .SetProperty(item => item.ProcessingState,
-                    item => item.AttemptCount >= MaximumAttempts ? Failed : Pending)
+                    item => item.AttemptCount >= MaximumAttempts && item.WorkKind != SeedWorkKind ? Retired :
+                        item.AttemptCount >= MaximumAttempts ? Failed : Pending)
                 .SetProperty(item => item.LeaseOwner, (string?)null)
                 .SetProperty(item => item.LeaseToken, (Guid?)null)
                 .SetProperty(item => item.LeaseExpiresUtc, (DateTime?)null)
                 .SetProperty(item => item.LastErrorCode, errorCode)
                 .SetProperty(item => item.LastErrorMessage,
-                    "The canonical evaluator failed without creating a replacement authority.")
+                    failureMessage)
                 .SetProperty(item => item.UpdatedUtc, now), cancellationToken);
             return;
         }
@@ -894,14 +992,25 @@ internal sealed class LegendConnectHistoricalReevaluationWorkAuthority
         var item = await query.SingleOrDefaultAsync(cancellationToken);
         if (item is null)
             return;
-        item.ProcessingState = item.AttemptCount >= MaximumAttempts ? Failed : Pending;
+        item.ProcessingState = item.AttemptCount >= MaximumAttempts && item.WorkKind != SeedWorkKind
+            ? Retired
+            : item.AttemptCount >= MaximumAttempts ? Failed : Pending;
         item.LeaseOwner = null;
         item.LeaseToken = null;
         item.LeaseExpiresUtc = null;
         item.LastErrorCode = errorCode;
-        item.LastErrorMessage = "The canonical evaluator failed without creating a replacement authority.";
+        item.LastErrorMessage = failureMessage;
         item.UpdatedUtc = now;
         await _db.SaveChangesAsync(cancellationToken);
+    }
+
+
+    private static string NormalizeFailureMessage(string? value)
+    {
+        const string fallback =
+            "The canonical evaluator failed without exposing a more specific exception detail.";
+        var normalized = string.IsNullOrWhiteSpace(value) ? fallback : value.Trim();
+        return normalized.Length <= 1000 ? normalized : normalized[..1000];
     }
 
     /// <summary>
@@ -935,10 +1044,12 @@ internal sealed class LegendConnectHistoricalReevaluationWorkAuthority
         string phase,
         CancellationToken cancellationToken = default)
     {
+        await RetireTerminalFailuresAsync(evaluatorVersion, phase, cancellationToken);
         var now = DateTime.UtcNow;
         var work = WorkFor(evaluatorVersion, phase).AsNoTracking()
-            .Where(item => item.WorkKind == CanonicalWorkKind ||
-                item.WorkKind == DerivationLedgerWorkKind);
+            .Where(item => (item.WorkKind == CanonicalWorkKind ||
+                item.WorkKind == DerivationLedgerWorkKind) &&
+                item.ProcessingState != Retired);
         var total = await work.LongCountAsync(cancellationToken);
         var pending = await work.LongCountAsync(item => item.ProcessingState == Pending, cancellationToken);
         var processing = await work.LongCountAsync(item => item.ProcessingState == Processing, cancellationToken);
@@ -989,6 +1100,7 @@ internal sealed class LegendConnectHistoricalReevaluationWorkAuthority
             return false;
         }
 
+        await RetireTerminalFailuresAsync(evaluatorVersion, phase, cancellationToken);
         var now = DateTime.UtcNow;
         var work = WorkFor(evaluatorVersion, phase);
         if (await work.AnyAsync(item => item.ProcessingState == Failed ||
@@ -1275,7 +1387,7 @@ internal sealed class LegendConnectHistoricalReevaluationWorkAuthority
                     seed.WorkKind == SeedWorkKind && seed.ProcessingState == Completed) &&
                  !_db.Set<LegendHistoricalReevaluationWorkItem>().Any(canonical =>
                     canonical.EvaluatorVersion == evaluatorVersion && canonical.Phase == phase &&
-                    canonical.WorkKind == CanonicalWorkKind && canonical.ProcessingState != Completed)));
+                    canonical.WorkKind == CanonicalWorkKind && canonical.ProcessingState != Completed && canonical.ProcessingState != Retired)));
 
         if (_db.Database.IsSqlServer())
         {
@@ -1323,7 +1435,7 @@ internal sealed class LegendConnectHistoricalReevaluationWorkAuthority
                                   WHERE [canonical].[EvaluatorVersion] = {evaluatorVersion}
                                     AND [canonical].[Phase] = {phase}
                                     AND [canonical].[WorkKind] = {CanonicalWorkKind}
-                                    AND [canonical].[ProcessingState] <> {Completed}
+                                    AND [canonical].[ProcessingState] NOT IN ({Completed}, {Retired})
                               )
                           )
                       )
@@ -1422,7 +1534,7 @@ internal sealed class LegendConnectHistoricalReevaluationWorkAuthority
                                       WHERE [canonical].[EvaluatorVersion] = {evaluatorVersion}
                                         AND [canonical].[Phase] = {phase}
                                         AND [canonical].[WorkKind] = {CanonicalWorkKind}
-                                        AND [canonical].[ProcessingState] <> {Completed}
+                                        AND [canonical].[ProcessingState] NOT IN ({Completed}, {Retired})
                                   )
                               )
                           )
@@ -1460,7 +1572,7 @@ internal sealed class LegendConnectHistoricalReevaluationWorkAuthority
                     seed.WorkKind == SeedWorkKind && seed.ProcessingState == Completed) &&
                  !_db.Set<LegendHistoricalReevaluationWorkItem>().Any(canonical =>
                     canonical.EvaluatorVersion == evaluatorVersion && canonical.Phase == phase &&
-                    canonical.WorkKind == CanonicalWorkKind && canonical.ProcessingState != Completed)))
+                    canonical.WorkKind == CanonicalWorkKind && canonical.ProcessingState != Completed && canonical.ProcessingState != Retired)))
             .OrderBy(item => item.CreatedUtc)
             .ThenBy(item => item.Id)
             .Select(item => new LegendClaimCandidate(item.Id, item.WorkKind))
