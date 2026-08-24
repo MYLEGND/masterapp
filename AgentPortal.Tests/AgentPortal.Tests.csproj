@@ -12,7 +12,7 @@
 
   <ItemGroup>
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.0.1" />
-    <PackageReference Include="xunit" Version="2.6.4">
+    <PackageReference Include="xunit" Version="2.9.3">
       <ExcludeAssets>analyzers</ExcludeAssets>
     </PackageReference>
     <PackageReference Include="xunit.runner.visualstudio" Version="3.1.5">
