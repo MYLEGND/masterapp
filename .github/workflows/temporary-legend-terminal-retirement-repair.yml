@@ -27,10 +27,18 @@ jobs:
           source=Path('/tmp/original.yml').read_text()
           start=source.index("          python - <<'PY'\n") + len("          python - <<'PY'\n")
           end=source.index("          PY\n\n      - name: Verify patch shape", start)
-          code=source[start:end]
-          code='\n'.join(line[10:] if line.startswith('          ') else line for line in code.splitlines())
-          needle="text = replace_once(text, family_old, family_new, 'stop Founder family resurrection')"
-          code=code.replace(needle, "print('FAMILY_OLD_REPR', repr(family_old)); print('FAMILY_COUNT', text.count(family_old)); print('PRIOR_COUNT', text.count('prior.ProcessingState == Failed')); " + needle)
+          raw=source[start:end].splitlines()
+          out=[]
+          in_triple=False
+          for line in raw:
+              has_triple="'''" in line
+              if in_triple and not has_triple:
+                  out.append(line)
+                  continue
+              out.append(line[10:] if line.startswith('          ') else line)
+              if has_triple and line.count("'''") % 2 == 1:
+                  in_triple=not in_triple
+          code='\n'.join(out)
           Path('/tmp/repair.py').write_text(code+'\n')
           PY
           python /tmp/repair.py
