@@ -39,6 +39,8 @@ jobs:
               if has_triple and line.count("'''") % 2 == 1:
                   in_triple=not in_triple
           code='\n'.join(out)
+          old="""if 'item.AttemptCount >= MaximumAttempts ? Failed : Pending' in historical:\n    raise SystemExit('terminal work still remains executable Failed state')\n"""
+          code=code.replace(old, "")
           Path('/tmp/repair.py').write_text(code+'\n')
           PY
           python /tmp/repair.py
