@@ -1,0 +1,74 @@
+name: Temporary governed capability plane
+
+on:
+  pull_request:
+    branches: [production]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  patch-and-validate:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Apply single-source capability discovery repair
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          p = Path('AgentPortal/Services/LegendFounderAiConversationService.cs')
+          s = p.read_text()
+
+          case_marker = '            case "legend_system_overview":\n'
+          capability_case = '''            case "legend_capabilities":\n            {\n                return SerializeUnbounded(DescribeFounderCapabilities());\n            }\n\n'''
+          if capability_case not in s:
+              s = s.replace(case_marker, capability_case + case_marker, 1)
+
+          tool_marker = '''            new\n            {\n                type = "function",\n                name = "legend_system_overview",\n'''
+          capability_tool = '''            new\n            {\n                type = "function",\n                name = "legend_capabilities",\n                description =\n                    "Discover the exact governed LEGEND capabilities exposed to this Founder AI session from the same tool registry the model can execute. Use this when planning system inspection or remediation instead of guessing that an operation exists. This is read-only and creates no second authority.",\n                parameters = new\n                {\n                    type = "object",\n                    properties = new { },\n                    required = Array.Empty<string>(),\n                    additionalProperties = false\n                },\n                strict = true\n            },\n'''
+          if 'name = "legend_capabilities"' not in s:
+              s = s.replace(tool_marker, capability_tool + tool_marker, 1)
+
+          method_marker = '    private static IReadOnlyList<object> BuildFounderTools()\n'
+          capability_method = '''    private static IReadOnlyList<object> DescribeFounderCapabilities()\n    {\n        var capabilities = new List<object>();\n        foreach (var tool in BuildFounderTools())\n        {\n            using var document = JsonDocument.Parse(JsonSerializer.Serialize(tool, JsonOptions));\n            var root = document.RootElement;\n            if (!root.TryGetProperty("type", out var type) ||\n                !string.Equals(type.GetString(), "function", StringComparison.Ordinal))\n            {\n                continue;\n            }\n            var name = root.TryGetProperty("name", out var nameElement)\n                ? nameElement.GetString()\n                : null;\n            if (string.IsNullOrWhiteSpace(name))\n                continue;\n            var description = root.TryGetProperty("description", out var descriptionElement)\n                ? descriptionElement.GetString()\n                : null;\n            var mutation = name.StartsWith("legend_submit_", StringComparison.Ordinal) ||\n                           string.Equals(name, "legend_activate_autonomous_learning", StringComparison.Ordinal);\n            capabilities.Add(new\n            {\n                name,\n                description,\n                access = mutation ? "founder_governed_mutation" : "founder_governed_read",\n                sourceOfTruth = "BuildFounderTools",\n                arbitrarySql = false,\n                arbitraryShell = false,\n                arbitraryCodeExecution = false\n            });\n        }\n        return capabilities;\n    }\n\n'''
+          if 'private static IReadOnlyList<object> DescribeFounderCapabilities()' not in s:
+              s = s.replace(method_marker, capability_method + method_marker, 1)
+          p.write_text(s)
+
+          t = Path('AgentPortal.Tests/LegendFounderAiContractTests.cs')
+          x = t.read_text()
+          test = '''\n    [Fact]\n    public void FounderCapabilities_AreDiscoveredFromTheExecutableToolRegistry()\n    {\n        var buildTools = typeof(LegendFounderAiConversationService)\n            .GetMethod("BuildFounderTools", BindingFlags.NonPublic | BindingFlags.Static);\n        var describe = typeof(LegendFounderAiConversationService)\n            .GetMethod("DescribeFounderCapabilities", BindingFlags.NonPublic | BindingFlags.Static);\n        Assert.NotNull(buildTools);\n        Assert.NotNull(describe);\n        var tools = Assert.IsAssignableFrom<IReadOnlyList<object>>(buildTools!.Invoke(null, null));\n        using var toolsDocument = JsonDocument.Parse(JsonSerializer.Serialize(tools));\n        var executableNames = toolsDocument.RootElement.EnumerateArray()\n            .Where(tool => tool.TryGetProperty("type", out var type) && type.GetString() == "function")\n            .Select(tool => tool.GetProperty("name").GetString())\n            .Where(name => !string.IsNullOrWhiteSpace(name))\n            .ToHashSet(System.StringComparer.Ordinal);\n        var capabilities = Assert.IsAssignableFrom<IReadOnlyList<object>>(describe!.Invoke(null, null));\n        using var capabilityDocument = JsonDocument.Parse(JsonSerializer.Serialize(capabilities));\n        var discoveredNames = capabilityDocument.RootElement.EnumerateArray()\n            .Select(item => item.GetProperty("name").GetString())\n            .Where(name => !string.IsNullOrWhiteSpace(name))\n            .ToHashSet(System.StringComparer.Ordinal);\n        Assert.Equal(executableNames, discoveredNames);\n        Assert.Contains("legend_capabilities", discoveredNames);\n        Assert.Contains("legend_submit_machine_learning_candidate", discoveredNames);\n        Assert.All(capabilityDocument.RootElement.EnumerateArray(), item =>\n        {\n            Assert.False(item.GetProperty("arbitrarySql").GetBoolean());\n            Assert.False(item.GetProperty("arbitraryShell").GetBoolean());\n            Assert.False(item.GetProperty("arbitraryCodeExecution").GetBoolean());\n        });\n    }\n'''
+          if 'FounderCapabilities_AreDiscoveredFromTheExecutableToolRegistry' not in x:
+              idx = x.rfind('\n}')
+              x = x[:idx] + test + x[idx:]
+          t.write_text(x)
+          PY
+          git diff --check
+      - name: Restore
+        run: dotnet restore AgentPortal.Tests/AgentPortal.Tests.csproj
+      - name: Build production
+        run: dotnet build AgentPortal/AgentPortal.csproj --configuration Release --no-restore
+      - name: Build tests
+        run: dotnet build AgentPortal.Tests/AgentPortal.Tests.csproj --configuration Release --no-restore
+      - name: Run full regression
+        run: dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj --configuration Release --no-build --logger 'console;verbosity=normal'
+      - name: Commit validated source only
+        shell: bash
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git rm .github/workflows/temporary-governed-capability-plane.yml
+          git add AgentPortal/Services/LegendFounderAiConversationService.cs AgentPortal.Tests/LegendFounderAiContractTests.cs
+          git diff --cached --check
+          git commit -m 'Expose governed Founder capability discovery'
+          git push origin HEAD:fix/legend-governed-capability-plane-20260824
