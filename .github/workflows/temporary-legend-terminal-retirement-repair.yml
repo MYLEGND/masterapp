@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - fix/legend-terminal-retirement-reasons-run-20260824
+  pull_request:
 
 permissions:
   contents: write
@@ -25,14 +26,13 @@ jobs:
       - name: Apply narrow production repair
         shell: bash
         run: |
-          git show fix/legend-terminal-retirement-reasons-20260824:.github/workflows/temporary-legend-terminal-retirement-repair.yml > /tmp/original.yml
+          git show origin/fix/legend-terminal-retirement-reasons-20260824:.github/workflows/temporary-legend-terminal-retirement-repair.yml > /tmp/original.yml
           python - <<'PY'
           from pathlib import Path
           source=Path('/tmp/original.yml').read_text()
           start=source.index("          python - <<'PY'\n") + len("          python - <<'PY'\n")
           end=source.index("          PY\n\n      - name: Verify patch shape", start)
           code=source[start:end]
-          # workflow script is indented ten spaces
           code='\n'.join(line[10:] if line.startswith('          ') else line for line in code.splitlines())
           Path('/tmp/repair.py').write_text(code+'\n')
           PY
