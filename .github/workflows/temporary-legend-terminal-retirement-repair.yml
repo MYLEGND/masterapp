@@ -26,7 +26,7 @@ jobs:
       - name: Apply narrow production repair
         shell: bash
         run: |
-          git show origin/fix/legend-terminal-retirement-reasons-20260824:.github/workflows/temporary-legend-terminal-retirement-repair.yml > /tmp/original.yml
+          git show 465235313eab38f06d08d2561b540eac4aebd954:.github/workflows/temporary-legend-terminal-retirement-repair.yml > /tmp/original.yml
           python - <<'PY'
           from pathlib import Path
           source=Path('/tmp/original.yml').read_text()
