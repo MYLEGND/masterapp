@@ -10,7 +10,7 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.10.0" />
     <PackageReference Include="xunit" Version="2.6.4" />
-    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.0">
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.0" GeneratePathProperty="true">
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
@@ -41,12 +41,12 @@
       Condition="Exists('$(OutDir)AgentPortal.runtimeconfig.json')" />
   </Target>
 
-  <Target Name="EnsureXunitAdapterPresent" AfterTargets="Build">
+  <Target Name="EnsureXunitAdapterPresent" AfterTargets="Build" Condition="'$(Pkgxunit_runner_visualstudio)' != ''">
     <ItemGroup>
-      <XunitAdapterFiles Include="$(HOME)/.nuget/packages/xunit.runner.visualstudio/2.8.0/build/net6.0/xunit.runner.visualstudio.testadapter.dll" />
-      <XunitAdapterFiles Include="$(HOME)/.nuget/packages/xunit.runner.visualstudio/2.8.0/build/net6.0/xunit.runner.utility.netcoreapp10.dll" />
-      <XunitAdapterFiles Include="$(HOME)/.nuget/packages/xunit.runner.visualstudio/2.8.0/build/net6.0/xunit.runner.reporters.netcoreapp10.dll" />
-      <XunitAdapterFiles Include="$(HOME)/.nuget/packages/xunit.runner.visualstudio/2.8.0/build/net6.0/xunit.abstractions.dll" />
+      <XunitAdapterFiles Include="$(Pkgxunit_runner_visualstudio)/build/net6.0/xunit.runner.visualstudio.testadapter.dll" />
+      <XunitAdapterFiles Include="$(Pkgxunit_runner_visualstudio)/build/net6.0/xunit.runner.utility.netcoreapp10.dll" />
+      <XunitAdapterFiles Include="$(Pkgxunit_runner_visualstudio)/build/net6.0/xunit.runner.reporters.netcoreapp10.dll" />
+      <XunitAdapterFiles Include="$(Pkgxunit_runner_visualstudio)/build/net6.0/xunit.abstractions.dll" />
     </ItemGroup>
 
     <Copy
