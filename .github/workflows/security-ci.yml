@@ -23,9 +23,10 @@ jobs:
         uses: actions/checkout@v7.0.1
         with:
           fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
       - name: Apply narrow Founder OpenAI role and retention repair
-        if: github.ref == 'refs/heads/fix/legend-founder-openai-role-learning-20260824' && github.actor != 'github-actions[bot]'
+        if: (github.ref == 'refs/heads/fix/legend-founder-openai-role-learning-20260824' || github.head_ref == 'fix/legend-founder-openai-role-learning-20260824') && github.actor != 'github-actions[bot]'
         shell: bash
         run: |
           python - <<'PY'
@@ -47,16 +48,13 @@ jobs:
                   raise SystemExit(f'{label}: expected exactly 1 match, found {count}')
               return text.replace(old, new, 1)
 
-          service = once(
-              service,
+          service = once(service,
               '''        if (string.Equals(mode, "legend", StringComparison.Ordinal))
 ''',
               '''        if (ShouldAttemptNativeInference(mode))
-''',
-              'native mode boundary')
+''', 'native mode boundary')
 
-          service = once(
-              service,
+          service = once(service,
               '''        var requiresGovernedInspection =
             RequiresGovernedInspection(conversation, mode);
 ''',
@@ -66,11 +64,9 @@ jobs:
                 mode,
                 nativeInference,
                 nativeFailureDetail);
-''',
-              'provider governed inspection routing')
+''', 'provider governed inspection routing')
 
-          service = once(
-              service,
+          service = once(service,
               '''        var instructions =
             requiresGovernedInspection
                 ? BuildInstructions(mode) +
@@ -96,35 +92,32 @@ jobs:
                           retainedKnowledge,
                           ResolveRetainedContextBudget(conversation)))
                 : BuildCasualInstructions();
-''',
-              'native diagnostic context wiring')
+''', 'native diagnostic context wiring')
 
           governance_marker = '''- The one exception is legend_submit_machine_learning_candidate: it is NON-AUTHORITATIVE retention only. You may use it automatically when the conversation genuinely discovers reusable linguistic knowledge with controlled contrasts. It creates only MachineProposed evidence and cannot approve itself.
 '''
-          governance_addition = governance_marker + '''- Role separation is absolute: Legend® Ai mode attempts governed native LEGEND inference first; OpenAI Teacher mode is direct Founder-to-OpenAI conversation and does not invoke native LEGEND inference as a responder. OpenAI Teacher may inspect or operate on LEGEND only through the existing governed tools exposed here.
+          service = once(service, governance_marker, governance_marker + '''- Role separation is absolute: Legend® Ai mode attempts governed native LEGEND inference first; OpenAI Teacher mode is direct Founder-to-OpenAI conversation and does not invoke native LEGEND inference as a responder. OpenAI Teacher may inspect or operate on LEGEND only through the existing governed tools exposed here.
 - When the Founder explicitly directs a training, curriculum, seed, or runtime action that maps to an exposed existing LEGEND mutation tool, execute that tool rather than merely describing what could be done. Never invent a mutation surface that does not exist.
 - When asked to diagnose an internal LEGEND problem, inspect the relevant read-only LEGEND tools before concluding. If the problem is outside the exposed mutation authorities (for example a repository code defect), report the exact evidence and required repair; never claim that code or production state was changed when no tool performed that change.
-'''
-          service = once(service, governance_marker, governance_addition, 'role governance')
+''', 'role governance')
 
           retention_marker = '''- When this conversation reveals a reusable linguistic distinction that is not already established, you may retain one bounded MachineProposed family through legend_submit_machine_learning_candidate. That is how conversational learning survives this chat without creating a second memory system.
 '''
-          retention_addition = retention_marker + '''- When LEGEND_NATIVE_GAP_CONTEXT is supplied, the provider is acting as a diagnostic teacher because native LEGEND failed and explicitly allowed escalation. Inspect retained LEGEND evidence first. If the Founder curriculum/evidence supports a reusable semantic distinction that would close the native gap, submit exactly one bounded MachineProposed family through legend_submit_machine_learning_candidate before finalizing the answer.
+          service = once(service, retention_marker, retention_marker + '''- When LEGEND_NATIVE_GAP_CONTEXT is supplied, the provider is acting as a diagnostic teacher because native LEGEND failed and explicitly allowed escalation. Inspect retained LEGEND evidence first. If the Founder curriculum/evidence supports a reusable semantic distinction that would close the native gap, submit exactly one bounded MachineProposed family through legend_submit_machine_learning_candidate before finalizing the answer.
 - Never retain the one-off generated reply as a canned answer. Retain reusable meaning, semantic components, controlled contrasts, discourse behavior, and realization evidence that explain how the class of utterance should be understood and composed.
 - If retained evidence is insufficient or contradictory, do not fabricate curriculum. State the exact missing evidence/contrast so the Founder and existing autonomous learning authorities can resolve it.
-'''
-          service = once(service, retention_marker, retention_addition, 'native gap retention governance')
+''', 'native gap retention governance')
 
-          teacher_marker = '''MODE: OPENAI TEACHER
+          service = once(service,
+              '''MODE: OPENAI TEACHER
 
 You are the external OpenAI Teacher speaking directly with the Founder.
-'''
-          teacher_replacement = '''MODE: OPENAI TEACHER
+''',
+              '''MODE: OPENAI TEACHER
 
 You are the external OpenAI Teacher speaking directly with the Founder.
 Native LEGEND conversational inference is bypassed in this mode. You are not a second LEGEND responder and must never speak as though a native LEGEND answer was produced.
-'''
-          service = once(service, teacher_marker, teacher_replacement, 'teacher direct role')
+''', 'teacher direct role')
 
           helper_marker = '''    private static string BuildCasualInstructions() =>
 '''
@@ -230,12 +223,9 @@ DIAGNOSTIC TEACHER REQUIREMENTS:
         // reverse), because that would feed one AI's prior responses to the
         // other under the wrong role. A mode change starts a clean thread while
         // preserving both histories independently.
-        const conversation =
-            newConversationRecord(requestedMode);
-
+        const conversation = newConversationRecord(requestedMode);
         state.conversations.unshift(conversation);
         state.activeConversationId = conversation.id;
-
         saveState();
         setSidebarOpen(false);
         setReadingMode(false);
@@ -250,8 +240,7 @@ DIAGNOSTIC TEACHER REQUIREMENTS:
 '''
           js = once(js, set_mode_old, set_mode_new, 'immutable UI role switch')
 
-          js = once(
-              js,
+          js = once(js,
               '''                conversation.mode === 'teacher'
                     ? 'External language teacher & strategy'
                     : 'Governed intelligence conversation';
@@ -259,22 +248,18 @@ DIAGNOSTIC TEACHER REQUIREMENTS:
               '''                conversation.mode === 'teacher'
                     ? 'Direct OpenAI Teacher · LEGEND native inference bypassed'
                     : 'Legend® Ai · governed native intelligence first';
-''',
-              'mode subtitle clarity')
+''', 'mode subtitle clarity')
 
-          modal = once(
-              modal,
+          modal = once(modal,
               '''                            OpenAI Teacher
                         </button>
 ''',
               '''                            OpenAI Teacher
                             <span class="visually-hidden">Direct OpenAI mode; native LEGEND responder bypassed</span>
                         </button>
-''',
-              'teacher button accessibility label')
+''', 'teacher button accessibility label')
 
-          modal = once(
-              modal,
+          modal = once(modal,
               '''                            <p>
                                 Inspect governed knowledge, language gaps,
                                 evidence, training generations, model state,
@@ -288,8 +273,7 @@ DIAGNOSTIC TEACHER REQUIREMENTS:
                                 that can inspect and teach through the existing governed
                                 LEGEND tools without becoming a second authority.
                             </p>
-''',
-              'welcome role explanation')
+''', 'welcome role explanation')
 
           test_marker = '''    [Fact]
     public void NativeFailureResponse_ExposesGovernedReasonAndProviderFailureDetail()
@@ -328,9 +312,7 @@ DIAGNOSTIC TEACHER REQUIREMENTS:
         var snapshot = new LegendConnectNativeInferenceSnapshot(
             false, 0m, null, "ambiguous_composed_meaning", 0,
             "No unique governed semantic transition could be selected.", true);
-
-        Assert.True(Assert.IsType<bool>(method!.Invoke(
-            null, new object?[] { conversation, "legend", snapshot, null })));
+        Assert.True(Assert.IsType<bool>(method!.Invoke(null, new object?[] { conversation, "legend", snapshot, null })));
     }
 
     [Fact]
@@ -343,9 +325,7 @@ DIAGNOSTIC TEACHER REQUIREMENTS:
         var snapshot = new LegendConnectNativeInferenceSnapshot(
             true, 1m, "I'm doing great, thanks.", "supported", 4,
             "Governed native response selected.", false);
-
-        Assert.False(Assert.IsType<bool>(method!.Invoke(
-            null, new object?[] { conversation, "legend", snapshot, null })));
+        Assert.False(Assert.IsType<bool>(method!.Invoke(null, new object?[] { conversation, "legend", snapshot, null })));
     }
 
     [Fact]
@@ -357,7 +337,6 @@ DIAGNOSTIC TEACHER REQUIREMENTS:
         var snapshot = new LegendConnectNativeInferenceSnapshot(
             false, 0m, null, "meaning_graph_component_unknown", 0,
             "A required meaning component was unknown.", true);
-
         var context = Assert.IsType<string>(method!.Invoke(null, new object?[] { snapshot, null }));
         Assert.Contains("LEGEND_NATIVE_GAP_CONTEXT", context);
         Assert.Contains("meaning_graph_component_unknown", context);
@@ -435,8 +414,7 @@ DIAGNOSTIC TEACHER REQUIREMENTS:
             echo "::error::Committed publish-macos appsettings (may contain secrets)."
             exit 1
           fi
-          if git ls-files '*appsettings*.json' | xargs -r grep -nEi '(Password|AccountKey|ClientSecret|AccessToken)"?[:=][[:space:]]*"?[^"[:space:],}]+' \
-             | grep -vE '"[[:space:]]*"' ; then
+          if git ls-files '*appsettings*.json' | xargs -r grep -nEi '(Password|AccountKey|ClientSecret|AccessToken)"?[:=][[:space:]]*"?[^"[:space:],}]+' | grep -vE '"[[:space:]]*"' ; then
             echo "::error::A tracked appsettings file appears to contain a committed secret value."
             exit 1
           fi
@@ -445,21 +423,20 @@ DIAGNOSTIC TEACHER REQUIREMENTS:
         run: |
           set -e
           check() { grep -q "$2" "$1" || { echo "::error::$1 missing shared authority '$2'"; exit 1; }; }
-          check AgentPortal/Program.cs   AddPlatformDataProtection
-          check AgentPortal/Program.cs   PlatformRateLimiting
-          check ClientApp/Program.cs     AddPlatformDataProtection
-          check ClientApp/Program.cs     PlatformRateLimiting
-          check ClientApp/Program.cs     PlatformSecurityHeaders
+          check AgentPortal/Program.cs AddPlatformDataProtection
+          check AgentPortal/Program.cs PlatformRateLimiting
+          check ClientApp/Program.cs AddPlatformDataProtection
+          check ClientApp/Program.cs PlatformRateLimiting
+          check ClientApp/Program.cs PlatformSecurityHeaders
           check Protect-Website/Program.cs AddPlatformDataProtection
           check Protect-Website/Program.cs PlatformRateLimiting
           check Protect-Website/Program.cs PlatformSecurityHeaders
-          check ParfaitApp/Program.cs    PlatformConfigValidation
-          check ParfaitApp/Program.cs    PlatformRateLimiting
+          check ParfaitApp/Program.cs PlatformConfigValidation
+          check ParfaitApp/Program.cs PlatformRateLimiting
 
       - name: Architecture invariant — no inline Azure Data Protection key-ring wiring in apps
         run: |
-          if grep -REn 'PersistKeysToAzureBlobStorage|ProtectKeysWithAzureKeyVault' \
-                AgentPortal/Program.cs ClientApp/Program.cs Protect-Website/Program.cs ParfaitApp/Program.cs 2>/dev/null; then
+          if grep -REn 'PersistKeysToAzureBlobStorage|ProtectKeysWithAzureKeyVault' AgentPortal/Program.cs ClientApp/Program.cs Protect-Website/Program.cs ParfaitApp/Program.cs 2>/dev/null; then
             echo "::error::An application composition root inlines Azure Data Protection key-ring wiring."
             exit 1
           fi
@@ -468,17 +445,13 @@ DIAGNOSTIC TEACHER REQUIREMENTS:
         run: git diff --check
 
       - name: Commit validated source repair and restore Security CI
-        if: github.ref == 'refs/heads/fix/legend-founder-openai-role-learning-20260824' && github.actor != 'github-actions[bot]'
+        if: (github.ref == 'refs/heads/fix/legend-founder-openai-role-learning-20260824' || github.head_ref == 'fix/legend-founder-openai-role-learning-20260824') && github.actor != 'github-actions[bot]'
         shell: bash
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git checkout origin/production -- .github/workflows/security-ci.yml
-          git add .github/workflows/security-ci.yml \
-              AgentPortal/Services/LegendFounderAiConversationService.cs \
-              AgentPortal.Tests/LegendFounderAiConversationRoutingTests.cs \
-              AgentPortal/wwwroot/js/legend-founder-ai.js \
-              AgentPortal/Views/Shared/_LegendFounderAiModal.cshtml
+          git add .github/workflows/security-ci.yml AgentPortal/Services/LegendFounderAiConversationService.cs AgentPortal.Tests/LegendFounderAiConversationRoutingTests.cs AgentPortal/wwwroot/js/legend-founder-ai.js AgentPortal/Views/Shared/_LegendFounderAiModal.cshtml
           git diff --cached --check
           git commit -m 'Separate Founder OpenAI mode and retain native gaps'
           git push origin HEAD:fix/legend-founder-openai-role-learning-20260824
