@@ -7,6 +7,7 @@ on:
     paths:
       - '.github/workflows/legend-production-readonly-diagnostic.yml'
       - 'AgentPortal.Tests/LegendFounderCurriculumSqlServerE2ETests.cs'
+      - 'AgentPortal.Tests/AgentPortal.Tests.csproj'
   workflow_dispatch:
 
 permissions:
