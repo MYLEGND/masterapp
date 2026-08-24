@@ -1,0 +1,281 @@
+name: Temporary LEGEND diagnostic teacher retention
+
+on:
+  push:
+    branches:
+      - fix/legend-openai-diagnostic-teacher-retention-20260824
+
+permissions:
+  contents: write
+
+jobs:
+  repair-and-validate:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Apply diagnostic teacher retention repair
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          service_path = Path('AgentPortal/Services/LegendFounderAiConversationService.cs')
+          tests_path = Path('AgentPortal.Tests/LegendFounderAiConversationRoutingTests.cs')
+          service = service_path.read_text()
+          tests = tests_path.read_text()
+
+          def replace_once(text, old, new, label):
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'{label}: expected exactly 1 match, found {count}')
+              return text.replace(old, new, 1)
+
+          service = replace_once(
+              service,
+              '''        var requiresGovernedInspection =
+            RequiresGovernedInspection(conversation, mode);
+''',
+              '''        // A native failure that explicitly permits escalation is itself a
+        // governed diagnostic event. Even a linguistically casual utterance must
+        // enter the existing retained-knowledge / machine-teaching tool path so
+        // the external teacher can help LEGEND close the gap instead of merely
+        // answering the turn and forgetting why native inference failed.
+        var requiresGovernedInspection =
+            RequiresProviderGovernedInspection(
+                conversation,
+                mode,
+                nativeInference,
+                nativeFailureDetail);
+''',
+              'route native gaps into governed teacher path')
+
+          service = replace_once(
+              service,
+              '''        var instructions =
+            requiresGovernedInspection
+                ? BuildInstructions(mode) +
+                  (retainedKnowledge is null
+                      ? string.Empty
+                      : BuildRetainedKnowledgeContext(
+                          retainedKnowledge,
+                          ResolveRetainedContextBudget(conversation)))
+                : BuildCasualInstructions();
+''',
+              '''        var nativeDiagnosticContext =
+            BuildNativeDiagnosticTeachingContext(
+                nativeInference,
+                nativeFailureDetail);
+
+        var instructions =
+            requiresGovernedInspection
+                ? BuildInstructions(mode) +
+                  nativeDiagnosticContext +
+                  (retainedKnowledge is null
+                      ? string.Empty
+                      : BuildRetainedKnowledgeContext(
+                          retainedKnowledge,
+                          ResolveRetainedContextBudget(conversation)))
+                : BuildCasualInstructions();
+''',
+              'append native diagnostic teaching context')
+
+          governance_marker = '''- When this conversation reveals a reusable linguistic distinction that is not already established, you may retain one bounded MachineProposed family through legend_submit_machine_learning_candidate. That is how conversational learning survives this chat without creating a second memory system.
+'''
+          governance_replacement = governance_marker + '''- When LEGEND_NATIVE_GAP_CONTEXT is supplied, treat the native failure as a diagnostic teaching task, not merely a request for an OpenAI fallback answer. Inspect retained LEGEND evidence first. If the existing Founder curriculum/evidence supports a coherent reusable linguistic distinction that would close the native gap, you MUST submit exactly one bounded family through legend_submit_machine_learning_candidate before finalizing the answer. If the evidence is insufficient, contradictory, or cannot support controlled contrasts, do not invent teaching; explain the missing governed evidence instead.
+- Never submit the one-off generated answer itself as curriculum. Retain reusable meaning/components/contrasts that explain why the utterance failed and how the governed semantic family generalizes.
+'''
+          service = replace_once(
+              service,
+              governance_marker,
+              governance_replacement,
+              'strengthen diagnostic teacher governance')
+
+          helper_marker = '''    private static string BuildCasualInstructions() =>
+'''
+          diagnostic_helper = '''    private static string BuildNativeDiagnosticTeachingContext(
+        LegendConnectNativeInferenceSnapshot? nativeInference,
+        string? nativeFailureDetail)
+    {
+        if (nativeInference is not { Supported: false, RequiresEscalation: true } &&
+            string.IsNullOrWhiteSpace(nativeFailureDetail))
+        {
+            return string.Empty;
+        }
+
+        var reasonCode = string.IsNullOrWhiteSpace(nativeInference?.ReasonCode)
+            ? "native_inference_unavailable"
+            : nativeInference.ReasonCode.Trim();
+        var authorityDetail = !string.IsNullOrWhiteSpace(nativeInference?.AuthoritySummary)
+            ? NormalizeFailureDetail(nativeInference.AuthoritySummary)
+            : "The native authority returned no additional governed summary.";
+        var failureDetail = string.IsNullOrWhiteSpace(nativeFailureDetail)
+            ? "No native execution exception was recorded."
+            : NormalizeFailureDetail(nativeFailureDetail);
+        var evidenceCount = nativeInference?.EvidenceCount ?? 0;
+
+        return $"""
+
+LEGEND_NATIVE_GAP_CONTEXT:
+NativeReasonCode={reasonCode}
+NativeAuthorityDetail={authorityDetail}
+NativeEvidenceCount={evidenceCount}
+NativeExecutionDetail={failureDetail}
+
+DIAGNOSTIC TEACHER REQUIREMENTS:
+- This turn reached OpenAI because native LEGEND could not produce one governed answer and explicitly permitted escalation.
+- Diagnose the linguistic/semantic gap against retained LEGEND evidence before treating OpenAI recall as authoritative.
+- Use legend_search_retained_knowledge when a narrower retained-evidence query can distinguish an unknown component, ambiguous composition, missing transition, contradiction, realization gap, or production-eligibility gap.
+- If governed evidence supports a reusable controlled semantic family that would reduce recurrence of this native failure, submit exactly one bounded MachineProposed family with legend_submit_machine_learning_candidate before the final response.
+- The proposal must capture reusable meaning, semantic components and controlled contrasts; do not store the generated reply, personal facts, transient state, or unsupported speculation.
+- If governed evidence cannot support a valid proposal, do not fabricate one. State precisely which evidence or curriculum contrast is missing.
+- MachineProposed retention is not canonical approval. The existing independent critic, canonical validator, curriculum admission, dataset compiler, evaluator and promotion authorities remain the only path to native reuse.
+""";
+    }
+
+'''
+          service = replace_once(
+              service,
+              helper_marker,
+              diagnostic_helper + helper_marker,
+              'insert native diagnostic context')
+
+          route_helper_marker = '''    private static string ResolveReasoningEffortForRound(
+'''
+          route_helper = '''    private static bool RequiresProviderGovernedInspection(
+        IReadOnlyList<LegendFounderAiChatMessage> conversation,
+        string mode,
+        LegendConnectNativeInferenceSnapshot? nativeInference,
+        string? nativeFailureDetail) =>
+        RequiresGovernedInspection(conversation, mode) ||
+        nativeInference is { Supported: false, RequiresEscalation: true } ||
+        !string.IsNullOrWhiteSpace(nativeFailureDetail);
+
+'''
+          service = replace_once(
+              service,
+              route_helper_marker,
+              route_helper + route_helper_marker,
+              'insert provider governed inspection helper')
+
+          test_insert_marker = '''    [Fact]
+    public void NativeFailureResponse_ExposesGovernedReasonAndProviderFailureDetail()
+'''
+          new_tests = '''    [Fact]
+    public void CasualNativeEscalation_EntersGovernedDiagnosticTeacherPath()
+    {
+        var method = typeof(LegendFounderAiConversationService)
+            .GetMethod("RequiresProviderGovernedInspection", BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.NotNull(method);
+        IReadOnlyList<LegendFounderAiChatMessage> conversation = [new("user", "Hi")];
+        var snapshot = new LegendConnectNativeInferenceSnapshot(
+            false,
+            0m,
+            null,
+            "ambiguous_composed_meaning",
+            0,
+            "No unique governed semantic transition could be selected.",
+            true);
+
+        Assert.True(Assert.IsType<bool>(method!.Invoke(
+            null,
+            new object?[] { conversation, "legend", snapshot, null })));
+    }
+
+    [Fact]
+    public void CasualNativeSuccess_PreservesFastNonInspectionRoute()
+    {
+        var method = typeof(LegendFounderAiConversationService)
+            .GetMethod("RequiresProviderGovernedInspection", BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.NotNull(method);
+        IReadOnlyList<LegendFounderAiChatMessage> conversation = [new("user", "How are you?")];
+        var snapshot = new LegendConnectNativeInferenceSnapshot(
+            true,
+            1m,
+            "I'm doing great, thanks.",
+            "supported",
+            4,
+            "Governed native response selected.",
+            false);
+
+        Assert.False(Assert.IsType<bool>(method!.Invoke(
+            null,
+            new object?[] { conversation, "legend", snapshot, null })));
+    }
+
+    [Fact]
+    public void NativeGapContext_RequiresEvidenceFirstMachineRetentionWithoutSelfPromotion()
+    {
+        var method = typeof(LegendFounderAiConversationService)
+            .GetMethod("BuildNativeDiagnosticTeachingContext", BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.NotNull(method);
+        var snapshot = new LegendConnectNativeInferenceSnapshot(
+            false,
+            0m,
+            null,
+            "meaning_graph_component_unknown",
+            0,
+            "A required meaning component was unknown.",
+            true);
+
+        var context = Assert.IsType<string>(method!.Invoke(null, new object?[] { snapshot, null }));
+        Assert.Contains("LEGEND_NATIVE_GAP_CONTEXT", context);
+        Assert.Contains("meaning_graph_component_unknown", context);
+        Assert.Contains("legend_search_retained_knowledge", context);
+        Assert.Contains("legend_submit_machine_learning_candidate", context);
+        Assert.Contains("MachineProposed", context);
+        Assert.Contains("independent critic", context);
+        Assert.Contains("do not fabricate", context, StringComparison.OrdinalIgnoreCase);
+    }
+
+'''
+          tests = replace_once(
+              tests,
+              test_insert_marker,
+              new_tests + test_insert_marker,
+              'add diagnostic routing regression tests')
+
+          service_path.write_text(service)
+          tests_path.write_text(tests)
+          PY
+
+      - name: Verify patch shape
+        shell: bash
+        run: |
+          git diff --check
+          git diff --stat
+          git status --short
+
+      - name: Restore
+        run: dotnet restore AgentPortal.Tests/AgentPortal.Tests.csproj
+
+      - name: Build production
+        run: dotnet build AgentPortal/AgentPortal.csproj --configuration Release --no-restore
+
+      - name: Build tests
+        run: dotnet build AgentPortal.Tests/AgentPortal.Tests.csproj --configuration Release --no-restore
+
+      - name: Run focused diagnostic teacher regression
+        run: dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj --configuration Release --no-build --filter 'FullyQualifiedName~LegendFounderAiConversationRoutingTests|FullyQualifiedName~LegendConnectCanonicalMachineProposalTests|FullyQualifiedName~LegendConnectSystemValidatedMachineCurriculumTests' --logger 'console;verbosity=normal'
+
+      - name: Run full AgentPortal regression
+        run: dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj --configuration Release --no-build --logger 'console;verbosity=normal'
+
+      - name: Commit only after all validation is green
+        shell: bash
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git rm .github/workflows/temporary-legend-diagnostic-teacher-retention.yml
+          git add AgentPortal/Services/LegendFounderAiConversationService.cs AgentPortal.Tests/LegendFounderAiConversationRoutingTests.cs
+          git diff --cached --check
+          git commit -m 'Teach LEGEND from governed native conversation gaps'
+          git push origin HEAD:fix/legend-openai-diagnostic-teacher-retention-20260824
