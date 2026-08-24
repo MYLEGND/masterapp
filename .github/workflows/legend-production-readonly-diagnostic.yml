@@ -127,20 +127,30 @@ jobs:
         run: |
           $native = 'diagnostics/native.txt'
           $shadow = 'diagnostics/shadow.txt'
+          $targetPath = (dotnet msbuild AgentPortal.Tests/AgentPortal.Tests.csproj -property:Configuration=Release -getProperty:TargetPath -nologo | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Last 1).Trim()
+          if ([string]::IsNullOrWhiteSpace($targetPath) -or -not (Test-Path $targetPath)) { throw 'Unable to resolve the built AgentPortal.Tests assembly.' }
+          $adapterPath = Split-Path -Parent $targetPath
+          if (-not (Test-Path (Join-Path $adapterPath 'xunit.runner.visualstudio.testadapter.dll'))) { throw 'The xUnit test adapter is not present beside the built test assembly.' }
 
           dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj `
             -c Release `
             --no-build `
+            --test-adapter-path $adapterPath `
             --filter 'FullyQualifiedName~LegendFounderCurriculumSqlServerE2ETests.ProductionReadOnlyEightPromptNativeDiagnostic' `
             --logger 'console;verbosity=detailed' 2>&1 | Tee-Object -FilePath $native
           $nativeExit = $LASTEXITCODE
+          if ((Get-Content $native -Raw) -match 'No test is available') { $nativeExit = 97 }
+          if ((Get-Content $native -Raw) -notmatch 'ProductionReadOnlyEightPromptNativeDiagnostic') { $nativeExit = 98 }
 
           dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj `
             -c Release `
             --no-build `
+            --test-adapter-path $adapterPath `
             --filter 'FullyQualifiedName~LegendFounderCurriculumSqlServerE2ETests.ProductionReadOnlyV21ShadowRebuild_UsesLiveFounderEvidenceWithoutWrites' `
             --logger 'console;verbosity=detailed' 2>&1 | Tee-Object -FilePath $shadow
           $shadowExit = $LASTEXITCODE
+          if ((Get-Content $shadow -Raw) -match 'No test is available') { $shadowExit = 97 }
+          if ((Get-Content $shadow -Raw) -notmatch 'ProductionReadOnlyV21ShadowRebuild_UsesLiveFounderEvidenceWithoutWrites') { $shadowExit = 98 }
 
           "native_exit=$nativeExit" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
           "shadow_exit=$shadowExit" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
