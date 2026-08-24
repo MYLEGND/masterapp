@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - fix/legend-openai-diagnostic-teacher-retention-20260824
+  pull_request:
 
 permissions:
   contents: write
