@@ -1294,6 +1294,11 @@ public sealed class LegendFounderAiConversationService
     {
         switch (call.Name)
         {
+            case "legend_capabilities":
+            {
+                return SerializeUnbounded(DescribeFounderCapabilities());
+            }
+
             case "legend_system_overview":
             {
                 var snapshot =
@@ -1821,6 +1826,42 @@ public sealed class LegendFounderAiConversationService
         }
     }
 
+    private static IReadOnlyList<object> DescribeFounderCapabilities()
+    {
+        var capabilities = new List<object>();
+        foreach (var tool in BuildFounderTools())
+        {
+            using var document = JsonDocument.Parse(JsonSerializer.Serialize(tool, JsonOptions));
+            var root = document.RootElement;
+            if (!root.TryGetProperty("type", out var type) ||
+                !string.Equals(type.GetString(), "function", StringComparison.Ordinal))
+            {
+                continue;
+            }
+            var name = root.TryGetProperty("name", out var nameElement)
+                ? nameElement.GetString()
+                : null;
+            if (string.IsNullOrWhiteSpace(name))
+                continue;
+            var description = root.TryGetProperty("description", out var descriptionElement)
+                ? descriptionElement.GetString()
+                : null;
+            var mutation = name.StartsWith("legend_submit_", StringComparison.Ordinal) ||
+                           string.Equals(name, "legend_activate_autonomous_learning", StringComparison.Ordinal);
+            capabilities.Add(new
+            {
+                name,
+                description,
+                access = mutation ? "founder_governed_mutation" : "founder_governed_read",
+                sourceOfTruth = "BuildFounderTools",
+                arbitrarySql = false,
+                arbitraryShell = false,
+                arbitraryCodeExecution = false
+            });
+        }
+        return capabilities;
+    }
+
     private static IReadOnlyList<object> BuildFounderTools()
     {
         return
@@ -1829,6 +1870,21 @@ public sealed class LegendFounderAiConversationService
             {
                 type = "web_search",
                 search_context_size = "medium"
+            },
+            new
+            {
+                type = "function",
+                name = "legend_capabilities",
+                description =
+                    "Discover the exact governed LEGEND capabilities exposed to this Founder AI session from the same tool registry the model can execute. Use this when planning system inspection or remediation instead of guessing that an operation exists. This is read-only and creates no second authority.",
+                parameters = new
+                {
+                    type = "object",
+                    properties = new { },
+                    required = Array.Empty<string>(),
+                    additionalProperties = false
+                },
+                strict = true
             },
             new
             {
