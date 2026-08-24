@@ -9,8 +9,7 @@
 
   <ItemGroup>
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.0.1" />
-    <PackageReference Include="xunit.core" Version="2.9.3" />
-    <PackageReference Include="xunit.assert" Version="2.9.3" />
+    <PackageReference Include="xunit" Version="2.9.3" />
     <PackageReference Include="xunit.runner.visualstudio" Version="3.1.5">
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
       <PrivateAssets>all</PrivateAssets>
@@ -26,13 +25,13 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\\AgentPortal\\AgentPortal.csproj" />
-    <ProjectReference Include="..\\ClientApp\\ClientApp.csproj" />
-    <ProjectReference Include="..\\Domain\\Domain.csproj" />
-    <ProjectReference Include="..\\Infrastructure\\Infrastructure.csproj" />
-    <ProjectReference Include="..\\ParfaitApp\\ParfaitApp.csproj" />
-    <ProjectReference Include="..\\Protect-Website\\ProtectWebsite.csproj" />
-    <ProjectReference Include="..\\SHARED\\Shared.csproj" />
+    <ProjectReference Include="..\AgentPortal\AgentPortal.csproj" />
+    <ProjectReference Include="..\ClientApp\ClientApp.csproj" />
+    <ProjectReference Include="..\Domain\Domain.csproj" />
+    <ProjectReference Include="..\Infrastructure\Infrastructure.csproj" />
+    <ProjectReference Include="..\ParfaitApp\ParfaitApp.csproj" />
+    <ProjectReference Include="..\Protect-Website\ProtectWebsite.csproj" />
+    <ProjectReference Include="..\SHARED\Shared.csproj" />
   </ItemGroup>
 
   <Target Name="EnsureTestHostRuntimeConfig" AfterTargets="Build">
