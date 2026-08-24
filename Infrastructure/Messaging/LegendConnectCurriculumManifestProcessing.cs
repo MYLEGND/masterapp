@@ -151,7 +151,8 @@ internal sealed class LegendConnectCurriculumManifestProcessor
             await _durableWork.FailAsync(
                 claim,
                 "founder_manifest_family_failure",
-                CancellationToken.None);
+                CancellationToken.None,
+                exception.ToString());
             if (claim.SubjectId is Guid manifestId)
                 await RefreshDurableManifestStatusAsync(
                     manifestId,
@@ -186,7 +187,8 @@ internal sealed class LegendConnectCurriculumManifestProcessor
                 // evaluator deployment; no row is manually rewritten.
                 (item.ProcessingState != "Failed" ||
                  (item.LastErrorCode != "curriculum_manifest_payload_invalid" &&
-                  item.LastErrorCode != "curriculum_manifest_payload_mismatch")) &&
+                  item.LastErrorCode != "curriculum_manifest_payload_mismatch" &&
+                  item.TargetLanguageIntelligenceEvaluatorVersion < evaluatorVersion)) &&
                 (item.ProcessingState != "Completed" ||
                  item.CompletedLanguageIntelligenceEvaluatorVersion < evaluatorVersion))
             .OrderBy(item => item.CreatedUtc)
@@ -335,7 +337,9 @@ internal sealed class LegendConnectCurriculumManifestProcessor
         var family = families[familyIndex];
         var result = await _curriculum.SubmitFounderEnglishBatchAsync(family, cancellationToken);
         if (!result.Succeeded)
-            throw new InvalidOperationException(result.ErrorCode ?? "curriculum_family_processing_rejected");
+            throw new InvalidOperationException(
+                $"{result.ErrorCode ?? "curriculum_family_processing_rejected"}: " +
+                (result.Message ?? "The canonical curriculum authority rejected the family without additional detail."));
 
         _db.Set<LegendConnectKnowledgeAuditEntry>().Add(new LegendConnectKnowledgeAuditEntry
         {
@@ -453,7 +457,9 @@ internal sealed class LegendConnectCurriculumManifestProcessor
         var completedFamilies = children.Count(item =>
             item.WorkKind == LegendConnectHistoricalReevaluationWorkAuthority.FounderManifestFamilyWorkKind &&
             item.ProcessingState == "Completed");
-        var failed = children.FirstOrDefault(item => item.ProcessingState == "Failed");
+        var failed = children.FirstOrDefault(item =>
+            item.ProcessingState == "Failed" ||
+            item.ProcessingState == LegendConnectHistoricalReevaluationWorkAuthority.Retired);
         // This is the existing UI/progress field for family ingestion.  The
         // later semantic-relation work belongs to the same durable manifest
         // lifecycle, but must not make the family counter exceed FamilyCount.

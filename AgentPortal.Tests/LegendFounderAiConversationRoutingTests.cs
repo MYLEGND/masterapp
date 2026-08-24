@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Reflection;
 using AgentPortal.Services;
+using Domain.Messaging;
 using Xunit;
 
 namespace AgentPortal.Tests;
@@ -51,4 +52,40 @@ public sealed class LegendFounderAiConversationRoutingTests
         IReadOnlyList<LegendFounderAiChatMessage> conversation = [new("user", "Hi")];
         Assert.True(Assert.IsType<bool>(method!.Invoke(null, new object[] { conversation, "teacher" })));
     }
+
+    [Fact]
+    public void NativeFailureResponse_ExposesGovernedReasonAndProviderFailureDetail()
+    {
+        var method = typeof(LegendFounderAiConversationService)
+            .GetMethod("NativeInferenceUnavailableResponse", BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.NotNull(method);
+        var snapshot = new LegendConnectNativeInferenceSnapshot(
+            false,
+            0.42m,
+            null,
+            "semantic_transition_not_production_eligible",
+            9,
+            "The matching transition exists but has not crossed the production eligibility gate.",
+            true);
+
+        var response = Assert.IsType<LegendFounderAiChatResponse>(method!.Invoke(
+            null,
+            new object?[]
+            {
+                "legend",
+                snapshot,
+                null,
+                "provider_http_429",
+                "Provider reported no remaining credits."
+            }));
+
+        Assert.True(response.Succeeded);
+        Assert.Contains("semantic_transition_not_production_eligible", response.Message);
+        Assert.Contains("production eligibility gate", response.Message);
+        Assert.Contains("EvidenceCount=9", response.Message);
+        Assert.Contains("provider_http_429", response.Message);
+        Assert.Contains("no remaining credits", response.Message);
+        Assert.DoesNotContain("does not yet have enough governed evidence", response.Message);
+    }
+
 }
