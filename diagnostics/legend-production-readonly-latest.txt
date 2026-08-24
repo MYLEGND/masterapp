@@ -1,28 +1,28 @@
 LEGEND PRODUCTION READ-ONLY DIAGNOSTIC
-Commit: dd72d6dc32d42ef851096359f213a444d213de44
+Commit: ae8382ec63ed8ed3186c97baeb554eb769e5a411
 RestoreOutcome: success
 BuildOutcome: success
-DiagnosticOutcome: success
-NativeExit: 0
-ShadowExit: 0
+DiagnosticOutcome: failure
+NativeExit: 
+ShadowExit: 
 
 === RESTORE ===
   Determining projects to restore...
-  Restored D:\a\masterapp\masterapp\SHARED\Shared.csproj (in 318 ms).
-  Restored D:\a\masterapp\masterapp\Protect-Website\ProtectWebsite.csproj (in 1.44 min).
-  Restored D:\a\masterapp\masterapp\AgentPortal.Tests\AgentPortal.Tests.csproj (in 1.66 min).
-  Restored D:\a\masterapp\masterapp\Domain\Domain.csproj (in 1 ms).
-  Restored D:\a\masterapp\masterapp\Infrastructure\Infrastructure.csproj (in 1.76 min).
-  Restored D:\a\masterapp\masterapp\ParfaitApp\ParfaitApp.csproj (in 18.78 sec).
-  Restored D:\a\masterapp\masterapp\ClientApp\ClientApp.csproj (in 5.6 sec).
-  Restored D:\a\masterapp\masterapp\AgentPortal\AgentPortal.csproj (in 1.76 min).
+  Restored D:\a\masterapp\masterapp\Domain\Domain.csproj (in 175 ms).
+  Restored D:\a\masterapp\masterapp\AgentPortal.Tests\AgentPortal.Tests.csproj (in 48.2 sec).
+  Restored D:\a\masterapp\masterapp\Infrastructure\Infrastructure.csproj (in 8.97 sec).
+  Restored D:\a\masterapp\masterapp\AgentPortal\AgentPortal.csproj (in 57.2 sec).
+  Restored D:\a\masterapp\masterapp\ClientApp\ClientApp.csproj (in 57.19 sec).
+  Restored D:\a\masterapp\masterapp\ParfaitApp\ParfaitApp.csproj (in 56.82 sec).
+  Restored D:\a\masterapp\masterapp\SHARED\Shared.csproj (in 2 ms).
+  Restored D:\a\masterapp\masterapp\Protect-Website\ProtectWebsite.csproj (in 2.8 sec).
 
 === BUILD ===
   Shared -> D:\tmp\masterapp\bin\Shared\Release\net10.0\Shared.dll
   Domain -> D:\tmp\masterapp\bin\Domain\Release\net10.0\Domain.dll
   Infrastructure -> D:\tmp\masterapp\bin\Infrastructure\Release\net10.0\Infrastructure.dll
-  ProtectWebsite -> D:\tmp\masterapp\bin\ProtectWebsite\Release\net10.0\ProtectWebsite.dll
   ParfaitApp -> D:\tmp\masterapp\bin\ParfaitApp\Release\net10.0\ParfaitApp.dll
+  ProtectWebsite -> D:\tmp\masterapp\bin\ProtectWebsite\Release\net10.0\ProtectWebsite.dll
   ClientApp -> D:\tmp\masterapp\bin\ClientApp\Release\net10.0\ClientApp.dll
   ClientApp -> D:\tmp\masterapp\bin\ClientApp\Release\net10.0\ClientApp.Views.dll
   AgentPortal -> D:\tmp\masterapp\bin\AgentPortal\Release\AgentPortal.dll
@@ -33,18 +33,8 @@ Build succeeded.
     0 Warning(s)
     0 Error(s)
 
-Time Elapsed 00:01:37.63
+Time Elapsed 00:02:22.34
 
 === NATIVE LIVE DATABASE DIAGNOSTIC ===
-Test run for D:\tmp\masterapp\bin\AgentPortal.Tests\Release\net10.0\AgentPortal.Tests.dll (.NETCoreApp,Version=v10.0)
-A total of 1 test files matched the specified pattern.
-D:\tmp\masterapp\bin\AgentPortal.Tests\Release\net10.0\AgentPortal.Tests.dll
-No test is available in D:\tmp\masterapp\bin\AgentPortal.Tests\Release\net10.0\AgentPortal.Tests.dll. Make sure that test discoverer & executors are registered and platform & framework version settings are appropriate and try again.
-
 
 === V21 LIVE-EVIDENCE SHADOW REBUILD ===
-Test run for D:\tmp\masterapp\bin\AgentPortal.Tests\Release\net10.0\AgentPortal.Tests.dll (.NETCoreApp,Version=v10.0)
-A total of 1 test files matched the specified pattern.
-D:\tmp\masterapp\bin\AgentPortal.Tests\Release\net10.0\AgentPortal.Tests.dll
-No test is available in D:\tmp\masterapp\bin\AgentPortal.Tests\Release\net10.0\AgentPortal.Tests.dll. Make sure that test discoverer & executors are registered and platform & framework version settings are appropriate and try again.
-
