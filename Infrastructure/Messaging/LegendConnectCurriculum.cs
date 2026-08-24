@@ -3848,6 +3848,58 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
         if (candidates.Count == 0)
         {
             if (HasContradictedSemanticTransition(observations, values)) return SemanticTransitionSelection.Contradicted("semantic_transition_contradicted");
+
+            // Founder curricula may carry controlled descriptive dimensions
+            // which are not independently surfaced by the present-turn
+            // meaning graph.  They remain canonical evidence, but they must
+            // not make an otherwise unique governed response unreachable.
+            //
+            // This is a projection over the complete active transition
+            // authority, not an override or a phrase-specific fallback.  A
+            // static dimension may be omitted only when at least one other
+            // source dimension matched this turn and every compatible,
+            // independently production-eligible transition selects the same
+            // result frame.  Observed conflicts, semantic variables, genuine
+            // result ambiguity, and contradictory evidence remain fail-closed.
+            var projectedCandidates = BuildProductionSemanticTransitionCandidates(
+                    observations,
+                    values,
+                    allowMissingVariables: false,
+                    allowMissingStaticDimensions: true)
+                .Where(item => item.DirectSourceMatchCount > 0)
+                .ToList();
+            if (projectedCandidates.Count > 0)
+            {
+                if (HasContradictedSemanticTransition(
+                        observations,
+                        values,
+                        allowMissingStaticDimensions: true))
+                {
+                    return SemanticTransitionSelection.Contradicted(
+                        "semantic_transition_projected_contradicted");
+                }
+
+                if (projectedCandidates
+                        .Select(item => item.ResultFrame.Signature)
+                        .Distinct(StringComparer.Ordinal)
+                        .Count() != 1)
+                {
+                    return SemanticTransitionSelection.Ambiguous(
+                        "ambiguous_semantic_transition_projection");
+                }
+
+                return new(
+                    language,
+                    sourceComponents,
+                    projectedCandidates
+                        .OrderByDescending(item => item.DirectSourceMatchCount)
+                        .ThenBy(item => item.TransitionSignature, StringComparer.Ordinal)
+                        .First(),
+                    "response_meaning_plan_governed_projected",
+                    false,
+                    false);
+            }
+
             var partialCandidates = BuildProductionSemanticTransitionCandidates(
                     observations, values, allowMissingVariables: true)
                 .Where(item => item.MissingVariables.Count > 0 && item.DirectSourceMatchCount > 0)
@@ -3980,7 +4032,8 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
         BuildProductionSemanticTransitionCandidates(
             IReadOnlyList<SemanticTransitionObservation> observations,
             IReadOnlyDictionary<string, string> inputValues,
-            bool allowMissingVariables)
+            bool allowMissingVariables,
+            bool allowMissingStaticDimensions = false)
     {
         var candidates = new List<SemanticTransitionCandidate>();
         foreach (var group in observations.GroupBy(item => item.TransitionSignature, StringComparer.Ordinal))
@@ -3998,6 +4051,7 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
                     sourceFrame,
                     inputValues,
                     allowMissingVariables,
+                    allowMissingStaticDimensions,
                     out var bindings,
                     out var missingVariables,
                     out var directSourceMatchCount))
@@ -4056,7 +4110,8 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
 
     private static bool HasContradictedSemanticTransition(
         IReadOnlyList<SemanticTransitionObservation> observations,
-        IReadOnlyDictionary<string, string> inputValues)
+        IReadOnlyDictionary<string, string> inputValues,
+        bool allowMissingStaticDimensions = false)
     {
         foreach (var group in observations
                      .Where(item => string.Equals(item.ContributionState, "Contradictory", StringComparison.Ordinal))
@@ -4068,9 +4123,11 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
                     sourceFrame,
                     inputValues,
                     allowMissingVariables: false,
+                    allowMissingStaticDimensions: allowMissingStaticDimensions,
                     out _,
                     out _,
-                    out _))
+                    out var directSourceMatchCount) &&
+                directSourceMatchCount > 0)
             {
                 return true;
             }
@@ -4754,6 +4811,7 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
         NormalizedSemanticFrame frame,
         IReadOnlyDictionary<string, string> inputValues,
         bool allowMissingVariables,
+        bool allowMissingStaticDimensions,
         out IReadOnlyDictionary<string, string> bindings,
         out IReadOnlyList<SemanticMissingVariable> missingVariables,
         out int directSourceMatchCount)
@@ -4765,8 +4823,16 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
         {
             if (!IsSemanticVariable(item.Value))
             {
-                if (!inputValues.TryGetValue(item.Key, out var observed) ||
-                    !string.Equals(observed, item.Value, StringComparison.OrdinalIgnoreCase))
+                if (!inputValues.TryGetValue(item.Key, out var observed))
+                {
+                    if (allowMissingStaticDimensions)
+                        continue;
+
+                    bindings = resolved;
+                    missingVariables = missing;
+                    return false;
+                }
+                if (!string.Equals(observed, item.Value, StringComparison.OrdinalIgnoreCase))
                 {
                     bindings = resolved;
                     missingVariables = missing;

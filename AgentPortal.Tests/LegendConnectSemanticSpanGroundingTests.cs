@@ -23,6 +23,61 @@ namespace AgentPortal.Tests;
 public sealed class LegendConnectSemanticSpanGroundingTests
 {
     [Fact]
+    public async Task GovernedExecutableProjection_UsesRichHistoricalFramesWithoutRequiringUnsurfacedStaticMetadata()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var fixture = CreateFixture(db);
+
+        for (var family = 1; family <= 3; family++)
+        {
+            var submitted = await fixture.Curriculum.SubmitFounderEnglishBatchAsync(
+                RichResponsePlanFamily(family, "neutral", "acknowledgement"));
+            Assert.True(submitted.Succeeded, submitted.Message);
+        }
+
+        var graph = await fixture.Operations.AnalyzeReusableMeaningGraphAsync("Hi there.");
+        Assert.True(graph.IsComposed, graph.ReasonCode);
+        Assert.DoesNotContain(graph.Nodes, item => item.SemanticDimension == "register");
+
+        var native = await fixture.Operations.TryInferConversationWithDiscourseAsync(
+            "Hi there.",
+            [],
+            new LegendConnectDiscourseStateSnapshot([]));
+
+        Assert.True(native.Supported, native.ReasonCode);
+        Assert.Equal("semantic_transition_governed_composed", native.ReasonCode);
+        Assert.False(string.IsNullOrWhiteSpace(native.Answer));
+        Assert.True(native.EvidenceCount > 0);
+        Assert.False(native.RequiresEscalation);
+    }
+
+    [Fact]
+    public async Task GovernedExecutableProjection_FailsClosedWhenOmittedMetadataCouldChangeTheResult()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var fixture = CreateFixture(db);
+
+        for (var family = 1; family <= 3; family++)
+        {
+            var neutral = await fixture.Curriculum.SubmitFounderEnglishBatchAsync(
+                RichResponsePlanFamily(family, "neutral", "acknowledgement"));
+            Assert.True(neutral.Succeeded, neutral.Message);
+
+            var formal = await fixture.Curriculum.SubmitFounderEnglishBatchAsync(
+                RichResponsePlanFamily(family + 3, "formal", "formal_acknowledgement"));
+            Assert.True(formal.Succeeded, formal.Message);
+        }
+
+        var planned = await fixture.Operations.TryPlanConversationAsync(
+            "Hi there.",
+            new LegendConnectDiscourseStateSnapshot([]));
+
+        Assert.False(planned.Supported);
+        Assert.Equal("ambiguous_semantic_transition_projection", planned.ReasonCode);
+        Assert.Null(planned.Plan);
+    }
+
+    [Fact]
     public async Task ResponseMeaningPlan_IsTextFreeAndUsesTheExistingGovernedTransitionAuthority()
     {
         await using var db = ControllerTestHelpers.BuildDb();
@@ -909,6 +964,54 @@ public sealed class LegendConnectSemanticSpanGroundingTests
                     ["conversation_function"] = "acknowledgement"
                 }))],
             family == 1
+                ? [new LegendConnectSemanticSpanGroundingSubmission(
+                    "conversation_function", "greeting_surface")]
+                : []);
+
+    private static LegendConnectCurriculumBatchSubmission RichResponsePlanFamily(
+        int family,
+        string register,
+        string resultFunction) =>
+        new(
+            $"response.plan.rich.{register}.{family}",
+            "Founder-controlled rich response frame evidence",
+            [
+                new LegendConnectCurriculumExampleSubmission(
+                    $"Founder rich greeting evidence {family}: Hi there.",
+                    new Dictionary<string, string>
+                    {
+                        ["greeting_surface"] = "Hi there.",
+                        ["conversation_function"] = "greeting",
+                        ["discourse_role"] = "opening",
+                        ["register"] = register
+                    },
+                    new LegendConnectMeaningGraphSubmission(
+                    [
+                        new LegendConnectMeaningNodeSubmission(
+                            "function", "conversation_function", "greeting", "Hi there"),
+                        new LegendConnectMeaningNodeSubmission(
+                            "role", "discourse_role", "opening", "Hi there")
+                    ],
+                    [new LegendConnectMeaningRelationSubmission("function", "realized-as", "role")])),
+                new LegendConnectCurriculumExampleSubmission(
+                    $"Founder rich response evidence {family}.",
+                    new Dictionary<string, string>
+                    {
+                        ["conversation_function"] = resultFunction
+                    })
+            ],
+            [new LegendConnectSemanticTransitionSubmission(
+                new LegendConnectSemanticFrameSubmission(new Dictionary<string, string>
+                {
+                    ["conversation_function"] = "greeting",
+                    ["discourse_role"] = "opening",
+                    ["register"] = register
+                }),
+                new LegendConnectSemanticFrameSubmission(new Dictionary<string, string>
+                {
+                    ["conversation_function"] = resultFunction
+                }))],
+            family == 1 || family == 4
                 ? [new LegendConnectSemanticSpanGroundingSubmission(
                     "conversation_function", "greeting_surface")]
                 : []);

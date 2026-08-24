@@ -22,10 +22,10 @@ namespace AgentPortal.Tests;
 public sealed class LegendConnectHistoricalReevaluationVersioningTests
 {
     [Fact]
-    public void CurrentEvaluatorVersion_IsTwentyForFounderGovernedContentBindingReplay()
+    public void CurrentEvaluatorVersion_IsTwentyOneForGovernedExecutableProjectionReplay()
     {
         Assert.Equal(
-            20,
+            21,
             LegendConnectLanguageIntelligenceEvaluatorVersion.Current);
     }
 

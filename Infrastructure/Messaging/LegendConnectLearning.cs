@@ -1690,7 +1690,12 @@ internal static class LegendConnectLanguageIntelligenceEvaluatorVersion
     // eligible for the single governed Stage-6 content-binding authority.
     // Its contract is runtime-only: converged v19 canonical evidence is
     // reused through the dependency-driven lifecycle rather than broad replay.
-    internal const int Current = 20;
+    // v21 recompiles active Founder source families under the governed
+    // executable-projection contract. Rich authored frames remain intact;
+    // production may omit only non-conflicting static dimensions that the
+    // present meaning graph does not expose, while ambiguity still fails
+    // closed across the complete mature transition set.
+    internal const int Current = 21;
 }
 
 internal sealed class LegendConnectLearningHostedService : BackgroundService
