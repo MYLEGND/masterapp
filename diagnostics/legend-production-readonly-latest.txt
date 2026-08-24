@@ -1,0 +1,49 @@
+LEGEND PRODUCTION READ-ONLY DIAGNOSTIC
+Commit: 78c3ea286e0c49c93654b22b3f76915c39bf7120
+RestoreOutcome: success
+BuildOutcome: failure
+DiagnosticOutcome: skipped
+ComposedNativeExit: 
+ShadowExit: 
+
+=== RESTORE ===
+  Determining projects to restore...
+  Restored D:\a\masterapp\masterapp\SHARED\Shared.csproj (in 169 ms).
+  Restored D:\a\masterapp\masterapp\Domain\Domain.csproj (in 185 ms).
+  Restored D:\a\masterapp\masterapp\Protect-Website\ProtectWebsite.csproj (in 42.33 sec).
+  Restored D:\a\masterapp\masterapp\AgentPortal.Tests\AgentPortal.Tests.csproj (in 52.86 sec).
+  Restored D:\a\masterapp\masterapp\ParfaitApp\ParfaitApp.csproj (in 11.64 sec).
+  Restored D:\a\masterapp\masterapp\Infrastructure\Infrastructure.csproj (in 649 ms).
+  Restored D:\a\masterapp\masterapp\AgentPortal\AgentPortal.csproj (in 53.53 sec).
+  Restored D:\a\masterapp\masterapp\ClientApp\ClientApp.csproj (in 53.98 sec).
+
+=== BUILD ===
+  Shared -> D:\tmp\masterapp\bin\Shared\Release\net10.0\Shared.dll
+  Domain -> D:\tmp\masterapp\bin\Domain\Release\net10.0\Domain.dll
+  Infrastructure -> D:\tmp\masterapp\bin\Infrastructure\Release\net10.0\Infrastructure.dll
+  ProtectWebsite -> D:\tmp\masterapp\bin\ProtectWebsite\Release\net10.0\ProtectWebsite.dll
+  ParfaitApp -> D:\tmp\masterapp\bin\ParfaitApp\Release\net10.0\ParfaitApp.dll
+  ClientApp -> D:\tmp\masterapp\bin\ClientApp\Release\net10.0\ClientApp.dll
+  ClientApp -> D:\tmp\masterapp\bin\ClientApp\Release\net10.0\ClientApp.Views.dll
+  AgentPortal -> D:\tmp\masterapp\bin\AgentPortal\Release\AgentPortal.dll
+  AgentPortal -> D:\tmp\masterapp\bin\AgentPortal\Release\AgentPortal.Views.dll
+  AgentPortal.Tests -> D:\tmp\masterapp\bin\AgentPortal.Tests\Release\net10.0\AgentPortal.Tests.dll
+D:\a\masterapp\masterapp\AgentPortal.Tests\AgentPortal.Tests.csproj(52,5): error MSB3030: Could not copy the file "/.nuget/packages/xunit.runner.visualstudio/2.8.0/build/net6.0/xunit.runner.utility.netcoreapp10.dll" because it was not found.
+D:\a\masterapp\masterapp\AgentPortal.Tests\AgentPortal.Tests.csproj(52,5): error MSB3030: Could not copy the file "/.nuget/packages/xunit.runner.visualstudio/2.8.0/build/net6.0/xunit.runner.reporters.netcoreapp10.dll" because it was not found.
+D:\a\masterapp\masterapp\AgentPortal.Tests\AgentPortal.Tests.csproj(52,5): error MSB3030: Could not copy the file "/.nuget/packages/xunit.runner.visualstudio/2.8.0/build/net6.0/xunit.runner.visualstudio.testadapter.dll" because it was not found.
+D:\a\masterapp\masterapp\AgentPortal.Tests\AgentPortal.Tests.csproj(52,5): error MSB3030: Could not copy the file "/.nuget/packages/xunit.runner.visualstudio/2.8.0/build/net6.0/xunit.abstractions.dll" because it was not found.
+
+Build FAILED.
+
+D:\a\masterapp\masterapp\AgentPortal.Tests\AgentPortal.Tests.csproj(52,5): error MSB3030: Could not copy the file "/.nuget/packages/xunit.runner.visualstudio/2.8.0/build/net6.0/xunit.runner.utility.netcoreapp10.dll" because it was not found.
+D:\a\masterapp\masterapp\AgentPortal.Tests\AgentPortal.Tests.csproj(52,5): error MSB3030: Could not copy the file "/.nuget/packages/xunit.runner.visualstudio/2.8.0/build/net6.0/xunit.runner.reporters.netcoreapp10.dll" because it was not found.
+D:\a\masterapp\masterapp\AgentPortal.Tests\AgentPortal.Tests.csproj(52,5): error MSB3030: Could not copy the file "/.nuget/packages/xunit.runner.visualstudio/2.8.0/build/net6.0/xunit.runner.visualstudio.testadapter.dll" because it was not found.
+D:\a\masterapp\masterapp\AgentPortal.Tests\AgentPortal.Tests.csproj(52,5): error MSB3030: Could not copy the file "/.nuget/packages/xunit.runner.visualstudio/2.8.0/build/net6.0/xunit.abstractions.dll" because it was not found.
+    0 Warning(s)
+    4 Error(s)
+
+Time Elapsed 00:02:10.62
+
+=== EXACT COMPOSED-NATIVE LIVE DATABASE DIAGNOSTIC ===
+
+=== V21 LIVE-EVIDENCE SHADOW REBUILD ===
