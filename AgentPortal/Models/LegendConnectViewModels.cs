@@ -15,6 +15,121 @@ public sealed class FounderLegendConnectPageVm
 
     public LegendConnectRuntimePolicySnapshot RuntimePolicy { get; init; } = new(
         false, 0, 0, 0, false, true, "Shadow", 0.98m, null, null, DateTime.MinValue);
+
+    public FounderSoftwareRemediationStatusSnapshot SoftwareRemediation { get; init; } =
+        FounderSoftwareRemediationStatusSnapshot.Unconfigured();
+
+    public LegendIntelligenceEvaluationDashboardSnapshot IntelligenceEvaluation { get; init; } =
+        LegendIntelligenceEvaluationDashboardSnapshot.NotEvaluated();
+}
+
+/// <summary>
+/// Sanitized Founder display projection for the one software-remediation
+/// authority. It deliberately contains no secret value, secret URI, token,
+/// GitHub App key, or Azure credential.
+/// </summary>
+public sealed record FounderSoftwareRemediationStatusSnapshot(
+    bool Configured,
+    bool Revoked,
+    string Repository,
+    string Authentication,
+    string CredentialStorage,
+    string AzureIdentity,
+    bool ProductionDirectWriteEnabled,
+    bool ProtectedProductionBranchVerified,
+    bool SecurityCiVerified,
+    bool RepairPreparationReady,
+    bool ReleaseRequiresFounderApproval,
+    string State,
+    string Detail,
+    DateTime? LastVerifiedUtc,
+    IReadOnlyList<string> RequiredChecks)
+{
+    public static FounderSoftwareRemediationStatusSnapshot Unconfigured(string? detail = null) => new(
+        false,
+        false,
+        "Not configured",
+        "GitHub App only",
+        "Azure Key Vault",
+        "App Service Managed Identity",
+        false,
+        false,
+        false,
+        false,
+        true,
+        "NOT CONFIGURED",
+        detail ?? "A GitHub App installation, Key Vault reference, and managed-identity access must be configured before repair preparation is available.",
+        null,
+        Array.Empty<string>());
+}
+
+public sealed record LegendIntelligenceEvaluationDashboardSnapshot(
+    string ContractName,
+    string ContractVersion,
+    string State,
+    decimal? DemonstratedIntelligence,
+    decimal? LegendSelfAssessment,
+    decimal? OpenAiIndependentAssessment,
+    decimal? CalibrationGap,
+    decimal? KnowledgeGrowthThirtyDays,
+    DateTime? EvaluatedUtc,
+    IReadOnlyList<LegendIntelligenceEvaluationDomainDisplaySnapshot> Domains,
+    string Detail)
+{
+    public static LegendIntelligenceEvaluationDashboardSnapshot NotEvaluated() => new(
+        "LEGEND Intelligence Evaluation Contract V1",
+        "V1",
+        "NOT EVALUATED",
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        LegendIntelligenceEvaluationDomainCatalog.All
+            .Select(domain => new LegendIntelligenceEvaluationDomainDisplaySnapshot(
+                domain.Key, domain.Name, null, null, null, null, 0, 0, null, null, null, null,
+                Array.Empty<string>(), Array.Empty<string>(), "No governed evaluation evidence has been recorded for this domain."))
+            .ToArray(),
+        "This contract does not infer intelligence from curriculum row counts. Scores appear only after the canonical evaluators emit cited coverage, quality, diversity, validation, held-out, transfer, native-execution, and calibration evidence.");
+}
+
+public sealed record LegendIntelligenceEvaluationDomainDisplaySnapshot(
+    string Key,
+    string Name,
+    decimal? EvidenceScore,
+    decimal? LegendSelfAssessment,
+    decimal? OpenAiExternalAssessment,
+    decimal? PreviousEvidenceScore,
+    long EvidenceVolume,
+    long ProductionEligibleEvidenceCount,
+    decimal? NativeSuccessRate,
+    decimal? HeldOutResult,
+    decimal? TransferResult,
+    decimal? ContradictionRate,
+    IReadOnlyList<string> KnownWeaknesses,
+    IReadOnlyList<string> OpenKnowledgeGaps,
+    string Detail);
+
+public sealed record LegendIntelligenceEvaluationDomainDefinition(string Key, string Name);
+
+public static class LegendIntelligenceEvaluationDomainCatalog
+{
+    public static readonly IReadOnlyList<LegendIntelligenceEvaluationDomainDefinition> All =
+    [
+        new("language_linguistic", "Language & Linguistic Intelligence"),
+        new("logical_causal", "Logical & Causal Reasoning"),
+        new("quantitative_mathematical", "Quantitative & Mathematical Intelligence"),
+        new("software_systems", "Software & Systems Engineering Intelligence"),
+        new("knowledge_synthesis", "Knowledge Synthesis & Research Intelligence"),
+        new("written_communication", "Written Communication & Rhetorical Intelligence"),
+        new("visual_multimodal", "Visual & Multimodal Intelligence"),
+        new("planning_operational", "Planning & Operational Intelligence"),
+        new("learning_transfer", "Learning & Transfer Intelligence"),
+        new("self_diagnosis", "Self-Diagnosis & Metacognitive Intelligence"),
+        new("tool_environment", "Tool & Environment Intelligence"),
+        new("safety_governance", "Safety, Governance & Authority Awareness")
+    ];
 }
 
 public sealed class FounderLegendConnectDashboardVm

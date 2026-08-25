@@ -5,6 +5,8 @@
     var shell = Model.Shell;
     var selected = shell.SelectedLanguage;
     var compositionMode = Model.RuntimePolicy.ContextualCompositionMode;
+    var remediation = Model.SoftwareRemediation;
+    var evaluation = Model.IntelligenceEvaluation;
 }
 
 @section Styles {
@@ -98,6 +100,131 @@
             @error
         </section>
     }
+
+    <section class="lc-panel lc-remediation-authority" aria-labelledby="remediation-authority-title">
+        <header class="lc-panel-header">
+            <div>
+                <span class="lc-kicker">FOUNDER-GOVERNED ENGINEERING</span>
+                <h2 id="remediation-authority-title">GitHub Remediation Authority</h2>
+                <p>
+                    One bounded authority for repair preparation and Founder-approved release.
+                    It never accepts a personal access token, exposes a private key, or grants a raw production console.
+                </p>
+            </div>
+            <span class="lc-status @(remediation.RepairPreparationReady ? "lc-status-gold" : "lc-status-amber")">
+                @remediation.State
+            </span>
+        </header>
+
+        <dl class="lc-authority-status-grid">
+            <div><dt>Repository</dt><dd>@remediation.Repository</dd></div>
+            <div><dt>Authentication</dt><dd>@remediation.Authentication</dd></div>
+            <div><dt>Credential storage</dt><dd>@remediation.CredentialStorage</dd></div>
+            <div><dt>Azure identity</dt><dd>@remediation.AzureIdentity</dd></div>
+            <div><dt>Production direct-write</dt><dd>DISABLED</dd></div>
+            <div><dt>Protected production branch</dt><dd>@(remediation.ProtectedProductionBranchVerified ? "VERIFIED" : "NOT VERIFIED")</dd></div>
+            <div><dt>Security CI</dt><dd>@(remediation.SecurityCiVerified ? "VERIFIED" : "NOT VERIFIED")</dd></div>
+            <div><dt>Repair preparation</dt><dd>@(remediation.RepairPreparationReady ? "READY" : "FAIL-CLOSED")</dd></div>
+            <div><dt>Production release</dt><dd>FOUNDER APPROVAL REQUIRED</dd></div>
+        </dl>
+
+        <p class="dashboard-section-copy lc-authority-detail">@remediation.Detail</p>
+        @if (remediation.LastVerifiedUtc is not null)
+        {
+            <p class="dashboard-section-copy">Last authority verification: @remediation.LastVerifiedUtc.Value.ToString("u")</p>
+        }
+
+        <div class="search-actions lc-authority-actions">
+            <form method="post" asp-action="ConnectSoftwareRemediation">
+                @Html.AntiForgeryToken()
+                <button type="submit" class="dashboard-command-action btn-carrier-settings">Configure / Connect GitHub App</button>
+            </form>
+            <form method="post" asp-action="VerifySoftwareRemediation">
+                @Html.AntiForgeryToken()
+                <button type="submit" class="dashboard-command-action btn-carrier-settings">Verify authority</button>
+            </form>
+            <form method="post" asp-action="TestSoftwareRemediation">
+                @Html.AntiForgeryToken()
+                <button type="submit" class="dashboard-command-action btn-carrier-settings">Test repair preparation</button>
+            </form>
+            <form method="post" asp-action="RevokeSoftwareRemediation" onsubmit="return confirm('Revoke only the Founder software-remediation authority? Other LEGEND capabilities will remain unchanged.');">
+                @Html.AntiForgeryToken()
+                <input type="hidden" name="confirmRevocation" value="true" />
+                <button type="submit" class="dashboard-command-action lc-danger-action">Revoke authority</button>
+            </form>
+        </div>
+    </section>
+
+    <section class="lc-panel lc-intelligence-evaluation" aria-labelledby="intelligence-evaluation-title">
+        <header class="lc-panel-header">
+            <div>
+                <span class="lc-kicker">VERSIONED EVALUATION</span>
+                <h2 id="intelligence-evaluation-title">LEGEND® Intelligence Evaluation</h2>
+                <p>Three separate lenses are retained and compared; they are never hidden inside one blended score.</p>
+            </div>
+            <button type="button" class="dashboard-command-action btn-carrier-settings" data-bs-toggle="modal" data-bs-target="#legendIntelligenceEvaluationModal">
+                Open evaluation
+            </button>
+        </header>
+        <div class="lc-intelligence-summary-grid">
+            <article><span>Demonstrated intelligence</span><strong>@(evaluation.DemonstratedIntelligence is null ? "Not evaluated" : $"{evaluation.DemonstratedIntelligence.Value:0.0}%")</strong></article>
+            <article><span>LEGEND self-assessment</span><strong>@(evaluation.LegendSelfAssessment is null ? "Not assessed" : $"{evaluation.LegendSelfAssessment.Value:0.0}%")</strong></article>
+            <article><span>OpenAI independent assessment</span><strong>@(evaluation.OpenAiIndependentAssessment is null ? "Not assessed" : $"{evaluation.OpenAiIndependentAssessment.Value:0.0}%")</strong></article>
+            <article><span>Calibration gap</span><strong>@(evaluation.CalibrationGap is null ? "Not available" : $"{evaluation.CalibrationGap.Value:+0.0;-0.0;0.0} pts")</strong></article>
+        </div>
+        <p class="dashboard-section-copy">@evaluation.Detail</p>
+        <form method="post" asp-action="CreateIntelligenceEvaluationSnapshot" class="search-actions">
+            @Html.AntiForgeryToken()
+            <button type="submit" class="dashboard-command-action btn-carrier-settings">Record evidence evaluation snapshot</button>
+        </form>
+    </section>
+
+    <div class="modal fade" id="legendIntelligenceEvaluationModal" tabindex="-1" aria-labelledby="legendIntelligenceEvaluationModalTitle" aria-hidden="true">
+        <div class="modal-dialog modal-xl modal-dialog-scrollable">
+            <div class="modal-content lc-evaluation-modal">
+                <div class="modal-header">
+                    <div>
+                        <span class="lc-kicker">@evaluation.ContractName</span>
+                        <h2 class="modal-title" id="legendIntelligenceEvaluationModalTitle">LEGEND® Intelligence Evaluation</h2>
+                    </div>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="dashboard-section-copy">@evaluation.Detail</p>
+                    <div class="lc-intelligence-summary-grid">
+                        <article><span>Evidence-based knowledge</span><strong>@(evaluation.DemonstratedIntelligence is null ? "Not evaluated" : $"{evaluation.DemonstratedIntelligence.Value:0.0}%")</strong></article>
+                        <article><span>LEGEND self-assessment</span><strong>@(evaluation.LegendSelfAssessment is null ? "Not assessed" : $"{evaluation.LegendSelfAssessment.Value:0.0}%")</strong></article>
+                        <article><span>OpenAI external assessment</span><strong>@(evaluation.OpenAiIndependentAssessment is null ? "Not assessed" : $"{evaluation.OpenAiIndependentAssessment.Value:0.0}%")</strong></article>
+                        <article><span>Knowledge growth, 30 days</span><strong>@(evaluation.KnowledgeGrowthThirtyDays is null ? "Not available" : $"{evaluation.KnowledgeGrowthThirtyDays.Value:+0.0;-0.0;0.0} pts")</strong></article>
+                    </div>
+                    <div class="lc-domain-evaluation-list">
+                        @foreach (var domain in evaluation.Domains)
+                        {
+                            <article class="lc-domain-evaluation-item">
+                                <header><h3>@domain.Name</h3><strong>@(domain.EvidenceScore is null ? "Not evaluated" : $"{domain.EvidenceScore.Value:0.0}%")</strong></header>
+                                <div class="progress" role="progressbar" aria-label="@domain.Name evidence score" aria-valuemin="0" aria-valuemax="100" aria-valuenow="@(domain.EvidenceScore ?? 0)">
+                                    <div class="progress-bar" style="width: @(domain.EvidenceScore ?? 0)%"></div>
+                                </div>
+                                <dl>
+                                    <div><dt>Evidence volume</dt><dd>@domain.EvidenceVolume.ToString("N0")</dd></div>
+                                    <div><dt>Production eligible</dt><dd>@domain.ProductionEligibleEvidenceCount.ToString("N0")</dd></div>
+                                    <div><dt>Native success</dt><dd>@(domain.NativeSuccessRate is null ? "Not measured" : $"{domain.NativeSuccessRate.Value:0.0}%")</dd></div>
+                                    <div><dt>Held-out result</dt><dd>@(domain.HeldOutResult is null ? "Not measured" : $"{domain.HeldOutResult.Value:0.0}%")</dd></div>
+                                    <div><dt>Transfer result</dt><dd>@(domain.TransferResult is null ? "Not measured" : $"{domain.TransferResult.Value:0.0}%")</dd></div>
+                                    <div><dt>Contradiction rate</dt><dd>@(domain.ContradictionRate is null ? "Not measured" : $"{domain.ContradictionRate.Value:0.0}%")</dd></div>
+                                </dl>
+                                <p>@domain.Detail</p>
+                                @if (domain.OpenKnowledgeGaps.Count > 0)
+                                {
+                                    <p><strong>Open evidence gaps:</strong> @string.Join(", ", domain.OpenKnowledgeGaps)</p>
+                                }
+                            </article>
+                        }
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
 
     <section class="lc-panel lc-panel-legend">
         <header class="lc-panel-header">

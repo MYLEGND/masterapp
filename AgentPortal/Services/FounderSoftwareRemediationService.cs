@@ -5,6 +5,10 @@ using System.Text;
 using System.Text.Json;
 using Azure.Core;
 using Azure.Identity;
+using AgentPortal.Models;
+using Domain.Entities;
+using Infrastructure.Data;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 
@@ -22,6 +26,10 @@ namespace AgentPortal.Services;
 public interface IFounderSoftwareRemediationService
 {
     Task<object> GetStatusAsync(CancellationToken cancellationToken);
+    Task<object> ConnectAsync(string founderUserId, CancellationToken cancellationToken);
+    Task<object> VerifyAuthorityAsync(CancellationToken cancellationToken);
+    Task<object> TestRepairPreparationAsync(CancellationToken cancellationToken);
+    Task<object> RevokeAsync(string founderUserId, CancellationToken cancellationToken);
     Task<object> InspectRepositoryAsync(string? path, string? gitReference, CancellationToken cancellationToken);
     Task<object> PrepareAsync(string actorMode, FounderSoftwareRepairProposal proposal, CancellationToken cancellationToken);
     Task<object> InspectValidationAsync(int pullRequestNumber, string headSha, CancellationToken cancellationToken);
@@ -58,38 +66,141 @@ public sealed class FounderSoftwareRemediationService : IFounderSoftwareRemediat
     private readonly IConfiguration _configuration;
     private readonly ILogger<FounderSoftwareRemediationService> _logger;
     private readonly TokenCredential _credential;
+    private readonly MasterAppDbContext? _db;
+
+    public FounderSoftwareRemediationService(
+        IHttpClientFactory httpClientFactory,
+        IConfiguration configuration,
+        ILogger<FounderSoftwareRemediationService> logger)
+        : this(httpClientFactory, configuration, logger, credential: null, db: null)
+    {
+    }
 
     public FounderSoftwareRemediationService(
         IHttpClientFactory httpClientFactory,
         IConfiguration configuration,
         ILogger<FounderSoftwareRemediationService> logger,
-        TokenCredential? credential = null)
+        TokenCredential credential)
+        : this(httpClientFactory, configuration, logger, credential, db: null)
+    {
+    }
+
+    public FounderSoftwareRemediationService(
+        IHttpClientFactory httpClientFactory,
+        IConfiguration configuration,
+        ILogger<FounderSoftwareRemediationService> logger,
+        MasterAppDbContext db)
+        : this(httpClientFactory, configuration, logger, credential: null, db: db)
+    {
+    }
+
+    private FounderSoftwareRemediationService(
+        IHttpClientFactory httpClientFactory,
+        IConfiguration configuration,
+        ILogger<FounderSoftwareRemediationService> logger,
+        TokenCredential? credential,
+        MasterAppDbContext? db)
     {
         _httpClientFactory = httpClientFactory;
         _configuration = configuration;
         _logger = logger;
         _credential = credential ?? new DefaultAzureCredential();
+        _db = db;
     }
 
-    public Task<object> GetStatusAsync(CancellationToken cancellationToken)
+    public async Task<object> GetStatusAsync(CancellationToken cancellationToken)
     {
         var options = ReadOptions();
-        return Task.FromResult<object>(options.ValidationError is null
-            ? new
-            {
-                capability = "founder_governed_software_remediation",
-                configured = true,
-                repository = options.RepositoryIdentity,
-                baseBranch = options.BaseBranch,
-                authentication = "GitHub App installation token via managed identity and Key Vault",
-                prepareAuthority = "bounded repair branch, commit, pull request, and existing pull-request CI only",
-                releaseAuthority = "explicit Founder confirmation plus exact SHA, CI, and protected-branch verification",
-                directProductionAccess = false,
-                arbitraryShell = false,
-                arbitrarySql = false,
-                rawTokenInput = false
-            }
-            : Unavailable(options.ValidationError));
+        if (options.ValidationError is not null)
+            return Unavailable(options.ValidationError);
+        var state = await ReadStateAsync(cancellationToken);
+        return ToStatus(options, state);
+    }
+
+    /// <summary>
+    /// Connect never accepts a PAT, App private key, or secret URI from the
+    /// browser. Infrastructure establishes the GitHub-App/Key-Vault binding;
+    /// this action verifies that binding and only then clears a prior durable
+    /// revocation.
+    /// </summary>
+    public async Task<object> ConnectAsync(string founderUserId, CancellationToken cancellationToken)
+    {
+        var options = ReadOptions();
+        if (options.ValidationError is not null)
+            return Unavailable(options.ValidationError);
+
+        var verification = await VerifyAsync(options, cancellationToken);
+        var state = await ReadStateAsync(cancellationToken) ?? new FounderSoftwareRemediationAuthorityState();
+        if (verification.Ready)
+        {
+            state.IsRevoked = false;
+            state.RevokedUtc = null;
+            state.RevokedByUserId = null;
+        }
+        state.LastVerifiedUtc = DateTime.UtcNow;
+        state.ProtectedProductionBranchVerified = verification.ProtectedBranchVerified;
+        state.SecurityCiVerified = verification.SecurityCiVerified;
+        state.RepairPreparationVerified = verification.RepairPreparationReady;
+        state.LastVerificationCode = verification.Code;
+        state.LastVerificationDetail = TrimForStorage(verification.Detail, 500);
+        state.UpdatedUtc = DateTime.UtcNow;
+        await SaveStateAsync(state, cancellationToken);
+
+        return await GetStatusAsync(cancellationToken);
+    }
+
+    public async Task<object> VerifyAuthorityAsync(CancellationToken cancellationToken)
+    {
+        var options = ReadOptions();
+        if (options.ValidationError is not null)
+            return Unavailable(options.ValidationError);
+
+        var verification = await VerifyAsync(options, cancellationToken);
+        var state = await ReadStateAsync(cancellationToken) ?? new FounderSoftwareRemediationAuthorityState();
+        state.LastVerifiedUtc = DateTime.UtcNow;
+        state.ProtectedProductionBranchVerified = verification.ProtectedBranchVerified;
+        state.SecurityCiVerified = verification.SecurityCiVerified;
+        state.RepairPreparationVerified = verification.RepairPreparationReady;
+        state.LastVerificationCode = verification.Code;
+        state.LastVerificationDetail = TrimForStorage(verification.Detail, 500);
+        state.UpdatedUtc = DateTime.UtcNow;
+        await SaveStateAsync(state, cancellationToken);
+        return await GetStatusAsync(cancellationToken);
+    }
+
+    public async Task<object> TestRepairPreparationAsync(CancellationToken cancellationToken)
+    {
+        var options = ReadOptions();
+        if (options.ValidationError is not null)
+            return Unavailable(options.ValidationError);
+
+        var verification = await VerifyAsync(options, cancellationToken);
+        return new
+        {
+            capability = "test_repair_preparation",
+            dryRun = true,
+            repository = options.RepositoryIdentity,
+            wouldCreateIsolatedRepairBranch = verification.RepairPreparationReady,
+            wouldOpenPullRequest = verification.RepairPreparationReady,
+            productionChanged = false,
+            repositoryChanged = false,
+            detail = verification.Detail,
+            error = verification.Ready ? null : verification.Code
+        };
+    }
+
+    public async Task<object> RevokeAsync(string founderUserId, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(founderUserId))
+            return Failure("founder_identity_required", "A Founder identity is required to revoke software remediation.");
+
+        var state = await ReadStateAsync(cancellationToken) ?? new FounderSoftwareRemediationAuthorityState();
+        state.IsRevoked = true;
+        state.RevokedUtc = DateTime.UtcNow;
+        state.RevokedByUserId = founderUserId;
+        state.UpdatedUtc = DateTime.UtcNow;
+        await SaveStateAsync(state, cancellationToken);
+        return await GetStatusAsync(cancellationToken);
     }
 
     public async Task<object> InspectRepositoryAsync(
@@ -98,8 +209,9 @@ public sealed class FounderSoftwareRemediationService : IFounderSoftwareRemediat
         CancellationToken cancellationToken)
     {
         var options = ReadOptions();
-        if (options.ValidationError is not null)
-            return Unavailable(options.ValidationError);
+        var unavailable = await RequireActiveAuthorityAsync(options, cancellationToken);
+        if (unavailable is not null)
+            return unavailable;
 
         if (!string.IsNullOrWhiteSpace(path) && !IsAllowedPath(path))
             return Failure("repository_path_not_allowed", "The requested path is outside the bounded source and test allow-list.");
@@ -195,8 +307,9 @@ public sealed class FounderSoftwareRemediationService : IFounderSoftwareRemediat
         }
 
         var options = ReadOptions();
-        if (options.ValidationError is not null)
-            return Unavailable(options.ValidationError);
+        var unavailable = await RequireActiveAuthorityAsync(options, cancellationToken);
+        if (unavailable is not null)
+            return unavailable;
 
         var proposalError = ValidateProposal(proposal);
         if (proposalError is not null)
@@ -323,8 +436,9 @@ public sealed class FounderSoftwareRemediationService : IFounderSoftwareRemediat
     public async Task<object> InspectValidationAsync(int pullRequestNumber, string headSha, CancellationToken cancellationToken)
     {
         var options = ReadOptions();
-        if (options.ValidationError is not null)
-            return Unavailable(options.ValidationError);
+        var unavailable = await RequireActiveAuthorityAsync(options, cancellationToken);
+        if (unavailable is not null)
+            return unavailable;
         if (pullRequestNumber <= 0 || !IsCommitSha(headSha))
             return Failure("invalid_release_identity", "A positive pull-request number and exact immutable 40-character commit SHA are required.");
 
@@ -369,8 +483,9 @@ public sealed class FounderSoftwareRemediationService : IFounderSoftwareRemediat
     public async Task<object> ReleaseApprovedAsync(int pullRequestNumber, string headSha, CancellationToken cancellationToken)
     {
         var options = ReadOptions();
-        if (options.ValidationError is not null)
-            return Unavailable(options.ValidationError);
+        var unavailable = await RequireActiveAuthorityAsync(options, cancellationToken);
+        if (unavailable is not null)
+            return unavailable;
         if (pullRequestNumber <= 0 || !IsCommitSha(headSha))
             return Failure("invalid_release_identity", "A positive pull-request number and exact immutable 40-character commit SHA are required.");
 
@@ -442,8 +557,9 @@ public sealed class FounderSoftwareRemediationService : IFounderSoftwareRemediat
     public async Task<object> VerifyDeploymentAsync(string commitSha, CancellationToken cancellationToken)
     {
         var options = ReadOptions();
-        if (options.ValidationError is not null)
-            return Unavailable(options.ValidationError);
+        var unavailable = await RequireActiveAuthorityAsync(options, cancellationToken);
+        if (unavailable is not null)
+            return unavailable;
         if (!IsCommitSha(commitSha))
             return Failure("invalid_deployment_identity", "An exact immutable 40-character merge commit SHA is required.");
 
@@ -588,7 +704,12 @@ public sealed class FounderSoftwareRemediationService : IFounderSoftwareRemediat
 
     private async Task<HttpClient> CreateGitHubClientAsync(Options options, CancellationToken cancellationToken)
     {
-        var installationToken = await CreateInstallationTokenAsync(options, cancellationToken);
+        var session = await CreateInstallationSessionAsync(options, cancellationToken);
+        return CreateGitHubClient(options, session.Token);
+    }
+
+    private HttpClient CreateGitHubClient(Options options, string installationToken)
+    {
         var client = _httpClientFactory.CreateClient("FounderGitHubRemediation");
         client.BaseAddress = options.GitHubApiBaseUri;
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", installationToken);
@@ -600,7 +721,7 @@ public sealed class FounderSoftwareRemediationService : IFounderSoftwareRemediat
         return client;
     }
 
-    private async Task<string> CreateInstallationTokenAsync(Options options, CancellationToken cancellationToken)
+    private async Task<GitHubInstallationSession> CreateInstallationSessionAsync(Options options, CancellationToken cancellationToken)
     {
         var vaultToken = await _credential.GetTokenAsync(
             new TokenRequestContext(["https://vault.azure.net/.default"]),
@@ -633,7 +754,16 @@ public sealed class FounderSoftwareRemediationService : IFounderSoftwareRemediat
         var installationToken = ReadString(tokenJson.RootElement, "token");
         if (string.IsNullOrWhiteSpace(installationToken))
             throw new FounderSoftwareRemediationException("github_app_authentication_failed", "GitHub did not return an installation token.");
-        return installationToken;
+        var permissions = new Dictionary<string, string>(StringComparer.Ordinal);
+        if (tokenJson.RootElement.TryGetProperty("permissions", out var permissionsElement) && permissionsElement.ValueKind == JsonValueKind.Object)
+        {
+            foreach (var property in permissionsElement.EnumerateObject())
+            {
+                if (property.Value.ValueKind == JsonValueKind.String && !string.IsNullOrWhiteSpace(property.Value.GetString()))
+                    permissions[property.Name] = property.Value.GetString()!;
+            }
+        }
+        return new GitHubInstallationSession(installationToken, permissions);
     }
 
     private static string BuildGitHubAppJwt(long appId, string privateKey)
@@ -713,6 +843,166 @@ public sealed class FounderSoftwareRemediationService : IFounderSoftwareRemediat
             apiBase = new Uri(apiBase.AbsoluteUri + "/", UriKind.Absolute);
 
         return new Options(owner!, repository!, baseBranch!, appId.Value, installationId.Value, secretUri, apiBase, requiredChecks, null, null);
+    }
+
+    private async Task<object?> RequireActiveAuthorityAsync(Options options, CancellationToken cancellationToken)
+    {
+        if (options.ValidationError is not null)
+            return Unavailable(options.ValidationError);
+        var state = await ReadStateAsync(cancellationToken);
+        return state?.IsRevoked == true
+            ? Unavailable("Founder software remediation has been revoked. Connect and verify the configured GitHub App authority before a bounded repair can be prepared or released.")
+            : null;
+    }
+
+    private async Task<FounderSoftwareRemediationAuthorityState?> ReadStateAsync(CancellationToken cancellationToken)
+    {
+        if (_db is null)
+            return null;
+        return await _db.FounderSoftwareRemediationAuthorityStates
+            .SingleOrDefaultAsync(item => item.ScopeKey == "Global", cancellationToken);
+    }
+
+    private async Task SaveStateAsync(FounderSoftwareRemediationAuthorityState state, CancellationToken cancellationToken)
+    {
+        if (_db is null)
+            return;
+        if (state.Id == Guid.Empty)
+            state.Id = Guid.NewGuid();
+        if (_db.Entry(state).State == EntityState.Detached)
+            _db.FounderSoftwareRemediationAuthorityStates.Add(state);
+        await _db.SaveChangesAsync(cancellationToken);
+    }
+
+    private FounderSoftwareRemediationStatusSnapshot ToStatus(
+        Options options,
+        FounderSoftwareRemediationAuthorityState? state)
+    {
+        var revoked = state?.IsRevoked == true;
+        var ready = !revoked && state?.RepairPreparationVerified == true;
+        var status = revoked ? "REVOKED" : ready ? "READY" : "AWAITING VERIFICATION";
+        var detail = revoked
+            ? "Founder software remediation is disabled. It cannot prepare, merge, or release a repair until the configured GitHub App binding is reconnected and verified."
+            : ready
+                ? state?.LastVerificationDetail ?? "The configured authority was verified without exposing a credential. Repair preparation remains bounded to an isolated branch and pull request; release always requires a separate explicit Founder approval of the exact SHA."
+                : state?.LastVerificationDetail ?? "The GitHub App binding is configured but has not yet passed the read-only Key Vault, repository-permission, protected-branch, and security-CI verification.";
+        return new FounderSoftwareRemediationStatusSnapshot(
+            true,
+            revoked,
+            options.RepositoryIdentity,
+            "GitHub App installation",
+            "Azure Key Vault",
+            "App Service Managed Identity",
+            false,
+            state?.ProtectedProductionBranchVerified == true,
+            state?.SecurityCiVerified == true,
+            ready,
+            true,
+            status,
+            detail,
+            state?.LastVerifiedUtc,
+            options.RequiredChecks);
+    }
+
+    private async Task<AuthorityVerification> VerifyAsync(Options options, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var session = await CreateInstallationSessionAsync(options, cancellationToken);
+            var client = CreateGitHubClient(options, session.Token);
+            using var repository = await SendGitHubAsync(client, HttpMethod.Get, $"repos/{options.RepositoryIdentity}", null, cancellationToken);
+            if (!repository.IsSuccessStatusCode)
+                return AuthorityVerification.Failed("repository_permission_unverified", "The GitHub App installation could not read the configured repository.");
+
+            var baseSha = await ReadBranchShaAsync(client, options, cancellationToken);
+            var protection = await ReadBranchProtectionAsync(client, options, cancellationToken);
+            var checkStates = await ReadCheckStatesAsync(client, options, baseSha, cancellationToken);
+            var requiredChecksSuccessful = options.RequiredChecks.All(check =>
+                checkStates.TryGetValue(check, out var conclusion) &&
+                string.Equals(conclusion, "success", StringComparison.OrdinalIgnoreCase));
+            var permissionsSufficient = HasAtLeast(session.Permissions, "contents", "write") &&
+                HasAtLeast(session.Permissions, "pull_requests", "write") &&
+                HasAtLeast(session.Permissions, "checks", "read");
+            var protectedVerified = protection.Satisfied;
+            var ready = permissionsSufficient && protectedVerified && requiredChecksSuccessful;
+            var grantedPermissions = session.Permissions.OrderBy(item => item.Key, StringComparer.Ordinal)
+                .Select(item => $"{item.Key}:{item.Value}").ToArray();
+            var currentChecks = checkStates.OrderBy(item => item.Key, StringComparer.Ordinal)
+                .Select(item => $"{item.Key}:{item.Value ?? "pending"}").ToArray();
+            var detail = $"Repository permissions required: contents:write, pull_requests:write, checks:read. Granted: " +
+                $"{(grantedPermissions.Length == 0 ? "not reported by GitHub" : string.Join(", ", grantedPermissions))}. " +
+                $"Protected branch: {protection.State}. Required checks: {string.Join(", ", options.RequiredChecks)}. " +
+                $"Current checks: {(currentChecks.Length == 0 ? "none reported" : string.Join(", ", currentChecks))}. " +
+                (ready
+                    ? "Managed identity and the sealed Key Vault credential were verified; repair preparation is bounded and release still requires explicit Founder approval of the exact SHA."
+                    : "No repair branch, pull request, merge, deployment, or production-data mutation was attempted.");
+            return new AuthorityVerification(
+                ready,
+                ready ? "verified" : "authority_requirements_not_verified",
+                detail,
+                protectedVerified,
+                requiredChecksSuccessful,
+                permissionsSufficient,
+                ready,
+                new
+                {
+                    requiredPermissions = new[] { "contents:write", "pull_requests:write", "checks:read" },
+                    grantedPermissions,
+                    requiredChecks = options.RequiredChecks,
+                    currentChecks,
+                    protectedBranch = protection.State,
+                    baseSha
+                });
+        }
+        catch (FounderSoftwareRemediationException exception)
+        {
+            return AuthorityVerification.Failed(exception.Code, exception.Message);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception exception)
+        {
+            _logger.LogWarning(exception, "Founder remediation authority verification failed without exposing a credential.");
+            return AuthorityVerification.Failed("authority_verification_unavailable", "The configured remediation authority could not be verified. No broader authority was attempted.");
+        }
+    }
+
+    private static async Task<Dictionary<string, string?>> ReadCheckStatesAsync(
+        HttpClient client,
+        Options options,
+        string commitSha,
+        CancellationToken cancellationToken)
+    {
+        using var response = await SendGitHubAsync(client, HttpMethod.Get, $"repos/{options.RepositoryIdentity}/commits/{commitSha}/check-runs?per_page=100", null, cancellationToken);
+        if (!response.IsSuccessStatusCode)
+            throw new FounderSoftwareRemediationException("security_ci_unavailable", "The current production Security CI state could not be read.");
+        using var document = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync(cancellationToken), cancellationToken: cancellationToken);
+        var result = new Dictionary<string, string?>(StringComparer.Ordinal);
+        if (document.RootElement.TryGetProperty("check_runs", out var checks) && checks.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var check in checks.EnumerateArray())
+            {
+                var name = ReadString(check, "name");
+                if (!string.IsNullOrWhiteSpace(name))
+                    result[name] = ReadString(check, "conclusion");
+            }
+        }
+        return result;
+    }
+
+    private static bool HasAtLeast(IReadOnlyDictionary<string, string> permissions, string key, string minimum)
+    {
+        if (!permissions.TryGetValue(key, out var actual))
+            return false;
+        var value = actual.ToLowerInvariant();
+        return minimum switch
+        {
+            "read" => value is "read" or "write" or "admin",
+            "write" => value is "write" or "admin",
+            _ => false
+        };
     }
 
     private static string? ValidateProposal(FounderSoftwareRepairProposal proposal)
@@ -808,6 +1098,9 @@ public sealed class FounderSoftwareRemediationService : IFounderSoftwareRemediat
         }
     }
 
+    private static string TrimForStorage(string value, int maximumLength) =>
+        value.Length <= maximumLength ? value : value[..maximumLength];
+
     private static string BuildPullRequestBody(FounderSoftwareRepairProposal proposal, string commitSha) =>
         $"Founder-governed bounded software repair.\n\nSummary: {proposal.Summary}\n\nBase SHA: `{proposal.BaseSha}`\nRepair SHA: `{commitSha}`\n\nThis pull request was prepared through the canonical Founder remediation authority. It has not been merged or deployed. Release requires explicit Founder confirmation of this exact SHA after required current-SHA validation succeeds.";
 
@@ -864,6 +1157,29 @@ public sealed class FounderSoftwareRemediationService : IFounderSoftwareRemediat
         bool PullRequestReviews,
         bool AdminEnforcement,
         string[] RequiredContexts);
+
+    private sealed record GitHubInstallationSession(string Token, IReadOnlyDictionary<string, string> Permissions);
+
+    private sealed record AuthorityVerification(
+        bool Ready,
+        string Code,
+        string Detail,
+        bool ProtectedBranchVerified,
+        bool SecurityCiVerified,
+        bool PermissionsSufficient,
+        bool RepairPreparationReady,
+        object Result)
+    {
+        public static AuthorityVerification Failed(string code, string detail) => new(
+            false,
+            code,
+            detail,
+            false,
+            false,
+            false,
+            false,
+            new { error = code, detail, directProductionAccess = false, rawTokenInput = false });
+    }
 
     private sealed class FounderSoftwareRemediationException(string code, string message) : Exception(message)
     {

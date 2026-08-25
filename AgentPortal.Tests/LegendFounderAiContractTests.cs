@@ -10,13 +10,16 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using AgentPortal.Controllers;
+using AgentPortal.Models;
 using AgentPortal.Security;
 using AgentPortal.Services;
 using Azure.Core;
+using Domain.Entities;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.EntityFrameworkCore;
 using Xunit;
 
 namespace AgentPortal.Tests;
@@ -436,6 +439,91 @@ public sealed class LegendFounderAiContractTests
     }
 
     [Fact]
+    public async Task SoftwareRemediation_RevocationFailsClosedWithoutARepositoryCall()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var factory = new ThrowingHttpClientFactory();
+        var service = new FounderSoftwareRemediationService(
+            factory,
+            CreateRemediationConfiguration(),
+            NullLogger<FounderSoftwareRemediationService>.Instance,
+            db);
+
+        var revoked = await service.RevokeAsync("founder-1", CancellationToken.None);
+        var status = Assert.IsType<FounderSoftwareRemediationStatusSnapshot>(revoked);
+        Assert.True(status.Revoked);
+        Assert.False(status.RepairPreparationReady);
+        Assert.False(status.ProductionDirectWriteEnabled);
+
+        var preparation = await service.PrepareAsync(
+            "teacher",
+            new FounderSoftwareRepairProposal(
+                new string('a', 40),
+                "Repair bounded authority",
+                "The durable kill switch must preempt every GitHub operation.",
+                [new FounderSoftwareRepairChange("AgentPortal/Services/Example.cs", "namespace Example;")]),
+            CancellationToken.None);
+
+        using var document = JsonDocument.Parse(JsonSerializer.Serialize(preparation));
+        Assert.Equal("software_remediation_not_configured", document.RootElement.GetProperty("error").GetString());
+        Assert.Equal(0, factory.Calls);
+    }
+
+    [Fact]
+    public async Task IntelligenceEvaluation_UsesCitedSignalsAndReusesAnIdenticalSnapshot()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var service = new LegendIntelligenceEvaluationService(db);
+
+        var first = await service.CreateEvidenceSnapshotAsync("founder-1", CancellationToken.None);
+        Assert.Equal("InsufficientEvidence", first.State);
+        Assert.All(first.Domains, domain => Assert.Null(domain.EvidenceScore));
+        Assert.Equal(1, await db.LegendIntelligenceEvaluationSnapshots.CountAsync());
+        Assert.Equal(LegendIntelligenceEvaluationDomainCatalog.All.Count,
+            await db.LegendIntelligenceEvaluationDomainSnapshots.CountAsync());
+
+        var contract = await db.LegendIntelligenceEvaluationContracts.SingleAsync();
+        var metrics = new Dictionary<string, decimal>
+        {
+            ["coverage"] = 75m,
+            ["quality"] = 80m,
+            ["diversity"] = 70m,
+            ["validation_maturity"] = 85m,
+            ["held_out"] = 90m,
+            ["transfer"] = 88m,
+            ["native_execution"] = 82m,
+            ["calibration"] = 76m,
+            ["contradiction_rate"] = 4m
+        };
+        foreach (var metric in metrics)
+        {
+            db.LegendIntelligenceEvaluationSignals.Add(new LegendIntelligenceEvaluationSignal
+            {
+                ContractId = contract.Id,
+                DomainKey = "language_linguistic",
+                MetricKey = metric.Key,
+                Value = metric.Value,
+                EvidenceAuthority = "canonical-evaluator",
+                EvidenceReference = "evaluation-proof-" + metric.Key,
+                State = "Current",
+                MeasuredUtc = DateTime.UtcNow
+            });
+        }
+        await db.SaveChangesAsync();
+
+        var measured = await service.CreateEvidenceSnapshotAsync("founder-1", CancellationToken.None);
+        var language = measured.Domains.Single(domain => domain.Key == "language_linguistic");
+        Assert.NotNull(language.EvidenceScore);
+        Assert.Equal(9, language.EvidenceVolume);
+        Assert.Null(measured.LegendSelfAssessment);
+        Assert.Null(measured.OpenAiIndependentAssessment);
+
+        var repeated = await service.CreateEvidenceSnapshotAsync("founder-1", CancellationToken.None);
+        Assert.Equal(measured.EvaluatedUtc, repeated.EvaluatedUtc);
+        Assert.Equal(2, await db.LegendIntelligenceEvaluationSnapshots.CountAsync());
+    }
+
+    [Fact]
     public async Task SoftwareRemediation_InvalidReleaseIdentityCannotReachGitHub()
     {
         var factory = new ThrowingHttpClientFactory();
@@ -537,6 +625,19 @@ public sealed class LegendFounderAiContractTests
         Assert.Contains("Test Run Successful", workflow, StringComparison.Ordinal);
         Assert.Contains("Passed![[:space:]]+-[[:space:]]+Failed:[[:space:]]+0", workflow, StringComparison.Ordinal);
         Assert.Contains("Failed:[[:space:]]*[1-9][0-9]*", workflow, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ProductionReadOnlyDiagnosticWorkflow_CannotPushOrCommitToProduction()
+    {
+        var workflow = File.ReadAllText(
+            Path.Combine(AppContext.BaseDirectory, "legend-production-readonly-diagnostic.yml"));
+
+        Assert.Contains("contents: read", workflow, StringComparison.Ordinal);
+        Assert.Contains("Upload sanitized diagnostic transcript", workflow, StringComparison.Ordinal);
+        Assert.DoesNotContain("git push", workflow, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("git commit", workflow, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("contents: write", workflow, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

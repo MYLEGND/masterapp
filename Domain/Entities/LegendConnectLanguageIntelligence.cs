@@ -1601,6 +1601,114 @@ public sealed class LegendConnectModelTrainingRun
 }
 
 /// <summary>
+/// The single durable kill switch for Founder-governed software remediation.
+/// It can only remove capability; repository, Key Vault, and GitHub App
+/// configuration remain deployment-owned and are never copied here.
+/// </summary>
+public sealed class FounderSoftwareRemediationAuthorityState
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public string ScopeKey { get; set; } = "Global";
+    public bool IsRevoked { get; set; }
+    public DateTime? RevokedUtc { get; set; }
+    public string? RevokedByUserId { get; set; }
+    public DateTime? LastVerifiedUtc { get; set; }
+    public bool ProtectedProductionBranchVerified { get; set; }
+    public bool SecurityCiVerified { get; set; }
+    public bool RepairPreparationVerified { get; set; }
+    public string? LastVerificationCode { get; set; }
+    public string? LastVerificationDetail { get; set; }
+    public DateTime UpdatedUtc { get; set; } = DateTime.UtcNow;
+    public byte[] RowVersion { get; set; } = Array.Empty<byte>();
+}
+
+/// <summary>
+/// Immutable declaration of the evidence rubric used to evaluate LEGEND's
+/// capabilities. A new contract is introduced for a material rubric change;
+/// old snapshots retain their original contract identity.
+/// </summary>
+public sealed class LegendIntelligenceEvaluationContract
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public string ContractKey { get; set; } = string.Empty;
+    public string Version { get; set; } = string.Empty;
+    public string ContractIdentity { get; set; } = string.Empty;
+    public string State { get; set; } = "Current";
+    public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
+    public DateTime? SupersededUtc { get; set; }
+}
+
+/// <summary>
+/// A source-authority-owned signal for one declared intelligence domain and
+/// rubric factor. It records an evidence reference, not curriculum text or a
+/// provider answer, so scores cannot be inflated from row volume alone.
+/// </summary>
+public sealed class LegendIntelligenceEvaluationSignal
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid ContractId { get; set; }
+    public string DomainKey { get; set; } = string.Empty;
+    public string MetricKey { get; set; } = string.Empty;
+    public decimal Value { get; set; }
+    public string EvidenceAuthority { get; set; } = string.Empty;
+    public string EvidenceReference { get; set; } = string.Empty;
+    public string State { get; set; } = "Current";
+    public DateTime MeasuredUtc { get; set; } = DateTime.UtcNow;
+    public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
+}
+
+/// <summary>
+/// Historical three-lens evaluation snapshot. The evidence result, LEGEND
+/// self-assessment, and OpenAI assessment remain distinct values; no blended
+/// score is persisted or displayed as an objective result.
+/// </summary>
+public sealed class LegendIntelligenceEvaluationSnapshot
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid ContractId { get; set; }
+    public Guid? PreviousSnapshotId { get; set; }
+    public string EvidenceSetIdentity { get; set; } = string.Empty;
+    public string State { get; set; } = "EvidenceOnly";
+    public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
+}
+
+public sealed class LegendIntelligenceEvaluationDomainSnapshot
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid SnapshotId { get; set; }
+    public string DomainKey { get; set; } = string.Empty;
+    public decimal? EvidenceScore { get; set; }
+    public decimal? LegendSelfAssessment { get; set; }
+    public decimal? OpenAiExternalAssessment { get; set; }
+    public long EvidenceVolume { get; set; }
+    public long ProductionEligibleEvidenceCount { get; set; }
+    public decimal? NativeSuccessRate { get; set; }
+    public decimal? HeldOutResult { get; set; }
+    public decimal? TransferResult { get; set; }
+    public decimal? ContradictionRate { get; set; }
+    public string EvidenceReferencesJson { get; set; } = "[]";
+    public string KnownWeaknessesJson { get; set; } = "[]";
+    public string OpenGapsJson { get; set; } = "[]";
+}
+
+/// <summary>
+/// A separately recorded model perspective over one immutable evidence
+/// snapshot. The OpenAI assessor is never given LEGEND's self-score; both
+/// perspectives must cite references already present in the snapshot.
+/// </summary>
+public sealed class LegendIntelligenceEvaluationPerspective
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid SnapshotId { get; set; }
+    public string PerspectiveKind { get; set; } = string.Empty;
+    public string State { get; set; } = "Pending";
+    public string AssessmentJson { get; set; } = "{}";
+    public string EvidenceReferencesJson { get; set; } = "[]";
+    public DateTime? AssessedUtc { get; set; }
+    public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
+}
+
+/// <summary>
 /// Durable per-pair lineage for one governed model promotion.
 ///
 /// LegendLanguagePair.ActiveModelVersion remains the only active-model

@@ -171,6 +171,114 @@ public sealed class LegendConnectController : Controller
 
     [HttpPost]
     [ValidateAntiForgeryToken]
+    [Route("founder/legend-connect/software-remediation/connect")]
+    public async Task<IActionResult> ConnectSoftwareRemediation(CancellationToken cancellationToken)
+    {
+        try
+        {
+            var result = await _service.ConnectSoftwareRemediationAsync(User, cancellationToken);
+            TempData["LegendConnectSuccess"] = "GitHub remediation binding check completed. No PAT, private key, token, repository write, merge, or deployment was accepted or performed.";
+            return RedirectToAction(nameof(Index));
+        }
+        catch (ForbidResultException) { return Forbid(); }
+        catch (Exception exception)
+        {
+            _logger.LogError(exception, "Founder software remediation connection check failed.");
+            TempData["LegendConnectError"] = "The GitHub remediation binding could not be checked. No broader authority was attempted.";
+            return RedirectToAction(nameof(Index));
+        }
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    [Route("founder/legend-connect/software-remediation/verify")]
+    public async Task<IActionResult> VerifySoftwareRemediation(CancellationToken cancellationToken)
+    {
+        try
+        {
+            _ = await _service.VerifySoftwareRemediationAsync(User, cancellationToken);
+            TempData["LegendConnectSuccess"] = "Remediation authority verification completed. The result is displayed in the Founder status panel; no repair, merge, or deployment was attempted.";
+            return RedirectToAction(nameof(Index));
+        }
+        catch (ForbidResultException) { return Forbid(); }
+        catch (Exception exception)
+        {
+            _logger.LogError(exception, "Founder software remediation authority verification failed.");
+            TempData["LegendConnectError"] = "Remediation authority verification could not complete. Capability remains fail-closed.";
+            return RedirectToAction(nameof(Index));
+        }
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    [Route("founder/legend-connect/software-remediation/dry-run")]
+    public async Task<IActionResult> TestSoftwareRemediation(CancellationToken cancellationToken)
+    {
+        try
+        {
+            _ = await _service.TestSoftwareRemediationAsync(User, cancellationToken);
+            TempData["LegendConnectSuccess"] = "Dry-run repair preparation completed. It performed no repository write, branch creation, pull request, merge, deployment, or production-data mutation.";
+            return RedirectToAction(nameof(Index));
+        }
+        catch (ForbidResultException) { return Forbid(); }
+        catch (Exception exception)
+        {
+            _logger.LogError(exception, "Founder software remediation dry-run failed.");
+            TempData["LegendConnectError"] = "Dry-run preparation could not complete. Capability remains fail-closed.";
+            return RedirectToAction(nameof(Index));
+        }
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    [Route("founder/legend-connect/software-remediation/revoke")]
+    public async Task<IActionResult> RevokeSoftwareRemediation(
+        [FromForm] bool confirmRevocation,
+        CancellationToken cancellationToken)
+    {
+        if (!confirmRevocation)
+        {
+            TempData["LegendConnectError"] = "Remediation authority was not revoked because Founder confirmation was not supplied.";
+            return RedirectToAction(nameof(Index));
+        }
+
+        try
+        {
+            _ = await _service.RevokeSoftwareRemediationAsync(User, cancellationToken);
+            TempData["LegendConnectSuccess"] = "Founder software remediation has been revoked. Other LEGEND capabilities are unaffected.";
+            return RedirectToAction(nameof(Index));
+        }
+        catch (ForbidResultException) { return Forbid(); }
+        catch (Exception exception)
+        {
+            _logger.LogError(exception, "Founder software remediation revocation failed.");
+            TempData["LegendConnectError"] = "Remediation authority could not be revoked. No other LEGEND capability was changed.";
+            return RedirectToAction(nameof(Index));
+        }
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    [Route("founder/legend-connect/intelligence-evaluation/snapshot")]
+    public async Task<IActionResult> CreateIntelligenceEvaluationSnapshot(CancellationToken cancellationToken)
+    {
+        try
+        {
+            _ = await _service.CreateIntelligenceEvaluationSnapshotAsync(User, cancellationToken);
+            TempData["LegendConnectSuccess"] = "A versioned evidence evaluation snapshot was recorded. Missing evidence remains unscored; no curriculum, model, or runtime state changed.";
+            return RedirectToAction(nameof(Index));
+        }
+        catch (ForbidResultException) { return Forbid(); }
+        catch (Exception exception)
+        {
+            _logger.LogError(exception, "Founder intelligence evaluation snapshot failed.");
+            TempData["LegendConnectError"] = "The intelligence evaluation snapshot could not be recorded. No curriculum or runtime authority was changed.";
+            return RedirectToAction(nameof(Index));
+        }
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
     [Route("founder/legend-connect/knowledge")]
     public async Task<IActionResult> SubmitKnowledge(
         [FromForm] FounderLegendConnectKnowledgeInput input,
