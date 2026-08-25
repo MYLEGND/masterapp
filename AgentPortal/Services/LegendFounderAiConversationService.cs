@@ -26,7 +26,7 @@ public sealed class LegendFounderAiConversationService
     private const int MaximumConversationMessages = 60;
     private const int MaximumMessageCharacters = 1_000_000;
     private const int MaximumConversationCharacters = 2_000_000;
-    private const int MinimumProviderConversationCharacters = 120_000;
+    private const int MinimumProviderConversationCharacters = 60_000;
     private const int MaximumProviderConversationCharacters = 600_000;
     private const int MinimumLatestMessageTailCharacters = 24_000;
     private const int MinimumToolRounds = 6;
@@ -718,8 +718,30 @@ public sealed class LegendFounderAiConversationService
                     {
                         governedReadAttempts++;
 
+                        var governedReadSucceeded =
+                            IsSuccessfulFounderToolOutput(toolOutput);
+
+                        // A broad Founder diagnostic must survive an individual
+                        // read-authority failure and keep inspecting independent
+                        // sources. A narrow single-authority inspection cannot
+                        // truthfully continue when its only requested evidence
+                        // failed, so preserve the established structured 502
+                        // contract and identify the exact failed tool.
+                        if (!governedReadSucceeded &&
+                            !requiresComprehensiveGovernedInspection)
+                        {
+                            return LegendFounderAiChatResponse.ModeFailure(
+                                mode,
+                                FailureMessageForMode(
+                                    mode,
+                                    $"Governed LEGEND read '{call.Name}' failed. Independent broad inspection was not requested for this turn."),
+                                "governed_tool",
+                                "governed_tool",
+                                "tool_read_failed");
+                        }
+
                         if (IsGovernedEvidenceTool(call.Name) &&
-                            IsSuccessfulFounderToolOutput(toolOutput))
+                            governedReadSucceeded)
                         {
                             successfulGovernedEvidenceTools.Add(call.Name);
                             governedInspectionCompleted =
