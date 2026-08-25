@@ -169,13 +169,11 @@
         );
     }
 
-    function setReadingMode(active) {
-        const next =
-            isMobile() &&
-            active === true &&
-            !modalElement.classList.contains('is-sidebar-open');
-
-        modalElement.classList.toggle('is-reading', next);
+    function setReadingMode() {
+        // Keep the primary chat chrome reachable on mobile. Scrolling may
+        // still dismiss the keyboard, but it must never hide the header,
+        // responder selector, status, or composer behind a persistent class.
+        modalElement.classList.remove('is-reading');
     }
 
     trigger.addEventListener('click', () => {
