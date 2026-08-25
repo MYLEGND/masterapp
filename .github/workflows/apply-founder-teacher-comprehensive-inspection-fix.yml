@@ -5,6 +5,9 @@ on:
     branches:
       - fix/founder-teacher-comprehensive-inspection-20260825
 
+permissions:
+  contents: write
+
 jobs:
   apply:
     if: github.actor != 'github-actions[bot]'
