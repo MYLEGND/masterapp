@@ -24,83 +24,37 @@ jobs:
 
           service_path = Path('AgentPortal/Services/LegendFounderAiConversationService.cs')
           isolation_path = Path('AgentPortal.Tests/LegendFounderAiModeIsolationTests.cs')
-
           service = service_path.read_text()
-          old = '''            "deployment", "repository", "github", "pull request",
-            "branch", "commit", "workflow", "ci", "coverage"
-'''
-          new = '''            "deployment", "repository", "github", "pull request",
-            "branch", "commit", "workflow", "ci", "coverage",
-            "governed inspection", "current authority"
-'''
+          old = '            "deployment", "repository", "github", "pull request",\n            "branch", "commit", "workflow", "ci", "coverage"\n'
+          new = '            "deployment", "repository", "github", "pull request",\n            "branch", "commit", "workflow", "ci", "coverage",\n            "governed inspection", "current authority"\n'
           if service.count(old) != 1:
               raise SystemExit(f'Expected one governed-signal anchor, found {service.count(old)}')
-          service = service.replace(old, new, 1)
-          service_path.write_text(service)
+          service_path.write_text(service.replace(old, new, 1))
 
           isolation = isolation_path.read_text()
-
-          old = '''        var handler = new FounderAiScenarioHandler(
-            TimeSpan.FromSeconds(31),
-            ProviderText("The OpenAI Teacher completed the permitted escalation after LEGEND’s governed first refusal."));
-'''
-          new = '''        var handler = new FounderAiScenarioHandler(
-            TimeSpan.FromSeconds(16),
-            ProviderTool("legend_search_retained_knowledge", "{\\\"query\\\":\\\"governed gap\\\"}"),
-            ProviderText("The OpenAI Teacher completed the permitted escalation after LEGEND’s governed first refusal."));
-'''
+          old = '        var handler = new FounderAiScenarioHandler(\n            TimeSpan.FromSeconds(31),\n            ProviderText("The OpenAI Teacher completed the permitted escalation after LEGEND’s governed first refusal."));\n'
+          new = '        var handler = new FounderAiScenarioHandler(\n            TimeSpan.FromSeconds(16),\n            ProviderTool("legend_search_retained_knowledge", "{\\\"query\\\":\\\"governed gap\\\"}"),\n            ProviderText("The OpenAI Teacher completed the permitted escalation after LEGEND’s governed first refusal."));\n'
           if isolation.count(old) != 1:
               raise SystemExit(f'Expected one Legend progress handler anchor, found {isolation.count(old)}')
           isolation = isolation.replace(old, new, 1)
 
-          old = '''        Assert.Equal(1, handler.RequestCount);
-        Assert.Equal(1, NativeInferenceCalls(operations));
-    }
-
-    [Fact]
-    public async Task TeacherMode_GovernedReadToolMayExecuteWithoutChangingResponderIdentity()
-'''
-          new = '''        Assert.Equal(2, handler.RequestCount);
-        Assert.Equal(1, NativeInferenceCalls(operations));
-    }
-
-    [Fact]
-    public async Task TeacherMode_GovernedReadToolMayExecuteWithoutChangingResponderIdentity()
-'''
+          old = '        Assert.Equal(1, handler.RequestCount);\n        Assert.Equal(1, NativeInferenceCalls(operations));\n    }\n\n    [Fact]\n    public async Task TeacherMode_GovernedReadToolMayExecuteWithoutChangingResponderIdentity()\n'
+          new = '        Assert.Equal(2, handler.RequestCount);\n        Assert.Equal(1, NativeInferenceCalls(operations));\n    }\n\n    [Fact]\n    public async Task TeacherMode_GovernedReadToolMayExecuteWithoutChangingResponderIdentity()\n'
           if isolation.count(old) != 1:
               raise SystemExit(f'Expected one Legend progress request-count anchor, found {isolation.count(old)}')
           isolation = isolation.replace(old, new, 1)
 
-          old = '''        var handler = new FounderAiScenarioHandler(
-            ProviderText("The OpenAI Teacher is handling this governed escalation."));
-'''
-          new = '''        var handler = new FounderAiScenarioHandler(
-            ProviderTool("legend_search_retained_knowledge", "{\\\"query\\\":\\\"Explain the gap.\\\"}"),
-            ProviderText("The OpenAI Teacher is handling this governed escalation."));
-'''
+          old = '        var handler = new FounderAiScenarioHandler(\n            ProviderText("The OpenAI Teacher is handling this governed escalation."));\n'
+          new = '        var handler = new FounderAiScenarioHandler(\n            ProviderTool("legend_search_retained_knowledge", "{\\\"query\\\":\\\"Explain the gap.\\\"}"),\n            ProviderText("The OpenAI Teacher is handling this governed escalation."));\n'
           if isolation.count(old) != 1:
               raise SystemExit(f'Expected one escalation handler anchor, found {isolation.count(old)}')
           isolation = isolation.replace(old, new, 1)
 
-          old = '''        Assert.Equal("provider_response", response.Stage);
-        Assert.Equal(1, NativeInferenceCalls(operations));
-        Assert.Equal(1, handler.RequestCount);
-    }
-
-    private static LegendFounderAiConversationService CreateService(
-'''
-          new = '''        Assert.Equal("provider_response", response.Stage);
-        Assert.Equal(1, NativeInferenceCalls(operations));
-        Assert.Equal(2, handler.RequestCount);
-    }
-
-    private static LegendFounderAiConversationService CreateService(
-'''
+          old = '        Assert.Equal("provider_response", response.Stage);\n        Assert.Equal(1, NativeInferenceCalls(operations));\n        Assert.Equal(1, handler.RequestCount);\n    }\n\n    private static LegendFounderAiConversationService CreateService(\n'
+          new = '        Assert.Equal("provider_response", response.Stage);\n        Assert.Equal(1, NativeInferenceCalls(operations));\n        Assert.Equal(2, handler.RequestCount);\n    }\n\n    private static LegendFounderAiConversationService CreateService(\n'
           if isolation.count(old) != 1:
               raise SystemExit(f'Expected one escalation request-count anchor, found {isolation.count(old)}')
-          isolation = isolation.replace(old, new, 1)
-          isolation_path.write_text(isolation)
-
+          isolation_path.write_text(isolation.replace(old, new, 1))
           Path('.github/workflows/_temporary-founder-ai-regression-alignment.yml').unlink()
 
       - name: Verify bounded diff
