@@ -1,0 +1,34 @@
+name: Apply final Founder Teacher CI corrections
+
+on:
+  push:
+    branches:
+      - fix/founder-teacher-comprehensive-diagnostics-20260825
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/founder-teacher-comprehensive-diagnostics-20260825
+          fetch-depth: 0
+
+      - name: Apply surgical correction
+        shell: bash
+        run: python .github/scripts/apply-founder-teacher-ci-corrections.py
+
+      - name: Commit correction and remove helper
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'legend-founder-remediation[bot]'
+          git config user.email 'legend-founder-remediation[bot]@users.noreply.github.com'
+          git add -A
+          git diff --cached --check
+          git commit -m 'Correct Founder Teacher diagnostic regression contracts'
+          git push origin HEAD:fix/founder-teacher-comprehensive-diagnostics-20260825
