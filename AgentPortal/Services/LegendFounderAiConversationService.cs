@@ -309,6 +309,11 @@ public sealed class LegendFounderAiConversationService
         if (string.IsNullOrWhiteSpace(model))
             model = "gpt-5";
 
+        var requiresMandatoryGovernedInspection =
+            RequiresGovernedInspection(
+                conversation,
+                mode);
+
         var requiresGovernedInspection =
             RequiresProviderGovernedInspection(
                 conversation,
@@ -400,7 +405,7 @@ public sealed class LegendFounderAiConversationService
                     : 1;
 
             var governedInspectionCompleted =
-                !requiresGovernedInspection;
+                !requiresMandatoryGovernedInspection;
 
             for (var round = 0; round < maximumToolRounds; round++)
             {
@@ -438,7 +443,7 @@ public sealed class LegendFounderAiConversationService
                         TimeSpan.FromSeconds(
                             MinimumFinalSynthesisWindowSeconds);
 
-                if (requiresGovernedInspection &&
+                if (requiresMandatoryGovernedInspection &&
                     !governedInspectionCompleted &&
                     !allowTools)
                 {
@@ -453,7 +458,7 @@ public sealed class LegendFounderAiConversationService
                 }
 
                 var requireToolCall =
-                    requiresGovernedInspection &&
+                    requiresMandatoryGovernedInspection &&
                     !governedInspectionCompleted;
 
                 var providerBudget =
@@ -528,7 +533,7 @@ public sealed class LegendFounderAiConversationService
 
                 if (responseState == "incomplete")
                 {
-                    if (requiresGovernedInspection &&
+                    if (requiresMandatoryGovernedInspection &&
                         !governedInspectionCompleted)
                     {
                         return LegendFounderAiChatResponse.ModeFailure(
@@ -583,7 +588,7 @@ public sealed class LegendFounderAiConversationService
 
                 if (toolCalls.Count == 0)
                 {
-                    if (requiresGovernedInspection &&
+                    if (requiresMandatoryGovernedInspection &&
                         !governedInspectionCompleted)
                     {
                         return LegendFounderAiChatResponse.ModeFailure(
@@ -3645,6 +3650,7 @@ Never upgrade an unresolved, rejected or contradicted record merely because it a
         var explicitGovernedSignals = new[]
         {
             "canonical", "retained knowledge", "retained evidence",
+            "governed inspection", "current authority",
             "curriculum", "train legend", "training status",
             "model readiness", "readiness", "alignment", "provenance",
             "evidence", "system state", "system status", "metrics", "metric",
