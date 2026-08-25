@@ -700,12 +700,12 @@ public sealed class LegendConnectMeaningGraphTests
                     Mode = "legend",
                     ConversationId = conversationId.ToString(),
                     Messages = [new LegendFounderAiChatMessage("user", unseenInput)]
-                });
+            });
 
             Assert.True(response.Succeeded);
-            Assert.Contains("LEGEND could not complete this response.", response.Message, StringComparison.OrdinalIgnoreCase);
             Assert.Contains("NativeFailure=", response.Message, StringComparison.Ordinal);
-            Assert.Contains("EvidenceCount=0", response.Message, StringComparison.Ordinal);
+            Assert.Contains("ProviderFailure=provider_api_key_unavailable", response.Message, StringComparison.Ordinal);
+            Assert.DoesNotContain(unseenInput, response.Message, StringComparison.OrdinalIgnoreCase);
             Assert.Equal(0, factory.CreateClientCalls);
             var turns = await new LegendFounderAiDiscourseStateService(db, profiles)
                 .GetTurnsAsync(founderId, conversationId);

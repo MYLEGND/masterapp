@@ -470,8 +470,8 @@ internal sealed class LegendConnectCurriculumManifestProcessor
         if (failed is not null)
         {
             // The parent is only a projection of the durable child authority.
-            // A terminal child must therefore retire the parent in place too,
-            // preserving the same historical identity/error without making the
+            // A terminal child therefore retires the parent in place too,
+            // preserving its historical identity/error without making the
             // receipt executable or seedable again.
             manifest.ProcessingState = failed.ProcessingState == LegendConnectHistoricalReevaluationWorkAuthority.Retired
                 ? LegendConnectHistoricalReevaluationWorkAuthority.Retired

@@ -935,6 +935,20 @@
     gap: 6px;
 }
 
+.legend-founder-ai-mutation-confirmation {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    color: #72541a;
+    cursor: pointer;
+}
+
+.legend-founder-ai-mutation-confirmation input {
+    width: 12px;
+    height: 12px;
+    accent-color: #b4780d;
+}
+
 .legend-founder-ai-sidebar-scrim {
     display: none;
 }

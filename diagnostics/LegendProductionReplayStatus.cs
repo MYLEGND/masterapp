@@ -100,7 +100,7 @@ SELECT
     [ProcessingState],
     COUNT_BIG(*) AS SubmissionCount,
     MIN([CreatedUtc]) AS OldestCreatedUtc,
-    MAX([UpdatedUtc]) AS LatestUpdatedUtc
+    MAX(COALESCE([ProcessedUtc], [CreatedUtc])) AS LatestProcessedOrCreatedUtc
 FROM [LegendFounderTrainingSubmissions]
 GROUP BY [CompletedLanguageIntelligenceEvaluatorVersion], [ProcessingState]
 ORDER BY [CompletedLanguageIntelligenceEvaluatorVersion] DESC, [ProcessingState];

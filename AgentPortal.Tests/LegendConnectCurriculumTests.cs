@@ -787,6 +787,65 @@ public sealed class LegendConnectCurriculumTests
     }
 
     [Fact]
+    public async Task FounderCurriculumManifest_RetiredChildRetiresParentAndCannotBeReadmitted()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var configuration = Configuration();
+        var registry = new LegendLanguageRegistry(db, configuration);
+        var corpus = new LegendConnectCorpusService(db, registry, NullLogger<LegendConnectCorpusService>.Instance);
+        var curriculum = new LegendConnectCurriculumService(db, registry, corpus);
+        var operations = new LegendConnectOperations(db, registry, corpus, configuration, curriculum: curriculum);
+        var runtime = new LegendConnectRuntimePolicyAuthority(
+            db, new FounderAccess(), registry, configuration,
+            NullLogger<LegendConnectRuntimePolicyAuthority>.Instance);
+        var durable = new LegendConnectHistoricalReevaluationWorkAuthority(db, runtime, configuration);
+        var processor = new LegendConnectCurriculumManifestProcessor(
+            db, curriculum, durable,
+            NullLogger<LegendConnectCurriculumManifestProcessor>.Instance);
+        var submission = new LegendConnectCurriculumManifestSubmission(
+        [
+            ConversationBatch(
+                "conversation.terminal.retirement",
+                "Terminal durable receipt",
+                ("Please try once more.", "retry"),
+                ("Could you try again?", "retry"))
+        ]);
+
+        Assert.True((await operations.SubmitFounderCurriculumManifestAsync("founder-test", submission)).Succeeded);
+        var manifest = Assert.Single(await db.Set<LegendCurriculumManifestWorkItem>().ToListAsync());
+        db.LegendHistoricalReevaluationWorkItems.Add(new LegendHistoricalReevaluationWorkItem
+        {
+            Id = Guid.NewGuid(),
+            EvaluatorVersion = LegendConnectLanguageIntelligenceEvaluatorVersion.Current,
+            Phase = LegendConnectHistoricalReevaluationWorkAuthority.FounderCurriculumPhase,
+            WorkKind = LegendConnectHistoricalReevaluationWorkAuthority.FounderManifestFamilyWorkKind,
+            WorkIdentity = "test-terminal-manifest-child",
+            SubjectId = manifest.Id,
+            SubjectScope = "0",
+            DependencyIdentity = "test-terminal-manifest-dependency",
+            ProcessingState = LegendConnectHistoricalReevaluationWorkAuthority.Retired,
+            AttemptCount = 2,
+            LastErrorCode = "terminal_evaluator_failure",
+            LastErrorMessage = "The durable child exhausted its governed retries."
+        });
+        await db.SaveChangesAsync();
+
+        await processor.RefreshDurableManifestStatusAsync(
+            manifest.Id,
+            LegendConnectLanguageIntelligenceEvaluatorVersion.Current);
+
+        var retired = Assert.Single(await db.Set<LegendCurriculumManifestWorkItem>().ToListAsync());
+        Assert.Equal(LegendConnectHistoricalReevaluationWorkAuthority.Retired, retired.ProcessingState);
+        Assert.Equal("terminal_evaluator_failure", retired.LastErrorCode);
+        Assert.Equal(2, retired.AttemptCount);
+        Assert.Equal(0, await processor.SeedDurableFamilyWorkAsync(
+            durable,
+            LegendConnectLanguageIntelligenceEvaluatorVersion.Current,
+            1));
+        Assert.Single(await db.LegendHistoricalReevaluationWorkItems.ToListAsync());
+    }
+
+    [Fact]
     public async Task FounderCurriculumManifest_ExpiredLeaseResumesWithoutDuplicateFamilyKnowledge()
     {
         await using var db = ControllerTestHelpers.BuildDb();

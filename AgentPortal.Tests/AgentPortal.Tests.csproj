@@ -35,6 +35,15 @@
     <ProjectReference Include="..\SHARED\Shared.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <None Include="..\\.github\\workflows\\agentportal-production-deploy.yml"
+          Link="agentportal-production-deploy.yml"
+          CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\\.github\\workflows\\security-ci.yml"
+          Link="security-ci.yml"
+          CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
   <Target Name="EnsureTestHostRuntimeConfig" AfterTargets="Build">
     <Copy
       SourceFiles="$(OutDir)AgentPortal.runtimeconfig.json"

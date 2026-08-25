@@ -61,8 +61,14 @@ jobs:
             echo "::error::The test runner completed without discovering tests."
             exit 1
           fi
-          if ! grep -qE 'Passed![[:space:]]+-[[:space:]]+Failed:[[:space:]]+0,' test.log; then
-            echo "::error::The full AgentPortal regression did not report a successful non-empty xUnit run."
+          runner_success=false
+          if grep -qE 'Passed![[:space:]]+-[[:space:]]+Failed:[[:space:]]+0,[[:space:]]+Passed:[[:space:]]+[1-9][0-9]*' test.log; then
+            runner_success=true
+          elif grep -q "Test Run Successful" test.log && grep -qE 'Passed:[[:space:]]*[1-9][0-9]*' test.log; then
+            runner_success=true
+          fi
+          if [ "$runner_success" != true ] || grep -qE 'Failed:[[:space:]]*[1-9][0-9]*' test.log; then
+            echo "::error::The full AgentPortal regression did not report a successful non-empty test run with zero failures."
             exit 1
           fi
 

@@ -75,6 +75,8 @@ public sealed class LegendFounderAiConversationRoutingTests
         Assert.Contains("Native LEGEND conversational inference is bypassed in this mode", instructions);
         Assert.Contains("existing governed tools", instructions);
         Assert.Contains("execute that tool rather than merely describing", instructions);
+        Assert.Contains("explicit Founder instruction and request-level Founder confirmation", instructions);
+        Assert.DoesNotContain("may autonomously retain", instructions, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -119,6 +121,7 @@ public sealed class LegendFounderAiConversationRoutingTests
         Assert.Contains("legend_submit_machine_learning_candidate", context);
         Assert.Contains("MachineProposed", context);
         Assert.Contains("independent critic", context);
+        Assert.Contains("request explicit Founder confirmation", context, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("instead of inventing", context, StringComparison.OrdinalIgnoreCase);
     }
 

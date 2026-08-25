@@ -5,7 +5,7 @@
     <MSBuildProjectExtensionsPath>/tmp/masterapp/obj/$(MSBuildProjectName)/</MSBuildProjectExtensionsPath>
     <BaseOutputPath>/tmp/masterapp/bin/$(MSBuildProjectName)/</BaseOutputPath>
     <!-- Application projects keep extension props disabled. AgentPortal.Tests alone imports
-         its restored runner build props so the native VSTest/xUnit discovery path is authoritative. -->
+         the restored test-runner build props so VSTest/xUnit discovery is authoritative. -->
     <ImportProjectExtensionProps Condition="'$(MSBuildProjectName)' == 'AgentPortal.Tests'">true</ImportProjectExtensionProps>
     <ImportProjectExtensionProps Condition="'$(MSBuildProjectName)' != 'AgentPortal.Tests'">false</ImportProjectExtensionProps>
     <EnableDefaultEmbeddedResourceItems>false</EnableDefaultEmbeddedResourceItems>

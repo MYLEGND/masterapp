@@ -2727,12 +2727,22 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
         await CopySnapshotSetAsync<LegendLanguageContextRelationship>(production, shadow, copied, "contexts",
             query => query.Where(item => replayTextUnitIds.Contains(item.SourceTextUnitId) &&
                 replayTextUnitIds.Contains(item.RelatedTextUnitId)));
-        await CopySnapshotSetAsync<LegendSemanticTransitionEvidence>(production, shadow, copied, "transitions",
-            query => query.Where(item => replayExampleIds.Contains(item.SourceCurriculumExampleId) &&
-                replayExampleIds.Contains(item.ResultCurriculumExampleId)));
-        await CopySnapshotSetAsync<LegendFounderSemanticExampleRelationEvidence>(production, shadow, copied, "founder-relations",
-            query => query.Where(item => replayExampleIds.Contains(item.SourceCurriculumExampleId) &&
-                replayExampleIds.Contains(item.ResultCurriculumExampleId)));
+        // SQL Server has independently indexed source and result example
+        // endpoints.  Do not issue a single two-IN predicate here: with a
+        // whole Founder snapshot it can force an expensive plan before the
+        // canonical shadow compiler has even started.  Read each indexed
+        // direction in bounded batches, de-duplicate in memory, then retain
+        // only edges whose two endpoints are inside the already-authorized
+        // Founder/human-verified closure.  No prompt text participates in
+        // this selection.
+        var transitions = await ReadTransitionEvidenceForExampleClosureAsync(
+            production,
+            replayExampleIds);
+        await CopySnapshotRowsAsync(shadow, copied, "transitions", transitions);
+        var founderRelations = await ReadFounderRelationsForExampleClosureAsync(
+            production,
+            replayExampleIds);
+        await CopySnapshotRowsAsync(shadow, copied, "founder-relations", founderRelations);
         await CopySnapshotSetAsync<LegendLanguageStructuralPattern>(production, shadow, copied, "structural-patterns",
             query => query.Where(item => familyIds.Contains(item.CurriculumFamilyId)));
         await CopySnapshotSetAsync<LegendLanguageStructuralRelationship>(production, shadow, copied, "structural-relationships");
@@ -2800,6 +2810,98 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
         copied[label] = rows.Count;
         if (rows.Count == 0)
             return;
+        shadow.Set<TEntity>().AddRange(rows);
+        await shadow.SaveChangesAsync();
+        shadow.ChangeTracker.Clear();
+    }
+
+    /// <summary>
+    /// Loads transition evidence through the two endpoint indexes rather than
+    /// asking SQL Server to intersect two large IN lists.  The final endpoint
+    /// closure check deliberately happens in memory so competing and
+    /// contradictory rows are preserved regardless of contribution state or
+    /// provenance.
+    /// </summary>
+    private static async Task<IReadOnlyList<LegendSemanticTransitionEvidence>>
+        ReadTransitionEvidenceForExampleClosureAsync(
+            MasterAppDbContext production,
+            IReadOnlyCollection<Guid> exampleIds)
+    {
+        var scope = exampleIds.ToHashSet();
+        var rows = new Dictionary<Guid, LegendSemanticTransitionEvidence>();
+
+        foreach (var batch in scope.Chunk(256))
+        {
+            var bySource = await production.LegendSemanticTransitionEvidence
+                .AsNoTracking()
+                .Where(item => batch.Contains(item.SourceCurriculumExampleId))
+                .ToListAsync();
+            foreach (var item in bySource)
+                rows[item.Id] = item;
+
+            var byResult = await production.LegendSemanticTransitionEvidence
+                .AsNoTracking()
+                .Where(item => batch.Contains(item.ResultCurriculumExampleId))
+                .ToListAsync();
+            foreach (var item in byResult)
+                rows[item.Id] = item;
+        }
+
+        return rows.Values
+            .Where(item => scope.Contains(item.SourceCurriculumExampleId) &&
+                scope.Contains(item.ResultCurriculumExampleId))
+            .OrderBy(item => item.Id)
+            .ToArray();
+    }
+
+    /// <summary>
+    /// Founder-declared example relations use the same source/result endpoint
+    /// shape and indexes as transition evidence.  They must travel with the
+    /// snapshot because transition evidence may carry their immutable lineage.
+    /// </summary>
+    private static async Task<IReadOnlyList<LegendFounderSemanticExampleRelationEvidence>>
+        ReadFounderRelationsForExampleClosureAsync(
+            MasterAppDbContext production,
+            IReadOnlyCollection<Guid> exampleIds)
+    {
+        var scope = exampleIds.ToHashSet();
+        var rows = new Dictionary<Guid, LegendFounderSemanticExampleRelationEvidence>();
+
+        foreach (var batch in scope.Chunk(256))
+        {
+            var bySource = await production.LegendFounderSemanticExampleRelationEvidence
+                .AsNoTracking()
+                .Where(item => batch.Contains(item.SourceCurriculumExampleId))
+                .ToListAsync();
+            foreach (var item in bySource)
+                rows[item.Id] = item;
+
+            var byResult = await production.LegendFounderSemanticExampleRelationEvidence
+                .AsNoTracking()
+                .Where(item => batch.Contains(item.ResultCurriculumExampleId))
+                .ToListAsync();
+            foreach (var item in byResult)
+                rows[item.Id] = item;
+        }
+
+        return rows.Values
+            .Where(item => scope.Contains(item.SourceCurriculumExampleId) &&
+                scope.Contains(item.ResultCurriculumExampleId))
+            .OrderBy(item => item.Id)
+            .ToArray();
+    }
+
+    private static async Task CopySnapshotRowsAsync<TEntity>(
+        MasterAppDbContext shadow,
+        IDictionary<string, int> copied,
+        string label,
+        IReadOnlyCollection<TEntity> rows)
+        where TEntity : class
+    {
+        copied[label] = rows.Count;
+        if (rows.Count == 0)
+            return;
+
         shadow.Set<TEntity>().AddRange(rows);
         await shadow.SaveChangesAsync();
         shadow.ChangeTracker.Clear();

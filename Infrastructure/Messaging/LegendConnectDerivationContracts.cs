@@ -123,6 +123,42 @@ internal static class LegendConnectDerivationContracts
         .ContractIdentity;
 
     /// <summary>
+    /// A durable-work identity must advance when a materialized contract in
+    /// its dependency frontier advances, even if the evaluator number does
+    /// not.  V21 is the first evaluator that persisted this contract-aware
+    /// replay model; older evaluator work keeps its historical identity so it
+    /// remains auditable and is never rewritten just to look current.
+    /// </summary>
+    internal static string HistoricalWorkGenerationSuffix(
+        int evaluatorVersion,
+        string phase)
+    {
+        if (evaluatorVersion != LegendConnectLanguageIntelligenceEvaluatorVersion.Current ||
+            !LegendConnectLanguageIntelligenceReevaluationPhases.IsWorkPhase(phase) ||
+            phase == LegendConnectLanguageIntelligenceReevaluationPhases.DependencyInventory)
+        {
+            return string.Empty;
+        }
+
+        var phaseRank = PhaseRank(phase);
+        var identities = ForEvaluator(evaluatorVersion)
+            .Where(item => item.RequiresHistoricalWork &&
+                PhaseRank(item.EarliestPhase) <= phaseRank)
+            .Select(item => item.ContractIdentity)
+            .OrderBy(item => item, StringComparer.Ordinal)
+            .ToArray();
+
+        return identities.Length == 0
+            ? string.Empty
+            : "|contract-frontier:" + LegendLanguageIdentity.TextHash(string.Join(
+                "|",
+                "legend-historical-work-frontier",
+                evaluatorVersion.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                phase,
+                string.Join(";", identities)));
+    }
+
+    /// <summary>
     /// Returns every declaration identity ever known for one derivation kind,
     /// including a superseded declaration that an interrupted deployment did
     /// not persist to the contract table.  The runtime uses this only to

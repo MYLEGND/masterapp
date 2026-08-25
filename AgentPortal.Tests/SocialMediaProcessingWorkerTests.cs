@@ -35,6 +35,11 @@ public sealed class SocialMediaProcessingWorkerTests
         await worker.StartAsync(CancellationToken.None);
         try
         {
+            // This regression verifies explicit queue wake-ups and sequential
+            // execution. Enqueue the first fixture just as subsequent fixtures
+            // are enqueued, rather than depending on the production worker's
+            // twenty-second crash-recovery sweep under a loaded CI scheduler.
+            worker.Enqueue(firstAssetId);
             await WaitForStateAsync(provider, firstAssetId, SocialMediaProcessingStates.Ready);
 
             var secondAssetId = await AddPendingVideoAsync(provider, databaseName);

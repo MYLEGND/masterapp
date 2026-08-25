@@ -35,7 +35,13 @@ public class WebsiteAnalyticsInitialQualityModeTests
 
         var controller = BuildController(db, profile);
 
-        var result = await controller.Index(preset: "today");
+        // Use an explicit UTC window. "today" is correctly viewer-time-zone
+        // based, so a test that seeds DateTime.UtcNow just after the viewer's
+        // local midnight can otherwise place its own fixture yesterday.
+        var result = await controller.Index(
+            preset: "custom",
+            fromUtc: now.AddHours(-1),
+            toUtc: now.AddMinutes(1));
 
         var view = Assert.IsType<ViewResult>(result);
         Assert.Equal("real_human_traffic", Assert.IsType<string>(view.ViewData["InitialQualityMode"]));
@@ -58,7 +64,13 @@ public class WebsiteAnalyticsInitialQualityModeTests
 
         var controller = BuildController(db, profile);
 
-        var result = await controller.Index(preset: "today");
+        // This test specifically verifies session-level real-human membership,
+        // not a viewer-local date boundary. Keep the fixture in-range at every
+        // UTC hour so that it cannot fail around Phoenix midnight.
+        var result = await controller.Index(
+            preset: "custom",
+            fromUtc: now.AddHours(-1),
+            toUtc: now.AddMinutes(1));
 
         var view = Assert.IsType<ViewResult>(result);
         Assert.Equal("real_human_traffic", Assert.IsType<string>(view.ViewData["InitialQualityMode"]));

@@ -69,6 +69,68 @@ public sealed class LegendConnectHistoricalReevaluationWorkTests
     }
 
     [Fact]
+    public async Task V21ContractFrontier_RewindsDependentPhase_AndRequeuesEachFamilyExactlyOnce()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        await fixture.StartAsync(LegendConnectLanguageIntelligenceEvaluatorVersion.Current);
+        AddSourceFamily(fixture.Db, "en", "contract-frontier", 151);
+        await fixture.Db.SaveChangesAsync();
+
+        var policy = await fixture.Db.LegendConnectRuntimePolicies.SingleAsync();
+        policy.TargetLanguageIntelligenceEvaluatorVersion =
+            LegendConnectLanguageIntelligenceEvaluatorVersion.Current;
+        policy.CompletedLanguageIntelligenceEvaluatorVersion =
+            LegendConnectLanguageIntelligenceEvaluatorVersion.Current;
+        policy.LanguageIntelligenceReevaluationPhase =
+            LegendConnectLanguageIntelligenceReevaluationPhases.Alignments;
+        policy.LanguageIntelligenceReevaluationCompletedUtc = null;
+        var convergence = await fixture.Db.LegendLanguageDerivationConvergences.SingleAsync(item =>
+            item.TargetEvaluatorVersion == LegendConnectLanguageIntelligenceEvaluatorVersion.Current);
+        convergence.State = "Queued";
+        convergence.EarliestAffectedPhase = LegendConnectLanguageIntelligenceReevaluationPhases.SourceFamilies;
+        convergence.ChangedContractCount = 1;
+        convergence.AffectedCanonicalArtifactCount = 1;
+        var family = await fixture.Db.LegendCurriculumFamilies.SingleAsync();
+        fixture.Db.LegendHistoricalReevaluationWorkItems.Add(new LegendHistoricalReevaluationWorkItem
+        {
+            EvaluatorVersion = LegendConnectLanguageIntelligenceEvaluatorVersion.Current,
+            Phase = LegendConnectLanguageIntelligenceReevaluationPhases.SourceFamilies,
+            WorkKind = "Canonical",
+            WorkIdentity = $"source-family:{family.Id:D}|language:en",
+            SubjectId = family.Id,
+            SubjectScope = "en",
+            DependencyIdentity = "source-language:en",
+            ProcessingState = "Pending"
+        });
+        await fixture.Db.SaveChangesAsync();
+
+        var replay = await fixture.Runtime.GetOrStartLanguageIntelligenceReevaluationAsync(
+            LegendConnectLanguageIntelligenceEvaluatorVersion.Current);
+        Assert.Equal(LegendConnectLanguageIntelligenceReevaluationPhases.SourceFamilies, replay.Phase);
+
+        var first = await fixture.Work.SeedNextBatchAsync(
+            LegendConnectLanguageIntelligenceEvaluatorVersion.Current,
+            LegendConnectLanguageIntelligenceReevaluationPhases.SourceFamilies,
+            "v21-contract-frontier");
+        var second = await fixture.Work.SeedNextBatchAsync(
+            LegendConnectLanguageIntelligenceEvaluatorVersion.Current,
+            LegendConnectLanguageIntelligenceReevaluationPhases.SourceFamilies,
+            "v21-contract-frontier");
+
+        Assert.Equal(1, first.SeededCount);
+        Assert.Equal(0, second.SeededCount);
+        var rows = await fixture.Db.LegendHistoricalReevaluationWorkItems
+            .Where(item => item.EvaluatorVersion == LegendConnectLanguageIntelligenceEvaluatorVersion.Current &&
+                item.Phase == LegendConnectLanguageIntelligenceReevaluationPhases.SourceFamilies &&
+                item.WorkKind == "Canonical")
+            .ToListAsync();
+        Assert.Single(rows.Where(item => item.WorkIdentity.Contains("|contract-frontier:", StringComparison.Ordinal)));
+        var legacy = Assert.Single(rows.Where(item => !item.WorkIdentity.Contains("|contract-frontier:", StringComparison.Ordinal)));
+        Assert.Equal("Retired", legacy.ProcessingState);
+        Assert.Equal("historical_reevaluation_contract_superseded", legacy.LastErrorCode);
+    }
+
+    [Fact]
     public async Task DependencyLanes_SerializeCollidingSourceLanguagesAndFeedIndependentLanguages()
     {
         await using var fixture = await Fixture.CreateAsync();

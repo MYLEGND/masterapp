@@ -27,6 +27,9 @@
     const status = document.getElementById('legendFounderAiStatus');
     const subtitle = document.getElementById('legendFounderAiSubtitle');
     const conversationState = document.getElementById('legendFounderAiConversationState');
+    const founderCommandConfirmed = document.getElementById(
+        'legendFounderAiFounderCommandConfirmed'
+    );
     const sidebar = document.getElementById('legendFounderAiSidebar');
     const sidebarCollapse = document.getElementById('legendFounderAiSidebarCollapse');
     const sidebarScrim = document.getElementById('legendFounderAiSidebarScrim');
@@ -1106,6 +1109,8 @@
                             body: JSON.stringify({
                                 mode: conversation.mode,
                                 conversationId: conversation.id,
+                                founderCommandConfirmed:
+                                    founderCommandConfirmed?.checked === true,
                                 messages: conversation.messages
                             })
                         }
@@ -1171,6 +1176,10 @@
                 );
 
                 focusComposer();
+            } finally {
+                if (founderCommandConfirmed) {
+                    founderCommandConfirmed.checked = false;
+                }
             }
         }
     );

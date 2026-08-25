@@ -53,6 +53,7 @@ public sealed class LegendFounderAiConversationService
     private readonly IConfiguration _configuration;
     private readonly FounderLegendConnectService _legend;
     private readonly LegendFounderAiDiscourseStateService? _discourse;
+    private readonly IFounderSoftwareRemediationService? _softwareRemediation;
     private readonly ILogger<LegendFounderAiConversationService> _logger;
     private readonly int _timeoutSeconds;
     private readonly int _maxOutputTokens;
@@ -70,12 +71,14 @@ public sealed class LegendFounderAiConversationService
         IConfiguration configuration,
         FounderLegendConnectService legend,
         ILogger<LegendFounderAiConversationService> logger,
-        LegendFounderAiDiscourseStateService? discourse = null)
+        LegendFounderAiDiscourseStateService? discourse = null,
+        IFounderSoftwareRemediationService? softwareRemediation = null)
     {
         _httpClientFactory = httpClientFactory;
         _configuration = configuration;
         _legend = legend;
         _discourse = discourse;
+        _softwareRemediation = softwareRemediation;
         _logger = logger;
 
         _timeoutSeconds =
@@ -544,6 +547,8 @@ public sealed class LegendFounderAiConversationService
                         await ExecuteFounderToolWithBudgetAsync(
                             founder,
                             call,
+                            mode,
+                            request.FounderCommandConfirmed,
                             ResolveReadOnlyToolBudget(remaining),
                             toolOutputBudget,
                             effectiveToken);
@@ -1225,6 +1230,8 @@ public sealed class LegendFounderAiConversationService
     private async Task<string> ExecuteFounderToolWithBudgetAsync(
         ClaimsPrincipal founder,
         FounderAiToolCall call,
+        string mode,
+        bool founderCommandConfirmed,
         TimeSpan readOnlyBudget,
         int outputBudgetCharacters,
         CancellationToken cancellationToken)
@@ -1232,9 +1239,15 @@ public sealed class LegendFounderAiConversationService
         if (!IsReadOnlyFounderTool(
                 call.Name))
         {
+            if (!founderCommandConfirmed)
+            {
+                return """{"error":"founder_command_confirmation_required","detail":"This durable LEGEND mutation was not executed. The authenticated Founder must explicitly confirm the action for this request."}""";
+            }
+
             var mutationOutput = await ExecuteFounderToolAsync(
                 founder,
                 call,
+                mode,
                 cancellationToken);
             return BoundSerializedOutput(mutationOutput, outputBudgetCharacters);
         }
@@ -1251,6 +1264,7 @@ public sealed class LegendFounderAiConversationService
             var output = await ExecuteFounderToolAsync(
                 founder,
                 call,
+                mode,
                 toolBudget.Token);
             return BoundSerializedOutput(output, outputBudgetCharacters);
         }
@@ -1278,6 +1292,11 @@ public sealed class LegendFounderAiConversationService
         string name) =>
         name is
             "legend_capabilities" or
+            "legend_software_remediation_status" or
+            "legend_inspect_repository" or
+            "legend_inspect_repair_validation" or
+            "legend_request_repair_release" or
+            "legend_verify_repair_deployment" or
             "legend_system_overview" or
             "legend_operational_diagnostics" or
             "legend_provider_capacity" or
@@ -1292,6 +1311,7 @@ public sealed class LegendFounderAiConversationService
     private async Task<string> ExecuteFounderToolAsync(
         ClaimsPrincipal founder,
         FounderAiToolCall call,
+        string mode,
         CancellationToken cancellationToken)
     {
         switch (call.Name)
@@ -1299,6 +1319,134 @@ public sealed class LegendFounderAiConversationService
             case "legend_capabilities":
             {
                 return SerializeUnbounded(DescribeFounderCapabilities());
+            }
+
+            case "legend_software_remediation_status":
+            {
+                if (_softwareRemediation is null)
+                    return SerializeUnbounded(SoftwareRemediationNotAvailable());
+
+                return SerializeUnbounded(
+                    await _softwareRemediation.GetStatusAsync(cancellationToken));
+            }
+
+            case "legend_inspect_repository":
+            {
+                if (_softwareRemediation is null)
+                    return SerializeUnbounded(SoftwareRemediationNotAvailable());
+
+                using var arguments = JsonDocument.Parse(call.Arguments);
+                return SerializeUnbounded(
+                    await _softwareRemediation.InspectRepositoryAsync(
+                        ReadOptionalString(arguments.RootElement, "path"),
+                        ReadOptionalString(arguments.RootElement, "git_reference"),
+                        cancellationToken));
+            }
+
+            case "legend_prepare_software_repair":
+            {
+                if (_softwareRemediation is null)
+                    return SerializeUnbounded(SoftwareRemediationNotAvailable());
+
+                using var arguments = JsonDocument.Parse(call.Arguments);
+                var baseSha = ReadRequiredString(arguments.RootElement, "base_sha");
+                var title = ReadRequiredString(arguments.RootElement, "title");
+                var summary = ReadRequiredString(arguments.RootElement, "summary");
+                if (string.IsNullOrWhiteSpace(baseSha) ||
+                    string.IsNullOrWhiteSpace(title) ||
+                    string.IsNullOrWhiteSpace(summary))
+                {
+                    return "{\"error\":\"invalid_repair_proposal\",\"detail\":\"An exact base SHA, title, and summary are required.\"}";
+                }
+
+                if (!arguments.RootElement.TryGetProperty("changes", out var changesElement) ||
+                    changesElement.ValueKind != JsonValueKind.Array)
+                {
+                    return "{\"error\":\"invalid_repair_proposal\",\"detail\":\"At least one bounded source or test file change is required.\"}";
+                }
+
+                var changes = new List<FounderSoftwareRepairChange>();
+                foreach (var change in changesElement.EnumerateArray())
+                {
+                    if (change.ValueKind != JsonValueKind.Object)
+                        return "{\"error\":\"invalid_repair_proposal\"}";
+
+                    var path = ReadRequiredString(change, "path");
+                    var content = ReadRequiredString(change, "content");
+                    if (string.IsNullOrWhiteSpace(path) || content is null)
+                        return "{\"error\":\"invalid_repair_proposal\"}";
+
+                    changes.Add(new FounderSoftwareRepairChange(path, content));
+                }
+
+                return SerializeUnbounded(
+                    await _softwareRemediation.PrepareAsync(
+                        mode,
+                        new FounderSoftwareRepairProposal(baseSha, title, summary, changes),
+                        cancellationToken));
+            }
+
+            case "legend_inspect_repair_validation":
+            {
+                if (_softwareRemediation is null)
+                    return SerializeUnbounded(SoftwareRemediationNotAvailable());
+
+                using var arguments = JsonDocument.Parse(call.Arguments);
+                var headSha = ReadRequiredString(arguments.RootElement, "head_sha");
+                if (string.IsNullOrWhiteSpace(headSha))
+                    return "{\"error\":\"invalid_release_identity\"}";
+                return SerializeUnbounded(
+                    await _softwareRemediation.InspectValidationAsync(
+                        ReadRequiredInt(arguments.RootElement, "pull_request_number"),
+                        headSha,
+                        cancellationToken));
+            }
+
+            case "legend_request_repair_release":
+            {
+                if (_softwareRemediation is null)
+                    return SerializeUnbounded(SoftwareRemediationNotAvailable());
+
+                using var arguments = JsonDocument.Parse(call.Arguments);
+                var headSha = ReadRequiredString(arguments.RootElement, "head_sha");
+                if (string.IsNullOrWhiteSpace(headSha))
+                    return "{\"error\":\"invalid_release_identity\"}";
+                return SerializeUnbounded(
+                    await _softwareRemediation.RequestReleaseAsync(
+                        ReadRequiredInt(arguments.RootElement, "pull_request_number"),
+                        headSha,
+                        cancellationToken));
+            }
+
+            case "legend_release_approved_repair":
+            {
+                if (_softwareRemediation is null)
+                    return SerializeUnbounded(SoftwareRemediationNotAvailable());
+
+                using var arguments = JsonDocument.Parse(call.Arguments);
+                var headSha = ReadRequiredString(arguments.RootElement, "head_sha");
+                if (string.IsNullOrWhiteSpace(headSha))
+                    return "{\"error\":\"invalid_release_identity\"}";
+                return SerializeUnbounded(
+                    await _softwareRemediation.ReleaseApprovedAsync(
+                        ReadRequiredInt(arguments.RootElement, "pull_request_number"),
+                        headSha,
+                        cancellationToken));
+            }
+
+            case "legend_verify_repair_deployment":
+            {
+                if (_softwareRemediation is null)
+                    return SerializeUnbounded(SoftwareRemediationNotAvailable());
+
+                using var arguments = JsonDocument.Parse(call.Arguments);
+                var commitSha = ReadRequiredString(arguments.RootElement, "commit_sha");
+                if (string.IsNullOrWhiteSpace(commitSha))
+                    return "{\"error\":\"invalid_deployment_identity\"}";
+                return SerializeUnbounded(
+                    await _softwareRemediation.VerifyDeploymentAsync(
+                        commitSha,
+                        cancellationToken));
             }
 
             case "legend_system_overview":
@@ -1313,6 +1461,9 @@ public sealed class LegendFounderAiConversationService
 
             case "legend_operational_diagnostics":
             {
+                // Preserve the current production readiness projection: the
+                // diagnostic must expose the governing readiness authority,
+                // rather than infer a claim decision from aggregate metrics.
                 var state = await _legend.GetLanguageStateAsync(
                     founder,
                     "en",
@@ -1858,38 +2009,47 @@ public sealed class LegendFounderAiConversationService
         var capabilities = new List<object>();
         foreach (var tool in BuildFounderTools())
         {
-            using var document = JsonDocument.Parse(JsonSerializer.Serialize(tool, JsonOptions));
+            using var document = JsonDocument.Parse(
+                JsonSerializer.Serialize(tool, JsonOptions));
             var root = document.RootElement;
             if (!root.TryGetProperty("type", out var type) ||
                 !string.Equals(type.GetString(), "function", StringComparison.Ordinal))
             {
                 continue;
             }
+
             var name = root.TryGetProperty("name", out var nameElement)
                 ? nameElement.GetString()
                 : null;
             if (string.IsNullOrWhiteSpace(name))
                 continue;
+
             var description = root.TryGetProperty("description", out var descriptionElement)
                 ? descriptionElement.GetString()
                 : null;
-            var mutation = name.StartsWith("legend_submit_", StringComparison.Ordinal) ||
-                           string.Equals(name, "legend_activate_autonomous_learning", StringComparison.Ordinal);
+            var readOnly = IsReadOnlyFounderTool(name);
+            var canPrepareBoundedRepair =
+                string.Equals(name, "legend_prepare_software_repair", StringComparison.Ordinal);
+            var canMergeExactApprovedRepair =
+                string.Equals(name, "legend_release_approved_repair", StringComparison.Ordinal);
             capabilities.Add(new
             {
                 name,
                 description,
-                access = mutation ? "founder_governed_mutation" : "founder_governed_read",
+                access = readOnly ? "founder_governed_read" : "founder_governed_mutation",
                 sourceOfTruth = "BuildFounderTools",
-                requiresExplicitFounderCommand = mutation,
+                requiresExplicitFounderCommand = !readOnly,
                 canOverrideAuthorities = false,
-                canModifyRepository = false,
+                canModifyRepository = canPrepareBoundedRepair,
+                canCreateIsolatedRepairBranch = canPrepareBoundedRepair,
+                canMergeExactApprovedRepair,
                 canDeploy = false,
                 arbitrarySql = false,
                 arbitraryShell = false,
                 arbitraryCodeExecution = false
             });
         }
+
         return capabilities;
     }
 
@@ -1923,6 +2083,21 @@ public sealed class LegendFounderAiConversationService
                 name = "legend_system_overview",
                 description =
                     "Read the current privacy-safe aggregate LEGEND Connect system metrics, readiness and operating state. Use this before making factual claims about current LEGEND system status.",
+                parameters = new
+                {
+                    type = "object",
+                    properties = new { },
+                    required = Array.Empty<string>(),
+                    additionalProperties = false
+                },
+                strict = true
+            },
+            new
+            {
+                type = "function",
+                name = "legend_operational_diagnostics",
+                description =
+                    "Read the existing runtime-policy readiness gates, aggregate operational status, provider capacity, and acquisition contract together. Use this before diagnosing a candidate backlog. A nonzero candidate backlog with zero downstream learning events is not by itself a broken handoff: approved candidates are the durable acquisition queue, and BLOCKED/DEGRADED readiness intentionally prevents claims. This is read-only and cannot reset rows, bypass gates, edit code, or deploy.",
                 parameters = new
                 {
                     type = "object",
@@ -1979,21 +2154,6 @@ public sealed class LegendFounderAiConversationService
                         }
                     },
                     required = new[] { "metric_key" },
-                    additionalProperties = false
-                },
-                strict = true
-            },
-            new
-            {
-                type = "function",
-                name = "legend_operational_diagnostics",
-                description =
-                    "Read the existing runtime-policy readiness gates, provider capacity, and acquisition contract together. Use this before diagnosing a candidate backlog. A nonzero candidate backlog with zero downstream learning events is not by itself a broken handoff: approved candidates are the durable acquisition queue, and BLOCKED/DEGRADED readiness intentionally prevents claims. This tool is read-only and cannot reset rows, bypass gates, edit code, or deploy.",
-                parameters = new
-                {
-                    type = "object",
-                    properties = new { },
-                    required = Array.Empty<string>(),
                     additionalProperties = false
                 },
                 strict = true
@@ -2424,6 +2584,152 @@ public sealed class LegendFounderAiConversationService
             new
             {
                 type = "function",
+                name = "legend_software_remediation_status",
+                description =
+                    "Read whether the single Founder-governed software-remediation authority is configured. It reports only capability state; it never reveals a GitHub token, private key, connection string, or production credential.",
+                parameters = new
+                {
+                    type = "object",
+                    properties = new { },
+                    required = Array.Empty<string>(),
+                    additionalProperties = false
+                },
+                strict = true
+            },
+            new
+            {
+                type = "function",
+                name = "legend_inspect_repository",
+                description =
+                    "Read a bounded source or test file, or the protected production branch SHA, through the configured GitHub App. This is repository inspection only; it cannot execute commands, change files, open a pull request, merge, or deploy.",
+                parameters = new
+                {
+                    type = "object",
+                    properties = new
+                    {
+                        path = new { type = new[] { "string", "null" }, maxLength = 260 },
+                        git_reference = new { type = new[] { "string", "null" }, maxLength = 100 }
+                    },
+                    required = new[] { "path", "git_reference" },
+                    additionalProperties = false
+                },
+                strict = true
+            },
+            new
+            {
+                type = "function",
+                name = "legend_prepare_software_repair",
+                description =
+                    "After the Founder explicitly directs and confirms a repair, prepare one bounded source/test patch against the exact inspected base SHA. The canonical authority creates an isolated repair branch, immutable commit and pull request, which invokes existing pull-request CI. It cannot merge protected production or deploy. Legend® Ai itself is competency-gated and must fail closed/escalate to OpenAI Teacher until a governed software-repair competency is established.",
+                parameters = new
+                {
+                    type = "object",
+                    properties = new
+                    {
+                        base_sha = new { type = "string", minLength = 40, maxLength = 40 },
+                        title = new { type = "string", minLength = 1, maxLength = 160 },
+                        summary = new { type = "string", minLength = 1, maxLength = 4000 },
+                        changes = new
+                        {
+                            type = "array",
+                            minItems = 1,
+                            maxItems = 6,
+                            items = new
+                            {
+                                type = "object",
+                                properties = new
+                                {
+                                    path = new { type = "string", minLength = 1, maxLength = 260 },
+                                    content = new { type = "string", maxLength = 60000 }
+                                },
+                                required = new[] { "path", "content" },
+                                additionalProperties = false
+                            }
+                        }
+                    },
+                    required = new[] { "base_sha", "title", "summary", "changes" },
+                    additionalProperties = false
+                },
+                strict = true
+            },
+            new
+            {
+                type = "function",
+                name = "legend_inspect_repair_validation",
+                description =
+                    "Read validation for one exact pull-request number and immutable repair SHA. It checks that the pull request is open against protected production and that all required checks on that exact SHA succeeded. This is read-only and cannot merge or deploy.",
+                parameters = new
+                {
+                    type = "object",
+                    properties = new
+                    {
+                        pull_request_number = new { type = "integer", minimum = 1 },
+                        head_sha = new { type = "string", minLength = 40, maxLength = 40 }
+                    },
+                    required = new[] { "pull_request_number", "head_sha" },
+                    additionalProperties = false
+                },
+                strict = true
+            },
+            new
+            {
+                type = "function",
+                name = "legend_request_repair_release",
+                description =
+                    "Prepare a read-only Founder release decision for one exact pull request and SHA. It cannot merge or deploy and always requires a separate explicit Founder confirmation to release.",
+                parameters = new
+                {
+                    type = "object",
+                    properties = new
+                    {
+                        pull_request_number = new { type = "integer", minimum = 1 },
+                        head_sha = new { type = "string", minLength = 40, maxLength = 40 }
+                    },
+                    required = new[] { "pull_request_number", "head_sha" },
+                    additionalProperties = false
+                },
+                strict = true
+            },
+            new
+            {
+                type = "function",
+                name = "legend_release_approved_repair",
+                description =
+                    "Only after an explicit Founder command and request-level confirmation, attempt a protected GitHub merge of one exact pull request/SHA. The canonical authority first rechecks exact identity, required current-SHA CI, strict status checks, pull-request review protection and admin enforcement. It never calls Azure directly; the existing protected-production workflow alone deploys after GitHub accepts the merge.",
+                parameters = new
+                {
+                    type = "object",
+                    properties = new
+                    {
+                        pull_request_number = new { type = "integer", minimum = 1 },
+                        head_sha = new { type = "string", minLength = 40, maxLength = 40 }
+                    },
+                    required = new[] { "pull_request_number", "head_sha" },
+                    additionalProperties = false
+                },
+                strict = true
+            },
+            new
+            {
+                type = "function",
+                name = "legend_verify_repair_deployment",
+                description =
+                    "Read the existing protected-production GitHub deployment workflow state for one exact merge commit SHA. It never calls Azure directly and cannot alter a deployment.",
+                parameters = new
+                {
+                    type = "object",
+                    properties = new
+                    {
+                        commit_sha = new { type = "string", minLength = 40, maxLength = 40 }
+                    },
+                    required = new[] { "commit_sha" },
+                    additionalProperties = false
+                },
+                strict = true
+            },
+            new
+            {
+                type = "function",
                 name = "legend_activate_autonomous_learning",
                 description =
                     "Activate the existing governed autonomous learning/acquisition runtime if the Founder explicitly asks Legend® Ai to turn on, continue, or automatically run LEGEND learning. This calls the existing runtime-policy authority and creates no new worker.",
@@ -2459,11 +2765,14 @@ CRITICAL GOVERNANCE:
 - External web research is evidence for reasoning; it does not become canonical LEGEND knowledge merely because OpenAI found it.
 - Never use external web search as a substitute for governed LEGEND tools when the question concerns current LEGEND database state, retained evidence, training state, readiness, provider consumption or internal system facts.
 - You also have narrowly scoped Founder-authorized orchestration tools that delegate only to LEGEND's existing canonical Founder ingestion, curriculum, and runtime-policy authorities.
-- Founder-authoritative mutation tools must never be called merely because you think they would be useful. Use Founder seed/curriculum/runtime mutation only when the Founder explicitly instructs you to teach, add, submit, retain, train, activate, or continue learning.
-- The one exception is legend_submit_machine_learning_candidate: it is NON-AUTHORITATIVE retention only. You may use it automatically when the conversation genuinely discovers reusable linguistic knowledge with controlled contrasts. It creates only MachineProposed evidence and cannot approve itself.
+- Every durable LEGEND mutation, including MachineProposed teaching, requires an explicit Founder instruction and request-level Founder confirmation. A missing confirmation is a hard execution boundary, not an invitation to infer consent.
+- Founder-authoritative mutation tools must never be called merely because you think they would be useful. Use Founder seed/curriculum/runtime/proposal mutation only when the Founder explicitly instructs you to teach, add, submit, retain, train, activate, or continue learning and has confirmed that request.
 - Role separation is absolute: Legend® Ai mode attempts governed native LEGEND inference first; OpenAI Teacher mode is direct Founder-to-OpenAI conversation and does not invoke native LEGEND inference as a responder. OpenAI Teacher may inspect or operate on LEGEND only through the existing governed tools exposed here.
 - When the Founder explicitly directs a training, curriculum, seed, or runtime action that maps to an exposed existing LEGEND mutation tool, execute that tool rather than merely describing what could be done. Never invent a mutation surface that does not exist.
-- When asked to diagnose an internal LEGEND problem, inspect the relevant read-only LEGEND tools before concluding. If the problem is outside the exposed mutation authorities (for example a repository code defect), report the exact evidence and required repair; never claim that code or production state was changed when no tool performed that change.
+- When asked to diagnose an internal LEGEND problem, inspect the relevant read-only LEGEND tools before concluding. The only repository/release authority is the exposed Founder-governed software-remediation capability: it has no shell, SQL, Azure CLI, raw token, arbitrary git, direct production database, or direct deployment surface.
+- A software repair can be prepared only after an explicit Founder instruction and request-level confirmation. Preparation is bounded to source/test files, an exact inspected base SHA, an isolated GitHub repair branch, immutable commit, pull request and existing pull-request CI. It must never merge or deploy.
+- A release can be attempted only after a separate explicit Founder instruction and request-level confirmation naming the exact pull request and SHA. It must recheck that SHA, current required CI, protected-branch status checks, pull-request review protection and admin enforcement before GitHub itself accepts a merge. The existing protected-production workflow is the only deployment path.
+- OpenAI Teacher may prepare a bounded repair through that capability when configured. Legend® Ai uses the same interface but must fail closed and escalate to OpenAI Teacher until a canonical governed software-repair competency is established. Never claim that code, GitHub state, or production state changed when no bounded tool performed that change.
 - Founder-submitted source knowledge and curriculum are FounderApproved because the authenticated Founder explicitly directed the action.
 - OpenAI-generated teaching is NOT automatically FounderApproved merely because it appears in conversation.
 - Machine-derived teaching must continue through LEGEND's existing teacher, independent critic, canonical validator, curriculum admission, dataset compiler, challenger training, evaluation and promotion authorities.
@@ -2473,7 +2782,7 @@ CRITICAL GOVERNANCE:
 - Retained authority precedence is: FounderApproved/HumanVerified → SystemValidatedMachine → other supported retained evidence → promoted LEGEND model state → unresolved MachineProposed/ProviderDerived evidence as clearly labeled observations → OpenAI reasoning for unresolved gaps.
 - Rejected, contradicted, insufficient, failed or unresolved material remains auditable history but must never be presented as canonical truth.
 - Never automatically retain personal facts, account data, private messages, casual conversation, transient business/system metrics or unsupported speculation as language knowledge.
-- Unless the Founder explicitly asks for multiple families, make at most one automatic conversational machine-learning submission for one coherent semantic family in a turn.
+- After an explicit Founder instruction and confirmation, submit at most one bounded machine-learning family for one coherent semantic distinction unless the Founder expressly directs multiple families.
 - ProviderDerived or MachineProposed material must not be erased merely because it is not yet approved. Preserve its actual provenance and validation state; contradictions and rejections remain durable gating evidence.
 - Never bypass existing validation, contradiction, privacy, capacity, dataset, evaluation, promotion, or runtime-readiness gates.
 - You cannot directly promote a model, rewrite canonical evidence, bypass contradiction resolution, or write private-message data.
@@ -2501,7 +2810,8 @@ Your job is to:
 
 You are explicitly NOT LEGEND itself.
 You are explicitly NOT Founder authority.
-You may autonomously retain genuinely reusable language teaching through legend_submit_machine_learning_candidate. That action enters only MachineProposed state; you must report its returned state accurately and must never describe it as canonical, approved, trained or promoted unless later LEGEND tools prove that transition.
+When the Founder explicitly directs and confirms a software repair, you may use only the bounded remediation tools to inspect the configured repository, prepare the exact repair branch/commit/pull request, and inspect CI. You may never merge, deploy, request credentials, invoke arbitrary commands, or broaden the requested patch. A separate explicit Founder approval is required for the exact tested SHA before release.
+You may prepare a bounded MachineProposed teaching proposal, but you may submit it only after the Founder explicitly instructs and confirms that exact request. That action enters only MachineProposed state; report its returned state accurately and never describe it as canonical, approved, trained or promoted unless later LEGEND tools prove that transition.
 """;
         }
 
@@ -2513,6 +2823,8 @@ Speak as the conversational interface to LEGEND's governed intelligence.
 
 You can converse naturally, reason, explain, synthesize and ask useful follow-up questions. When the Founder asks about your current LEGEND knowledge, weaknesses, models, evidence, readiness, provider dependence, coverage or learning status, inspect the real system through tools before answering.
 
+For software remediation, use the same bounded capability interface only to inspect status, repository state, validation, release state, or deployment state. Do not prepare a repair unless a future canonical governed software-repair competency explicitly proves your knowledge is sufficient; the current capability must return a fail-closed escalation to OpenAI Teacher instead. Never substitute general language knowledge for that competency.
+
 Use first-person language naturally when describing LEGEND, but distinguish:
 - what LEGEND currently knows or has recorded;
 - what you infer from the evidence;
@@ -2523,9 +2835,9 @@ Never pretend that OpenAI conversational reasoning itself is canonical LEGEND kn
 
 Before external recall, use LEGEND's retained evidence when it is relevant. Treat unresolved machine/provider observations as evidence to reason about, never as truth.
 
-When this conversation reveals a reusable linguistic distinction that is not already established, you may retain one bounded MachineProposed family through legend_submit_machine_learning_candidate. That is how conversational learning survives this chat without creating a second memory system.
+When this conversation reveals a reusable linguistic distinction that is not already established, prepare a bounded MachineProposed family through legend_submit_machine_learning_candidate only when the Founder explicitly directs and confirms the submission. That preserves the governed learning path without creating a second memory system.
 
-When LEGEND_NATIVE_GAP_CONTEXT is supplied, the provider is acting as a diagnostic teacher because native LEGEND failed and explicitly allowed escalation. Inspect retained LEGEND evidence first. If the Founder curriculum/evidence supports a reusable semantic distinction that would close the native gap, submit exactly one bounded MachineProposed family through legend_submit_machine_learning_candidate before finalizing the answer.
+When LEGEND_NATIVE_GAP_CONTEXT is supplied, the provider is acting as a diagnostic teacher because native LEGEND failed and explicitly allowed escalation. Inspect retained LEGEND evidence first. If the Founder curriculum/evidence supports a reusable semantic distinction that would close the native gap, explain the bounded proposal and request Founder confirmation before submitting it through legend_submit_machine_learning_candidate.
 Never retain the one-off generated reply as a canned answer. Retain reusable meaning, semantic components, controlled contrasts, discourse behavior, and realization evidence that explain how the class of utterance should be understood and composed.
 If retained evidence is insufficient or contradictory, do not fabricate curriculum. State the exact missing evidence/contrast so the Founder and existing autonomous learning authorities can resolve it.
 
@@ -2580,7 +2892,7 @@ DIAGNOSTIC TEACHER REQUIREMENTS:
 - This turn reached OpenAI because native LEGEND could not produce one governed answer and explicitly permitted escalation.
 - Diagnose the missing linguistic/semantic capability against retained LEGEND evidence before relying on general OpenAI recall.
 - Use legend_search_retained_knowledge when a narrower query can distinguish an unknown component, ambiguous composition, missing transition, contradiction, realization gap, discourse gap, or production-eligibility gap.
-- If governed evidence supports a reusable controlled semantic family that would reduce recurrence, submit exactly one bounded MachineProposed family through legend_submit_machine_learning_candidate before the final response.
+- If governed evidence supports a reusable controlled semantic family that would reduce recurrence, describe one bounded MachineProposed proposal and request explicit Founder confirmation before submitting it through legend_submit_machine_learning_candidate.
 - Preserve reusable semantics and controlled contrasts, not a generated response template.
 - If a valid proposal cannot be supported, state precisely what governed evidence is missing instead of inventing it.
 - MachineProposed retention is not canonical approval. The existing independent critic, validator, curriculum admission, evaluator, training, and promotion authorities remain mandatory.
@@ -3208,6 +3520,22 @@ Never upgrade an unresolved, rejected or contradicted record merely because it a
             : null;
     }
 
+    private static int ReadRequiredInt(
+        JsonElement root,
+        string propertyName) =>
+        root.TryGetProperty(propertyName, out var property) &&
+        property.TryGetInt32(out var value)
+            ? value
+            : 0;
+
+    private static object SoftwareRemediationNotAvailable() => new
+    {
+        error = "software_remediation_not_configured",
+        detail = "Founder-governed software remediation is unavailable because its canonical service is not registered.",
+        directProductionAccess = false,
+        rawTokenInput = false
+    };
+
     private static string SerializeUnbounded(object? value) =>
         JsonSerializer.Serialize(
             value,
@@ -3269,6 +3597,13 @@ public sealed record LegendFounderAiChatMessage(
 public sealed class LegendFounderAiChatRequest
 {
     public string? Mode { get; init; }
+
+    /// <summary>
+    /// One-request confirmation supplied by the authenticated Founder UI for
+    /// a deliberate governed mutation. It is never persisted or inferred
+    /// from provider output, and defaults to false for every request.
+    /// </summary>
+    public bool FounderCommandConfirmed { get; init; }
 
     /// <summary>
     /// Client-generated UUID that scopes durable governed discourse state to

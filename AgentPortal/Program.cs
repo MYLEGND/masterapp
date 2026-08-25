@@ -129,6 +129,7 @@ builder.Services.AddScoped<AgencyCommandService>();
 builder.Services.AddScoped<FounderSubscribersService>();
 builder.Services.AddScoped<FounderLegendConnectService>();
 builder.Services.AddScoped<LegendFounderAiDiscourseStateService>();
+builder.Services.AddScoped<IFounderSoftwareRemediationService, FounderSoftwareRemediationService>();
 builder.Services.AddScoped<LegendFounderAiConversationService>();
 builder.Services.AddSingleton<LegendFounderAiProgressBroker>();
 builder.Services.AddScoped<FounderImpersonationService>();
@@ -167,6 +168,15 @@ builder.Services.AddHttpClient("OpenAI", c =>
     // so the service's CancellationTokenSource fires first and returns a clean error.
     var svcTimeout = int.TryParse(builder.Configuration["OpenAI:TimeoutSeconds"], out var st) && st > 0 ? st : 30;
     c.Timeout = TimeSpan.FromSeconds(svcTimeout + 5);
+});
+// Founder-governed software remediation authenticates each bounded GitHub
+// operation as a GitHub App installation. The service obtains its private key
+// only through managed-identity Key Vault access; no browser/user token or
+// generic command client is registered here.
+builder.Services.AddHttpClient("FounderGitHubRemediation", c =>
+{
+    c.BaseAddress = new Uri("https://api.github.com/");
+    c.Timeout = TimeSpan.FromSeconds(30);
 });
 // Warn at startup if OpenAI key is missing — non-fatal; AI features simply return error results
 if (!AgentPortal.Services.Analytics.OpenAiKeyResolver.IsConfigured(builder.Configuration))

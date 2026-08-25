@@ -163,7 +163,7 @@ internal sealed class LegendConnectHistoricalReevaluationWorkAuthority
         CancellationToken cancellationToken = default)
     {
         var now = DateTime.UtcNow;
-        var terminal = WorkFor(evaluatorVersion, phase)
+        var terminal = CurrentGenerationWorkFor(evaluatorVersion, phase)
             .Where(item => item.WorkKind != SeedWorkKind &&
                 item.ProcessingState == Failed &&
                 item.AttemptCount >= MaximumAttempts);
@@ -290,9 +290,13 @@ internal sealed class LegendConnectHistoricalReevaluationWorkAuthority
         string phase,
         CancellationToken cancellationToken = default)
     {
+        await RetireSupersededContractWorkAsync(
+            evaluatorVersion,
+            phase,
+            cancellationToken);
         await RetireTerminalFailuresAsync(evaluatorVersion, phase, cancellationToken);
         var now = DateTime.UtcNow;
-        var query = WorkFor(evaluatorVersion, phase)
+        var query = CurrentGenerationWorkFor(evaluatorVersion, phase)
             .Where(item => item.ProcessingState == Processing &&
                 item.LeaseExpiresUtc != null && item.LeaseExpiresUtc <= now);
 
@@ -307,6 +311,8 @@ internal sealed class LegendConnectHistoricalReevaluationWorkAuthority
             List<Guid> candidateIds;
             try
             {
+                var generationSuffix = LegendConnectDerivationContracts
+                    .HistoricalWorkGenerationSuffix(evaluatorVersion, phase);
                 candidateIds = await _db.Set<LegendHistoricalReevaluationWorkItem>()
                     .FromSqlInterpolated($"""
                         SELECT TOP ({MaximumExpiredLeaseReclaimsPerPass}) *
@@ -316,6 +322,7 @@ internal sealed class LegendConnectHistoricalReevaluationWorkAuthority
                           AND [ProcessingState] = {Processing}
                           AND [LeaseExpiresUtc] IS NOT NULL
                           AND [LeaseExpiresUtc] <= {now}
+                          AND ({generationSuffix} = '' OR [WorkKind] = {SeedWorkKind} OR [WorkIdentity] LIKE '%' + {generationSuffix})
                         ORDER BY [LeaseExpiresUtc], [Id]
                         """)
                     .AsNoTracking()
@@ -333,7 +340,7 @@ internal sealed class LegendConnectHistoricalReevaluationWorkAuthority
             var reclaimed = 0;
             foreach (var candidateId in candidateIds)
             {
-                var updated = await WorkFor(evaluatorVersion, phase)
+                var updated = await CurrentGenerationWorkFor(evaluatorVersion, phase)
                     .Where(item => item.Id == candidateId && item.ProcessingState == Processing &&
                         item.LeaseExpiresUtc != null && item.LeaseExpiresUtc <= now)
                     .ExecuteUpdateAsync(setters => setters
@@ -1046,7 +1053,7 @@ internal sealed class LegendConnectHistoricalReevaluationWorkAuthority
     {
         await RetireTerminalFailuresAsync(evaluatorVersion, phase, cancellationToken);
         var now = DateTime.UtcNow;
-        var work = WorkFor(evaluatorVersion, phase).AsNoTracking()
+        var work = CurrentGenerationWorkFor(evaluatorVersion, phase).AsNoTracking()
             .Where(item => (item.WorkKind == CanonicalWorkKind ||
                 item.WorkKind == DerivationLedgerWorkKind) &&
                 item.ProcessingState != Retired);
@@ -1102,7 +1109,7 @@ internal sealed class LegendConnectHistoricalReevaluationWorkAuthority
 
         await RetireTerminalFailuresAsync(evaluatorVersion, phase, cancellationToken);
         var now = DateTime.UtcNow;
-        var work = WorkFor(evaluatorVersion, phase);
+        var work = CurrentGenerationWorkFor(evaluatorVersion, phase);
         if (await work.AnyAsync(item => item.ProcessingState == Failed ||
                 item.ProcessingState == Pending ||
                 item.ProcessingState == Processing ||
@@ -1132,6 +1139,79 @@ internal sealed class LegendConnectHistoricalReevaluationWorkAuthority
     private IQueryable<LegendHistoricalReevaluationWorkItem> WorkFor(int evaluatorVersion, string phase) =>
         _db.Set<LegendHistoricalReevaluationWorkItem>()
             .Where(item => item.EvaluatorVersion == evaluatorVersion && item.Phase == phase);
+
+    /// <summary>
+    /// Work identities are versioned by the exact materialized contract
+    /// frontier.  A new V21/V3 frontier therefore seeds new durable work
+    /// beside the old completed/failed identities instead of editing their
+    /// evaluator version, status, evidence, or lineage into a false match.
+    /// </summary>
+    private IQueryable<LegendHistoricalReevaluationWorkItem> CurrentGenerationWorkFor(
+        int evaluatorVersion,
+        string phase)
+    {
+        var suffix = LegendConnectDerivationContracts
+            .HistoricalWorkGenerationSuffix(evaluatorVersion, phase);
+        var work = WorkFor(evaluatorVersion, phase);
+        return string.IsNullOrEmpty(suffix)
+            ? work
+            : work.Where(item => item.WorkKind == SeedWorkKind || item.WorkIdentity.EndsWith(suffix));
+    }
+
+    private static string CurrentGenerationWorkIdentity(
+        int evaluatorVersion,
+        string phase,
+        string identity) => identity + LegendConnectDerivationContracts
+            .HistoricalWorkGenerationSuffix(evaluatorVersion, phase);
+
+    private async Task RetireSupersededContractWorkAsync(
+        int evaluatorVersion,
+        string phase,
+        CancellationToken cancellationToken)
+    {
+        var suffix = LegendConnectDerivationContracts
+            .HistoricalWorkGenerationSuffix(evaluatorVersion, phase);
+        if (string.IsNullOrEmpty(suffix))
+            return;
+
+        var now = DateTime.UtcNow;
+        const string code = "historical_reevaluation_contract_superseded";
+        const string message =
+            "This durable work identity belongs to a superseded derivation-contract frontier and was retired without changing its historical lineage.";
+        var stale = WorkFor(evaluatorVersion, phase)
+            .Where(item => (item.WorkKind == CanonicalWorkKind ||
+                            item.WorkKind == DerivationLedgerWorkKind) &&
+                !item.WorkIdentity.EndsWith(suffix) &&
+                item.ProcessingState != Processing &&
+                item.ProcessingState != Completed &&
+                item.ProcessingState != Retired);
+        if (_db.Database.IsRelational())
+        {
+            await stale.ExecuteUpdateAsync(setters => setters
+                .SetProperty(item => item.ProcessingState, Retired)
+                .SetProperty(item => item.LeaseOwner, (string?)null)
+                .SetProperty(item => item.LeaseToken, (Guid?)null)
+                .SetProperty(item => item.LeaseExpiresUtc, (DateTime?)null)
+                .SetProperty(item => item.LastErrorCode, code)
+                .SetProperty(item => item.LastErrorMessage, message)
+                .SetProperty(item => item.UpdatedUtc, now), cancellationToken);
+            return;
+        }
+
+        var rows = await stale.ToListAsync(cancellationToken);
+        foreach (var item in rows)
+        {
+            item.ProcessingState = Retired;
+            item.LeaseOwner = null;
+            item.LeaseToken = null;
+            item.LeaseExpiresUtc = null;
+            item.LastErrorCode = code;
+            item.LastErrorMessage = message;
+            item.UpdatedUtc = now;
+        }
+        if (rows.Count > 0)
+            await _db.SaveChangesAsync(cancellationToken);
+    }
 
     private async Task<bool> IsCurrentPhaseAsync(
         int evaluatorVersion,
@@ -1364,13 +1444,15 @@ internal sealed class LegendConnectHistoricalReevaluationWorkAuthority
         var ledgerRequiresPhaseCanonicalDrain =
             string.Equals(phase, LegendConnectLanguageIntelligenceReevaluationPhases.SourceFamilies,
                 StringComparison.Ordinal);
+        var generationSuffix = LegendConnectDerivationContracts
+            .HistoricalWorkGenerationSuffix(evaluatorVersion, phase);
         var now = DateTime.UtcNow;
         var token = Guid.NewGuid();
         var expires = now.Add(LeaseDuration);
         var normalizedWorker = string.IsNullOrWhiteSpace(workerId)
             ? "historical-reevaluation"
             : workerId[..Math.Min(workerId.Length, 128)];
-        var query = WorkFor(evaluatorVersion, phase)
+        var query = CurrentGenerationWorkFor(evaluatorVersion, phase)
             .Where(item => item.Id == id && item.WorkKind == workKind && item.ProcessingState == Pending &&
                 !_db.Set<LegendHistoricalReevaluationWorkItem>().Any(active =>
                     active.Id != item.Id && active.EvaluatorVersion == evaluatorVersion && active.Phase == phase &&
@@ -1387,7 +1469,9 @@ internal sealed class LegendConnectHistoricalReevaluationWorkAuthority
                     seed.WorkKind == SeedWorkKind && seed.ProcessingState == Completed) &&
                  !_db.Set<LegendHistoricalReevaluationWorkItem>().Any(canonical =>
                     canonical.EvaluatorVersion == evaluatorVersion && canonical.Phase == phase &&
-                    canonical.WorkKind == CanonicalWorkKind && canonical.ProcessingState != Completed && canonical.ProcessingState != Retired)));
+                    canonical.WorkKind == CanonicalWorkKind &&
+                    (generationSuffix == string.Empty || canonical.WorkIdentity.EndsWith(generationSuffix)) &&
+                    canonical.ProcessingState != Completed && canonical.ProcessingState != Retired)));
 
         if (_db.Database.IsSqlServer())
         {
@@ -1435,6 +1519,7 @@ internal sealed class LegendConnectHistoricalReevaluationWorkAuthority
                                   WHERE [canonical].[EvaluatorVersion] = {evaluatorVersion}
                                     AND [canonical].[Phase] = {phase}
                                     AND [canonical].[WorkKind] = {CanonicalWorkKind}
+                                    AND ({generationSuffix} = '' OR [canonical].[WorkIdentity] LIKE '%' + {generationSuffix})
                                     AND [canonical].[ProcessingState] NOT IN ({Completed}, {Retired})
                               )
                           )
@@ -1501,6 +1586,8 @@ internal sealed class LegendConnectHistoricalReevaluationWorkAuthority
         string phase,
         CancellationToken cancellationToken)
     {
+        var generationSuffix = LegendConnectDerivationContracts
+            .HistoricalWorkGenerationSuffix(evaluatorVersion, phase);
         if (_db.Database.IsSqlServer())
         {
             try
@@ -1513,6 +1600,7 @@ internal sealed class LegendConnectHistoricalReevaluationWorkAuthority
                           AND [item].[Phase] = {phase}
                           AND [item].[WorkKind] IN ({CanonicalWorkKind}, {DerivationLedgerWorkKind})
                           AND [item].[ProcessingState] = {Pending}
+                          AND ({generationSuffix} = '' OR [item].[WorkIdentity] LIKE '%' + {generationSuffix})
                           AND
                           (
                               [item].[WorkKind] <> {DerivationLedgerWorkKind}
@@ -1531,10 +1619,11 @@ internal sealed class LegendConnectHistoricalReevaluationWorkAuthority
                                   (
                                       SELECT 1
                                       FROM [LegendHistoricalReevaluationWorkItems] AS [canonical]
-                                      WHERE [canonical].[EvaluatorVersion] = {evaluatorVersion}
-                                        AND [canonical].[Phase] = {phase}
-                                        AND [canonical].[WorkKind] = {CanonicalWorkKind}
-                                        AND [canonical].[ProcessingState] NOT IN ({Completed}, {Retired})
+                                  WHERE [canonical].[EvaluatorVersion] = {evaluatorVersion}
+                                    AND [canonical].[Phase] = {phase}
+                                    AND [canonical].[WorkKind] = {CanonicalWorkKind}
+                                    AND ({generationSuffix} = '' OR [canonical].[WorkIdentity] LIKE '%' + {generationSuffix})
+                                    AND [canonical].[ProcessingState] NOT IN ({Completed}, {Retired})
                                   )
                               )
                           )
@@ -1550,7 +1639,7 @@ internal sealed class LegendConnectHistoricalReevaluationWorkAuthority
             }
         }
 
-        return await WorkFor(evaluatorVersion, phase)
+        return await CurrentGenerationWorkFor(evaluatorVersion, phase)
             .AsNoTracking()
             .Where(item => (item.WorkKind == CanonicalWorkKind ||
                             item.WorkKind == DerivationLedgerWorkKind) &&
@@ -1667,6 +1756,8 @@ internal sealed class LegendConnectHistoricalReevaluationWorkAuthority
     {
         var bounded = Math.Clamp(take, 1, 251);
         var work = _db.Set<LegendHistoricalReevaluationWorkItem>();
+        var generationSuffix = LegendConnectDerivationContracts
+            .HistoricalWorkGenerationSuffix(evaluatorVersion, phase);
         if (phase == LegendConnectLanguageIntelligenceReevaluationPhases.DependencyInventory)
         {
             // This is a bounded metadata-only inventory for evaluators that
@@ -1711,7 +1802,8 @@ internal sealed class LegendConnectHistoricalReevaluationWorkAuthority
                     unit.IsTrainingEligible &&
                     !work.Any(item => item.EvaluatorVersion == evaluatorVersion && item.Phase == phase &&
                         item.WorkKind == CanonicalWorkKind && item.SubjectId == example.CurriculumFamilyId &&
-                        item.SubjectScope == example.LanguageCode)
+                        item.SubjectScope == example.LanguageCode &&
+                        (generationSuffix == string.Empty || item.WorkIdentity.EndsWith(generationSuffix)))
                 select new { example.CurriculumFamilyId, example.LanguageCode, family.FamilyKey }
             ).Distinct()
                 .OrderBy(item => item.CurriculumFamilyId)
@@ -1721,7 +1813,8 @@ internal sealed class LegendConnectHistoricalReevaluationWorkAuthority
             return rows.Select(item => new HistoricalWorkSeedCandidate(
                 item.CurriculumFamilyId,
                 item.LanguageCode,
-                $"source-family:{item.CurriculumFamilyId:D}|language:{item.LanguageCode}",
+                CurrentGenerationWorkIdentity(evaluatorVersion, phase,
+                    $"source-family:{item.CurriculumFamilyId:D}|language:{item.LanguageCode}"),
                 $"source-language:{item.LanguageCode}",
                 CanonicalFamilyMutationLane(item.FamilyKey))).ToList();
         }
@@ -1738,14 +1831,16 @@ internal sealed class LegendConnectHistoricalReevaluationWorkAuthority
                     _db.Set<LegendCurriculumExample>().Any(example =>
                         example.TextUnitId == source.Id && example.SupersededUtc == null) &&
                     !work.Any(item => item.EvaluatorVersion == evaluatorVersion && item.Phase == phase &&
-                        item.WorkKind == CanonicalWorkKind && item.SubjectId == alignment.Id && item.SubjectScope == alignment.PairKey)
+                        item.WorkKind == CanonicalWorkKind && item.SubjectId == alignment.Id &&
+                        item.SubjectScope == alignment.PairKey &&
+                        (generationSuffix == string.Empty || item.WorkIdentity.EndsWith(generationSuffix)))
                 orderby alignment.Id
                 select new { alignment.Id, alignment.PairKey }
             ).Take(bounded).ToListAsync(cancellationToken);
             return rows.Select(item => new HistoricalWorkSeedCandidate(
                 item.Id,
                 item.PairKey,
-                $"alignment:{item.Id:D}",
+                CurrentGenerationWorkIdentity(evaluatorVersion, phase, $"alignment:{item.Id:D}"),
                 $"alignment-pair:{item.PairKey}")).ToList();
         }
 
@@ -1760,7 +1855,8 @@ internal sealed class LegendConnectHistoricalReevaluationWorkAuthority
                     (!legacyCursorBoundary.HasValue || item.Id.CompareTo(legacyCursorBoundary.Value) > 0) &&
                     !work.Any(candidate => candidate.EvaluatorVersion == evaluatorVersion && candidate.Phase == phase &&
                         candidate.WorkKind == CanonicalWorkKind && candidate.SubjectId == item.Id &&
-                        candidate.SubjectScope == item.PairKey))
+                        candidate.SubjectScope == item.PairKey &&
+                        (generationSuffix == string.Empty || candidate.WorkIdentity.EndsWith(generationSuffix))))
                 .OrderBy(item => item.Id)
                 .Select(item => new { item.Id, item.PairKey })
                 .Take(bounded)
@@ -1768,7 +1864,7 @@ internal sealed class LegendConnectHistoricalReevaluationWorkAuthority
             return rows.Select(item => new HistoricalWorkSeedCandidate(
                 item.Id,
                 item.PairKey,
-                $"provider-observation:{item.Id:D}",
+                CurrentGenerationWorkIdentity(evaluatorVersion, phase, $"provider-observation:{item.Id:D}"),
                 $"provider-observation:{item.Id:D}")).ToList();
         }
 
@@ -1777,7 +1873,8 @@ internal sealed class LegendConnectHistoricalReevaluationWorkAuthority
             var rows = await _db.MessageTranslations.AsNoTracking()
                 .Where(item => !work.Any(candidate => candidate.EvaluatorVersion == evaluatorVersion &&
                     candidate.Phase == phase && candidate.WorkKind == CanonicalWorkKind &&
-                    candidate.SubjectId == item.Id && candidate.SubjectScope == string.Empty))
+                    candidate.SubjectId == item.Id && candidate.SubjectScope == string.Empty &&
+                    (generationSuffix == string.Empty || candidate.WorkIdentity.EndsWith(generationSuffix))))
                 .OrderBy(item => item.Id)
                 .Select(item => item.Id)
                 .Take(bounded)
@@ -1785,7 +1882,7 @@ internal sealed class LegendConnectHistoricalReevaluationWorkAuthority
             return rows.Select(item => new HistoricalWorkSeedCandidate(
                 item,
                 string.Empty,
-                $"operational-translation:{item:D}",
+                CurrentGenerationWorkIdentity(evaluatorVersion, phase, $"operational-translation:{item:D}"),
                 $"operational-translation:{item:D}")).ToList();
         }
 

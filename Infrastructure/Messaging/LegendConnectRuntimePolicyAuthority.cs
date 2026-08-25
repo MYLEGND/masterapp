@@ -471,6 +471,16 @@ internal sealed class LegendConnectRuntimePolicyAuthority : ILegendConnectRuntim
             LegendConnectLanguageIntelligenceReevaluationPhases.IsWorkPhase(
                 policy.LanguageIntelligenceReevaluationPhase))
         {
+            // A convergence plan can discover a source-contract frontier
+            // after an earlier V21 worker already advanced into a dependent
+            // phase.  The durable plan, not the displayed evaluator number,
+            // is authoritative: resume from its earliest affected phase so
+            // stale source projections cannot be skipped and then falsely
+            // counted as reusable by downstream alignment work.
+            await RewindIncompleteConvergenceToEarliestFrontierAsync(
+                policy,
+                evaluatorVersion,
+                cancellationToken);
             return ToReevaluationSnapshot(policy);
         }
 
@@ -608,6 +618,42 @@ internal sealed class LegendConnectRuntimePolicyAuthority : ILegendConnectRuntim
         }
         await _db.SaveChangesAsync(cancellationToken);
         return ToReevaluationSnapshot(policy);
+    }
+
+    private async Task RewindIncompleteConvergenceToEarliestFrontierAsync(
+        LegendConnectRuntimePolicy policy,
+        int evaluatorVersion,
+        CancellationToken cancellationToken)
+    {
+        var convergence = await _db.Set<LegendLanguageDerivationConvergence>()
+            .SingleOrDefaultAsync(item => item.TargetEvaluatorVersion == evaluatorVersion,
+                cancellationToken);
+        if (convergence is null ||
+            convergence.State is "Complete" or "Reused" ||
+            policy.CompletedLanguageIntelligenceEvaluatorVersion < evaluatorVersion ||
+            string.IsNullOrWhiteSpace(convergence.EarliestAffectedPhase) ||
+            !LegendConnectLanguageIntelligenceReevaluationPhases.IsWorkPhase(
+                convergence.EarliestAffectedPhase))
+        {
+            return;
+        }
+
+        var currentRank = LegendConnectDerivationContracts.PhaseRank(
+            policy.LanguageIntelligenceReevaluationPhase);
+        var requiredRank = LegendConnectDerivationContracts.PhaseRank(
+            convergence.EarliestAffectedPhase);
+        if (requiredRank >= currentRank)
+            return;
+
+        var now = DateTime.UtcNow;
+        policy.LanguageIntelligenceReevaluationPhase = convergence.EarliestAffectedPhase;
+        policy.LanguageIntelligenceReevaluationCursor = null;
+        policy.LanguageIntelligenceReevaluationCompletedUtc = null;
+        policy.UpdatedUtc = now;
+        convergence.State = "Queued";
+        convergence.CompletedUtc = null;
+        convergence.UpdatedUtc = now;
+        await _db.SaveChangesAsync(cancellationToken);
     }
 
     private async Task EnsureContractDeclarationsAsync(
