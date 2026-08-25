@@ -1,15 +1,17 @@
 name: Security CI
 
 # Security regression + architecture-invariant gate for MASTERAPP.
-# Runs the full test suite (including every security regression suite), a
-# dependency vulnerability audit, a committed-secret scan, and narrow
-# architecture-invariant source checks that enforce shared-authority adoption.
-
+# Run once for each pull request revision, then once for the protected production
+# merge. Branch pushes do not duplicate the pull-request validation.
 on:
   push:
-    branches: ['**']
+    branches:
+      - production
   pull_request:
-  workflow_dispatch:
+
+concurrency:
+  group: security-${{ github.event.pull_request.number || github.ref_name }}
+  cancel-in-progress: true
 
 permissions:
   contents: read

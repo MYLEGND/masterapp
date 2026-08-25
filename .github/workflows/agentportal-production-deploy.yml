@@ -1,18 +1,16 @@
 name: Build and deploy AgentPortal to Azure Web App - masterapp-portal
 
+# Every protected production merge is a deployment candidate. Validation stays
+# on the pull request; once production advances, deploy that exact immutable SHA.
 on:
   push:
     branches:
       - production
-    paths:
-      - 'AgentPortal/**'
-      - 'Infrastructure/**'
-      - 'Application/**'
-      - 'Domain/**'
-      - 'Shared/**'
-      - 'Directory.Build.*'
-      - 'Directory.Packages.props'
-      - '.github/workflows/agentportal-production-deploy.yml'
+
+concurrency:
+  group: agentportal-production
+  cancel-in-progress: false
+
 permissions:
   contents: read
   id-token: write
@@ -31,8 +29,10 @@ jobs:
     runs-on: windows-latest
 
     steps:
-      - name: Checkout
+      - name: Checkout exact production commit
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
 
       - name: Set up .NET
         uses: actions/setup-dotnet@v4
@@ -59,9 +59,10 @@ jobs:
       - name: Upload deployment artifact
         uses: actions/upload-artifact@v4
         with:
-          name: agentportal-production
+          name: agentportal-production-${{ github.sha }}
           path: ${{ env.PUBLISH_DIR }}
           if-no-files-found: error
+          retention-days: 1
 
   migrate:
     runs-on: windows-latest
@@ -70,10 +71,10 @@ jobs:
       name: Production
 
     steps:
-      # Use the exact commit that produced the build artifact. A moving branch
-      # ref could otherwise migrate a later commit before this run deploys it.
-      - name: Checkout triggering production commit
+      - name: Checkout exact production commit
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
 
       - name: Set up .NET
         uses: actions/setup-dotnet@v4
@@ -184,10 +185,10 @@ jobs:
       name: Production
 
     steps:
-      - name: Download deployment artifact
+      - name: Download exact deployment artifact
         uses: actions/download-artifact@v4
         with:
-          name: agentportal-production
+          name: agentportal-production-${{ github.sha }}
           path: ./package
 
       - name: Login to Azure with OIDC
@@ -197,7 +198,7 @@ jobs:
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
-      - name: Deploy to Azure Web App
+      - name: Deploy exact production commit to Azure Web App
         uses: azure/webapps-deploy@v3
         with:
           app-name: ${{ env.AZURE_WEBAPP_NAME }}
