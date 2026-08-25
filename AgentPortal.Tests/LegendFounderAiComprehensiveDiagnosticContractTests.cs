@@ -83,7 +83,8 @@ public sealed class LegendFounderAiComprehensiveDiagnosticContractTests
         var directory = new DirectoryInfo(AppContext.BaseDirectory);
         while (directory is not null)
         {
-            if (Directory.Exists(Path.Combine(directory.FullName, "AgentPortal")) &&
+            if (File.Exists(Path.Combine(directory.FullName, "MASTERAPP.sln")) &&
+                Directory.Exists(Path.Combine(directory.FullName, "AgentPortal")) &&
                 Directory.Exists(Path.Combine(directory.FullName, "AgentPortal.Tests")))
                 return directory.FullName;
             directory = directory.Parent;
