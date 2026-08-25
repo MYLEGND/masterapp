@@ -120,16 +120,26 @@ public sealed class LegendFounderAiConversationService
         ArgumentNullException.ThrowIfNull(founder);
         ArgumentNullException.ThrowIfNull(request);
 
-        var mode = NormalizeMode(request.Mode);
+        if (!TryNormalizeMode(
+                request.Mode,
+                out var mode,
+                out var modeValidationError))
+        {
+            return LegendFounderAiChatResponse.InvalidMode(
+                modeValidationError);
+        }
 
         if (!TryNormalizeMessages(
                 request.Messages,
                 out var conversation,
                 out var validationError))
         {
-            return LegendFounderAiChatResponse.Failure(
+            return LegendFounderAiChatResponse.ModeFailure(
+                mode,
                 validationError,
-                "validation");
+                "validation",
+                "message_validation",
+                "invalid_messages");
         }
 
         await ReportProgressAsync(
@@ -208,6 +218,10 @@ public sealed class LegendFounderAiConversationService
             {
                 throw;
             }
+            catch (AgentPortal.Security.ForbidResultException)
+            {
+                throw;
+            }
             catch (Exception exception)
             {
                 // Native inference is strictly fail-closed. A read failure
@@ -243,7 +257,9 @@ public sealed class LegendFounderAiConversationService
                     true,
                     mode,
                     nativeInference.Answer,
-                    null);
+                    null,
+                    ResponseAuthority: "LegendAi",
+                    Stage: "native_response");
             }
         }
 
@@ -293,7 +309,16 @@ public sealed class LegendFounderAiConversationService
 
         LegendConnectRetainedKnowledgeSearchSnapshot? retainedKnowledge = null;
 
-        if (requiresGovernedInspection)
+        // OpenAI Teacher is a direct Founder-to-provider mode.  It may ask
+        // for governed LEGEND inspection through the existing function-tool
+        // registry, but it must not force a LEGEND read before the first
+        // OpenAI response.  This preserves responder isolation and makes
+        // every pre-provider LEGEND inspection genuinely optional.
+        var preloadRetainedKnowledge =
+            requiresGovernedInspection &&
+            !IsTeacherMode(mode);
+
+        if (preloadRetainedKnowledge)
         {
             await ReportProgressAsync(
                 progress,
@@ -384,9 +409,14 @@ public sealed class LegendFounderAiConversationService
                             round + 1),
                         effectiveToken);
 
-                    return LegendFounderAiChatResponse.Failure(
-                        "Legend® Ai reached the current request window before another provider round could safely begin. Ask it to continue from the current point.",
-                        "timeout");
+                    return LegendFounderAiChatResponse.ModeFailure(
+                        mode,
+                        FailureMessageForMode(
+                            mode,
+                            "The current request window ended before another provider round could safely begin. Ask it to continue from the current point."),
+                        "timeout",
+                        "time_budget",
+                        "request_budget_exhausted");
                 }
 
                 var allowTools =
@@ -467,18 +497,32 @@ public sealed class LegendFounderAiConversationService
                             true,
                             mode,
                             partial.Trim() +
-                            "\n\n[This response reached the provider output window. Ask Legend® Ai to continue if you want the remainder.]",
-                            null);
+                            "\n\n[This response reached the provider output window. Ask the OpenAI Teacher to continue if you want the remainder.]",
+                            null,
+                            ResponseAuthority: "OpenAITeacher",
+                            Stage: "provider_response");
                     }
 
-                    return LegendFounderAiChatResponse.Failure(
-                        "Legend® Ai reached the provider output window before producing usable text.");
+                    return LegendFounderAiChatResponse.ModeFailure(
+                        mode,
+                        FailureMessageForMode(
+                            mode,
+                            "The provider output window ended before usable text was produced."),
+                        "provider_incomplete",
+                        "provider_response",
+                        "provider_output_incomplete");
                 }
 
                 if (responseState != "completed")
                 {
-                    return LegendFounderAiChatResponse.Failure(
-                        "Legend® Ai received an unusable reasoning response.");
+                    return LegendFounderAiChatResponse.ModeFailure(
+                        mode,
+                        FailureMessageForMode(
+                            mode,
+                            "The provider returned an unusable reasoning response."),
+                        "provider_response",
+                        "provider_response",
+                        "provider_response_unusable");
                 }
 
                 var toolCalls = ReadFunctionCalls(root);
@@ -497,15 +541,23 @@ public sealed class LegendFounderAiConversationService
 
                     if (string.IsNullOrWhiteSpace(answer))
                     {
-                        return LegendFounderAiChatResponse.Failure(
-                            "Legend® Ai completed without a usable response.");
+                        return LegendFounderAiChatResponse.ModeFailure(
+                            mode,
+                            FailureMessageForMode(
+                                mode,
+                                "The provider completed without usable response text."),
+                            "provider_response",
+                            "provider_response",
+                            "provider_response_empty");
                     }
 
                     return new LegendFounderAiChatResponse(
                         true,
                         mode,
                         answer.Trim(),
-                        null);
+                        null,
+                        ResponseAuthority: "OpenAITeacher",
+                        Stage: "provider_response");
                 }
 
                 await ReportProgressAsync(
@@ -571,8 +623,29 @@ public sealed class LegendFounderAiConversationService
                 }
             }
 
-            return LegendFounderAiChatResponse.Failure(
-                "Legend® Ai reached the current inspection window. Ask it to continue if more governed checks are needed.");
+            return LegendFounderAiChatResponse.ModeFailure(
+                mode,
+                FailureMessageForMode(
+                    mode,
+                    "The current inspection window ended before all governed checks could complete. Ask it to continue."),
+                "timeout",
+                "governed_tool",
+                "inspection_window_exhausted");
+        }
+        catch (LegendFounderAiToolExecutionException exception)
+        {
+            return LegendFounderAiChatResponse.ModeFailure(
+                mode,
+                FailureMessageForMode(
+                    mode,
+                    "A governed LEGEND inspection could not complete safely."),
+                exception.FailureKind,
+                "governed_tool",
+                exception.Reason);
+        }
+        catch (AgentPortal.Security.ForbidResultException)
+        {
+            throw;
         }
         catch (LegendFounderAiProviderException exception)
         {
@@ -592,6 +665,16 @@ public sealed class LegendFounderAiConversationService
         catch (OperationCanceledException exception)
             when (!cancellationToken.IsCancellationRequested)
         {
+            if (IsTeacherMode(mode))
+            {
+                return LegendFounderAiChatResponse.ModeFailure(
+                    mode,
+                    "OpenAI Teacher could not complete this request. The current request budget ended before a response was produced.",
+                    "timeout",
+                    "request_budget",
+                    "request_budget_exhausted");
+            }
+
             return NativeInferenceUnavailableResponse(
                 mode,
                 nativeInference,
@@ -624,6 +707,22 @@ public sealed class LegendFounderAiConversationService
                 nativeFailureDetail,
                 "provider_invalid_json",
                 exception.Message);
+        }
+        catch (Exception exception)
+        {
+            _logger.LogWarning(
+                exception,
+                "LEGEND Founder AI execution failed outside a provider response boundary. Mode={Mode}",
+                mode);
+
+            return LegendFounderAiChatResponse.ModeFailure(
+                mode,
+                FailureMessageForMode(
+                    mode,
+                    "The governed request could not complete safely before a response was produced."),
+                "governed_execution",
+                "governed_execution",
+                "unexpected_governed_failure");
         }
     }
 
@@ -1051,6 +1150,34 @@ public sealed class LegendFounderAiConversationService
                 : "The governed native result did not permit external escalation."
             : NormalizeFailureDetail(providerFailureDetail);
 
+        if (IsTeacherMode(mode))
+        {
+            var failureKind = providerCode.Contains(
+                "timeout",
+                StringComparison.OrdinalIgnoreCase)
+                ? "timeout"
+                : providerCode.StartsWith(
+                    "provider_http_",
+                    StringComparison.Ordinal)
+                    ? "provider_http"
+                    : providerCode.Contains(
+                        "transport",
+                        StringComparison.OrdinalIgnoreCase)
+                        ? "transport"
+                        : providerCode.Contains(
+                            "json",
+                            StringComparison.OrdinalIgnoreCase)
+                            ? "provider_json"
+                            : "configuration";
+
+            return LegendFounderAiChatResponse.ModeFailure(
+                mode,
+                $"OpenAI Teacher could not complete this request. Stage=provider; Reason={providerCode}.",
+                failureKind,
+                "provider",
+                providerCode);
+        }
+
         return new LegendFounderAiChatResponse(
             true,
             mode,
@@ -1058,8 +1185,21 @@ public sealed class LegendFounderAiConversationService
             $"NativeFailure={nativeReasonCode}; NativeDetail={nativeDetail}; " +
             $"EvidenceCount={evidenceCount}; Escalation={escalationState}; " +
             $"ProviderFailure={providerCode}; ProviderDetail={providerDetail}",
-            null);
+            null,
+            ResponseAuthority: "SystemDiagnostic",
+            Stage: "native_or_provider_unavailable",
+            Reason: providerCode);
     }
+
+    private static bool IsTeacherMode(string mode) =>
+        string.Equals(mode, "teacher", StringComparison.Ordinal);
+
+    private static string FailureMessageForMode(
+        string mode,
+        string detail) =>
+        IsTeacherMode(mode)
+            ? $"OpenAI Teacher could not complete this request. {detail}"
+            : $"Legend® Ai could not complete this request. {detail}";
 
     private static string NormalizeFailureDetail(string? value)
     {
@@ -1244,12 +1384,43 @@ public sealed class LegendFounderAiConversationService
                 return """{"error":"founder_command_confirmation_required","detail":"This durable LEGEND mutation was not executed. The authenticated Founder must explicitly confirm the action for this request."}""";
             }
 
-            var mutationOutput = await ExecuteFounderToolAsync(
-                founder,
-                call,
-                mode,
-                cancellationToken);
-            return BoundSerializedOutput(mutationOutput, outputBudgetCharacters);
+            try
+            {
+                var mutationOutput = await ExecuteFounderToolAsync(
+                    founder,
+                    call,
+                    mode,
+                    cancellationToken);
+                return BoundSerializedOutput(mutationOutput, outputBudgetCharacters);
+            }
+            catch (OperationCanceledException)
+                when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (AgentPortal.Security.ForbidResultException)
+            {
+                throw;
+            }
+            catch (OperationCanceledException)
+            {
+                throw new LegendFounderAiToolExecutionException(
+                    call.Name,
+                    "tool_timeout",
+                    "timeout");
+            }
+            catch (Exception exception)
+            {
+                _logger.LogWarning(
+                    exception,
+                    "LEGEND Founder AI governed mutation tool {Tool} failed before a response could be produced.",
+                    call.Name);
+
+                throw new LegendFounderAiToolExecutionException(
+                    call.Name,
+                    "tool_execution_failed",
+                    "governed_tool");
+            }
         }
 
         using var toolBudget =
@@ -1269,22 +1440,50 @@ public sealed class LegendFounderAiConversationService
             return BoundSerializedOutput(output, outputBudgetCharacters);
         }
         catch (OperationCanceledException)
-            when (
-                toolBudget.IsCancellationRequested &&
-                !cancellationToken.IsCancellationRequested)
+            when (!cancellationToken.IsCancellationRequested)
         {
             _logger.LogWarning(
-                "Legend Founder AI read-only tool {Tool} exceeded its {Seconds:F1}-second dynamic budget; continuing with partial governed evidence.",
+                "Legend Founder AI read-only tool {Tool} exceeded its {Seconds:F1}-second dynamic budget; returning a structured diagnostic.",
                 call.Name,
                 readOnlyBudget.TotalSeconds);
 
-            return JsonSerializer.Serialize(
-                new
-                {
-                    error = "tool_timeout",
-                    tool = call.Name
-                },
-                JsonOptions);
+            throw new LegendFounderAiToolExecutionException(
+                call.Name,
+                "tool_timeout",
+                "timeout");
+        }
+        catch (OperationCanceledException)
+            when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (AgentPortal.Security.ForbidResultException)
+        {
+            throw;
+        }
+        catch (Exception exception)
+            when (cancellationToken.IsCancellationRequested)
+        {
+            // SQL Server can report an already-cancelled command as a
+            // SqlException instead of OperationCanceledException. Preserve
+            // the canonical request-budget classification rather than
+            // letting that transport detail escape to the controller's 500.
+            throw new OperationCanceledException(
+                "The Founder AI request budget was cancelled.",
+                exception,
+                cancellationToken);
+        }
+        catch (Exception exception)
+        {
+            _logger.LogWarning(
+                exception,
+                "LEGEND Founder AI read-only tool {Tool} failed before a response could be produced.",
+                call.Name);
+
+            throw new LegendFounderAiToolExecutionException(
+                call.Name,
+                "tool_read_failed",
+                "governed_tool");
         }
     }
 
@@ -2956,6 +3155,10 @@ If the Founder asks for current LEGEND system facts, that request belongs to the
         {
             throw;
         }
+        catch (AgentPortal.Security.ForbidResultException)
+        {
+            throw;
+        }
         catch (Exception exception)
         {
             _logger.LogWarning(
@@ -3315,13 +3518,30 @@ Never upgrade an unresolved, rejected or contradicted record merely because it a
         return true;
     }
 
-    private static string NormalizeMode(string? mode) =>
-        string.Equals(
-            mode?.Trim(),
-            "teacher",
-            StringComparison.OrdinalIgnoreCase)
-            ? "teacher"
-            : "legend";
+    private static bool TryNormalizeMode(
+        string? mode,
+        out string normalized,
+        out string error)
+    {
+        normalized = string.Empty;
+        error = string.Empty;
+
+        if (string.IsNullOrWhiteSpace(mode))
+        {
+            error =
+                "Conversation mode is required. Select Legend® Ai or OpenAI Teacher.";
+            return false;
+        }
+
+        normalized = mode.Trim().ToLowerInvariant();
+        if (normalized is "legend" or "teacher")
+            return true;
+
+        normalized = string.Empty;
+        error =
+            "Conversation mode is invalid. Select Legend® Ai or OpenAI Teacher.";
+        return false;
+    }
 
     private static bool RequiresGovernedInspection(
         IReadOnlyList<LegendFounderAiChatMessage> conversation,
@@ -3578,6 +3798,33 @@ Never upgrade an unresolved, rejected or contradicted record merely because it a
         public string ProviderError { get; }
     }
 
+    /// <summary>
+    /// The provider requested one of the existing governed Founder tools but
+    /// the tool could not finish within its authority/budget boundary.  The
+    /// exception intentionally carries only a safe classification; raw SQL,
+    /// transport, and implementation details remain in server logs.
+    /// </summary>
+    private sealed class LegendFounderAiToolExecutionException
+        : Exception
+    {
+        public LegendFounderAiToolExecutionException(
+            string tool,
+            string reason,
+            string failureKind)
+            : base($"Governed Founder tool '{tool}' could not complete.")
+        {
+            Tool = tool;
+            Reason = reason;
+            FailureKind = failureKind;
+        }
+
+        public string Tool { get; }
+
+        public string Reason { get; }
+
+        public string FailureKind { get; }
+    }
+
     private sealed record FounderAiToolCall(
         string CallId,
         string Name,
@@ -3627,7 +3874,10 @@ public sealed record LegendFounderAiChatResponse(
     string? Error,
     string? FailureKind = null,
     int? ProviderStatusCode = null,
-    string? Reference = null)
+    string? Reference = null,
+    string ResponseAuthority = "SystemDiagnostic",
+    string? Stage = null,
+    string? Reason = null)
 {
     public static LegendFounderAiChatResponse Failure(
         string error,
@@ -3641,5 +3891,67 @@ public sealed record LegendFounderAiChatResponse(
             error,
             failureKind,
             providerStatusCode,
-            reference);
+            reference,
+            "SystemDiagnostic");
+
+    public static LegendFounderAiChatResponse InvalidMode(
+        string error) =>
+        new(
+            false,
+            "invalid",
+            null,
+            error,
+            "validation",
+            null,
+            null,
+            "NoResponder",
+            "mode_validation",
+            "invalid_mode");
+
+    public static LegendFounderAiChatResponse ModeFailure(
+        string mode,
+        string error,
+        string failureKind,
+        string stage,
+        string reason,
+        int? providerStatusCode = null,
+        string? reference = null) =>
+        new(
+            false,
+            mode,
+            null,
+            error,
+            failureKind,
+            providerStatusCode,
+            reference,
+            string.Equals(mode, "teacher", StringComparison.Ordinal)
+                ? "OpenAITeacher"
+                : "SystemDiagnostic",
+            stage,
+            reason);
+
+    public static LegendFounderAiChatResponse UnexpectedFailure(
+        string? requestedMode) =>
+        string.Equals(
+            requestedMode?.Trim(),
+            "teacher",
+            StringComparison.OrdinalIgnoreCase)
+            ? ModeFailure(
+                "teacher",
+                "OpenAI Teacher could not complete this request. Stage=unhandled; Reason=unexpected_execution_failure.",
+                "governed_execution",
+                "unhandled",
+                "unexpected_execution_failure")
+            : string.Equals(
+                requestedMode?.Trim(),
+                "legend",
+                StringComparison.OrdinalIgnoreCase)
+                ? ModeFailure(
+                    "legend",
+                    "Legend® Ai could not complete this request. Stage=unhandled; Reason=unexpected_execution_failure.",
+                    "governed_execution",
+                    "unhandled",
+                    "unexpected_execution_failure")
+                : InvalidMode(
+                    "Conversation mode is invalid. Select Legend® Ai or OpenAI Teacher.");
 }

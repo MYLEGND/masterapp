@@ -90,12 +90,30 @@ public sealed class LegendFounderAiController : Controller
             return Ok(result);
         }
         catch (ForbidResultException) { return Forbid(); }
+        catch (OperationCanceledException exception)
+        {
+            _logger.LogWarning(
+                exception,
+                "LEGEND Founder AI conversation was cancelled before a response could be produced.");
+
+            var result = LegendFounderAiChatResponse.UnexpectedFailure(
+                request?.Mode);
+            return StatusCode(
+                StatusCodes.Status408RequestTimeout,
+                result with
+                {
+                    FailureKind = "timeout",
+                    Stage = "request_cancellation",
+                    Reason = "request_cancelled"
+                });
+        }
         catch (Exception exception)
         {
             _logger.LogError(exception, "LEGEND Founder AI conversation failed.");
             return StatusCode(
-                StatusCodes.Status500InternalServerError,
-                LegendFounderAiChatResponse.Failure("LEGEND® Ai encountered an unexpected server error."));
+                StatusCodes.Status502BadGateway,
+                LegendFounderAiChatResponse.UnexpectedFailure(
+                    request?.Mode));
         }
         finally
         {

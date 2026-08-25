@@ -341,10 +341,18 @@
             return;
         }
 
-        const requestedMode =
-            nextMode === 'teacher'
-                ? 'teacher'
-                : 'legend';
+        if (
+            nextMode !== 'legend' &&
+            nextMode !== 'teacher'
+        ) {
+            if (status) {
+                status.textContent =
+                    'Conversation mode is invalid. Select Legend® Ai or OpenAI Teacher.';
+            }
+            return;
+        }
+
+        const requestedMode = nextMode;
 
         const current = activeConversation();
 
@@ -1007,11 +1015,14 @@
     for (const button of modeButtons) {
         button.addEventListener(
             'click',
-            () =>
-                setMode(
-                    button.dataset.legendAiMode ||
-                    'legend'
-                )
+            () => {
+                const requestedMode =
+                    button.dataset.legendAiMode;
+
+                if (requestedMode) {
+                    setMode(requestedMode);
+                }
+            }
         );
     }
 
