@@ -81,19 +81,27 @@ public sealed class LegendFounderAiComprehensiveDiagnosticContractTests
 
     private static string FindRepositoryRoot()
     {
+        var githubWorkspace = Environment.GetEnvironmentVariable("GITHUB_WORKSPACE");
+        if (IsRepositoryRoot(githubWorkspace))
+            return Path.GetFullPath(githubWorkspace!);
+
         foreach (var start in new[] { Directory.GetCurrentDirectory(), AppContext.BaseDirectory })
         {
             var directory = new DirectoryInfo(start);
             while (directory is not null)
             {
-                if (File.Exists(Path.Combine(directory.FullName, "MASTERAPP.sln")) &&
-                    Directory.Exists(Path.Combine(directory.FullName, "AgentPortal")) &&
-                    Directory.Exists(Path.Combine(directory.FullName, "AgentPortal.Tests")))
+                if (IsRepositoryRoot(directory.FullName))
                     return directory.FullName;
                 directory = directory.Parent;
             }
         }
 
-        throw new DirectoryNotFoundException("Repository root was not found from the working directory or test base directory.");
+        throw new DirectoryNotFoundException("Repository root was not found from GITHUB_WORKSPACE, the working directory, or the test base directory.");
     }
+
+    private static bool IsRepositoryRoot(string? path) =>
+        !string.IsNullOrWhiteSpace(path) &&
+        File.Exists(Path.Combine(path, "MASTERAPP.sln")) &&
+        Directory.Exists(Path.Combine(path, "AgentPortal")) &&
+        Directory.Exists(Path.Combine(path, "AgentPortal.Tests"));
 }
