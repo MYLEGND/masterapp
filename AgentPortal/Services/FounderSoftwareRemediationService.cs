@@ -51,6 +51,7 @@ public sealed class FounderSoftwareRemediationService : IFounderSoftwareRemediat
     private const int MaximumChanges = 6;
     private const int MaximumPathLength = 260;
     private const int MaximumFileCharacters = 60_000;
+    private const int MaximumReadFileCharacters = 240_000;
     private const int MaximumTotalCharacters = 180_000;
     private const int MaximumTitleCharacters = 160;
     private const int MaximumSummaryCharacters = 4_000;
@@ -213,8 +214,8 @@ public sealed class FounderSoftwareRemediationService : IFounderSoftwareRemediat
         if (unavailable is not null)
             return unavailable;
 
-        if (!string.IsNullOrWhiteSpace(path) && !IsAllowedPath(path))
-            return Failure("repository_path_not_allowed", "The requested path is outside the bounded source and test allow-list.");
+        if (!string.IsNullOrWhiteSpace(path) && !IsAllowedReadPath(path))
+            return Failure("repository_path_not_allowed", "The requested path is outside the safe read-only repository inspection boundary.");
 
         if (!string.IsNullOrWhiteSpace(gitReference) && !IsGitReference(gitReference))
             return Failure("invalid_git_reference", "Repository inspection accepts only a branch name or immutable Git SHA.");
@@ -234,12 +235,22 @@ public sealed class FounderSoftwareRemediationService : IFounderSoftwareRemediat
                     return GitHubFailure("repository_reference_not_found", branch.StatusCode);
 
                 using var branchJson = await JsonDocument.ParseAsync(await branch.Content.ReadAsStreamAsync(cancellationToken), cancellationToken: cancellationToken);
+                using var root = await SendGitHubAsync(
+                    client,
+                    HttpMethod.Get,
+                    $"repos/{options.RepositoryIdentity}/contents?ref={Uri.EscapeDataString(reference)}",
+                    null,
+                    cancellationToken);
+                var entries = root.IsSuccessStatusCode
+                    ? await ReadRepositoryDirectoryAsync(root, cancellationToken)
+                    : Array.Empty<object>();
                 return new
                 {
                     capability = "inspect_repository",
                     repository = options.RepositoryIdentity,
                     reference,
                     commitSha = ReadNestedString(branchJson.RootElement, "object", "sha"),
+                    entries,
                     inspected = true
                 };
             }
@@ -254,10 +265,23 @@ public sealed class FounderSoftwareRemediationService : IFounderSoftwareRemediat
                 return GitHubFailure("repository_content_not_found", content.StatusCode);
 
             using var contentJson = await JsonDocument.ParseAsync(await content.Content.ReadAsStreamAsync(cancellationToken), cancellationToken: cancellationToken);
+            if (contentJson.RootElement.ValueKind == JsonValueKind.Array)
+            {
+                return new
+                {
+                    capability = "inspect_repository",
+                    repository = options.RepositoryIdentity,
+                    reference,
+                    path,
+                    entries = ReadRepositoryDirectory(contentJson.RootElement),
+                    inspected = true
+                };
+            }
+
             var encoded = ReadString(contentJson.RootElement, "content");
-            var text = DecodeRepositoryContent(encoded);
-            if (text is null)
-                return Failure("repository_content_not_text", "The requested repository object is not a bounded UTF-8 source or test file.");
+            var fileText = DecodeRepositoryContent(encoded);
+            if (fileText is null)
+                return Failure("repository_content_not_text", "The requested repository object is not a safe bounded UTF-8 text file.");
 
             return new
             {
@@ -267,7 +291,7 @@ public sealed class FounderSoftwareRemediationService : IFounderSoftwareRemediat
                 path,
                 sha = ReadString(contentJson.RootElement, "sha"),
                 size = ReadOptionalInt(contentJson.RootElement, "size"),
-                content = text,
+                content = fileText,
                 inspected = true
             };
         }
@@ -1020,7 +1044,7 @@ public sealed class FounderSoftwareRemediationService : IFounderSoftwareRemediat
         var totalCharacters = 0;
         foreach (var change in proposal.Changes)
         {
-            if (string.IsNullOrWhiteSpace(change.Path) || change.Path.Length > MaximumPathLength || !IsAllowedPath(change.Path) || !paths.Add(change.Path))
+            if (string.IsNullOrWhiteSpace(change.Path) || change.Path.Length > MaximumPathLength || !IsAllowedRepairPath(change.Path) || !paths.Add(change.Path))
                 return "Each repair path must be unique and within the bounded source and test allow-list.";
             if (change.Content is null || change.Content.Length > MaximumFileCharacters)
                 return $"Each changed file must contain at most {MaximumFileCharacters} UTF-8 text characters.";
@@ -1032,18 +1056,38 @@ public sealed class FounderSoftwareRemediationService : IFounderSoftwareRemediat
             : null;
     }
 
-    private static bool IsAllowedPath(string path)
+    private static bool IsSafeRepositoryPath(string path)
     {
         if (string.IsNullOrWhiteSpace(path) || path.Length > MaximumPathLength || path.Contains('\\') || path.StartsWith('/') || path.Contains("..", StringComparison.Ordinal) || path.Contains('\0'))
             return false;
-        if (path.StartsWith(".github/", StringComparison.OrdinalIgnoreCase) ||
+
+        var fileName = Path.GetFileName(path);
+        if (path.StartsWith(".git/", StringComparison.OrdinalIgnoreCase) ||
             path.StartsWith(".azure/", StringComparison.OrdinalIgnoreCase) ||
-            path.StartsWith("deploy", StringComparison.OrdinalIgnoreCase) ||
             path.Contains("appsettings", StringComparison.OrdinalIgnoreCase) ||
             path.Contains("launchSettings", StringComparison.OrdinalIgnoreCase) ||
+            path.Contains("connectionstring", StringComparison.OrdinalIgnoreCase) ||
+            path.Contains("credential", StringComparison.OrdinalIgnoreCase) ||
+            path.Contains("privatekey", StringComparison.OrdinalIgnoreCase) ||
+            fileName.Equals(".env", StringComparison.OrdinalIgnoreCase) ||
+            fileName.StartsWith(".env.", StringComparison.OrdinalIgnoreCase) ||
             path.EndsWith(".pem", StringComparison.OrdinalIgnoreCase) ||
             path.EndsWith(".pfx", StringComparison.OrdinalIgnoreCase) ||
+            path.EndsWith(".p12", StringComparison.OrdinalIgnoreCase) ||
             path.EndsWith(".key", StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        return true;
+    }
+
+    private static bool IsAllowedReadPath(string path) =>
+        IsSafeRepositoryPath(path);
+
+    private static bool IsAllowedRepairPath(string path)
+    {
+        if (!IsSafeRepositoryPath(path) ||
+            path.StartsWith(".github/", StringComparison.OrdinalIgnoreCase) ||
+            path.StartsWith("deploy", StringComparison.OrdinalIgnoreCase))
             return false;
 
         return path.StartsWith("AgentPortal/", StringComparison.Ordinal) ||
@@ -1052,6 +1096,34 @@ public sealed class FounderSoftwareRemediationService : IFounderSoftwareRemediat
                path.StartsWith("Domain/", StringComparison.Ordinal) ||
                path.StartsWith("Shared/", StringComparison.Ordinal) ||
                path.StartsWith("AgentPortal.Tests/", StringComparison.Ordinal);
+    }
+
+    private static async Task<object[]> ReadRepositoryDirectoryAsync(
+        HttpResponseMessage response,
+        CancellationToken cancellationToken)
+    {
+        using var document = await JsonDocument.ParseAsync(
+            await response.Content.ReadAsStreamAsync(cancellationToken),
+            cancellationToken: cancellationToken);
+        return ReadRepositoryDirectory(document.RootElement);
+    }
+
+    private static object[] ReadRepositoryDirectory(JsonElement root)
+    {
+        if (root.ValueKind != JsonValueKind.Array)
+            return Array.Empty<object>();
+
+        return root.EnumerateArray()
+            .Select(item => new
+            {
+                name = ReadString(item, "name"),
+                path = ReadString(item, "path"),
+                type = ReadString(item, "type"),
+                size = ReadOptionalInt(item, "size")
+            })
+            .Where(item => !string.IsNullOrWhiteSpace(item.path) && IsAllowedReadPath(item.path!))
+            .Cast<object>()
+            .ToArray();
     }
 
     private static bool IsRepositorySegment(string? value) =>
@@ -1087,10 +1159,10 @@ public sealed class FounderSoftwareRemediationService : IFounderSoftwareRemediat
         try
         {
             var bytes = Convert.FromBase64String(encoded.Replace("\n", string.Empty, StringComparison.Ordinal));
-            if (bytes.Length > MaximumFileCharacters * 4)
+            if (bytes.Length > MaximumReadFileCharacters * 4)
                 return null;
             var text = new UTF8Encoding(false, true).GetString(bytes);
-            return text.Length <= MaximumFileCharacters ? text : null;
+            return text.Length <= MaximumReadFileCharacters ? text : null;
         }
         catch (Exception)
         {
