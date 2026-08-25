@@ -28,39 +28,41 @@ jobs:
           replacements = [
               (
                   '''        var requiresGovernedInspection =\n            RequiresProviderGovernedInspection(\n                conversation,\n                mode,\n                nativeInference,\n                nativeFailureDetail);''',
-                  '''        var requiresMandatoryGovernedInspection =\n            RequiresGovernedInspection(\n                conversation,\n                mode);\n\n        var requiresGovernedInspection =\n            RequiresProviderGovernedInspection(\n                conversation,\n                mode,\n                nativeInference,\n                nativeFailureDetail);'''
+                  '''        var requiresMandatoryGovernedInspection =\n            RequiresGovernedInspection(\n                conversation,\n                mode);\n\n        var requiresGovernedInspection =\n            RequiresProviderGovernedInspection(\n                conversation,\n                mode,\n                nativeInference,\n                nativeFailureDetail);''',
+                  1
               ),
               (
                   '''            var governedInspectionCompleted =\n                !requiresGovernedInspection;''',
-                  '''            var governedInspectionCompleted =\n                !requiresMandatoryGovernedInspection;'''
+                  '''            var governedInspectionCompleted =\n                !requiresMandatoryGovernedInspection;''',
+                  1
               ),
               (
                   '''                if (requiresGovernedInspection &&\n                    !governedInspectionCompleted &&\n                    !allowTools)''',
-                  '''                if (requiresMandatoryGovernedInspection &&\n                    !governedInspectionCompleted &&\n                    !allowTools)'''
+                  '''                if (requiresMandatoryGovernedInspection &&\n                    !governedInspectionCompleted &&\n                    !allowTools)''',
+                  1
               ),
               (
                   '''                var requireToolCall =\n                    requiresGovernedInspection &&\n                    !governedInspectionCompleted;''',
-                  '''                var requireToolCall =\n                    requiresMandatoryGovernedInspection &&\n                    !governedInspectionCompleted;'''
+                  '''                var requireToolCall =\n                    requiresMandatoryGovernedInspection &&\n                    !governedInspectionCompleted;''',
+                  1
               ),
               (
                   '''                    if (requiresGovernedInspection &&\n                        !governedInspectionCompleted)''',
-                  '''                    if (requiresMandatoryGovernedInspection &&\n                        !governedInspectionCompleted)'''
-              ),
-              (
-                  '''                    if (requiresGovernedInspection &&\n                        !governedInspectionCompleted)''',
-                  '''                    if (requiresMandatoryGovernedInspection &&\n                        !governedInspectionCompleted)'''
+                  '''                    if (requiresMandatoryGovernedInspection &&\n                        !governedInspectionCompleted)''',
+                  2
               ),
               (
                   '''            "canonical", "retained knowledge", "retained evidence",\n            "curriculum", "train legend", "training status",''',
-                  '''            "canonical", "retained knowledge", "retained evidence",\n            "governed inspection", "current authority",\n            "curriculum", "train legend", "training status",'''
+                  '''            "canonical", "retained knowledge", "retained evidence",\n            "governed inspection", "current authority",\n            "curriculum", "train legend", "training status",''',
+                  1
               ),
           ]
 
-          for old, new in replacements:
+          for old, new, expected_count in replacements:
               count = text.count(old)
-              if count != 1:
-                  raise SystemExit(f'Expected exactly one replacement anchor; found {count}: {old[:100]!r}')
-              text = text.replace(old, new, 1)
+              if count != expected_count:
+                  raise SystemExit(f'Expected {expected_count} replacement anchor(s); found {count}: {old[:100]!r}')
+              text = text.replace(old, new, expected_count)
 
           path.write_text(text)
           Path('.github/workflows/_temporary-founder-ai-surgical-patch-2.yml').unlink()
