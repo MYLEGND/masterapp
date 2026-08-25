@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Runtime.CompilerServices;
 using Xunit;
 
 namespace AgentPortal.Tests;
@@ -55,16 +56,24 @@ public sealed class LegendFounderAiFullDiagnosticAccessContractTests
         Assert.Contains("600);", source, StringComparison.Ordinal);
     }
 
-    private static string Read(string relative)
+    private static string Read(
+        string relative,
+        [CallerFilePath] string sourceFilePath = "")
     {
-        var directory = new DirectoryInfo(AppContext.BaseDirectory);
-        while (directory is not null)
-        {
-            var path = Path.Combine(directory.FullName, relative.Replace('/', Path.DirectorySeparatorChar));
-            if (File.Exists(path))
-                return File.ReadAllText(path);
-            directory = directory.Parent;
-        }
-        throw new FileNotFoundException(relative);
+        var testsDirectory = Path.GetDirectoryName(sourceFilePath);
+        if (string.IsNullOrWhiteSpace(testsDirectory))
+            throw new DirectoryNotFoundException("Unable to resolve the AgentPortal.Tests source directory.");
+
+        var root = Directory.GetParent(testsDirectory)?.FullName;
+        if (string.IsNullOrWhiteSpace(root))
+            throw new DirectoryNotFoundException("Unable to resolve the MASTERAPP repository root.");
+
+        var path = Path.Combine(
+            root,
+            relative.Replace('/', Path.DirectorySeparatorChar));
+        if (!File.Exists(path))
+            throw new FileNotFoundException(relative, path);
+
+        return File.ReadAllText(path);
     }
 }
