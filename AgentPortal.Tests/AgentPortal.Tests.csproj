@@ -45,6 +45,9 @@
     <None Include="..\\.github\\workflows\\legend-production-readonly-diagnostic.yml"
           Link="legend-production-readonly-diagnostic.yml"
           CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\\AgentPortal\\wwwroot\\js\\legend-founder-ai.js"
+          Link="legend-founder-ai.js"
+          CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <Target Name="EnsureTestHostRuntimeConfig" AfterTargets="Build">

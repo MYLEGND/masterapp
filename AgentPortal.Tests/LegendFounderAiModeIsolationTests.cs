@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Net;
 using System.Net.Http;
@@ -47,6 +48,123 @@ public sealed class LegendFounderAiModeIsolationTests
         Assert.Equal("provider_response", response.Stage);
         Assert.Equal(1, handler.RequestCount);
         Assert.Equal(0, NativeInferenceCalls(operations));
+    }
+
+    [Fact]
+    public async Task TeacherMode_ProgressResultStreamRemainsActiveBeyondFormerGatewayBoundary()
+    {
+        using var founderEnvironment = new FounderEnvironmentScope();
+        await using var db = ControllerTestHelpers.BuildDb();
+        var founder = await AddFounderProfileAsync(db);
+        var operations = new Mock<ILegendConnectOperations>(MockBehavior.Strict);
+        operations
+            .Setup(operation => operation.SearchRetainedKnowledgeAsync(
+                It.IsAny<string>(),
+                It.IsAny<string?>(),
+                It.IsAny<string?>(),
+                It.IsAny<int>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new LegendConnectRetainedKnowledgeSearchSnapshot(
+                "bounded diagnostic",
+                0,
+                []));
+        var handler = new FounderAiScenarioHandler(
+            TimeSpan.FromSeconds(16),
+            ProviderTool("legend_search_retained_knowledge", "{\"query\":\"bounded diagnostic\"}"),
+            ProviderText("The OpenAI Teacher completed the bounded request after sustained progress."));
+        var service = CreateService(db, operations.Object, handler);
+        var body = new MemoryStream();
+        var context = ControllerContextFor(founder);
+        context.HttpContext.Request.Headers.Accept = "application/x-ndjson";
+        context.HttpContext.Response.Body = body;
+        var controller = new LegendFounderAiController(
+            service,
+            new LegendFounderAiProgressBroker(),
+            NullLogger<LegendFounderAiController>.Instance)
+        {
+            ControllerContext = context
+        };
+
+        var result = await controller.Chat(
+            Request("teacher", "Complete this bounded diagnostic with the required governed inspection."),
+            CancellationToken.None);
+
+        Assert.IsType<EmptyResult>(result);
+        var transcript = Encoding.UTF8.GetString(body.ToArray());
+        Assert.Contains("\"type\":\"accepted\"", transcript, StringComparison.Ordinal);
+        Assert.Contains("\"type\":\"heartbeat\"", transcript, StringComparison.Ordinal);
+        Assert.Contains("\"type\":\"result\"", transcript, StringComparison.Ordinal);
+        Assert.Contains("OpenAITeacher", transcript, StringComparison.Ordinal);
+        Assert.Contains("provider_response", transcript, StringComparison.Ordinal);
+        Assert.Equal(2, handler.RequestCount);
+        operations.Verify(operation => operation.SearchRetainedKnowledgeAsync(
+            "bounded diagnostic",
+            null,
+            null,
+            It.IsAny<int>(),
+            It.IsAny<CancellationToken>()), Times.Once);
+        Assert.Equal(0, NativeInferenceCalls(operations));
+    }
+
+    [Fact]
+    public async Task LegendMode_ProgressResultStreamKeepsGovernedNativeFirstRequestActiveBeyondFormerGatewayBoundary()
+    {
+        using var founderEnvironment = new FounderEnvironmentScope();
+        await using var db = ControllerTestHelpers.BuildDb();
+        var founder = await AddFounderProfileAsync(db);
+        var operations = new Mock<ILegendConnectOperations>(MockBehavior.Strict);
+        operations
+            .Setup(operation => operation.TryInferConversationAsync(
+                "Explain the governed gap.",
+                It.IsAny<IReadOnlyList<LegendConnectConversationContextItem>>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new LegendConnectNativeInferenceSnapshot(
+                false,
+                0m,
+                null,
+                "insufficient_evidence",
+                0,
+                "External escalation is permitted after governed native inference.",
+                true));
+        operations
+            .Setup(operation => operation.SearchRetainedKnowledgeAsync(
+                It.IsAny<string>(),
+                It.IsAny<string?>(),
+                It.IsAny<string?>(),
+                It.IsAny<int>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new LegendConnectRetainedKnowledgeSearchSnapshot(
+                "governed gap",
+                0,
+                []));
+
+        var handler = new FounderAiScenarioHandler(
+            TimeSpan.FromSeconds(31),
+            ProviderText("The OpenAI Teacher completed the permitted escalation after LEGEND’s governed first refusal."));
+        var service = CreateService(db, operations.Object, handler);
+        var body = new MemoryStream();
+        var context = ControllerContextFor(founder);
+        context.HttpContext.Request.Headers.Accept = "application/x-ndjson";
+        context.HttpContext.Response.Body = body;
+        var controller = new LegendFounderAiController(
+            service,
+            new LegendFounderAiProgressBroker(),
+            NullLogger<LegendFounderAiController>.Instance)
+        {
+            ControllerContext = context
+        };
+
+        var result = await controller.Chat(
+            Request("legend", "Explain the governed gap."),
+            CancellationToken.None);
+
+        Assert.IsType<EmptyResult>(result);
+        var transcript = Encoding.UTF8.GetString(body.ToArray());
+        Assert.Contains("\"type\":\"heartbeat\"", transcript, StringComparison.Ordinal);
+        Assert.Contains("OpenAITeacher", transcript, StringComparison.Ordinal);
+        Assert.Contains("provider_response", transcript, StringComparison.Ordinal);
+        Assert.Equal(1, handler.RequestCount);
+        Assert.Equal(1, NativeInferenceCalls(operations));
     }
 
     [Fact]
@@ -128,6 +246,34 @@ public sealed class LegendFounderAiModeIsolationTests
         Assert.Equal("governed_tool", response.Stage);
         Assert.Equal("tool_read_failed", response.Reason);
         Assert.Equal("governed_tool", response.FailureKind);
+        Assert.Equal(1, handler.RequestCount);
+        Assert.Equal(0, NativeInferenceCalls(operations));
+    }
+
+    [Fact]
+    public async Task TeacherMode_ProviderRejectionPreservesSafeProviderStatusAndReference()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var operations = new Mock<ILegendConnectOperations>(MockBehavior.Strict);
+        var rejected = ProviderResponse(new
+        {
+            error = new { message = "safe test rejection" }
+        }, HttpStatusCode.BadRequest);
+        rejected.Headers.TryAddWithoutValidation("x-request-id", "provider-test-reference");
+        var handler = new FounderAiScenarioHandler(rejected);
+        var service = CreateService(db, operations.Object, handler);
+
+        var response = await service.ReplyAsync(
+            ControllerTestHelpers.BuildUser(),
+            Request("teacher", "Return a controlled provider failure."));
+
+        Assert.False(response.Succeeded);
+        Assert.Equal("OpenAITeacher", response.ResponseAuthority);
+        Assert.Equal("provider", response.Stage);
+        Assert.Equal("provider_http_400", response.Reason);
+        Assert.Equal("provider_http", response.FailureKind);
+        Assert.Equal(400, response.ProviderStatusCode);
+        Assert.Equal("provider-test-reference", response.Reference);
         Assert.Equal(1, handler.RequestCount);
         Assert.Equal(0, NativeInferenceCalls(operations));
     }
@@ -393,8 +539,10 @@ public sealed class LegendFounderAiModeIsolationTests
             }
         });
 
-    private static HttpResponseMessage ProviderResponse(object payload) =>
-        new(HttpStatusCode.OK)
+    private static HttpResponseMessage ProviderResponse(
+        object payload,
+        HttpStatusCode status = HttpStatusCode.OK) =>
+        new(status)
         {
             Content = new StringContent(
                 JsonSerializer.Serialize(payload),
@@ -415,14 +563,27 @@ public sealed class LegendFounderAiModeIsolationTests
         }
     }
 
-    private sealed class FounderAiScenarioHandler(
-        params HttpResponseMessage[] responses) : HttpMessageHandler
+    private sealed class FounderAiScenarioHandler : HttpMessageHandler
     {
-        private readonly Queue<HttpResponseMessage> _responses = new(responses);
+        private readonly Queue<HttpResponseMessage> _responses;
+        private readonly TimeSpan _responseDelay;
+
+        public FounderAiScenarioHandler(params HttpResponseMessage[] responses)
+            : this(TimeSpan.Zero, responses)
+        {
+        }
+
+        public FounderAiScenarioHandler(
+            TimeSpan responseDelay,
+            params HttpResponseMessage[] responses)
+        {
+            _responseDelay = responseDelay;
+            _responses = new Queue<HttpResponseMessage>(responses);
+        }
 
         public int RequestCount { get; private set; }
 
-        protected override Task<HttpResponseMessage> SendAsync(
+        protected override async Task<HttpResponseMessage> SendAsync(
             HttpRequestMessage request,
             CancellationToken cancellationToken)
         {
@@ -432,7 +593,10 @@ public sealed class LegendFounderAiModeIsolationTests
             if (_responses.Count == 0)
                 throw new InvalidOperationException("No OpenAI response was queued for this test.");
 
-            return Task.FromResult(_responses.Dequeue());
+            if (_responseDelay > TimeSpan.Zero)
+                await Task.Delay(_responseDelay, cancellationToken);
+
+            return _responses.Dequeue();
         }
     }
 

@@ -853,43 +853,100 @@
                 : update.message;
     }
 
-    async function consumeProgressStream(response, signal) {
-        if (!response.ok || !response.body) return;
+    function structuredFailureMessage(result, fallback = '') {
+        if (!result || typeof result !== 'object') {
+            return fallback || 'Legend® Ai could not complete that response.';
+        }
+
+        const details = [
+            result.responseAuthority && `Authority=${result.responseAuthority}`,
+            result.stage && `Stage=${result.stage}`,
+            result.reason && `Reason=${result.reason}`,
+            result.failureKind && `FailureKind=${result.failureKind}`,
+            Number.isFinite(result.providerStatusCode) &&
+                `ProviderStatus=${result.providerStatusCode}`,
+            result.reference && `Reference=${result.reference}`,
+            result.resumable === true && 'Resumable=true'
+        ].filter(Boolean);
+
+        const summary =
+            typeof result.error === 'string' && result.error.trim()
+                ? result.error.trim()
+                : fallback || 'Legend® Ai could not complete that response.';
+
+        return details.length > 0
+            ? `${summary} (${details.join('; ')})`
+            : summary;
+    }
+
+    async function consumeChatResultStream(response, signal) {
+        if (!response.ok || !response.body) {
+            const raw = await response.text().catch(() => '');
+            let result = null;
+            try { result = raw ? JSON.parse(raw) : null; } catch { }
+            throw new Error(structuredFailureMessage(result, raw));
+        }
+
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
         let buffer = '';
+        let result = null;
 
         const consumeLine = line => {
             const trimmed = line.trim();
             if (!trimmed) return;
-            try {
-                const payload = JSON.parse(trimmed);
-                if (payload?.type === 'progress' || payload?.type === 'heartbeat')
-                    applyOperationalProgress(payload);
-            } catch { }
+
+            let payload = null;
+            try { payload = JSON.parse(trimmed); } catch { return; }
+
+            if (payload?.type === 'progress') {
+                applyOperationalProgress(payload);
+                return;
+            }
+
+            if (payload?.type === 'heartbeat') {
+                if (status && Number.isFinite(payload.elapsedSeconds)) {
+                    status.textContent =
+                        `Continuing the governed request · ${payload.elapsedSeconds}s`;
+                }
+                return;
+            }
+
+            if (payload?.type === 'result') {
+                result = payload.result || null;
+            }
         };
 
         try {
             while (!signal?.aborted) {
                 const chunk = await reader.read();
-                buffer += decoder.decode(chunk.value || new Uint8Array(), { stream: !chunk.done });
+                buffer += decoder.decode(
+                    chunk.value || new Uint8Array(),
+                    { stream: !chunk.done });
+
                 let newline = buffer.indexOf('\n');
                 while (newline >= 0) {
                     consumeLine(buffer.slice(0, newline));
                     buffer = buffer.slice(newline + 1);
                     newline = buffer.indexOf('\n');
                 }
+
                 if (chunk.done) break;
             }
         } finally {
             try { await reader.cancel(); } catch { }
         }
-    }
 
-    function progressUrlFor(chatUrl, operationId) {
-        const url = new URL(chatUrl, window.location.href);
-        url.pathname = url.pathname.replace(/\/chat\/?$/i, `/progress/${operationId}`);
-        return url.toString();
+        if (!result) {
+            throw new Error(
+                'Legend® Ai ended the response stream before returning a structured result.');
+        }
+
+        if (result.succeeded !== true) {
+            throw new Error(structuredFailureMessage(result));
+        }
+
+        return result;
     }
 
     function resizeInput() {
@@ -1084,26 +1141,6 @@
                     )?.value || '';
 
                 const operationId = crypto.randomUUID();
-                const progressAbort = new AbortController();
-                const progressPromise =
-                    fetch(
-                        progressUrlFor(modalElement.dataset.chatUrl, operationId),
-                        {
-                            method: 'GET',
-                            credentials: 'same-origin',
-                            headers: {
-                                'Accept': 'application/x-ndjson',
-                                'X-Requested-With': 'XMLHttpRequest'
-                            },
-                            signal: progressAbort.signal
-                        }
-                    )
-                    .then(response => consumeProgressStream(response, progressAbort.signal))
-                    .catch(error => {
-                        if (error?.name !== 'AbortError')
-                            console.warn('Legend AI progress stream ended early.', error);
-                    });
-
                 const response =
                     await fetch(
                         modalElement.dataset.chatUrl,
@@ -1112,7 +1149,7 @@
                             credentials: 'same-origin',
                             headers: {
                                 'Content-Type': 'application/json',
-                                'Accept': 'application/json',
+                                'Accept': 'application/x-ndjson',
                                 'RequestVerificationToken': token,
                                 'X-Requested-With': 'XMLHttpRequest',
                                 'X-Legend-Ai-Operation-Id': operationId
@@ -1127,32 +1164,7 @@
                         }
                     );
 
-                const rawResponse = await response.text();
-                let result = null;
-
-                try {
-                    result = rawResponse ? JSON.parse(rawResponse) : null;
-                } catch {
-                    result = null;
-                } finally {
-                    progressAbort.abort();
-                    try { await progressPromise; } catch { }
-                }
-
-                if (
-                    !response.ok ||
-                    !result?.succeeded
-                ) {
-                    throw new Error(
-                        result?.error ||
-                        (
-                            rawResponse &&
-                            rawResponse.length < 600
-                                ? rawResponse
-                                : 'Legend® Ai could not complete that response.'
-                        )
-                    );
-                }
+                const result = await consumeChatResultStream(response);
 
                 conversation.messages.push({
                     role: 'assistant',
