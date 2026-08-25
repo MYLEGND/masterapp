@@ -208,7 +208,7 @@ public sealed class LegendFounderAiModeIsolationTests
     }
 
     [Fact]
-    public async Task TeacherMode_GovernedToolReadFailureIsStructuredAndNeverBecomesHttp500()
+    public async Task TeacherMode_OneGovernedReadFailureDoesNotAbortIndependentInspection()
     {
         using var founderEnvironment = new FounderEnvironmentScope();
         await using var db = ControllerTestHelpers.BuildDb();
@@ -224,29 +224,25 @@ public sealed class LegendFounderAiModeIsolationTests
             .ThrowsAsync(new InvalidOperationException("read transport failed"));
 
         var handler = new FounderAiScenarioHandler(
-            ProviderTool("legend_search_retained_knowledge", "{\"query\":\"authority\"}"));
+            ProviderTool("legend_search_retained_knowledge", "{\"query\":\"authority\"}"),
+            ProviderTool("legend_capabilities", "{}"),
+            ProviderText("The first governed read failed, but the independent capability inspection succeeded and the diagnosis continued."));
         var service = CreateService(db, operations.Object, handler);
-        var controller = new LegendFounderAiController(
-            service,
-            new LegendFounderAiProgressBroker(),
-            NullLogger<LegendFounderAiController>.Instance)
-        {
-            ControllerContext = ControllerContextFor(founder)
-        };
 
-        var result = await controller.Chat(
-            Request("teacher", "Inspect the current authority."),
-            CancellationToken.None);
+        var response = await service.ReplyAsync(
+            founder,
+            Request("teacher", "Inspect the current LEGEND authority and continue independent reads if one source is unavailable."));
 
-        var objectResult = Assert.IsType<ObjectResult>(result);
-        var response = Assert.IsType<LegendFounderAiChatResponse>(objectResult.Value);
-        Assert.Equal(502, objectResult.StatusCode);
-        Assert.False(response.Succeeded);
+        Assert.True(response.Succeeded, Describe(response));
         Assert.Equal("OpenAITeacher", response.ResponseAuthority);
-        Assert.Equal("governed_tool", response.Stage);
-        Assert.Equal("tool_read_failed", response.Reason);
-        Assert.Equal("governed_tool", response.FailureKind);
-        Assert.Equal(1, handler.RequestCount);
+        Assert.Equal("provider_response", response.Stage);
+        Assert.Equal(3, handler.RequestCount);
+        operations.Verify(operation => operation.SearchRetainedKnowledgeAsync(
+            "authority",
+            null,
+            null,
+            It.IsAny<int>(),
+            It.IsAny<CancellationToken>()), Times.Once);
         Assert.Equal(0, NativeInferenceCalls(operations));
     }
 

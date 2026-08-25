@@ -23,27 +23,27 @@ namespace AgentPortal.Services;
 /// </summary>
 public sealed class LegendFounderAiConversationService
 {
-    private const int MaximumConversationMessages = 30;
+    private const int MaximumConversationMessages = 60;
     private const int MaximumMessageCharacters = 500_000;
-    private const int MaximumConversationCharacters = 750_000;
-    private const int MinimumProviderConversationCharacters = 60_000;
-    private const int MaximumProviderConversationCharacters = 180_000;
-    private const int MinimumLatestMessageTailCharacters = 12_000;
+    private const int MaximumConversationCharacters = 1_500_000;
+    private const int MinimumProviderConversationCharacters = 120_000;
+    private const int MaximumProviderConversationCharacters = 320_000;
+    private const int MinimumLatestMessageTailCharacters = 24_000;
     private const int MinimumToolRounds = 4;
     private const int MaximumToolRounds = 10;
     private const int MinimumFinalizationReserveSeconds = 6;
     private const int MinimumFinalSynthesisWindowSeconds = 20;
-    private const int MaximumProviderRoundSeconds = 75;
-    private const int MinimumCasualOutputTokens = 256;
-    private const int MaximumCasualOutputTokens = 1_200;
+    private const int MaximumProviderRoundSeconds = 110;
+    private const int MinimumCasualOutputTokens = 512;
+    private const int MaximumCasualOutputTokens = 8_000;
     private const int MinimumRetainedKnowledgeLookupSeconds = 4;
     private const int MaximumRetainedKnowledgeLookupSeconds = 12;
-    private const int MinimumReadOnlyToolSeconds = 8;
-    private const int MaximumReadOnlyToolSeconds = 20;
-    private const int MinimumToolOutputCharacters = 20_000;
-    private const int MaximumToolOutputCharacters = 80_000;
-    private const int MinimumRetainedContextCharacters = 16_000;
-    private const int MaximumRetainedContextCharacters = 64_000;
+    private const int MinimumReadOnlyToolSeconds = 12;
+    private const int MaximumReadOnlyToolSeconds = 45;
+    private const int MinimumToolOutputCharacters = 40_000;
+    private const int MaximumToolOutputCharacters = 120_000;
+    private const int MinimumRetainedContextCharacters = 24_000;
+    private const int MaximumRetainedContextCharacters = 96_000;
     private const int MinimumProviderAttemptWindowSeconds = 3;
     private const int MaximumProviderCooldownSeconds = 300;
     private const int MaximumTransientProviderAttempts = 3;
@@ -85,17 +85,17 @@ public sealed class LegendFounderAiConversationService
             Math.Clamp(
                 configuration.GetValue<int?>(
                     "OpenAI:LegendFounderAiTimeoutSeconds") ??
-                    120,
-                45,
-                240);
+                    300,
+                180,
+                600);
 
         _maxOutputTokens =
             Math.Clamp(
                 configuration.GetValue<int?>(
                     "OpenAI:LegendFounderAiMaxOutputTokens") ??
-                    8_000,
-                1_500,
-                16_000);
+                    24_000,
+                8_000,
+                64_000);
 
         _reasoningEffort =
             NormalizeReasoningEffort(
@@ -667,17 +667,45 @@ public sealed class LegendFounderAiConversationService
                             call.Name),
                         effectiveToken);
 
-                    var toolOutput =
-                        await ExecuteFounderToolWithBudgetAsync(
-                            founder,
-                            call,
-                            mode,
-                            request.FounderCommandConfirmed,
-                            ResolveReadOnlyToolBudget(remaining),
-                            toolOutputBudget,
-                            effectiveToken);
+                    string toolOutput;
+                    var toolSucceeded = false;
+                    try
+                    {
+                        toolOutput =
+                            await ExecuteFounderToolWithBudgetAsync(
+                                founder,
+                                call,
+                                mode,
+                                request.FounderCommandConfirmed,
+                                ResolveReadOnlyToolBudget(remaining),
+                                toolOutputBudget,
+                                effectiveToken);
+                        toolSucceeded = true;
+                    }
+                    catch (LegendFounderAiToolExecutionException exception)
+                        when (IsReadOnlyFounderTool(call.Name))
+                    {
+                        // One unavailable read must never collapse a broad Founder
+                        // diagnosis. Feed the exact safe failure classification back
+                        // into the same provider conversation so OpenAI can continue
+                        // independent governed reads and report the blocked authority.
+                        toolOutput = SerializeUnbounded(new
+                        {
+                            error = exception.Reason,
+                            tool = exception.Tool,
+                            failureKind = exception.FailureKind,
+                            detail = exception.Detail,
+                            recoverable = true
+                        });
 
-                    if (IsReadOnlyFounderTool(call.Name))
+                        _logger.LogWarning(
+                            "LEGEND Founder AI read-only tool {Tool} returned a recoverable inspection failure. Reason={Reason} Detail={Detail}",
+                            exception.Tool,
+                            exception.Reason,
+                            exception.Detail);
+                    }
+
+                    if (toolSucceeded && IsReadOnlyFounderTool(call.Name))
                     {
                         governedInspectionCompleted = true;
                     }
@@ -685,8 +713,10 @@ public sealed class LegendFounderAiConversationService
                     await ReportProgressAsync(
                         progress,
                         new LegendFounderAiProgressEvent(
-                            "tool_complete",
-                            $"Completed: {toolDescription}",
+                            toolSucceeded ? "tool_complete" : "tool_unavailable",
+                            toolSucceeded
+                                ? $"Completed: {toolDescription}"
+                                : $"Unavailable: {toolDescription} Continuing independent governed inspection.",
                             round + 1,
                             call.Name),
                         effectiveToken);
@@ -1326,6 +1356,16 @@ public sealed class LegendFounderAiConversationService
                             document.RootElement,
                             "query"),
 
+                    "legend_section_page" =>
+                        ReadRequiredString(
+                            document.RootElement,
+                            "section"),
+
+                    "legend_founder_dashboard" =>
+                        ReadOptionalString(
+                            document.RootElement,
+                            "language"),
+
                     "legend_submit_machine_learning_candidate" =>
                         ReadRequiredString(
                             document.RootElement,
@@ -1360,6 +1400,12 @@ public sealed class LegendFounderAiConversationService
         {
             "legend_system_overview" =>
                 "Reading current governed LEGEND system metrics and readiness.",
+
+            "legend_founder_dashboard" =>
+                "Reading the current Founder-gated LEGEND dashboard shell, runtime policy, remediation state and intelligence evaluation.",
+
+            "legend_section_page" =>
+                $"Reading the existing Founder LEGEND section{subject} through its canonical section-page authority.",
 
             "legend_language_state" =>
                 $"Inspecting the current governed language state{subject}.",
@@ -1565,7 +1611,8 @@ public sealed class LegendFounderAiConversationService
             throw new LegendFounderAiToolExecutionException(
                 call.Name,
                 "tool_read_failed",
-                "governed_tool");
+                "governed_tool",
+                exception.GetType().Name);
         }
     }
 
@@ -1579,6 +1626,8 @@ public sealed class LegendFounderAiConversationService
             "legend_request_repair_release" or
             "legend_verify_repair_deployment" or
             "legend_system_overview" or
+            "legend_founder_dashboard" or
+            "legend_section_page" or
             "legend_operational_diagnostics" or
             "legend_provider_capacity" or
             "legend_language_knowledge" or
@@ -1737,6 +1786,52 @@ public sealed class LegendFounderAiConversationService
                         founder,
                         cancellationToken);
 
+                return SerializeUnbounded(snapshot);
+            }
+
+            case "legend_founder_dashboard":
+            {
+                using var arguments = JsonDocument.Parse(call.Arguments);
+                var language = ReadOptionalString(arguments.RootElement, "language");
+                var pair = ReadOptionalString(arguments.RootElement, "pair");
+                var search = ReadOptionalString(arguments.RootElement, "search");
+                var snapshot = await _legend.GetDashboardAsync(
+                    founder,
+                    language,
+                    pair,
+                    cancellationToken,
+                    search);
+                return SerializeUnbounded(snapshot);
+            }
+
+            case "legend_section_page":
+            {
+                using var arguments = JsonDocument.Parse(call.Arguments);
+                var section = ReadRequiredString(arguments.RootElement, "section");
+                var language = ReadOptionalString(arguments.RootElement, "language");
+                var search = ReadOptionalString(arguments.RootElement, "search");
+                var cursor = ReadOptionalString(arguments.RootElement, "cursor");
+                var curriculumFamilyRaw = ReadOptionalString(arguments.RootElement, "curriculum_family_id");
+
+                if (string.IsNullOrWhiteSpace(section))
+                    return """{"error":"section_required"}""";
+
+                Guid? curriculumFamilyId = null;
+                if (!string.IsNullOrWhiteSpace(curriculumFamilyRaw))
+                {
+                    if (!Guid.TryParse(curriculumFamilyRaw, out var parsedCurriculumFamilyId))
+                        return """{"error":"invalid_curriculum_family_id"}""";
+                    curriculumFamilyId = parsedCurriculumFamilyId;
+                }
+
+                var snapshot = await _legend.GetSectionPageAsync(
+                    founder,
+                    section,
+                    language,
+                    search,
+                    cursor,
+                    curriculumFamilyId,
+                    cancellationToken);
                 return SerializeUnbounded(snapshot);
             }
 
@@ -2369,6 +2464,48 @@ public sealed class LegendFounderAiConversationService
                     type = "object",
                     properties = new { },
                     required = Array.Empty<string>(),
+                    additionalProperties = false
+                },
+                strict = true
+            },
+            new
+            {
+                type = "function",
+                name = "legend_founder_dashboard",
+                description =
+                    "Read the existing Founder-gated LEGEND dashboard shell through FounderLegendConnectService, including the canonical section inventory, runtime policy, software-remediation status and current intelligence-evaluation projection. This is read-only and creates no duplicate data authority.",
+                parameters = new
+                {
+                    type = "object",
+                    properties = new
+                    {
+                        language = new { type = new[] { "string", "null" }, maxLength = 40 },
+                        pair = new { type = new[] { "string", "null" }, maxLength = 100 },
+                        search = new { type = new[] { "string", "null" }, maxLength = 500 }
+                    },
+                    required = new[] { "language", "pair", "search" },
+                    additionalProperties = false
+                },
+                strict = true
+            },
+            new
+            {
+                type = "function",
+                name = "legend_section_page",
+                description =
+                    "Read one existing Founder LEGEND Connect section page through the same canonical section-page authority used by the product UI. Use the dashboard shell to discover sections, then page/search them for curriculum, retained evidence, learning, evaluation, operational and other Founder-visible LEGEND data. This is read-only, preserves pagination, and creates no second query system.",
+                parameters = new
+                {
+                    type = "object",
+                    properties = new
+                    {
+                        section = new { type = "string", minLength = 1, maxLength = 80 },
+                        language = new { type = new[] { "string", "null" }, maxLength = 40 },
+                        search = new { type = new[] { "string", "null" }, maxLength = 500 },
+                        cursor = new { type = new[] { "string", "null" }, maxLength = 500 },
+                        curriculum_family_id = new { type = new[] { "string", "null" }, maxLength = 36 }
+                    },
+                    required = new[] { "section", "language", "search", "cursor", "curriculum_family_id" },
                     additionalProperties = false
                 },
                 strict = true
@@ -3041,6 +3178,11 @@ CRITICAL GOVERNANCE:
 - Never invent database state, evidence, training status, model versions, evaluation results, contradictions, readiness, capacity, or language coverage.
 - Tool outputs from existing LEGEND authorities are the source of truth for current LEGEND system facts.
 - You can inspect LEGEND through read tools.
+- For broad Founder diagnostics, first discover the live capability registry and Founder dashboard, then use the existing section-page, retained-knowledge, language, metric, operational, evaluation, repository, validation and deployment reads as needed. Do not ask the Founder to export information that an exposed governed read can already retrieve.
+- A failure of one read-only tool is evidence about that authority, not permission to abandon the entire inspection. Continue independent governed reads, preserve successful results, and identify the exact unavailable tool and safe failure classification in the final answer.
+- Never say that no inspection tools are exposed until legend_capabilities itself proves that claim. The tool registry is the source of truth for what this session can inspect.
+- Use legend_founder_dashboard and legend_section_page to inspect the same Founder-visible LEGEND Connect data projections used by the product rather than inventing a parallel database query path.
+- Use legend_inspect_repository for bounded code/configuration inspection when architecture or orchestration facts depend on repository state; never infer those facts from generic AI architecture assumptions.
 - Native OpenAI web search is available for current external research, verification, trusted linguistic references, standards, documentation and other information that is not already established by LEGEND.
 - When external research is materially useful, prefer authoritative primary sources, official documentation, recognized linguistic institutions, standards bodies, universities and other high-quality sources over low-authority summaries.
 - External web research is evidence for reasoning; it does not become canonical LEGEND knowledge merely because OpenAI found it.
@@ -3472,7 +3614,7 @@ Never upgrade an unresolved, rejected or contradicted record merely because it a
             .Last(message => string.Equals(message.Role, "user", StringComparison.Ordinal))
             .Content?.Length ?? 0;
 
-        var adaptiveTokens = MinimumCasualOutputTokens + latest / 4;
+        var adaptiveTokens = MinimumCasualOutputTokens + latest / 2;
         return Math.Clamp(
             adaptiveTokens,
             MinimumCasualOutputTokens,
@@ -3929,12 +4071,16 @@ Never upgrade an unresolved, rejected or contradicted record merely because it a
         public LegendFounderAiToolExecutionException(
             string tool,
             string reason,
-            string failureKind)
+            string failureKind,
+            string? detail = null)
             : base($"Governed Founder tool '{tool}' could not complete.")
         {
             Tool = tool;
             Reason = reason;
             FailureKind = failureKind;
+            Detail = string.IsNullOrWhiteSpace(detail)
+                ? "No additional safe diagnostic classification was available."
+                : NormalizeFailureDetail(detail);
         }
 
         public string Tool { get; }
@@ -3942,6 +4088,8 @@ Never upgrade an unresolved, rejected or contradicted record merely because it a
         public string Reason { get; }
 
         public string FailureKind { get; }
+
+        public string Detail { get; }
     }
 
     private sealed record FounderAiToolCall(
