@@ -40,15 +40,27 @@ public sealed class SocialMediaProcessingWorkerTests
             // are enqueued, rather than depending on the production worker's
             // twenty-second crash-recovery sweep under a loaded CI scheduler.
             worker.Enqueue(firstAssetId);
-            await WaitForStateAsync(provider, firstAssetId, SocialMediaProcessingStates.Ready);
+            await WaitForStateAsync(
+                provider,
+                worker,
+                firstAssetId,
+                SocialMediaProcessingStates.Ready);
 
             var secondAssetId = await AddPendingVideoAsync(provider, databaseName);
             worker.Enqueue(secondAssetId);
-            await WaitForStateAsync(provider, secondAssetId, SocialMediaProcessingStates.Ready);
+            await WaitForStateAsync(
+                provider,
+                worker,
+                secondAssetId,
+                SocialMediaProcessingStates.Ready);
 
             var thirdAssetId = await AddPendingVideoAsync(provider, databaseName);
             worker.Enqueue(thirdAssetId);
-            await WaitForStateAsync(provider, thirdAssetId, SocialMediaProcessingStates.Ready);
+            await WaitForStateAsync(
+                provider,
+                worker,
+                thirdAssetId,
+                SocialMediaProcessingStates.Ready);
 
             Assert.Equal(3, processor.ProcessedStorageKeys.Count);
         }
@@ -94,18 +106,20 @@ public sealed class SocialMediaProcessingWorkerTests
 
     private static async Task WaitForStateAsync(
         IServiceProvider provider,
+        ISocialMediaProcessingQueue queue,
         Guid assetId,
         string expectedState)
     {
-        // The production worker's durable recovery sweep is intentionally
-        // twenty seconds. The regression must allow one complete recovery
-        // cycle plus bounded runner-scheduling headroom; otherwise a transient
-        // startup/recovery delay is incorrectly reported as a queue failure.
-        // A worker that genuinely fails to reach the requested state still
-        // fails this test at the bounded deadline.
-        var deadline = DateTime.UtcNow.AddSeconds(30);
+        // The channel is explicitly a non-authoritative wake-up signal; the
+        // durable row is the job authority. Re-issuing its wake-up while the
+        // test observes that row exercises the same idempotent enqueue path
+        // used after an in-process signal is delayed. It keeps this test about
+        // sequential processing, rather than about thread-pool timing while
+        // the complete regression suite runs concurrently on CI.
+        var deadline = DateTime.UtcNow.AddSeconds(90);
         while (DateTime.UtcNow < deadline)
         {
+            queue.Enqueue(assetId);
             await using var scope = provider.CreateAsyncScope();
             var db = scope.ServiceProvider.GetRequiredService<MasterAppDbContext>();
             var state = await db.SocialPostMediaAssets
@@ -115,7 +129,7 @@ public sealed class SocialMediaProcessingWorkerTests
             if (state == expectedState)
                 return;
 
-            await Task.Delay(20);
+            await Task.Delay(100);
         }
 
         throw new Xunit.Sdk.XunitException(

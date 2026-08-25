@@ -622,11 +622,11 @@ public sealed class LegendFounderAiContractTests
             if (path == "/repos/MYLEGND/masterapp/pulls/123" && method == HttpMethod.Get)
                 return Json(HttpStatusCode.OK, $"{{\"head\":{{\"sha\":\"{new string('c', 40)}\"}},\"base\":{{\"ref\":\"production\"}},\"state\":\"open\"}}");
             if (path == $"/repos/MYLEGND/masterapp/commits/{new string('c', 40)}/check-runs" && method == HttpMethod.Get)
-                return Json(HttpStatusCode.OK, "{\"check_runs\":[{\"name\":\"Security CI / security\",\"conclusion\":\"success\"}]}");
+                return Json(HttpStatusCode.OK, "{\"check_runs\":[{\"name\":\"security\",\"conclusion\":\"success\"}]}");
             if (path == "/repos/MYLEGND/masterapp/branches/production/protection" && method == HttpMethod.Get)
             {
                 var reviews = includePullRequestReviews ? ",\"required_pull_request_reviews\":{}" : string.Empty;
-                return Json(HttpStatusCode.OK, $"{{\"required_status_checks\":{{\"strict\":true,\"contexts\":[\"Security CI / security\"]}},\"enforce_admins\":{{\"enabled\":true}}{reviews}}}");
+                return Json(HttpStatusCode.OK, $"{{\"required_status_checks\":{{\"strict\":true,\"contexts\":[\"security\"]}},\"enforce_admins\":{{\"enabled\":true}}{reviews}}}");
             }
 
             return Json(HttpStatusCode.NotFound, "{\"message\":\"unexpected request\"}");
