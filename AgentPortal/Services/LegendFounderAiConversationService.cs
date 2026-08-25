@@ -168,6 +168,7 @@ public sealed class LegendFounderAiConversationService
 
         if (ShouldAttemptNativeInference(mode))
         {
+            var nativeStarted = Stopwatch.GetTimestamp();
             await ReportProgressAsync(
                 progress,
                 new LegendFounderAiProgressEvent(
@@ -231,6 +232,14 @@ public sealed class LegendFounderAiConversationService
                 _logger.LogWarning(
                     exception,
                     "LEGEND native conversational inference was unavailable; escalating without a native answer.");
+            }
+            finally
+            {
+                _logger.LogInformation(
+                    "LEGEND Founder AI stage completed. Mode={Mode} Stage=native_inference ElapsedMs={ElapsedMs}",
+                    mode,
+                    (long)Math.Ceiling(
+                        Stopwatch.GetElapsedTime(nativeStarted).TotalMilliseconds));
             }
 
             if (nativeInference is { Supported: true } &&
@@ -451,6 +460,7 @@ public sealed class LegendFounderAiConversationService
                         round + 1),
                     effectiveToken);
 
+                var providerStarted = Stopwatch.GetTimestamp();
                 using var responseDocument =
                     await SendResponseAsync(
                         apiKey,
@@ -469,6 +479,15 @@ public sealed class LegendFounderAiConversationService
                             requiresGovernedInspection,
                             _maxOutputTokens),
                         effectiveToken);
+
+                _logger.LogInformation(
+                    "LEGEND Founder AI stage completed. Mode={Mode} Stage=provider_round Round={Round} AllowTools={AllowTools} BudgetMs={BudgetMs} ElapsedMs={ElapsedMs}",
+                    mode,
+                    round + 1,
+                    allowTools,
+                    (long)Math.Ceiling(providerBudget.TotalMilliseconds),
+                    (long)Math.Ceiling(
+                        Stopwatch.GetElapsedTime(providerStarted).TotalMilliseconds));
 
                 if (responseDocument is null)
                 {
@@ -660,7 +679,11 @@ public sealed class LegendFounderAiConversationService
                 nativeInference,
                 nativeFailureDetail,
                 $"provider_http_{exception.StatusCode}",
-                $"{exception.ProviderError} ClientRequestId={exception.ClientRequestId}; ProviderRequestId={exception.ProviderRequestId ?? "unavailable"}.");
+                $"{exception.ProviderError} ClientRequestId={exception.ClientRequestId}; ProviderRequestId={exception.ProviderRequestId ?? "unavailable"}.") with
+            {
+                ProviderStatusCode = exception.StatusCode,
+                Reference = exception.ProviderRequestId ?? exception.ClientRequestId
+            };
         }
         catch (OperationCanceledException exception)
             when (!cancellationToken.IsCancellationRequested)
@@ -3877,7 +3900,11 @@ public sealed record LegendFounderAiChatResponse(
     string? Reference = null,
     string ResponseAuthority = "SystemDiagnostic",
     string? Stage = null,
-    string? Reason = null)
+    string? Reason = null,
+    string? OperationId = null,
+    IReadOnlyList<string>? CompletedWork = null,
+    IReadOnlyList<string>? RemainingWork = null,
+    bool Resumable = false)
 {
     public static LegendFounderAiChatResponse Failure(
         string error,

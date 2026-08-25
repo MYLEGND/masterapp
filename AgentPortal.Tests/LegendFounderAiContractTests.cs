@@ -165,6 +165,23 @@ public sealed class LegendFounderAiContractTests
     }
 
     [Fact]
+    public void FounderChatClient_RequestsSingleProgressResultProtocolAndRendersStructuredFailure()
+    {
+        var script = File.ReadAllText(
+            Path.Combine(
+                AppContext.BaseDirectory,
+                "legend-founder-ai.js"));
+
+        Assert.Contains("'Accept': 'application/x-ndjson'", script, StringComparison.Ordinal);
+        Assert.Contains("consumeChatResultStream", script, StringComparison.Ordinal);
+        Assert.Contains("structuredFailureMessage", script, StringComparison.Ordinal);
+        Assert.Contains("result.responseAuthority", script, StringComparison.Ordinal);
+        Assert.Contains("result.stage", script, StringComparison.Ordinal);
+        Assert.Contains("result.reason", script, StringComparison.Ordinal);
+        Assert.DoesNotContain("progressUrlFor(modalElement.dataset.chatUrl, operationId)", script, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void FounderCurriculumTool_UsesClosedStrictVariationSchema()
     {
         var buildTools =

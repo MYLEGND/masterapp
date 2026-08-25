@@ -540,6 +540,52 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
     /// logged or persisted by the test.
     /// </summary>
     [Fact]
+    public async Task ShadowSnapshotContextClosure_PreservesBothIndexedDirectionsAndRejectsOpenEdges()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var first = Guid.NewGuid();
+        var second = Guid.NewGuid();
+        var outside = Guid.NewGuid();
+
+        var sourceToRelated = new LegendLanguageContextRelationship
+        {
+            Id = Guid.NewGuid(),
+            SourceTextUnitId = first,
+            RelatedTextUnitId = second
+        };
+        var relatedToSource = new LegendLanguageContextRelationship
+        {
+            Id = Guid.NewGuid(),
+            SourceTextUnitId = second,
+            RelatedTextUnitId = first
+        };
+        db.LegendLanguageContextRelationships.AddRange(
+            sourceToRelated,
+            relatedToSource,
+            new LegendLanguageContextRelationship
+            {
+                Id = Guid.NewGuid(),
+                SourceTextUnitId = first,
+                RelatedTextUnitId = outside
+            },
+            new LegendLanguageContextRelationship
+            {
+                Id = Guid.NewGuid(),
+                SourceTextUnitId = outside,
+                RelatedTextUnitId = first
+            });
+        await db.SaveChangesAsync();
+
+        var closure = await ReadContextRelationshipsForTextUnitClosureAsync(
+            db,
+            new[] { first, second });
+
+        Assert.Equal(
+            new[] { sourceToRelated.Id, relatedToSource.Id }.OrderBy(item => item),
+            closure.Select(item => item.Id).OrderBy(item => item));
+    }
+
+    [Fact]
     public async Task ProductionReadOnlyEightPromptNativeDiagnostic()
     {
         var connectionString = Environment.GetEnvironmentVariable(
@@ -916,6 +962,7 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
                 .OrderBy(group => group.Key.DerivationKind)
                 .Select(group => new { group.Key, Count = group.LongCount() })
                 .ToListAsync();
+            var contextEndpointIndexes = await ReadContextEndpointIndexesAsync(production);
             var liveSourceV20Artifacts = await production.LegendLanguageDerivationArtifacts
                 .AsNoTracking()
                 .LongCountAsync(item => item.State == "Current" &&
@@ -938,6 +985,8 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
             _output.WriteLine($"LIVE V20 SOURCE-PROJECTION ARTIFACTS: {liveSourceV20Artifacts}");
             _output.WriteLine("LIVE ACTIVE CONTRACTS: " + string.Join(" | ", liveContracts.Select(item =>
                 $"{item.Key.DerivationKind}:v{item.Key.ContractVersion}:{item.Key.State}={item.Count}")));
+            _output.WriteLine("LIVE CONTEXT ENDPOINT INDEXES: " +
+                string.Join(" | ", contextEndpointIndexes));
             _output.WriteLine("LIVE RECOVERABLE FAILED MANIFEST: " +
                 (recoverableManifest is null
                     ? "<NONE>"
@@ -946,6 +995,12 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
             Assert.True(liveSourceV20Artifacts > 0,
                 "The live production snapshot contains no current V20 source-projection artifact to validate V21 invalidation.");
             Assert.NotNull(recoverableManifest);
+            Assert.Contains(
+                "IX_LegendLanguageContextRelationships_SourceTextUnitId",
+                contextEndpointIndexes);
+            Assert.Contains(
+                "IX_LegendLanguageContextRelationships_RelatedTextUnitId",
+                contextEndpointIndexes);
 
             await using var shadow = ControllerTestHelpers.BuildDb();
             var copied = await CopyLiveCurriculumSnapshotAsync(production, shadow, founderId!);
@@ -2724,9 +2779,15 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
             query => query.Where(item => alignmentIds.Contains(item.Id)));
         await CopySnapshotSetAsync<LegendTranslationQualityEvidence>(production, shadow, copied, "quality-evidence",
             query => query.Where(item => alignmentIds.Contains(item.ObservedAlignmentId)));
-        await CopySnapshotSetAsync<LegendLanguageContextRelationship>(production, shadow, copied, "contexts",
-            query => query.Where(item => replayTextUnitIds.Contains(item.SourceTextUnitId) &&
-                replayTextUnitIds.Contains(item.RelatedTextUnitId)));
+        // Source and related text-unit endpoints have separate SQL Server
+        // indexes.  Keep the Founder/human-verified closure bounded through
+        // each one rather than asking SQL Server to intersect two whole
+        // snapshot IN lists.  The final two-endpoint closure remains in
+        // memory, so competing and contradictory relationships are retained.
+        var contexts = await ReadContextRelationshipsForTextUnitClosureAsync(
+            production,
+            replayTextUnitIds);
+        await CopySnapshotRowsAsync(shadow, copied, "contexts", contexts);
         // SQL Server has independently indexed source and result example
         // endpoints.  Do not issue a single two-IN predicate here: with a
         // whole Founder snapshot it can force an expensive plan before the
@@ -2853,6 +2914,64 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
             .OrderBy(item => item.Id)
             .ToArray();
     }
+
+    /// <summary>
+    /// Loads contextual relationships through the existing source and related
+    /// text-unit indexes.  This has the same closure semantics as the former
+    /// two-IN SQL predicate, but does not require the production optimizer to
+    /// intersect a full Founder snapshot before the shadow replay begins.
+    /// </summary>
+    private static async Task<IReadOnlyList<LegendLanguageContextRelationship>>
+        ReadContextRelationshipsForTextUnitClosureAsync(
+            MasterAppDbContext production,
+            IReadOnlyCollection<Guid> textUnitIds)
+    {
+        var scope = textUnitIds.ToHashSet();
+        var rows = new Dictionary<Guid, LegendLanguageContextRelationship>();
+
+        foreach (var batch in scope.Chunk(256))
+        {
+            var bySource = await production.LegendLanguageContextRelationships
+                .AsNoTracking()
+                .Where(item => batch.Contains(item.SourceTextUnitId))
+                .ToListAsync();
+            foreach (var item in bySource)
+                rows[item.Id] = item;
+
+            var byRelated = await production.LegendLanguageContextRelationships
+                .AsNoTracking()
+                .Where(item => batch.Contains(item.RelatedTextUnitId))
+                .ToListAsync();
+            foreach (var item in byRelated)
+                rows[item.Id] = item;
+        }
+
+        return rows.Values
+            .Where(item => scope.Contains(item.SourceTextUnitId) &&
+                scope.Contains(item.RelatedTextUnitId))
+            .OrderBy(item => item.Id)
+            .ToArray();
+    }
+
+    /// <summary>
+    /// Reads only system catalog metadata through the same guarded read-only
+    /// production connection used by the shadow diagnostic.  This proves the
+    /// bounded closure reader is backed by both endpoint indexes rather than
+    /// inferring deployment state from the local EF model.
+    /// </summary>
+    private static async Task<IReadOnlyList<string>> ReadContextEndpointIndexesAsync(
+        MasterAppDbContext production) =>
+        await production.Database.SqlQueryRaw<string>(
+                """
+                SELECT [i].[name] AS [Value]
+                FROM [sys].[indexes] AS [i]
+                WHERE [i].[object_id] = OBJECT_ID(N'[dbo].[LegendLanguageContextRelationships]')
+                  AND [i].[name] IN (
+                      N'IX_LegendLanguageContextRelationships_SourceTextUnitId',
+                      N'IX_LegendLanguageContextRelationships_RelatedTextUnitId')
+                ORDER BY [i].[name]
+                """)
+            .ToListAsync();
 
     /// <summary>
     /// Founder-declared example relations use the same source/result endpoint
