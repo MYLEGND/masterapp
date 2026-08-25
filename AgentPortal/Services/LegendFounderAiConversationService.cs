@@ -370,7 +370,7 @@ public sealed class LegendFounderAiConversationService
                       : BuildRetainedKnowledgeContext(
                           retainedKnowledge,
                           ResolveRetainedContextBudget(conversation)))
-                : BuildCasualInstructions();
+                : BuildCasualInstructions(mode);
 
         var tools = BuildFounderTools();
 
@@ -398,6 +398,9 @@ public sealed class LegendFounderAiConversationService
                 requiresGovernedInspection
                     ? ResolveMaximumToolRounds(conversation)
                     : 1;
+
+            var governedInspectionCompleted =
+                !requiresGovernedInspection;
 
             for (var round = 0; round < maximumToolRounds; round++)
             {
@@ -435,6 +438,24 @@ public sealed class LegendFounderAiConversationService
                         TimeSpan.FromSeconds(
                             MinimumFinalSynthesisWindowSeconds);
 
+                if (requiresGovernedInspection &&
+                    !governedInspectionCompleted &&
+                    !allowTools)
+                {
+                    return LegendFounderAiChatResponse.ModeFailure(
+                        mode,
+                        FailureMessageForMode(
+                            mode,
+                            "The remaining request window is too small to complete the required governed LEGEND inspection safely."),
+                        "governed_inspection",
+                        "governed_tool",
+                        "required_governed_inspection_budget_unavailable");
+                }
+
+                var requireToolCall =
+                    requiresGovernedInspection &&
+                    !governedInspectionCompleted;
+
                 var providerBudget =
                     ResolveProviderBudget(
                         conversation,
@@ -469,6 +490,7 @@ public sealed class LegendFounderAiConversationService
                         input,
                         tools,
                         allowTools,
+                        requireToolCall,
                         providerBudget,
                         ResolveReasoningEffortForRound(
                             round,
@@ -506,6 +528,19 @@ public sealed class LegendFounderAiConversationService
 
                 if (responseState == "incomplete")
                 {
+                    if (requiresGovernedInspection &&
+                        !governedInspectionCompleted)
+                    {
+                        return LegendFounderAiChatResponse.ModeFailure(
+                            mode,
+                            FailureMessageForMode(
+                                mode,
+                                "The provider output ended before the required governed LEGEND inspection completed."),
+                            "governed_inspection",
+                            "provider_response",
+                            "required_governed_inspection_missing");
+                    }
+
                     var partial =
                         ExtractOutputText(root);
 
@@ -548,6 +583,19 @@ public sealed class LegendFounderAiConversationService
 
                 if (toolCalls.Count == 0)
                 {
+                    if (requiresGovernedInspection &&
+                        !governedInspectionCompleted)
+                    {
+                        return LegendFounderAiChatResponse.ModeFailure(
+                            mode,
+                            FailureMessageForMode(
+                                mode,
+                                "The provider did not perform the required governed LEGEND inspection, so no current-state answer was accepted."),
+                            "governed_inspection",
+                            "governed_tool",
+                            "required_governed_inspection_missing");
+                    }
+
                     await ReportProgressAsync(
                         progress,
                         new LegendFounderAiProgressEvent(
@@ -623,6 +671,11 @@ public sealed class LegendFounderAiConversationService
                             ResolveReadOnlyToolBudget(remaining),
                             toolOutputBudget,
                             effectiveToken);
+
+                    if (IsReadOnlyFounderTool(call.Name))
+                    {
+                        governedInspectionCompleted = true;
+                    }
 
                     await ReportProgressAsync(
                         progress,
@@ -801,6 +854,7 @@ public sealed class LegendFounderAiConversationService
         IReadOnlyList<object> input,
         IReadOnlyList<object> tools,
         bool allowTools,
+        bool requireToolCall,
         TimeSpan providerBudget,
         string reasoningEffort,
         int maxOutputTokens,
@@ -818,9 +872,9 @@ public sealed class LegendFounderAiConversationService
                     : Array.Empty<object>(),
 
             tool_choice =
-                allowTools
-                    ? "auto"
-                    : "none",
+                ResolveToolChoice(
+                    allowTools,
+                    requireToolCall),
 
             parallel_tool_calls = allowTools,
             truncation = "auto",
@@ -3121,12 +3175,21 @@ DIAGNOSTIC TEACHER REQUIREMENTS:
 """;
     }
 
-    private static string BuildCasualInstructions() =>
-        """
+    private static string BuildCasualInstructions(string mode) =>
+        IsTeacherMode(mode)
+            ? """
+You are the external OpenAI Teacher speaking directly with the Founder.
+Native LEGEND conversational inference is bypassed in this mode.
+Respond naturally, directly, and conversationally.
+Do not claim current LEGEND database, training, readiness, provider, evidence, repository, deployment, or system-state facts in this conversational path.
+Do not invent internal state, private data, or operational results.
+If the Founder asks for current LEGEND facts, that request belongs to the governed inspection path rather than casual conversation.
+"""
+            : """
 You are Legend® Ai speaking with the Founder.
 Respond naturally, directly, and conversationally.
 Use the product name exactly as "Legend® Ai" if you name yourself.
-Do not claim current LEGEND database, training, readiness, provider, evidence, or system-state facts in this conversational path.
+Do not claim current LEGEND database, training, readiness, provider, evidence, repository, deployment, or system-state facts in this conversational path.
 Do not invent internal state, private data, or operational results.
 If the Founder asks for current LEGEND system facts, that request belongs to the governed inspection path rather than casual conversation.
 """;
@@ -3570,9 +3633,6 @@ Never upgrade an unresolved, rejected or contradicted record merely because it a
         IReadOnlyList<LegendFounderAiChatMessage> conversation,
         string mode)
     {
-        if (string.Equals(mode, "teacher", StringComparison.Ordinal))
-            return true;
-
         var latest = conversation
             .Last(message => string.Equals(message.Role, "user", StringComparison.Ordinal))
             .Content?.Trim() ?? string.Empty;
@@ -3582,18 +3642,39 @@ Never upgrade an unresolved, rejected or contradicted record merely because it a
 
         var text = latest.ToLowerInvariant();
 
-        var governedSignals = new[]
+        var explicitGovernedSignals = new[]
         {
-            "canonical", "retained knowledge", "retained",
-            "curriculum", "train ", "training", "teacher", "translation",
-            "haitian creole", "language", "alignment", "provenance",
-            "evidence", "model readiness", "readiness", "provider",
-            "azure", "system state", "system status", "metrics", "metric",
-            "knowledge", "learning", "corpus"
+            "canonical", "retained knowledge", "retained evidence",
+            "curriculum", "train legend", "training status",
+            "model readiness", "readiness", "alignment", "provenance",
+            "evidence", "system state", "system status", "metrics", "metric",
+            "provider capacity", "azure", "corpus", "production",
+            "deployment", "repository", "github", "pull request",
+            "branch", "commit", "workflow", "ci", "coverage"
         };
 
-        return governedSignals.Any(signal =>
-            text.Contains(signal, StringComparison.Ordinal));
+        if (explicitGovernedSignals.Any(signal =>
+                text.Contains(signal, StringComparison.Ordinal)))
+        {
+            return true;
+        }
+
+        var currentStateSignals = new[]
+        {
+            "current", "currently", "latest", "today",
+            "right now", "update", "how many", "count", "status"
+        };
+
+        var legendSubjects = new[]
+        {
+            "legend", "language", "learning", "knowledge",
+            "model", "provider", "translation", "haitian creole"
+        };
+
+        return currentStateSignals.Any(signal =>
+                   text.Contains(signal, StringComparison.Ordinal)) &&
+               legendSubjects.Any(subject =>
+                   text.Contains(subject, StringComparison.Ordinal));
     }
 
     private static bool ShouldAttemptNativeInference(string mode) =>
@@ -3613,10 +3694,19 @@ Never upgrade an unresolved, rejected or contradicted record merely because it a
         bool requiresGovernedInspection,
         string configuredEffort) =>
         !requiresGovernedInspection
-            ? "none"
+            ? "low"
             : round == 0
                 ? "low"
                 : configuredEffort;
+
+    private static string ResolveToolChoice(
+        bool allowTools,
+        bool requireToolCall) =>
+        !allowTools
+            ? "none"
+            : requireToolCall
+                ? "required"
+                : "auto";
 
     private static string NormalizeReasoningEffort(
         string? value)

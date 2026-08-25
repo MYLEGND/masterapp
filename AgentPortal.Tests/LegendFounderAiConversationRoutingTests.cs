@@ -44,13 +44,13 @@ public sealed class LegendFounderAiConversationRoutingTests
     }
 
     [Fact]
-    public void TeacherMode_AlwaysKeepsGovernedInspectionAvailable()
+    public void TeacherMode_DoesNotForceGovernedInspectionForCasualConversation()
     {
         var method = typeof(LegendFounderAiConversationService)
             .GetMethod("RequiresGovernedInspection", BindingFlags.NonPublic | BindingFlags.Static);
         Assert.NotNull(method);
         IReadOnlyList<LegendFounderAiChatMessage> conversation = [new("user", "Hi")];
-        Assert.True(Assert.IsType<bool>(method!.Invoke(null, new object[] { conversation, "teacher" })));
+        Assert.False(Assert.IsType<bool>(method!.Invoke(null, new object[] { conversation, "teacher" })));
     }
 
     [Theory]
