@@ -27,21 +27,21 @@ public sealed class LegendFounderAiConversationService
     private const int MaximumMessageCharacters = 500_000;
     private const int MaximumConversationCharacters = 750_000;
     private const int MinimumProviderConversationCharacters = 60_000;
-    private const int MaximumProviderConversationCharacters = 180_000;
-    private const int MinimumLatestMessageTailCharacters = 12_000;
+    private const int MaximumProviderConversationCharacters = 400_000;
+    private const int MinimumLatestMessageTailCharacters = 32_000;
     private const int MinimumToolRounds = 4;
     private const int MaximumToolRounds = 10;
     private const int MinimumFinalizationReserveSeconds = 6;
     private const int MinimumFinalSynthesisWindowSeconds = 20;
     private const int MaximumProviderRoundSeconds = 75;
     private const int MinimumCasualOutputTokens = 256;
-    private const int MaximumCasualOutputTokens = 1_200;
+    private const int MaximumCasualOutputTokens = 8_000;
     private const int MinimumRetainedKnowledgeLookupSeconds = 4;
     private const int MaximumRetainedKnowledgeLookupSeconds = 12;
     private const int MinimumReadOnlyToolSeconds = 8;
-    private const int MaximumReadOnlyToolSeconds = 20;
-    private const int MinimumToolOutputCharacters = 20_000;
-    private const int MaximumToolOutputCharacters = 80_000;
+    private const int MaximumReadOnlyToolSeconds = 60;
+    private const int MinimumToolOutputCharacters = 40_000;
+    private const int MaximumToolOutputCharacters = 180_000;
     private const int MinimumRetainedContextCharacters = 16_000;
     private const int MaximumRetainedContextCharacters = 64_000;
     private const int MinimumProviderAttemptWindowSeconds = 3;
@@ -85,17 +85,17 @@ public sealed class LegendFounderAiConversationService
             Math.Clamp(
                 configuration.GetValue<int?>(
                     "OpenAI:LegendFounderAiTimeoutSeconds") ??
-                    120,
+                    300,
                 45,
-                240);
+                600);
 
         _maxOutputTokens =
             Math.Clamp(
                 configuration.GetValue<int?>(
                     "OpenAI:LegendFounderAiMaxOutputTokens") ??
-                    8_000,
+                    32_000,
                 1_500,
-                16_000);
+                64_000);
 
         _reasoningEffort =
             NormalizeReasoningEffort(
@@ -677,7 +677,12 @@ public sealed class LegendFounderAiConversationService
                             toolOutputBudget,
                             effectiveToken);
 
-                    if (IsReadOnlyFounderTool(call.Name))
+                    // A governed inspection is complete only after a read tool
+                    // returned usable governed evidence. Structured failures are
+                    // fed back to OpenAI so it can continue with independent reads;
+                    // one unavailable authority must not abort the whole diagnosis.
+                    if (IsReadOnlyFounderTool(call.Name) &&
+                        IsSuccessfulFounderToolOutput(toolOutput))
                     {
                         governedInspectionCompleted = true;
                     }
@@ -1529,10 +1534,11 @@ public sealed class LegendFounderAiConversationService
                 call.Name,
                 readOnlyBudget.TotalSeconds);
 
-            throw new LegendFounderAiToolExecutionException(
+            return SerializeFounderToolFailure(
                 call.Name,
                 "tool_timeout",
-                "timeout");
+                "timeout",
+                $"The governed read exceeded its {readOnlyBudget.TotalSeconds:F1}-second budget. Independent reads may continue.");
         }
         catch (OperationCanceledException)
             when (cancellationToken.IsCancellationRequested)
@@ -1562,10 +1568,46 @@ public sealed class LegendFounderAiConversationService
                 "LEGEND Founder AI read-only tool {Tool} failed before a response could be produced.",
                 call.Name);
 
-            throw new LegendFounderAiToolExecutionException(
+            return SerializeFounderToolFailure(
                 call.Name,
                 "tool_read_failed",
-                "governed_tool");
+                exception.GetType().Name,
+                "This governed read failed. The exact tool identity is preserved and independent read authorities may continue.");
+        }
+    }
+
+    private static string SerializeFounderToolFailure(
+        string tool,
+        string reason,
+        string failureKind,
+        string detail) =>
+        JsonSerializer.Serialize(
+            new
+            {
+                succeeded = false,
+                tool,
+                reason,
+                failureKind,
+                detail
+            },
+            JsonOptions);
+
+    private static bool IsSuccessfulFounderToolOutput(string output)
+    {
+        if (string.IsNullOrWhiteSpace(output))
+            return false;
+
+        try
+        {
+            using var document = JsonDocument.Parse(output);
+            return document.RootElement.ValueKind != JsonValueKind.Object ||
+                   !document.RootElement.TryGetProperty("error", out _) &&
+                   !(document.RootElement.TryGetProperty("succeeded", out var succeeded) &&
+                     succeeded.ValueKind == JsonValueKind.False);
+        }
+        catch (JsonException)
+        {
+            return true;
         }
     }
 
@@ -2882,7 +2924,7 @@ public sealed class LegendFounderAiConversationService
                 type = "function",
                 name = "legend_inspect_repository",
                 description =
-                    "Read a bounded source or test file, or the protected production branch SHA, through the configured GitHub App. This is repository inspection only; it cannot execute commands, change files, open a pull request, merge, or deploy.",
+                    "Inspect the configured LEGEND repository through the existing GitHub App without mutation. With no path it returns the protected production SHA plus a safe top-level repository listing; with a directory path it returns safe child metadata; with a safe text-file path it returns that file. Use it to inspect architecture, prompts, tool wiring, retrieval/memory code, workflows, manifests, tests and documentation. Secret-bearing configuration and credential material remain excluded. This cannot execute commands, change files, open a pull request, merge, or deploy.",
                 parameters = new
                 {
                     type = "object",
@@ -3083,7 +3125,9 @@ Native LEGEND conversational inference is bypassed in this mode. You are not a s
 
 Your job is to:
 - reason deeply about language acquisition, semantics, discourse, grammar, morphology, translation quality and curriculum strategy;
-- inspect current LEGEND state when useful;
+- inspect current LEGEND state, architecture, curriculum, knowledge reuse, retrieval/memory wiring, evaluation state and deployment evidence whenever the Founder asks;
+- use legend_capabilities to discover the current single governed tool surface and legend_inspect_repository to discover and read the safe repository tree rather than claiming access is unavailable;
+- combine independent successful reads even when another governed read reports a structured failure, and identify the exact failed tool instead of abandoning the whole diagnosis;
 - identify weaknesses and propose high-quality teaching priorities;
 - challenge assumptions;
 - explain what evidence would be required;
@@ -3651,12 +3695,18 @@ Never upgrade an unresolved, rejected or contradicted record merely because it a
         {
             "canonical", "retained knowledge", "retained evidence",
             "governed inspection", "current authority",
-            "curriculum", "train legend", "training status",
+            "curriculum", "train legend", "training status", "training pipeline",
             "model readiness", "readiness", "alignment", "provenance",
             "evidence", "system state", "system status", "metrics", "metric",
             "provider capacity", "azure", "corpus", "production",
             "deployment", "repository", "github", "pull request",
-            "branch", "commit", "workflow", "ci", "coverage"
+            "branch", "commit", "workflow", "ci", "coverage",
+            "architecture", "system prompt", "developer prompt", "prompt template",
+            "tool registry", "tool schema", "tool permission", "routing rule",
+            "fallback logic", "retrieval", "memory", "ingestion", "chunking",
+            "embedding", "vector", "indexing", "metadata", "authorization",
+            "configuration", "config", "dependency", "observability", "logs",
+            "evaluation", "eval", "source document", "knowledge system"
         };
 
         if (explicitGovernedSignals.Any(signal =>
