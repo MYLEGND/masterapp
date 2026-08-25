@@ -81,16 +81,19 @@ public sealed class LegendFounderAiComprehensiveDiagnosticContractTests
 
     private static string FindRepositoryRoot()
     {
-        var directory = new DirectoryInfo(AppContext.BaseDirectory);
-        while (directory is not null)
+        foreach (var start in new[] { Directory.GetCurrentDirectory(), AppContext.BaseDirectory })
         {
-            if (File.Exists(Path.Combine(directory.FullName, "MASTERAPP.sln")) &&
-                Directory.Exists(Path.Combine(directory.FullName, "AgentPortal")) &&
-                Directory.Exists(Path.Combine(directory.FullName, "AgentPortal.Tests")))
-                return directory.FullName;
-            directory = directory.Parent;
+            var directory = new DirectoryInfo(start);
+            while (directory is not null)
+            {
+                if (File.Exists(Path.Combine(directory.FullName, "MASTERAPP.sln")) &&
+                    Directory.Exists(Path.Combine(directory.FullName, "AgentPortal")) &&
+                    Directory.Exists(Path.Combine(directory.FullName, "AgentPortal.Tests")))
+                    return directory.FullName;
+                directory = directory.Parent;
+            }
         }
 
-        throw new DirectoryNotFoundException("Repository root was not found.");
+        throw new DirectoryNotFoundException("Repository root was not found from the working directory or test base directory.");
     }
 }
