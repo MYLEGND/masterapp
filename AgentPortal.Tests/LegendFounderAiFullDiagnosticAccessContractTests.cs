@@ -5,6 +5,10 @@ using Xunit;
 
 namespace AgentPortal.Tests;
 
+/// <summary>
+/// Locks the single governed Founder diagnostic surface to comprehensive read access,
+/// independent-read continuation, bounded mutation authority, and finite provider safety envelopes.
+/// </summary>
 public sealed class LegendFounderAiFullDiagnosticAccessContractTests
 {
     [Fact]
