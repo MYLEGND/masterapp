@@ -23,27 +23,27 @@ namespace AgentPortal.Services;
 /// </summary>
 public sealed class LegendFounderAiConversationService
 {
-    private const int MaximumConversationMessages = 30;
-    private const int MaximumMessageCharacters = 500_000;
-    private const int MaximumConversationCharacters = 750_000;
+    private const int MaximumConversationMessages = 60;
+    private const int MaximumMessageCharacters = 1_000_000;
+    private const int MaximumConversationCharacters = 2_000_000;
     private const int MinimumProviderConversationCharacters = 60_000;
-    private const int MaximumProviderConversationCharacters = 180_000;
-    private const int MinimumLatestMessageTailCharacters = 12_000;
-    private const int MinimumToolRounds = 4;
-    private const int MaximumToolRounds = 10;
+    private const int MaximumProviderConversationCharacters = 600_000;
+    private const int MinimumLatestMessageTailCharacters = 24_000;
+    private const int MinimumToolRounds = 6;
+    private const int MaximumToolRounds = 16;
     private const int MinimumFinalizationReserveSeconds = 6;
     private const int MinimumFinalSynthesisWindowSeconds = 20;
     private const int MaximumProviderRoundSeconds = 75;
     private const int MinimumCasualOutputTokens = 256;
-    private const int MaximumCasualOutputTokens = 1_200;
+    private const int MaximumCasualOutputTokens = 4_000;
     private const int MinimumRetainedKnowledgeLookupSeconds = 4;
     private const int MaximumRetainedKnowledgeLookupSeconds = 12;
-    private const int MinimumReadOnlyToolSeconds = 8;
-    private const int MaximumReadOnlyToolSeconds = 20;
-    private const int MinimumToolOutputCharacters = 20_000;
-    private const int MaximumToolOutputCharacters = 80_000;
-    private const int MinimumRetainedContextCharacters = 16_000;
-    private const int MaximumRetainedContextCharacters = 64_000;
+    private const int MinimumReadOnlyToolSeconds = 12;
+    private const int MaximumReadOnlyToolSeconds = 45;
+    private const int MinimumToolOutputCharacters = 40_000;
+    private const int MaximumToolOutputCharacters = 160_000;
+    private const int MinimumRetainedContextCharacters = 32_000;
+    private const int MaximumRetainedContextCharacters = 128_000;
     private const int MinimumProviderAttemptWindowSeconds = 3;
     private const int MaximumProviderCooldownSeconds = 300;
     private const int MaximumTransientProviderAttempts = 3;
@@ -85,17 +85,17 @@ public sealed class LegendFounderAiConversationService
             Math.Clamp(
                 configuration.GetValue<int?>(
                     "OpenAI:LegendFounderAiTimeoutSeconds") ??
-                    120,
-                45,
+                    210,
+                60,
                 240);
 
         _maxOutputTokens =
             Math.Clamp(
                 configuration.GetValue<int?>(
                     "OpenAI:LegendFounderAiMaxOutputTokens") ??
-                    8_000,
-                1_500,
-                16_000);
+                    32_000,
+                2_000,
+                64_000);
 
         _reasoningEffort =
             NormalizeReasoningEffort(
@@ -321,6 +321,11 @@ public sealed class LegendFounderAiConversationService
                 nativeInference,
                 nativeFailureDetail);
 
+        var requiresComprehensiveGovernedInspection =
+            RequiresComprehensiveGovernedInspection(
+                conversation,
+                mode);
+
         LegendConnectRetainedKnowledgeSearchSnapshot? retainedKnowledge = null;
 
         // OpenAI Teacher is a direct Founder-to-provider mode.  It may ask
@@ -402,7 +407,17 @@ public sealed class LegendFounderAiConversationService
             var maximumToolRounds =
                 requiresGovernedInspection
                     ? ResolveMaximumToolRounds(conversation)
+                    : 3;
+
+            var requiredGovernedEvidenceReads =
+                requiresComprehensiveGovernedInspection
+                    ? 3
                     : 1;
+
+            var successfulGovernedEvidenceTools =
+                new HashSet<string>(StringComparer.Ordinal);
+
+            var governedReadAttempts = 0;
 
             var governedInspectionCompleted =
                 !requiresMandatoryGovernedInspection;
@@ -445,13 +460,14 @@ public sealed class LegendFounderAiConversationService
 
                 if (requiresMandatoryGovernedInspection &&
                     !governedInspectionCompleted &&
-                    !allowTools)
+                    !allowTools &&
+                    governedReadAttempts == 0)
                 {
                     return LegendFounderAiChatResponse.ModeFailure(
                         mode,
                         FailureMessageForMode(
                             mode,
-                            "The remaining request window is too small to complete the required governed LEGEND inspection safely."),
+                            "The remaining request window is too small to begin the required governed LEGEND inspection safely."),
                         "governed_inspection",
                         "governed_tool",
                         "required_governed_inspection_budget_unavailable");
@@ -459,7 +475,8 @@ public sealed class LegendFounderAiConversationService
 
                 var requireToolCall =
                     requiresMandatoryGovernedInspection &&
-                    !governedInspectionCompleted;
+                    !governedInspectionCompleted &&
+                    allowTools;
 
                 var providerBudget =
                     ResolveProviderBudget(
@@ -549,14 +566,33 @@ public sealed class LegendFounderAiConversationService
                     var partial =
                         ExtractOutputText(root);
 
-                    if (!string.IsNullOrWhiteSpace(
-                            partial))
+                    var remainingAfterProvider =
+                        TimeSpan.FromSeconds(_timeoutSeconds) -
+                        executionClock.Elapsed;
+
+                    if (!string.IsNullOrWhiteSpace(partial) &&
+                        round < maximumToolRounds - 1 &&
+                        remainingAfterProvider > TimeSpan.FromSeconds(8))
+                    {
+                        input.Add(new Dictionary<string, object?>
+                        {
+                            ["role"] = "assistant",
+                            ["content"] = partial.Trim()
+                        });
+                        input.Add(new Dictionary<string, object?>
+                        {
+                            ["role"] = "user",
+                            ["content"] = "Continue the same answer exactly where it stopped. Do not restart, summarize, or repeat completed material."
+                        });
+                        continue;
+                    }
+
+                    if (!string.IsNullOrWhiteSpace(partial))
                     {
                         return new LegendFounderAiChatResponse(
                             true,
                             mode,
-                            partial.Trim() +
-                            "\n\n[This response reached the provider output window. Ask the OpenAI Teacher to continue if you want the remainder.]",
+                            partial.Trim(),
                             null,
                             ResponseAuthority: "OpenAITeacher",
                             Stage: "provider_response");
@@ -589,7 +625,8 @@ public sealed class LegendFounderAiConversationService
                 if (toolCalls.Count == 0)
                 {
                     if (requiresMandatoryGovernedInspection &&
-                        !governedInspectionCompleted)
+                        !governedInspectionCompleted &&
+                        governedReadAttempts == 0)
                     {
                         return LegendFounderAiChatResponse.ModeFailure(
                             mode,
@@ -679,7 +716,38 @@ public sealed class LegendFounderAiConversationService
 
                     if (IsReadOnlyFounderTool(call.Name))
                     {
-                        governedInspectionCompleted = true;
+                        governedReadAttempts++;
+
+                        var governedReadSucceeded =
+                            IsSuccessfulFounderToolOutput(toolOutput);
+
+                        // A broad Founder diagnostic must survive an individual
+                        // read-authority failure and keep inspecting independent
+                        // sources. A narrow single-authority inspection cannot
+                        // truthfully continue when its only requested evidence
+                        // failed, so preserve the established structured 502
+                        // contract and identify the exact failed tool.
+                        if (!governedReadSucceeded &&
+                            !requiresComprehensiveGovernedInspection)
+                        {
+                            return LegendFounderAiChatResponse.ModeFailure(
+                                mode,
+                                FailureMessageForMode(
+                                    mode,
+                                    $"Governed LEGEND read '{call.Name}' failed. Independent broad inspection was not requested for this turn."),
+                                "governed_tool",
+                                "governed_tool",
+                                "tool_read_failed");
+                        }
+
+                        if (IsGovernedEvidenceTool(call.Name) &&
+                            governedReadSucceeded)
+                        {
+                            successfulGovernedEvidenceTools.Add(call.Name);
+                            governedInspectionCompleted =
+                                successfulGovernedEvidenceTools.Count >=
+                                requiredGovernedEvidenceReads;
+                        }
                     }
 
                     await ReportProgressAsync(
@@ -1559,15 +1627,67 @@ public sealed class LegendFounderAiConversationService
         {
             _logger.LogWarning(
                 exception,
-                "LEGEND Founder AI read-only tool {Tool} failed before a response could be produced.",
+                "LEGEND Founder AI read-only tool {Tool} failed; preserving the exact tool failure for OpenAI and continuing independent governed reads.",
                 call.Name);
 
-            throw new LegendFounderAiToolExecutionException(
+            return BuildReadOnlyToolFailureOutput(
                 call.Name,
-                "tool_read_failed",
-                "governed_tool");
+                exception);
         }
     }
+
+    private static string BuildReadOnlyToolFailureOutput(
+        string tool,
+        Exception exception) =>
+        JsonSerializer.Serialize(
+            new
+            {
+                ok = false,
+                error = "tool_read_failed",
+                tool,
+                exceptionType = exception.GetType().Name,
+                detail = NormalizeToolFailureDetail(exception.Message),
+                instruction = "This read failed. Continue any independent governed reads that can still execute, then report this exact failed authority without inventing unavailable state."
+            },
+            JsonOptions);
+
+    private static string NormalizeToolFailureDetail(string? value)
+    {
+        var detail = NormalizeFailureDetail(value);
+        foreach (var sensitiveName in new[]
+                 {
+                     "password=", "pwd=", "user id=", "uid=",
+                     "api_key=", "apikey=", "access_token=", "connectionstring="
+                 })
+        {
+            var index = detail.IndexOf(sensitiveName, StringComparison.OrdinalIgnoreCase);
+            if (index >= 0)
+                return detail[..index] + "[REDACTED SENSITIVE CONFIGURATION DETAIL]";
+        }
+
+        return detail;
+    }
+
+    private static bool IsSuccessfulFounderToolOutput(string output)
+    {
+        if (string.IsNullOrWhiteSpace(output))
+            return false;
+
+        try
+        {
+            using var document = JsonDocument.Parse(output);
+            return document.RootElement.ValueKind != JsonValueKind.Object ||
+                   !document.RootElement.TryGetProperty("error", out _);
+        }
+        catch (JsonException)
+        {
+            return true;
+        }
+    }
+
+    private static bool IsGovernedEvidenceTool(string name) =>
+        IsReadOnlyFounderTool(name) &&
+        !string.Equals(name, "legend_capabilities", StringComparison.Ordinal);
 
     private static bool IsReadOnlyFounderTool(
         string name) =>
@@ -3040,7 +3160,10 @@ CRITICAL GOVERNANCE:
 - Never claim a current LEGEND fact without inspecting the provided read-only tools when the answer depends on current system state.
 - Never invent database state, evidence, training status, model versions, evaluation results, contradictions, readiness, capacity, or language coverage.
 - Tool outputs from existing LEGEND authorities are the source of truth for current LEGEND system facts.
-- You can inspect LEGEND through read tools.
+- You can inspect LEGEND through the read tools exposed in this session. Those tools are real capabilities; never tell the Founder that repository, LEGEND data, deployment, curriculum, configuration, or diagnostic access must be manually provided when an exposed governed tool can read the required evidence.
+- If you are uncertain which inspection capabilities exist, call legend_capabilities and then continue with the relevant evidence tools. Capability discovery alone is not evidence that the requested system state was inspected.
+- A failure in one read authority must not end a broad inspection. Preserve that tool's structured failure, continue every independent governed read that can still execute, and distinguish successful evidence from unavailable evidence in the final answer.
+- For broad architecture/training/knowledge diagnostics, inspect enough independent evidence categories to support the requested claims rather than stopping after one tool call.
 - Native OpenAI web search is available for current external research, verification, trusted linguistic references, standards, documentation and other information that is not already established by LEGEND.
 - When external research is materially useful, prefer authoritative primary sources, official documentation, recognized linguistic institutions, standards bodies, universities and other high-quality sources over low-authority summaries.
 - External web research is evidence for reasoning; it does not become canonical LEGEND knowledge merely because OpenAI found it.
@@ -3083,7 +3206,8 @@ Native LEGEND conversational inference is bypassed in this mode. You are not a s
 
 Your job is to:
 - reason deeply about language acquisition, semantics, discourse, grammar, morphology, translation quality and curriculum strategy;
-- inspect current LEGEND state when useful;
+- act as the Founder's comprehensive diagnostic machine for LEGEND through the existing governed read authorities;
+- inspect current LEGEND state whenever the Founder's request depends on current architecture, data, curriculum, retained knowledge, retrieval, training, evaluation, provider, repository, deployment, configuration, or operational evidence;
 - identify weaknesses and propose high-quality teaching priorities;
 - challenge assumptions;
 - explain what evidence would be required;
@@ -3431,8 +3555,8 @@ Never upgrade an unresolved, rejected or contradicted record merely because it a
         if (totalCharacters <= MinimumProviderConversationCharacters)
             return MinimumProviderConversationCharacters;
 
-        var target = totalCharacters <= 120_000
-            ? 120_000
+        var target = totalCharacters <= 300_000
+            ? 300_000
             : MaximumProviderConversationCharacters;
 
         return Math.Min(totalCharacters, target);
@@ -3656,7 +3780,13 @@ Never upgrade an unresolved, rejected or contradicted record merely because it a
             "evidence", "system state", "system status", "metrics", "metric",
             "provider capacity", "azure", "corpus", "production",
             "deployment", "repository", "github", "pull request",
-            "branch", "commit", "workflow", "ci", "coverage"
+            "branch", "commit", "workflow", "ci", "coverage",
+            "architecture", "database", "data model", "schema", "configuration",
+            "config", "observability", "logs", "logging", "telemetry", "trace",
+            "prompt", "system prompt", "routing", "fallback", "tool registry",
+            "tooling", "permission", "retrieval", "memory", "ingestion", "index",
+            "embedding", "evaluation", "validator", "critic", "promotion",
+            "learning pipeline", "reasoning", "respond", "reuse knowledge"
         };
 
         if (explicitGovernedSignals.Any(signal =>
@@ -3681,6 +3811,30 @@ Never upgrade an unresolved, rejected or contradicted record merely because it a
                    text.Contains(signal, StringComparison.Ordinal)) &&
                legendSubjects.Any(subject =>
                    text.Contains(subject, StringComparison.Ordinal));
+    }
+
+    private static bool RequiresComprehensiveGovernedInspection(
+        IReadOnlyList<LegendFounderAiChatMessage> conversation,
+        string mode)
+    {
+        if (!IsTeacherMode(mode))
+            return false;
+
+        var latest = conversation
+            .Last(message => string.Equals(message.Role, "user", StringComparison.Ordinal))
+            .Content?.ToLowerInvariant() ?? string.Empty;
+
+        var broadSignals = new[]
+        {
+            "everything", "entire", "full system", "complete system",
+            "all of legend", "how legend works", "how legend is set up",
+            "architecture", "diagnose the system", "inspect the system",
+            "learn, reason", "learn reason", "reuse knowledge",
+            "curriculum and", "repository and", "database and"
+        };
+
+        return broadSignals.Any(signal =>
+            latest.Contains(signal, StringComparison.Ordinal));
     }
 
     private static bool ShouldAttemptNativeInference(string mode) =>
