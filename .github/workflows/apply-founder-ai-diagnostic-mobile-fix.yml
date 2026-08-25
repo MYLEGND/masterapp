@@ -1,0 +1,250 @@
+name: Apply Founder AI diagnostic and mobile repair
+
+on:
+  push:
+    branches:
+      - fix/founder-ai-diagnostic-mobile-20260825
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/founder-ai-diagnostic-mobile-20260825
+          fetch-depth: 0
+
+      - name: Apply surgical one-authority repair
+        shell: python
+        run: |
+          from pathlib import Path
+
+          service = Path('AgentPortal/Services/LegendFounderAiConversationService.cs')
+          text = service.read_text()
+
+          old = '''                var allowTools =
+                    requiresGovernedInspection &&
+                    round < maximumToolRounds - 1 &&
+                    remaining >
+                        TimeSpan.FromSeconds(
+                            MinimumFinalSynthesisWindowSeconds);
+'''
+          new = '''                var allowTools =
+                    requiresGovernedInspection &&
+                    round < maximumToolRounds - 1 &&
+                    remaining >
+                        TimeSpan.FromSeconds(
+                            MinimumFinalSynthesisWindowSeconds);
+
+                // A request classified as a governed inspection is evidence-bound.
+                // The first provider round must execute at least one existing
+                // governed LEGEND read before OpenAI may synthesize production-state
+                // claims. This is orchestration only: it creates no new authority,
+                // route, corpus, or write path.
+                var requireGovernedToolCall =
+                    requiresGovernedInspection &&
+                    round == 0;
+'''
+          assert old in text, 'allowTools anchor changed'
+          text = text.replace(old, new, 1)
+
+          old = '''                        tools,
+                        allowTools,
+                        providerBudget,
+'''
+          new = '''                        tools,
+                        allowTools,
+                        requireGovernedToolCall,
+                        providerBudget,
+'''
+          assert old in text, 'SendResponseAsync call anchor changed'
+          text = text.replace(old, new, 1)
+
+          old = '''                if (toolCalls.Count == 0)
+                {
+                    await ReportProgressAsync(
+'''
+          new = '''                if (toolCalls.Count == 0)
+                {
+                    if (requireGovernedToolCall)
+                    {
+                        return LegendFounderAiChatResponse.ModeFailure(
+                            mode,
+                            FailureMessageForMode(
+                                mode,
+                                "The provider did not execute the required governed LEGEND inspection before attempting to answer."),
+                            "governed_tool",
+                            "governed_tool",
+                            "required_tool_not_called");
+                    }
+
+                    await ReportProgressAsync(
+'''
+          assert old in text, 'toolCalls invariant anchor changed'
+          text = text.replace(old, new, 1)
+
+          old = '''        IReadOnlyList<object> tools,
+        bool allowTools,
+        TimeSpan providerBudget,
+'''
+          new = '''        IReadOnlyList<object> tools,
+        bool allowTools,
+        bool requireToolCall,
+        TimeSpan providerBudget,
+'''
+          assert old in text, 'SendResponseAsync signature anchor changed'
+          text = text.replace(old, new, 1)
+
+          old = '''            tool_choice =
+                allowTools
+                    ? "auto"
+                    : "none",
+'''
+          new = '''            tool_choice =
+                requireToolCall
+                    ? "required"
+                    : allowTools
+                        ? "auto"
+                        : "none",
+'''
+          assert old in text, 'tool_choice anchor changed'
+          text = text.replace(old, new, 1)
+
+          old_comment = '''        // OpenAI Teacher is a direct Founder-to-provider mode.  It may ask
+        // for governed LEGEND inspection through the existing function-tool
+        // registry, but it must not force a LEGEND read before the first
+        // OpenAI response.  This preserves responder isolation and makes
+        // every pre-provider LEGEND inspection genuinely optional.
+'''
+          new_comment = '''        // OpenAI Teacher is a direct Founder-to-provider responder. It does
+        // not preload native LEGEND inference. When the request itself asks
+        // for current governed LEGEND state, the provider round below is
+        // evidence-bound and must execute the existing governed read tools.
+'''
+          assert old_comment in text, 'obsolete Teacher comment anchor changed'
+          text = text.replace(old_comment, new_comment, 1)
+          service.write_text(text)
+
+          js = Path('AgentPortal/wwwroot/js/legend-founder-ai.js')
+          text = js.read_text()
+          text = text.replace('    let lastTranscriptScrollTop = 0;\n', '', 1)
+
+          start = text.index('    function setReadingMode(active) {')
+          end = text.index('\n\n    trigger.addEventListener', start)
+          text = text[:start] + text[end+2:]
+          text = text.replace('        setReadingMode(false);\n', '')
+          text = text.replace('            setReadingMode(false);\n', '')
+          text = text.replace('                setReadingMode(false);\n', '')
+          text = text.replace('        lastTranscriptScrollTop =\n            transcript.scrollTop;\n\n', '')
+
+          start = text.index("    transcript?.addEventListener(\n        'scroll',")
+          end = text.index('\n\n    sidebarCollapse?.addEventListener', start)
+          text = text[:start] + text[end+2:]
+          assert 'setReadingMode' not in text, 'reading-mode behavior still present in JS'
+          js.write_text(text)
+
+          css = Path('AgentPortal/wwwroot/css/legend-founder-ai.css')
+          text = css.read_text()
+          marker = '    /* Reading mode is a true mobile state: chrome yields to content. */\n'
+          start = text.index(marker)
+          end = text.index('\n}\n\n@media (max-width: 420px)', start)
+          text = text[:start] + text[end:]
+          assert '.is-reading' not in text, 'reading-mode CSS still present'
+          css.write_text(text)
+
+          test = Path('AgentPortal.Tests/LegendFounderAiDiagnosticOrchestrationContractTests.cs')
+          test.write_text(r'''using Xunit;
+
+namespace AgentPortal.Tests;
+
+public sealed class LegendFounderAiDiagnosticOrchestrationContractTests
+{
+    [Fact]
+    public void GovernedInspection_FirstProviderRound_RequiresExistingGovernedTool()
+    {
+        var root = FindRepositoryRoot();
+        var source = File.ReadAllText(Path.Combine(
+            root,
+            "AgentPortal",
+            "Services",
+            "LegendFounderAiConversationService.cs"));
+
+        Assert.Contains("var requireGovernedToolCall =", source, StringComparison.Ordinal);
+        Assert.Contains("requiresGovernedInspection &&\n                    round == 0", source, StringComparison.Ordinal);
+        Assert.Contains("? \"required\"", source, StringComparison.Ordinal);
+        Assert.Contains("required_tool_not_called", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("it must not force a LEGEND read before the first", source, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void MobileChat_DoesNotHideComposerWhileReadingTranscript()
+    {
+        var root = FindRepositoryRoot();
+        var script = File.ReadAllText(Path.Combine(
+            root,
+            "AgentPortal",
+            "wwwroot",
+            "js",
+            "legend-founder-ai.js"));
+        var css = File.ReadAllText(Path.Combine(
+            root,
+            "AgentPortal",
+            "wwwroot",
+            "css",
+            "legend-founder-ai.css"));
+
+        Assert.DoesNotContain("setReadingMode", script, StringComparison.Ordinal);
+        Assert.DoesNotContain("is-reading", css, StringComparison.Ordinal);
+        Assert.Contains("window.visualViewport?.height", script, StringComparison.Ordinal);
+        Assert.Contains("font-size: 16px", css, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void SharedDesignTokens_RemainIosOwnedSourceOfTruth()
+    {
+        var root = FindRepositoryRoot();
+        var tokens = File.ReadAllText(Path.Combine(
+            root,
+            "Legend-Design",
+            "legend-design.tokens.json"));
+
+        Assert.Contains(
+            "\"sourceOfTruth\": \"Legend-ios/Legend/DesignSystem/NextGen/LegendNextTheme.swift\"",
+            tokens,
+            StringComparison.Ordinal);
+    }
+
+    private static string FindRepositoryRoot()
+    {
+        var directory = new DirectoryInfo(AppContext.BaseDirectory);
+        while (directory is not null)
+        {
+            if (Directory.Exists(Path.Combine(directory.FullName, "AgentPortal")) &&
+                Directory.Exists(Path.Combine(directory.FullName, "Legend-Design")))
+                return directory.FullName;
+
+            directory = directory.Parent;
+        }
+
+        throw new DirectoryNotFoundException("Repository root was not found.");
+    }
+}
+''')
+
+          helper = Path('.github/workflows/apply-founder-ai-diagnostic-mobile-fix.yml')
+          helper.unlink()
+
+      - name: Commit surgical repair and remove helper
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'legend-founder-remediation[bot]'
+          git config user.email 'legend-founder-remediation[bot]@users.noreply.github.com'
+          git add -A
+          git diff --cached --check
+          git commit -m 'Enforce Founder diagnostics and repair mobile chat'
+          git push origin HEAD:fix/founder-ai-diagnostic-mobile-20260825
