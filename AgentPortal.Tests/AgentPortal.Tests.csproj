@@ -42,6 +42,9 @@
     <None Include="..\\.github\\workflows\\security-ci.yml"
           Link="security-ci.yml"
           CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\\.github\\workflows\\legend-production-readonly-diagnostic.yml"
+          Link="legend-production-readonly-diagnostic.yml"
+          CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <Target Name="EnsureTestHostRuntimeConfig" AfterTargets="Build">

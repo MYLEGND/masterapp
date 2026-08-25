@@ -697,3 +697,146 @@
         display: grid;
     }
 }
+
+/* Founder-only engineering authority and intelligence-evaluation surfaces. */
+.lc-remediation-authority,
+.lc-intelligence-evaluation {
+    border-color: rgba(209, 171, 62, .42);
+}
+
+.lc-authority-status-grid,
+.lc-domain-evaluation-item dl {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: .65rem;
+    margin: 1rem 0;
+}
+
+.lc-authority-status-grid > div,
+.lc-intelligence-summary-grid article,
+.lc-domain-evaluation-item dl > div {
+    padding: .72rem .78rem;
+    border: 1px solid rgba(176, 197, 226, .15);
+    border-radius: 12px;
+    background: rgba(7, 18, 37, .54);
+}
+
+.lc-authority-status-grid dt,
+.lc-domain-evaluation-item dt,
+.lc-intelligence-summary-grid span {
+    display: block;
+    color: var(--lc-muted);
+    font-size: .66rem;
+    font-weight: 760;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+}
+
+.lc-authority-status-grid dd,
+.lc-domain-evaluation-item dd,
+.lc-intelligence-summary-grid strong {
+    display: block;
+    margin: .24rem 0 0;
+    color: var(--lc-white);
+    font-size: .83rem;
+    font-weight: 820;
+}
+
+.lc-authority-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .6rem;
+}
+
+.lc-authority-actions form,
+.lc-intelligence-evaluation .search-actions {
+    margin: 0;
+}
+
+.lc-danger-action {
+    border-color: rgba(190, 83, 83, .85) !important;
+    color: #ffd8d8 !important;
+    background: rgba(111, 28, 35, .64) !important;
+}
+
+.lc-intelligence-summary-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: .7rem;
+    margin: .9rem 0;
+}
+
+.lc-evaluation-modal {
+    color: var(--lc-white);
+    background: var(--lc-navy-900);
+    border: 1px solid rgba(209, 171, 62, .54);
+}
+
+.lc-evaluation-modal .modal-header {
+    border-color: rgba(176, 197, 226, .14);
+}
+
+.lc-evaluation-modal .btn-close {
+    filter: invert(1);
+}
+
+.lc-domain-evaluation-list {
+    display: grid;
+    gap: .8rem;
+}
+
+.lc-domain-evaluation-item {
+    padding: .95rem;
+    border: 1px solid rgba(176, 197, 226, .17);
+    border-radius: 14px;
+    background: rgba(7, 18, 37, .45);
+}
+
+.lc-domain-evaluation-item > header {
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+    align-items: baseline;
+}
+
+.lc-domain-evaluation-item h3 {
+    margin: 0;
+    color: var(--lc-white);
+    font-size: .95rem;
+}
+
+.lc-domain-evaluation-item > header strong {
+    color: var(--lc-gold-light);
+}
+
+.lc-domain-evaluation-item .progress {
+    height: .52rem;
+    margin: .7rem 0;
+    background: rgba(176, 197, 226, .16);
+}
+
+.lc-domain-evaluation-item .progress-bar {
+    background: linear-gradient(90deg, var(--lc-gold), var(--lc-gold-light));
+}
+
+.lc-domain-evaluation-item p {
+    margin: .55rem 0 0;
+    color: var(--lc-muted);
+    font-size: .78rem;
+}
+
+@media (max-width: 900px) {
+    .lc-authority-status-grid,
+    .lc-intelligence-summary-grid,
+    .lc-domain-evaluation-item dl {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+@media (max-width: 680px) {
+    .lc-authority-status-grid,
+    .lc-intelligence-summary-grid,
+    .lc-domain-evaluation-item dl {
+        grid-template-columns: 1fr;
+    }
+}

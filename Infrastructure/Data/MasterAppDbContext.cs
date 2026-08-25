@@ -145,6 +145,12 @@ public class MasterAppDbContext : DbContext
     public DbSet<LegendConnectRuntimePolicy> LegendConnectRuntimePolicies => Set<LegendConnectRuntimePolicy>();
     public DbSet<LegendConnectModelTrainingRun> LegendConnectModelTrainingRuns => Set<LegendConnectModelTrainingRun>();
     public DbSet<LegendConnectAutonomousLanguageFocus> LegendConnectAutonomousLanguageFocuses => Set<LegendConnectAutonomousLanguageFocus>();
+    public DbSet<FounderSoftwareRemediationAuthorityState> FounderSoftwareRemediationAuthorityStates => Set<FounderSoftwareRemediationAuthorityState>();
+    public DbSet<LegendIntelligenceEvaluationContract> LegendIntelligenceEvaluationContracts => Set<LegendIntelligenceEvaluationContract>();
+    public DbSet<LegendIntelligenceEvaluationSignal> LegendIntelligenceEvaluationSignals => Set<LegendIntelligenceEvaluationSignal>();
+    public DbSet<LegendIntelligenceEvaluationSnapshot> LegendIntelligenceEvaluationSnapshots => Set<LegendIntelligenceEvaluationSnapshot>();
+    public DbSet<LegendIntelligenceEvaluationDomainSnapshot> LegendIntelligenceEvaluationDomainSnapshots => Set<LegendIntelligenceEvaluationDomainSnapshot>();
+    public DbSet<LegendIntelligenceEvaluationPerspective> LegendIntelligenceEvaluationPerspectives => Set<LegendIntelligenceEvaluationPerspective>();
     public DbSet<MobileActivityNotification> MobileActivityNotifications => Set<MobileActivityNotification>();
     public DbSet<UserGlobalBadge> UserGlobalBadges => Set<UserGlobalBadge>();
     public DbSet<MobilePushDevice> MobilePushDevices => Set<MobilePushDevice>();
@@ -365,6 +371,96 @@ public class MasterAppDbContext : DbContext
             entity.HasIndex(item => item.TargetEvaluatorVersion).IsUnique();
             entity.HasIndex(item => new { item.RequiresDependencyInventory, item.State, item.UpdatedUtc });
             entity.HasIndex(item => new { item.State, item.UpdatedUtc });
+        });
+
+        // This singleton can only revoke the existing remediation authority.
+        // It deliberately stores no GitHub App identity, secret, token, or
+        // repository credential; those remain App Service/Key Vault config.
+        modelBuilder.Entity<FounderSoftwareRemediationAuthorityState>(entity =>
+        {
+            entity.ToTable("FounderSoftwareRemediationAuthorityStates");
+            entity.HasKey(item => item.Id);
+            entity.Property(item => item.ScopeKey).HasMaxLength(64).IsRequired();
+            entity.Property(item => item.RevokedByUserId).HasMaxLength(256);
+            entity.Property(item => item.LastVerificationCode).HasMaxLength(120);
+            entity.Property(item => item.LastVerificationDetail).HasMaxLength(500);
+            entity.HasIndex(item => item.ScopeKey).IsUnique();
+            if (isSqlServer)
+                entity.Property(item => item.RowVersion).IsRowVersion();
+            else
+                entity.Property(item => item.RowVersion).IsRequired().IsConcurrencyToken().HasDefaultValueSql("X''").ValueGeneratedNever();
+        });
+
+        // The intelligence evaluator measures declared evidence signals, not
+        // curriculum row counts. Contracts and snapshots are immutable lineage
+        // records; an assessment never changes canonical language evidence.
+        modelBuilder.Entity<LegendIntelligenceEvaluationContract>(entity =>
+        {
+            entity.ToTable("LegendIntelligenceEvaluationContracts");
+            entity.HasKey(item => item.Id);
+            entity.Property(item => item.ContractKey).HasMaxLength(160).IsRequired();
+            entity.Property(item => item.Version).HasMaxLength(32).IsRequired();
+            entity.Property(item => item.ContractIdentity).HasMaxLength(64).IsRequired();
+            entity.Property(item => item.State).HasMaxLength(24).IsRequired();
+            entity.HasIndex(item => item.ContractIdentity).IsUnique();
+            entity.HasIndex(item => new { item.ContractKey, item.State });
+        });
+
+        modelBuilder.Entity<LegendIntelligenceEvaluationSignal>(entity =>
+        {
+            entity.ToTable("LegendIntelligenceEvaluationSignals");
+            entity.HasKey(item => item.Id);
+            entity.Property(item => item.DomainKey).HasMaxLength(80).IsRequired();
+            entity.Property(item => item.MetricKey).HasMaxLength(80).IsRequired();
+            entity.Property(item => item.Value).HasPrecision(5, 2);
+            entity.Property(item => item.EvidenceAuthority).HasMaxLength(120).IsRequired();
+            entity.Property(item => item.EvidenceReference).HasMaxLength(240).IsRequired();
+            entity.Property(item => item.State).HasMaxLength(24).IsRequired();
+            entity.HasIndex(item => new { item.ContractId, item.DomainKey, item.MetricKey, item.State, item.MeasuredUtc });
+            entity.HasIndex(item => new { item.ContractId, item.EvidenceAuthority, item.EvidenceReference }).IsUnique();
+            entity.HasOne<LegendIntelligenceEvaluationContract>().WithMany().HasForeignKey(item => item.ContractId).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<LegendIntelligenceEvaluationSnapshot>(entity =>
+        {
+            entity.ToTable("LegendIntelligenceEvaluationSnapshots");
+            entity.HasKey(item => item.Id);
+            entity.Property(item => item.EvidenceSetIdentity).HasMaxLength(64).IsRequired();
+            entity.Property(item => item.State).HasMaxLength(32).IsRequired();
+            entity.HasIndex(item => new { item.ContractId, item.CreatedUtc });
+            entity.HasIndex(item => new { item.ContractId, item.EvidenceSetIdentity }).IsUnique();
+            entity.HasOne<LegendIntelligenceEvaluationContract>().WithMany().HasForeignKey(item => item.ContractId).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<LegendIntelligenceEvaluationDomainSnapshot>(entity =>
+        {
+            entity.ToTable("LegendIntelligenceEvaluationDomainSnapshots");
+            entity.HasKey(item => item.Id);
+            entity.Property(item => item.DomainKey).HasMaxLength(80).IsRequired();
+            entity.Property(item => item.EvidenceScore).HasPrecision(5, 2);
+            entity.Property(item => item.LegendSelfAssessment).HasPrecision(5, 2);
+            entity.Property(item => item.OpenAiExternalAssessment).HasPrecision(5, 2);
+            entity.Property(item => item.NativeSuccessRate).HasPrecision(5, 2);
+            entity.Property(item => item.HeldOutResult).HasPrecision(5, 2);
+            entity.Property(item => item.TransferResult).HasPrecision(5, 2);
+            entity.Property(item => item.ContradictionRate).HasPrecision(5, 2);
+            entity.Property(item => item.EvidenceReferencesJson).HasColumnType(unboundedTextColumnType).IsRequired();
+            entity.Property(item => item.KnownWeaknessesJson).HasColumnType(unboundedTextColumnType).IsRequired();
+            entity.Property(item => item.OpenGapsJson).HasColumnType(unboundedTextColumnType).IsRequired();
+            entity.HasIndex(item => new { item.SnapshotId, item.DomainKey }).IsUnique();
+            entity.HasOne<LegendIntelligenceEvaluationSnapshot>().WithMany().HasForeignKey(item => item.SnapshotId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<LegendIntelligenceEvaluationPerspective>(entity =>
+        {
+            entity.ToTable("LegendIntelligenceEvaluationPerspectives");
+            entity.HasKey(item => item.Id);
+            entity.Property(item => item.PerspectiveKind).HasMaxLength(40).IsRequired();
+            entity.Property(item => item.State).HasMaxLength(24).IsRequired();
+            entity.Property(item => item.AssessmentJson).HasColumnType(unboundedTextColumnType).IsRequired();
+            entity.Property(item => item.EvidenceReferencesJson).HasColumnType(unboundedTextColumnType).IsRequired();
+            entity.HasIndex(item => new { item.SnapshotId, item.PerspectiveKind }).IsUnique();
+            entity.HasOne<LegendIntelligenceEvaluationSnapshot>().WithMany().HasForeignKey(item => item.SnapshotId).OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<AccountLifecycleRecord>(entity =>

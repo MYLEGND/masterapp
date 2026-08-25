@@ -17,19 +17,25 @@ public sealed class FounderLegendConnectService
     private readonly ITranslationEntitlementAuthority? _entitlements;
     private readonly IMessagingService? _messaging;
     private readonly ILegendConnectRuntimePolicyAuthority? _runtimePolicy;
+    private readonly IFounderSoftwareRemediationService? _softwareRemediation;
+    private readonly ILegendIntelligenceEvaluationService? _intelligenceEvaluation;
 
     public FounderLegendConnectService(
         ILegendConnectOperations operations,
         AgentProfileAccessResolver agentProfiles,
         ITranslationEntitlementAuthority? entitlements = null,
         IMessagingService? messaging = null,
-        ILegendConnectRuntimePolicyAuthority? runtimePolicy = null)
+        ILegendConnectRuntimePolicyAuthority? runtimePolicy = null,
+        IFounderSoftwareRemediationService? softwareRemediation = null,
+        ILegendIntelligenceEvaluationService? intelligenceEvaluation = null)
     {
         _operations = operations;
         _agentProfiles = agentProfiles;
         _entitlements = entitlements;
         _messaging = messaging;
         _runtimePolicy = runtimePolicy;
+        _softwareRemediation = softwareRemediation;
+        _intelligenceEvaluation = intelligenceEvaluation;
     }
 
     public async Task<FounderLegendConnectPageVm> GetDashboardAsync(
@@ -48,11 +54,61 @@ public sealed class FounderLegendConnectService
         var runtimePolicy = _runtimePolicy is null
             ? new LegendConnectRuntimePolicySnapshot(false, 0, 0, 0, false, true, "Shadow", 0.98m, null, null, DateTime.MinValue)
             : await _runtimePolicy.GetEffectiveAsync(cancellationToken);
+        var remediation = _softwareRemediation is null
+            ? FounderSoftwareRemediationStatusSnapshot.Unconfigured("Founder software remediation is unavailable because its canonical service is not registered.")
+            : ToRemediationSnapshot(await _softwareRemediation.GetStatusAsync(cancellationToken));
+        var intelligenceEvaluation = _intelligenceEvaluation is null
+            ? LegendIntelligenceEvaluationDashboardSnapshot.NotEvaluated()
+            : await _intelligenceEvaluation.GetDashboardAsync(cancellationToken);
         return new FounderLegendConnectPageVm
         {
             Shell = shell,
-            RuntimePolicy = runtimePolicy
+            RuntimePolicy = runtimePolicy,
+            SoftwareRemediation = remediation,
+            IntelligenceEvaluation = intelligenceEvaluation
         };
+    }
+
+    public async Task<object> ConnectSoftwareRemediationAsync(ClaimsPrincipal user, CancellationToken cancellationToken = default)
+    {
+        var founder = await ResolveFounderActorAsync(user, cancellationToken);
+        return _softwareRemediation is null
+            ? FounderSoftwareRemediationStatusSnapshot.Unconfigured("Founder software remediation is unavailable because its canonical service is not registered.")
+            : await _softwareRemediation.ConnectAsync(founder, cancellationToken);
+    }
+
+    public async Task<object> VerifySoftwareRemediationAsync(ClaimsPrincipal user, CancellationToken cancellationToken = default)
+    {
+        _ = await ResolveFounderActorAsync(user, cancellationToken);
+        return _softwareRemediation is null
+            ? FounderSoftwareRemediationStatusSnapshot.Unconfigured("Founder software remediation is unavailable because its canonical service is not registered.")
+            : await _softwareRemediation.VerifyAuthorityAsync(cancellationToken);
+    }
+
+    public async Task<object> TestSoftwareRemediationAsync(ClaimsPrincipal user, CancellationToken cancellationToken = default)
+    {
+        _ = await ResolveFounderActorAsync(user, cancellationToken);
+        return _softwareRemediation is null
+            ? FounderSoftwareRemediationStatusSnapshot.Unconfigured("Founder software remediation is unavailable because its canonical service is not registered.")
+            : await _softwareRemediation.TestRepairPreparationAsync(cancellationToken);
+    }
+
+    public async Task<object> RevokeSoftwareRemediationAsync(ClaimsPrincipal user, CancellationToken cancellationToken = default)
+    {
+        var founder = await ResolveFounderActorAsync(user, cancellationToken);
+        return _softwareRemediation is null
+            ? FounderSoftwareRemediationStatusSnapshot.Unconfigured("Founder software remediation is unavailable because its canonical service is not registered.")
+            : await _softwareRemediation.RevokeAsync(founder, cancellationToken);
+    }
+
+    public async Task<LegendIntelligenceEvaluationDashboardSnapshot> CreateIntelligenceEvaluationSnapshotAsync(
+        ClaimsPrincipal user,
+        CancellationToken cancellationToken = default)
+    {
+        var founder = await ResolveFounderActorAsync(user, cancellationToken);
+        return _intelligenceEvaluation is null
+            ? LegendIntelligenceEvaluationDashboardSnapshot.NotEvaluated()
+            : await _intelligenceEvaluation.CreateEvidenceSnapshotAsync(founder, cancellationToken);
     }
 
     public async Task<LegendConnectFounderSectionPageSnapshot> GetSectionPageAsync(
@@ -1434,6 +1490,11 @@ public sealed class FounderLegendConnectService
     private static bool IsSemanticDimensionName(string value) =>
         value.Length <= 80 && value.All(character =>
             char.IsLetterOrDigit(character) || character is '.' or '-' or '_');
+
+    private static FounderSoftwareRemediationStatusSnapshot ToRemediationSnapshot(object result) =>
+        result as FounderSoftwareRemediationStatusSnapshot ??
+        FounderSoftwareRemediationStatusSnapshot.Unconfigured(
+            "The remediation authority returned an unavailable state. No repository or production action was attempted.");
 
     /// <summary>
     /// The live Founder form and authoring guide use @@family / @@end, while

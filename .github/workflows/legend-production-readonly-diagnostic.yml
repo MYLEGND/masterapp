@@ -12,7 +12,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
   id-token: write
 
 env:
@@ -192,14 +192,16 @@ jobs:
             if (Test-Path diagnostics/shadow.txt) { Get-Content diagnostics/shadow.txt }
           ) | Set-Content -Path '${{ env.DIAGNOSTIC_RESULT_PATH }}' -Encoding utf8
 
-      - name: Commit sanitized diagnostic transcript
+      # A diagnostic must never alter the branch it is inspecting. Persist the
+      # sanitized transcript only as a workflow artifact; notably, do not use
+      # `always()` to push a partial transcript after cancellation or failure.
+      - name: Upload sanitized diagnostic transcript
         if: always()
-        shell: pwsh
-        run: |
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add '${{ env.DIAGNOSTIC_RESULT_PATH }}'
-          if (git diff --cached --quiet) { Write-Host 'Diagnostic transcript is unchanged.' } else { git commit -m 'Record live LEGEND read-only diagnostic'; git push origin HEAD:production }
+        uses: actions/upload-artifact@v4
+        with:
+          name: legend-production-readonly-diagnostic-${{ github.run_id }}
+          path: ${{ env.DIAGNOSTIC_RESULT_PATH }}
+          if-no-files-found: warn
 
       - name: Enforce diagnostic execution success
         if: always()
