@@ -4,6 +4,7 @@ using Xunit;
 
 namespace AgentPortal.Tests;
 
+// Locks the one-authority Founder Teacher diagnostic contract against regression.
 public sealed class LegendFounderAiComprehensiveDiagnosticContractTests
 {
     [Fact]
