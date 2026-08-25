@@ -1,0 +1,80 @@
+name: Temporary Founder AI surgical patch 2
+
+on:
+  push:
+    branches:
+      - fix/founder-ai-required-inspection-mobile-reading
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Apply exact bounded replacements
+        shell: python
+        run: |
+          from pathlib import Path
+
+          path = Path('AgentPortal/Services/LegendFounderAiConversationService.cs')
+          text = path.read_text()
+
+          replacements = [
+              (
+                  '''        var requiresGovernedInspection =\n            RequiresProviderGovernedInspection(\n                conversation,\n                mode,\n                nativeInference,\n                nativeFailureDetail);''',
+                  '''        var requiresMandatoryGovernedInspection =\n            RequiresGovernedInspection(\n                conversation,\n                mode);\n\n        var requiresGovernedInspection =\n            RequiresProviderGovernedInspection(\n                conversation,\n                mode,\n                nativeInference,\n                nativeFailureDetail);'''
+              ),
+              (
+                  '''            var governedInspectionCompleted =\n                !requiresGovernedInspection;''',
+                  '''            var governedInspectionCompleted =\n                !requiresMandatoryGovernedInspection;'''
+              ),
+              (
+                  '''                if (requiresGovernedInspection &&\n                    !governedInspectionCompleted &&\n                    !allowTools)''',
+                  '''                if (requiresMandatoryGovernedInspection &&\n                    !governedInspectionCompleted &&\n                    !allowTools)'''
+              ),
+              (
+                  '''                var requireToolCall =\n                    requiresGovernedInspection &&\n                    !governedInspectionCompleted;''',
+                  '''                var requireToolCall =\n                    requiresMandatoryGovernedInspection &&\n                    !governedInspectionCompleted;'''
+              ),
+              (
+                  '''                    if (requiresGovernedInspection &&\n                        !governedInspectionCompleted)''',
+                  '''                    if (requiresMandatoryGovernedInspection &&\n                        !governedInspectionCompleted)'''
+              ),
+              (
+                  '''                    if (requiresGovernedInspection &&\n                        !governedInspectionCompleted)''',
+                  '''                    if (requiresMandatoryGovernedInspection &&\n                        !governedInspectionCompleted)'''
+              ),
+              (
+                  '''            "canonical", "retained knowledge", "retained evidence",\n            "curriculum", "train legend", "training status",''',
+                  '''            "canonical", "retained knowledge", "retained evidence",\n            "governed inspection", "current authority",\n            "curriculum", "train legend", "training status",'''
+              ),
+          ]
+
+          for old, new in replacements:
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'Expected exactly one replacement anchor; found {count}: {old[:100]!r}')
+              text = text.replace(old, new, 1)
+
+          path.write_text(text)
+          Path('.github/workflows/_temporary-founder-ai-surgical-patch-2.yml').unlink()
+
+      - name: Verify bounded diff
+        run: |
+          git diff --check
+          git diff --stat
+          git diff -- AgentPortal/Services/LegendFounderAiConversationService.cs
+
+      - name: Commit surgical correction
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add AgentPortal/Services/LegendFounderAiConversationService.cs .github/workflows/_temporary-founder-ai-surgical-patch-2.yml
+          git commit -m "Scope mandatory Founder AI inspection to live state"
+          git push origin HEAD:fix/founder-ai-required-inspection-mobile-reading
