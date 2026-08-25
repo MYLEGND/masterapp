@@ -134,10 +134,15 @@
             <p class="dashboard-section-copy">Last authority verification: @remediation.LastVerifiedUtc.Value.ToString("u")</p>
         }
 
+        <p class="dashboard-section-copy">
+            GitHub App creation and installation, Key Vault storage, Managed Identity access, and Azure environment configuration occur outside this page.
+            This button only verifies the already-configured sealed binding.
+        </p>
+
         <div class="search-actions lc-authority-actions">
             <form method="post" asp-action="ConnectSoftwareRemediation">
                 @Html.AntiForgeryToken()
-                <button type="submit" class="dashboard-command-action btn-carrier-settings">Configure / Connect GitHub App</button>
+                <button type="submit" class="dashboard-command-action btn-carrier-settings">Verify configured GitHub App binding</button>
             </form>
             <form method="post" asp-action="VerifySoftwareRemediation">
                 @Html.AntiForgeryToken()
