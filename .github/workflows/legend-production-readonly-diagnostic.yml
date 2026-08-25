@@ -4,11 +4,6 @@ on:
   push:
     branches:
       - production
-    paths:
-      - '.github/workflows/legend-production-readonly-diagnostic.yml'
-      - 'AgentPortal.Tests/LegendFounderCurriculumSqlServerE2ETests.cs'
-      - 'AgentPortal.Tests/AgentPortal.Tests.csproj'
-      - 'diagnostics/LegendProductionReplayStatus.cs'
   workflow_dispatch:
 
 permissions:
