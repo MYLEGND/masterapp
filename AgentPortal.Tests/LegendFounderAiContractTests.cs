@@ -6,6 +6,7 @@ using System.Net;
 using System.Net.Http;
 using System.Reflection;
 using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -419,7 +420,7 @@ public sealed class LegendFounderAiContractTests
                 new string('a', 40),
                 "Bounded repair",
                 "Validate fail-closed configuration.",
-                [new FounderSoftwareRepairChange("AgentPortal/Services/Example.cs", "namespace Example;")]),
+                [new FounderSoftwareRepairChange("AgentPortal/Services/Example.cs", "namespace Example;", new string('d', 40))]),
             CancellationToken.None);
 
         using var statusDocument = JsonDocument.Parse(JsonSerializer.Serialize(status));
@@ -541,6 +542,315 @@ public sealed class LegendFounderAiContractTests
     }
 
     [Fact]
+    public void SoftwareRemediationToolContract_SeparatesCommitAndBlobIdentityAndBoundsPatchInput()
+    {
+        var buildTools = typeof(LegendFounderAiConversationService)
+            .GetMethod("BuildFounderTools", BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.NotNull(buildTools);
+
+        var tools = Assert.IsAssignableFrom<IReadOnlyList<object>>(buildTools!.Invoke(null, null));
+        using var document = JsonDocument.Parse(JsonSerializer.Serialize(tools));
+        var functions = document.RootElement.EnumerateArray()
+            .Where(tool => tool.TryGetProperty("type", out var type) && type.GetString() == "function")
+            .ToArray();
+        var inspect = functions.Single(tool => tool.GetProperty("name").GetString() == "legend_inspect_repository");
+        var prepare = functions.Single(tool => tool.GetProperty("name").GetString() == "legend_prepare_software_repair");
+
+        var inspectionProperties = inspect.GetProperty("parameters").GetProperty("properties");
+        Assert.True(inspectionProperties.TryGetProperty("start_line", out _));
+        Assert.True(inspectionProperties.TryGetProperty("line_count", out _));
+        Assert.True(inspectionProperties.TryGetProperty("search_text", out _));
+        Assert.True(inspectionProperties.TryGetProperty("search_context_lines", out _));
+
+        var preparationProperties = prepare.GetProperty("parameters").GetProperty("properties");
+        var fullChangeProperties = preparationProperties.GetProperty("full_file_changes")
+            .GetProperty("items").GetProperty("properties");
+        Assert.True(fullChangeProperties.TryGetProperty("expected_blob_sha", out _));
+        Assert.True(fullChangeProperties.TryGetProperty("content", out _));
+
+        var patchProperties = preparationProperties.GetProperty("patches")
+            .GetProperty("items").GetProperty("properties");
+        Assert.True(patchProperties.TryGetProperty("expected_blob_sha", out _));
+        Assert.False(patchProperties.TryGetProperty("content", out _));
+        var editProperties = patchProperties.GetProperty("edits")
+            .GetProperty("items").GetProperty("properties");
+        Assert.True(editProperties.TryGetProperty("expected_text", out _));
+        Assert.True(editProperties.TryGetProperty("replacement_text", out _));
+
+        var description = prepare.GetProperty("description").GetString();
+        Assert.Contains("commit SHA", description, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("blob SHA", description, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task SoftwareRemediation_InspectsSmallAndLargeUtf8FilesThroughBoundedViews()
+    {
+        using var key = RSA.Create(2048);
+        var smallHandler = new GitHubRemediationScenarioHandler(
+            key.ExportPkcs8PrivateKeyPem(),
+            includePullRequestReviews: true,
+            repositoryText: "namespace Example;\n");
+        var smallService = CreateRemediationService(smallHandler);
+
+        var small = await smallService.InspectRepositoryAsync(
+            new FounderSoftwareRepositoryInspectionRequest(
+                "AgentPortal/Services/Example.cs",
+                GitHubRemediationScenarioHandler.BaseCommitSha),
+            CancellationToken.None);
+        using var smallDocument = JsonDocument.Parse(JsonSerializer.Serialize(small));
+        Assert.True(smallDocument.RootElement.GetProperty("fullFileReturned").GetBoolean());
+        Assert.Equal(GitHubRemediationScenarioHandler.BaseBlobSha, smallDocument.RootElement.GetProperty("blobSha").GetString());
+        Assert.Equal("namespace Example;\n", smallDocument.RootElement.GetProperty("content").GetString());
+
+        var largeText = string.Join("\n", Enumerable.Range(1, 500)
+            .Select(line => $"line-{line:D4} target-{line:D4} {new string('x', 160)}"));
+        var largeHandler = new GitHubRemediationScenarioHandler(
+            key.ExportPkcs8PrivateKeyPem(),
+            includePullRequestReviews: true,
+            repositoryText: largeText);
+        var largeService = CreateRemediationService(largeHandler);
+
+        var metadata = await largeService.InspectRepositoryAsync(
+            new FounderSoftwareRepositoryInspectionRequest(
+                "AgentPortal/Services/Example.cs",
+                GitHubRemediationScenarioHandler.BaseCommitSha),
+            CancellationToken.None);
+        using var metadataDocument = JsonDocument.Parse(JsonSerializer.Serialize(metadata));
+        Assert.False(metadataDocument.RootElement.GetProperty("fullFileReturned").GetBoolean());
+        Assert.True(metadataDocument.RootElement.GetProperty("truncated").GetBoolean());
+        Assert.Equal("metadata_only", metadataDocument.RootElement.GetProperty("search").GetProperty("mode").GetString());
+
+        var range = await largeService.InspectRepositoryAsync(
+            new FounderSoftwareRepositoryInspectionRequest(
+                "AgentPortal/Services/Example.cs",
+                GitHubRemediationScenarioHandler.BaseCommitSha,
+                StartLine: 20,
+                LineCount: 5),
+            CancellationToken.None);
+        using var rangeDocument = JsonDocument.Parse(JsonSerializer.Serialize(range));
+        var rangeValue = rangeDocument.RootElement.GetProperty("lineRange");
+        Assert.Equal(5, rangeValue.GetProperty("returnedLineCount").GetInt32());
+        Assert.True(rangeValue.GetProperty("beforeTruncated").GetBoolean());
+        Assert.True(rangeValue.GetProperty("afterTruncated").GetBoolean());
+
+        var search = await largeService.InspectRepositoryAsync(
+            new FounderSoftwareRepositoryInspectionRequest(
+                "AgentPortal/Services/Example.cs",
+                GitHubRemediationScenarioHandler.BaseCommitSha,
+                SearchText: "target-0042",
+                SearchContextLines: 2),
+            CancellationToken.None);
+        using var searchDocument = JsonDocument.Parse(JsonSerializer.Serialize(search));
+        var searchValue = searchDocument.RootElement.GetProperty("search");
+        Assert.Equal(1, searchValue.GetProperty("returnedMatchCount").GetInt32());
+        Assert.Equal(2, searchValue.GetProperty("contextLines").GetInt32());
+        Assert.True(searchDocument.RootElement.GetProperty("truncated").GetBoolean());
+
+        var manyMatches = await largeService.InspectRepositoryAsync(
+            new FounderSoftwareRepositoryInspectionRequest(
+                "AgentPortal/Services/Example.cs",
+                GitHubRemediationScenarioHandler.BaseCommitSha,
+                SearchText: "target-",
+                SearchContextLines: 1),
+            CancellationToken.None);
+        using var manyMatchesDocument = JsonDocument.Parse(JsonSerializer.Serialize(manyMatches));
+        var manyMatchesValue = manyMatchesDocument.RootElement.GetProperty("search");
+        Assert.Equal(12, manyMatchesValue.GetProperty("returnedMatchCount").GetInt32());
+        Assert.True(manyMatchesValue.GetProperty("matchesTruncated").GetBoolean());
+        Assert.Empty(largeHandler.RepositoryWritePaths);
+    }
+
+    [Fact]
+    public async Task SoftwareRemediation_RejectsInvalidUtf8BeforeRepositoryMutation()
+    {
+        using var key = RSA.Create(2048);
+        var handler = new GitHubRemediationScenarioHandler(
+            key.ExportPkcs8PrivateKeyPem(),
+            includePullRequestReviews: true,
+            repositoryBytes: [0xff, 0xfe, 0xfd]);
+        var service = CreateRemediationService(handler);
+
+        var result = await service.InspectRepositoryAsync(
+            new FounderSoftwareRepositoryInspectionRequest(
+                "AgentPortal/Services/Example.cs",
+                GitHubRemediationScenarioHandler.BaseCommitSha),
+            CancellationToken.None);
+
+        using var document = JsonDocument.Parse(JsonSerializer.Serialize(result));
+        Assert.Equal("repository_content_not_utf8", document.RootElement.GetProperty("error").GetString());
+        Assert.Empty(handler.RepositoryWritePaths);
+
+        var binaryHandler = new GitHubRemediationScenarioHandler(
+            key.ExportPkcs8PrivateKeyPem(),
+            includePullRequestReviews: true,
+            repositoryBytes: [0x00, 0x01, 0x02]);
+        var binaryResult = await CreateRemediationService(binaryHandler).InspectRepositoryAsync(
+            new FounderSoftwareRepositoryInspectionRequest(
+                "AgentPortal/Services/Example.cs",
+                GitHubRemediationScenarioHandler.BaseCommitSha),
+            CancellationToken.None);
+        AssertFailure(binaryResult, "repository_content_not_utf8");
+        Assert.Empty(binaryHandler.RepositoryWritePaths);
+    }
+
+    [Fact]
+    public async Task SoftwareRemediation_AppliesExactBlobBoundPatchesAtomicallyInSourceOrder()
+    {
+        using var key = RSA.Create(2048);
+        const string source = "prefix\nfirst-target\nmiddle\nsecond-target\nsuffix\n";
+        var handler = new GitHubRemediationScenarioHandler(
+            key.ExportPkcs8PrivateKeyPem(),
+            includePullRequestReviews: true,
+            repositoryText: source);
+        var service = CreateRemediationService(handler);
+
+        var result = await service.PrepareAsync(
+            "teacher",
+            PatchProposal(
+                [new FounderSoftwarePatchChange(
+                    "AgentPortal/Services/Example.cs",
+                    GitHubRemediationScenarioHandler.BaseBlobSha,
+                    [
+                        new FounderSoftwarePatchEdit("first-target", "first-repaired"),
+                        new FounderSoftwarePatchEdit("second-target", "second-repaired")
+                    ])]),
+            CancellationToken.None);
+
+        using var document = JsonDocument.Parse(JsonSerializer.Serialize(result));
+        Assert.True(document.RootElement.GetProperty("prepared").GetBoolean());
+        Assert.Single(handler.UploadedBlobBodies);
+        using var blob = JsonDocument.Parse(handler.UploadedBlobBodies.Single());
+        var resultingText = blob.RootElement.GetProperty("content").GetString();
+        Assert.Equal("prefix\nfirst-repaired\nmiddle\nsecond-repaired\nsuffix\n", resultingText);
+        Assert.Contains(handler.RepositoryWritePaths, path => path.EndsWith("/git/trees", StringComparison.Ordinal));
+        Assert.Contains(handler.RepositoryWritePaths, path => path.EndsWith("/git/commits", StringComparison.Ordinal));
+        Assert.Contains(handler.RepositoryWritePaths, path => path.EndsWith("/git/refs", StringComparison.Ordinal));
+        Assert.Contains(handler.RepositoryWritePaths, path => path.EndsWith("/pulls", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task SoftwareRemediation_PatchValidationRejectsStaleMissingAmbiguousOverlappingAndReorderedEditsWithoutWrites()
+    {
+        await AssertPatchFailureWithoutRepositoryWritesAsync(
+            "only-target",
+            new string('e', 40),
+            [new FounderSoftwarePatchEdit("only-target", "changed")],
+            "expected_blob_sha_stale");
+        await AssertPatchFailureWithoutRepositoryWritesAsync(
+            "only-target",
+            GitHubRemediationScenarioHandler.BaseBlobSha,
+            [new FounderSoftwarePatchEdit("missing-target", "changed")],
+            "patch_expected_text_missing");
+        await AssertPatchFailureWithoutRepositoryWritesAsync(
+            "same same",
+            GitHubRemediationScenarioHandler.BaseBlobSha,
+            [new FounderSoftwarePatchEdit("same", "changed")],
+            "patch_expected_text_ambiguous");
+        await AssertPatchFailureWithoutRepositoryWritesAsync(
+            "abcdef",
+            GitHubRemediationScenarioHandler.BaseBlobSha,
+            [
+                new FounderSoftwarePatchEdit("abc", "one"),
+                new FounderSoftwarePatchEdit("bcd", "two")
+            ],
+            "patch_edits_overlap");
+        await AssertPatchFailureWithoutRepositoryWritesAsync(
+            "first second",
+            GitHubRemediationScenarioHandler.BaseBlobSha,
+            [
+                new FounderSoftwarePatchEdit("second", "two"),
+                new FounderSoftwarePatchEdit("first", "one")
+            ],
+            "patch_edits_reordered");
+    }
+
+    [Fact]
+    public async Task SoftwareRemediation_PatchLimitsBaseMovementAndMultiFileFailureLeaveNoGitHubWrites()
+    {
+        using var key = RSA.Create(2048);
+        var sixPaths = Enumerable.Range(1, 7)
+            .Select(index => new FounderSoftwarePatchChange(
+                $"AgentPortal/Services/Example{index}.cs",
+                GitHubRemediationScenarioHandler.BaseBlobSha,
+                [new FounderSoftwarePatchEdit("target", "changed")]))
+            .ToArray();
+        var maximumHandler = new GitHubRemediationScenarioHandler(key.ExportPkcs8PrivateKeyPem(), true, repositoryText: "target");
+        var maximumResult = await CreateRemediationService(maximumHandler).PrepareAsync("teacher", PatchProposal(sixPaths), CancellationToken.None);
+        AssertFailure(maximumResult, "invalid_repair_proposal");
+        Assert.Empty(maximumHandler.RepositoryWritePaths);
+
+        var inputHandler = new GitHubRemediationScenarioHandler(key.ExportPkcs8PrivateKeyPem(), true, repositoryText: "target");
+        var inputResult = await CreateRemediationService(inputHandler).PrepareAsync(
+            "teacher",
+            PatchProposal([new FounderSoftwarePatchChange(
+                "AgentPortal/Services/Example.cs",
+                GitHubRemediationScenarioHandler.BaseBlobSha,
+                [new FounderSoftwarePatchEdit(new string('q', 12_001), "changed")])]),
+            CancellationToken.None);
+        AssertFailure(inputResult, "patch_limit_exceeded");
+        Assert.Empty(inputHandler.RepositoryWritePaths);
+
+        var cumulativeHandler = new GitHubRemediationScenarioHandler(key.ExportPkcs8PrivateKeyPem(), true, repositoryText: "target");
+        var cumulativeEdits = Enumerable.Range(1, 11)
+            .Select(_ => new FounderSoftwarePatchEdit(new string('q', 11_000), string.Empty))
+            .ToArray();
+        var cumulativeResult = await CreateRemediationService(cumulativeHandler).PrepareAsync(
+            "teacher",
+            PatchProposal([new FounderSoftwarePatchChange(
+                "AgentPortal/Services/Example.cs",
+                GitHubRemediationScenarioHandler.BaseBlobSha,
+                cumulativeEdits)]),
+            CancellationToken.None);
+        AssertFailure(cumulativeResult, "patch_limit_exceeded");
+        Assert.Empty(cumulativeHandler.RepositoryWritePaths);
+
+        var baseMovementHandler = new GitHubRemediationScenarioHandler(
+            key.ExportPkcs8PrivateKeyPem(),
+            true,
+            repositoryText: "target",
+            branchSha: new string('b', 40));
+        var baseMovementResult = await CreateRemediationService(baseMovementHandler).PrepareAsync(
+            "teacher",
+            PatchProposal([new FounderSoftwarePatchChange(
+                "AgentPortal/Services/Example.cs",
+                GitHubRemediationScenarioHandler.BaseBlobSha,
+                [new FounderSoftwarePatchEdit("target", "changed")])]),
+            CancellationToken.None);
+        AssertFailure(baseMovementResult, "base_sha_stale");
+        Assert.Empty(baseMovementHandler.RepositoryWritePaths);
+
+        var atomicHandler = new GitHubRemediationScenarioHandler(key.ExportPkcs8PrivateKeyPem(), true, repositoryText: "first-target");
+        var atomicResult = await CreateRemediationService(atomicHandler).PrepareAsync(
+            "teacher",
+            PatchProposal(
+            [
+                new FounderSoftwarePatchChange(
+                    "AgentPortal/Services/ExampleOne.cs",
+                    GitHubRemediationScenarioHandler.BaseBlobSha,
+                    [new FounderSoftwarePatchEdit("first-target", "changed")]),
+                new FounderSoftwarePatchChange(
+                    "AgentPortal/Services/ExampleTwo.cs",
+                    GitHubRemediationScenarioHandler.BaseBlobSha,
+                    [new FounderSoftwarePatchEdit("missing-target", "changed")])
+            ]),
+            CancellationToken.None);
+        AssertFailure(atomicResult, "patch_expected_text_missing");
+        Assert.Empty(atomicHandler.RepositoryWritePaths);
+
+        var sourceAtLimit = new string('x', 399_999) + "@";
+        var resultLimitHandler = new GitHubRemediationScenarioHandler(key.ExportPkcs8PrivateKeyPem(), true, repositoryText: sourceAtLimit);
+        var resultLimit = await CreateRemediationService(resultLimitHandler).PrepareAsync(
+            "teacher",
+            PatchProposal([new FounderSoftwarePatchChange(
+                "AgentPortal/Services/Example.cs",
+                GitHubRemediationScenarioHandler.BaseBlobSha,
+                [new FounderSoftwarePatchEdit("@", "@@@@")])]),
+            CancellationToken.None);
+        AssertFailure(resultLimit, "resulting_file_limit_exceeded");
+        Assert.Empty(resultLimitHandler.RepositoryWritePaths);
+    }
+
+    [Fact]
     public async Task SoftwareRemediation_InvalidReleaseIdentityCannotReachGitHub()
     {
         var factory = new ThrowingHttpClientFactory();
@@ -585,7 +895,7 @@ public sealed class LegendFounderAiContractTests
                 new string('a', 40),
                 "Repair bounded authority",
                 "Exercise the canonical GitHub-App repair preparation path.",
-                [new FounderSoftwareRepairChange("AgentPortal/Services/Example.cs", "namespace Example;")]),
+                [new FounderSoftwareRepairChange("AgentPortal/Services/Example.cs", "namespace Example;", new string('d', 40))]),
             CancellationToken.None);
 
         using var document = JsonDocument.Parse(JsonSerializer.Serialize(result));
@@ -676,6 +986,52 @@ public sealed class LegendFounderAiContractTests
         }
     }
 
+    private static FounderSoftwareRemediationService CreateRemediationService(
+        GitHubRemediationScenarioHandler handler) =>
+        new(
+            new ScenarioHttpClientFactory(handler),
+            CreateRemediationConfiguration(),
+            NullLogger<FounderSoftwareRemediationService>.Instance,
+            new StaticTokenCredential());
+
+    private static FounderSoftwareRepairProposal PatchProposal(
+        IReadOnlyList<FounderSoftwarePatchChange> patches) =>
+        new(
+            GitHubRemediationScenarioHandler.BaseCommitSha,
+            "Bounded patch repair",
+            "Exercise exact immutable blob-bound patch preparation.",
+            Changes: null,
+            Patches: patches);
+
+    private static void AssertFailure(object result, string error)
+    {
+        using var document = JsonDocument.Parse(JsonSerializer.Serialize(result));
+        Assert.Equal(error, document.RootElement.GetProperty("error").GetString());
+    }
+
+    private static async Task AssertPatchFailureWithoutRepositoryWritesAsync(
+        string source,
+        string expectedBlobSha,
+        IReadOnlyList<FounderSoftwarePatchEdit> edits,
+        string error)
+    {
+        using var key = RSA.Create(2048);
+        var handler = new GitHubRemediationScenarioHandler(
+            key.ExportPkcs8PrivateKeyPem(),
+            includePullRequestReviews: true,
+            repositoryText: source);
+        var result = await CreateRemediationService(handler).PrepareAsync(
+            "teacher",
+            PatchProposal([new FounderSoftwarePatchChange(
+                "AgentPortal/Services/Example.cs",
+                expectedBlobSha,
+                edits)]),
+            CancellationToken.None);
+
+        AssertFailure(result, error);
+        Assert.Empty(handler.RepositoryWritePaths);
+    }
+
     private static IConfiguration CreateRemediationConfiguration() =>
         new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
         {
@@ -703,18 +1059,52 @@ public sealed class LegendFounderAiContractTests
             ValueTask.FromResult(GetToken(requestContext, cancellationToken));
     }
 
-    private sealed class GitHubRemediationScenarioHandler(
-        string privateKey,
-        bool includePullRequestReviews) : HttpMessageHandler
+    private sealed class GitHubRemediationScenarioHandler : HttpMessageHandler
     {
+        public const string BaseCommitSha = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+        public const string BaseTreeSha = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+        public const string BaseBlobSha = "dddddddddddddddddddddddddddddddddddddddd";
+        public const string RepairBlobSha = "ffffffffffffffffffffffffffffffffffffffff";
+        public const string RepairTreeSha = "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee";
+        public const string RepairCommitSha = "cccccccccccccccccccccccccccccccccccccccc";
+
+        private readonly string _privateKey;
+        private readonly bool _includePullRequestReviews;
+        private readonly byte[] _repositoryBytes;
+        private readonly string _branchSha;
+
+        public GitHubRemediationScenarioHandler(
+            string privateKey,
+            bool includePullRequestReviews,
+            string? repositoryText = null,
+            byte[]? repositoryBytes = null,
+            string? branchSha = null)
+        {
+            _privateKey = privateKey;
+            _includePullRequestReviews = includePullRequestReviews;
+            _repositoryBytes = repositoryBytes ?? Encoding.UTF8.GetBytes(repositoryText ?? "namespace Example;\n");
+            _branchSha = branchSha ?? BaseCommitSha;
+        }
+
         public List<string> RequestPaths { get; } = [];
+        public List<string> RepositoryWritePaths { get; } = [];
+        public List<string> UploadedBlobBodies { get; } = [];
 
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
             var path = request.RequestUri!.AbsolutePath;
             RequestPaths.Add(path);
+            if (request.RequestUri.Host.Equals("api.github.com", StringComparison.OrdinalIgnoreCase) &&
+                request.Method != HttpMethod.Get &&
+                path.StartsWith("/repos/MYLEGND/masterapp/", StringComparison.Ordinal))
+            {
+                RepositoryWritePaths.Add(path);
+                if (path == "/repos/MYLEGND/masterapp/git/blobs" && request.Content is not null)
+                    UploadedBlobBodies.Add(request.Content.ReadAsStringAsync(cancellationToken).GetAwaiter().GetResult());
+            }
+
             var response = request.RequestUri.Host.Equals("example.vault.azure.net", StringComparison.OrdinalIgnoreCase)
-                ? Json(HttpStatusCode.OK, JsonSerializer.Serialize(new { value = privateKey }))
+                ? Json(HttpStatusCode.OK, JsonSerializer.Serialize(new { value = _privateKey }))
                 : RespondToGitHub(path, request.Method);
             return Task.FromResult(response);
         }
@@ -723,27 +1113,33 @@ public sealed class LegendFounderAiContractTests
         {
             if (path == "/app/installations/2/access_tokens" && method == HttpMethod.Post)
                 return Json(HttpStatusCode.Created, "{\"token\":\"installation-token\"}");
-            if (path == "/repos/MYLEGND/masterapp/git/ref/heads/production")
-                return Json(HttpStatusCode.OK, $"{{\"object\":{{\"sha\":\"{new string('a', 40)}\"}}}}");
-            if (path == $"/repos/MYLEGND/masterapp/git/commits/{new string('a', 40)}")
-                return Json(HttpStatusCode.OK, $"{{\"tree\":{{\"sha\":\"{new string('b', 40)}\"}}}}");
+            if (path == "/repos/MYLEGND/masterapp" && method == HttpMethod.Get)
+                return Json(HttpStatusCode.OK, "{}");
+            if (path == "/repos/MYLEGND/masterapp/git/ref/heads/production" && method == HttpMethod.Get)
+                return Json(HttpStatusCode.OK, $"{{\"object\":{{\"sha\":\"{_branchSha}\"}}}}");
+            if (path == $"/repos/MYLEGND/masterapp/git/commits/{BaseCommitSha}" && method == HttpMethod.Get)
+                return Json(HttpStatusCode.OK, $"{{\"tree\":{{\"sha\":\"{BaseTreeSha}\"}}}}");
+            if (path.StartsWith("/repos/MYLEGND/masterapp/contents/", StringComparison.Ordinal) && method == HttpMethod.Get)
+                return Json(HttpStatusCode.OK, JsonSerializer.Serialize(new { type = "file", sha = BaseBlobSha, size = _repositoryBytes.Length }));
+            if (path == $"/repos/MYLEGND/masterapp/git/blobs/{BaseBlobSha}" && method == HttpMethod.Get)
+                return Json(HttpStatusCode.OK, JsonSerializer.Serialize(new { encoding = "base64", content = Convert.ToBase64String(_repositoryBytes) }));
             if (path == "/repos/MYLEGND/masterapp/git/blobs" && method == HttpMethod.Post)
-                return Json(HttpStatusCode.Created, $"{{\"sha\":\"{new string('d', 40)}\"}}");
+                return Json(HttpStatusCode.Created, $"{{\"sha\":\"{RepairBlobSha}\"}}");
             if (path == "/repos/MYLEGND/masterapp/git/trees" && method == HttpMethod.Post)
-                return Json(HttpStatusCode.Created, $"{{\"sha\":\"{new string('e', 40)}\"}}");
+                return Json(HttpStatusCode.Created, $"{{\"sha\":\"{RepairTreeSha}\"}}");
             if (path == "/repos/MYLEGND/masterapp/git/commits" && method == HttpMethod.Post)
-                return Json(HttpStatusCode.Created, $"{{\"sha\":\"{new string('c', 40)}\"}}");
+                return Json(HttpStatusCode.Created, $"{{\"sha\":\"{RepairCommitSha}\"}}");
             if (path == "/repos/MYLEGND/masterapp/git/refs" && method == HttpMethod.Post)
                 return Json(HttpStatusCode.Created, "{}");
             if (path == "/repos/MYLEGND/masterapp/pulls" && method == HttpMethod.Post)
                 return Json(HttpStatusCode.Created, "{\"number\":123,\"html_url\":\"https://github.example/pull/123\"}");
             if (path == "/repos/MYLEGND/masterapp/pulls/123" && method == HttpMethod.Get)
-                return Json(HttpStatusCode.OK, $"{{\"head\":{{\"sha\":\"{new string('c', 40)}\"}},\"base\":{{\"ref\":\"production\"}},\"state\":\"open\"}}");
-            if (path == $"/repos/MYLEGND/masterapp/commits/{new string('c', 40)}/check-runs" && method == HttpMethod.Get)
+                return Json(HttpStatusCode.OK, $"{{\"head\":{{\"sha\":\"{RepairCommitSha}\"}},\"base\":{{\"ref\":\"production\"}},\"state\":\"open\"}}");
+            if (path == $"/repos/MYLEGND/masterapp/commits/{RepairCommitSha}/check-runs" && method == HttpMethod.Get)
                 return Json(HttpStatusCode.OK, "{\"check_runs\":[{\"name\":\"security\",\"conclusion\":\"success\"}]}");
             if (path == "/repos/MYLEGND/masterapp/branches/production/protection" && method == HttpMethod.Get)
             {
-                var reviews = includePullRequestReviews ? ",\"required_pull_request_reviews\":{}" : string.Empty;
+                var reviews = _includePullRequestReviews ? ",\"required_pull_request_reviews\":{}" : string.Empty;
                 return Json(HttpStatusCode.OK, $"{{\"required_status_checks\":{{\"strict\":true,\"contexts\":[\"security\"]}},\"enforce_admins\":{{\"enabled\":true}}{reviews}}}");
             }
 
@@ -751,7 +1147,7 @@ public sealed class LegendFounderAiContractTests
         }
 
         private static HttpResponseMessage Json(HttpStatusCode statusCode, string json) =>
-            new(statusCode) { Content = new StringContent(json, System.Text.Encoding.UTF8, "application/json") };
+            new(statusCode) { Content = new StringContent(json, Encoding.UTF8, "application/json") };
     }
 
 }
