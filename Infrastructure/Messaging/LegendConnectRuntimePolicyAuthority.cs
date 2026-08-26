@@ -628,8 +628,12 @@ internal sealed class LegendConnectRuntimePolicyAuthority : ILegendConnectRuntim
         var convergence = await _db.Set<LegendLanguageDerivationConvergence>()
             .SingleOrDefaultAsync(item => item.TargetEvaluatorVersion == evaluatorVersion,
                 cancellationToken);
+        // Rewind is an adoption action for a newly queued convergence plan.
+        // Once seeding has moved the plan to Processing, completed phases are
+        // authoritative and the worker must continue forward instead of
+        // cycling back to the original earliest frontier on every heartbeat.
         if (convergence is null ||
-            convergence.State is "Complete" or "Reused" ||
+            !string.Equals(convergence.State, "Queued", StringComparison.Ordinal) ||
             policy.CompletedLanguageIntelligenceEvaluatorVersion < evaluatorVersion ||
             string.IsNullOrWhiteSpace(convergence.EarliestAffectedPhase) ||
             !LegendConnectLanguageIntelligenceReevaluationPhases.IsWorkPhase(
