@@ -284,7 +284,7 @@ public sealed class LegendFounderAiModeIsolationTests
         Assert.True(response.Succeeded, Describe(response));
         Assert.Equal(
             "The second governed read succeeded and supports this assessment.",
-            response.Content);
+            response.Message);
         Assert.Equal(3, handler.RequestCount);
         operations.Verify(operation => operation.SearchRetainedKnowledgeAsync(
             "authority",
@@ -312,7 +312,7 @@ public sealed class LegendFounderAiModeIsolationTests
         Assert.True(response.Succeeded, Describe(response));
         Assert.Equal(
             "Steps 1-4\nStep 5\nSteps 6-12",
-            response.Content);
+            response.Message);
         Assert.Equal(2, handler.RequestCount);
         Assert.Equal(0, NativeInferenceCalls(operations));
     }
