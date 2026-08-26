@@ -57,7 +57,7 @@ public sealed class FounderSoftwareRemediationService : IFounderSoftwareRemediat
     private static readonly TimeSpan GitHubAppJwtLifetime = TimeSpan.FromMinutes(9);
     // GitHub exposes the required check-run by its job identity, not the
     // workflow display name. This is the exact current check name emitted by
-    // .github/workflows/security-ci.yml; deployments fail closed if it ever
+    // .github/workflows/agentportal-production-deploy.yml; deployments fail closed if it ever
     // changes or ceases to be required on the protected production branch.
     private static readonly string[] DefaultRequiredChecks = ["security"];
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
