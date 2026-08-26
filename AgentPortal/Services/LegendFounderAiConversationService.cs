@@ -1739,8 +1739,13 @@ public sealed class LegendFounderAiConversationService
                 using var arguments = JsonDocument.Parse(call.Arguments);
                 return SerializeUnbounded(
                     await _softwareRemediation.InspectRepositoryAsync(
-                        ReadOptionalString(arguments.RootElement, "path"),
-                        ReadOptionalString(arguments.RootElement, "git_reference"),
+                        new FounderSoftwareRepositoryInspectionRequest(
+                            ReadOptionalString(arguments.RootElement, "path"),
+                            ReadOptionalString(arguments.RootElement, "git_reference"),
+                            ReadOptionalInt(arguments.RootElement, "start_line"),
+                            ReadOptionalInt(arguments.RootElement, "line_count"),
+                            ReadOptionalString(arguments.RootElement, "search_text"),
+                            ReadOptionalInt(arguments.RootElement, "search_context_lines")),
                         cancellationToken));
             }
 
@@ -1760,30 +1765,63 @@ public sealed class LegendFounderAiConversationService
                     return "{\"error\":\"invalid_repair_proposal\",\"detail\":\"An exact base SHA, title, and summary are required.\"}";
                 }
 
-                if (!arguments.RootElement.TryGetProperty("changes", out var changesElement) ||
-                    changesElement.ValueKind != JsonValueKind.Array)
+                var fullFileChanges = new List<FounderSoftwareRepairChange>();
+                if (arguments.RootElement.TryGetProperty("full_file_changes", out var fullFileChangesElement) &&
+                    fullFileChangesElement.ValueKind == JsonValueKind.Array)
                 {
-                    return "{\"error\":\"invalid_repair_proposal\",\"detail\":\"At least one bounded source or test file change is required.\"}";
+                    foreach (var change in fullFileChangesElement.EnumerateArray())
+                    {
+                        if (change.ValueKind != JsonValueKind.Object)
+                            return "{\"error\":\"invalid_repair_proposal\"}";
+
+                        var path = ReadRequiredString(change, "path");
+                        var content = ReadVerbatimString(change, "content");
+                        var expectedBlobSha = ReadRequiredString(change, "expected_blob_sha");
+                        if (string.IsNullOrWhiteSpace(path) || content is null || string.IsNullOrWhiteSpace(expectedBlobSha))
+                            return "{\"error\":\"invalid_repair_proposal\"}";
+
+                        fullFileChanges.Add(new FounderSoftwareRepairChange(path, content, expectedBlobSha));
+                    }
                 }
 
-                var changes = new List<FounderSoftwareRepairChange>();
-                foreach (var change in changesElement.EnumerateArray())
+                var patches = new List<FounderSoftwarePatchChange>();
+                if (arguments.RootElement.TryGetProperty("patches", out var patchesElement) &&
+                    patchesElement.ValueKind == JsonValueKind.Array)
                 {
-                    if (change.ValueKind != JsonValueKind.Object)
-                        return "{\"error\":\"invalid_repair_proposal\"}";
+                    foreach (var patch in patchesElement.EnumerateArray())
+                    {
+                        if (patch.ValueKind != JsonValueKind.Object ||
+                            !patch.TryGetProperty("edits", out var editsElement) ||
+                            editsElement.ValueKind != JsonValueKind.Array)
+                        {
+                            return "{\"error\":\"invalid_repair_proposal\"}";
+                        }
 
-                    var path = ReadRequiredString(change, "path");
-                    var content = ReadRequiredString(change, "content");
-                    if (string.IsNullOrWhiteSpace(path) || content is null)
-                        return "{\"error\":\"invalid_repair_proposal\"}";
+                        var path = ReadRequiredString(patch, "path");
+                        var expectedBlobSha = ReadRequiredString(patch, "expected_blob_sha");
+                        if (string.IsNullOrWhiteSpace(path) || string.IsNullOrWhiteSpace(expectedBlobSha))
+                            return "{\"error\":\"invalid_repair_proposal\"}";
 
-                    changes.Add(new FounderSoftwareRepairChange(path, content));
+                        var edits = new List<FounderSoftwarePatchEdit>();
+                        foreach (var edit in editsElement.EnumerateArray())
+                        {
+                            if (edit.ValueKind != JsonValueKind.Object)
+                                return "{\"error\":\"invalid_repair_proposal\"}";
+                            var expectedText = ReadVerbatimString(edit, "expected_text");
+                            var replacementText = ReadVerbatimString(edit, "replacement_text");
+                            if (expectedText is null || replacementText is null)
+                                return "{\"error\":\"invalid_repair_proposal\"}";
+                            edits.Add(new FounderSoftwarePatchEdit(expectedText, replacementText));
+                        }
+
+                        patches.Add(new FounderSoftwarePatchChange(path, expectedBlobSha, edits));
+                    }
                 }
 
                 return SerializeUnbounded(
                     await _softwareRemediation.PrepareAsync(
                         mode,
-                        new FounderSoftwareRepairProposal(baseSha, title, summary, changes),
+                        new FounderSoftwareRepairProposal(baseSha, title, summary, fullFileChanges, patches),
                         cancellationToken));
             }
 
@@ -3002,16 +3040,20 @@ public sealed class LegendFounderAiConversationService
                 type = "function",
                 name = "legend_inspect_repository",
                 description =
-                    "Read a bounded source or test file, or the protected production branch SHA, through the configured GitHub App. This is repository inspection only; it cannot execute commands, change files, open a pull request, merge, or deploy.",
+                    "Read the protected production commit SHA or inspect an allow-listed source/test file through the configured GitHub App. Every file result identifies its immutable Git blob SHA separately from its commit SHA. Small UTF-8 files may be returned whole; large UTF-8 files return metadata and require a bounded line range or exact-text search. This is read-only and cannot execute commands, change files, open a pull request, merge, or deploy.",
                 parameters = new
                 {
                     type = "object",
                     properties = new
                     {
                         path = new { type = new[] { "string", "null" }, maxLength = 260 },
-                        git_reference = new { type = new[] { "string", "null" }, maxLength = 100 }
+                        git_reference = new { type = new[] { "string", "null" }, maxLength = 100 },
+                        start_line = new { type = new[] { "integer", "null" }, minimum = 1 },
+                        line_count = new { type = new[] { "integer", "null" }, minimum = 1, maximum = 200 },
+                        search_text = new { type = new[] { "string", "null" }, maxLength = 512 },
+                        search_context_lines = new { type = new[] { "integer", "null" }, minimum = 0, maximum = 4 }
                     },
-                    required = new[] { "path", "git_reference" },
+                    required = new[] { "path", "git_reference", "start_line", "line_count", "search_text", "search_context_lines" },
                     additionalProperties = false
                 },
                 strict = true
@@ -3021,7 +3063,7 @@ public sealed class LegendFounderAiConversationService
                 type = "function",
                 name = "legend_prepare_software_repair",
                 description =
-                    "After the Founder explicitly directs and confirms a repair, prepare one bounded source/test patch against the exact inspected base SHA. The canonical authority creates an isolated repair branch, immutable commit and pull request, which invokes existing pull-request CI. It cannot merge protected production or deploy. Legend® Ai itself is competency-gated and must fail closed/escalate to OpenAI Teacher until a governed software-repair competency is established.",
+                    "After the Founder explicitly directs and confirms a repair, prepare one bounded source/test repair against the exact inspected base commit SHA. A commit SHA identifies the repository snapshot; every changed file also requires its separately inspected exact blob SHA. Use full_file_changes only for small files. For a large file, use ordered patches containing exact expected_text and replacement_text fragments; never reproduce the untouched remainder. The authority validates every file and edit in memory before it creates a blob, branch, commit, or pull request. It cannot merge protected production or deploy. Legend® Ai remains competency-gated and must fail closed/escalate to OpenAI Teacher until a governed software-repair competency exists. Do not claim success unless this tool returns branch, repairCommitSha, and pullRequestNumber.",
                 parameters = new
                 {
                     type = "object",
@@ -3030,10 +3072,9 @@ public sealed class LegendFounderAiConversationService
                         base_sha = new { type = "string", minLength = 40, maxLength = 40 },
                         title = new { type = "string", minLength = 1, maxLength = 160 },
                         summary = new { type = "string", minLength = 1, maxLength = 4000 },
-                        changes = new
+                        full_file_changes = new
                         {
-                            type = "array",
-                            minItems = 1,
+                            type = new[] { "array", "null" },
                             maxItems = 6,
                             items = new
                             {
@@ -3041,14 +3082,48 @@ public sealed class LegendFounderAiConversationService
                                 properties = new
                                 {
                                     path = new { type = "string", minLength = 1, maxLength = 260 },
+                                    expected_blob_sha = new { type = "string", minLength = 40, maxLength = 40 },
                                     content = new { type = "string", maxLength = 60000 }
                                 },
-                                required = new[] { "path", "content" },
+                                required = new[] { "path", "expected_blob_sha", "content" },
+                                additionalProperties = false
+                            }
+                        },
+                        patches = new
+                        {
+                            type = new[] { "array", "null" },
+                            maxItems = 6,
+                            items = new
+                            {
+                                type = "object",
+                                properties = new
+                                {
+                                    path = new { type = "string", minLength = 1, maxLength = 260 },
+                                    expected_blob_sha = new { type = "string", minLength = 40, maxLength = 40 },
+                                    edits = new
+                                    {
+                                        type = "array",
+                                        minItems = 1,
+                                        maxItems = 16,
+                                        items = new
+                                        {
+                                            type = "object",
+                                            properties = new
+                                            {
+                                                expected_text = new { type = "string", minLength = 1, maxLength = 12000 },
+                                                replacement_text = new { type = "string", maxLength = 12000 }
+                                            },
+                                            required = new[] { "expected_text", "replacement_text" },
+                                            additionalProperties = false
+                                        }
+                                    }
+                                },
+                                required = new[] { "path", "expected_blob_sha", "edits" },
                                 additionalProperties = false
                             }
                         }
                     },
-                    required = new[] { "base_sha", "title", "summary", "changes" },
+                    required = new[] { "base_sha", "title", "summary", "full_file_changes", "patches" },
                     additionalProperties = false
                 },
                 strict = true
@@ -3174,7 +3249,7 @@ CRITICAL GOVERNANCE:
 - Role separation is absolute: Legend® Ai mode attempts governed native LEGEND inference first; OpenAI Teacher mode is direct Founder-to-OpenAI conversation and does not invoke native LEGEND inference as a responder. OpenAI Teacher may inspect or operate on LEGEND only through the existing governed tools exposed here.
 - When the Founder explicitly directs a training, curriculum, seed, or runtime action that maps to an exposed existing LEGEND mutation tool, execute that tool rather than merely describing what could be done. Never invent a mutation surface that does not exist.
 - When asked to diagnose an internal LEGEND problem, inspect the relevant read-only LEGEND tools before concluding. The only repository/release authority is the exposed Founder-governed software-remediation capability: it has no shell, SQL, Azure CLI, raw token, arbitrary git, direct production database, or direct deployment surface.
-- A software repair can be prepared only after an explicit Founder instruction and request-level confirmation. Preparation is bounded to source/test files, an exact inspected base SHA, an isolated GitHub repair branch, immutable commit, pull request and existing pull-request CI. It must never merge or deploy.
+- A software repair can be prepared only after an explicit Founder instruction and request-level confirmation. Inspect the protected base commit first. A commit SHA identifies that repository snapshot; a blob SHA identifies one exact file within it. For a small file, use a full replacement only with its exact expected blob SHA. For a large file, inspect bounded ranges or exact-text matches, then submit only ordered expected/replacement fragments with that exact blob SHA. Never send or reproduce an untouched large-file remainder. The authority must return the branch, repair commit SHA, and pull-request identity before you say a patch was prepared. It must never merge or deploy.
 - A release can be attempted only after a separate explicit Founder instruction and request-level confirmation naming the exact pull request and SHA. It must recheck that SHA, current required CI, protected-branch status checks, pull-request review protection and admin enforcement before GitHub itself accepts a merge. The existing protected-production workflow is the only deployment path.
 - OpenAI Teacher may prepare a bounded repair through that capability when configured. Legend® Ai uses the same interface but must fail closed and escalate to OpenAI Teacher until a canonical governed software-repair competency is established. Never claim that code, GitHub state, or production state changed when no bounded tool performed that change.
 - Founder-submitted source knowledge and curriculum are FounderApproved because the authenticated Founder explicitly directed the action.
@@ -4012,6 +4087,23 @@ Never upgrade an unresolved, rejected or contradicted record merely because it a
             ? property.GetString()?.Trim()
             : null;
     }
+
+    private static string? ReadVerbatimString(
+        JsonElement root,
+        string propertyName) =>
+        root.TryGetProperty(propertyName, out var property) &&
+        property.ValueKind == JsonValueKind.String
+            ? property.GetString()
+            : null;
+
+    private static int? ReadOptionalInt(
+        JsonElement root,
+        string propertyName) =>
+        root.TryGetProperty(propertyName, out var property) &&
+        property.ValueKind != JsonValueKind.Null &&
+        property.TryGetInt32(out var value)
+            ? value
+            : null;
 
     private static int ReadRequiredInt(
         JsonElement root,

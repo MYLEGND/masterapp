@@ -30,7 +30,9 @@ public interface IFounderSoftwareRemediationService
     Task<object> VerifyAuthorityAsync(CancellationToken cancellationToken);
     Task<object> TestRepairPreparationAsync(CancellationToken cancellationToken);
     Task<object> RevokeAsync(string founderUserId, CancellationToken cancellationToken);
-    Task<object> InspectRepositoryAsync(string? path, string? gitReference, CancellationToken cancellationToken);
+    Task<object> InspectRepositoryAsync(
+        FounderSoftwareRepositoryInspectionRequest request,
+        CancellationToken cancellationToken);
     Task<object> PrepareAsync(string actorMode, FounderSoftwareRepairProposal proposal, CancellationToken cancellationToken);
     Task<object> InspectValidationAsync(int pullRequestNumber, string headSha, CancellationToken cancellationToken);
     Task<object> RequestReleaseAsync(int pullRequestNumber, string headSha, CancellationToken cancellationToken);
@@ -38,20 +40,71 @@ public interface IFounderSoftwareRemediationService
     Task<object> VerifyDeploymentAsync(string commitSha, CancellationToken cancellationToken);
 }
 
-public sealed record FounderSoftwareRepairChange(string Path, string Content);
+/// <summary>
+/// A small, complete UTF-8 replacement. The expected blob identity binds even
+/// this compatibility path to the exact immutable file that was inspected.
+/// </summary>
+public sealed record FounderSoftwareRepairChange(
+    string Path,
+    string Content,
+    string? ExpectedBlobSha = null);
+
+/// <summary>
+/// One exact replacement applied to an immutable base-file snapshot. Expected
+/// text must occur once in that snapshot; a replacement may be empty.
+/// </summary>
+public sealed record FounderSoftwarePatchEdit(
+    string ExpectedText,
+    string ReplacementText);
+
+/// <summary>
+/// Ordered, bounded edits for one exact GitHub blob. The model supplies only
+/// the changed fragments, never the untouched remainder of a large source.
+/// </summary>
+public sealed record FounderSoftwarePatchChange(
+    string Path,
+    string ExpectedBlobSha,
+    IReadOnlyList<FounderSoftwarePatchEdit> Edits);
+
+/// <summary>
+/// Bounded repository inspection. A file is returned in full only when it is
+/// small. Larger UTF-8 files expose metadata plus an explicit line range or
+/// limited exact-text search result.
+/// </summary>
+public sealed record FounderSoftwareRepositoryInspectionRequest(
+    string? Path,
+    string? GitReference,
+    int? StartLine = null,
+    int? LineCount = null,
+    string? SearchText = null,
+    int? SearchContextLines = null);
 
 public sealed record FounderSoftwareRepairProposal(
     string BaseSha,
     string Title,
     string Summary,
-    IReadOnlyList<FounderSoftwareRepairChange> Changes);
+    IReadOnlyList<FounderSoftwareRepairChange>? Changes,
+    IReadOnlyList<FounderSoftwarePatchChange>? Patches = null);
 
 public sealed class FounderSoftwareRemediationService : IFounderSoftwareRemediationService
 {
     private const int MaximumChanges = 6;
     private const int MaximumPathLength = 260;
-    private const int MaximumFileCharacters = 60_000;
-    private const int MaximumTotalCharacters = 180_000;
+    private const int MaximumFullReplacementCharacters = 60_000;
+    private const int MaximumTotalFullReplacementCharacters = 180_000;
+    private const int MaximumRepositoryFileBytes = 512_000;
+    private const int MaximumResultingFileBytes = 512_000;
+    private const int MaximumResultingFileCharacters = 400_000;
+    private const int MaximumCumulativeFileProcessingBytes = 1_500_000;
+    private const int MaximumInspectionLineCount = 200;
+    private const int MaximumInspectionLineCharacters = 256;
+    private const int MaximumSearchTextCharacters = 512;
+    private const int MaximumSearchMatches = 12;
+    private const int MaximumSearchContextLines = 4;
+    private const int MaximumPatchEditsPerFile = 16;
+    private const int MaximumPatchExpectedTextCharacters = 12_000;
+    private const int MaximumPatchReplacementTextCharacters = 12_000;
+    private const int MaximumPatchInputCharacters = 120_000;
     private const int MaximumTitleCharacters = 160;
     private const int MaximumSummaryCharacters = 4_000;
     private static readonly TimeSpan GitHubAppJwtLifetime = TimeSpan.FromMinutes(9);
@@ -204,8 +257,7 @@ public sealed class FounderSoftwareRemediationService : IFounderSoftwareRemediat
     }
 
     public async Task<object> InspectRepositoryAsync(
-        string? path,
-        string? gitReference,
+        FounderSoftwareRepositoryInspectionRequest request,
         CancellationToken cancellationToken)
     {
         var options = ReadOptions();
@@ -213,11 +265,15 @@ public sealed class FounderSoftwareRemediationService : IFounderSoftwareRemediat
         if (unavailable is not null)
             return unavailable;
 
-        if (!string.IsNullOrWhiteSpace(path) && !IsAllowedPath(path))
+        if (!string.IsNullOrWhiteSpace(request.Path) && !IsAllowedPath(request.Path))
             return Failure("repository_path_not_allowed", "The requested path is outside the bounded source and test allow-list.");
 
-        if (!string.IsNullOrWhiteSpace(gitReference) && !IsGitReference(gitReference))
+        if (!string.IsNullOrWhiteSpace(request.GitReference) && !IsGitReference(request.GitReference))
             return Failure("invalid_git_reference", "Repository inspection accepts only a branch name or immutable Git SHA.");
+
+        var inspectionError = ValidateInspectionRequest(request);
+        if (inspectionError is not null)
+            return Failure(inspectionError.Code, inspectionError.Detail);
 
         try
         {
@@ -226,48 +282,45 @@ public sealed class FounderSoftwareRemediationService : IFounderSoftwareRemediat
             if (!repository.IsSuccessStatusCode)
                 return GitHubFailure("repository_inspection_failed", repository.StatusCode);
 
-            var reference = string.IsNullOrWhiteSpace(gitReference) ? options.BaseBranch : gitReference;
-            if (string.IsNullOrWhiteSpace(path))
+            var reference = string.IsNullOrWhiteSpace(request.GitReference) ? options.BaseBranch : request.GitReference;
+            var commitSha = await ResolveInspectionCommitShaAsync(client, options, reference!, cancellationToken);
+            if (string.IsNullOrWhiteSpace(request.Path))
             {
-                using var branch = await SendGitHubAsync(client, HttpMethod.Get, $"repos/{options.RepositoryIdentity}/git/ref/heads/{Uri.EscapeDataString(reference)}", null, cancellationToken);
-                if (!branch.IsSuccessStatusCode)
-                    return GitHubFailure("repository_reference_not_found", branch.StatusCode);
-
-                using var branchJson = await JsonDocument.ParseAsync(await branch.Content.ReadAsStreamAsync(cancellationToken), cancellationToken: cancellationToken);
                 return new
                 {
                     capability = "inspect_repository",
                     repository = options.RepositoryIdentity,
                     reference,
-                    commitSha = ReadNestedString(branchJson.RootElement, "object", "sha"),
+                    commitSha,
                     inspected = true
                 };
             }
 
-            using var content = await SendGitHubAsync(
+            var file = await ReadRepositoryFileAsync(
                 client,
-                HttpMethod.Get,
-                $"repos/{options.RepositoryIdentity}/contents/{EscapeRepositoryPath(path)}?ref={Uri.EscapeDataString(reference)}",
-                null,
+                options,
+                request.Path,
+                commitSha,
+                MaximumRepositoryFileBytes,
                 cancellationToken);
-            if (!content.IsSuccessStatusCode)
-                return GitHubFailure("repository_content_not_found", content.StatusCode);
-
-            using var contentJson = await JsonDocument.ParseAsync(await content.Content.ReadAsStreamAsync(cancellationToken), cancellationToken: cancellationToken);
-            var encoded = ReadString(contentJson.RootElement, "content");
-            var text = DecodeRepositoryContent(encoded);
-            if (text is null)
-                return Failure("repository_content_not_text", "The requested repository object is not a bounded UTF-8 source or test file.");
+            var inspection = BuildInspection(file, request);
 
             return new
             {
                 capability = "inspect_repository",
                 repository = options.RepositoryIdentity,
                 reference,
-                path,
-                sha = ReadString(contentJson.RootElement, "sha"),
-                size = ReadOptionalInt(contentJson.RootElement, "size"),
-                content = text,
+                commitSha,
+                path = request.Path,
+                blobSha = file.BlobSha,
+                byteCount = file.ByteCount,
+                characterCount = file.Text.Length,
+                lineCount = file.Lines.Count,
+                fullFileReturned = inspection.FullFileReturned,
+                truncated = inspection.Truncated,
+                content = inspection.Content,
+                lineRange = inspection.LineRange,
+                search = inspection.Search,
                 inspected = true
             };
         }
@@ -313,7 +366,7 @@ public sealed class FounderSoftwareRemediationService : IFounderSoftwareRemediat
 
         var proposalError = ValidateProposal(proposal);
         if (proposalError is not null)
-            return Failure("invalid_repair_proposal", proposalError);
+            return Failure(proposalError.Code, proposalError.Detail);
 
         try
         {
@@ -330,24 +383,34 @@ public sealed class FounderSoftwareRemediationService : IFounderSoftwareRemediat
             }
 
             var baseTreeSha = await ReadCommitTreeShaAsync(client, options, proposal.BaseSha, cancellationToken);
-            var treeEntries = new List<object>(proposal.Changes.Count);
-            foreach (var change in proposal.Changes)
+            var preparedFiles = await PrepareFilesInMemoryAsync(
+                client,
+                options,
+                proposal,
+                cancellationToken);
+
+            // Every base file, expected blob, UTF-8 payload, patch occurrence,
+            // output bound, and cumulative processing limit passed above. Only
+            // now may GitHub receive a new blob; no validation failure can
+            // leave an orphan blob, tree, branch, commit, or pull request.
+            var treeEntries = new List<object>(preparedFiles.Count);
+            foreach (var prepared in preparedFiles)
             {
                 using var blob = await SendGitHubAsync(
                     client,
                     HttpMethod.Post,
                     $"repos/{options.RepositoryIdentity}/git/blobs",
-                    new { content = change.Content, encoding = "utf-8" },
+                    new { content = prepared.ResultingText, encoding = "utf-8" },
                     cancellationToken);
                 if (!blob.IsSuccessStatusCode)
                     return GitHubFailure("repair_blob_creation_failed", blob.StatusCode);
 
                 using var blobJson = await JsonDocument.ParseAsync(await blob.Content.ReadAsStreamAsync(cancellationToken), cancellationToken: cancellationToken);
                 var blobSha = ReadString(blobJson.RootElement, "sha");
-                if (string.IsNullOrWhiteSpace(blobSha))
+                if (!IsGitBlobSha(blobSha))
                     return Failure("repair_blob_creation_failed", "GitHub did not return an immutable blob identity.");
 
-                treeEntries.Add(new { path = change.Path, mode = "100644", type = "blob", sha = blobSha });
+                treeEntries.Add(new { path = prepared.Path, mode = "100644", type = "blob", sha = blobSha });
             }
 
             using var tree = await SendGitHubAsync(
@@ -803,6 +866,30 @@ public sealed class FounderSoftwareRemediationService : IFounderSoftwareRemediat
         return sha!;
     }
 
+    private static async Task<string> ResolveInspectionCommitShaAsync(
+        HttpClient client,
+        Options options,
+        string reference,
+        CancellationToken cancellationToken)
+    {
+        if (IsCommitSha(reference))
+            return reference;
+
+        using var branch = await SendGitHubAsync(
+            client,
+            HttpMethod.Get,
+            $"repos/{options.RepositoryIdentity}/git/ref/heads/{Uri.EscapeDataString(reference)}",
+            null,
+            cancellationToken);
+        if (!branch.IsSuccessStatusCode)
+            throw new FounderSoftwareRemediationException("repository_reference_not_found", "The requested repository branch could not be resolved to an immutable commit.");
+        using var document = await JsonDocument.ParseAsync(await branch.Content.ReadAsStreamAsync(cancellationToken), cancellationToken: cancellationToken);
+        var sha = ReadNestedString(document.RootElement, "object", "sha");
+        if (!IsCommitSha(sha))
+            throw new FounderSoftwareRemediationException("repository_reference_not_found", "The requested repository branch did not return an immutable commit SHA.");
+        return sha!;
+    }
+
     private static async Task<string> ReadCommitTreeShaAsync(HttpClient client, Options options, string commitSha, CancellationToken cancellationToken)
     {
         using var commit = await SendGitHubAsync(client, HttpMethod.Get, $"repos/{options.RepositoryIdentity}/git/commits/{commitSha}", null, cancellationToken);
@@ -1005,31 +1092,230 @@ public sealed class FounderSoftwareRemediationService : IFounderSoftwareRemediat
         };
     }
 
-    private static string? ValidateProposal(FounderSoftwareRepairProposal proposal)
+    private static RemediationFailure? ValidateProposal(FounderSoftwareRepairProposal proposal)
     {
         if (!IsCommitSha(proposal.BaseSha))
-            return "An exact immutable 40-character base SHA is required.";
+            return new("invalid_repair_proposal", "An exact immutable 40-character base commit SHA is required.");
         if (string.IsNullOrWhiteSpace(proposal.Title) || proposal.Title.Length > MaximumTitleCharacters)
-            return $"The repair title must be between 1 and {MaximumTitleCharacters} characters.";
+            return new("invalid_repair_proposal", $"The repair title must be between 1 and {MaximumTitleCharacters} characters.");
         if (string.IsNullOrWhiteSpace(proposal.Summary) || proposal.Summary.Length > MaximumSummaryCharacters)
-            return $"The repair summary must be between 1 and {MaximumSummaryCharacters} characters.";
-        if (proposal.Changes is null || proposal.Changes.Count is 0 || proposal.Changes.Count > MaximumChanges)
-            return $"A repair must contain between 1 and {MaximumChanges} bounded source or test file changes.";
+            return new("invalid_repair_proposal", $"The repair summary must be between 1 and {MaximumSummaryCharacters} characters.");
 
-        var paths = new HashSet<string>(StringComparer.Ordinal);
-        var totalCharacters = 0;
-        foreach (var change in proposal.Changes)
+        var fullChanges = proposal.Changes ?? Array.Empty<FounderSoftwareRepairChange>();
+        var patches = proposal.Patches ?? Array.Empty<FounderSoftwarePatchChange>();
+        if ((fullChanges.Count == 0 && patches.Count == 0) ||
+            (fullChanges.Count > 0 && patches.Count > 0) ||
+            fullChanges.Count + patches.Count > MaximumChanges)
         {
-            if (string.IsNullOrWhiteSpace(change.Path) || change.Path.Length > MaximumPathLength || !IsAllowedPath(change.Path) || !paths.Add(change.Path))
-                return "Each repair path must be unique and within the bounded source and test allow-list.";
-            if (change.Content is null || change.Content.Length > MaximumFileCharacters)
-                return $"Each changed file must contain at most {MaximumFileCharacters} UTF-8 text characters.";
-            totalCharacters += change.Content.Length;
+            return new("invalid_repair_proposal", $"A repair must contain one bounded full-file or patch mode with between 1 and {MaximumChanges} changed files.");
         }
 
-        return totalCharacters > MaximumTotalCharacters
-            ? $"The bounded repair may contain at most {MaximumTotalCharacters} total text characters."
+        var paths = new HashSet<string>(StringComparer.Ordinal);
+        var totalFullReplacementCharacters = 0;
+        foreach (var change in fullChanges)
+        {
+            if (!IsValidRepairPath(change.Path, paths))
+                return new("invalid_repair_proposal", "Each repair path must be unique and within the bounded source and test allow-list.");
+            if (!IsGitBlobSha(change.ExpectedBlobSha))
+                return new("invalid_repair_proposal", "Every full-file replacement requires the exact inspected 40-character Git blob SHA.");
+            if (change.Content is null || change.Content.Length > MaximumFullReplacementCharacters || !IsStrictUtf8(change.Content))
+                return new("repository_content_exceeds_bounded_limit", $"Each complete replacement must be strict UTF-8 and contain at most {MaximumFullReplacementCharacters} characters.");
+            totalFullReplacementCharacters += change.Content.Length;
+        }
+
+        if (totalFullReplacementCharacters > MaximumTotalFullReplacementCharacters)
+            return new("repository_content_exceeds_bounded_limit", $"Complete replacement input may contain at most {MaximumTotalFullReplacementCharacters} total characters.");
+
+        var totalPatchInputCharacters = 0;
+        foreach (var patch in patches)
+        {
+            if (!IsValidRepairPath(patch.Path, paths))
+                return new("invalid_repair_proposal", "Each repair path must be unique and within the bounded source and test allow-list.");
+            if (!IsGitBlobSha(patch.ExpectedBlobSha))
+                return new("invalid_repair_proposal", "Every patch requires the exact inspected 40-character Git blob SHA.");
+            if (patch.Edits is null || patch.Edits.Count == 0 || patch.Edits.Count > MaximumPatchEditsPerFile)
+                return new("patch_limit_exceeded", $"Each file patch must contain between 1 and {MaximumPatchEditsPerFile} ordered edits.");
+
+            foreach (var edit in patch.Edits)
+            {
+                if (string.IsNullOrEmpty(edit.ExpectedText) ||
+                    edit.ExpectedText.Length > MaximumPatchExpectedTextCharacters ||
+                    edit.ReplacementText is null ||
+                    edit.ReplacementText.Length > MaximumPatchReplacementTextCharacters ||
+                    !IsStrictUtf8(edit.ExpectedText) ||
+                    !IsStrictUtf8(edit.ReplacementText))
+                {
+                    return new("patch_limit_exceeded", $"Each patch expected and replacement fragment must be strict UTF-8 and at most {MaximumPatchExpectedTextCharacters} and {MaximumPatchReplacementTextCharacters} characters respectively.");
+                }
+
+                totalPatchInputCharacters += edit.ExpectedText.Length + edit.ReplacementText.Length;
+            }
+        }
+
+        return totalPatchInputCharacters > MaximumPatchInputCharacters
+            ? new RemediationFailure("patch_limit_exceeded", $"Patch input may contain at most {MaximumPatchInputCharacters} total characters.")
             : null;
+    }
+
+    private static RemediationFailure? ValidateInspectionRequest(FounderSoftwareRepositoryInspectionRequest request)
+    {
+        var rangeRequested = request.StartLine.HasValue || request.LineCount.HasValue;
+        var searchRequested = !string.IsNullOrWhiteSpace(request.SearchText) || request.SearchContextLines.HasValue;
+        if (rangeRequested && searchRequested)
+            return new("repository_inspection_request_invalid", "Choose either a bounded line range or an exact-text search, not both.");
+        if (rangeRequested && (!request.StartLine.HasValue || !request.LineCount.HasValue ||
+            request.StartLine.Value < 1 || request.LineCount.Value < 1 || request.LineCount.Value > MaximumInspectionLineCount))
+        {
+            return new("repository_inspection_request_invalid", $"A line range requires a positive start line and between 1 and {MaximumInspectionLineCount} lines.");
+        }
+        if (searchRequested && (string.IsNullOrWhiteSpace(request.SearchText) ||
+            request.SearchText.Length > MaximumSearchTextCharacters ||
+            !IsStrictUtf8(request.SearchText) ||
+            request.SearchContextLines is < 0 or > MaximumSearchContextLines))
+        {
+            return new("repository_inspection_request_invalid", $"An exact UTF-8 search may contain at most {MaximumSearchTextCharacters} characters and 0 to {MaximumSearchContextLines} context lines.");
+        }
+
+        return null;
+    }
+
+    private async Task<IReadOnlyList<PreparedRepositoryFile>> PrepareFilesInMemoryAsync(
+        HttpClient client,
+        Options options,
+        FounderSoftwareRepairProposal proposal,
+        CancellationToken cancellationToken)
+    {
+        var prepared = new List<PreparedRepositoryFile>();
+        var processedBytes = 0;
+
+        foreach (var change in proposal.Changes ?? Array.Empty<FounderSoftwareRepairChange>())
+        {
+            var baseFile = await ReadRepositoryFileAsync(client, options, change.Path, proposal.BaseSha, MaximumRepositoryFileBytes, cancellationToken);
+            processedBytes = AddProcessedBytes(processedBytes, baseFile.ByteCount);
+            EnsureExpectedBlob(change.Path, change.ExpectedBlobSha!, baseFile.BlobSha);
+            if (baseFile.Text.Length > MaximumFullReplacementCharacters)
+                throw new FounderSoftwareRemediationException("repository_content_exceeds_bounded_limit", "Complete replacement is allowed only for a bounded small UTF-8 file. Use exact blob-bound patches for a larger file.");
+            EnsureResultingFileWithinBounds(change.Content);
+            processedBytes = AddProcessedBytes(processedBytes, StrictUtf8ByteCount(change.Content));
+            prepared.Add(new PreparedRepositoryFile(change.Path, change.Content));
+        }
+
+        foreach (var patch in proposal.Patches ?? Array.Empty<FounderSoftwarePatchChange>())
+        {
+            var baseFile = await ReadRepositoryFileAsync(client, options, patch.Path, proposal.BaseSha, MaximumRepositoryFileBytes, cancellationToken);
+            processedBytes = AddProcessedBytes(processedBytes, baseFile.ByteCount);
+            EnsureExpectedBlob(patch.Path, patch.ExpectedBlobSha, baseFile.BlobSha);
+            var resulting = ApplyPatchEdits(baseFile.Text, patch.Edits, patch.Path);
+            EnsureResultingFileWithinBounds(resulting);
+            processedBytes = AddProcessedBytes(processedBytes, StrictUtf8ByteCount(resulting));
+            prepared.Add(new PreparedRepositoryFile(patch.Path, resulting));
+        }
+
+        return prepared;
+    }
+
+    private async Task<RepositoryFile> ReadRepositoryFileAsync(
+        HttpClient client,
+        Options options,
+        string path,
+        string commitSha,
+        int maximumBytes,
+        CancellationToken cancellationToken)
+    {
+        using var content = await SendGitHubAsync(
+            client,
+            HttpMethod.Get,
+            $"repos/{options.RepositoryIdentity}/contents/{EscapeRepositoryPath(path)}?ref={Uri.EscapeDataString(commitSha)}",
+            null,
+            cancellationToken);
+        if (!content.IsSuccessStatusCode)
+            throw new FounderSoftwareRemediationException("repository_content_not_found", "The requested repository file was not found at the immutable base commit.");
+
+        using var contentJson = await JsonDocument.ParseAsync(await content.Content.ReadAsStreamAsync(cancellationToken), cancellationToken: cancellationToken);
+        if (!string.Equals(ReadString(contentJson.RootElement, "type"), "file", StringComparison.OrdinalIgnoreCase))
+            throw new FounderSoftwareRemediationException("repository_content_not_text", "The requested repository object is not a source or test file.");
+        var blobSha = ReadString(contentJson.RootElement, "sha");
+        if (!IsGitBlobSha(blobSha))
+            throw new FounderSoftwareRemediationException("repository_content_not_text", "The requested repository object has no immutable Git blob identity.");
+        var declaredSize = ReadOptionalInt(contentJson.RootElement, "size");
+        if (declaredSize is < 0 || declaredSize > maximumBytes)
+            throw new FounderSoftwareRemediationException("repository_content_exceeds_bounded_limit", $"The requested repository file exceeds the {maximumBytes}-byte bounded processing limit.");
+
+        using var blob = await SendGitHubAsync(
+            client,
+            HttpMethod.Get,
+            $"repos/{options.RepositoryIdentity}/git/blobs/{blobSha}",
+            null,
+            cancellationToken);
+        if (!blob.IsSuccessStatusCode)
+            throw new FounderSoftwareRemediationException("repository_content_not_found", "The immutable repository file blob could not be read.");
+
+        using var blobJson = await JsonDocument.ParseAsync(await blob.Content.ReadAsStreamAsync(cancellationToken), cancellationToken: cancellationToken);
+        if (!string.Equals(ReadString(blobJson.RootElement, "encoding"), "base64", StringComparison.OrdinalIgnoreCase))
+            throw new FounderSoftwareRemediationException("repository_content_not_utf8", "The repository file is not a strict UTF-8 text blob.");
+        var decoded = DecodeStrictUtf8(ReadString(blobJson.RootElement, "content"), maximumBytes);
+        return new RepositoryFile(blobSha!, decoded.Text, decoded.ByteCount, SplitLines(decoded.Text));
+    }
+
+    private static void EnsureExpectedBlob(string path, string expectedBlobSha, string actualBlobSha)
+    {
+        if (!string.Equals(expectedBlobSha, actualBlobSha, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new FounderSoftwareRemediationException(
+                "expected_blob_sha_stale",
+                $"The inspected blob for {path} changed at the immutable base commit. Re-inspect the file before preparing a repair.");
+        }
+    }
+
+    private static string ApplyPatchEdits(
+        string source,
+        IReadOnlyList<FounderSoftwarePatchEdit> edits,
+        string path)
+    {
+        var locations = new List<(int Start, int Length, string Replacement)>();
+        foreach (var edit in edits)
+        {
+            var first = source.IndexOf(edit.ExpectedText, StringComparison.Ordinal);
+            if (first < 0)
+                throw new FounderSoftwareRemediationException("patch_expected_text_missing", $"A required exact patch fragment was not found in {path}.");
+            if (source.IndexOf(edit.ExpectedText, first + 1, StringComparison.Ordinal) >= 0)
+                throw new FounderSoftwareRemediationException("patch_expected_text_ambiguous", $"A required exact patch fragment occurs more than once in {path}.");
+            locations.Add((first, edit.ExpectedText.Length, edit.ReplacementText));
+        }
+
+        for (var index = 1; index < locations.Count; index++)
+        {
+            if (locations[index].Start < locations[index - 1].Start)
+                throw new FounderSoftwareRemediationException("patch_edits_reordered", $"Patch edits for {path} must be supplied in source order.");
+            if (locations[index].Start < locations[index - 1].Start + locations[index - 1].Length)
+                throw new FounderSoftwareRemediationException("patch_edits_overlap", $"Patch edits for {path} overlap and cannot be applied atomically.");
+        }
+
+        var builder = new StringBuilder(source.Length);
+        var cursor = 0;
+        foreach (var location in locations)
+        {
+            builder.Append(source, cursor, location.Start - cursor);
+            builder.Append(location.Replacement);
+            cursor = location.Start + location.Length;
+        }
+        builder.Append(source, cursor, source.Length - cursor);
+        return builder.ToString();
+    }
+
+    private static void EnsureResultingFileWithinBounds(string text)
+    {
+        if (!IsStrictUtf8(text))
+            throw new FounderSoftwareRemediationException("repository_content_not_utf8", "A resulting repository file must be strict UTF-8 text.");
+        if (text.Length > MaximumResultingFileCharacters || StrictUtf8ByteCount(text) > MaximumResultingFileBytes)
+            throw new FounderSoftwareRemediationException("resulting_file_limit_exceeded", $"A resulting repository file may contain at most {MaximumResultingFileCharacters} characters and {MaximumResultingFileBytes} UTF-8 bytes.");
+    }
+
+    private static int AddProcessedBytes(int total, int next)
+    {
+        if (next > MaximumCumulativeFileProcessingBytes - total)
+            throw new FounderSoftwareRemediationException("patch_limit_exceeded", $"Cumulative repository-file processing may not exceed {MaximumCumulativeFileProcessingBytes} bytes.");
+        return total + next;
     }
 
     private static bool IsAllowedPath(string path)
@@ -1063,6 +1349,11 @@ public sealed class FounderSoftwareRemediationService : IFounderSoftwareRemediat
     private static bool IsCommitSha(string? value) =>
         !string.IsNullOrWhiteSpace(value) && value.Length == 40 && value.All(Uri.IsHexDigit);
 
+    // A Git blob SHA currently has the same lexical form as a commit SHA, but
+    // it is deliberately validated and named separately in the authority and
+    // tool contract so callers cannot conflate the two immutable identities.
+    private static bool IsGitBlobSha(string? value) => IsCommitSha(value);
+
     private static string EscapeRepositoryPath(string path) => string.Join('/', path.Split('/').Select(Uri.EscapeDataString));
 
     private static Uri KeyVaultSecretReadUri(Uri secretUri)
@@ -1080,23 +1371,201 @@ public sealed class FounderSoftwareRemediationService : IFounderSoftwareRemediat
         return builder.Uri;
     }
 
-    private static string? DecodeRepositoryContent(string? encoded)
+    private static DecodedUtf8 DecodeStrictUtf8(string? encoded, int maximumBytes)
     {
-        if (string.IsNullOrWhiteSpace(encoded))
-            return string.Empty;
         try
         {
-            var bytes = Convert.FromBase64String(encoded.Replace("\n", string.Empty, StringComparison.Ordinal));
-            if (bytes.Length > MaximumFileCharacters * 4)
-                return null;
+            var bytes = string.IsNullOrWhiteSpace(encoded)
+                ? Array.Empty<byte>()
+                : Convert.FromBase64String(encoded.Replace("\n", string.Empty, StringComparison.Ordinal));
+            if (bytes.Length > maximumBytes)
+                throw new FounderSoftwareRemediationException("repository_content_exceeds_bounded_limit", $"The requested repository file exceeds the {maximumBytes}-byte bounded processing limit.");
             var text = new UTF8Encoding(false, true).GetString(bytes);
-            return text.Length <= MaximumFileCharacters ? text : null;
+            if (!IsStrictUtf8(text))
+                throw new FounderSoftwareRemediationException("repository_content_not_utf8", "The repository file is not a strict UTF-8 source or test file.");
+            return new DecodedUtf8(text, bytes.Length);
+        }
+        catch (FounderSoftwareRemediationException)
+        {
+            throw;
         }
         catch (Exception)
         {
-            return null;
+            throw new FounderSoftwareRemediationException("repository_content_not_utf8", "The repository file is not a strict UTF-8 source or test file.");
         }
     }
+
+    private static bool IsStrictUtf8(string text)
+    {
+        try
+        {
+            _ = new UTF8Encoding(false, true).GetBytes(text);
+            return !text.Any(character => char.IsControl(character) && character is not '\r' and not '\n' and not '\t');
+        }
+        catch (EncoderFallbackException)
+        {
+            return false;
+        }
+    }
+
+    private static int StrictUtf8ByteCount(string text) => new UTF8Encoding(false, true).GetByteCount(text);
+
+    private static bool IsValidRepairPath(string path, ISet<string> paths) =>
+        !string.IsNullOrWhiteSpace(path) &&
+        path.Length <= MaximumPathLength &&
+        IsAllowedPath(path) &&
+        paths.Add(path);
+
+    private static IReadOnlyList<string> SplitLines(string text) => text.Split('\n');
+
+    private static RepositoryInspection BuildInspection(
+        RepositoryFile file,
+        FounderSoftwareRepositoryInspectionRequest request)
+    {
+        var rangeRequested = request.StartLine.HasValue;
+        var searchRequested = !string.IsNullOrWhiteSpace(request.SearchText);
+        if (!rangeRequested && !searchRequested && file.Text.Length <= MaximumFullReplacementCharacters)
+        {
+            return new RepositoryInspection(
+                true,
+                false,
+                file.Text,
+                null,
+                null);
+        }
+
+        if (rangeRequested)
+        {
+            var start = request.StartLine!.Value;
+            var count = request.LineCount!.Value;
+            var selected = SelectLines(file.Lines, start, count);
+            return new RepositoryInspection(
+                false,
+                start > 1 || start - 1 + selected.Count < file.Lines.Count,
+                null,
+                new
+                {
+                    startLine = start,
+                    requestedLineCount = count,
+                    returnedLineCount = selected.Count,
+                    totalLineCount = file.Lines.Count,
+                    beforeTruncated = start > 1,
+                    afterTruncated = start - 1 + selected.Count < file.Lines.Count,
+                    lines = selected
+                },
+                null);
+        }
+
+        if (searchRequested)
+        {
+            var context = request.SearchContextLines ?? 0;
+            var matches = new List<object>();
+            var offset = 0;
+            var moreMatches = false;
+            while (offset <= file.Text.Length - request.SearchText!.Length)
+            {
+                var index = file.Text.IndexOf(request.SearchText, offset, StringComparison.Ordinal);
+                if (index < 0)
+                    break;
+                if (matches.Count == MaximumSearchMatches)
+                {
+                    moreMatches = true;
+                    break;
+                }
+
+                var line = LineNumberAt(file.Text, index);
+                matches.Add(new
+                {
+                    line,
+                    contextStartLine = Math.Max(1, line - context),
+                    contextEndLine = Math.Min(file.Lines.Count, line + context),
+                    lines = SelectLines(file.Lines, Math.Max(1, line - context), Math.Min(file.Lines.Count, line + context) - Math.Max(1, line - context) + 1)
+                });
+                offset = index + Math.Max(1, request.SearchText.Length);
+            }
+
+            return new RepositoryInspection(
+                false,
+                // A search result is always a deliberately bounded view, even
+                // when it found every occurrence.  Do not let callers mistake
+                // a contextual excerpt for the complete source file.
+                true,
+                null,
+                null,
+                new
+                {
+                    exactText = request.SearchText,
+                    contextLines = context,
+                    returnedMatchCount = matches.Count,
+                    matchesTruncated = moreMatches,
+                    matches
+                });
+        }
+
+        // Oversized text remains inspectable, but metadata alone is returned
+        // until the caller supplies a bounded range or exact-text search.
+        return new RepositoryInspection(false, true, null, null, new
+        {
+            mode = "metadata_only",
+            reason = "repository_content_exceeds_bounded_limit",
+            detail = $"This UTF-8 file is larger than the {MaximumFullReplacementCharacters}-character full-return limit. Inspect a bounded line range or exact-text search using its immutable blob SHA."
+        });
+    }
+
+    private static IReadOnlyList<RepositoryInspectionLine> SelectLines(
+        IReadOnlyList<string> lines,
+        int startLine,
+        int count)
+    {
+        if (startLine > lines.Count)
+            return Array.Empty<RepositoryInspectionLine>();
+
+        return lines
+            .Skip(startLine - 1)
+            .Take(count)
+            .Select((line, index) => new RepositoryInspectionLine(
+                startLine + index,
+                line.Length > MaximumInspectionLineCharacters
+                    ? line[..MaximumInspectionLineCharacters]
+                    : line,
+                line.Length > MaximumInspectionLineCharacters))
+            .ToArray();
+    }
+
+    private static int LineNumberAt(string text, int characterIndex)
+    {
+        var line = 1;
+        for (var index = 0; index < characterIndex; index++)
+        {
+            if (text[index] == '\n')
+                line++;
+        }
+        return line;
+    }
+
+    private sealed record RemediationFailure(string Code, string Detail);
+
+    private sealed record DecodedUtf8(string Text, int ByteCount);
+
+    private sealed record RepositoryFile(
+        string BlobSha,
+        string Text,
+        int ByteCount,
+        IReadOnlyList<string> Lines);
+
+    private sealed record PreparedRepositoryFile(string Path, string ResultingText);
+
+    private sealed record RepositoryInspection(
+        bool FullFileReturned,
+        bool Truncated,
+        string? Content,
+        object? LineRange,
+        object? Search);
+
+    private sealed record RepositoryInspectionLine(
+        int LineNumber,
+        string Text,
+        bool Truncated);
 
     private static string TrimForStorage(string value, int maximumLength) =>
         value.Length <= maximumLength ? value : value[..maximumLength];
