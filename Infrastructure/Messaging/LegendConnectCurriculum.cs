@@ -3660,7 +3660,8 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
             selection.SourceLanguageCode,
             selection.SourceComponents,
             null,
-            cancellationToken);
+            requireOriginalRealization: false,
+            cancellationToken: cancellationToken);
         if (realization.Reason is not null)
         {
             return realization.IsAmbiguous
@@ -3672,13 +3673,13 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
             LegendSemanticTransitionInference.Supported,
             realization.Text,
             selected.IndependentEvidenceCount + realization.LayoutEvidenceCount,
-            ["independently_supported_semantic_transition", "canonical_anchor_realization"]);
+            ["independently_supported_semantic_transition", "canonical_endpoint_realization"]);
     }
 
     /// <summary>
     /// Stage-5 serving projection: the existing selector receives the Stage-1
     /// composed graph and Stage-3 durable discourse bindings before the same
-    /// governed canonical realization routine runs. It is intentionally not
+    /// governed compositional realization routine runs. It is intentionally not
     /// a surface lookup or a second transition authority.
     /// </summary>
     internal async Task<LegendSemanticTransitionInference> TryInferComposedSemanticTransitionAsync(
@@ -3722,7 +3723,8 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
             selection.SourceLanguageCode,
             SourceComponentsFromMeaningGraph(input, graph),
             content.ContentVariableBindings,
-            cancellationToken);
+            requireOriginalRealization: true,
+            cancellationToken: cancellationToken);
         if (realization.Reason is not null)
         {
             return realization.IsAmbiguous
@@ -3734,7 +3736,7 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
             LegendSemanticTransitionInference.Supported,
             realization.Text,
             selection.Selected.IndependentEvidenceCount + content.EvidenceCount + realization.LayoutEvidenceCount,
-            ["governed_composed_meaning_graph", "independently_supported_semantic_transition", "governed_content_binding", "canonical_anchor_realization"]);
+            ["governed_composed_meaning_graph", "independently_supported_semantic_transition", "governed_content_binding", "original_compositional_anchor_realization"]);
     }
 
     internal async Task<LegendConnectResponseMeaningPlanResult> TryPlanResponseMeaningAsync(
@@ -4438,6 +4440,7 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
         string languageCode,
         IReadOnlyList<LegendShadowSourceSemanticComponent> sourceComponents,
         IReadOnlyDictionary<string, string>? contentVariableBindings,
+        bool requireOriginalRealization,
         CancellationToken cancellationToken)
     {
         if (contentVariableBindings is { Count: > 0 })
@@ -4566,16 +4569,12 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
                 MatchesInstantiatedSemanticFrame(candidate.ResultFrame, values, candidate.Bindings))
             .ToList();
 
-        // A fully static target frame needs no synthetic composition: the
-        // governed endpoint is already one exact canonical Founder response.
-        // The result class itself still requires independent realization
-        // support from three Founder families. This is intentionally not a
-        // prompt/answer lookup: selection is by the reusable semantic frame
-        // and one independently supported transition, and the returned text
-        // is an existing canonical result endpoint rather than a template.
-        // Frames with a bound variable continue below through the stricter
-        // structural-layout realization path.
-        if (!candidate.ResultFrame.Dimensions.Values.Any(IsSemanticVariable) &&
+        // The legacy non-discourse evaluator remains available for historical
+        // regression diagnostics. Production conversation uses the composed
+        // path below and is never allowed to present this endpoint retrieval
+        // as original articulation.
+        if (!requireOriginalRealization &&
+            !candidate.ResultFrame.Dimensions.Values.Any(IsSemanticVariable) &&
             TryRealizeCanonicalStaticResult(
                 scopedExamples,
                 out var canonicalText,
@@ -4608,8 +4607,15 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
         var frameDimensions = candidate.ResultFrame.Dimensions.Keys
             .Where(item => !IsStructuralRelationFrameDimension(item))
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var hasResultVariables = candidate.ResultFrame.Dimensions.Values.Any(IsSemanticVariable);
+        // Static responses may use only the selected transition's exact
+        // Founder-approved endpoints. Bound-variable responses retain the
+        // broader same-frame layout evidence needed to realize a new value.
+        var layoutExamples = hasResultVariables
+            ? examples
+            : scopedDatabaseExamples;
         var layouts = new List<SemanticRealizationLayout>();
-        foreach (var example in examples.Where(item =>
+        foreach (var example in layoutExamples.Where(item =>
                      variationMaps.TryGetValue(item.Id, out var values) &&
                      MatchesStaticSemanticFrame(candidate.ResultFrame, values)))
         {
@@ -4637,18 +4643,31 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
             if (eligibleLayouts.Count > 1)
                 return SemanticTransitionRealization.Ambiguous("ambiguous_result_realization_layout");
 
-            var learnedLayout = eligibleLayouts[0].Layouts;
-            if (!TryResolveScopedSemanticComponents(
+            // A native conversational response must be composed from governed
+            // semantic components. Returning an entire stored curriculum
+            // sentence is retrieval, not articulation. The learned layout is
+            // independently supported by three Founder families; this method
+            // recombines only position-, dimension-, and value-compatible
+            // exact anchors and rejects every verbatim endpoint.
+            var realizationSeed = string.Join('|',
+                sourceComponents
+                    .OrderBy(item => item.StartTokenIndex)
+                    .ThenBy(item => item.Dimension, StringComparer.Ordinal)
+                    .Select(item => item.SemanticSignature + "=" + item.SurfaceForm));
+            if (!TryRealizeOriginalLearnedLayout(
+                    eligibleLayouts[0].Layouts,
                     scopedExamples,
-                    anchorsByExample,
-                    frameDimensions,
-                    out var scopedComponents))
+                    candidate.TransitionSignature + "|" + realizationSeed,
+                    out var text))
             {
-                return SemanticTransitionRealization.Ambiguous("contradictory_result_semantic_components");
+                return SemanticTransitionRealization.Insufficient(
+                    "result_original_realization_unavailable");
             }
-
-            if (!TryRealizeLearnedLayout(learnedLayout, scopedComponents, out var text))
-                return SemanticTransitionRealization.Insufficient("result_realization_component_missing");
+            if (await IsActiveCurriculumSentenceAsync(languageCode, text, cancellationToken))
+            {
+                return SemanticTransitionRealization.Insufficient(
+                    "result_original_realization_matched_curriculum_sentence");
+            }
             return new SemanticTransitionRealization(text, eligibleLayouts[0].IndependentFamilies, null, false);
         }
 
@@ -4657,13 +4676,42 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
         // and every non-bound component is invariant across that layout.  This
         // permits a learned compositional response to a new approved source
         // binding without manufacturing a target fact or using a template.
-        return TryRealizeBoundSemanticTransitionResult(
+        var boundRealization = TryRealizeBoundSemanticTransitionResult(
             candidate,
             sourceComponents,
             contentVariableBindings,
             layoutDatabaseExamples,
             variationMaps,
-            anchorsByExample);
+            anchorsByExample,
+            requireOriginalRealization);
+        if (requireOriginalRealization &&
+            boundRealization.Reason is null &&
+            !string.IsNullOrWhiteSpace(boundRealization.Text) &&
+            await IsActiveCurriculumSentenceAsync(
+                languageCode,
+                boundRealization.Text,
+                cancellationToken))
+        {
+            return SemanticTransitionRealization.Insufficient(
+                "result_original_realization_matched_curriculum_sentence");
+        }
+        return boundRealization;
+    }
+
+    private Task<bool> IsActiveCurriculumSentenceAsync(
+        string languageCode,
+        string text,
+        CancellationToken cancellationToken)
+    {
+        var textHash = LegendLanguageIdentity.TextHash(text);
+        return _db.Set<LegendCurriculumExample>().AsNoTracking().AnyAsync(example =>
+            example.SupersededUtc == null &&
+            example.LanguageCode == languageCode &&
+            _db.Set<LegendLanguageTextUnit>().Any(unit =>
+                unit.Id == example.TextUnitId &&
+                unit.LanguageCode == languageCode &&
+                unit.NormalizedHash == textHash),
+            cancellationToken);
     }
 
     private static bool TryRealizeCanonicalStaticResult(
@@ -4679,10 +4727,6 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
         if (independentFamilies < 3)
             return false;
 
-        // Stable canonical ordering makes a result reproducible across
-        // requests and instances without encoding any phrase preference.
-        // Every eligible candidate is already a Founder-approved endpoint of
-        // the selected semantic transition.
         var canonical = examples
             .Select(item => LegendLanguageIdentity.NormalizeText(item.Text))
             .Where(item => !string.IsNullOrWhiteSpace(item))
@@ -4997,86 +5041,90 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
         return true;
     }
 
-    private static bool TryResolveScopedSemanticComponents(
-        IReadOnlyList<SemanticResultExample> examples,
-        IReadOnlyDictionary<Guid, List<SemanticAnchor>> anchorsByExample,
-        IReadOnlySet<string> frameDimensions,
-        out IReadOnlyDictionary<string, SemanticLayoutComponent> components)
-    {
-        var candidates = new List<SemanticLayoutComponent>();
-        foreach (var example in examples)
-        {
-            if (!anchorsByExample.TryGetValue(example.Id, out var anchors))
-                continue;
-            candidates.AddRange(anchors
-                .GroupBy(item => (item.Dimension, item.StartTokenIndex, item.TokenLength, item.Value))
-                .Select(group => group.First())
-                .Select(item => new SemanticLayoutComponent(
-                    item.Dimension,
-                    item.Value,
-                    item.StartTokenIndex,
-                    item.TokenLength,
-                    ExtractAnchorSurface(example.Text, item.StartTokenIndex, item.TokenLength)))
-                .Where(item => !string.IsNullOrWhiteSpace(item.SurfaceForm)));
-        }
-
-        var resolved = new Dictionary<string, SemanticLayoutComponent>(StringComparer.OrdinalIgnoreCase);
-        foreach (var group in candidates.GroupBy(item => item.Dimension, StringComparer.OrdinalIgnoreCase))
-        {
-            var possibilities = group
-                .GroupBy(item => item.Value + "\u001f" + item.SurfaceForm, StringComparer.Ordinal)
-                .Select(item => item.First())
-                .ToArray();
-            if (possibilities.Length != 1)
-            {
-                components = resolved;
-                return false;
-            }
-            resolved[group.Key] = possibilities[0];
-        }
-        components = resolved;
-        return true;
-    }
-
-    private static bool TryRealizeLearnedLayout(
+    private static bool TryRealizeOriginalLearnedLayout(
         IReadOnlyList<SemanticRealizationLayout> layouts,
-        IReadOnlyDictionary<string, SemanticLayoutComponent> scopedComponents,
+        IReadOnlyList<SemanticResultExample> storedEndpoints,
+        string seed,
         out string text)
     {
         text = string.Empty;
-        if (layouts.Count == 0)
+        if (layouts.Count == 0 || layouts[0].Components.Count < 2)
             return false;
 
-        var output = new List<string>();
-        foreach (var position in layouts[0].Components)
+        var componentCount = layouts[0].Components.Count;
+        if (layouts.Any(item => item.Components.Count != componentCount))
+            return false;
+
+        var alternativesByPosition = new List<string[]>(componentCount);
+        for (var position = 0; position < componentCount; position++)
         {
-            if (scopedComponents.TryGetValue(position.Dimension, out var scoped))
+            var reference = layouts[0].Components[position];
+            var aligned = layouts.Select(item => item.Components[position]).ToArray();
+            if (aligned.Any(item =>
+                    !string.Equals(item.Dimension, reference.Dimension, StringComparison.OrdinalIgnoreCase) ||
+                    !string.Equals(item.Value, reference.Value, StringComparison.OrdinalIgnoreCase)))
             {
-                output.Add(scoped.SurfaceForm);
-                continue;
+                return false;
             }
 
-            var fixedAlternatives = layouts
-                .SelectMany(item => item.Components)
-                .Where(item => string.Equals(item.Dimension, position.Dimension, StringComparison.OrdinalIgnoreCase))
-                .GroupBy(item => item.Value + "\u001f" + item.SurfaceForm, StringComparer.Ordinal)
-                .Select(group => group.First())
+            var alternatives = aligned
+                .Select(item => LegendLanguageIdentity.NormalizeText(item.SurfaceForm))
+                .Where(item => !string.IsNullOrWhiteSpace(item))
+                .Distinct(StringComparer.Ordinal)
+                .OrderBy(item => LegendLanguageIdentity.TextHash(item), StringComparer.Ordinal)
+                .ThenBy(item => item, StringComparer.Ordinal)
                 .ToArray();
-            if (fixedAlternatives.Length != 1)
+            if (alternatives.Length == 0)
                 return false;
-            output.Add(fixedAlternatives[0].SurfaceForm);
+            alternativesByPosition.Add(alternatives);
         }
 
         var punctuation = layouts
             .Select(item => item.TerminalPunctuation)
             .Distinct(StringComparer.Ordinal)
             .ToArray();
-        text = LegendLanguageIdentity.NormalizeText(string.Join(' ', output));
-        if (string.IsNullOrWhiteSpace(text))
+        if (punctuation.Length != 1)
             return false;
-        if (punctuation.Length == 1 && !string.IsNullOrWhiteSpace(punctuation[0]))
-            text += punctuation[0];
-        return true;
+
+        const long maximumCombinations = 4096;
+        long combinationCount = 1;
+        foreach (var alternatives in alternativesByPosition)
+            combinationCount = Math.Min(maximumCombinations, combinationCount * alternatives.Length);
+        if (combinationCount <= 1)
+            return false;
+
+        var stored = storedEndpoints
+            .Select(item => LegendLanguageIdentity.NormalizeText(item.Text))
+            .Where(item => !string.IsNullOrWhiteSpace(item))
+            .ToHashSet(StringComparer.Ordinal);
+        var seedBytes = SHA256.HashData(Encoding.UTF8.GetBytes(seed));
+        var startingOrdinal = (long)(BitConverter.ToUInt64(seedBytes, 0) % (ulong)combinationCount);
+
+        for (long attempt = 0; attempt < combinationCount; attempt++)
+        {
+            var ordinal = (startingOrdinal + attempt) % combinationCount;
+            var cursor = ordinal;
+            var output = new List<string>(componentCount);
+            foreach (var alternatives in alternativesByPosition)
+            {
+                output.Add(alternatives[(int)(cursor % alternatives.Length)]);
+                cursor /= alternatives.Length;
+            }
+
+            var candidate = LegendLanguageIdentity.NormalizeText(string.Join(' ', output));
+            if (string.IsNullOrWhiteSpace(candidate))
+                continue;
+            if (!string.IsNullOrWhiteSpace(punctuation[0]))
+                candidate += punctuation[0];
+            candidate = LegendLanguageIdentity.NormalizeText(candidate);
+            if (stored.Contains(candidate))
+                continue;
+
+            text = candidate;
+            return true;
+        }
+
+        return false;
     }
 
     private static SemanticTransitionRealization TryRealizeBoundSemanticTransitionResult(
@@ -5085,7 +5133,8 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
         IReadOnlyDictionary<string, string>? contentVariableBindings,
         IReadOnlyList<SemanticResultExample> layoutExamples,
         IReadOnlyDictionary<Guid, IReadOnlyDictionary<string, string>> variationMaps,
-        IReadOnlyDictionary<Guid, List<SemanticAnchor>> anchorsByExample)
+        IReadOnlyDictionary<Guid, List<SemanticAnchor>> anchorsByExample,
+        bool requireOriginalRealization)
     {
         var dynamicDimensions = candidate.ResultFrame.Dimensions
             .Where(item => IsSemanticVariable(item.Value))
@@ -5209,6 +5258,15 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
             return SemanticTransitionRealization.Insufficient("result_bound_layout_component_missing");
         if (!string.IsNullOrWhiteSpace(punctuation[0]))
             text += punctuation[0];
+        text = LegendLanguageIdentity.NormalizeText(text);
+        if (requireOriginalRealization && layoutExamples.Any(item => string.Equals(
+                LegendLanguageIdentity.NormalizeText(item.Text),
+                text,
+                StringComparison.Ordinal)))
+        {
+            return SemanticTransitionRealization.Insufficient(
+                "result_original_realization_unavailable");
+        }
         return new SemanticTransitionRealization(
             text,
             eligibleLayouts[0].IndependentFamilies,

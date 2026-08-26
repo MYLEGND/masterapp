@@ -39,14 +39,17 @@
     <None Include="..\\.github\\workflows\\agentportal-production-deploy.yml"
           Link="agentportal-production-deploy.yml"
           CopyToOutputDirectory="PreserveNewest" />
-    <None Include="..\\.github\\workflows\\security-ci.yml"
-          Link="security-ci.yml"
-          CopyToOutputDirectory="PreserveNewest" />
     <None Include="..\\.github\\workflows\\legend-production-readonly-diagnostic.yml"
           Link="legend-production-readonly-diagnostic.yml"
           CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\\scripts\\db.sh"
+          Link="db.sh"
+          CopyToOutputDirectory="PreserveNewest" />
     <None Include="..\\AgentPortal\\wwwroot\\js\\legend-founder-ai.js"
           Link="legend-founder-ai.js"
+          CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\\AgentPortal\\Views\\LegendConnect\\Index.cshtml"
+          Link="legend-connect-index.cshtml"
           CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 

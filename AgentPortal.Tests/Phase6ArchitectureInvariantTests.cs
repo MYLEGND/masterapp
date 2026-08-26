@@ -105,7 +105,7 @@ public class Phase6ArchitectureInvariantTests
     // Note: "applications delegate to shared authorities in their composition
     // roots" and "no inline Azure key-ring wiring / no committed secrets / no
     // skipped security tests" are enforced by the CI workflow's narrow source
-    // checks (.github/workflows/security-ci.yml), which run from the repository
+    // checks (.github/workflows/agentportal-production-deploy.yml), which run from the repository
     // root. They are intentionally not file-reading unit tests here because this
     // repo redirects bin output to /tmp, so the test assembly cannot resolve the
     // source tree — a file-reading test would be brittle rather than reliable.

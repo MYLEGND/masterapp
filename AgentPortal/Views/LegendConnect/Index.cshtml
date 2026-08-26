@@ -101,20 +101,22 @@
         </section>
     }
 
-    <section class="lc-panel lc-remediation-authority" aria-labelledby="remediation-authority-title">
-        <header class="lc-panel-header">
-            <div>
+    <details class="lc-panel lc-panel-collapse lc-remediation-authority">
+        <summary class="lc-panel-summary">
+            <span class="lc-panel-summary-copy">
                 <span class="lc-kicker">FOUNDER-GOVERNED ENGINEERING</span>
-                <h2 id="remediation-authority-title">GitHub Remediation Authority</h2>
-                <p>
+                <strong role="heading" aria-level="2">GitHub Remediation Authority</strong>
+                <span class="lc-panel-summary-description">
                     One bounded authority for repair preparation and Founder-approved release.
                     It never accepts a personal access token, exposes a private key, or grants a raw production console.
-                </p>
-            </div>
+                </span>
+            </span>
             <span class="lc-status @(remediation.RepairPreparationReady ? "lc-status-gold" : "lc-status-amber")">
                 @remediation.State
             </span>
-        </header>
+        </summary>
+
+        <div class="lc-panel-body">
 
         <dl class="lc-authority-status-grid">
             <div><dt>Repository</dt><dd>@remediation.Repository</dd></div>
@@ -158,19 +160,23 @@
                 <button type="submit" class="dashboard-command-action lc-danger-action">Revoke authority</button>
             </form>
         </div>
-    </section>
+        </div>
+    </details>
 
-    <section class="lc-panel lc-intelligence-evaluation" aria-labelledby="intelligence-evaluation-title">
-        <header class="lc-panel-header">
-            <div>
+    <details class="lc-panel lc-panel-collapse lc-intelligence-evaluation">
+        <summary class="lc-panel-summary">
+            <span class="lc-panel-summary-copy">
                 <span class="lc-kicker">VERSIONED EVALUATION</span>
-                <h2 id="intelligence-evaluation-title">LEGEND® Intelligence Evaluation</h2>
-                <p>Three separate lenses are retained and compared; they are never hidden inside one blended score.</p>
-            </div>
+                <strong role="heading" aria-level="2">LEGEND® Intelligence Evaluation</strong>
+                <span class="lc-panel-summary-description">Three separate lenses are retained and compared; they are never hidden inside one blended score.</span>
+            </span>
+            <span class="lc-panel-toggle-label">Evaluation</span>
+        </summary>
+
+        <div class="lc-panel-body">
             <button type="button" class="dashboard-command-action btn-carrier-settings" data-bs-toggle="modal" data-bs-target="#legendIntelligenceEvaluationModal">
                 Open evaluation
             </button>
-        </header>
         <div class="lc-intelligence-summary-grid">
             <article><span>Demonstrated intelligence</span><strong>@(evaluation.DemonstratedIntelligence is null ? "Not evaluated" : $"{evaluation.DemonstratedIntelligence.Value:0.0}%")</strong></article>
             <article><span>LEGEND self-assessment</span><strong>@(evaluation.LegendSelfAssessment is null ? "Not assessed" : $"{evaluation.LegendSelfAssessment.Value:0.0}%")</strong></article>
@@ -182,7 +188,8 @@
             @Html.AntiForgeryToken()
             <button type="submit" class="dashboard-command-action btn-carrier-settings">Record evidence evaluation snapshot</button>
         </form>
-    </section>
+        </div>
+    </details>
 
     <div class="modal fade" id="legendIntelligenceEvaluationModal" tabindex="-1" aria-labelledby="legendIntelligenceEvaluationModalTitle" aria-hidden="true">
         <div class="modal-dialog modal-xl modal-dialog-scrollable">
@@ -231,22 +238,24 @@
         </div>
     </div>
 
-    <section class="lc-panel lc-panel-legend">
-        <header class="lc-panel-header">
-            <div>
+    <details class="lc-panel lc-panel-collapse lc-panel-legend">
+        <summary class="lc-panel-summary">
+            <span class="lc-panel-summary-copy">
                 <span class="lc-kicker">INTERNAL LANGUAGE INTELLIGENCE</span>
-                <h2>Legend® Ai Translations</h2>
-                <p>
+                <strong role="heading" aria-level="2">Legend® Ai Translations</strong>
+                <span class="lc-panel-summary-description">
                     Measure what LEGEND® resolves, reuses, or composes internally
                     before Azure Translator is required.
-                </p>
-            </div>
+                </span>
+            </span>
 
             <span class="lc-status lc-status-gold"
                   data-live-metrics-status>
                 Loading
             </span>
-        </header>
+        </summary>
+
+        <div class="lc-panel-body">
 
         <div class="lc-metric-grid">
             <article class="lc-metric lc-tone-green"
@@ -305,24 +314,27 @@
                 <small>Current external translation dependency</small>
             </article>
         </div>
-    </section>
+        </div>
+    </details>
 
-    <section class="lc-panel lc-panel-azure">
-        <header class="lc-panel-header">
-            <div>
+    <details class="lc-panel lc-panel-collapse lc-panel-azure">
+        <summary class="lc-panel-summary">
+            <span class="lc-panel-summary-copy">
                 <span class="lc-kicker lc-kicker-azure">AZURE TRANSLATOR</span>
-                <h2>Azure Translations</h2>
-                <p>
+                <strong role="heading" aria-level="2">Azure Translations</strong>
+                <span class="lc-panel-summary-description">
                     Track provider consumption and protected capacity separately
                     from LEGEND® internal translation intelligence.
-                </p>
-            </div>
+                </span>
+            </span>
 
             <span class="lc-status lc-status-blue"
                   data-azure-status>
                 Loading
             </span>
-        </header>
+        </summary>
+
+        <div class="lc-panel-body">
 
         <div class="lc-metric-grid">
             <article class="lc-metric lc-tone-blue"
@@ -417,19 +429,23 @@
                 Synchronizing Azure Translator capacity.
             </p>
         </div>
-    </section>
+        </div>
+    </details>
 
-    <section class="lc-panel">
-        <header class="lc-panel-header">
-            <div>
+    <details class="lc-panel lc-panel-collapse">
+        <summary class="lc-panel-summary">
+            <span class="lc-panel-summary-copy">
                 <span class="lc-kicker">FOUNDER CONTROLS</span>
-                <h2>Governed language training</h2>
-                <p>
+                <strong role="heading" aria-level="2">Governed language training</strong>
+                <span class="lc-panel-summary-description">
                     Submit Founder-approved material through the existing canonical
                     ingestion authority without creating a parallel learning path.
-                </p>
-            </div>
-        </header>
+                </span>
+            </span>
+            <span class="lc-panel-toggle-label">Training</span>
+        </summary>
+
+        <div class="lc-panel-body">
 
         <form method="post"
               asp-action="SubmitKnowledge"
@@ -566,24 +582,27 @@
                 </form>
             </div>
         </details>
-    </section>
+        </div>
+    </details>
 
-    <section class="lc-panel">
-        <header class="lc-panel-header">
-            <div>
+    <details class="lc-panel lc-panel-collapse">
+        <summary class="lc-panel-summary">
+            <span class="lc-panel-summary-copy">
                 <span class="lc-kicker">PRODUCTION CONTROL</span>
-                <h2>Composition boundary</h2>
-                <p>
+                <strong role="heading" aria-level="2">Composition boundary</strong>
+                <span class="lc-panel-summary-description">
                     Change only the established server policy. Curriculum,
                     contradiction, evidence, quality, and Azure fallback authorities
                     remain unchanged.
-                </p>
-            </div>
+                </span>
+            </span>
 
             <span class="lc-status lc-status-gold">
                 @compositionMode
             </span>
-        </header>
+        </summary>
+
+        <div class="lc-panel-body">
 
         <div class="lc-mode-row">
             @foreach (var mode in new[] { "Disabled", "Shadow", "Active" })
@@ -603,19 +622,23 @@
                 </form>
             }
         </div>
-    </section>
+        </div>
+    </details>
 
-    <section class="lc-panel">
-        <header class="lc-panel-header">
-            <div>
+    <details class="lc-panel lc-panel-collapse">
+        <summary class="lc-panel-summary">
+            <span class="lc-panel-summary-copy">
                 <span class="lc-kicker">GOVERNED INSPECTION</span>
-                <h2>Explore LEGEND® intelligence</h2>
-                <p>
+                <strong role="heading" aria-level="2">Explore LEGEND® intelligence</strong>
+                <span class="lc-panel-summary-description">
                     Detailed datasets remain bounded and load only when you
                     deliberately open the relevant intelligence domain.
-                </p>
-            </div>
-        </header>
+                </span>
+            </span>
+            <span class="lc-panel-toggle-label">Inspection</span>
+        </summary>
+
+        <div class="lc-panel-body">
 
         <div class="lc-disclosure-list">
             @foreach (var panel in new[]
@@ -664,7 +687,8 @@
                 </details>
             }
         </div>
-    </section>
+        </div>
+    </details>
 </main>
 
 @section Scripts {

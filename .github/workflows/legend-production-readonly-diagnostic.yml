@@ -1,9 +1,8 @@
 name: LEGEND production read-only diagnostic
 
+# Operational evidence collection is manual. Deployment validation lives in
+# agentportal-production-deploy.yml and must not be duplicated after every merge.
 on:
-  push:
-    branches:
-      - production
   workflow_dispatch:
     inputs:
       run_full_shadow:

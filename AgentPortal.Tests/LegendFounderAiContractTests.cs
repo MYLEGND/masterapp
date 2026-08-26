@@ -761,6 +761,8 @@ public sealed class LegendFounderAiContractTests
         Assert.Contains("needs: security", workflow, StringComparison.Ordinal);
         Assert.Contains("Test full suite including security regressions", workflow, StringComparison.Ordinal);
         Assert.Contains("dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj", workflow, StringComparison.Ordinal);
+        Assert.Contains("run: ./scripts/db.sh validate-artifacts", workflow, StringComparison.Ordinal);
+        Assert.DoesNotContain("run: ./scripts/db.sh validate\n", workflow, StringComparison.Ordinal);
         Assert.Contains("Merge exact validated PR head", workflow, StringComparison.Ordinal);
         Assert.Contains("Deploy immutable merged production tree", workflow, StringComparison.Ordinal);
         Assert.DoesNotContain("push:", workflow, StringComparison.Ordinal);
@@ -768,16 +770,54 @@ public sealed class LegendFounderAiContractTests
     }
 
     [Fact]
-    public void SecurityCi_RecognizesBothCurrentDotnetTestSuccessFormats()
+    public void UnifiedProductionMigrationGate_ValidatesBuiltArtifactsWithoutRebuildingOrRetesting()
+    {
+        var script = File.ReadAllText(
+            Path.Combine(
+                AppContext.BaseDirectory,
+                "db.sh"));
+        var start = script.IndexOf("command_validate_artifacts()", StringComparison.Ordinal);
+        Assert.True(start >= 0);
+
+        var end = script.IndexOf("command_bundle()", start, StringComparison.Ordinal);
+        Assert.True(end > start);
+
+        var command = script[start..end];
+        Assert.Contains("check_model", command, StringComparison.Ordinal);
+        Assert.Contains("check_migration_integrity", command, StringComparison.Ordinal);
+        Assert.DoesNotContain("build_backend", command, StringComparison.Ordinal);
+        Assert.DoesNotContain("test_backend", command, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void UnifiedProductionFlow_RecognizesBothCurrentDotnetTestSuccessFormats()
     {
         var workflow = File.ReadAllText(
             Path.Combine(
                 AppContext.BaseDirectory,
-                "security-ci.yml"));
+                "agentportal-production-deploy.yml"));
 
         Assert.Contains("Test Run Successful", workflow, StringComparison.Ordinal);
         Assert.Contains("Passed![[:space:]]+-[[:space:]]+Failed:[[:space:]]+0", workflow, StringComparison.Ordinal);
         Assert.Contains("Failed:[[:space:]]*[1-9][0-9]*", workflow, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void LegendConnectPage_KeepsFounderIntelligenceOpenAndCollapsesEveryOtherPanel()
+    {
+        var page = File.ReadAllText(
+            Path.Combine(AppContext.BaseDirectory, "legend-connect-index.cshtml"));
+
+        Assert.Contains("<section class=\"lc-hero\"", page, StringComparison.Ordinal);
+        Assert.Contains("FOUNDER LANGUAGE INTELLIGENCE", page, StringComparison.Ordinal);
+        Assert.DoesNotContain("<details class=\"lc-hero", page, StringComparison.Ordinal);
+        Assert.Equal(
+            7,
+            page.Split("<details class=\"lc-panel lc-panel-collapse", StringSplitOptions.None).Length - 1);
+        Assert.Equal(
+            7,
+            page.Split("<summary class=\"lc-panel-summary\"", StringSplitOptions.None).Length - 1);
+        Assert.DoesNotContain("<section class=\"lc-panel", page, StringComparison.Ordinal);
     }
 
     [Fact]
