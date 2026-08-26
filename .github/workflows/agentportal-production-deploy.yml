@@ -1,19 +1,25 @@
-name: Build and deploy AgentPortal to Azure Web App - masterapp-portal
+name: Validate, merge, and deploy AgentPortal to production
 
-# Every protected production merge is a deployment candidate. Validation stays
-# on the pull request; once production advances, deploy that exact immutable SHA.
+# One fail-closed path for every production change:
+# validate once on the PR merge candidate, package that exact tree, merge only
+# after validation succeeds, verify the merged tree is identical, then migrate
+# and deploy the already-built artifact.
 on:
-  push:
+  pull_request:
     branches:
       - production
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - ready_for_review
 
 concurrency:
-  group: agentportal-production
-  cancel-in-progress: false
+  group: agentportal-production-pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
-  id-token: write
 
 env:
   AZURE_WEBAPP_NAME: masterapp-portal
@@ -22,101 +28,287 @@ env:
   PROJECT_PATH: AgentPortal/AgentPortal.csproj
   EF_PROJECT: Infrastructure/Infrastructure.csproj
   EF_CONTEXT: MasterAppDbContext
-  PUBLISH_DIR: ${{ github.workspace }}\\publish\\agentportal
+  PUBLISH_DIR: ${{ github.workspace }}\publish\agentportal
+  ARTIFACT_NAME: agentportal-production-candidate-${{ github.run_id }}
 
 jobs:
-  validate:
+  # Keep this job name stable: it is the protected production required check.
+  security:
+    if: github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    permissions:
+      contents: read
 
     steps:
-      - name: Checkout exact production commit
+      - name: Checkout exact PR merge candidate
+        uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v6.0.0
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Restore
+        run: dotnet restore MASTERAPP.sln
+
+      - name: Build Release (must be 0 warnings / 0 errors)
+        run: |
+          set -o pipefail
+          dotnet build MASTERAPP.sln -c Release --no-restore 2>&1 | tee build.log
+          if ! grep -qE '^[[:space:]]*0 Warning\(s\)' build.log; then
+            echo "::error::Build produced warnings; the repository standard is 0 warnings."
+            exit 1
+          fi
+
+      - name: Test discovery preflight
+        run: |
+          set -o pipefail
+          dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-build --list-tests 2>&1 | tee test-discovery.log
+          if grep -q "No test is available" test-discovery.log; then
+            echo "::error::xUnit discovery returned zero tests."
+            exit 1
+          fi
+          if ! grep -q "FounderCapabilities_AreDiscoveredFromTheExecutableToolRegistry" test-discovery.log; then
+            echo "::error::The governed Founder capability regression test was not discovered."
+            exit 1
+          fi
+
+      - name: Test full suite including security regressions
+        run: |
+          set -o pipefail
+          dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-build 2>&1 | tee test.log
+          if grep -q "No test is available" test.log; then
+            echo "::error::The test runner completed without discovering tests."
+            exit 1
+          fi
+          runner_success=false
+          if grep -qE 'Passed![[:space:]]+-[[:space:]]+Failed:[[:space:]]+0,[[:space:]]+Passed:[[:space:]]+[1-9][0-9]*' test.log; then
+            runner_success=true
+          elif grep -q "Test Run Successful" test.log && grep -qE 'Passed:[[:space:]]*[1-9][0-9]*' test.log; then
+            runner_success=true
+          fi
+          if [ "$runner_success" != true ] || grep -qE 'Failed:[[:space:]]*[1-9][0-9]*' test.log; then
+            echo "::error::The full AgentPortal regression did not report a successful non-empty test run with zero failures."
+            exit 1
+          fi
+
+      - name: Database migration validation
+        env:
+          DB_BASE_REF: ${{ github.event.pull_request.base.sha }}
+        run: ./scripts/db.sh validate
+
+      - name: No skipped security tests
+        run: |
+          if grep -REn "Skip[[:space:]]*=" AgentPortal.Tests/*Antiforgery*.cs \
+                AgentPortal.Tests/Phase3IdentityAuthorityTests.cs \
+                AgentPortal.Tests/Phase4PlatformSecurityTests.cs \
+                AgentPortal.Tests/Phase5CrossPlatformSecurityTests.cs \
+                AgentPortal.Tests/Phase6ArchitectureInvariantTests.cs \
+                AgentPortal.Tests/CalendarControllerTests.cs 2>/dev/null; then
+            echo "::error::A security test is marked Skip."
+            exit 1
+          fi
+
+      - name: Dependency vulnerability audit
+        run: |
+          set -o pipefail
+          dotnet list MASTERAPP.sln package --vulnerable --include-transitive 2>&1 | tee vuln.log
+          if grep -qiE '>[[:space:]]*(Low|Moderate|High|Critical)' vuln.log || grep -qi 'has the following vulnerable' vuln.log; then
+            echo "::error::Vulnerable NuGet packages detected."
+            exit 1
+          fi
+
+      - name: Committed-secret scan
+        run: |
+          if git ls-files | grep -E 'publish-macos/.*appsettings.*\.json$'; then
+            echo "::error::Committed publish-macos appsettings may contain secrets."
+            exit 1
+          fi
+          if git ls-files '*appsettings*.json' | xargs -r grep -nEi '(Password|AccountKey|ClientSecret|AccessToken)"?[:=][[:space:]]*"?[^"[:space:],}]+' \
+             | grep -vE '"[[:space:]]*"' ; then
+            echo "::error::A tracked appsettings file appears to contain a committed secret value."
+            exit 1
+          fi
+
+      - name: Architecture invariant - composition roots use shared authorities
+        run: |
+          set -e
+          check() { grep -q "$2" "$1" || { echo "::error::$1 missing shared authority '$2'"; exit 1; }; }
+          check AgentPortal/Program.cs AddPlatformDataProtection
+          check AgentPortal/Program.cs PlatformRateLimiting
+          check ClientApp/Program.cs AddPlatformDataProtection
+          check ClientApp/Program.cs PlatformRateLimiting
+          check ClientApp/Program.cs PlatformSecurityHeaders
+          check Protect-Website/Program.cs AddPlatformDataProtection
+          check Protect-Website/Program.cs PlatformRateLimiting
+          check Protect-Website/Program.cs PlatformSecurityHeaders
+          check ParfaitApp/Program.cs PlatformConfigValidation
+          check ParfaitApp/Program.cs PlatformRateLimiting
+
+      - name: Architecture invariant - no inline Azure key-ring wiring
+        run: |
+          if grep -REn 'PersistKeysToAzureBlobStorage|ProtectKeysWithAzureKeyVault' \
+                AgentPortal/Program.cs ClientApp/Program.cs Protect-Website/Program.cs ParfaitApp/Program.cs 2>/dev/null; then
+            echo "::error::An application composition root inlines Azure Data Protection key-ring wiring."
+            exit 1
+          fi
+
+      - name: git diff --check
+        run: git diff --check
+
+  build:
+    needs: security
+    runs-on: windows-latest
+    permissions:
+      contents: read
+    outputs:
+      tested_tree: ${{ steps.tree.outputs.tested_tree }}
+
+    steps:
+      - name: Checkout exact validated merge candidate
         uses: actions/checkout@v4
         with:
           ref: ${{ github.sha }}
           fetch-depth: 0
 
-      - name: Set up .NET
-        uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: ${{ env.DOTNET_VERSION }}
-
-      - name: Restore solution
-        run: dotnet restore MASTERAPP.sln
-
-      - name: Build release solution
-        run: dotnet build MASTERAPP.sln --configuration Release --no-restore
-
-      - name: Run full release regression suite
-        run: dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj --configuration Release --no-build
-
-  build:
-    runs-on: windows-latest
-    needs: validate
-
-    steps:
-      - name: Checkout exact production commit
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ github.sha }}
+      - name: Capture validated tree identity
+        id: tree
+        shell: pwsh
+        run: |
+          $tree = (git rev-parse 'HEAD^{tree}').Trim()
+          if ([string]::IsNullOrWhiteSpace($tree)) { throw 'Unable to resolve validated tree identity.' }
+          "tested_tree=$tree" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
 
       - name: Set up .NET
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: ${{ env.DOTNET_VERSION }}
 
-      - name: Restore AgentPortal
-        run: dotnet restore "${{ env.PROJECT_PATH }}"
-
-      - name: Build AgentPortal
-        run: dotnet build "${{ env.PROJECT_PATH }}" --configuration Release --no-restore
-
-      - name: Publish AgentPortal
-        run: dotnet publish "${{ env.PROJECT_PATH }}" --configuration Release --no-build --output "${{ env.PUBLISH_DIR }}"
+      - name: Publish validated AgentPortal candidate
+        shell: pwsh
+        run: |
+          dotnet publish '${{ env.PROJECT_PATH }}' --configuration Release --output '${{ env.PUBLISH_DIR }}'
+          if ($LASTEXITCODE -ne 0) { throw 'AgentPortal publish failed.' }
 
       - name: Verify packaged FFmpeg runtime
         shell: pwsh
         run: |
           $ffmpeg = Join-Path '${{ env.PUBLISH_DIR }}' 'tools/ffmpeg/ffmpeg.exe'
           $ffprobe = Join-Path '${{ env.PUBLISH_DIR }}' 'tools/ffmpeg/ffprobe.exe'
-          if (-not (Test-Path $ffmpeg)) { throw "Missing packaged ffmpeg.exe" }
-          if (-not (Test-Path $ffprobe)) { throw "Missing packaged ffprobe.exe" }
+          if (-not (Test-Path $ffmpeg)) { throw 'Missing packaged ffmpeg.exe' }
+          if (-not (Test-Path $ffprobe)) { throw 'Missing packaged ffprobe.exe' }
 
-      - name: Upload deployment artifact
+      - name: Upload exact validated deployment artifact
         uses: actions/upload-artifact@v4
         with:
-          name: agentportal-production-${{ github.sha }}
+          name: ${{ env.ARTIFACT_NAME }}
           path: ${{ env.PUBLISH_DIR }}
           if-no-files-found: error
           retention-days: 1
 
-  migrate:
-    runs-on: windows-latest
-    needs: build
-    environment:
-      name: Production
+  merge:
+    needs:
+      - security
+      - build
+    if: >
+      github.event.pull_request.draft == false &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.pull_request.author_association)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    outputs:
+      merge_sha: ${{ steps.merge.outputs.merge_sha }}
 
     steps:
-      - name: Checkout exact production commit
+      - name: Verify production base has not moved
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXPECTED_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          current_base=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/production" --jq '.object.sha')
+          if [ "$current_base" != "$EXPECTED_BASE_SHA" ]; then
+            echo "::error::Production advanced after this merge candidate was validated. Re-run the PR against the current base."
+            exit 1
+          fi
+
+      - name: Merge exact validated PR head
+        id: merge
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          EXPECTED_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          response=$(gh api --method PUT "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER/merge" \
+            -f merge_method=merge \
+            -f sha="$EXPECTED_HEAD_SHA")
+          merged=$(printf '%s' "$response" | jq -r '.merged')
+          merge_sha=$(printf '%s' "$response" | jq -r '.sha // empty')
+          if [ "$merged" != "true" ] || [ -z "$merge_sha" ]; then
+            printf '%s\n' "$response"
+            echo "::error::GitHub did not merge the exact validated PR head."
+            exit 1
+          fi
+          echo "merge_sha=$merge_sha" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout immutable production merge
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.sha }}
+          ref: ${{ steps.merge.outputs.merge_sha }}
+          fetch-depth: 0
+
+      - name: Prove merged tree equals validated tree
+        env:
+          TESTED_TREE: ${{ needs.build.outputs.tested_tree }}
+        run: |
+          merged_tree=$(git rev-parse 'HEAD^{tree}')
+          if [ "$merged_tree" != "$TESTED_TREE" ]; then
+            echo "::error::Merged production tree differs from the tree that passed validation."
+            exit 1
+          fi
+
+  migrate:
+    needs:
+      - build
+      - merge
+    runs-on: windows-latest
+    environment:
+      name: Production
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Checkout immutable production merge
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.merge.outputs.merge_sha }}
 
       - name: Set up .NET
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: ${{ env.DOTNET_VERSION }}
 
-      - name: Restore repository tools
-        run: dotnet tool restore
-
-      - name: Restore EF projects
+      - name: Restore repository tools and EF projects
+        shell: pwsh
         run: |
-          dotnet restore "${{ env.EF_PROJECT }}"
-          dotnet restore "${{ env.PROJECT_PATH }}"
+          dotnet tool restore
+          if ($LASTEXITCODE -ne 0) { throw 'Repository tool restore failed.' }
+          dotnet restore '${{ env.EF_PROJECT }}'
+          if ($LASTEXITCODE -ne 0) { throw 'Infrastructure restore failed.' }
+          dotnet restore '${{ env.PROJECT_PATH }}'
+          if ($LASTEXITCODE -ne 0) { throw 'AgentPortal restore failed.' }
 
       - name: Build EF startup project
-        run: dotnet build "${{ env.PROJECT_PATH }}" --configuration Release --no-restore
+        shell: pwsh
+        run: |
+          dotnet build '${{ env.PROJECT_PATH }}' --configuration Release --no-restore
+          if ($LASTEXITCODE -ne 0) { throw 'EF startup build failed.' }
 
       - name: Login to Azure with OIDC
         uses: azure/login@v2
@@ -129,31 +321,20 @@ jobs:
         shell: pwsh
         run: |
           $connection = ''
-
-          $rawConnections = az webapp config connection-string list `
-            --resource-group '${{ env.AZURE_RESOURCE_GROUP }}' `
-            --name '${{ env.AZURE_WEBAPP_NAME }}' `
-            --output json
+          $rawConnections = az webapp config connection-string list --resource-group '${{ env.AZURE_RESOURCE_GROUP }}' --name '${{ env.AZURE_WEBAPP_NAME }}' --output json
           if ($LASTEXITCODE -ne 0) { throw 'Unable to read App Service connection strings.' }
-
           $connections = $rawConnections | ConvertFrom-Json
           $match = $connections | Where-Object { $_.name -eq 'MasterAppDb' } | Select-Object -First 1
           if ($null -ne $match -and -not [string]::IsNullOrWhiteSpace([string]$match.value)) {
             $connection = [string]$match.value
           }
-
           if ([string]::IsNullOrWhiteSpace($connection)) {
-            $rawSettings = az webapp config appsettings list `
-              --resource-group '${{ env.AZURE_RESOURCE_GROUP }}' `
-              --name '${{ env.AZURE_WEBAPP_NAME }}' `
-              --output json
+            $rawSettings = az webapp config appsettings list --resource-group '${{ env.AZURE_RESOURCE_GROUP }}' --name '${{ env.AZURE_WEBAPP_NAME }}' --output json
             if ($LASTEXITCODE -ne 0) { throw 'Unable to read App Service settings.' }
-
             $settings = @{}
             foreach ($item in ($rawSettings | ConvertFrom-Json)) {
               $settings[[string]$item.name] = [string]$item.value
             }
-
             foreach ($name in @('ConnectionStrings__MasterAppDb','MasterAppDb','SQLCONNSTR_MasterAppDb')) {
               if ($settings.ContainsKey($name) -and -not [string]::IsNullOrWhiteSpace($settings[$name])) {
                 $connection = $settings[$name]
@@ -161,15 +342,12 @@ jobs:
               }
             }
           }
-
           if ([string]::IsNullOrWhiteSpace($connection)) {
             throw 'Production MasterAppDb connection string could not be resolved from Azure App Service configuration.'
           }
-
           if ($connection -notmatch '(?i)(server=tcp:|\.database\.windows\.net|initial catalog=)') {
             throw 'Resolved MasterAppDb is not recognized as the production SQL Server connection.'
           }
-
           Write-Output "::add-mask::$connection"
           "ConnectionStrings__MasterAppDb=$connection" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           "EF_FORCE_SQLSERVER=true" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
@@ -179,42 +357,36 @@ jobs:
       - name: Apply production EF migrations
         shell: pwsh
         run: |
-          dotnet tool run dotnet-ef database update `
-            --project '${{ env.EF_PROJECT }}' `
-            --startup-project '${{ env.PROJECT_PATH }}' `
-            --context '${{ env.EF_CONTEXT }}' `
-            --configuration Release `
-            --no-build
+          dotnet tool run dotnet-ef database update --project '${{ env.EF_PROJECT }}' --startup-project '${{ env.PROJECT_PATH }}' --context '${{ env.EF_CONTEXT }}' --configuration Release --no-build
           if ($LASTEXITCODE -ne 0) { throw 'Production EF migration update failed.' }
 
       - name: Verify zero pending production migrations
         shell: pwsh
         run: |
-          $output = dotnet tool run dotnet-ef migrations list `
-            --project '${{ env.EF_PROJECT }}' `
-            --startup-project '${{ env.PROJECT_PATH }}' `
-            --context '${{ env.EF_CONTEXT }}' `
-            --configuration Release `
-            --no-build 2>&1
+          $output = dotnet tool run dotnet-ef migrations list --project '${{ env.EF_PROJECT }}' --startup-project '${{ env.PROJECT_PATH }}' --context '${{ env.EF_CONTEXT }}' --configuration Release --no-build 2>&1
           if ($LASTEXITCODE -ne 0) { $output | Write-Host; throw 'Unable to verify production migrations.' }
           $output | Write-Host
-          if (($output -join "`n") -match '\(Pending\)') {
+          if (($output -join [Environment]::NewLine) -match '\(Pending\)') {
             throw 'Production database still has pending EF migrations after update.'
           }
 
   deploy:
-    runs-on: windows-latest
     needs:
       - build
+      - merge
       - migrate
+    runs-on: windows-latest
     environment:
       name: Production
+    permissions:
+      contents: read
+      id-token: write
 
     steps:
-      - name: Download exact deployment artifact
+      - name: Download exact validated deployment artifact
         uses: actions/download-artifact@v4
         with:
-          name: agentportal-production-${{ github.sha }}
+          name: ${{ env.ARTIFACT_NAME }}
           path: ./package
 
       - name: Login to Azure with OIDC
@@ -224,7 +396,7 @@ jobs:
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
-      - name: Deploy exact production commit to Azure Web App
+      - name: Deploy immutable merged production tree
         uses: azure/webapps-deploy@v3
         with:
           app-name: ${{ env.AZURE_WEBAPP_NAME }}
