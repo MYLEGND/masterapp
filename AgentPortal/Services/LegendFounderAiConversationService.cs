@@ -31,8 +31,8 @@ public sealed class LegendFounderAiConversationService
     private const int MinimumLatestMessageTailCharacters = 24_000;
     private const int MinimumToolRounds = 6;
     private const int MaximumToolRounds = 16;
-    private const int MinimumFinalizationReserveSeconds = 6;
-    private const int MinimumFinalSynthesisWindowSeconds = 20;
+    private const int MinimumFinalizationReserveSeconds = 45;
+    private const int MinimumFinalSynthesisWindowSeconds = 60;
     private const int MaximumProviderRoundSeconds = 75;
     private const int MinimumCasualOutputTokens = 256;
     private const int MaximumCasualOutputTokens = 4_000;
@@ -85,9 +85,9 @@ public sealed class LegendFounderAiConversationService
             Math.Clamp(
                 configuration.GetValue<int?>(
                     "OpenAI:LegendFounderAiTimeoutSeconds") ??
-                    210,
-                60,
-                240);
+                    900,
+                120,
+                1_800);
 
         _maxOutputTokens =
             Math.Clamp(
@@ -453,6 +453,7 @@ public sealed class LegendFounderAiConversationService
 
                 var allowTools =
                     requiresGovernedInspection &&
+                    !governedInspectionCompleted &&
                     round < maximumToolRounds - 1 &&
                     remaining >
                         TimeSpan.FromSeconds(
