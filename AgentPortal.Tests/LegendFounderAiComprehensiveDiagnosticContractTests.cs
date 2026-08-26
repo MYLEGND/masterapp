@@ -28,9 +28,17 @@ public sealed class LegendFounderAiComprehensiveDiagnosticContractTests
         var source = ReadService();
         Assert.Contains("BuildReadOnlyToolFailureOutput", source, StringComparison.Ordinal);
         Assert.Contains("Continue any independent governed reads", source, StringComparison.Ordinal);
+        Assert.Contains("failureCategory", source, StringComparison.Ordinal);
+        Assert.Contains("requestedResource", source, StringComparison.Ordinal);
+        Assert.Contains("authorizationDecision", source, StringComparison.Ordinal);
+        Assert.Contains("correlationId", source, StringComparison.Ordinal);
         Assert.Contains("successfulGovernedEvidenceTools", source, StringComparison.Ordinal);
         Assert.Contains("IsSuccessfulFounderToolOutput", source, StringComparison.Ordinal);
         Assert.Contains("IsGovernedEvidenceTool", source, StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "Independent broad inspection was not requested",
+            source,
+            StringComparison.Ordinal);
         Assert.DoesNotContain(
             "LEGEND Founder AI read-only tool {Tool} failed before a response could be produced.",
             source,
@@ -57,6 +65,8 @@ public sealed class LegendFounderAiComprehensiveDiagnosticContractTests
         Assert.Contains("32_000", source, StringComparison.Ordinal);
         Assert.Contains("64_000", source, StringComparison.Ordinal);
         Assert.Contains("Continue the same answer exactly where it stopped", source, StringComparison.Ordinal);
+        Assert.Contains("MergeProviderAnswerSegment", source, StringComparison.Ordinal);
+        Assert.Contains("accumulatedProviderAnswer", source, StringComparison.Ordinal);
         Assert.DoesNotContain("Ask the OpenAI Teacher to continue if you want the remainder", source, StringComparison.Ordinal);
     }
 
@@ -69,14 +79,32 @@ public sealed class LegendFounderAiComprehensiveDiagnosticContractTests
         Assert.Contains("Capability discovery alone is not evidence", source, StringComparison.Ordinal);
     }
 
-    private static string ReadService()
+    [Fact]
+    public void NativeMeaningGraph_QueryIsScopedToLexemesInTheCurrentInput()
     {
-        var root = FindRepositoryRoot();
-        return File.ReadAllText(Path.Combine(
-            root,
+        var source = ReadRepositoryFile(
+            "Infrastructure",
+            "Messaging",
+            "LegendConnectCurriculum.cs");
+
+        Assert.Contains("inputLexemeHashes", source, StringComparison.Ordinal);
+        Assert.Contains("join lexeme in _db.Set<LegendLanguageLexeme>()", source, StringComparison.Ordinal);
+        Assert.Contains("inputLexemeHashes.Contains(lexeme.NormalizedHash)", source, StringComparison.Ordinal);
+        Assert.Contains("anchor.ComponentStartTokenIndex != null", source, StringComparison.Ordinal);
+    }
+
+    private static string ReadService() =>
+        ReadRepositoryFile(
             "AgentPortal",
             "Services",
-            "LegendFounderAiConversationService.cs"));
+            "LegendFounderAiConversationService.cs");
+
+    private static string ReadRepositoryFile(params string[] path)
+    {
+        var segments = new string[path.Length + 1];
+        segments[0] = FindRepositoryRoot();
+        Array.Copy(path, 0, segments, 1, path.Length);
+        return File.ReadAllText(Path.Combine(segments));
     }
 
     private static string FindRepositoryRoot()

@@ -25,8 +25,34 @@ env:
   PUBLISH_DIR: ${{ github.workspace }}\\publish\\agentportal
 
 jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout exact production commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Restore solution
+        run: dotnet restore MASTERAPP.sln
+
+      - name: Build release solution
+        run: dotnet build MASTERAPP.sln --configuration Release --no-restore
+
+      - name: Run full release regression suite
+        run: dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj --configuration Release --no-build
+
   build:
     runs-on: windows-latest
+    needs: validate
 
     steps:
       - name: Checkout exact production commit

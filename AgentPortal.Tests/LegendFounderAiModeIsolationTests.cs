@@ -224,7 +224,8 @@ public sealed class LegendFounderAiModeIsolationTests
             .ThrowsAsync(new InvalidOperationException("read transport failed"));
 
         var handler = new FounderAiScenarioHandler(
-            ProviderTool("legend_search_retained_knowledge", "{\"query\":\"authority\"}"));
+            ProviderTool("legend_search_retained_knowledge", "{\"query\":\"authority\"}"),
+            ProviderText("This answer is unsupported because its only governed read failed."));
         var service = CreateService(db, operations.Object, handler);
         var controller = new LegendFounderAiController(
             service,
@@ -244,9 +245,75 @@ public sealed class LegendFounderAiModeIsolationTests
         Assert.False(response.Succeeded);
         Assert.Equal("OpenAITeacher", response.ResponseAuthority);
         Assert.Equal("governed_tool", response.Stage);
-        Assert.Equal("tool_read_failed", response.Reason);
-        Assert.Equal("governed_tool", response.FailureKind);
-        Assert.Equal(1, handler.RequestCount);
+        Assert.Equal("required_governed_inspection_missing", response.Reason);
+        Assert.Equal("governed_inspection", response.FailureKind);
+        Assert.Equal(2, handler.RequestCount);
+        Assert.Equal(0, NativeInferenceCalls(operations));
+    }
+
+    [Fact]
+    public async Task TeacherMode_FailedGovernedReadContinuesToAWorkingGovernedRead()
+    {
+        using var founderEnvironment = new FounderEnvironmentScope();
+        await using var db = ControllerTestHelpers.BuildDb();
+        var founder = await AddFounderProfileAsync(db);
+        var operations = new Mock<ILegendConnectOperations>(MockBehavior.Strict);
+        operations
+            .SetupSequence(operation => operation.SearchRetainedKnowledgeAsync(
+                It.IsAny<string>(),
+                It.IsAny<string?>(),
+                It.IsAny<string?>(),
+                It.IsAny<int>(),
+                It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("first read transport failed"))
+            .ReturnsAsync(new LegendConnectRetainedKnowledgeSearchSnapshot(
+                "authority",
+                1,
+                []));
+
+        var handler = new FounderAiScenarioHandler(
+            ProviderTool("legend_search_retained_knowledge", "{\"query\":\"authority\"}"),
+            ProviderTool("legend_search_retained_knowledge", "{\"query\":\"authority\"}"),
+            ProviderText("The second governed read succeeded and supports this assessment."));
+        var service = CreateService(db, operations.Object, handler);
+
+        var response = await service.ReplyAsync(
+            founder,
+            Request("teacher", "Inspect the current authority."));
+
+        Assert.True(response.Succeeded, Describe(response));
+        Assert.Equal(
+            "The second governed read succeeded and supports this assessment.",
+            response.Message);
+        Assert.Equal(3, handler.RequestCount);
+        operations.Verify(operation => operation.SearchRetainedKnowledgeAsync(
+            "authority",
+            null,
+            null,
+            It.IsAny<int>(),
+            It.IsAny<CancellationToken>()), Times.Exactly(2));
+        Assert.Equal(0, NativeInferenceCalls(operations));
+    }
+
+    [Fact]
+    public async Task TeacherMode_IncompleteProviderAnswersAreReturnedAsOneCompleteResponse()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var operations = new Mock<ILegendConnectOperations>(MockBehavior.Strict);
+        var handler = new FounderAiScenarioHandler(
+            ProviderIncompleteText("Steps 1-4\nStep 5"),
+            ProviderText("Step 5\nSteps 6-12"));
+        var service = CreateService(db, operations.Object, handler);
+
+        var response = await service.ReplyAsync(
+            ControllerTestHelpers.BuildUser(),
+            Request("teacher", "Give one complete clean answer."));
+
+        Assert.True(response.Succeeded, Describe(response));
+        Assert.Equal(
+            "Steps 1-4\nStep 5\nSteps 6-12",
+            response.Message);
+        Assert.Equal(2, handler.RequestCount);
         Assert.Equal(0, NativeInferenceCalls(operations));
     }
 
@@ -508,6 +575,23 @@ public sealed class LegendFounderAiModeIsolationTests
         ProviderResponse(new
         {
             status = "completed",
+            output = new[]
+            {
+                new
+                {
+                    type = "message",
+                    content = new[]
+                    {
+                        new { type = "output_text", text }
+                    }
+                }
+            }
+        });
+
+    private static HttpResponseMessage ProviderIncompleteText(string text) =>
+        ProviderResponse(new
+        {
+            status = "incomplete",
             output = new[]
             {
                 new

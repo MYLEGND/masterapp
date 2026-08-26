@@ -5,6 +5,16 @@ on:
     branches:
       - production
   workflow_dispatch:
+    inputs:
+      run_full_shadow:
+        description: Run the full live-evidence V21 shadow rebuild
+        required: false
+        default: false
+        type: boolean
+
+concurrency:
+  group: legend-production-readonly-diagnostic
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -19,6 +29,7 @@ env:
 jobs:
   production-readonly-diagnostic:
     runs-on: windows-latest
+    timeout-minutes: 45
     environment:
       name: Production
 
@@ -123,14 +134,15 @@ jobs:
           $shadow = 'diagnostics/shadow.txt'
           $preflight = 'diagnostics/test-preflight.txt'
           $nativeExit = 99
-          $shadowExit = 99
+          $shadowExit = 0
+          $runFullShadow = '${{ github.event_name == 'workflow_dispatch' && inputs.run_full_shadow }}' -eq 'true'
           try {
             dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-build --list-tests --diag diagnostics/vstest-discovery.txt 2>&1 | Tee-Object -FilePath $preflight
             $listExit = $LASTEXITCODE
             $listText = Get-Content $preflight -Raw
             if ($listExit -ne 0) { throw "Test discovery preflight failed with exit code $listExit." }
             if ($listText -notmatch 'ProductionReadOnlyEightPromptNativeDiagnostic') { throw 'Native production diagnostic was not discovered.' }
-            if ($listText -notmatch 'ProductionReadOnlyV21ShadowRebuild_UsesLiveFounderEvidenceWithoutWrites') { throw 'V21 shadow production diagnostic was not discovered.' }
+            if ($runFullShadow -and $listText -notmatch 'ProductionReadOnlyV21ShadowRebuild_UsesLiveFounderEvidenceWithoutWrites') { throw 'V21 shadow production diagnostic was not discovered.' }
 
             dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-build --filter 'FullyQualifiedName~LegendFounderCurriculumSqlServerE2ETests.ProductionReadOnlyEightPromptNativeDiagnostic' --logger 'console;verbosity=detailed' 2>&1 | Tee-Object -FilePath $native
             $nativeExit = $LASTEXITCODE
@@ -138,11 +150,16 @@ jobs:
             if ($nativeText -match 'No test is available') { $nativeExit = 97 }
             if ($nativeText -notmatch 'ProductionReadOnlyEightPromptNativeDiagnostic') { $nativeExit = 98 }
 
-            dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-build --filter 'FullyQualifiedName~LegendFounderCurriculumSqlServerE2ETests.ProductionReadOnlyV21ShadowRebuild_UsesLiveFounderEvidenceWithoutWrites' --logger 'console;verbosity=detailed' 2>&1 | Tee-Object -FilePath $shadow
-            $shadowExit = $LASTEXITCODE
-            $shadowText = Get-Content $shadow -Raw
-            if ($shadowText -match 'No test is available') { $shadowExit = 97 }
-            if ($shadowText -notmatch 'ProductionReadOnlyV21ShadowRebuild_UsesLiveFounderEvidenceWithoutWrites') { $shadowExit = 98 }
+            if ($runFullShadow) {
+              dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-build --filter 'FullyQualifiedName~LegendFounderCurriculumSqlServerE2ETests.ProductionReadOnlyV21ShadowRebuild_UsesLiveFounderEvidenceWithoutWrites' --logger 'console;verbosity=detailed' 2>&1 | Tee-Object -FilePath $shadow
+              $shadowExit = $LASTEXITCODE
+              $shadowText = Get-Content $shadow -Raw
+              if ($shadowText -match 'No test is available') { $shadowExit = 97 }
+              if ($shadowText -notmatch 'ProductionReadOnlyV21ShadowRebuild_UsesLiveFounderEvidenceWithoutWrites') { $shadowExit = 98 }
+            }
+            else {
+              'Full V21 shadow rebuild skipped. Use workflow_dispatch with run_full_shadow=true when a bounded production-data shadow replay is specifically required.' | Set-Content -Path $shadow -Encoding utf8
+            }
           }
           catch { $_ | Out-String | Add-Content -Path $preflight -Encoding utf8 }
           finally {
@@ -164,6 +181,7 @@ jobs:
             "DiagnosticOutcome: ${{ steps.diagnostic.outcome }}"
             "NativeExit: ${{ steps.diagnostic.outputs.native_exit }}"
             "ShadowExit: ${{ steps.diagnostic.outputs.shadow_exit }}"
+            "ShadowRequested: ${{ github.event_name == 'workflow_dispatch' && inputs.run_full_shadow }}"
             ''
             '=== LIVE REPLAY / CURRICULUM STATUS ==='
             if (Test-Path diagnostics/replay-status.txt) { Get-Content diagnostics/replay-status.txt }
@@ -206,4 +224,4 @@ jobs:
           if ('${{ steps.build.outcome }}' -ne 'success') { throw 'Production diagnostic build failed.' }
           if ('${{ steps.replay_status.outcome }}' -ne 'success') { throw 'Production replay-status diagnostic failed.' }
           if ('${{ steps.diagnostic.outputs.native_exit }}' -ne '0') { throw 'Production native diagnostic did not execute successfully.' }
-          if ('${{ steps.diagnostic.outputs.shadow_exit }}' -ne '0') { throw 'Production V21 shadow diagnostic did not execute successfully.' }
+          if ('${{ steps.diagnostic.outputs.shadow_exit }}' -ne '0') { throw 'Requested production V21 shadow diagnostic did not execute successfully.' }

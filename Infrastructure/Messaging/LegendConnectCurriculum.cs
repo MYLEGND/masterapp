@@ -3453,10 +3453,21 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
         if (languageCode is null || tokens.Count == 0)
             return new(false, [], [], tokens.Select(item => item.NormalizedText).ToArray(), "meaning_graph_input_invalid");
 
+        // Lexical anchors always retain the canonical lexeme at the first
+        // token of their controlled span. Start from the exact lexemes present
+        // in this request so inference never materializes every supported
+        // anchor for an entire language before doing an in-memory comparison.
+        var inputLexemeHashes = tokens
+            .Select(item => item.NormalizedHash)
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+
         var candidates = await (
             from node in _db.Set<LegendLanguageMeaningNodeEvidence>().AsNoTracking()
             join anchor in _db.Set<LegendLanguageCompositionalAnchor>().AsNoTracking()
                 on node.CompositionalAnchorId equals anchor.Id
+            join lexeme in _db.Set<LegendLanguageLexeme>().AsNoTracking()
+                on anchor.LexemeId equals (Guid?)lexeme.Id
             join unit in _db.Set<LegendLanguageTextUnit>().AsNoTracking()
                 on anchor.TextUnitId equals unit.Id
             join primitive in _db.Set<LegendLanguageMeaningPrimitive>().AsNoTracking()
@@ -3464,6 +3475,9 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
                 equals new { primitive.LanguageCode, primitive.SemanticSignature }
             where node.LanguageCode == languageCode && node.SupersededUtc == null &&
                 anchor.SupersededUtc == null && unit.IsTrainingEligible &&
+                anchor.ComponentStartTokenIndex != null && anchor.ComponentLength > 0 &&
+                lexeme.LanguageCode == languageCode &&
+                inputLexemeHashes.Contains(lexeme.NormalizedHash) &&
                 primitive.SupersededUtc == null && primitive.MaturityState == "Supported" &&
                 primitive.ContradictionCount == 0 && primitive.IndependentSourceCount >= 3
             select new ReusableMeaningAnchorCandidate(

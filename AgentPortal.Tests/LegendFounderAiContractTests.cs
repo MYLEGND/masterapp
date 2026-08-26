@@ -628,6 +628,10 @@ public sealed class LegendFounderAiContractTests
 
         Assert.Contains("push:", workflow, StringComparison.Ordinal);
         Assert.Contains("- production", workflow, StringComparison.Ordinal);
+        Assert.Contains("validate:", workflow, StringComparison.Ordinal);
+        Assert.Contains("needs: validate", workflow, StringComparison.Ordinal);
+        Assert.Contains("Run full release regression suite", workflow, StringComparison.Ordinal);
+        Assert.Contains("dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj", workflow, StringComparison.Ordinal);
         Assert.DoesNotContain("workflow_dispatch:", workflow, StringComparison.Ordinal);
     }
 
@@ -651,6 +655,11 @@ public sealed class LegendFounderAiContractTests
             Path.Combine(AppContext.BaseDirectory, "legend-production-readonly-diagnostic.yml"));
 
         Assert.Contains("contents: read", workflow, StringComparison.Ordinal);
+        Assert.Contains("timeout-minutes: 45", workflow, StringComparison.Ordinal);
+        Assert.Contains("cancel-in-progress: true", workflow, StringComparison.Ordinal);
+        Assert.Contains("run_full_shadow:", workflow, StringComparison.Ordinal);
+        Assert.Contains("default: false", workflow, StringComparison.Ordinal);
+        Assert.Contains("if ($runFullShadow)", workflow, StringComparison.Ordinal);
         Assert.Contains("Upload sanitized diagnostic transcript", workflow, StringComparison.Ordinal);
         Assert.DoesNotContain("git push", workflow, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("git commit", workflow, StringComparison.OrdinalIgnoreCase);
