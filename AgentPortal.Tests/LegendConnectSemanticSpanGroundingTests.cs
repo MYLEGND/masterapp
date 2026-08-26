@@ -23,7 +23,7 @@ namespace AgentPortal.Tests;
 public sealed class LegendConnectSemanticSpanGroundingTests
 {
     [Fact]
-    public async Task GovernedExecutableProjection_UsesRichHistoricalFramesWithoutRequiringUnsurfacedStaticMetadata()
+    public async Task ProductionConversation_RejectsWholeStoredEndpoint_WhenOriginalCompositionIsUnavailable()
     {
         await using var db = ControllerTestHelpers.BuildDb();
         var fixture = CreateFixture(db);
@@ -39,15 +39,64 @@ public sealed class LegendConnectSemanticSpanGroundingTests
         Assert.True(graph.IsComposed, graph.ReasonCode);
         Assert.DoesNotContain(graph.Nodes, item => item.SemanticDimension == "register");
 
+        var legacyDiagnostic = await fixture.Operations.TryInferConversationAsync(
+            "Hi there.",
+            []);
+        Assert.True(legacyDiagnostic.Supported, legacyDiagnostic.ReasonCode);
+
         var native = await fixture.Operations.TryInferConversationWithDiscourseAsync(
             "Hi there.",
+            [],
+            new LegendConnectDiscourseStateSnapshot([]));
+
+        Assert.False(native.Supported);
+        Assert.Equal("result_realization_layout_insufficient", native.ReasonCode);
+        Assert.Null(native.Answer);
+        Assert.Equal(0, native.EvidenceCount);
+        Assert.False(native.RequiresEscalation);
+    }
+
+    [Fact]
+    public async Task NativeRealization_ComposesOriginalSurface_AndNeverReturnsStoredResultSentence()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var fixture = CreateFixture(db);
+
+        for (var family = 1; family <= 3; family++)
+        {
+            var submitted = await fixture.Curriculum.SubmitFounderEnglishBatchAsync(
+                OriginalArticulationFamily(family));
+            Assert.True(submitted.Succeeded, submitted.Message);
+        }
+
+        var storedResults = await db.LegendCurriculumExamples
+            .Where(item => item.SupersededUtc == null &&
+                db.LegendCurriculumExampleVariations.Any(variation =>
+                    variation.CurriculumExampleId == item.Id &&
+                    variation.Dimension == "conversation_function" &&
+                    variation.Value == "receipt_confirmation_response"))
+            .Join(
+                db.LegendLanguageTextUnits,
+                example => example.TextUnitId,
+                unit => unit.Id,
+                (_, unit) => unit.Text)
+            .ToArrayAsync();
+
+        var native = await fixture.Operations.TryInferConversationWithDiscourseAsync(
+            "Please acknowledge the status update.",
             [],
             new LegendConnectDiscourseStateSnapshot([]));
 
         Assert.True(native.Supported, native.ReasonCode);
         Assert.Equal("semantic_transition_governed_composed", native.ReasonCode);
         Assert.False(string.IsNullOrWhiteSpace(native.Answer));
-        Assert.True(native.EvidenceCount > 0);
+        Assert.DoesNotContain(
+            storedResults,
+            stored => string.Equals(
+                LegendLanguageIdentity.NormalizeText(stored),
+                LegendLanguageIdentity.NormalizeText(native.Answer!),
+                StringComparison.Ordinal));
+        Assert.EndsWith(".", native.Answer, StringComparison.Ordinal);
         Assert.False(native.RequiresEscalation);
     }
 
@@ -967,6 +1016,83 @@ public sealed class LegendConnectSemanticSpanGroundingTests
                 ? [new LegendConnectSemanticSpanGroundingSubmission(
                     "conversation_function", "greeting_surface")]
                 : []);
+
+    private static LegendConnectCurriculumBatchSubmission OriginalArticulationFamily(int family)
+    {
+        var (sourceText, sourceFunctionSurface, sourceSubjectSurface, resultText,
+            resultSubjectSurface, resultFunctionSurface, resultRegisterSurface,
+            resultIntentSurface) = family switch
+        {
+            1 => (
+                "Please confirm receipt of the status update.", "confirm receipt", "status update",
+                "The update is clearly acknowledged.", "The update", "is", "clearly", "acknowledged"),
+            2 => (
+                "Kindly acknowledge the project report.", "acknowledge", "project report",
+                "This report is plainly received.", "This report", "is", "plainly", "received"),
+            _ => (
+                "Let me know you received the rollout notice.", "received", "rollout notice",
+                "The notice is expressly noted.", "The notice", "is", "expressly", "noted")
+        };
+
+        return new LegendConnectCurriculumBatchSubmission(
+            $"response.original-articulation.{family}",
+            "Founder-controlled original compositional realization evidence",
+            [
+                new LegendConnectCurriculumExampleSubmission(
+                    sourceText,
+                    new Dictionary<string, string>
+                    {
+                        ["conversation_function"] = "receipt_confirmation_request",
+                        ["subject"] = "status_message"
+                    },
+                    new LegendConnectMeaningGraphSubmission(
+                    [
+                        new LegendConnectMeaningNodeSubmission(
+                            "function", "conversation_function", "receipt_confirmation_request", sourceFunctionSurface),
+                        new LegendConnectMeaningNodeSubmission(
+                            "subject", "subject", "status_message", sourceSubjectSurface)
+                    ],
+                    [new LegendConnectMeaningRelationSubmission("function", "applies-to", "subject")])),
+                new LegendConnectCurriculumExampleSubmission(
+                    resultText,
+                    new Dictionary<string, string>
+                    {
+                        ["conversation_function"] = "receipt_confirmation_response",
+                        ["subject"] = "status_message",
+                        ["register"] = "measured",
+                        ["intent"] = "acknowledge_receipt"
+                    },
+                    new LegendConnectMeaningGraphSubmission(
+                    [
+                        new LegendConnectMeaningNodeSubmission(
+                            "subject", "subject", "status_message", resultSubjectSurface),
+                        new LegendConnectMeaningNodeSubmission(
+                            "function", "conversation_function", "receipt_confirmation_response", resultFunctionSurface),
+                        new LegendConnectMeaningNodeSubmission(
+                            "register", "register", "measured", resultRegisterSurface),
+                        new LegendConnectMeaningNodeSubmission(
+                            "intent", "intent", "acknowledge_receipt", resultIntentSurface)
+                    ],
+                    [
+                        new LegendConnectMeaningRelationSubmission("function", "applies-to", "subject"),
+                        new LegendConnectMeaningRelationSubmission("function", "qualified-by", "register"),
+                        new LegendConnectMeaningRelationSubmission("function", "governs", "intent")
+                    ]))
+            ],
+            [new LegendConnectSemanticTransitionSubmission(
+                new LegendConnectSemanticFrameSubmission(new Dictionary<string, string>
+                {
+                    ["conversation_function"] = "receipt_confirmation_request",
+                    ["subject"] = "status_message"
+                }),
+                new LegendConnectSemanticFrameSubmission(new Dictionary<string, string>
+                {
+                    ["conversation_function"] = "receipt_confirmation_response",
+                    ["subject"] = "status_message",
+                    ["register"] = "measured",
+                    ["intent"] = "acknowledge_receipt"
+                }))]);
+    }
 
     private static LegendConnectCurriculumBatchSubmission RichResponsePlanFamily(
         int family,
