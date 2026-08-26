@@ -1,6 +1,5 @@
 using System;
 using System.IO;
-using System.Linq;
 using Xunit;
 
 namespace AgentPortal.Tests;
@@ -42,15 +41,33 @@ public sealed class LegendFounderAiRequestBudgetContractTests
 
     private static string ReadSource(params string[] path)
     {
-        var directory = new DirectoryInfo(Directory.GetCurrentDirectory());
-        while (directory is not null)
+        var root = FindRepositoryRoot();
+        return File.ReadAllText(Path.Combine(new[] { root }.Concat(path).ToArray()));
+    }
+
+    private static string FindRepositoryRoot()
+    {
+        var githubWorkspace = Environment.GetEnvironmentVariable("GITHUB_WORKSPACE");
+        if (IsRepositoryRoot(githubWorkspace))
+            return Path.GetFullPath(githubWorkspace!);
+
+        foreach (var start in new[] { Directory.GetCurrentDirectory(), AppContext.BaseDirectory })
         {
-            var candidate = Path.Combine(new[] { directory.FullName }.Concat(path).ToArray());
-            if (File.Exists(candidate))
-                return File.ReadAllText(candidate);
-            directory = directory.Parent;
+            var directory = new DirectoryInfo(start);
+            while (directory is not null)
+            {
+                if (IsRepositoryRoot(directory.FullName))
+                    return directory.FullName;
+                directory = directory.Parent;
+            }
         }
 
-        throw new FileNotFoundException(string.Join('/', path));
+        throw new DirectoryNotFoundException("Repository root was not found from GITHUB_WORKSPACE, the working directory, or the test base directory.");
     }
+
+    private static bool IsRepositoryRoot(string? path) =>
+        !string.IsNullOrWhiteSpace(path) &&
+        File.Exists(Path.Combine(path, "MASTERAPP.sln")) &&
+        Directory.Exists(Path.Combine(path, "AgentPortal")) &&
+        Directory.Exists(Path.Combine(path, "AgentPortal.Tests"));
 }
