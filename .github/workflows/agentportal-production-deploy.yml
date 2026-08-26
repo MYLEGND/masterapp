@@ -4,15 +4,16 @@ name: Validate, merge, and deploy AgentPortal to production
 # validate once on the PR merge candidate, package that exact tree, merge only
 # after validation succeeds, verify the merged tree is identical, then migrate
 # and deploy the already-built artifact.
+#
+# Synchronizing code to an already-open production PR is the one and only
+# release trigger. Opening, reopening, marking ready, pushing production,
+# manual dispatch, and diagnostic workflows cannot compete with this path.
 on:
   pull_request:
     branches:
       - production
     types:
-      - opened
       - synchronize
-      - reopened
-      - ready_for_review
 
 concurrency:
   group: agentportal-production-pr-${{ github.event.pull_request.number }}

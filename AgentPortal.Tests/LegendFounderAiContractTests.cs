@@ -749,6 +749,10 @@ public sealed class LegendFounderAiContractTests
 
         Assert.Contains("pull_request:", workflow, StringComparison.Ordinal);
         Assert.Contains("- production", workflow, StringComparison.Ordinal);
+        Assert.Contains("- synchronize", workflow, StringComparison.Ordinal);
+        Assert.DoesNotContain("- opened", workflow, StringComparison.Ordinal);
+        Assert.DoesNotContain("- reopened", workflow, StringComparison.Ordinal);
+        Assert.DoesNotContain("- ready_for_review", workflow, StringComparison.Ordinal);
         Assert.Contains("security:", workflow, StringComparison.Ordinal);
         Assert.Contains("build:", workflow, StringComparison.Ordinal);
         Assert.Contains("merge:", workflow, StringComparison.Ordinal);
