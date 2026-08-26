@@ -628,6 +628,13 @@ internal sealed class LegendConnectRuntimePolicyAuthority : ILegendConnectRuntim
         var convergence = await _db.Set<LegendLanguageDerivationConvergence>()
             .SingleOrDefaultAsync(item => item.TargetEvaluatorVersion == evaluatorVersion,
                 cancellationToken);
+        // Seeding advances this projection with ExecuteUpdate, which does not
+        // refresh an entity already tracked by this worker scope. Reload before
+        // deciding whether a rewind remains eligible so the database state,
+        // rather than a stale queued instance, is authoritative.
+        if (convergence is not null && _db.Database.IsRelational())
+            await _db.Entry(convergence).ReloadAsync(cancellationToken);
+
         // Rewind is an adoption action for a newly queued convergence plan.
         // Once seeding has moved the plan to Processing, completed phases are
         // authoritative and the worker must continue forward instead of
