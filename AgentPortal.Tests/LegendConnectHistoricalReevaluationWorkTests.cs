@@ -128,6 +128,19 @@ public sealed class LegendConnectHistoricalReevaluationWorkTests
         var legacy = Assert.Single(rows.Where(item => !item.WorkIdentity.Contains("|contract-frontier:", StringComparison.Ordinal)));
         Assert.Equal("Retired", legacy.ProcessingState);
         Assert.Equal("historical_reevaluation_contract_superseded", legacy.LastErrorCode);
+
+        await CompleteAllAsync(
+            fixture.Work,
+            LegendConnectLanguageIntelligenceEvaluatorVersion.Current,
+            LegendConnectLanguageIntelligenceReevaluationPhases.SourceFamilies);
+        Assert.True(await fixture.Work.TryAdvancePhaseAsync(
+            LegendConnectLanguageIntelligenceEvaluatorVersion.Current,
+            LegendConnectLanguageIntelligenceReevaluationPhases.SourceFamilies));
+
+        var afterAdvance = await fixture.Runtime.GetOrStartLanguageIntelligenceReevaluationAsync(
+            LegendConnectLanguageIntelligenceEvaluatorVersion.Current);
+        Assert.Equal(LegendConnectLanguageIntelligenceReevaluationPhases.Alignments, afterAdvance.Phase);
+        Assert.Equal("Processing", convergence.State);
     }
 
     [Fact]
