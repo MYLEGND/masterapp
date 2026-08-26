@@ -740,19 +740,30 @@ public sealed class LegendFounderAiContractTests
     }
 
     [Fact]
-    public void ProductionDeploymentWorkflow_HasNoManualDispatchBypass()
+    public void ProductionDeploymentWorkflow_IsTheSinglePullRequestValidationMergeAndDeployPath()
     {
         var workflow = File.ReadAllText(
             Path.Combine(
                 AppContext.BaseDirectory,
                 "agentportal-production-deploy.yml"));
 
-        Assert.Contains("push:", workflow, StringComparison.Ordinal);
+        Assert.Contains("pull_request:", workflow, StringComparison.Ordinal);
         Assert.Contains("- production", workflow, StringComparison.Ordinal);
-        Assert.Contains("validate:", workflow, StringComparison.Ordinal);
-        Assert.Contains("needs: validate", workflow, StringComparison.Ordinal);
-        Assert.Contains("Run full release regression suite", workflow, StringComparison.Ordinal);
+        Assert.Contains("- synchronize", workflow, StringComparison.Ordinal);
+        Assert.DoesNotContain("- opened", workflow, StringComparison.Ordinal);
+        Assert.DoesNotContain("- reopened", workflow, StringComparison.Ordinal);
+        Assert.DoesNotContain("- ready_for_review", workflow, StringComparison.Ordinal);
+        Assert.Contains("security:", workflow, StringComparison.Ordinal);
+        Assert.Contains("build:", workflow, StringComparison.Ordinal);
+        Assert.Contains("merge:", workflow, StringComparison.Ordinal);
+        Assert.Contains("migrate:", workflow, StringComparison.Ordinal);
+        Assert.Contains("deploy:", workflow, StringComparison.Ordinal);
+        Assert.Contains("needs: security", workflow, StringComparison.Ordinal);
+        Assert.Contains("Test full suite including security regressions", workflow, StringComparison.Ordinal);
         Assert.Contains("dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj", workflow, StringComparison.Ordinal);
+        Assert.Contains("Merge exact validated PR head", workflow, StringComparison.Ordinal);
+        Assert.Contains("Deploy immutable merged production tree", workflow, StringComparison.Ordinal);
+        Assert.DoesNotContain("push:", workflow, StringComparison.Ordinal);
         Assert.DoesNotContain("workflow_dispatch:", workflow, StringComparison.Ordinal);
     }
 
