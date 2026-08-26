@@ -9,6 +9,7 @@ name: Validate, merge, and deploy AgentPortal to production
 # release trigger. Opening, reopening, marking ready, pushing production,
 # manual dispatch, and diagnostic workflows cannot compete with this path.
 # No other event is supported by this workflow.
+# The legacy standalone security workflow is retired separately before application release.
 on:
   pull_request:
     branches:
