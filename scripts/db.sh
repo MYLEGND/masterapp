@@ -38,6 +38,7 @@ Commands:
   sync <MigrationName>  Generate and safely apply one local migration when required.
   apply                 Apply already-generated, validated migrations to the local database.
   validate              Run the complete pre-commit migration validation.
+  validate-artifacts    Validate an already-built EF model and its migration artifacts without rebuilding or retesting.
   bundle                Validate, then create artifacts/migrations/masterapp-migrate.
 
 Optional local database override:
@@ -152,12 +153,18 @@ test_backend() {
 
 check_model() {
     local output="$WORK_DIR/model-check.log"
+    local configuration_args=()
     printf '\n[MODEL] Checking for EF pending model changes\n'
+
+    if [[ -n "${DB_BUILD_CONFIGURATION:-}" ]]; then
+        configuration_args=(--configuration "$DB_BUILD_CONFIGURATION")
+    fi
 
     if run_ef migrations has-pending-model-changes \
         --project "$EF_PROJECT" \
         --startup-project "$STARTUP_PROJECT" \
         --context "$DB_CONTEXT" \
+        "${configuration_args[@]}" \
         --no-build >"$output" 2>&1; then
         cat "$output"
         MODEL_STATUS="clean"
@@ -745,6 +752,28 @@ command_validate() {
     result "DATABASE MODEL CLEAN"
 }
 
+command_validate_artifacts() {
+    ensure_ef_tool
+    check_model
+    if [[ "$MODEL_STATUS" != "clean" ]]; then
+        result "MIGRATION REQUIRED"
+        exit 10
+    fi
+
+    if ! check_migration_integrity; then
+        result "MIGRATION ARTIFACTS INVALID"
+        exit 20
+    fi
+
+    printf '\n[MIGRATION] Checking repository whitespace\n'
+    if ! git diff --check; then
+        artifact_failure "Git whitespace validation failed."
+    fi
+
+    print_commit_migration_files
+    result "DATABASE MODEL CLEAN"
+}
+
 command_bundle() {
     command_validate
     printf '\n[BUNDLE] Creating %s\n' "${BUNDLE_PATH#$ROOT_DIR/}"
@@ -781,6 +810,10 @@ case "${1:-}" in
     validate)
         [[ $# -eq 1 ]] || { usage; exit 64; }
         command_validate
+        ;;
+    validate-artifacts)
+        [[ $# -eq 1 ]] || { usage; exit 64; }
+        command_validate_artifacts
         ;;
     bundle)
         [[ $# -eq 1 ]] || { usage; exit 64; }

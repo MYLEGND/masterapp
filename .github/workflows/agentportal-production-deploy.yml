@@ -101,7 +101,8 @@ jobs:
       - name: Database migration validation
         env:
           DB_BASE_REF: ${{ github.event.pull_request.base.sha }}
-        run: ./scripts/db.sh validate
+          DB_BUILD_CONFIGURATION: Release
+        run: ./scripts/db.sh validate-artifacts
 
       - name: No skipped security tests
         run: |

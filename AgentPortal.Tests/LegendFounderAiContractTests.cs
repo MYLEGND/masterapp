@@ -761,10 +761,32 @@ public sealed class LegendFounderAiContractTests
         Assert.Contains("needs: security", workflow, StringComparison.Ordinal);
         Assert.Contains("Test full suite including security regressions", workflow, StringComparison.Ordinal);
         Assert.Contains("dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj", workflow, StringComparison.Ordinal);
+        Assert.Contains("run: ./scripts/db.sh validate-artifacts", workflow, StringComparison.Ordinal);
+        Assert.DoesNotContain("run: ./scripts/db.sh validate\n", workflow, StringComparison.Ordinal);
         Assert.Contains("Merge exact validated PR head", workflow, StringComparison.Ordinal);
         Assert.Contains("Deploy immutable merged production tree", workflow, StringComparison.Ordinal);
         Assert.DoesNotContain("push:", workflow, StringComparison.Ordinal);
         Assert.DoesNotContain("workflow_dispatch:", workflow, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void UnifiedProductionMigrationGate_ValidatesBuiltArtifactsWithoutRebuildingOrRetesting()
+    {
+        var script = File.ReadAllText(
+            Path.Combine(
+                AppContext.BaseDirectory,
+                "db.sh"));
+        var start = script.IndexOf("command_validate_artifacts()", StringComparison.Ordinal);
+        Assert.True(start >= 0);
+
+        var end = script.IndexOf("command_bundle()", start, StringComparison.Ordinal);
+        Assert.True(end > start);
+
+        var command = script[start..end];
+        Assert.Contains("check_model", command, StringComparison.Ordinal);
+        Assert.Contains("check_migration_integrity", command, StringComparison.Ordinal);
+        Assert.DoesNotContain("build_backend", command, StringComparison.Ordinal);
+        Assert.DoesNotContain("test_backend", command, StringComparison.Ordinal);
     }
 
     [Fact]
