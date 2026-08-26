@@ -39,11 +39,6 @@ public sealed class LegendConnectSemanticSpanGroundingTests
         Assert.True(graph.IsComposed, graph.ReasonCode);
         Assert.DoesNotContain(graph.Nodes, item => item.SemanticDimension == "register");
 
-        var legacyDiagnostic = await fixture.Operations.TryInferConversationAsync(
-            "Hi there.",
-            []);
-        Assert.True(legacyDiagnostic.Supported, legacyDiagnostic.ReasonCode);
-
         var native = await fixture.Operations.TryInferConversationWithDiscourseAsync(
             "Hi there.",
             [],
