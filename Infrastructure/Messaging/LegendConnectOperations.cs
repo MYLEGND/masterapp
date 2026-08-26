@@ -354,7 +354,9 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
     /// authority's generic semantic-transition evaluator. It neither retrieves
     /// nearby text as an answer nor has a prompt/answer store: every supported
     /// result must pass source understanding, independently supported frame
-    /// transition, contradiction checks, and canonical anchor realization.
+    /// transition, contradiction checks, and governed realization. This
+    /// legacy non-discourse entry point is retained for historical diagnostics;
+    /// production chat uses TryInferConversationWithDiscourseAsync.
     /// </summary>
     public async Task<LegendConnectNativeInferenceSnapshot>
         TryInferConversationAsync(
@@ -392,7 +394,7 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
                 inference.RealizedText,
                 "semantic_transition_governed",
                 inference.EvidenceCount,
-                "LEGEND independently interpreted the controlled source frame, selected one contradiction-free Founder-supported semantic transition, and realized the result from canonical anchors.",
+                "LEGEND independently interpreted the controlled source frame, selected one contradiction-free Founder-supported semantic transition, and returned its governed canonical endpoint.",
                 false);
         }
 
@@ -422,7 +424,7 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
                 composed.RealizedText,
                 "semantic_transition_governed_composed",
                 composed.EvidenceCount,
-                "LEGEND composed governed meaning, applied one independently supported Founder transition, and realized the governed result.",
+                "LEGEND composed governed meaning, applied one independently supported Founder transition, and articulated original wording from governed semantic anchors.",
                 false);
         }
 
@@ -502,7 +504,7 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
         null,
         reasonCode,
         0,
-        "LEGEND could not establish one independently supported, contradiction-free semantic transition and canonical realization for this request.",
+        "LEGEND could not establish one independently supported, contradiction-free semantic transition and original compositional realization for this request.",
         requiresEscalation);
 
     /// <summary>
