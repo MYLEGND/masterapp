@@ -541,6 +541,88 @@ public sealed class LegendFounderAiContractTests
     }
 
     [Fact]
+    public async Task IntelligenceEvaluation_ProjectsOnlyCanonicalGovernedEvidenceWithoutDuplicates()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var now = DateTime.UtcNow;
+        var family = new LegendCurriculumFamily
+        {
+            FamilyKey = "evaluation-family",
+            SemanticCategory = "causal_reasoning",
+            Provenance = "FounderApproved",
+            UpdatedUtc = now
+        };
+        db.LegendCurriculumFamilies.Add(family);
+
+        for (var index = 0; index < 3; index++)
+        {
+            var sourceUnit = new LegendLanguageTextUnit
+            {
+                LanguageCode = "en", StoragePartition = "evaluation", NormalizedHash = $"source-{index}",
+                Text = $"source {index}", Provenance = "FounderApproved", IsTrainingEligible = true, UpdatedUtc = now
+            };
+            var resultUnit = new LegendLanguageTextUnit
+            {
+                LanguageCode = "en", StoragePartition = "evaluation", NormalizedHash = $"result-{index}",
+                Text = $"result {index}", Provenance = "FounderApproved", IsTrainingEligible = true, UpdatedUtc = now
+            };
+            var source = new LegendCurriculumExample
+            {
+                CurriculumFamilyId = family.Id, TextUnitId = sourceUnit.Id, LanguageCode = "en",
+                Provenance = "FounderApproved", UpdatedUtc = now
+            };
+            var result = new LegendCurriculumExample
+            {
+                CurriculumFamilyId = family.Id, TextUnitId = resultUnit.Id, LanguageCode = "en",
+                Provenance = "FounderApproved", UpdatedUtc = now
+            };
+            db.LegendLanguageTextUnits.AddRange(sourceUnit, resultUnit);
+            db.LegendCurriculumExamples.AddRange(source, result);
+            db.LegendSemanticTransitionEvidence.Add(new LegendSemanticTransitionEvidence
+            {
+                TransitionSignature = "governed-transition",
+                SourceSemanticFrameSignature = "source-frame",
+                ResultSemanticFrameSignature = "result-frame",
+                SourceSemanticFrame = "{\"state\":\"known\"}",
+                ResultSemanticFrame = "{\"state\":\"resolved\"}",
+                SourceLanguageCode = "en",
+                ResultLanguageCode = "en",
+                SourceCurriculumExampleId = source.Id,
+                ResultCurriculumExampleId = result.Id,
+                IndependentSourceIdentity = $"independent-{index}",
+                ContributionState = "Supported",
+                IsHumanVerifiedSupport = true,
+                Provenance = "FounderApproved",
+                UpdatedUtc = now
+            });
+        }
+
+        db.LegendConnectModelTrainingRuns.Add(new LegendConnectModelTrainingRun
+        {
+            RunKey = "evaluation-run", DatasetIdentity = "evaluation-dataset", TrainingProvider = "test",
+            BaseModel = "test", EvaluationState = "Passed", HeldOutScore = 1m, RegressionScore = 1m,
+            CompletedUtc = now, UpdatedUtc = now
+        });
+        db.LegendTranslationPairDemands.Add(new LegendTranslationPairDemand
+        {
+            PairKey = "en-es", TranslationRequestCount = 10, TranslationMemoryHitCount = 10, LastRequestedUtc = now
+        });
+        await db.SaveChangesAsync();
+
+        var service = new LegendIntelligenceEvaluationService(db);
+        var measured = await service.CreateEvidenceSnapshotAsync("founder-1", CancellationToken.None);
+        var language = measured.Domains.Single(domain => domain.Key == "language_linguistic");
+        Assert.Equal(100m, language.EvidenceScore);
+        Assert.Equal(1, language.ProductionEligibleEvidenceCount);
+        Assert.Equal(9, language.EvidenceVolume);
+
+        var repeated = await service.CreateEvidenceSnapshotAsync("founder-1", CancellationToken.None);
+        Assert.Equal(measured.EvaluatedUtc, repeated.EvaluatedUtc);
+        Assert.Equal(9, await db.LegendIntelligenceEvaluationSignals.CountAsync());
+        Assert.Equal(1, await db.LegendIntelligenceEvaluationSnapshots.CountAsync());
+    }
+
+    [Fact]
     public async Task SoftwareRemediation_InvalidReleaseIdentityCannotReachGitHub()
     {
         var factory = new ThrowingHttpClientFactory();

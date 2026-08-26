@@ -4,6 +4,7 @@ using System.Text.Json;
 using AgentPortal.Models;
 using Domain.Entities;
 using Infrastructure.Data;
+using Infrastructure.Messaging;
 using Microsoft.EntityFrameworkCore;
 
 namespace AgentPortal.Services;
@@ -25,6 +26,8 @@ public sealed class LegendIntelligenceEvaluationService : ILegendIntelligenceEva
     public const string ContractKey = "LEGEND Intelligence Evaluation Contract V1";
     public const string ContractVersion = "V1";
     private const string ContractIdentity = "legend-intelligence-evaluation-contract-v1";
+    private const string CanonicalProjectionAuthority = "legend-canonical-evidence-projection-v1";
+    private const string LanguageDomain = "language_linguistic";
 
     private static readonly IReadOnlyDictionary<string, decimal> ScoreWeights =
         new Dictionary<string, decimal>(StringComparer.Ordinal)
@@ -69,6 +72,7 @@ public sealed class LegendIntelligenceEvaluationService : ILegendIntelligenceEva
             throw new ArgumentException("A Founder identity is required.", nameof(founderUserId));
 
         var contract = await GetOrCreateContractAsync(cancellationToken);
+        var productionEligibleEvidence = await RefreshCanonicalSignalsAsync(contract, cancellationToken);
         var signals = await _db.LegendIntelligenceEvaluationSignals
             .Where(item => item.ContractId == contract.Id && item.State == "Current")
             .OrderBy(item => item.DomainKey)
@@ -107,7 +111,7 @@ public sealed class LegendIntelligenceEvaluationService : ILegendIntelligenceEva
                     DomainKey = domain.Key,
                     EvidenceScore = evaluation.Score,
                     EvidenceVolume = domainSignals.LongLength,
-                    ProductionEligibleEvidenceCount = 0,
+                    ProductionEligibleEvidenceCount = productionEligibleEvidence.GetValueOrDefault(domain.Key),
                     NativeSuccessRate = evaluation.TryMetric("native_execution"),
                     HeldOutResult = evaluation.TryMetric("held_out"),
                     TransferResult = evaluation.TryMetric("transfer"),
@@ -221,6 +225,173 @@ public sealed class LegendIntelligenceEvaluationService : ILegendIntelligenceEva
         return current;
     }
 
+    /// <summary>
+    /// Projects already-governed evidence into the existing evaluation
+    /// contract. It creates no curriculum, model result, or runtime outcome;
+    /// absent authorities remain absent metrics and therefore fail closed.
+    /// </summary>
+    private async Task<IReadOnlyDictionary<string, long>> RefreshCanonicalSignalsAsync(
+        LegendIntelligenceEvaluationContract contract,
+        CancellationToken cancellationToken)
+    {
+        var observations = await (
+            from evidence in _db.LegendSemanticTransitionEvidence.AsNoTracking()
+            join source in _db.LegendCurriculumExamples.AsNoTracking()
+                on evidence.SourceCurriculumExampleId equals source.Id
+            join result in _db.LegendCurriculumExamples.AsNoTracking()
+                on evidence.ResultCurriculumExampleId equals result.Id
+            join sourceUnit in _db.LegendLanguageTextUnits.AsNoTracking()
+                on source.TextUnitId equals sourceUnit.Id
+            join resultUnit in _db.LegendLanguageTextUnits.AsNoTracking()
+                on result.TextUnitId equals resultUnit.Id
+            join family in _db.LegendCurriculumFamilies.AsNoTracking()
+                on source.CurriculumFamilyId equals family.Id
+            where evidence.SupersededUtc == null &&
+                  evidence.SourceLanguageCode == "en" && evidence.ResultLanguageCode == "en" &&
+                  (evidence.ContributionState == "Supported" || evidence.ContributionState == "Contradictory") &&
+                  evidence.Provenance == "FounderApproved" &&
+                  source.SupersededUtc == null && result.SupersededUtc == null &&
+                  source.LanguageCode == "en" && result.LanguageCode == "en" &&
+                  source.Provenance == "FounderApproved" && result.Provenance == "FounderApproved" &&
+                  sourceUnit.IsTrainingEligible && resultUnit.IsTrainingEligible &&
+                  sourceUnit.Provenance == "FounderApproved" && resultUnit.Provenance == "FounderApproved" &&
+                  family.Provenance == "FounderApproved"
+            select new CanonicalTransitionObservation(
+                evidence.Id,
+                evidence.TransitionSignature,
+                evidence.SourceSemanticFrame,
+                evidence.ResultSemanticFrame,
+                evidence.IndependentSourceIdentity,
+                evidence.ContributionState,
+                evidence.IsHumanVerifiedSupport,
+                source.CurriculumFamilyId,
+                family.SemanticCategory,
+                evidence.UpdatedUtc)
+        ).ToListAsync(cancellationToken);
+
+        var groups = observations.GroupBy(item => item.TransitionSignature, StringComparer.Ordinal).ToArray();
+        var eligible = groups.Where(IsProductionEligible).ToArray();
+        var eligibleSignatures = eligible.Select(group => group.Key).ToHashSet(StringComparer.Ordinal);
+        var eligibleObservations = observations.Where(item => eligibleSignatures.Contains(item.TransitionSignature)).ToArray();
+        var measuredUtc = observations.Count == 0 ? (DateTime?)null : observations.Max(item => item.UpdatedUtc);
+        var projected = new List<ProjectedSignal>();
+
+        AddRatio(projected, "coverage",
+            eligibleObservations.Select(item => item.FamilyId).Distinct().LongCount(),
+            observations.Select(item => item.FamilyId).Distinct().LongCount(), measuredUtc, observations);
+        AddRatio(projected, "quality",
+            observations.Where(item => item.ContributionState == "Supported" && item.IsHumanVerifiedSupport)
+                .Select(item => item.IndependentSourceIdentity).Distinct(StringComparer.Ordinal).LongCount(),
+            observations.Select(item => item.IndependentSourceIdentity).Distinct(StringComparer.Ordinal).LongCount(), measuredUtc, observations);
+
+        var categorized = observations.Where(item => !string.IsNullOrWhiteSpace(item.SemanticCategory)).ToArray();
+        AddRatio(projected, "diversity",
+            eligibleObservations.Where(item => !string.IsNullOrWhiteSpace(item.SemanticCategory))
+                .Select(item => item.SemanticCategory!).Distinct(StringComparer.Ordinal).LongCount(),
+            categorized.Select(item => item.SemanticCategory!).Distinct(StringComparer.Ordinal).LongCount(), measuredUtc, categorized);
+        AddRatio(projected, "validation_maturity", eligible.LongLength, groups.LongLength, measuredUtc, observations);
+        AddRatio(projected, "contradiction_rate",
+            observations.Where(item => item.ContributionState == "Contradictory")
+                .Select(item => item.IndependentSourceIdentity).Distinct(StringComparer.Ordinal).LongCount(),
+            observations.Select(item => item.IndependentSourceIdentity).Distinct(StringComparer.Ordinal).LongCount(), measuredUtc, observations);
+
+        var modelRun = await _db.LegendConnectModelTrainingRuns.AsNoTracking()
+            .Where(item => item.EvaluationState == "Passed" && item.HeldOutScore != null && item.RegressionScore != null)
+            .OrderByDescending(item => item.CompletedUtc).ThenByDescending(item => item.UpdatedUtc)
+            .FirstOrDefaultAsync(cancellationToken);
+        if (modelRun is not null)
+        {
+            projected.Add(Project("held_out", modelRun.HeldOutScore!.Value * 100m, modelRun.UpdatedUtc,
+                $"model-run:{modelRun.Id:N}:held-out:{modelRun.HeldOutScore:0.000000}"));
+            projected.Add(Project("transfer", modelRun.RegressionScore!.Value * 100m, modelRun.UpdatedUtc,
+                $"model-run:{modelRun.Id:N}:regression:{modelRun.RegressionScore:0.000000}"));
+        }
+
+        var demands = await _db.LegendTranslationPairDemands.AsNoTracking().ToListAsync(cancellationToken);
+        var requests = demands.Sum(item => item.TranslationRequestCount);
+        decimal? nativeExecution = null;
+        if (requests > 0)
+        {
+            var internalServes = demands.Sum(item => item.TranslationMemoryHitCount +
+                item.StructuralInternalServeCount + item.ContextualInternalServeCount + item.NeuralModelServeCount);
+            nativeExecution = Percent(internalServes, requests);
+            var demandMaterial = string.Join("|", demands.OrderBy(item => item.PairKey, StringComparer.Ordinal)
+                .Select(item => $"{item.PairKey}:{item.TranslationRequestCount}:{item.TranslationMemoryHitCount}:{item.StructuralInternalServeCount}:{item.ContextualInternalServeCount}:{item.NeuralModelServeCount}:{item.LastRequestedUtc:O}"));
+            projected.Add(Project("native_execution", nativeExecution.Value,
+                demands.Max(item => item.LastRequestedUtc), "translation-demand:" + Hash(demandMaterial)));
+        }
+
+        if (modelRun?.HeldOutScore is not null && nativeExecution is not null)
+        {
+            var heldOut = Math.Clamp(modelRun.HeldOutScore.Value * 100m, 0m, 100m);
+            projected.Add(Project("calibration", 100m - Math.Abs(heldOut - nativeExecution.Value),
+                new[] { modelRun.UpdatedUtc, demands.Max(item => item.LastRequestedUtc) }.Max(),
+                $"held-out-native-agreement:{modelRun.Id:N}:{Hash(string.Join('|', demands.Select(item => item.Id).OrderBy(item => item)))}"));
+        }
+
+        await UpsertProjectedSignalsAsync(contract.Id, projected, cancellationToken);
+        return new Dictionary<string, long>(StringComparer.Ordinal) { [LanguageDomain] = eligible.LongLength };
+    }
+
+    private async Task UpsertProjectedSignalsAsync(Guid contractId, IReadOnlyList<ProjectedSignal> projected, CancellationToken cancellationToken)
+    {
+        var existing = await _db.LegendIntelligenceEvaluationSignals
+            .Where(item => item.ContractId == contractId && item.EvidenceAuthority == CanonicalProjectionAuthority)
+            .ToListAsync(cancellationToken);
+        var currentKeys = projected.Select(item => item.Reference).ToHashSet(StringComparer.Ordinal);
+        foreach (var signal in existing.Where(item => item.State == "Current" && !currentKeys.Contains(item.EvidenceReference)))
+            signal.State = "Superseded";
+
+        foreach (var item in projected)
+        {
+            var signal = existing.SingleOrDefault(candidate => candidate.EvidenceReference == item.Reference);
+            if (signal is not null)
+            {
+                signal.State = "Current";
+                continue;
+            }
+            _db.LegendIntelligenceEvaluationSignals.Add(new LegendIntelligenceEvaluationSignal
+            {
+                ContractId = contractId,
+                DomainKey = LanguageDomain,
+                MetricKey = item.Metric,
+                Value = item.Value,
+                EvidenceAuthority = CanonicalProjectionAuthority,
+                EvidenceReference = item.Reference,
+                State = "Current",
+                MeasuredUtc = item.MeasuredUtc,
+                CreatedUtc = DateTime.UtcNow
+            });
+        }
+        await _db.SaveChangesAsync(cancellationToken);
+    }
+
+    private static bool IsProductionEligible(IGrouping<string, CanonicalTransitionObservation> group) =>
+        LegendSemanticTransitionProductionEligibility.IsEligible(group.Select(item =>
+            new LegendSemanticTransitionEligibilityObservation(
+                item.SourceFrame,
+                item.ResultFrame,
+                item.IndependentSourceIdentity,
+                item.ContributionState,
+                item.IsHumanVerifiedSupport)));
+
+    private static void AddRatio(List<ProjectedSignal> target, string metric, long numerator, long denominator,
+        DateTime? measuredUtc, IReadOnlyCollection<CanonicalTransitionObservation> evidence)
+    {
+        if (denominator <= 0 || measuredUtc is null)
+            return;
+        var material = string.Join("|", evidence.OrderBy(item => item.Id).Select(item =>
+            $"{item.Id:N}:{item.UpdatedUtc:O}:{item.ContributionState}:{item.IsHumanVerifiedSupport}"));
+        target.Add(Project(metric, Percent(numerator, denominator), measuredUtc.Value,
+            $"semantic-transition:{metric}:{Hash(material)}"));
+    }
+
+    private static ProjectedSignal Project(string metric, decimal value, DateTime measuredUtc, string reference) =>
+        new(metric, Math.Clamp(Math.Round(value, 2, MidpointRounding.AwayFromZero), 0m, 100m), measuredUtc, reference);
+
+    private static decimal Percent(long numerator, long denominator) => denominator == 0 ? 0m : (decimal)numerator * 100m / denominator;
+    private static string Hash(string material) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(material))).ToLowerInvariant();
+
     private static DomainEvaluation EvaluateDomain(IEnumerable<LegendIntelligenceEvaluationSignal> source)
     {
         var current = source
@@ -267,4 +438,9 @@ public sealed class LegendIntelligenceEvaluationService : ILegendIntelligenceEva
     {
         public decimal? TryMetric(string key) => Metrics.TryGetValue(key, out var value) ? value : null;
     }
+
+    private sealed record CanonicalTransitionObservation(Guid Id, string TransitionSignature, string SourceFrame,
+        string ResultFrame, string IndependentSourceIdentity, string ContributionState, bool IsHumanVerifiedSupport,
+        Guid FamilyId, string? SemanticCategory, DateTime UpdatedUtc);
+    private sealed record ProjectedSignal(string Metric, decimal Value, DateTime MeasuredUtc, string Reference);
 }

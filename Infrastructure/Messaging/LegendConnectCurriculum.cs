@@ -4095,8 +4095,13 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
         independentEvidenceCount = 0;
         sourceFrame = null!;
         resultFrame = null!;
-        if (group.Count == 0 || group.Any(item =>
-                string.Equals(item.ContributionState, "Contradictory", StringComparison.Ordinal)))
+        if (!LegendSemanticTransitionProductionEligibility.IsEligible(group.Select(item =>
+                new LegendSemanticTransitionEligibilityObservation(
+                    item.SourceFrame,
+                    item.ResultFrame,
+                    item.IndependentSourceIdentity,
+                    item.ContributionState,
+                    item.IsHumanVerifiedSupport))))
         {
             return false;
         }
@@ -4107,9 +4112,6 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
             .Select(item => item.IndependentSourceIdentity)
             .Distinct(StringComparer.Ordinal)
             .Count();
-        if (independentEvidenceCount < 3)
-            return false;
-
         var representative = group[0];
         if (!TryReadSemanticFrame(representative.SourceFrame, out sourceFrame) ||
             !TryReadSemanticFrame(representative.ResultFrame, out resultFrame) ||
