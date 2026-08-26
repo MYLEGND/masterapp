@@ -142,6 +142,16 @@ public sealed class LegendFounderAiConversationService
                 "invalid_messages");
         }
 
+        if (request.NativeOnly && IsTeacherMode(mode))
+        {
+            return LegendFounderAiChatResponse.ModeFailure(
+                mode,
+                "Native-only testing is available only in Legend® Ai mode. OpenAI Teacher was not contacted.",
+                "validation",
+                "native_only_validation",
+                "native_only_requires_legend_mode");
+        }
+
         await ReportProgressAsync(
             progress,
             new LegendFounderAiProgressEvent(
@@ -270,6 +280,43 @@ public sealed class LegendFounderAiConversationService
                     ResponseAuthority: "LegendAi",
                     Stage: "native_response");
             }
+        }
+
+        // Founder native-only testing is an absolute provider boundary. Once
+        // governed native inference declines or fails, return its real state
+        // before resolving an OpenAI key, constructing provider instructions,
+        // loading provider tools, or issuing any external request.
+        if (request.NativeOnly)
+        {
+            await ReportProgressAsync(
+                progress,
+                new LegendFounderAiProgressEvent(
+                    "native_only_blocked",
+                    "Native-only test stopped after governed LEGEND could not produce an answer. OpenAI escalation was blocked."),
+                effectiveToken);
+
+            var reason = string.IsNullOrWhiteSpace(nativeInference?.ReasonCode)
+                ? nativeInference is null
+                    ? "native_inference_unavailable"
+                    : "native_inference_unsupported"
+                : nativeInference.ReasonCode.Trim();
+            var detail = !string.IsNullOrWhiteSpace(nativeFailureDetail)
+                ? NormalizeFailureDetail(nativeFailureDetail)
+                : !string.IsNullOrWhiteSpace(nativeInference?.AuthoritySummary)
+                    ? nativeInference.AuthoritySummary.Trim()
+                    : "The native authority returned no additional detail.";
+
+            return new LegendFounderAiChatResponse(
+                true,
+                mode,
+                $"LEGEND could not complete this native-only response. " +
+                $"NativeFailure={reason}; NativeDetail={detail}; " +
+                $"EvidenceCount={nativeInference?.EvidenceCount ?? 0}; " +
+                "OpenAIEscalation=blocked.",
+                null,
+                ResponseAuthority: "SystemDiagnostic",
+                Stage: "native_only_blocked",
+                Reason: reason);
         }
 
         // V20.3: the native semantic authority distinguishes between
@@ -4166,6 +4213,13 @@ public sealed record LegendFounderAiChatMessage(
 public sealed class LegendFounderAiChatRequest
 {
     public string? Mode { get; init; }
+
+    /// <summary>
+    /// Founder-selected hard boundary for direct LEGEND testing. When true in
+    /// Legend® Ai mode, unsupported native inference fails closed before any
+    /// OpenAI configuration or provider request is accessed.
+    /// </summary>
+    public bool NativeOnly { get; init; }
 
     /// <summary>
     /// One-request confirmation supplied by the authenticated Founder UI for

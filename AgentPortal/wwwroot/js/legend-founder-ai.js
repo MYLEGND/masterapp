@@ -30,6 +30,9 @@
     const founderCommandConfirmed = document.getElementById(
         'legendFounderAiFounderCommandConfirmed'
     );
+    const nativeOnly = document.getElementById(
+        'legendFounderAiNativeOnly'
+    );
     const sidebar = document.getElementById('legendFounderAiSidebar');
     const sidebarCollapse = document.getElementById('legendFounderAiSidebarCollapse');
     const sidebarScrim = document.getElementById('legendFounderAiSidebarScrim');
@@ -228,12 +231,18 @@
         );
     }
 
-    function newConversationRecord(mode = 'legend') {
+    function newConversationRecord(
+        mode = 'legend',
+        nativeOnlyEnabled = false
+    ) {
         const now = new Date().toISOString();
 
         return {
             id: createId(),
             mode,
+            nativeOnly:
+                mode === 'legend' &&
+                nativeOnlyEnabled === true,
             title: 'New conversation',
             createdUtc: now,
             updatedUtc: now,
@@ -363,7 +372,10 @@
         // reverse), because that would feed one AI's prior responses to the
         // other under the wrong role. A mode change starts a clean thread while
         // preserving both histories independently.
-        const conversation = newConversationRecord(requestedMode);
+        const conversation = newConversationRecord(
+            requestedMode,
+            false
+        );
         state.conversations.unshift(conversation);
         state.activeConversationId = conversation.id;
         saveState();
@@ -385,7 +397,10 @@
 
         const current = activeConversation();
         const conversation =
-            newConversationRecord(current.mode);
+            newConversationRecord(
+                current.mode,
+                current.nativeOnly === true
+            );
 
         state.conversations.unshift(conversation);
         state.activeConversationId = conversation.id;
@@ -537,7 +552,22 @@
             subtitle.textContent =
                 conversation.mode === 'teacher'
                     ? 'Direct OpenAI Teacher · LEGEND native inference bypassed'
+                    : conversation.nativeOnly === true
+                        ? 'Legend® Ai · native-only test · every OpenAI escalation blocked'
                     : 'Legend® Ai · governed native intelligence first';
+        }
+
+        if (nativeOnly) {
+            nativeOnly.checked =
+                conversation.nativeOnly === true;
+            nativeOnly.disabled =
+                busy || conversation.mode !== 'legend';
+            nativeOnly.closest(
+                '.legend-founder-ai-native-only'
+            )?.classList.toggle(
+                'is-active',
+                conversation.nativeOnly === true
+            );
         }
 
         if (input) {
@@ -725,7 +755,9 @@
                 appendBubble(
                     message.role,
                     message.content,
-                    false
+                    false,
+                    message.responseAuthority,
+                    message.stage
                 );
             }
         }
@@ -740,7 +772,9 @@
     function appendBubble(
         role,
         content,
-        scroll = true
+        scroll = true,
+        responseAuthority = null,
+        stage = null
     ) {
         if (!transcript) {
             return;
@@ -784,6 +818,35 @@
             'legend-founder-ai-bubble';
 
         bubble.textContent = content;
+
+        if (role !== 'user') {
+            const authority =
+                document.createElement('div');
+
+            authority.className =
+                'legend-founder-ai-response-authority';
+
+            if (
+                responseAuthority === 'LegendAi' &&
+                stage === 'native_response'
+            ) {
+                authority.classList.add('is-native');
+                authority.textContent =
+                    'Verified native LEGEND · OpenAI responder not used';
+            } else if (
+                responseAuthority === 'OpenAITeacher'
+            ) {
+                authority.classList.add('is-provider');
+                authority.textContent =
+                    `OpenAI Teacher · ${stage || 'provider response'}`;
+            } else {
+                authority.classList.add('is-diagnostic');
+                authority.textContent =
+                    `${responseAuthority || 'System diagnostic'} · ${stage || 'unclassified'}`;
+            }
+
+            bubble.appendChild(authority);
+        }
 
         message.appendChild(bubble);
         transcript.appendChild(message);
@@ -835,6 +898,12 @@
 
         for (const button of modeButtons) {
             button.disabled = value;
+        }
+
+        if (nativeOnly) {
+            nativeOnly.disabled =
+                value ||
+                activeConversation().mode !== 'legend';
         }
 
         if (status) {
@@ -1081,6 +1150,44 @@
         );
     }
 
+    nativeOnly?.addEventListener(
+        'change',
+        () => {
+            if (busy) {
+                renderModes();
+                return;
+            }
+
+            const current = activeConversation();
+            if (current.mode !== 'legend') {
+                renderModes();
+                return;
+            }
+
+            // A native-only boundary starts a clean thread so provider-backed
+            // answers from an earlier conversation cannot contaminate the
+            // direct LEGEND test context.
+            const conversation = newConversationRecord(
+                'legend',
+                nativeOnly.checked
+            );
+            state.conversations.unshift(conversation);
+            state.activeConversationId = conversation.id;
+            saveState();
+            setSidebarOpen(false);
+            setReadingMode(false);
+            renderAll({ forceBottom: true });
+
+            if (status) {
+                status.textContent = conversation.nativeOnly
+                    ? 'Native-only test enabled. OpenAI escalation is blocked for this clean conversation.'
+                    : 'Native-only test disabled. Normal governed escalation is available for this clean conversation.';
+            }
+
+            focusComposer();
+        }
+    );
+
     form?.addEventListener(
         'submit',
         async event => {
@@ -1154,6 +1261,8 @@
                             },
                             body: JSON.stringify({
                                 mode: conversation.mode,
+                                nativeOnly:
+                                    conversation.nativeOnly === true,
                                 conversationId: conversation.id,
                                 founderCommandConfirmed:
                                     founderCommandConfirmed?.checked === true,
@@ -1167,7 +1276,13 @@
                 conversation.messages.push({
                     role: 'assistant',
                     content:
-                        result.message
+                        result.message,
+                    responseAuthority:
+                        result.responseAuthority ||
+                        'SystemDiagnostic',
+                    stage:
+                        result.stage ||
+                        'unclassified'
                 });
 
                 if (

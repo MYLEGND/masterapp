@@ -200,27 +200,39 @@
                         </button>
                     </div>
 
-                    <div class="legend-founder-ai-modebar"
-                         role="tablist"
-                         aria-label="Conversation mode">
-                        <button type="button"
-                                class="legend-founder-ai-mode is-active"
-                                data-legend-ai-mode="legend"
-                                role="tab"
-                                aria-selected="true">
-                            <span class="legend-founder-ai-mode-dot" aria-hidden="true"></span>
-                            Legend<sup>®</sup> Ai
-                        </button>
+                    <div class="legend-founder-ai-modebar">
+                        <div class="legend-founder-ai-mode-tabs"
+                             role="tablist"
+                             aria-label="Conversation mode">
+                            <button type="button"
+                                    class="legend-founder-ai-mode is-active"
+                                    data-legend-ai-mode="legend"
+                                    role="tab"
+                                    aria-selected="true">
+                                <span class="legend-founder-ai-mode-dot" aria-hidden="true"></span>
+                                Legend<sup>®</sup> Ai
+                            </button>
 
-                        <button type="button"
-                                class="legend-founder-ai-mode"
-                                data-legend-ai-mode="teacher"
-                                role="tab"
-                                aria-selected="false">
-                            <span class="legend-founder-ai-mode-dot" aria-hidden="true"></span>
-                            OpenAI Teacher
-                            <span class="visually-hidden">Direct OpenAI mode; native LEGEND responder bypassed</span>
-                        </button>
+                            <button type="button"
+                                    class="legend-founder-ai-mode"
+                                    data-legend-ai-mode="teacher"
+                                    role="tab"
+                                    aria-selected="false">
+                                <span class="legend-founder-ai-mode-dot" aria-hidden="true"></span>
+                                OpenAI Teacher
+                                <span class="visually-hidden">Direct OpenAI mode; native LEGEND responder bypassed</span>
+                            </button>
+                        </div>
+
+                        <label class="legend-founder-ai-native-only"
+                               for="legendFounderAiNativeOnly">
+                            <input type="checkbox"
+                                   id="legendFounderAiNativeOnly" />
+                            <span>
+                                <strong>Native-only test</strong>
+                                <small>Block every OpenAI escalation and fail closed when LEGEND cannot answer.</small>
+                            </span>
+                        </label>
                     </div>
 
                     <main class="legend-founder-ai-transcript"
@@ -248,6 +260,8 @@
                                 OpenAI Teacher mode is a direct Founder-to-OpenAI channel
                                 that can inspect and teach through the existing governed
                                 LEGEND tools without becoming a second authority.
+                                Turn on Native-only test to prohibit every OpenAI fallback
+                                and verify LEGEND without provider assistance.
                             </p>
                         </div>
                     </main>

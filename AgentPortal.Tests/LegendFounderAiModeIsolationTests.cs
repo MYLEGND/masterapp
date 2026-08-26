@@ -452,6 +452,102 @@ public sealed class LegendFounderAiModeIsolationTests
     }
 
     [Fact]
+    public async Task LegendMode_NativeOnlyReturnsNativeAnswerWithoutCallingOpenAi()
+    {
+        using var founderEnvironment = new FounderEnvironmentScope();
+        await using var db = ControllerTestHelpers.BuildDb();
+        var founder = await AddFounderProfileAsync(db);
+        var operations = new Mock<ILegendConnectOperations>(MockBehavior.Strict);
+        operations
+            .Setup(operation => operation.TryInferConversationAsync(
+                "Answer directly.",
+                It.IsAny<IReadOnlyList<LegendConnectConversationContextItem>>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new LegendConnectNativeInferenceSnapshot(
+                true,
+                1m,
+                "Native-only answer.",
+                "supported",
+                3,
+                "FounderApproved evidence",
+                false));
+
+        var handler = new FounderAiScenarioHandler(
+            ProviderText("This provider response must never be requested."));
+        var service = CreateService(db, operations.Object, handler);
+
+        var response = await service.ReplyAsync(
+            founder,
+            Request("legend", "Answer directly.", nativeOnly: true));
+
+        Assert.True(response.Succeeded, Describe(response));
+        Assert.Equal("LegendAi", response.ResponseAuthority);
+        Assert.Equal("native_response", response.Stage);
+        Assert.Equal("Native-only answer.", response.Message);
+        Assert.Equal(1, NativeInferenceCalls(operations));
+        Assert.Equal(0, handler.RequestCount);
+    }
+
+    [Fact]
+    public async Task LegendMode_NativeOnlyBlocksPermittedEscalationBeforeOpenAiIsCalled()
+    {
+        using var founderEnvironment = new FounderEnvironmentScope();
+        await using var db = ControllerTestHelpers.BuildDb();
+        var founder = await AddFounderProfileAsync(db);
+        var operations = new Mock<ILegendConnectOperations>(MockBehavior.Strict);
+        operations
+            .Setup(operation => operation.TryInferConversationAsync(
+                "Explain the unsupported gap.",
+                It.IsAny<IReadOnlyList<LegendConnectConversationContextItem>>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new LegendConnectNativeInferenceSnapshot(
+                false,
+                0m,
+                null,
+                "insufficient_evidence",
+                0,
+                "External escalation would normally be permitted.",
+                true));
+
+        var handler = new FounderAiScenarioHandler(
+            ProviderText("This provider response must never be requested."));
+        var service = CreateService(db, operations.Object, handler);
+
+        var response = await service.ReplyAsync(
+            founder,
+            Request("legend", "Explain the unsupported gap.", nativeOnly: true));
+
+        Assert.True(response.Succeeded, Describe(response));
+        Assert.Equal("SystemDiagnostic", response.ResponseAuthority);
+        Assert.Equal("native_only_blocked", response.Stage);
+        Assert.Equal("insufficient_evidence", response.Reason);
+        Assert.Contains("OpenAIEscalation=blocked", response.Message, StringComparison.Ordinal);
+        Assert.Equal(1, NativeInferenceCalls(operations));
+        Assert.Equal(0, handler.RequestCount);
+    }
+
+    [Fact]
+    public async Task TeacherMode_NativeOnlyIsRejectedWithoutCallingNativeOrOpenAi()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var operations = new Mock<ILegendConnectOperations>(MockBehavior.Strict);
+        var handler = new FounderAiScenarioHandler(
+            ProviderText("This provider response must never be requested."));
+        var service = CreateService(db, operations.Object, handler);
+
+        var response = await service.ReplyAsync(
+            ControllerTestHelpers.BuildUser(),
+            Request("teacher", "Do not contact a provider.", nativeOnly: true));
+
+        Assert.False(response.Succeeded);
+        Assert.Equal("OpenAITeacher", response.ResponseAuthority);
+        Assert.Equal("native_only_validation", response.Stage);
+        Assert.Equal("native_only_requires_legend_mode", response.Reason);
+        Assert.Equal(0, NativeInferenceCalls(operations));
+        Assert.Equal(0, handler.RequestCount);
+    }
+
+    [Fact]
     public async Task ProviderResponseAfterLegendEscalation_IsLabeledOpenAiTeacherRatherThanLegendAi()
     {
         using var founderEnvironment = new FounderEnvironmentScope();
@@ -519,10 +615,12 @@ public sealed class LegendFounderAiModeIsolationTests
 
     private static LegendFounderAiChatRequest Request(
         string? mode,
-        string prompt) =>
+        string prompt,
+        bool nativeOnly = false) =>
         new()
         {
             Mode = mode,
+            NativeOnly = nativeOnly,
             Messages = [new LegendFounderAiChatMessage("user", prompt)]
         };
 
