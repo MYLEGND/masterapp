@@ -13,7 +13,9 @@ on:
         type: boolean
 
 concurrency:
-  group: legend-production-readonly-diagnostic
+  # V2 retires the GitHub-owned V1 queue generation that became permanently
+  # stuck before runner allocation. The diagnostic remains read-only.
+  group: legend-production-readonly-diagnostic-v2
   cancel-in-progress: true
 
 permissions:

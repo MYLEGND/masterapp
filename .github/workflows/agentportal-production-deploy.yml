@@ -6,9 +6,13 @@ on:
   push:
     branches:
       - production
+  workflow_dispatch:
 
 concurrency:
-  group: agentportal-production
+  # V2 retires the GitHub-owned V1 queue generation that became permanently
+  # stuck before runner allocation. Manual dispatch preserves the same single
+  # deployment authority without requiring a repository-content change.
+  group: agentportal-production-v2
   cancel-in-progress: false
 
 permissions:
