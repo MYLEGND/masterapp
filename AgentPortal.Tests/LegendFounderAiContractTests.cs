@@ -178,6 +178,10 @@ public sealed class LegendFounderAiContractTests
         Assert.Contains("result.responseAuthority", script, StringComparison.Ordinal);
         Assert.Contains("result.stage", script, StringComparison.Ordinal);
         Assert.Contains("result.reason", script, StringComparison.Ordinal);
+        Assert.Contains("nativeOnly:", script, StringComparison.Ordinal);
+        Assert.Contains("result.responseAuthority ||", script, StringComparison.Ordinal);
+        Assert.Contains("Verified native LEGEND · OpenAI responder not used", script, StringComparison.Ordinal);
+        Assert.Contains("OpenAI escalation is blocked for this clean conversation", script, StringComparison.Ordinal);
         Assert.DoesNotContain("progressUrlFor(modalElement.dataset.chatUrl, operationId)", script, StringComparison.Ordinal);
     }
 
@@ -530,6 +534,7 @@ public sealed class LegendFounderAiContractTests
 
         var measured = await service.CreateEvidenceSnapshotAsync("founder-1", CancellationToken.None);
         var language = measured.Domains.Single(domain => domain.Key == "language_linguistic");
+        Assert.Equal("Evaluated", measured.State);
         Assert.NotNull(language.EvidenceScore);
         Assert.Equal(9, language.EvidenceVolume);
         Assert.Null(measured.LegendSelfAssessment);
@@ -620,6 +625,40 @@ public sealed class LegendFounderAiContractTests
         Assert.Equal(measured.EvaluatedUtc, repeated.EvaluatedUtc);
         Assert.Equal(9, await db.LegendIntelligenceEvaluationSignals.CountAsync());
         Assert.Equal(1, await db.LegendIntelligenceEvaluationSnapshots.CountAsync());
+    }
+
+    [Fact]
+    public async Task IntelligenceEvaluation_ReportsExactMissingFactorsWithoutInventingAScore()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var service = new LegendIntelligenceEvaluationService(db);
+
+        _ = await service.CreateEvidenceSnapshotAsync("founder-1", CancellationToken.None);
+        var contract = await db.LegendIntelligenceEvaluationContracts.SingleAsync();
+        db.LegendIntelligenceEvaluationSignals.Add(new LegendIntelligenceEvaluationSignal
+        {
+            ContractId = contract.Id,
+            DomainKey = "language_linguistic",
+            MetricKey = "coverage",
+            Value = 100m,
+            EvidenceAuthority = "canonical-evaluator",
+            EvidenceReference = "evaluation-proof-coverage-only",
+            State = "Current",
+            MeasuredUtc = DateTime.UtcNow
+        });
+        await db.SaveChangesAsync();
+
+        var partial = await service.CreateEvidenceSnapshotAsync("founder-1", CancellationToken.None);
+        var language = partial.Domains.Single(domain => domain.Key == "language_linguistic");
+
+        Assert.Equal("EvidenceIncomplete", partial.State);
+        Assert.Null(partial.DemonstratedIntelligence);
+        Assert.Null(language.EvidenceScore);
+        Assert.Contains("held_out", language.OpenKnowledgeGaps);
+        Assert.Contains("native_execution", language.OpenKnowledgeGaps);
+        Assert.Contains("Missing required factors:", partial.Detail, StringComparison.Ordinal);
+        Assert.Null(partial.LegendSelfAssessment);
+        Assert.Null(partial.OpenAiIndependentAssessment);
     }
 
     [Fact]

@@ -184,11 +184,28 @@ public sealed class LegendIntelligenceEvaluationService : ILegendIntelligenceEva
         var growth = Average(displayDomains
             .Where(item => item.EvidenceScore is not null && item.PreviousEvidenceScore is not null)
             .Select(item => item.EvidenceScore - item.PreviousEvidenceScore));
+        var evidenceDomains = displayDomains.Where(item => item.EvidenceVolume > 0).ToArray();
+        var openRubricFactors = evidenceDomains
+            .SelectMany(item => item.OpenKnowledgeGaps)
+            .Distinct(StringComparer.Ordinal)
+            .OrderBy(item => item, StringComparer.Ordinal)
+            .ToArray();
+        var evaluationState = scored.Length > 0
+            ? "Evaluated"
+            : evidenceDomains.Length > 0
+                ? "EvidenceIncomplete"
+                : "InsufficientEvidence";
+        var detail = scored.Length > 0
+            ? "Each lens remains separate. OpenAI external assessment must be collected without revealing LEGEND's self-assessment."
+            : openRubricFactors.Length > 0
+                ? "Governed evidence was recorded, but no score is shown until every required rubric factor has cited evidence. " +
+                  $"Missing required factors: {string.Join(", ", openRubricFactors)}. Missing assessment data is not treated as zero intelligence."
+                : "No score is shown until every required rubric factor has cited governed evidence. Missing assessment data is not treated as zero intelligence.";
 
         return new LegendIntelligenceEvaluationDashboardSnapshot(
             ContractKey,
             ContractVersion,
-            snapshot.State,
+            evaluationState,
             evidenceScore,
             selfScore,
             externalScore,
@@ -196,9 +213,7 @@ public sealed class LegendIntelligenceEvaluationService : ILegendIntelligenceEva
             growth,
             snapshot.CreatedUtc,
             displayDomains,
-            scored.Length == 0
-                ? "No score is shown until every required rubric factor has cited governed evidence. Missing assessment data is not treated as zero intelligence."
-                : "Each lens remains separate. OpenAI external assessment must be collected without revealing LEGEND's self-assessment.");
+            detail);
     }
 
     private async Task<LegendIntelligenceEvaluationContract?> CurrentContractAsync(CancellationToken cancellationToken) =>

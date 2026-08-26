@@ -637,10 +637,18 @@
 .legend-founder-ai-modebar {
     display: flex;
     align-items: center;
+    justify-content: space-between;
     gap: 8px;
     padding: 7px 18px;
     border-bottom: 1px solid var(--legend-ai-line);
     background: #fffefa;
+}
+
+.legend-founder-ai-mode-tabs {
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
 }
 
 .legend-founder-ai-mode {
@@ -683,6 +691,55 @@
 .legend-founder-ai-mode.is-active .legend-founder-ai-mode-dot {
     background: #744608;
     box-shadow: 0 0 0 3px rgba(255,255,255,.34);
+}
+
+.legend-founder-ai-native-only {
+    min-width: 0;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 10px;
+    border: 1px solid rgba(139,82,7,.20);
+    border-radius: 12px;
+    background: rgba(255,255,255,.72);
+    color: #667085;
+    cursor: pointer;
+}
+
+.legend-founder-ai-native-only.is-active {
+    border-color: rgba(28,122,75,.48);
+    background: rgba(28,122,75,.08);
+    color: #145f3b;
+}
+
+.legend-founder-ai-native-only input {
+    width: 17px;
+    height: 17px;
+    margin: 0;
+    accent-color: #1c7a4b;
+}
+
+.legend-founder-ai-native-only span {
+    min-width: 0;
+    display: grid;
+    gap: 1px;
+}
+
+.legend-founder-ai-native-only strong {
+    font-size: .68rem;
+    font-weight: 900;
+}
+
+.legend-founder-ai-native-only small {
+    color: inherit;
+    font-size: .56rem;
+    font-weight: 700;
+    line-height: 1.25;
+}
+
+.legend-founder-ai-native-only:has(input:disabled) {
+    opacity: .48;
+    cursor: default;
 }
 
 .legend-founder-ai-transcript {
@@ -810,6 +867,32 @@
     padding: 4px 0 16px 13px;
     border-left: 2px solid rgba(216, 165, 55, .56);
     color: var(--legend-ai-text);
+}
+
+.legend-founder-ai-response-authority {
+    width: fit-content;
+    margin-top: 10px;
+    padding: 4px 7px;
+    border: 1px solid rgba(102,112,133,.22);
+    border-radius: 999px;
+    color: #667085;
+    background: rgba(102,112,133,.06);
+    font-size: .56rem;
+    font-weight: 850;
+    line-height: 1.2;
+    white-space: normal;
+}
+
+.legend-founder-ai-response-authority.is-native {
+    border-color: rgba(28,122,75,.35);
+    color: #145f3b;
+    background: rgba(28,122,75,.08);
+}
+
+.legend-founder-ai-response-authority.is-provider {
+    border-color: rgba(158,77,17,.32);
+    color: #8a430e;
+    background: rgba(158,77,17,.08);
 }
 
 .legend-founder-ai-status {
@@ -1193,11 +1276,16 @@
     }
 
     .legend-founder-ai-modebar {
+        align-items: stretch;
+        flex-direction: column;
         gap: 6px;
         padding: 5px 8px;
-        overflow: hidden;
         background: #fffefa;
         transition: opacity .14s ease;
+    }
+
+    .legend-founder-ai-mode-tabs {
+        width: 100%;
     }
 
     .legend-founder-ai-mode {
@@ -1206,6 +1294,15 @@
         justify-content: center;
         padding: 0 8px;
         font-size: .67rem;
+    }
+
+    .legend-founder-ai-native-only {
+        width: 100%;
+        padding: 5px 8px;
+    }
+
+    .legend-founder-ai-native-only small {
+        display: none;
     }
 
     .legend-founder-ai-transcript {
