@@ -417,10 +417,10 @@ public sealed class LegendFounderAiConversationService
             var successfulGovernedEvidenceTools =
                 new HashSet<string>(StringComparer.Ordinal);
 
-            var governedReadAttempts = 0;
-
             var governedInspectionCompleted =
                 !requiresMandatoryGovernedInspection;
+
+            var accumulatedProviderAnswer = string.Empty;
 
             for (var round = 0; round < maximumToolRounds; round++)
             {
@@ -461,8 +461,7 @@ public sealed class LegendFounderAiConversationService
 
                 if (requiresMandatoryGovernedInspection &&
                     !governedInspectionCompleted &&
-                    !allowTools &&
-                    governedReadAttempts == 0)
+                    !allowTools)
                 {
                     return LegendFounderAiChatResponse.ModeFailure(
                         mode,
@@ -567,6 +566,11 @@ public sealed class LegendFounderAiConversationService
                     var partial =
                         ExtractOutputText(root);
 
+                    accumulatedProviderAnswer =
+                        MergeProviderAnswerSegment(
+                            accumulatedProviderAnswer,
+                            partial);
+
                     var remainingAfterProvider =
                         TimeSpan.FromSeconds(_timeoutSeconds) -
                         executionClock.Elapsed;
@@ -588,12 +592,12 @@ public sealed class LegendFounderAiConversationService
                         continue;
                     }
 
-                    if (!string.IsNullOrWhiteSpace(partial))
+                    if (!string.IsNullOrWhiteSpace(accumulatedProviderAnswer))
                     {
                         return new LegendFounderAiChatResponse(
                             true,
                             mode,
-                            partial.Trim(),
+                            accumulatedProviderAnswer,
                             null,
                             ResponseAuthority: "OpenAITeacher",
                             Stage: "provider_response");
@@ -626,8 +630,7 @@ public sealed class LegendFounderAiConversationService
                 if (toolCalls.Count == 0)
                 {
                     if (requiresMandatoryGovernedInspection &&
-                        !governedInspectionCompleted &&
-                        governedReadAttempts == 0)
+                        !governedInspectionCompleted)
                     {
                         return LegendFounderAiChatResponse.ModeFailure(
                             mode,
@@ -649,7 +652,12 @@ public sealed class LegendFounderAiConversationService
 
                     var answer = ExtractOutputText(root);
 
-                    if (string.IsNullOrWhiteSpace(answer))
+                    accumulatedProviderAnswer =
+                        MergeProviderAnswerSegment(
+                            accumulatedProviderAnswer,
+                            answer);
+
+                    if (string.IsNullOrWhiteSpace(accumulatedProviderAnswer))
                     {
                         return LegendFounderAiChatResponse.ModeFailure(
                             mode,
@@ -664,7 +672,7 @@ public sealed class LegendFounderAiConversationService
                     return new LegendFounderAiChatResponse(
                         true,
                         mode,
-                        answer.Trim(),
+                        accumulatedProviderAnswer,
                         null,
                         ResponseAuthority: "OpenAITeacher",
                         Stage: "provider_response");
@@ -717,29 +725,8 @@ public sealed class LegendFounderAiConversationService
 
                     if (IsReadOnlyFounderTool(call.Name))
                     {
-                        governedReadAttempts++;
-
                         var governedReadSucceeded =
                             IsSuccessfulFounderToolOutput(toolOutput);
-
-                        // A broad Founder diagnostic must survive an individual
-                        // read-authority failure and keep inspecting independent
-                        // sources. A narrow single-authority inspection cannot
-                        // truthfully continue when its only requested evidence
-                        // failed, so preserve the established structured 502
-                        // contract and identify the exact failed tool.
-                        if (!governedReadSucceeded &&
-                            !requiresComprehensiveGovernedInspection)
-                        {
-                            return LegendFounderAiChatResponse.ModeFailure(
-                                mode,
-                                FailureMessageForMode(
-                                    mode,
-                                    $"Governed LEGEND read '{call.Name}' failed. Independent broad inspection was not requested for this turn."),
-                                "governed_tool",
-                                "governed_tool",
-                                "tool_read_failed");
-                        }
 
                         if (IsGovernedEvidenceTool(call.Name) &&
                             governedReadSucceeded)
@@ -1639,18 +1626,42 @@ public sealed class LegendFounderAiConversationService
 
     private static string BuildReadOnlyToolFailureOutput(
         string tool,
-        Exception exception) =>
-        JsonSerializer.Serialize(
+        Exception exception)
+    {
+        var permissionDenied = exception is UnauthorizedAccessException;
+        var failureCategory = exception switch
+        {
+            UnauthorizedAccessException => "permission_denied",
+            HttpRequestException => "connectivity_failure",
+            TimeoutException => "timeout",
+            _ => "read_execution_failure"
+        };
+        var correlationId =
+            Activity.Current?.TraceId.ToString() is { Length: > 0 } traceId
+                ? traceId
+                : Guid.NewGuid().ToString("N");
+
+        return JsonSerializer.Serialize(
             new
             {
                 ok = false,
                 error = "tool_read_failed",
+                failureCategory,
                 tool,
+                requestedResource = tool,
+                authorizationDecision = permissionDenied
+                    ? "denied"
+                    : "not_implicated",
+                policyOrPermission = permissionDenied
+                    ? exception.GetType().Name
+                    : null,
+                correlationId,
                 exceptionType = exception.GetType().Name,
                 detail = NormalizeToolFailureDetail(exception.Message),
                 instruction = "This read failed. Continue any independent governed reads that can still execute, then report this exact failed authority without inventing unavailable state."
             },
             JsonOptions);
+    }
 
     private static string NormalizeToolFailureDetail(string? value)
     {
@@ -1684,6 +1695,43 @@ public sealed class LegendFounderAiConversationService
         {
             return true;
         }
+    }
+
+    private static string MergeProviderAnswerSegment(
+        string accumulated,
+        string? segment)
+    {
+        var next = segment?.Trim();
+        if (string.IsNullOrWhiteSpace(next))
+            return accumulated;
+
+        var current = accumulated.TrimEnd();
+        if (current.Length == 0)
+            return next;
+
+        // A continuation can either resume at the exact boundary or restart
+        // with the complete answer. Preserve every earlier section while
+        // removing only text the provider demonstrably repeated.
+        if (next.StartsWith(current, StringComparison.Ordinal))
+            return next;
+
+        if (current.EndsWith(next, StringComparison.Ordinal))
+            return current;
+
+        var maximumOverlap = Math.Min(
+            Math.Min(current.Length, next.Length),
+            8_192);
+
+        for (var overlap = maximumOverlap; overlap > 0; overlap--)
+        {
+            if (current.AsSpan(current.Length - overlap)
+                .SequenceEqual(next.AsSpan(0, overlap)))
+            {
+                return current + next[overlap..];
+            }
+        }
+
+        return current + "\n" + next;
     }
 
     private static bool IsGovernedEvidenceTool(string name) =>
