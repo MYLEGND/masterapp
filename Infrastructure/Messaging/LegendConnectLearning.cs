@@ -1708,6 +1708,7 @@ internal sealed class LegendConnectLearningHostedService : BackgroundService
     private const int MaximumHistoricalReplayPagesPerTick = 25;
     private readonly IServiceScopeFactory _scopes;
     private readonly ILogger<LegendConnectLearningHostedService> _logger;
+    private readonly HashSet<string> _phaseSeedRestartRecoveries = new(StringComparer.Ordinal);
 
     public LegendConnectLearningHostedService(
         IServiceScopeFactory scopes,
@@ -1928,6 +1929,15 @@ internal sealed class LegendConnectLearningHostedService : BackgroundService
         var phase = replay.Phase;
         var evaluatorVersion = replay.TargetEvaluatorVersion;
         var workerPrefix = $"{Environment.MachineName}:historical:{Guid.NewGuid():N}";
+        // A failed scheduler seed predates every canonical claim and can
+        // otherwise strand an entirely healthy hosted worker forever. Give a
+        // new process exactly one recovery for this evaluator/phase. The
+        // durable seed retains its prior failure detail for audit, while all
+        // canonical failures continue to fail closed through their existing
+        // retry and retirement authority.
+        var restartRecoveryKey = $"{evaluatorVersion}:{phase}";
+        if (_phaseSeedRestartRecoveries.Add(restartRecoveryKey))
+            await work.TryRecoverFailedPhaseSeedAsync(evaluatorVersion, phase, stoppingToken);
         while (!stoppingToken.IsCancellationRequested)
         {
             var seeded = await work.SeedNextBatchAsync(
