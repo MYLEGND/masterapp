@@ -86,6 +86,14 @@ jobs:
             echo "::error::The canonical hosted-worker restart regression was not discovered."
             exit 1
           fi
+          if ! grep -q "HostedWorker_CurrentEvaluatorContractRewind_UsesDurableQueueInsteadOfLegacyCursor" test-discovery.log; then
+            echo "::error::The current-evaluator durable-queue boundary regression was not discovered."
+            exit 1
+          fi
+          if ! grep -q "HostedWorkerRestart_RecoversFailedPhaseSeed_AndCompletesConvergence" test-discovery.log; then
+            echo "::error::The failed phase-seed restart regression was not discovered."
+            exit 1
+          fi
 
       - name: Test full suite including security regressions
         run: |
