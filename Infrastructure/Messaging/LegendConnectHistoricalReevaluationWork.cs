@@ -95,6 +95,13 @@ internal sealed class LegendConnectHistoricalReevaluationWorkAuthority
 
     internal static bool UsesCursorCompatibility(
         LegendConnectLanguageIntelligenceReevaluationSnapshot replay) =>
+        // Cursor replay is only valid while upgrading from an evaluator that
+        // has not yet reached the target. A dependency-contract rewind can
+        // legitimately set a completed current evaluator back to
+        // SourceFamilies; that state has durable queued work and must use the
+        // canonical claim scheduler. Treating it as an old cursor replay is
+        // the queue-starvation defect this boundary prevents.
+        replay.CompletedEvaluatorVersion < replay.TargetEvaluatorVersion &&
         replay.TargetEvaluatorVersion <= replay.CursorReplayCompatibilityEvaluatorVersion;
 
     /// <summary>
@@ -494,6 +501,52 @@ internal sealed class LegendConnectHistoricalReevaluationWorkAuthority
             await FailAsync(claim, FailureCode(exception), cancellationToken, exception.ToString());
             return LegendHistoricalReevaluationSeedResult.NotApplicable;
         }
+    }
+
+    /// <summary>
+    /// Gives a newly started canonical worker one bounded opportunity to
+    /// recover a failed phase scheduler. A phase seed owns no curriculum or
+    /// evidence semantics; it is only the durable cursor that manufactures
+    /// canonical work identities. Canonical/ledger failures remain retired
+    /// and fail closed. The hosted service calls this at most once per
+    /// evaluator phase during its process lifetime, so a persistent seeding
+    /// defect cannot become an unbounded retry loop.
+    /// </summary>
+    internal async Task<bool> TryRecoverFailedPhaseSeedAsync(
+        int evaluatorVersion,
+        string phase,
+        CancellationToken cancellationToken = default)
+    {
+        if (!await IsCurrentPhaseAsync(evaluatorVersion, phase, cancellationToken))
+            return false;
+
+        var now = DateTime.UtcNow;
+        var failedSeed = WorkFor(evaluatorVersion, phase)
+            .Where(item => item.WorkKind == SeedWorkKind && item.ProcessingState == Failed);
+        if (_db.Database.IsRelational())
+        {
+            return await failedSeed.ExecuteUpdateAsync(setters => setters
+                .SetProperty(item => item.ProcessingState, Pending)
+                .SetProperty(item => item.AttemptCount, 0)
+                .SetProperty(item => item.LeaseOwner, (string?)null)
+                .SetProperty(item => item.LeaseToken, (Guid?)null)
+                .SetProperty(item => item.LeaseExpiresUtc, (DateTime?)null)
+                .SetProperty(item => item.CompletedUtc, (DateTime?)null)
+                .SetProperty(item => item.UpdatedUtc, now), cancellationToken) > 0;
+        }
+
+        var seed = await failedSeed.SingleOrDefaultAsync(cancellationToken);
+        if (seed is null)
+            return false;
+        seed.ProcessingState = Pending;
+        seed.AttemptCount = 0;
+        seed.LeaseOwner = null;
+        seed.LeaseToken = null;
+        seed.LeaseExpiresUtc = null;
+        seed.CompletedUtc = null;
+        seed.UpdatedUtc = now;
+        await _db.SaveChangesAsync(cancellationToken);
+        return true;
     }
 
     internal async Task<LegendHistoricalReevaluationWorkClaim?> TryClaimNextAsync(
