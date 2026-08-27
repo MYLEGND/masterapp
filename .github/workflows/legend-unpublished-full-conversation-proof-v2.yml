@@ -1,0 +1,143 @@
+name: LEGEND unpublished held-out full conversation proof v2
+
+on:
+  push:
+    branches:
+      - fix/legend-governed-reasoning-executor-20260827
+    paths:
+      - .github/workflows/legend-unpublished-full-conversation-proof-v2.yml
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  AZURE_WEBAPP_NAME: masterapp-portal
+  AZURE_RESOURCE_GROUP: masterapp-rg
+  DOTNET_VERSION: '10.x'
+
+jobs:
+  conversation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    environment:
+      name: Production
+    steps:
+      - name: Checkout unpublished candidate
+        uses: actions/checkout@v4
+        with:
+          ref: fix/legend-governed-reasoning-executor-20260827
+          fetch-depth: 0
+
+      - name: Materialize exact candidate and held-out cross-family conversation
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/legend-governed-reasoning-patch.py
+          python3 - <<'PY'
+          from pathlib import Path
+          source = Path('.github/workflows/legend-unpublished-full-conversation-proof.yml').read_text()
+          start = source.index("          method = r'''    [Fact]") + len("          method = r'''")
+          end = source.index("\n          '''", start)
+          method = source[start:end]
+          replacements = {
+              'ProductionReadOnlyHeldOutFullConversationDiagnostic()': 'ProductionReadOnlyHeldOutFullConversationDiagnosticV2()',
+              'Before we touch the research finding, separate the objective, constraints, dependencies, and deliverable so we know what success means.': 'Analyze the research finding request and identify its objective, constraints, dependencies, and required output.',
+              'Now classify the evidence before drawing any conclusion. Separate confirmed facts, supported inferences, assumptions, estimates, and unknowns.': 'Classify the evidence before drawing a conclusion.',
+              'Check whether the conclusion about the research finding actually follows from the evidence without adding an unstated premise, and explain the shortest valid reasoning path.': 'Determine what is logically supported by the research finding without adding an unstated premise, and explain the shortest valid reasoning path.',
+              'Diagnose the investigation plan by separating symptoms, candidate causes, and contributing conditions. Rank plausible causes and choose the check that best distinguishes them.': 'Diagnose the investigation plan by distinguishing symptoms, causes, and contributing conditions, then choose the check that best distinguishes the leading causes.',
+              'Now build the ordered plan, respecting dependencies, verification gates, decision points, and a bounded fallback.': 'Build a plan that respects dependencies, verification gates, decision points, and a bounded fallback.',
+              'Compare the research finding options using the same explicit criteria. Eliminate anything that violates hard constraints, state the decisive tradeoff, and name the strongest alternative.': 'Compare the research finding alternatives using explicit criteria rather than preference, eliminating any option that violates a hard constraint.',
+              'Analyze the research finding across plausible future scenarios. Include second-order effects, reversible probes, leading indicators, recovery options, and adaptation triggers.': 'Analyze the research finding across plausible scenarios instead of assuming one future, including second-order effects and recovery options.',
+              'Synthesize the research summary for a decision maker: lead with the main conclusion, tie major claims to evidence, preserve conflicts, and state unresolved questions.': 'Connect related findings in the research summary and identify where sources conflict before finalizing.',
+              'Before finalizing, detect whether the missing audience scope would materially change the answer. If it would, ask only the decisive clarification instead of guessing.': 'Detect whether the missing audience scope prevents a reliable response before finalizing.',
+              'Switch contexts: the draft says the deadline is Tuesday, but the authoritative schedule says Wednesday. Correct the statement and explain the repair.': 'The draft says the deadline is Tuesday, but the authoritative schedule says Wednesday; correct the deadline and verify it.',
+              'Verify the arithmetic claim that twelve plus eight equals twenty-one, correct only what is wrong, and state the checked result.': 'The stated sum says twelve plus eight equals twenty-one; recalculate it and correct only what is wrong.',
+              'Switch again and explain idempotency to an experienced engineer without beginner simplification.': 'Explain idempotency to an experienced engineer without introductory simplification.'
+          }
+          for old, new in replacements.items():
+              if method.count(old) != 1:
+                  raise SystemExit('conversation replacement anchor drifted: ' + old[:90])
+              method = method.replace(old, new, 1)
+          old_assert = '''                if (index == 1)
+                {
+                    Assert.NotNull(withoutContext);
+                    Assert.False(withoutContext!.Supported,
+                        "Turn 2 was designed to require prior conversational context, but it answered without context.");
+                    _output.WriteLine("CONTEXT DEPENDENCY PROOF: PASS — prior turn was required.");
+                }'''
+          new_assert = '''                if (index == 1 || index == 4)
+                {
+                    Assert.NotNull(withoutContext);
+                    Assert.False(withoutContext!.Supported,
+                        $"Turn {index + 1} was designed to require prior conversational context, but it answered without context.");
+                    _output.WriteLine($"CONTEXT DEPENDENCY PROOF TURN {index + 1}: PASS — prior turn was required.");
+                }'''
+          if method.count(old_assert) != 1:
+              raise SystemExit('context assertion anchor drifted')
+          method = method.replace(old_assert, new_assert, 1)
+          path = Path('AgentPortal.Tests/LegendFounderCurriculumSqlServerE2ETests.cs')
+          text = path.read_text()
+          anchor = '    [Fact]\n    public async Task ProductionReadOnlyEightPromptNativeDiagnostic()'
+          if text.count(anchor) != 1:
+              raise SystemExit('conversation insertion anchor drifted')
+          path.write_text(text.replace(anchor, method + '\n\n' + anchor, 1))
+          PY
+          rm -f scripts/legend-governed-reasoning-patch.py
+          rm -f .github/workflows/legend-governed-reasoning-predeploy.yml
+          rm -f .github/workflows/legend-governed-reasoning-predeploy-v2.yml
+          rm -f .github/workflows/legend-governed-reasoning-predeploy-v3.yml
+          rm -f .github/workflows/legend-unpublished-curriculum-inventory.yml
+          rm -f .github/workflows/legend-unpublished-curriculum-inventory-v2.yml
+          rm -f .github/workflows/legend-unpublished-full-conversation-proof.yml
+          rm -f .github/workflows/legend-unpublished-full-conversation-proof-v2.yml
+          git diff --check
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Restore and build exact unpublished candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          dotnet restore MASTERAPP.sln
+          dotnet build MASTERAPP.sln -c Release --no-restore
+
+      - name: Login to Azure for live read-only conversation
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Run full held-out conversation against real LEGEND curriculum
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $connection = ''
+          $connections = az webapp config connection-string list --resource-group $env:AZURE_RESOURCE_GROUP --name $env:AZURE_WEBAPP_NAME --output json | ConvertFrom-Json
+          $match = $connections | Where-Object { $_.name -eq 'MasterAppDb' } | Select-Object -First 1
+          if ($null -ne $match) { $connection = [string]$match.value }
+          $settings = @{}
+          foreach ($item in (az webapp config appsettings list --resource-group $env:AZURE_RESOURCE_GROUP --name $env:AZURE_WEBAPP_NAME --output json | ConvertFrom-Json)) { $settings[[string]$item.name] = [string]$item.value }
+          if ([string]::IsNullOrWhiteSpace($connection)) {
+            foreach ($name in @('ConnectionStrings__MasterAppDb','MasterAppDb','SQLCONNSTR_MasterAppDb')) {
+              if ($settings.ContainsKey($name) -and -not [string]::IsNullOrWhiteSpace($settings[$name])) { $connection = $settings[$name]; break }
+            }
+          }
+          if ([string]::IsNullOrWhiteSpace($connection)) { throw 'Production MasterAppDb connection string could not be resolved.' }
+          $founderOid = ''
+          foreach ($name in @('FOUNDER_OID','Founder__Oid','Founder:Oid')) {
+            if ($settings.ContainsKey($name) -and -not [string]::IsNullOrWhiteSpace($settings[$name])) { $founderOid = $settings[$name]; break }
+          }
+          if ([string]::IsNullOrWhiteSpace($founderOid)) { throw 'Production Founder OID could not be resolved.' }
+          Write-Output "::add-mask::$connection"
+          Write-Output "::add-mask::$founderOid"
+          $env:LEGEND_PRODUCTION_READONLY_CONNECTION = $connection
+          $env:LEGEND_PRODUCTION_READONLY_FOUNDER_OID = $founderOid
+          $env:OPENAI_API_KEY = ''
+          $env:OpenAI__ApiKey = ''
+          dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-build --filter 'FullyQualifiedName~ProductionReadOnlyHeldOutFullConversationDiagnosticV2' --logger 'console;verbosity=detailed'
+          if ($LASTEXITCODE -ne 0) { throw 'Held-out full conversation proof v2 failed.' }
