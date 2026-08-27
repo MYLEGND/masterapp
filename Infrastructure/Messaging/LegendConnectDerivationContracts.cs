@@ -31,7 +31,7 @@ internal static class LegendConnectDerivationContracts
             RequiresHistoricalWork: true,
             IntroducedEvaluatorVersion: 1,
             DependencyKinds: [],
-            ArtifactKinds: ["compositional-anchor", "meaning-node", "meaning-relation", "semantic-transformation"],
+            ArtifactKinds: ["compositional-anchor", "meaning-node", "meaning-primitive", "meaning-relation", "semantic-transformation"],
             RequiresDependencyInventory: false),
         // V21 changes the source-family compiler itself.  Keep the prior
         // declaration in this catalog: a completed pre-V21 policy must be
@@ -44,7 +44,7 @@ internal static class LegendConnectDerivationContracts
             RequiresHistoricalWork: true,
             IntroducedEvaluatorVersion: 21,
             DependencyKinds: [],
-            ArtifactKinds: ["compositional-anchor", "meaning-node", "meaning-relation", "semantic-transformation"],
+            ArtifactKinds: ["compositional-anchor", "meaning-node", "meaning-primitive", "meaning-relation", "semantic-transformation"],
             RequiresDependencyInventory: false),
         new(
             AlignmentSemanticProjection,
