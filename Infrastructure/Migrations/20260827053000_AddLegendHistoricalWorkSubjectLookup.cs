@@ -1,5 +1,3 @@
-using Infrastructure.Data;
-using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
@@ -12,9 +10,7 @@ namespace Infrastructure.Migrations;
 /// evaluator authority; it only prevents an empty seed-page probe from
 /// scanning the complete durable ledger past its lease.
 /// </summary>
-[DbContext(typeof(MasterAppDbContext))]
-[Migration("20260827053000_AddLegendHistoricalWorkSubjectLookup")]
-public sealed class AddLegendHistoricalWorkSubjectLookup : Migration
+public sealed partial class AddLegendHistoricalWorkSubjectLookup : Migration
 {
     protected override void Up(MigrationBuilder migrationBuilder)
     {
