@@ -138,27 +138,27 @@ public sealed class LegendConnectGeneralReasoningExecutorTests
 
             await curriculum.PersistFounderCrossExampleSemanticRelationAsync(
                 new LegendConnectCrossExampleSemanticRelationshipSubmission(
-                    sourceKey, middleKey, "reasoning.implication"),
+                    sourceKey, "reasoning.implication", middleKey),
                 LegendConnectLanguageIntelligenceEvaluatorVersion.Current);
 
             if (cycleOnly)
             {
                 await curriculum.PersistFounderCrossExampleSemanticRelationAsync(
                     new LegendConnectCrossExampleSemanticRelationshipSubmission(
-                        middleKey, sourceKey, "reasoning.implication"),
+                        middleKey, "reasoning.implication", sourceKey),
                     LegendConnectLanguageIntelligenceEvaluatorVersion.Current);
                 continue;
             }
 
             await curriculum.PersistFounderCrossExampleSemanticRelationAsync(
                 new LegendConnectCrossExampleSemanticRelationshipSubmission(
-                    middleKey, conclusionKey, "reasoning.implication"),
+                    middleKey, "reasoning.implication", conclusionKey),
                 LegendConnectLanguageIntelligenceEvaluatorVersion.Current);
             if (includeBranch)
             {
                 await curriculum.PersistFounderCrossExampleSemanticRelationAsync(
                     new LegendConnectCrossExampleSemanticRelationshipSubmission(
-                        middleKey, alternateKey, "reasoning.implication"),
+                        middleKey, "reasoning.implication", alternateKey),
                     LegendConnectLanguageIntelligenceEvaluatorVersion.Current);
             }
         }
@@ -184,11 +184,11 @@ public sealed class LegendConnectGeneralReasoningExecutorTests
 
             await curriculum.PersistFounderCrossExampleSemanticRelationAsync(
                 new LegendConnectCrossExampleSemanticRelationshipSubmission(
-                    sourceKey, middleKey, "reasoning.variable.implication"),
+                    sourceKey, "reasoning.variable.implication", middleKey),
                 LegendConnectLanguageIntelligenceEvaluatorVersion.Current);
             await curriculum.PersistFounderCrossExampleSemanticRelationAsync(
                 new LegendConnectCrossExampleSemanticRelationshipSubmission(
-                    middleKey, conclusionKey, "reasoning.variable.implication"),
+                    middleKey, "reasoning.variable.implication", conclusionKey),
                 LegendConnectLanguageIntelligenceEvaluatorVersion.Current);
         }
     }
