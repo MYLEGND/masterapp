@@ -1,0 +1,108 @@
+name: LEGEND native live articulation shape diagnostic
+
+on:
+  push:
+    branches:
+      - fix/legend-native-context-reasoning-20260827
+    paths:
+      - .github/workflows/legend-native-live-shape-diagnostic.yml
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  AZURE_WEBAPP_NAME: masterapp-portal
+  AZURE_RESOURCE_GROUP: masterapp-rg
+  DOTNET_VERSION: '10.x'
+
+jobs:
+  live-shape:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment:
+      name: Production
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/legend-native-context-reasoning-20260827
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      - name: Resolve read-only production connection
+        shell: pwsh
+        run: |
+          $connection = ''
+          $connections = az webapp config connection-string list --resource-group '${{ env.AZURE_RESOURCE_GROUP }}' --name '${{ env.AZURE_WEBAPP_NAME }}' --output json | ConvertFrom-Json
+          $match = $connections | Where-Object { $_.name -eq 'MasterAppDb' } | Select-Object -First 1
+          if ($null -ne $match) { $connection = [string]$match.value }
+          $settings = @{}
+          foreach ($item in (az webapp config appsettings list --resource-group '${{ env.AZURE_RESOURCE_GROUP }}' --name '${{ env.AZURE_WEBAPP_NAME }}' --output json | ConvertFrom-Json)) { $settings[[string]$item.name] = [string]$item.value }
+          if ([string]::IsNullOrWhiteSpace($connection)) {
+            foreach ($name in @('ConnectionStrings__MasterAppDb','MasterAppDb','SQLCONNSTR_MasterAppDb')) {
+              if ($settings.ContainsKey($name) -and -not [string]::IsNullOrWhiteSpace($settings[$name])) { $connection = $settings[$name]; break }
+            }
+          }
+          if ([string]::IsNullOrWhiteSpace($connection)) { throw 'Production MasterAppDb connection string could not be resolved.' }
+          Write-Output "::add-mask::$connection"
+          "LEGEND_PRODUCTION_READONLY_CONNECTION=$connection" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+      - name: Inspect live Founder result articulation evidence
+        shell: bash
+        run: |
+          cat > diagnostics/LegendLiveResultShape.cs <<'CS'
+          #:project ../Infrastructure/Infrastructure.csproj
+          using Microsoft.Data.SqlClient;
+          using System.Data;
+          var raw = Environment.GetEnvironmentVariable("LEGEND_PRODUCTION_READONLY_CONNECTION") ?? throw new InvalidOperationException("connection required");
+          var builder = new SqlConnectionStringBuilder(raw) { ApplicationIntent = ApplicationIntent.ReadOnly, ApplicationName = "LEGEND live result shape diagnostic" };
+          await using var connection = new SqlConnection(builder.ConnectionString);
+          await connection.OpenAsync();
+          var sql = """
+          WITH endpoints AS (
+              SELECT DISTINCT e.[ResultCurriculumExampleId]
+              FROM [LegendSemanticTransitionEvidence] e
+              JOIN [LegendCurriculumExamples] se ON se.[Id] = e.[SourceCurriculumExampleId]
+              JOIN [LegendLanguageTextUnits] su ON su.[Id] = se.[TextUnitId]
+              WHERE e.[SourceLanguageCode] = 'en'
+                AND e.[ResultLanguageCode] = 'en'
+                AND e.[SupersededUtc] IS NULL
+                AND e.[ContributionState] = 'Supported'
+                AND e.[IsHumanVerifiedSupport] = 1
+                AND su.[Text] = 'Hi there.'
+          )
+          SELECT
+              f.[FamilyKey],
+              u.[Text] AS ResultText,
+              a.[Dimension],
+              a.[Value],
+              a.[ComponentStartTokenIndex],
+              a.[ComponentLength],
+              CASE WHEN a.[LexemeId] IS NULL THEN 0 ELSE 1 END AS HasLexeme,
+              a.[SemanticSignature]
+          FROM endpoints x
+          JOIN [LegendCurriculumExamples] ex ON ex.[Id] = x.[ResultCurriculumExampleId]
+          JOIN [LegendCurriculumFamilies] f ON f.[Id] = ex.[CurriculumFamilyId]
+          JOIN [LegendLanguageTextUnits] u ON u.[Id] = ex.[TextUnitId]
+          LEFT JOIN [LegendLanguageCompositionalAnchors] a
+            ON a.[CurriculumExampleId] = ex.[Id]
+           AND a.[LanguageCode] = 'en'
+           AND a.[SupersededUtc] IS NULL
+          ORDER BY f.[FamilyKey], u.[Text], a.[ComponentStartTokenIndex], a.[Dimension], a.[Value];
+          """;
+          await using var cmd = new SqlCommand(sql, connection) { CommandTimeout = 30 };
+          await using var reader = await cmd.ExecuteReaderAsync(CommandBehavior.SequentialAccess);
+          while (await reader.ReadAsync()) {
+              for (var i = 0; i < reader.FieldCount; i++) {
+                  if (i > 0) Console.Write(" | ");
+                  Console.Write(reader.GetName(i) + "=" + (await reader.IsDBNullAsync(i) ? "<NULL>" : Convert.ToString(reader.GetValue(i), System.Globalization.CultureInfo.InvariantCulture)));
+              }
+              Console.WriteLine();
+          }
+          Console.WriteLine("PRODUCTION WRITE COMMANDS: 0");
+          CS
+          dotnet run --file diagnostics/LegendLiveResultShape.cs
