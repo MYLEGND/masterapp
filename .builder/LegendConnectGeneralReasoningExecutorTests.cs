@@ -110,22 +110,25 @@ public sealed class LegendConnectGeneralReasoningExecutorTests
             };
             if (!cycleOnly)
             {
-                var conclusion = family switch
+                var (conclusion, lead, continuation) = family switch
                 {
-                    1 => "Therefore! The conclusion follows?",
-                    2 => "Accordingly! The result follows?",
-                    _ => "Consequently! The outcome follows?"
+                    1 => ("Therefore! The conclusion follows?", "Therefore", "The conclusion follows"),
+                    2 => ("Accordingly! The result follows?", "Accordingly", "The result follows"),
+                    _ => ("Consequently! The outcome follows?", "Consequently", "The outcome follows")
                 };
-                examples.Add(AtomicExample(conclusion, "conclusion", conclusion, conclusionKey));
+                examples.Add(SegmentedConclusionExample(
+                    conclusion, lead, continuation, "conclusion", conclusionKey));
                 if (includeBranch)
                 {
-                    var alternate = family switch
+                    var (alternate, alternateLead, alternateContinuation) = family switch
                     {
-                        1 => "Alternatively! Another conclusion follows?",
-                        2 => "Otherwise! A different result follows?",
-                        _ => "Instead! Another outcome follows?"
+                        1 => ("Alternatively! Another conclusion follows?", "Alternatively", "Another conclusion follows"),
+                        2 => ("Otherwise! A different result follows?", "Otherwise", "A different result follows"),
+                        _ => ("Instead! Another outcome follows?", "Instead", "Another outcome follows")
                     };
-                    examples.Add(AtomicExample(alternate, "alternate_conclusion", alternate, alternateKey));
+                    examples.Add(SegmentedConclusionExample(
+                        alternate, alternateLead, alternateContinuation,
+                        "alternate_conclusion", alternateKey));
                 }
             }
 
@@ -156,9 +159,14 @@ public sealed class LegendConnectGeneralReasoningExecutorTests
                 LegendConnectLanguageIntelligenceEvaluatorVersion.Current);
             if (includeBranch)
             {
+                // A distinct semantic relationship identity keeps both edges
+                // individually supported instead of letting the existing
+                // contradiction authority collapse them first. The reasoning
+                // executor must therefore see the genuine competing branch and
+                // fail closed on branch ambiguity itself.
                 await curriculum.PersistFounderCrossExampleSemanticRelationAsync(
                     new LegendConnectCrossExampleSemanticRelationshipSubmission(
-                        middleKey, "reasoning.implication", alternateKey),
+                        middleKey, "reasoning.alternative", alternateKey),
                     LegendConnectLanguageIntelligenceEvaluatorVersion.Current);
             }
         }
@@ -204,6 +212,25 @@ public sealed class LegendConnectGeneralReasoningExecutorTests
                 [new LegendConnectMeaningNodeSubmission(
                     "state", "reasoning_state", state, surface)],
                 []),
+            semanticKey);
+
+    private static LegendConnectCurriculumExampleSubmission SegmentedConclusionExample(
+        string text,
+        string leadSurface,
+        string continuationSurface,
+        string state,
+        string semanticKey) => new(
+            text,
+            new Dictionary<string, string> { ["reasoning_state"] = state },
+            new LegendConnectMeaningGraphSubmission(
+                [
+                    new LegendConnectMeaningNodeSubmission(
+                        "lead", "reasoning_state", state, leadSurface),
+                    new LegendConnectMeaningNodeSubmission(
+                        "continuation", "reasoning_state", state, continuationSurface)
+                ],
+                [new LegendConnectMeaningRelationSubmission(
+                    "lead", "followed-by", "continuation")]),
             semanticKey);
 
     private static LegendConnectCurriculumExampleSubmission RelationalExample(
