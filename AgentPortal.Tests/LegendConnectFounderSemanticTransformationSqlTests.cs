@@ -1406,6 +1406,7 @@ public sealed class LegendConnectFounderSemanticTransformationSqlTests
             var composedInitial = await proofServices.Curriculum.TryInferComposedSemanticTransitionAsync(
                 "en",
                 establishingRequest,
+                [],
                 new LegendConnectDiscourseStateSnapshot([]));
             Assert.True(
                 string.Equals(composedInitial.State, LegendSemanticTransitionInference.Supported, StringComparison.Ordinal),
@@ -1452,6 +1453,7 @@ public sealed class LegendConnectFounderSemanticTransformationSqlTests
             var composedHeldOut = await proofServices.Curriculum.TryInferComposedSemanticTransitionAsync(
                 "en",
                 heldOutRequest,
+                [],
                 state);
             Assert.True(
                 string.Equals(composedHeldOut.State, LegendSemanticTransitionInference.Supported, StringComparison.Ordinal),

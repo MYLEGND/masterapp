@@ -3692,6 +3692,7 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
     internal async Task<LegendSemanticTransitionInference> TryInferComposedSemanticTransitionAsync(
         string sourceLanguageCode,
         string input,
+        IReadOnlyList<LegendConnectConversationContextItem> context,
         LegendConnectDiscourseStateSnapshot? discourseState,
         CancellationToken cancellationToken = default)
     {
@@ -3699,7 +3700,7 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
         var selection = await SelectSemanticTransitionAsync(
             sourceLanguageCode,
             input,
-            [],
+            context,
             discourseState,
             requireComposedGraph: true,
             composedGraph: graph,
@@ -3930,17 +3931,20 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
             if (partialCandidates.Count == 0)
                 return SemanticTransitionSelection.Insufficient("semantic_transition_not_supported", language, sourceComponents);
 
-            IReadOnlyList<GroundedContextFrame> contextFrames;
+            // Persisted discourse and caller-supplied context are two
+            // evidence views of the same conversation. Feed both through the
+            // one grounded-context authority; do not let persistence timing
+            // make the native planner forget context already present in the
+            // serving request. BindCandidatesFromGroundedContext canonicalizes
+            // duplicate bindings before transition selection.
+            var contextFrames = new List<GroundedContextFrame>();
             if (discourseState is not null)
             {
-                contextFrames = ResolveGroundedContextFramesFromDiscourseState(
-                    discourseState, observations);
+                contextFrames.AddRange(ResolveGroundedContextFramesFromDiscourseState(
+                    discourseState, observations));
             }
-            else
-            {
-                contextFrames = await ResolveGroundedContextFramesAsync(
-                    language, context, observations, cancellationToken);
-            }
+            contextFrames.AddRange(await ResolveGroundedContextFramesAsync(
+                language, context, observations, cancellationToken));
             candidates = BindCandidatesFromGroundedContext(partialCandidates, contextFrames);
             if (candidates.Count == 0)
                 return SemanticTransitionSelection.Insufficient("semantic_context_not_governed", language, sourceComponents);
@@ -4635,7 +4639,9 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
         }
 
         var eligibleLayouts = layouts
-            .GroupBy(item => item.Shape, StringComparer.Ordinal)
+            .GroupBy(
+                item => item.Shape + "\u001f" + item.TerminalPunctuation,
+                StringComparer.Ordinal)
             .Select(group => new
             {
                 Layouts = group.ToList(),
@@ -5027,6 +5033,22 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
         out SemanticRealizationLayout layout)
     {
         var components = BuildSemanticLayoutComponents(example, anchors, frameDimensions);
+
+        // Some valid Founder curricula intentionally govern an entire response
+        // as one semantic span instead of assigning artificial semantics to
+        // each clause. When that one exact lexical span covers the complete
+        // response, derive only its observed punctuation-delimited surface
+        // segments and feed them back into this same realization authority.
+        // No segment receives invented meaning; the whole-span semantic frame
+        // remains the authority and three independent families still have to
+        // support one structural layout before any recombination can serve.
+        if (components.Count == 1 &&
+            TryExpandWholeSpanSurfaceRealizationLayout(
+                example, components[0], out var surfaceComponents))
+        {
+            components = surfaceComponents;
+        }
+
         if (components.Count < 2 ||
             components.Zip(components.Skip(1), (left, right) =>
                     left.StartTokenIndex + left.TokenLength > right.StartTokenIndex)
@@ -5064,6 +5086,85 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
             slots[index] = $"{dimension}:{occurrence}";
         }
         return string.Join("|", slots);
+    }
+
+    /// <summary>
+    /// Refines one exact whole-response semantic anchor into observed surface
+    /// segments only when internal punctuation supplies an explicit boundary.
+    /// This is representation refinement inside the canonical realization
+    /// authority: it does not create semantic nodes, templates, phrase rules,
+    /// response caches, or another responder.
+    /// </summary>
+    private static bool TryExpandWholeSpanSurfaceRealizationLayout(
+        SemanticResultExample example,
+        SemanticLayoutComponent wholeSpan,
+        out List<SemanticLayoutComponent> components)
+    {
+        components = [];
+        var normalized = LegendLanguageIdentity.NormalizeText(example.Text);
+        var tokens = SurfaceComponents(normalized);
+        if (tokens.Count < 2 ||
+            wholeSpan.StartTokenIndex != 0 ||
+            wholeSpan.TokenLength != tokens.Count)
+        {
+            return false;
+        }
+
+        var terminalPunctuation = TerminalPunctuation(normalized);
+        var bodyLength = normalized.Length - terminalPunctuation.Length;
+        if (bodyLength <= 0)
+            return false;
+
+        var starts = new List<int> { 0 };
+        var ends = new List<int>();
+        for (var index = 0; index < bodyLength; index++)
+        {
+            var character = normalized[index];
+            if (character is not ('!' or '?' or '.' or ';' or ':') ||
+                index + 1 >= bodyLength)
+            {
+                continue;
+            }
+
+            var next = index + 1;
+            while (next < bodyLength && char.IsWhiteSpace(normalized[next]))
+                next++;
+            if (next >= bodyLength)
+                continue;
+
+            ends.Add(index + 1);
+            starts.Add(next);
+            index = next - 1;
+        }
+        ends.Add(bodyLength);
+        if (starts.Count < 2 || starts.Count != ends.Count)
+            return false;
+
+        var tokenCursor = 0;
+        for (var index = 0; index < starts.Count; index++)
+        {
+            var surface = normalized[starts[index]..ends[index]].Trim();
+            if (string.IsNullOrWhiteSpace(surface))
+                return false;
+            var segmentTokenCount = SurfaceComponents(surface).Count;
+            if (segmentTokenCount <= 0)
+                return false;
+
+            components.Add(new SemanticLayoutComponent(
+                wholeSpan.Dimension + "#surface-" + (index + 1),
+                wholeSpan.Value,
+                tokenCursor,
+                segmentTokenCount,
+                surface));
+            tokenCursor += segmentTokenCount;
+        }
+
+        if (tokenCursor != wholeSpan.TokenLength)
+        {
+            components = [];
+            return false;
+        }
+        return components.Count >= 2;
     }
 
     private static bool TryRealizeOriginalLearnedLayout(
@@ -5187,7 +5288,9 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
         }
 
         var eligibleLayouts = layouts
-            .GroupBy(item => item.Shape, StringComparer.Ordinal)
+            .GroupBy(
+                item => item.Shape + "\u001f" + item.TerminalPunctuation,
+                StringComparer.Ordinal)
             .Select(group => new
             {
                 Layouts = group.ToList(),
