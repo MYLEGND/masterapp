@@ -6,6 +6,7 @@ on:
       - builder/legend-general-reasoning-20260827
     paths:
       - .github/workflows/legend-general-reasoning-builder.yml
+      - .builder/**
 
 permissions:
   contents: write
