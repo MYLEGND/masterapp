@@ -63,7 +63,7 @@ jobs:
             --filter 'FullyQualifiedName~LegendConnectCompositionalUnderstandingTests|FullyQualifiedName~LegendConnectDiscourseReferenceBindingTests|FullyQualifiedName~LegendConnectMeaningGraphTests|FullyQualifiedName~LegendConnectSemanticSpanGroundingTests|FullyQualifiedName~LegendConnectFounderSemanticTransformationSqlTests' \
             --logger 'console;verbosity=normal' 2>&1 | tee architecture-freeze.log
           if grep -qE 'Failed:[[:space:]]*[1-9][0-9]*' architecture-freeze.log; then exit 1; fi
-          grep -Eq 'Failed:[[:space:]]+0' architecture-freeze.log
+          grep -Eq 'Test Run Successful|Passed![[:space:]]+-[[:space:]]+Failed:[[:space:]]+0' architecture-freeze.log
 
       - name: Prove runtime contains no prompt-specific native responder
         shell: bash
