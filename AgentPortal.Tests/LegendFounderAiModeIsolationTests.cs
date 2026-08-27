@@ -114,9 +114,10 @@ public sealed class LegendFounderAiModeIsolationTests
         var founder = await AddFounderProfileAsync(db);
         var operations = new Mock<ILegendConnectOperations>(MockBehavior.Strict);
         operations
-            .Setup(operation => operation.TryInferConversationAsync(
+            .Setup(operation => operation.TryInferConversationWithDiscourseAsync(
                 "Explain the governed gap.",
                 It.IsAny<IReadOnlyList<LegendConnectConversationContextItem>>(),
+                It.IsAny<LegendConnectDiscourseStateSnapshot?>(),
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(new LegendConnectNativeInferenceSnapshot(
                 false,
@@ -422,9 +423,10 @@ public sealed class LegendFounderAiModeIsolationTests
         var founder = await AddFounderProfileAsync(db);
         var operations = new Mock<ILegendConnectOperations>(MockBehavior.Strict);
         operations
-            .Setup(operation => operation.TryInferConversationAsync(
+            .Setup(operation => operation.TryInferConversationWithDiscourseAsync(
                 "Hello.",
                 It.IsAny<IReadOnlyList<LegendConnectConversationContextItem>>(),
+                It.IsAny<LegendConnectDiscourseStateSnapshot?>(),
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(new LegendConnectNativeInferenceSnapshot(
                 true,
@@ -459,9 +461,10 @@ public sealed class LegendFounderAiModeIsolationTests
         var founder = await AddFounderProfileAsync(db);
         var operations = new Mock<ILegendConnectOperations>(MockBehavior.Strict);
         operations
-            .Setup(operation => operation.TryInferConversationAsync(
+            .Setup(operation => operation.TryInferConversationWithDiscourseAsync(
                 "Answer directly.",
                 It.IsAny<IReadOnlyList<LegendConnectConversationContextItem>>(),
+                It.IsAny<LegendConnectDiscourseStateSnapshot?>(),
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(new LegendConnectNativeInferenceSnapshot(
                 true,
@@ -496,9 +499,10 @@ public sealed class LegendFounderAiModeIsolationTests
         var founder = await AddFounderProfileAsync(db);
         var operations = new Mock<ILegendConnectOperations>(MockBehavior.Strict);
         operations
-            .Setup(operation => operation.TryInferConversationAsync(
+            .Setup(operation => operation.TryInferConversationWithDiscourseAsync(
                 "Explain the unsupported gap.",
                 It.IsAny<IReadOnlyList<LegendConnectConversationContextItem>>(),
+                It.IsAny<LegendConnectDiscourseStateSnapshot?>(),
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(new LegendConnectNativeInferenceSnapshot(
                 false,
@@ -555,9 +559,10 @@ public sealed class LegendFounderAiModeIsolationTests
         var founder = await AddFounderProfileAsync(db);
         var operations = new Mock<ILegendConnectOperations>(MockBehavior.Strict);
         operations
-            .Setup(operation => operation.TryInferConversationAsync(
+            .Setup(operation => operation.TryInferConversationWithDiscourseAsync(
                 "Explain the gap.",
                 It.IsAny<IReadOnlyList<LegendConnectConversationContextItem>>(),
+                It.IsAny<LegendConnectDiscourseStateSnapshot?>(),
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(new LegendConnectNativeInferenceSnapshot(
                 false,
@@ -611,7 +616,11 @@ public sealed class LegendFounderAiModeIsolationTests
             new FounderLegendConnectService(
                 operations,
                 new AgentProfileAccessResolver(db)),
-            NullLogger<LegendFounderAiConversationService>.Instance);
+            NullLogger<LegendFounderAiConversationService>.Instance,
+            new LegendFounderAiDiscourseStateService(
+                db,
+                new AgentProfileAccessResolver(db),
+                operations));
 
     private static LegendFounderAiChatRequest Request(
         string? mode,
