@@ -1,0 +1,507 @@
+name: LEGEND governed reasoning predeploy proof v2
+
+on:
+  push:
+    branches:
+      - fix/legend-governed-reasoning-executor-20260827
+    paths:
+      - .github/workflows/legend-governed-reasoning-predeploy-v2.yml
+
+permissions:
+  contents: write
+  id-token: write
+
+env:
+  AZURE_WEBAPP_NAME: masterapp-portal
+  AZURE_RESOURCE_GROUP: masterapp-rg
+  DOTNET_VERSION: '10.x'
+
+jobs:
+  prove:
+    runs-on: ubuntu-latest
+    timeout-minutes: 70
+    environment:
+      name: Production
+    steps:
+      - name: Checkout exact Sol-gap branch
+        uses: actions/checkout@v4
+        with:
+          ref: fix/legend-governed-reasoning-executor-20260827
+          fetch-depth: 0
+
+      - name: Materialize proposed source from disposable v1 and remove harnesses
+        shell: bash
+        run: |
+          set -euo pipefail
+          OLD=.github/workflows/legend-governed-reasoning-predeploy.yml
+          test -f "$OLD"
+          sed -n "/cat > Infrastructure\/Messaging\/LegendConnectGovernedReasoningExecutor.cs <<'CS'/,/^          CS$/p" "$OLD" \
+            | sed '1d;$d;s/^          //' > Infrastructure/Messaging/LegendConnectGovernedReasoningExecutor.cs
+          sed -n "/cat > AgentPortal.Tests\/LegendConnectGovernedReasoningExecutorTests.cs <<'CS'/,/^          CS$/p" "$OLD" \
+            | sed '1d;$d;s/^          //' > AgentPortal.Tests/LegendConnectGovernedReasoningExecutorTests.cs
+          test -s Infrastructure/Messaging/LegendConnectGovernedReasoningExecutor.cs
+          test -s AgentPortal.Tests/LegendConnectGovernedReasoningExecutorTests.cs
+          git rm "$OLD" .github/workflows/legend-governed-reasoning-predeploy-v2.yml
+
+      - name: Integrate executor through canonical selector only
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          contracts = Path('Domain/Messaging/LegendConnectContracts.cs')
+          text = contracts.read_text()
+          old = '''    IReadOnlyDictionary<string, string>? BoundSemanticVariables = null,
+              IReadOnlyDictionary<string, string>? UnboundResultVariables = null);'''
+          new = '''    IReadOnlyDictionary<string, string>? BoundSemanticVariables = null,
+              IReadOnlyDictionary<string, string>? UnboundResultVariables = null,
+              IReadOnlyList<string>? ReasoningTransitionPath = null,
+              int ReasoningEvidenceCount = 0);'''
+          if text.count(old) != 1:
+              raise SystemExit('response plan contract anchor drifted')
+          contracts.write_text(text.replace(old, new, 1))
+
+          path = Path('Infrastructure/Messaging/LegendConnectCurriculum.cs')
+          text = path.read_text()
+
+          # Evidence accounting and text-free plan identity are extended, not
+          # replaced. Existing response/content/articulation authorities remain.
+          replacements = [
+              (
+                  '            selected.IndependentEvidenceCount + realization.LayoutEvidenceCount,',
+                  '            selected.IndependentEvidenceCount + selected.ReasoningEvidenceCount + realization.LayoutEvidenceCount,'
+              ),
+              (
+                  '            selection.Selected.IndependentEvidenceCount + content.EvidenceCount + realization.LayoutEvidenceCount,',
+                  '            selection.Selected.IndependentEvidenceCount + selection.Selected.ReasoningEvidenceCount + content.EvidenceCount + realization.LayoutEvidenceCount,'
+              ),
+              (
+                  '''            selected.IndependentEvidenceCount,
+                      discourseState is { Turns.Count: > 0 },
+                      selected.Bindings,
+                      unboundResultVariables),''',
+                  '''            selected.IndependentEvidenceCount + selected.ReasoningEvidenceCount,
+                      discourseState is { Turns.Count: > 0 },
+                      selected.Bindings,
+                      unboundResultVariables,
+                      selected.ReasoningPath,
+                      selected.ReasoningEvidenceCount),'''
+              ),
+              (
+                  '            string.Join(";", activeBindings.OrderBy(item => item.Key).Select(item => item.Key + "=" + item.Value))));',
+                  '            string.Join(";", activeBindings.OrderBy(item => item.Key).Select(item => item.Key + "=" + item.Value)),\n            string.Join(";", selected.ReasoningPath ?? Array.Empty<string>())));'
+              ),
+          ]
+          for old, new in replacements:
+              if text.count(old) != 1:
+                  raise SystemExit('plan/evidence anchor drifted: ' + old[:90])
+              text = text.replace(old, new, 1)
+
+          selector_start = text.index('    private async Task<SemanticTransitionSelection> SelectSemanticTransitionAsync(')
+          selector_end = text.index('    private static IReadOnlyDictionary<string, string> ActiveDiscourseBindings', selector_start)
+          selector = text[selector_start:selector_end]
+
+          direct = '        var candidates = BuildProductionSemanticTransitionCandidates(observations, values, allowMissingVariables: false);'
+          if selector.count(direct) != 1:
+              raise SystemExit('direct candidate anchor drifted')
+          selector = selector.replace(direct, '''        // Founder-declared reasoning.* relationships are internal semantic
+                  // operations, never direct conversational answer edges. They retain the
+                  // same canonical transition provenance and eligibility gates.
+                  var reasoningOperators = await LoadActiveGovernedReasoningOperatorsAsync(
+                      language,
+                      cancellationToken);
+                  var responseObservations = reasoningOperators.Count == 0
+                      ? observations
+                      : observations.Where(item => !reasoningOperators.ContainsKey(item.TransitionSignature)).ToList();
+                  var candidates = BuildProductionSemanticTransitionCandidates(
+                      responseObservations,
+                      values,
+                      allowMissingVariables: false);''', 1)
+
+          scoped_replacements = [
+              ('HasContradictedSemanticTransition(observations, values)',
+               'HasContradictedSemanticTransition(responseObservations, values)'),
+              ('''BuildProductionSemanticTransitionCandidates(
+                          observations,
+                          values,
+                          allowMissingVariables: false,
+                          allowMissingStaticDimensions: true)''',
+               '''BuildProductionSemanticTransitionCandidates(
+                          responseObservations,
+                          values,
+                          allowMissingVariables: false,
+                          allowMissingStaticDimensions: true)'''),
+              ('''HasContradictedSemanticTransition(
+                              observations,
+                              values,
+                              allowMissingStaticDimensions: true)''',
+               '''HasContradictedSemanticTransition(
+                              responseObservations,
+                              values,
+                              allowMissingStaticDimensions: true)'''),
+              ('''BuildProductionSemanticTransitionCandidates(
+                          observations, values, allowMissingVariables: true)''',
+               '''BuildProductionSemanticTransitionCandidates(
+                          responseObservations, values, allowMissingVariables: true)'''),
+              ('discourseState, observations));', 'discourseState, responseObservations));'),
+              ('language, context, observations, cancellationToken));',
+               'language, context, responseObservations, cancellationToken));'),
+          ]
+          for old, new in scoped_replacements:
+              if selector.count(old) != 1:
+                  raise SystemExit('selector scoped anchor drifted: ' + old[:90])
+              selector = selector.replace(old, new, 1)
+
+          partial_marker = '''            var partialCandidates = BuildProductionSemanticTransitionCandidates(
+                      responseObservations, values, allowMissingVariables: true)'''
+          partial_start = selector.index(partial_marker)
+          partial_end = selector.index('        }\n        if (candidates.Select', partial_start)
+          existing_partial = selector[partial_start:partial_end]
+          # Preserve the exact existing context-binding authority, but make
+          # reasoning a subordinate fallback only after direct/context response
+          # selection has no unique candidate.
+          new_partial = '''            var failureReason = "semantic_transition_not_supported";
+              var partialCandidates = BuildProductionSemanticTransitionCandidates(
+                      responseObservations, values, allowMissingVariables: true)
+                  .Where(item => item.MissingVariables.Count > 0 && item.DirectSourceMatchCount > 0)
+                  .ToList();
+              if (partialCandidates.Count > 0)
+              {
+                  var contextFrames = new List<GroundedContextFrame>();
+                  if (discourseState is not null)
+                  {
+                      contextFrames.AddRange(ResolveGroundedContextFramesFromDiscourseState(
+                          discourseState, responseObservations));
+                  }
+                  contextFrames.AddRange(await ResolveGroundedContextFramesAsync(
+                      language, context, responseObservations, cancellationToken));
+                  candidates = BindCandidatesFromGroundedContext(partialCandidates, contextFrames);
+                  if (candidates.Count == 0)
+                      failureReason = "semantic_context_not_governed";
+              }
+
+              if (candidates.Count == 0 && reasoningOperators.Count > 0)
+              {
+                  var reasoned = await TrySelectGovernedReasonedResponseAsync(
+                      language,
+                      values,
+                      discourseState,
+                      observations,
+                      responseObservations,
+                      reasoningOperators,
+                      cancellationToken);
+                  if (reasoned.IsAmbiguous)
+                      return SemanticTransitionSelection.Ambiguous(reasoned.ReasonCode, language, sourceComponents);
+                  if (reasoned.IsContradicted)
+                      return SemanticTransitionSelection.Contradicted(reasoned.ReasonCode, language, sourceComponents);
+                  if (reasoned.Selected is not null)
+                  {
+                      return new(
+                          language,
+                          sourceComponents,
+                          reasoned.Selected,
+                          reasoned.ReasonCode,
+                          false,
+                          false);
+                  }
+                  if (!string.Equals(
+                          reasoned.ReasonCode,
+                          "governed_reasoning_not_applicable",
+                          StringComparison.Ordinal))
+                  {
+                      return SemanticTransitionSelection.Insufficient(
+                          reasoned.ReasonCode,
+                          language,
+                          sourceComponents);
+                  }
+              }
+
+              if (candidates.Count == 0)
+                  return SemanticTransitionSelection.Insufficient(failureReason, language, sourceComponents);
+'''
+          selector = selector[:partial_start] + new_partial + selector[partial_end:]
+          text = text[:selector_start] + selector + text[selector_end:]
+
+          method_marker = '    private async Task<IReadOnlyList<GroundedContextFrame>> ResolveGroundedContextFramesAsync('
+          method_at = text.index(method_marker)
+          methods = '''    private async Task<IReadOnlyDictionary<string, string>> LoadActiveGovernedReasoningOperatorsAsync(
+              string sourceLanguage,
+              CancellationToken cancellationToken)
+          {
+              var rows = await (
+                  from transition in _db.Set<LegendSemanticTransitionEvidence>().AsNoTracking()
+                  join relation in _db.Set<LegendFounderSemanticExampleRelationEvidence>().AsNoTracking()
+                      on transition.FounderSemanticExampleRelationEvidenceId equals (Guid?)relation.Id
+                  where transition.SupersededUtc == null &&
+                      transition.SourceLanguageCode == sourceLanguage &&
+                      transition.ResultLanguageCode == sourceLanguage &&
+                      transition.Provenance == LegendConnectKnowledgeProvenance.FounderApproved &&
+                      relation.SupersededUtc == null &&
+                      relation.LanguageCode == sourceLanguage &&
+                      relation.Provenance == LegendConnectKnowledgeProvenance.FounderApproved &&
+                      relation.RelationshipSemanticIdentity.StartsWith("reasoning.")
+                  select new
+                  {
+                      transition.TransitionSignature,
+                      relation.RelationshipSemanticIdentity
+                  }
+              ).Distinct().ToListAsync(cancellationToken);
+
+              return rows
+                  .Where(item => LegendConnectGovernedReasoningExecutor.IsExecutableOperatorIdentity(
+                      item.RelationshipSemanticIdentity))
+                  .GroupBy(item => item.TransitionSignature, StringComparer.Ordinal)
+                  .Where(group => group
+                      .Select(item => item.RelationshipSemanticIdentity)
+                      .Distinct(StringComparer.Ordinal)
+                      .Take(2)
+                      .Count() == 1)
+                  .ToDictionary(
+                      group => group.Key,
+                      group => group.First().RelationshipSemanticIdentity,
+                      StringComparer.Ordinal);
+          }
+
+          private async Task<GovernedReasonedResponseSelection> TrySelectGovernedReasonedResponseAsync(
+              string language,
+              IReadOnlyDictionary<string, string> currentValues,
+              LegendConnectDiscourseStateSnapshot? discourseState,
+              IReadOnlyList<SemanticTransitionObservation> allObservations,
+              IReadOnlyList<SemanticTransitionObservation> responseObservations,
+              IReadOnlyDictionary<string, string> reasoningOperators,
+              CancellationToken cancellationToken)
+          {
+              var rules = new List<LegendGovernedReasoningRule>();
+              foreach (var group in allObservations
+                           .Where(item => reasoningOperators.ContainsKey(item.TransitionSignature))
+                           .GroupBy(item => item.TransitionSignature, StringComparer.Ordinal))
+              {
+                  if (!TryGetProductionSemanticTransitionFrames(
+                          group,
+                          out var independentEvidenceCount,
+                          out var sourceFrame,
+                          out var resultFrame))
+                  {
+                      continue;
+                  }
+                  rules.Add(new LegendGovernedReasoningRule(
+                      group.Key,
+                      reasoningOperators[group.Key],
+                      sourceFrame.Dimensions,
+                      resultFrame.Dimensions,
+                      independentEvidenceCount));
+              }
+              if (rules.Count == 0)
+                  return GovernedReasonedResponseSelection.None;
+
+              var initialValues = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+              foreach (var item in currentValues)
+                  initialValues[item.Key] = item.Value;
+              foreach (var binding in ActiveDiscourseBindings(discourseState))
+              {
+                  if (!initialValues.ContainsKey(binding.Key))
+                      initialValues[binding.Key] = binding.Value;
+              }
+
+              var execution = LegendConnectGovernedReasoningExecutor.Derive(initialValues, rules);
+              if (execution.InitialContradiction)
+                  return GovernedReasonedResponseSelection.Contradicted("governed_reasoning_constraint_contradicted");
+              if (execution.BudgetExceeded)
+                  return GovernedReasonedResponseSelection.Failure("governed_reasoning_budget_exceeded");
+              if (execution.DerivedStates.Count == 0)
+                  return GovernedReasonedResponseSelection.None;
+
+              var responses = new List<(SemanticTransitionCandidate Candidate, LegendGovernedReasoningProof Proof)>();
+              foreach (var proof in execution.DerivedStates)
+              {
+                  if (HasContradictedSemanticTransition(responseObservations, proof.Values))
+                      continue;
+                  var proofCandidates = BuildProductionSemanticTransitionCandidates(
+                      responseObservations,
+                      proof.Values,
+                      allowMissingVariables: false);
+                  foreach (var candidate in proofCandidates)
+                      responses.Add((candidate, proof));
+              }
+              if (responses.Count == 0)
+                  return GovernedReasonedResponseSelection.None;
+
+              var outcomes = new HashSet<string>(StringComparer.Ordinal);
+              foreach (var response in responses)
+              {
+                  if (!TryInstantiateResponsePlanFrame(
+                          response.Candidate.ResultFrame,
+                          response.Candidate.Bindings,
+                          out var dimensions,
+                          out var unbound))
+                  {
+                      continue;
+                  }
+                  outcomes.Add(JsonSerializer.Serialize(new
+                  {
+                      Dimensions = dimensions.OrderBy(item => item.Key, StringComparer.Ordinal),
+                      Unbound = unbound.OrderBy(item => item.Key, StringComparer.Ordinal)
+                  }));
+              }
+              if (outcomes.Count != 1)
+                  return GovernedReasonedResponseSelection.Ambiguous("ambiguous_governed_reasoning_conclusion");
+
+              var selected = responses
+                  .OrderBy(item => item.Proof.Depth)
+                  .ThenByDescending(item => item.Proof.EvidenceCount)
+                  .ThenBy(item => item.Candidate.TransitionSignature, StringComparer.Ordinal)
+                  .First();
+              return GovernedReasonedResponseSelection.Success(
+                  selected.Candidate with
+                  {
+                      ReasoningEvidenceCount = selected.Proof.EvidenceCount,
+                      ReasoningPath = selected.Proof.TransitionPath
+                  });
+          }
+
+          '''
+          text = text[:method_at] + methods + text[method_at:]
+
+          candidate_marker = '    private sealed record SemanticTransitionCandidate('
+          candidate_start = text.index(candidate_marker)
+          candidate_end = text.index(');', candidate_start) + 2
+          candidate = text[candidate_start:candidate_end]
+          expected_tail = '    int IndependentEvidenceCount);'
+          if expected_tail not in candidate:
+              raise SystemExit('candidate record tail drifted')
+          candidate = candidate.replace(expected_tail,
+              '''    int IndependentEvidenceCount,
+              int ReasoningEvidenceCount = 0,
+              IReadOnlyList<string>? ReasoningPath = null);''', 1)
+          text = text[:candidate_start] + candidate + text[candidate_end:]
+
+          grounded_marker = '    private sealed record GroundedContextFrame('
+          grounded_at = text.index(grounded_marker)
+          reasoned_record = '''    private sealed record GovernedReasonedResponseSelection(
+              SemanticTransitionCandidate? Selected,
+              string ReasonCode,
+              bool IsAmbiguous,
+              bool IsContradicted)
+          {
+              internal static GovernedReasonedResponseSelection None =>
+                  new(null, "governed_reasoning_not_applicable", false, false);
+              internal static GovernedReasonedResponseSelection Success(SemanticTransitionCandidate selected) =>
+                  new(selected, "response_meaning_plan_governed_reasoned", false, false);
+              internal static GovernedReasonedResponseSelection Failure(string reasonCode) =>
+                  new(null, reasonCode, false, false);
+              internal static GovernedReasonedResponseSelection Ambiguous(string reasonCode) =>
+                  new(null, reasonCode, true, false);
+              internal static GovernedReasonedResponseSelection Contradicted(string reasonCode) =>
+                  new(null, reasonCode, false, true);
+          }
+
+          '''
+          text = text[:grounded_at] + reasoned_record + text[grounded_at:]
+          path.write_text(text)
+          PY
+          git diff --check
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Restore
+        run: dotnet restore MASTERAPP.sln
+
+      - name: Release build with zero warnings
+        shell: bash
+        run: |
+          set -euo pipefail
+          dotnet build MASTERAPP.sln -c Release --no-restore 2>&1 | tee build.log
+          grep -qE '^[[:space:]]*0 Warning\(s\)' build.log
+          grep -qE '^[[:space:]]*0 Error\(s\)' build.log
+
+      - name: Prove multi-step reasoning and frozen architecture
+        shell: bash
+        run: |
+          set -euo pipefail
+          dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-build \
+            --filter 'FullyQualifiedName~LegendConnectGovernedReasoningExecutorTests|FullyQualifiedName~LegendConnectCompositionalUnderstandingTests|FullyQualifiedName~LegendConnectDiscourseReferenceBindingTests|FullyQualifiedName~LegendConnectMeaningGraphTests|FullyQualifiedName~LegendConnectSemanticSpanGroundingTests|FullyQualifiedName~LegendConnectFounderSemanticTransformationSqlTests' \
+            --logger 'console;verbosity=normal' 2>&1 | tee reasoning-proof.log
+          grep -q 'Test Run Successful' reasoning-proof.log
+          if grep -qE 'Failed:[[:space:]]*[1-9][0-9]*' reasoning-proof.log; then exit 1; fi
+
+      - name: Prove executor is subordinate and content agnostic
+        shell: bash
+        run: |
+          set -euo pipefail
+          test ! -e .github/workflows/legend-governed-reasoning-predeploy.yml
+          test ! -e .github/workflows/legend-governed-reasoning-predeploy-v2.yml
+          if grep -nE 'HttpClient|OpenAI|Azure|SaveChanges|DbContext|response cache|prompt map' Infrastructure/Messaging/LegendConnectGovernedReasoningExecutor.cs; then
+            echo 'Reasoning executor crossed its pure semantic boundary.' >&2
+            exit 1
+          fi
+          if grep -nE '"Hi there\."|"Hi Legend\."|"Hey Legend\."|"Good morning\."|"Nice to meet you\."|"What.s up\?"' Infrastructure/Messaging/LegendConnectCurriculum.cs Infrastructure/Messaging/LegendConnectGovernedReasoningExecutor.cs; then
+            echo 'Prompt-specific reasoning logic detected.' >&2
+            exit 1
+          fi
+
+      - name: Login to Azure for live Founder proof
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Prove exact candidate against live Founder data with OpenAI blocked
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $connection = ''
+          $connections = az webapp config connection-string list --resource-group $env:AZURE_RESOURCE_GROUP --name $env:AZURE_WEBAPP_NAME --output json | ConvertFrom-Json
+          $match = $connections | Where-Object { $_.name -eq 'MasterAppDb' } | Select-Object -First 1
+          if ($null -ne $match) { $connection = [string]$match.value }
+          $settings = @{}
+          foreach ($item in (az webapp config appsettings list --resource-group $env:AZURE_RESOURCE_GROUP --name $env:AZURE_WEBAPP_NAME --output json | ConvertFrom-Json)) {
+            $settings[[string]$item.name] = [string]$item.value
+          }
+          if ([string]::IsNullOrWhiteSpace($connection)) {
+            foreach ($name in @('ConnectionStrings__MasterAppDb','MasterAppDb','SQLCONNSTR_MasterAppDb')) {
+              if ($settings.ContainsKey($name) -and -not [string]::IsNullOrWhiteSpace($settings[$name])) { $connection = $settings[$name]; break }
+            }
+          }
+          if ([string]::IsNullOrWhiteSpace($connection)) { throw 'Production MasterAppDb connection string could not be resolved.' }
+          $founderOid = ''
+          foreach ($name in @('FOUNDER_OID','Founder__Oid','Founder:Oid')) {
+            if ($settings.ContainsKey($name) -and -not [string]::IsNullOrWhiteSpace($settings[$name])) { $founderOid = $settings[$name]; break }
+          }
+          if ([string]::IsNullOrWhiteSpace($founderOid)) { throw 'Production Founder OID could not be resolved.' }
+          Write-Output "::add-mask::$connection"
+          Write-Output "::add-mask::$founderOid"
+          $env:LEGEND_PRODUCTION_READONLY_CONNECTION = $connection
+          $env:LEGEND_PRODUCTION_READONLY_FOUNDER_OID = $founderOid
+          $env:LEGEND_PRODUCTION_READONLY_EXPECT_NATIVE = 'true'
+          $env:OPENAI_API_KEY = ''
+          $env:OpenAI__ApiKey = ''
+          dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-build --filter 'FullyQualifiedName~LegendFounderCurriculumSqlServerE2ETests.ProductionReadOnlyEightPromptNativeDiagnostic' --logger 'console;verbosity=detailed'
+          if ($LASTEXITCODE -ne 0) { throw 'Live Founder native-only proof failed.' }
+
+      - name: Run complete AgentPortal regression on exact candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-build 2>&1 | tee full-regression.log
+          grep -q 'Test Run Successful' full-regression.log
+          if grep -qE 'Failed:[[:space:]]*[1-9][0-9]*' full-regression.log; then exit 1; fi
+
+      - name: Commit only exact proven clean tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --check
+          test ! -e .github/workflows/legend-governed-reasoning-predeploy.yml
+          test ! -e .github/workflows/legend-governed-reasoning-predeploy-v2.yml
+          echo '=== EXACT DELTA FROM FROZEN PROVEN SHA ==='
+          git diff --name-status 057144c6416c48a2d5db6a698ba95d80cb0ab318
+          git config user.name 'MYLEGND'
+          git config user.email 'zac.owen@mylegnd.com'
+          git add -A
+          git commit -m 'Add governed multi-step native reasoning executor'
+          git push origin HEAD:fix/legend-governed-reasoning-executor-20260827
