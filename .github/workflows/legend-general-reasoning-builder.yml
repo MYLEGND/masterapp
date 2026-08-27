@@ -23,550 +23,41 @@ jobs:
     environment:
       name: Production
     steps:
+      - name: Checkout builder tools
+        uses: actions/checkout@v4
+        with:
+          ref: builder/legend-general-reasoning-20260827
+          path: builder-tools
+
       - name: Checkout exact frozen advancement base
         uses: actions/checkout@v4
         with:
           ref: advance/legend-general-reasoning-20260827
           fetch-depth: 0
+          path: candidate
 
-      - name: Verify immutable green parent
+      - name: Verify immutable green parent and apply advancement
         shell: bash
+        working-directory: candidate
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "057144c6416c48a2d5db6a698ba95d80cb0ab318"
-
-      - name: Apply canonical multi-step reasoning advancement
-        shell: bash
-        run: |
-          set -euo pipefail
-          python - <<'PY'
-          from pathlib import Path
-
-          p = Path('Infrastructure/Messaging/LegendConnectCurriculum.cs')
-          s = p.read_text()
-
-          old = '''            select new SemanticTransitionObservation(
-                evidence.TransitionSignature,
-                evidence.SourceSemanticFrame,
-                evidence.ResultSemanticFrame,
-                evidence.IndependentSourceIdentity,
-                evidence.ContributionState,
-                evidence.IsHumanVerifiedSupport,
-                evidence.SourceCurriculumExampleId,
-                evidence.ResultCurriculumExampleId)
-'''
-          new = '''            select new SemanticTransitionObservation(
-                evidence.TransitionSignature,
-                evidence.SourceSemanticFrame,
-                evidence.ResultSemanticFrame,
-                evidence.IndependentSourceIdentity,
-                evidence.ContributionState,
-                evidence.IsHumanVerifiedSupport,
-                evidence.SourceCurriculumExampleId,
-                evidence.ResultCurriculumExampleId,
-                evidence.FounderSemanticExampleRelationEvidenceId != null)
-'''
-          assert s.count(old) == 1, s.count(old)
-          s = s.replace(old, new)
-
-          old = '''            candidates.Add(new SemanticTransitionCandidate(
-                group.Key,
-                sourceFrame,
-                resultFrame,
-                bindings,
-                missingVariables,
-                directSourceMatchCount,
-                independentEvidenceCount));
-'''
-          new = '''            candidates.Add(new SemanticTransitionCandidate(
-                group.Key,
-                sourceFrame,
-                resultFrame,
-                bindings,
-                missingVariables,
-                directSourceMatchCount,
-                independentEvidenceCount,
-                group.Any(item => item.IsFounderCrossExampleDerived)));
-'''
-          assert s.count(old) == 1, s.count(old)
-          s = s.replace(old, new)
-
-          old = '''                return new(
-                    language,
-                    sourceComponents,
-                    projectedCandidates
-                        .OrderByDescending(item => item.DirectSourceMatchCount)
-                        .ThenBy(item => item.TransitionSignature, StringComparer.Ordinal)
-                        .First(),
-                    "response_meaning_plan_governed_projected",
-                    false,
-                    false);
-'''
-          new = '''                var projectedSelected = projectedCandidates
-                    .OrderByDescending(item => item.DirectSourceMatchCount)
-                    .ThenBy(item => item.TransitionSignature, StringComparer.Ordinal)
-                    .First();
-                var projectedReasoning = ExpandGovernedSemanticReasoningPath(
-                    projectedSelected,
-                    observations);
-                if (projectedReasoning.Selected is null)
-                {
-                    return projectedReasoning.IsAmbiguous
-                        ? SemanticTransitionSelection.Ambiguous(projectedReasoning.ReasonCode)
-                        : projectedReasoning.IsContradicted
-                            ? SemanticTransitionSelection.Contradicted(projectedReasoning.ReasonCode)
-                            : SemanticTransitionSelection.Insufficient(projectedReasoning.ReasonCode);
-                }
-                return new(
-                    language,
-                    sourceComponents,
-                    projectedReasoning.Selected,
-                    projectedReasoning.StepCount > 1
-                        ? "semantic_reasoning_path_governed"
-                        : "response_meaning_plan_governed_projected",
-                    false,
-                    false);
-'''
-          assert s.count(old) == 1, s.count(old)
-          s = s.replace(old, new)
-
-          old = '''        if (candidates.Select(item => item.ResultFrame.Signature).Distinct().Count() != 1)
-            return SemanticTransitionSelection.Ambiguous("ambiguous_semantic_transition");
-        return new(language, sourceComponents, candidates.OrderBy(item => item.TransitionSignature).First(), "response_meaning_plan_governed", false, false);
-    }
-
-    private static IReadOnlyDictionary<string, string> ActiveDiscourseBindings'''
-          new = '''        if (candidates.Select(item => item.ResultFrame.Signature).Distinct().Count() != 1)
-            return SemanticTransitionSelection.Ambiguous("ambiguous_semantic_transition");
-        var selected = candidates.OrderBy(item => item.TransitionSignature).First();
-        var reasoning = ExpandGovernedSemanticReasoningPath(selected, observations);
-        if (reasoning.Selected is null)
-        {
-            return reasoning.IsAmbiguous
-                ? SemanticTransitionSelection.Ambiguous(reasoning.ReasonCode)
-                : reasoning.IsContradicted
-                    ? SemanticTransitionSelection.Contradicted(reasoning.ReasonCode)
-                    : SemanticTransitionSelection.Insufficient(reasoning.ReasonCode);
-        }
-        return new(
-            language,
-            sourceComponents,
-            reasoning.Selected,
-            reasoning.StepCount > 1
-                ? "semantic_reasoning_path_governed"
-                : "response_meaning_plan_governed",
-            false,
-            false);
-    }
-
-    /// <summary>
-    /// Executes a bounded chain of explicit Founder cross-example semantic
-    /// transformations through the same production transition authority used
-    /// for one-step inference. Cross-example declarations are the only edges
-    /// eligible for transitive execution: ordinary conversational response
-    /// transitions remain terminal and therefore cannot accidentally become a
-    /// hidden chain-of-thought program. Every intermediate frame is fully
-    /// instantiated from governed bindings, each next edge independently
-    /// passes the existing production gate, and branch ambiguity,
-    /// contradiction, cycles, or excessive depth fail closed.
-    /// </summary>
-    private static SemanticReasoningPathResult ExpandGovernedSemanticReasoningPath(
-        SemanticTransitionCandidate initial,
-        IReadOnlyList<SemanticTransitionObservation> observations)
-    {
-        if (!initial.IsFounderCrossExampleDerived)
-            return new(initial, "semantic_reasoning_not_required", 1, false, false);
-
-        const int maximumReasoningSteps = 16;
-        var governedEdges = observations
-            .Where(item => item.IsFounderCrossExampleDerived)
-            .ToArray();
-        var visitedFrames = new HashSet<string>(StringComparer.Ordinal)
-        {
-            initial.SourceFrame.Signature
-        };
-        var current = initial;
-        var totalEvidence = initial.IndependentEvidenceCount;
-
-        for (var step = 1; step <= maximumReasoningSteps; step++)
-        {
-            if (!visitedFrames.Add(current.ResultFrame.Signature))
-                return new(null, "semantic_reasoning_cycle_detected", step, true, false);
-
-            // A result-only variable is intentionally owned by the existing
-            // governed content-binding authority. It is a legitimate terminal
-            // plan, not permission for this executor to invent an intermediate
-            // value and continue traversing.
-            if (!TryInstantiateFrame(current.ResultFrame, current.Bindings, out var resultValues))
-                return new(current with { IndependentEvidenceCount = totalEvidence },
-                    step > 1 ? "semantic_reasoning_path_governed" : "semantic_reasoning_terminal_content_binding",
-                    step, false, false);
-
-            if (HasContradictedSemanticTransition(governedEdges, resultValues))
-                return new(null, "semantic_reasoning_contradicted", step, false, true);
-
-            var next = BuildProductionSemanticTransitionCandidates(
-                    governedEdges,
-                    resultValues,
-                    allowMissingVariables: false)
-                .Where(item => item.IsFounderCrossExampleDerived)
-                .ToList();
-            if (next.Count == 0)
-            {
-                return new(current with { IndependentEvidenceCount = totalEvidence },
-                    step > 1 ? "semantic_reasoning_path_governed" : "semantic_reasoning_terminal",
-                    step, false, false);
-            }
-
-            if (next.Select(item => item.ResultFrame.Signature)
-                    .Distinct(StringComparer.Ordinal).Count() != 1 ||
-                next.Select(item => CanonicalBindings(item.Bindings))
-                    .Distinct(StringComparer.Ordinal).Count() != 1)
-            {
-                return new(null, "ambiguous_semantic_reasoning_branch", step, true, false);
-            }
-
-            var chosen = next
-                .OrderByDescending(item => item.DirectSourceMatchCount)
-                .ThenBy(item => item.TransitionSignature, StringComparer.Ordinal)
-                .First();
-            totalEvidence += chosen.IndependentEvidenceCount;
-            current = chosen with { IndependentEvidenceCount = totalEvidence };
-        }
-
-        return new(null, "semantic_reasoning_depth_exceeded", maximumReasoningSteps, false, false);
-    }
-
-    private static IReadOnlyDictionary<string, string> ActiveDiscourseBindings'''
-          assert s.count(old) == 1, s.count(old)
-          s = s.replace(old, new)
-
-          old = '''    private sealed record SemanticTransitionObservation(
-        string TransitionSignature,
-        string SourceFrame,
-        string ResultFrame,
-        string IndependentSourceIdentity,
-        string ContributionState,
-        bool IsHumanVerifiedSupport,
-        Guid SourceExampleId,
-        Guid ResultExampleId);
-'''
-          new = '''    private sealed record SemanticTransitionObservation(
-        string TransitionSignature,
-        string SourceFrame,
-        string ResultFrame,
-        string IndependentSourceIdentity,
-        string ContributionState,
-        bool IsHumanVerifiedSupport,
-        Guid SourceExampleId,
-        Guid ResultExampleId,
-        bool IsFounderCrossExampleDerived);
-'''
-          assert s.count(old) == 1, s.count(old)
-          s = s.replace(old, new)
-
-          old = '''    private sealed record SemanticTransitionCandidate(
-        string TransitionSignature,
-        NormalizedSemanticFrame SourceFrame,
-        NormalizedSemanticFrame ResultFrame,
-        IReadOnlyDictionary<string, string> Bindings,
-        IReadOnlyList<SemanticMissingVariable> MissingVariables,
-        int DirectSourceMatchCount,
-        int IndependentEvidenceCount);
-'''
-          new = '''    private sealed record SemanticTransitionCandidate(
-        string TransitionSignature,
-        NormalizedSemanticFrame SourceFrame,
-        NormalizedSemanticFrame ResultFrame,
-        IReadOnlyDictionary<string, string> Bindings,
-        IReadOnlyList<SemanticMissingVariable> MissingVariables,
-        int DirectSourceMatchCount,
-        int IndependentEvidenceCount,
-        bool IsFounderCrossExampleDerived);
-
-    private sealed record SemanticReasoningPathResult(
-        SemanticTransitionCandidate? Selected,
-        string ReasonCode,
-        int StepCount,
-        bool IsAmbiguous,
-        bool IsContradicted);
-'''
-          assert s.count(old) == 1, s.count(old)
-          s = s.replace(old, new)
-
-          p.write_text(s)
-          PY
-
-          cat > AgentPortal.Tests/LegendConnectGeneralReasoningExecutorTests.cs <<'CS'
-          using System;
-          using System.Collections.Generic;
-          using System.Linq;
-          using System.Threading.Tasks;
-          using Domain.Messaging;
-          using Infrastructure.Data;
-          using Infrastructure.Messaging;
-          using Microsoft.EntityFrameworkCore;
-          using Microsoft.Extensions.Configuration;
-          using Microsoft.Extensions.Logging.Abstractions;
-          using Xunit;
-
-          namespace AgentPortal.Tests;
-
-          public sealed class LegendConnectGeneralReasoningExecutorTests
-          {
-              [Fact]
-              public async Task MultiStepFounderReasoning_ReachesTerminalConclusion_AndArticulatesOriginalSurface()
-              {
-                  await using var db = ControllerTestHelpers.BuildDb();
-                  var fixture = CreateFixture(db);
-                  await SubmitStaticReasoningChainAsync(fixture.Curriculum, includeBranch: false, cycleOnly: false);
-
-                  var stored = await db.LegendCurriculumExamples
-                      .Where(example => example.SupersededUtc == null &&
-                          db.LegendCurriculumExampleVariations.Any(variation =>
-                              variation.CurriculumExampleId == example.Id &&
-                              variation.Dimension == "reasoning_state" &&
-                              variation.Value == "conclusion"))
-                      .Join(db.LegendLanguageTextUnits, example => example.TextUnitId, unit => unit.Id, (_, unit) => unit.Text)
-                      .ToArrayAsync();
-
-                  var native = await fixture.Operations.TryInferConversationWithDiscourseAsync(
-                      "Assess.", [], new LegendConnectDiscourseStateSnapshot([]));
-
-                  Assert.True(native.Supported, native.ReasonCode);
-                  Assert.True(native.EvidenceCount >= 6);
-                  Assert.False(native.RequiresEscalation);
-                  Assert.False(string.IsNullOrWhiteSpace(native.Answer));
-                  Assert.DoesNotContain(stored, item => string.Equals(
-                      LegendLanguageIdentity.NormalizeText(item),
-                      LegendLanguageIdentity.NormalizeText(native.Answer!),
-                      StringComparison.Ordinal));
-                  Assert.Contains("!", native.Answer!, StringComparison.Ordinal);
-                  Assert.EndsWith("?", native.Answer, StringComparison.Ordinal);
-              }
-
-              [Fact]
-              public async Task MultiStepFounderReasoning_PropagatesVariablesAcrossGovernedFrames()
-              {
-                  await using var db = ControllerTestHelpers.BuildDb();
-                  var fixture = CreateFixture(db);
-                  await SubmitVariableReasoningChainAsync(fixture.Curriculum);
-
-                  var planned = await fixture.Operations.TryPlanConversationAsync(
-                      "Assess alpha.", new LegendConnectDiscourseStateSnapshot([]));
-
-                  Assert.True(planned.Supported, planned.ReasonCode);
-                  var plan = Assert.IsType<LegendConnectResponseMeaningPlanSnapshot>(planned.Plan);
-                  Assert.Equal("conclusion", plan.ResultDimensions["reasoning_state"]);
-                  Assert.Equal("alpha", plan.ResultDimensions["subject"]);
-                  Assert.True(plan.IndependentEvidenceCount >= 6);
-              }
-
-              [Fact]
-              public async Task MultiStepFounderReasoning_FailsClosedOnCompetingTerminalBranches()
-              {
-                  await using var db = ControllerTestHelpers.BuildDb();
-                  var fixture = CreateFixture(db);
-                  await SubmitStaticReasoningChainAsync(fixture.Curriculum, includeBranch: true, cycleOnly: false);
-
-                  var planned = await fixture.Operations.TryPlanConversationAsync(
-                      "Assess.", new LegendConnectDiscourseStateSnapshot([]));
-
-                  Assert.False(planned.Supported);
-                  Assert.Equal("ambiguous_semantic_reasoning_branch", planned.ReasonCode);
-                  Assert.Null(planned.Plan);
-              }
-
-              [Fact]
-              public async Task MultiStepFounderReasoning_FailsClosedOnCycle()
-              {
-                  await using var db = ControllerTestHelpers.BuildDb();
-                  var fixture = CreateFixture(db);
-                  await SubmitStaticReasoningChainAsync(fixture.Curriculum, includeBranch: false, cycleOnly: true);
-
-                  var planned = await fixture.Operations.TryPlanConversationAsync(
-                      "Assess.", new LegendConnectDiscourseStateSnapshot([]));
-
-                  Assert.False(planned.Supported);
-                  Assert.Equal("semantic_reasoning_cycle_detected", planned.ReasonCode);
-                  Assert.Null(planned.Plan);
-              }
-
-              private static async Task SubmitStaticReasoningChainAsync(
-                  LegendConnectCurriculumService curriculum,
-                  bool includeBranch,
-                  bool cycleOnly)
-              {
-                  for (var family = 1; family <= 3; family++)
-                  {
-                      var sourceKey = $"reasoning-source-{family}";
-                      var middleKey = $"reasoning-middle-{family}";
-                      var conclusionKey = $"reasoning-conclusion-{family}";
-                      var alternateKey = $"reasoning-alternate-{family}";
-                      var examples = new List<LegendConnectCurriculumExampleSubmission>
-                      {
-                          AtomicExample($"Source evidence {family}: Assess.", "premise", "Assess", sourceKey),
-                          AtomicExample($"Intermediate evidence {family}: Continue.", "intermediate", "Continue", middleKey)
-                      };
-                      if (!cycleOnly)
-                      {
-                          var conclusion = family switch
-                          {
-                              1 => "Therefore! The conclusion follows?",
-                              2 => "Accordingly! The result follows?",
-                              _ => "Consequently! The outcome follows?"
-                          };
-                          examples.Add(AtomicExample(conclusion, "conclusion", conclusion, conclusionKey));
-                          if (includeBranch)
-                          {
-                              var alternate = family switch
-                              {
-                                  1 => "Alternatively! Another conclusion follows?",
-                                  2 => "Otherwise! A different result follows?",
-                                  _ => "Instead! Another outcome follows?"
-                              };
-                              examples.Add(AtomicExample(alternate, "alternate_conclusion", alternate, alternateKey));
-                          }
-                      }
-
-                      var submitted = await curriculum.SubmitFounderEnglishBatchAsync(new(
-                          $"reasoning.general.static.{(cycleOnly ? "cycle" : includeBranch ? "branch" : "chain")}.{family}",
-                          "Content-agnostic Founder reasoning graph evidence",
-                          examples));
-                      Assert.True(submitted.Succeeded, submitted.Message);
-
-                      await curriculum.PersistFounderCrossExampleSemanticRelationAsync(
-                          new LegendConnectCrossExampleSemanticRelationshipSubmission(
-                              sourceKey, middleKey, "reasoning.implication"),
-                          LegendConnectLanguageIntelligenceEvaluatorVersion.Current);
-
-                      if (cycleOnly)
-                      {
-                          await curriculum.PersistFounderCrossExampleSemanticRelationAsync(
-                              new LegendConnectCrossExampleSemanticRelationshipSubmission(
-                                  middleKey, sourceKey, "reasoning.implication"),
-                              LegendConnectLanguageIntelligenceEvaluatorVersion.Current);
-                          continue;
-                      }
-
-                      await curriculum.PersistFounderCrossExampleSemanticRelationAsync(
-                          new LegendConnectCrossExampleSemanticRelationshipSubmission(
-                              middleKey, conclusionKey, "reasoning.implication"),
-                          LegendConnectLanguageIntelligenceEvaluatorVersion.Current);
-                      if (includeBranch)
-                      {
-                          await curriculum.PersistFounderCrossExampleSemanticRelationAsync(
-                              new LegendConnectCrossExampleSemanticRelationshipSubmission(
-                                  middleKey, alternateKey, "reasoning.implication"),
-                              LegendConnectLanguageIntelligenceEvaluatorVersion.Current);
-                      }
-                  }
-              }
-
-              private static async Task SubmitVariableReasoningChainAsync(
-                  LegendConnectCurriculumService curriculum)
-              {
-                  for (var family = 1; family <= 3; family++)
-                  {
-                      var sourceKey = $"reasoning-variable-source-{family}";
-                      var middleKey = $"reasoning-variable-middle-{family}";
-                      var conclusionKey = $"reasoning-variable-conclusion-{family}";
-                      var submitted = await curriculum.SubmitFounderEnglishBatchAsync(new(
-                          $"reasoning.general.variables.{family}",
-                          "Founder variable-propagation reasoning evidence",
-                          [
-                              RelationalExample($"Variable source {family}: Assess alpha.", "premise", "Assess", sourceKey),
-                              RelationalExample($"Variable middle {family}: Continue alpha.", "intermediate", "Continue", middleKey),
-                              RelationalExample($"Variable result {family}: Conclude alpha.", "conclusion", "Conclude", conclusionKey)
-                          ]));
-                      Assert.True(submitted.Succeeded, submitted.Message);
-
-                      await curriculum.PersistFounderCrossExampleSemanticRelationAsync(
-                          new LegendConnectCrossExampleSemanticRelationshipSubmission(
-                              sourceKey, middleKey, "reasoning.variable.implication"),
-                          LegendConnectLanguageIntelligenceEvaluatorVersion.Current);
-                      await curriculum.PersistFounderCrossExampleSemanticRelationAsync(
-                          new LegendConnectCrossExampleSemanticRelationshipSubmission(
-                              middleKey, conclusionKey, "reasoning.variable.implication"),
-                          LegendConnectLanguageIntelligenceEvaluatorVersion.Current);
-                  }
-              }
-
-              private static LegendConnectCurriculumExampleSubmission AtomicExample(
-                  string text,
-                  string state,
-                  string surface,
-                  string semanticKey) => new(
-                      text,
-                      new Dictionary<string, string> { ["reasoning_state"] = state },
-                      new LegendConnectMeaningGraphSubmission(
-                          [new LegendConnectMeaningNodeSubmission(
-                              "state", "reasoning_state", state, surface)],
-                          []),
-                      semanticKey);
-
-              private static LegendConnectCurriculumExampleSubmission RelationalExample(
-                  string text,
-                  string state,
-                  string stateSurface,
-                  string semanticKey) => new(
-                      text,
-                      new Dictionary<string, string>
-                      {
-                          ["reasoning_state"] = state,
-                          ["subject"] = "alpha"
-                      },
-                      new LegendConnectMeaningGraphSubmission(
-                          [
-                              new LegendConnectMeaningNodeSubmission(
-                                  "state", "reasoning_state", state, stateSurface),
-                              new LegendConnectMeaningNodeSubmission(
-                                  "subject", "subject", "alpha", "alpha")
-                          ],
-                          [new LegendConnectMeaningRelationSubmission(
-                              "state", "applies-to", "subject")]),
-                      semanticKey);
-
-              private static ReasoningFixture CreateFixture(MasterAppDbContext db)
-              {
-                  var configuration = new ConfigurationBuilder()
-                      .AddInMemoryCollection(new Dictionary<string, string?>
-                      {
-                          ["LegendConnect:CorpusAcquisition:Enabled"] = "false",
-                          ["LegendConnect:ContextualComposition:Mode"] = "Shadow",
-                          ["LegendConnect:LanguageRegistry:Baseline:0:Code"] = "en",
-                          ["LegendConnect:LanguageRegistry:Baseline:0:Name"] = "English",
-                          ["LegendConnect:LanguageRegistry:Baseline:0:NativeName"] = "English"
-                      }).Build();
-                  var registry = new LegendLanguageRegistry(db, configuration);
-                  var intelligence = new LegendConnectTranslationIntelligence(db, configuration);
-                  var corpus = new LegendConnectCorpusService(
-                      db, registry, NullLogger<LegendConnectCorpusService>.Instance,
-                      intelligence: intelligence);
-                  var curriculum = new LegendConnectCurriculumService(db, registry, corpus);
-                  var operations = new LegendConnectOperations(
-                      db, registry, corpus, configuration, curriculum: curriculum);
-                  return new ReasoningFixture(curriculum, operations);
-              }
-
-              private sealed record ReasoningFixture(
-                  LegendConnectCurriculumService Curriculum,
-                  LegendConnectOperations Operations);
-          }
-          CS
-
+          python ../builder-tools/.builder/apply_general_reasoning_patch.py
+          cp ../builder-tools/.builder/LegendConnectGeneralReasoningExecutorTests.cs AgentPortal.Tests/LegendConnectGeneralReasoningExecutorTests.cs
           git diff --check
 
       - name: Set up .NET
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: ${{ env.DOTNET_VERSION }}
+          dotnet-version: '10.x'
 
       - name: Restore
+        working-directory: candidate
         run: dotnet restore MASTERAPP.sln
 
       - name: Build exact advancement with zero warnings
         shell: bash
+        working-directory: candidate
         run: |
           set -euo pipefail
           dotnet build MASTERAPP.sln -c Release --no-restore 2>&1 | tee build.log
@@ -575,33 +66,28 @@ jobs:
 
       - name: Prove new general multi-step reasoning executor
         shell: bash
+        working-directory: candidate
         run: |
           set -euo pipefail
-          dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-build \
-            --filter 'FullyQualifiedName~LegendConnectGeneralReasoningExecutorTests' \
-            --logger 'console;verbosity=normal' 2>&1 | tee reasoning.log
-          grep -Eq 'Test Run Successful|Passed![[:space:]]+-[[:space:]]+Failed:[[:space:]]+0' reasoning.log
+          dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-build --filter 'FullyQualifiedName~LegendConnectGeneralReasoningExecutorTests' --logger 'console;verbosity=normal' 2>&1 | tee reasoning.log
           if grep -qE 'Failed:[[:space:]]*[1-9][0-9]*' reasoning.log; then exit 1; fi
+          grep -Eq 'Test Run Successful|Passed![[:space:]]+-[[:space:]]+Failed:[[:space:]]+0' reasoning.log
 
       - name: Reprove prior broad native architecture
         shell: bash
+        working-directory: candidate
         run: |
           set -euo pipefail
-          dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-build \
-            --filter 'FullyQualifiedName~LegendConnectCompositionalUnderstandingTests|FullyQualifiedName~LegendConnectDiscourseReferenceBindingTests|FullyQualifiedName~LegendConnectMeaningGraphTests|FullyQualifiedName~LegendConnectSemanticSpanGroundingTests|FullyQualifiedName~LegendConnectFounderSemanticTransformationSqlTests' \
-            --logger 'console;verbosity=minimal' 2>&1 | tee prior-architecture.log
+          dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-build --filter 'FullyQualifiedName~LegendConnectCompositionalUnderstandingTests|FullyQualifiedName~LegendConnectDiscourseReferenceBindingTests|FullyQualifiedName~LegendConnectMeaningGraphTests|FullyQualifiedName~LegendConnectSemanticSpanGroundingTests|FullyQualifiedName~LegendConnectFounderSemanticTransformationSqlTests' --logger 'console;verbosity=minimal' 2>&1 | tee prior-architecture.log
           if grep -qE 'Failed:[[:space:]]*[1-9][0-9]*' prior-architecture.log; then exit 1; fi
 
-      - name: Audit runtime for alternate or prompt-specific authorities
+      - name: Audit single runtime authority
         shell: bash
+        working-directory: candidate
         run: |
           set -euo pipefail
           files=(Infrastructure/Messaging/LegendConnectCurriculum.cs Infrastructure/Messaging/LegendConnectOperations.cs)
-          if grep -nE '"Hi there\."|"Hi Legend\."|"Hey Legend\."|"Good morning\."|"Nice to meet you\."|"What.s up\?"' "${files[@]}"; then
-            echo 'Prompt-specific native logic detected.' >&2
-            exit 1
-          fi
-          test "$(grep -c 'ExpandGovernedSemanticReasoningPath' Infrastructure/Messaging/LegendConnectCurriculum.cs)" -ge 3
+          if grep -nE '"Hi there\."|"Hi Legend\."|"Hey Legend\."|"Good morning\."|"Nice to meet you\."|"What.s up\?"' "${files[@]}"; then exit 1; fi
           test "$(grep -c 'private static SemanticReasoningPathResult ExpandGovernedSemanticReasoningPath' Infrastructure/Messaging/LegendConnectCurriculum.cs)" -eq 1
           git diff --check
 
@@ -614,6 +100,7 @@ jobs:
 
       - name: Reprove live Founder native behavior with OpenAI blocked
         shell: pwsh
+        working-directory: candidate
         run: |
           $ErrorActionPreference = 'Stop'
           $connection = ''
@@ -645,17 +132,18 @@ jobs:
 
       - name: Run complete regression on exact advancement
         shell: bash
+        working-directory: candidate
         run: |
           set -euo pipefail
           dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-build 2>&1 | tee full-regression.log
           if grep -qE 'Failed:[[:space:]]*[1-9][0-9]*' full-regression.log; then exit 1; fi
           grep -Eq 'Passed![[:space:]]+-[[:space:]]+Failed:[[:space:]]+0|Test Run Successful' full-regression.log
 
-      - name: Commit only exact proven advancement
+      - name: Commit exact proven advancement only
         shell: bash
+        working-directory: candidate
         run: |
           set -euo pipefail
-          git status --short
           git diff --check
           git config user.name 'MYLEGND'
           git config user.email 'zac.owen@mylegnd.com'
