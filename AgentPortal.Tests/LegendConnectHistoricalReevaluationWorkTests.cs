@@ -257,6 +257,84 @@ public sealed class LegendConnectHistoricalReevaluationWorkTests
     }
 
     [Fact]
+    public async Task HostedWorker_AdoptsAlreadyDrainedQueuedSourceFamilies_AndCompletesWithoutManualAdvancement()
+    {
+        await using var provider = CreateHostedWorkerProvider();
+        await using (var setupScope = provider.CreateAsyncScope())
+        {
+            var db = setupScope.ServiceProvider.GetRequiredService<MasterAppDbContext>();
+            AddSourceFamily(db, "en", "already-drained-production-state", 156);
+            await db.SaveChangesAsync();
+            var runtime = setupScope.ServiceProvider
+                .GetRequiredService<ILegendConnectRuntimePolicyAuthority>();
+            _ = await runtime.GetOrStartLanguageIntelligenceReevaluationAsync(
+                LegendConnectLanguageIntelligenceEvaluatorVersion.Current);
+
+            var policy = await db.LegendConnectRuntimePolicies.SingleAsync();
+            policy.TargetLanguageIntelligenceEvaluatorVersion =
+                LegendConnectLanguageIntelligenceEvaluatorVersion.Current;
+            policy.CompletedLanguageIntelligenceEvaluatorVersion =
+                LegendConnectLanguageIntelligenceEvaluatorVersion.Current;
+            policy.LanguageIntelligenceReevaluationPhase =
+                LegendConnectLanguageIntelligenceReevaluationPhases.SourceFamilies;
+            policy.LanguageIntelligenceReevaluationCompletedUtc = null;
+            var convergence = await db.LegendLanguageDerivationConvergences.SingleAsync(item =>
+                item.TargetEvaluatorVersion == LegendConnectLanguageIntelligenceEvaluatorVersion.Current);
+            convergence.State = "Queued";
+            convergence.EarliestAffectedPhase =
+                LegendConnectLanguageIntelligenceReevaluationPhases.SourceFamilies;
+            convergence.BlockingDependencyIdentity = "derivation-contract-phase:SourceFamilies";
+
+            var family = await db.LegendCurriculumFamilies.SingleAsync();
+            var suffix = LegendConnectDerivationContracts.HistoricalWorkGenerationSuffix(
+                LegendConnectLanguageIntelligenceEvaluatorVersion.Current,
+                LegendConnectLanguageIntelligenceReevaluationPhases.SourceFamilies);
+            db.LegendHistoricalReevaluationWorkItems.AddRange(
+                new LegendHistoricalReevaluationWorkItem
+                {
+                    EvaluatorVersion = LegendConnectLanguageIntelligenceEvaluatorVersion.Current,
+                    Phase = LegendConnectLanguageIntelligenceReevaluationPhases.SourceFamilies,
+                    WorkKind = "PhaseSeed",
+                    WorkIdentity = "__phase_seed__",
+                    SubjectScope = string.Empty,
+                    DependencyIdentity = "phase-seed",
+                    ProcessingState = "Completed",
+                    CompletedUtc = DateTime.UtcNow
+                },
+                new LegendHistoricalReevaluationWorkItem
+                {
+                    EvaluatorVersion = LegendConnectLanguageIntelligenceEvaluatorVersion.Current,
+                    Phase = LegendConnectLanguageIntelligenceReevaluationPhases.SourceFamilies,
+                    WorkKind = "Canonical",
+                    WorkIdentity = $"source-family:{family.Id:D}|language:en{suffix}",
+                    SubjectId = family.Id,
+                    SubjectScope = "en",
+                    DependencyIdentity = "source-language:en",
+                    ProcessingState = "Completed",
+                    CompletedUtc = DateTime.UtcNow
+                });
+            await db.SaveChangesAsync();
+        }
+
+        var hosted = new LegendConnectLearningHostedService(
+            provider.GetRequiredService<IServiceScopeFactory>(),
+            NullLogger<LegendConnectLearningHostedService>.Instance);
+        await hosted.ProcessHistoricalReevaluationCycleAsync();
+
+        await using var verificationScope = provider.CreateAsyncScope();
+        var verificationDb = verificationScope.ServiceProvider
+            .GetRequiredService<MasterAppDbContext>();
+        var completedPolicy = await verificationDb.LegendConnectRuntimePolicies.SingleAsync();
+        Assert.Equal(
+            LegendConnectLanguageIntelligenceReevaluationPhases.Complete,
+            completedPolicy.LanguageIntelligenceReevaluationPhase);
+        var completedConvergence = await verificationDb.LegendLanguageDerivationConvergences
+            .SingleAsync(item => item.TargetEvaluatorVersion ==
+                LegendConnectLanguageIntelligenceEvaluatorVersion.Current);
+        Assert.Contains(completedConvergence.State, new[] { "Completed", "Reused" });
+    }
+
+    [Fact]
     public async Task HostedWorkerRestart_ReclaimsExpiredSourceFamilyLease_AndCompletesConvergence()
     {
         await using var provider = CreateHostedWorkerProvider(leaseSeconds: 5);
