@@ -1,0 +1,150 @@
+name: LEGEND final native architecture freeze
+
+on:
+  push:
+    branches:
+      - fix/legend-native-context-reasoning-20260827
+    paths:
+      - .github/workflows/legend-final-architecture-freeze.yml
+
+permissions:
+  contents: write
+  id-token: write
+
+env:
+  AZURE_WEBAPP_NAME: masterapp-portal
+  AZURE_RESOURCE_GROUP: masterapp-rg
+  DOTNET_VERSION: '10.x'
+
+jobs:
+  freeze-and-prove:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    environment:
+      name: Production
+    steps:
+      - name: Checkout exact isolated candidate
+        uses: actions/checkout@v4
+        with:
+          ref: fix/legend-native-context-reasoning-20260827
+          fetch-depth: 0
+
+      - name: Remove disposable validation machinery before proof
+        shell: bash
+        run: |
+          set -euo pipefail
+          git rm .github/workflows/legend-final-architecture-freeze.yml
+          if [ -f scripts/legend-production-native-proof.ps1 ]; then
+            git rm scripts/legend-production-native-proof.ps1
+          fi
+          git diff --check
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Restore
+        run: dotnet restore MASTERAPP.sln
+
+      - name: Release build with zero warnings
+        shell: bash
+        run: |
+          set -euo pipefail
+          dotnet build MASTERAPP.sln -c Release --no-restore 2>&1 | tee build.log
+          grep -qE '^[[:space:]]*0 Warning\(s\)' build.log
+          grep -qE '^[[:space:]]*0 Error\(s\)' build.log
+
+      - name: Prove broad content-agnostic native reasoning primitives
+        shell: bash
+        run: |
+          set -euo pipefail
+          dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-build \
+            --filter 'FullyQualifiedName~LegendConnectCompositionalUnderstandingTests|FullyQualifiedName~LegendConnectDiscourseReferenceBindingTests|FullyQualifiedName~LegendConnectMeaningGraphTests|FullyQualifiedName~LegendConnectSemanticSpanGroundingTests|FullyQualifiedName~LegendConnectFounderSemanticTransformationSqlTests' \
+            --logger 'console;verbosity=normal' 2>&1 | tee architecture-freeze.log
+          if grep -qE 'Failed:[[:space:]]*[1-9][0-9]*' architecture-freeze.log; then exit 1; fi
+          grep -Eq 'Failed:[[:space:]]+0' architecture-freeze.log
+
+      - name: Prove runtime contains no prompt-specific native responder
+        shell: bash
+        run: |
+          set -euo pipefail
+          runtime_files=(
+            Infrastructure/Messaging/LegendConnectOperations.cs
+            Infrastructure/Messaging/LegendConnectCurriculum.cs
+          )
+          if grep -nE '"Hi there\."|"Hi Legend\."|"Hey Legend\."|"Good morning\."|"Nice to meet you\."|"What.s up\?"' "${runtime_files[@]}"; then
+            echo 'Prompt-specific native serving logic detected.' >&2
+            exit 1
+          fi
+          echo 'No diagnostic prompt literals exist in the native runtime authority.'
+
+      - name: Login to Azure for live Founder proof
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Prove exact candidate against live Founder data with OpenAI blocked
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $connection = ''
+          $connections = az webapp config connection-string list --resource-group $env:AZURE_RESOURCE_GROUP --name $env:AZURE_WEBAPP_NAME --output json | ConvertFrom-Json
+          $match = $connections | Where-Object { $_.name -eq 'MasterAppDb' } | Select-Object -First 1
+          if ($null -ne $match) { $connection = [string]$match.value }
+          $settings = @{}
+          foreach ($item in (az webapp config appsettings list --resource-group $env:AZURE_RESOURCE_GROUP --name $env:AZURE_WEBAPP_NAME --output json | ConvertFrom-Json)) {
+            $settings[[string]$item.name] = [string]$item.value
+          }
+          if ([string]::IsNullOrWhiteSpace($connection)) {
+            foreach ($name in @('ConnectionStrings__MasterAppDb','MasterAppDb','SQLCONNSTR_MasterAppDb')) {
+              if ($settings.ContainsKey($name) -and -not [string]::IsNullOrWhiteSpace($settings[$name])) { $connection = $settings[$name]; break }
+            }
+          }
+          if ([string]::IsNullOrWhiteSpace($connection)) { throw 'Production MasterAppDb connection string could not be resolved.' }
+          $founderOid = ''
+          foreach ($name in @('FOUNDER_OID','Founder__Oid','Founder:Oid')) {
+            if ($settings.ContainsKey($name) -and -not [string]::IsNullOrWhiteSpace($settings[$name])) { $founderOid = $settings[$name]; break }
+          }
+          if ([string]::IsNullOrWhiteSpace($founderOid)) { throw 'Production Founder OID could not be resolved.' }
+          Write-Output "::add-mask::$connection"
+          Write-Output "::add-mask::$founderOid"
+          $env:LEGEND_PRODUCTION_READONLY_CONNECTION = $connection
+          $env:LEGEND_PRODUCTION_READONLY_FOUNDER_OID = $founderOid
+          $env:LEGEND_PRODUCTION_READONLY_EXPECT_NATIVE = 'true'
+          $env:OPENAI_API_KEY = ''
+          $env:OpenAI__ApiKey = ''
+          dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-build --filter 'FullyQualifiedName~LegendFounderCurriculumSqlServerE2ETests.ProductionReadOnlyEightPromptNativeDiagnostic' --logger 'console;verbosity=detailed'
+          if ($LASTEXITCODE -ne 0) { throw 'Live Founder native-only proof failed.' }
+
+      - name: Run complete AgentPortal regression on exact cleaned tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-build 2>&1 | tee full-regression.log
+          if grep -qE 'Failed:[[:space:]]*[1-9][0-9]*' full-regression.log; then exit 1; fi
+          grep -Eq 'Passed![[:space:]]+-[[:space:]]+Failed:[[:space:]]+0,[[:space:]]+Passed:[[:space:]]+[1-9][0-9]*|Test Run Successful' full-regression.log
+
+      - name: Verify production delta is canonical and clean
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo '=== FINAL DELTA AGAINST PRODUCTION ==='
+          git diff --name-status origin/production...HEAD
+          echo '=== WORKSPACE CLEANED CANDIDATE CHANGES ==='
+          git status --short
+          test ! -e .github/workflows/legend-final-architecture-freeze.yml
+          test ! -e scripts/legend-production-native-proof.ps1
+          git diff --check
+
+      - name: Commit exact proven cleaned tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'MYLEGND'
+          git config user.email 'zac.owen@mylegnd.com'
+          git add -A
+          git commit -m 'Freeze proven LEGEND native reasoning architecture'
+          git push origin HEAD:fix/legend-native-context-reasoning-20260827
