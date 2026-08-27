@@ -1723,20 +1723,18 @@ internal sealed class LegendConnectLearningHostedService : BackgroundService
         {
             try
             {
+                // Historical convergence is a production-readiness gate and
+                // must never be starved by unrelated legacy, corpus, model,
+                // or provider work. Run it first in its own scope on every
+                // heartbeat. The durable lease authority remains the only
+                // scheduler and recovers abandoned claims after restart.
+                await ProcessHistoricalReevaluationCycleAsync(stoppingToken);
+
                 using var scope = _scopes.CreateScope();
-                var runtime = scope.ServiceProvider.GetRequiredService<ILegendConnectRuntimePolicyAuthority>();
-                await runtime.RecordWorkerHeartbeatAsync("Learning", stoppingToken);
                 await scope.ServiceProvider
                     .GetRequiredService<LegendConnectFounderTrainingIngestionAuthority>()
                     .ReconcileLegacyAsync(25, stoppingToken);
-                var replay = await runtime.GetOrStartLanguageIntelligenceReevaluationAsync(
-                    LegendConnectLanguageIntelligenceEvaluatorVersion.Current,
-                    stoppingToken);
-                await ProcessHistoricalReevaluationAsync(
-                    scope.ServiceProvider,
-                    runtime,
-                    replay,
-                    stoppingToken);
+                var runtime = scope.ServiceProvider.GetRequiredService<ILegendConnectRuntimePolicyAuthority>();
                 if ((await runtime.GetEffectiveAsync(stoppingToken)).LearningEnabled)
                 {
                     await scope.ServiceProvider.GetRequiredService<LegendConnectCorpusService>()
@@ -1777,36 +1775,87 @@ internal sealed class LegendConnectLearningHostedService : BackgroundService
         }
     }
 
+    /// <summary>
+    /// Runs the exact historical-convergence responsibility used by the hosted
+    /// service. Keeping this as one callable worker cycle lets regression tests
+    /// exercise startup, durable claiming, expired-lease recovery, canonical
+    /// evaluation, and forward phase advancement without manually completing
+    /// work items or invoking the runtime cursor directly.
+    /// </summary>
+    internal async Task ProcessHistoricalReevaluationCycleAsync(
+        CancellationToken stoppingToken = default)
+    {
+        using var scope = _scopes.CreateScope();
+        var runtime = scope.ServiceProvider
+            .GetRequiredService<ILegendConnectRuntimePolicyAuthority>();
+        await runtime.RecordWorkerHeartbeatAsync("Learning", stoppingToken);
+        var replay = await runtime.GetOrStartLanguageIntelligenceReevaluationAsync(
+            LegendConnectLanguageIntelligenceEvaluatorVersion.Current,
+            stoppingToken);
+        await ProcessHistoricalReevaluationAsync(
+            scope.ServiceProvider,
+            runtime,
+            replay,
+            stoppingToken);
+    }
+
     private async Task ProcessHistoricalReevaluationAsync(
         IServiceProvider services,
         ILegendConnectRuntimePolicyAuthority runtime,
         LegendConnectLanguageIntelligenceReevaluationSnapshot replay,
         CancellationToken stoppingToken)
     {
-        if (!replay.RequiresWork)
-            return;
-
-        var work = services.GetRequiredService<LegendConnectHistoricalReevaluationWorkAuthority>();
-        // A current evaluator that has reached ProviderObservations may retain
-        // a real legacy cursor. Adopt that exact ordered suffix atomically
-        // before choosing an executor; every new instance therefore observes
-        // either the legacy stream or the durable work boundary, never both.
-        if (replay.Phase == LegendConnectLanguageIntelligenceReevaluationPhases.ProviderObservations &&
-            LegendConnectHistoricalReevaluationWorkAuthority.UsesCursorCompatibility(replay))
+        // A single healthy startup must be able to carry a drained phase into
+        // its successor immediately. Bound the loop to the complete declared
+        // phase vocabulary so an unexpected non-advancing state returns to the
+        // normal heartbeat instead of becoming an in-process spin loop.
+        const int maximumForwardPhaseTransitions = 6;
+        for (var transition = 0;
+             replay.RequiresWork && transition < maximumForwardPhaseTransitions;
+             transition++)
         {
-            await work.TryAdoptProviderObservationsCursorAsync(replay, stoppingToken);
-            replay = await runtime.GetOrStartLanguageIntelligenceReevaluationAsync(
+            var phase = replay.Phase;
+            var work = services.GetRequiredService<LegendConnectHistoricalReevaluationWorkAuthority>();
+            // A current evaluator that has reached ProviderObservations may retain
+            // a real legacy cursor. Adopt that exact ordered suffix atomically
+            // before choosing an executor; every new instance therefore observes
+            // either the legacy stream or the durable work boundary, never both.
+            if (phase == LegendConnectLanguageIntelligenceReevaluationPhases.ProviderObservations &&
+                LegendConnectHistoricalReevaluationWorkAuthority.UsesCursorCompatibility(replay))
+            {
+                await work.TryAdoptProviderObservationsCursorAsync(replay, stoppingToken);
+                replay = await runtime.GetOrStartLanguageIntelligenceReevaluationAsync(
+                    replay.TargetEvaluatorVersion,
+                    stoppingToken);
+            }
+
+            if (LegendConnectHistoricalReevaluationWorkAuthority.UsesCursorCompatibility(replay))
+            {
+                await ProcessCursorCompatibleHistoricalReplayAsync(
+                    services,
+                    runtime,
+                    replay,
+                    stoppingToken);
+            }
+            else
+            {
+                await ProcessDynamicHistoricalReplayPhaseAsync(
+                    runtime,
+                    work,
+                    replay,
+                    stoppingToken);
+            }
+
+            var refreshed = await runtime.GetOrStartLanguageIntelligenceReevaluationAsync(
                 replay.TargetEvaluatorVersion,
                 stoppingToken);
+            if (!refreshed.RequiresWork ||
+                string.Equals(refreshed.Phase, phase, StringComparison.Ordinal))
+            {
+                return;
+            }
+            replay = refreshed;
         }
-
-        if (LegendConnectHistoricalReevaluationWorkAuthority.UsesCursorCompatibility(replay))
-        {
-            await ProcessCursorCompatibleHistoricalReplayAsync(services, runtime, replay, stoppingToken);
-            return;
-        }
-
-        await ProcessDynamicHistoricalReplayPhaseAsync(runtime, work, replay, stoppingToken);
     }
 
     /// <summary>

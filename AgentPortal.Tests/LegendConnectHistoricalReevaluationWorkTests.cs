@@ -12,6 +12,7 @@ using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
 using Xunit.Abstractions;
@@ -141,6 +142,105 @@ public sealed class LegendConnectHistoricalReevaluationWorkTests
             LegendConnectLanguageIntelligenceEvaluatorVersion.Current);
         Assert.Equal(LegendConnectLanguageIntelligenceReevaluationPhases.Alignments, afterAdvance.Phase);
         Assert.Equal("Processing", convergence.State);
+    }
+
+    [Fact]
+    public async Task HostedWorker_ClaimsQueuedSourceFamilies_AndDrainsEveryPhaseWithoutManualAdvancement()
+    {
+        await using var provider = CreateHostedWorkerProvider();
+        await using (var setupScope = provider.CreateAsyncScope())
+        {
+            var db = setupScope.ServiceProvider.GetRequiredService<MasterAppDbContext>();
+            AddSourceFamily(db, "en", "hosted-cycle", 152);
+            await db.SaveChangesAsync();
+            var runtime = setupScope.ServiceProvider
+                .GetRequiredService<ILegendConnectRuntimePolicyAuthority>();
+            var queued = await runtime.GetOrStartLanguageIntelligenceReevaluationAsync(
+                LegendConnectLanguageIntelligenceEvaluatorVersion.Current);
+            Assert.Equal(LegendConnectLanguageIntelligenceReevaluationPhases.SourceFamilies, queued.Phase);
+        }
+
+        var hosted = new LegendConnectLearningHostedService(
+            provider.GetRequiredService<IServiceScopeFactory>(),
+            NullLogger<LegendConnectLearningHostedService>.Instance);
+        await hosted.ProcessHistoricalReevaluationCycleAsync();
+
+        await using var verificationScope = provider.CreateAsyncScope();
+        var verificationDb = verificationScope.ServiceProvider
+            .GetRequiredService<MasterAppDbContext>();
+        var policy = await verificationDb.LegendConnectRuntimePolicies.SingleAsync();
+        Assert.Equal(
+            LegendConnectLanguageIntelligenceReevaluationPhases.Complete,
+            policy.LanguageIntelligenceReevaluationPhase);
+        Assert.Equal(
+            LegendConnectLanguageIntelligenceEvaluatorVersion.Current,
+            policy.CompletedLanguageIntelligenceEvaluatorVersion);
+        var convergence = await verificationDb.LegendLanguageDerivationConvergences
+            .SingleAsync(item =>
+                item.TargetEvaluatorVersion ==
+                    LegendConnectLanguageIntelligenceEvaluatorVersion.Current);
+        Assert.Contains(convergence.State, new[] { "Completed", "Reused" });
+        var durableWork = await verificationDb.LegendHistoricalReevaluationWorkItems
+            .Where(item => item.WorkKind == "Canonical" || item.WorkKind == "DerivationLedger")
+            .ToListAsync();
+        Assert.NotEmpty(durableWork);
+        Assert.All(durableWork, item => Assert.Equal("Completed", item.ProcessingState));
+    }
+
+    [Fact]
+    public async Task HostedWorkerRestart_ReclaimsExpiredSourceFamilyLease_AndCompletesConvergence()
+    {
+        await using var provider = CreateHostedWorkerProvider(leaseSeconds: 5);
+        Guid abandonedWorkItemId;
+        await using (var failureScope = provider.CreateAsyncScope())
+        {
+            var db = failureScope.ServiceProvider.GetRequiredService<MasterAppDbContext>();
+            AddSourceFamily(db, "en", "hosted-restart", 153);
+            await db.SaveChangesAsync();
+            var runtime = failureScope.ServiceProvider
+                .GetRequiredService<ILegendConnectRuntimePolicyAuthority>();
+            _ = await runtime.GetOrStartLanguageIntelligenceReevaluationAsync(
+                LegendConnectLanguageIntelligenceEvaluatorVersion.Current);
+            var work = failureScope.ServiceProvider
+                .GetRequiredService<LegendConnectHistoricalReevaluationWorkAuthority>();
+            _ = await work.SeedNextBatchAsync(
+                LegendConnectLanguageIntelligenceEvaluatorVersion.Current,
+                LegendConnectLanguageIntelligenceReevaluationPhases.SourceFamilies,
+                "abandoned-seeder");
+            var abandoned = Assert.IsType<LegendHistoricalReevaluationWorkClaim>(
+                await work.TryClaimNextAsync(
+                    LegendConnectLanguageIntelligenceEvaluatorVersion.Current,
+                    LegendConnectLanguageIntelligenceReevaluationPhases.SourceFamilies,
+                    "terminated-instance"));
+            abandonedWorkItemId = abandoned.WorkItemId;
+            var persisted = await db.LegendHistoricalReevaluationWorkItems
+                .SingleAsync(item => item.Id == abandonedWorkItemId);
+            persisted.LeaseExpiresUtc = DateTime.UtcNow.AddSeconds(-1);
+            await db.SaveChangesAsync();
+        }
+
+        // A new hosted-service instance represents an App Service restart. It
+        // must recover through the canonical lease authority and complete the
+        // same forward convergence path without a reset or direct row repair.
+        var restarted = new LegendConnectLearningHostedService(
+            provider.GetRequiredService<IServiceScopeFactory>(),
+            NullLogger<LegendConnectLearningHostedService>.Instance);
+        await restarted.ProcessHistoricalReevaluationCycleAsync();
+
+        await using var verificationScope = provider.CreateAsyncScope();
+        var verificationDb = verificationScope.ServiceProvider
+            .GetRequiredService<MasterAppDbContext>();
+        var recovered = await verificationDb.LegendHistoricalReevaluationWorkItems
+            .SingleAsync(item => item.Id == abandonedWorkItemId);
+        Assert.Equal("Completed", recovered.ProcessingState);
+        Assert.True(recovered.AttemptCount >= 2);
+        var policy = await verificationDb.LegendConnectRuntimePolicies.SingleAsync();
+        Assert.Equal(
+            LegendConnectLanguageIntelligenceReevaluationPhases.Complete,
+            policy.LanguageIntelligenceReevaluationPhase);
+        Assert.Equal(
+            LegendConnectLanguageIntelligenceEvaluatorVersion.Current,
+            policy.CompletedLanguageIntelligenceEvaluatorVersion);
     }
 
     [Fact]
@@ -1099,6 +1199,54 @@ public sealed class LegendConnectHistoricalReevaluationWorkTests
             ["LegendConnect:HistoricalReevaluation:SeedBatchSize"] = "128",
             ["LegendConnect:HistoricalReevaluation:LeaseSeconds"] = leaseSeconds.ToString()
         }).Build();
+
+    private static ServiceProvider CreateHostedWorkerProvider(int leaseSeconds = 120)
+    {
+        var root = new InMemoryDatabaseRoot();
+        var options = new DbContextOptionsBuilder<MasterAppDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString("N"), root)
+            .Options;
+        var configuration = Configuration(leaseSeconds: leaseSeconds);
+        var services = new ServiceCollection();
+        services.AddSingleton<IConfiguration>(configuration);
+        services.AddLogging();
+        services.AddScoped(_ => new MasterAppDbContext(options));
+        services.AddScoped<IControlledResourceAccessService>(_ => new FounderAccess());
+        services.AddScoped<ILegendLanguageRegistry>(scope =>
+            new LegendLanguageRegistry(
+                scope.GetRequiredService<MasterAppDbContext>(),
+                configuration));
+        services.AddScoped<ILegendConnectRuntimePolicyAuthority>(scope =>
+            new LegendConnectRuntimePolicyAuthority(
+                scope.GetRequiredService<MasterAppDbContext>(),
+                scope.GetRequiredService<IControlledResourceAccessService>(),
+                scope.GetRequiredService<ILegendLanguageRegistry>(),
+                configuration,
+                NullLogger<LegendConnectRuntimePolicyAuthority>.Instance));
+        services.AddScoped<LegendConnectHistoricalReevaluationWorkAuthority>();
+        services.AddScoped(scope => new LegendConnectCorpusService(
+            scope.GetRequiredService<MasterAppDbContext>(),
+            scope.GetRequiredService<ILegendLanguageRegistry>(),
+            NullLogger<LegendConnectCorpusService>.Instance));
+        services.AddScoped(scope => new LegendConnectCurriculumService(
+            scope.GetRequiredService<MasterAppDbContext>(),
+            scope.GetRequiredService<ILegendLanguageRegistry>(),
+            scope.GetRequiredService<LegendConnectCorpusService>()));
+        services.AddScoped<ILegendConnectTranslationIntelligence>(scope =>
+            new LegendConnectTranslationIntelligence(
+                scope.GetRequiredService<MasterAppDbContext>(),
+                configuration,
+                scope.GetRequiredService<ILegendConnectRuntimePolicyAuthority>()));
+        services.AddScoped<ILegendConnectOperations>(scope => new LegendConnectOperations(
+            scope.GetRequiredService<MasterAppDbContext>(),
+            scope.GetRequiredService<ILegendLanguageRegistry>(),
+            scope.GetRequiredService<LegendConnectCorpusService>(),
+            configuration,
+            runtimePolicy: scope.GetRequiredService<ILegendConnectRuntimePolicyAuthority>(),
+            curriculum: scope.GetRequiredService<LegendConnectCurriculumService>(),
+            intelligence: scope.GetRequiredService<ILegendConnectTranslationIntelligence>()));
+        return services.BuildServiceProvider(validateScopes: true);
+    }
 
     private sealed class Fixture : IAsyncDisposable
     {

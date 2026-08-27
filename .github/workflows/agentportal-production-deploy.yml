@@ -78,6 +78,14 @@ jobs:
             echo "::error::The governed Founder capability regression test was not discovered."
             exit 1
           fi
+          if ! grep -q "HostedWorker_ClaimsQueuedSourceFamilies_AndDrainsEveryPhaseWithoutManualAdvancement" test-discovery.log; then
+            echo "::error::The canonical hosted-worker convergence regression was not discovered."
+            exit 1
+          fi
+          if ! grep -q "HostedWorkerRestart_ReclaimsExpiredSourceFamilyLease_AndCompletesConvergence" test-discovery.log; then
+            echo "::error::The canonical hosted-worker restart regression was not discovered."
+            exit 1
+          fi
 
       - name: Test full suite including security regressions
         run: |
@@ -405,3 +413,97 @@ jobs:
           app-name: ${{ env.AZURE_WEBAPP_NAME }}
           slot-name: Production
           package: ./package
+
+  verify-legend-convergence:
+    needs:
+      - merge
+      - deploy
+    runs-on: windows-latest
+    timeout-minutes: 40
+    environment:
+      name: Production
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Checkout immutable production merge
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.merge.outputs.merge_sha }}
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Restore read-only convergence gate
+        shell: pwsh
+        run: |
+          dotnet restore '${{ env.EF_PROJECT }}'
+          if ($LASTEXITCODE -ne 0) { throw 'LEGEND convergence gate restore failed.' }
+
+      - name: Login to Azure with OIDC
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Wake deployed application and verify readiness
+        shell: pwsh
+        run: |
+          $deadline = (Get-Date).ToUniversalTime().AddMinutes(5)
+          do {
+            try {
+              $response = Invoke-WebRequest -Uri 'https://portal.mylegnd.com/readyz' -Method Get -TimeoutSec 20
+              if ($response.StatusCode -eq 200) { exit 0 }
+            }
+            catch { Start-Sleep -Seconds 10 }
+          } while ((Get-Date).ToUniversalTime() -lt $deadline)
+          throw 'The deployed AgentPortal did not become ready within five minutes.'
+
+      - name: Resolve production database read-only authority
+        shell: pwsh
+        run: |
+          $connection = ''
+          $rawConnections = az webapp config connection-string list --resource-group '${{ env.AZURE_RESOURCE_GROUP }}' --name '${{ env.AZURE_WEBAPP_NAME }}' --output json
+          if ($LASTEXITCODE -ne 0) { throw 'Unable to read App Service connection strings.' }
+          $connections = $rawConnections | ConvertFrom-Json
+          $match = $connections | Where-Object { $_.name -eq 'MasterAppDb' } | Select-Object -First 1
+          if ($null -ne $match -and -not [string]::IsNullOrWhiteSpace([string]$match.value)) {
+            $connection = [string]$match.value
+          }
+          if ([string]::IsNullOrWhiteSpace($connection)) {
+            $rawSettings = az webapp config appsettings list --resource-group '${{ env.AZURE_RESOURCE_GROUP }}' --name '${{ env.AZURE_WEBAPP_NAME }}' --output json
+            if ($LASTEXITCODE -ne 0) { throw 'Unable to read App Service settings.' }
+            $settings = @{}
+            foreach ($item in ($rawSettings | ConvertFrom-Json)) { $settings[[string]$item.name] = [string]$item.value }
+            foreach ($name in @('ConnectionStrings__MasterAppDb','MasterAppDb','SQLCONNSTR_MasterAppDb')) {
+              if ($settings.ContainsKey($name) -and -not [string]::IsNullOrWhiteSpace($settings[$name])) {
+                $connection = $settings[$name]
+                break
+              }
+            }
+          }
+          if ([string]::IsNullOrWhiteSpace($connection)) { throw 'Production MasterAppDb connection string could not be resolved.' }
+          if ($connection -notmatch '(?i)(server=tcp:|\.database\.windows\.net|initial catalog=)') { throw 'Resolved MasterAppDb is not recognized as production SQL Server.' }
+          Write-Output "::add-mask::$connection"
+          "LEGEND_PRODUCTION_READONLY_CONNECTION=$connection" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "LEGEND_CONVERGENCE_TIMEOUT_MINUTES=30" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Verify canonical worker drained production convergence
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force diagnostics | Out-Null
+          dotnet run --file diagnostics/LegendProductionConvergenceGate.cs 2>&1 | Tee-Object -FilePath diagnostics/legend-production-convergence-gate.txt
+          if ($LASTEXITCODE -ne 0) { throw 'LEGEND production convergence gate failed.' }
+
+      - name: Upload convergence verification transcript
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: legend-production-convergence-${{ github.run_id }}
+          path: diagnostics/legend-production-convergence-gate.txt
+          if-no-files-found: error
+          retention-days: 7
