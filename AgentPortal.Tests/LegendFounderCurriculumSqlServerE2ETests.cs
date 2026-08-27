@@ -307,6 +307,7 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
 
         var factory =
             new CountingHttpClientFactory();
+        var discourseProfiles = new AgentProfileAccessResolver(db);
 
         var chat =
             new LegendFounderAiConversationService(
@@ -314,7 +315,9 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
                 configuration,
                 founderLegend,
                 NullLogger<
-                    LegendFounderAiConversationService>.Instance);
+                    LegendFounderAiConversationService>.Instance,
+                new LegendFounderAiDiscourseStateService(
+                    db, discourseProfiles, operations));
 
         var fallbackFragments = new[]
         {
@@ -664,15 +667,15 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
             curriculum: curriculum);
         var founder = new ClaimsPrincipal(
             new ClaimsIdentity([new Claim("oid", founderId!)], "production-read-only"));
-        var founderLegend = new FounderLegendConnectService(
-            operations,
-            new AgentProfileAccessResolver(db));
+        var profiles = new AgentProfileAccessResolver(db);
+        var founderLegend = new FounderLegendConnectService(operations, profiles);
         var factory = new CountingHttpClientFactory();
         var chat = new LegendFounderAiConversationService(
             factory,
             configuration,
             founderLegend,
-            NullLogger<LegendFounderAiConversationService>.Instance);
+            NullLogger<LegendFounderAiConversationService>.Instance,
+            new LegendFounderAiDiscourseStateService(db, profiles, operations));
 
         var corpusCounts = new
         {
@@ -1145,15 +1148,15 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
             var promptMatrix = await BuildShadowPromptMatrixAsync(shadow);
             var founder = new ClaimsPrincipal(new ClaimsIdentity(
                 [new Claim("oid", founderId!)], "production-shadow-founder"));
-            var founderLegend = new FounderLegendConnectService(
-                operations,
-                new AgentProfileAccessResolver(shadow));
+            var profiles = new AgentProfileAccessResolver(shadow);
+            var founderLegend = new FounderLegendConnectService(operations, profiles);
             var factory = new CountingHttpClientFactory();
             var chat = new LegendFounderAiConversationService(
                 factory,
                 configuration,
                 founderLegend,
-                NullLogger<LegendFounderAiConversationService>.Instance);
+                NullLogger<LegendFounderAiConversationService>.Instance,
+                new LegendFounderAiDiscourseStateService(shadow, profiles, operations));
             var nativePasses = 0;
             foreach (var request in promptMatrix)
             {
@@ -1366,15 +1369,15 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
 
             var founder = new ClaimsPrincipal(
                 new ClaimsIdentity([new Claim("oid", founderId)], "production-data-derived"));
-            var founderLegend = new FounderLegendConnectService(
-                operations,
-                new AgentProfileAccessResolver(db));
+            var profiles = new AgentProfileAccessResolver(db);
+            var founderLegend = new FounderLegendConnectService(operations, profiles);
             var factory = new CountingHttpClientFactory();
             var chat = new LegendFounderAiConversationService(
                 factory,
                 configuration,
                 founderLegend,
-                NullLogger<LegendFounderAiConversationService>.Instance);
+                NullLogger<LegendFounderAiConversationService>.Instance,
+                new LegendFounderAiDiscourseStateService(db, profiles, operations));
 
             _output.WriteLine("============================================================");
             _output.WriteLine("LEGEND® PRODUCTION-DATA-DERIVED v16 REPLAY TRANSCRIPT");
@@ -1862,7 +1865,9 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
             factory,
             configuration,
             founderLegend,
-            NullLogger<LegendFounderAiConversationService>.Instance);
+            NullLogger<LegendFounderAiConversationService>.Instance,
+            new LegendFounderAiDiscourseStateService(
+                db, new AgentProfileAccessResolver(db), operations));
         var replyClock = Stopwatch.StartNew();
         var reply = await service.ReplyAsync(
             founder,

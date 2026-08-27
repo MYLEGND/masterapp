@@ -462,16 +462,19 @@ internal sealed class LegendConnectHistoricalReevaluationWorkAuthority
             if (candidates.Count > 0)
             {
                 await _db.SaveChangesAsync(cancellationToken);
-                // This is observability only. The immutable work identities
-                // above remain the sole scheduler authority; recording their
-                // bounded count lets Founder inspection distinguish a true
-                // dependency delta from a broad historical replay.
-                await RecordSeededConvergenceWorkAsync(
-                    evaluatorVersion,
-                    phase,
-                    candidates.Count,
-                    cancellationToken);
             }
+            // This is observability and adoption state only. The immutable
+            // work identities above remain the sole scheduler authority. A
+            // queue can already exist when a restarted/current-evaluator
+            // worker arrives; marking the plan Processing even when this pass
+            // added zero rows consumes the one-time rewind boundary and lets
+            // completed phases continue forward instead of cycling back to
+            // EarliestAffectedPhase.
+            await RecordSeededConvergenceWorkAsync(
+                evaluatorVersion,
+                phase,
+                candidates.Count,
+                cancellationToken);
 
             if (hasMore)
             {

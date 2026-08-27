@@ -355,7 +355,8 @@ public sealed class LegendConnectHistoricalReevaluationWorkTests
         var recoveredSeed = await verificationDb.LegendHistoricalReevaluationWorkItems
             .SingleAsync(item => item.Id == failedSeedId);
         Assert.Equal("Completed", recoveredSeed.ProcessingState);
-        Assert.Equal("historical_reevaluation_seed_failure", recoveredSeed.LastErrorCode);
+        Assert.Null(recoveredSeed.LastErrorCode);
+        Assert.Null(recoveredSeed.LastErrorMessage);
         Assert.Equal(1, recoveredSeed.AttemptCount);
         var policy = await verificationDb.LegendConnectRuntimePolicies.SingleAsync();
         Assert.Equal(

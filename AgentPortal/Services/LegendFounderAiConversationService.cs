@@ -52,7 +52,7 @@ public sealed class LegendFounderAiConversationService
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly IConfiguration _configuration;
     private readonly FounderLegendConnectService _legend;
-    private readonly LegendFounderAiDiscourseStateService? _discourse;
+    private readonly LegendFounderAiDiscourseStateService _discourse;
     private readonly IFounderSoftwareRemediationService? _softwareRemediation;
     private readonly ILogger<LegendFounderAiConversationService> _logger;
     private readonly int _timeoutSeconds;
@@ -71,13 +71,13 @@ public sealed class LegendFounderAiConversationService
         IConfiguration configuration,
         FounderLegendConnectService legend,
         ILogger<LegendFounderAiConversationService> logger,
-        LegendFounderAiDiscourseStateService? discourse = null,
+        LegendFounderAiDiscourseStateService discourse,
         IFounderSoftwareRemediationService? softwareRemediation = null)
     {
         _httpClientFactory = httpClientFactory;
         _configuration = configuration;
         _legend = legend;
-        _discourse = discourse;
+        _discourse = discourse ?? throw new ArgumentNullException(nameof(discourse));
         _softwareRemediation = softwareRemediation;
         _logger = logger;
 
@@ -201,28 +201,16 @@ public sealed class LegendFounderAiConversationService
                         message.Role ?? string.Empty,
                         message.Content ?? string.Empty))
                     .ToArray();
-                var discourseState = _discourse is null
-                    ? null
-                    : await _discourse.GetStateAsync(founder, request.ConversationId, effectiveToken);
-                // V20.3: use the discourse-aware native authority only when
-                // this service actually has durable discourse state available.
-                // When it does not, preserve the existing governed direct
-                // native authority rather than manufacturing an unsupported
-                // discourse result and incorrectly crossing into provider
-                // escalation. Both branches reuse existing LEGEND authorities;
-                // neither branch overrides or duplicates inference logic.
-                nativeInference = _discourse is null
-                    ? await _legend.TryInferConversationAsync(
-                        founder,
-                        conversation[^1].Content ?? string.Empty,
-                        context,
-                        effectiveToken)
-                    : await _legend.TryInferConversationWithDiscourseAsync(
-                        founder,
-                        conversation[^1].Content ?? string.Empty,
-                        context,
-                        discourseState,
-                        effectiveToken);
+                var discourseState = await _discourse.GetStateAsync(
+                    founder,
+                    request.ConversationId,
+                    effectiveToken);
+                nativeInference = await _legend.TryInferConversationWithDiscourseAsync(
+                    founder,
+                    conversation[^1].Content ?? string.Empty,
+                    context,
+                    discourseState,
+                    effectiveToken);
             }
             catch (OperationCanceledException)
                 when (cancellationToken.IsCancellationRequested)
@@ -924,9 +912,6 @@ public sealed class LegendFounderAiConversationService
             TimeSpan.FromSeconds(MaximumDiscourseObservationSeconds));
         try
         {
-            if (_discourse is null)
-                return;
-
             var meaning = await _legend.AnalyzeReusableMeaningGraphAsync(
                 founder,
                 surface,

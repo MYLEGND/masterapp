@@ -1932,9 +1932,9 @@ internal sealed class LegendConnectLearningHostedService : BackgroundService
         // A failed scheduler seed predates every canonical claim and can
         // otherwise strand an entirely healthy hosted worker forever. Give a
         // new process exactly one recovery for this evaluator/phase. The
-        // durable seed retains its prior failure detail for audit, while all
         // canonical failures continue to fail closed through their existing
-        // retry and retirement authority.
+        // retry and retirement authority. A recovered seed clears its stale
+        // error only after the normal completion lifecycle succeeds.
         var restartRecoveryKey = $"{evaluatorVersion}:{phase}";
         if (_phaseSeedRestartRecoveries.Add(restartRecoveryKey))
             await work.TryRecoverFailedPhaseSeedAsync(evaluatorVersion, phase, stoppingToken);
