@@ -201,8 +201,6 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
                         prompt,
                         new Dictionary<string, string>
                         {
-                            ["surface_phrase"] =
-                                prompt,
                             ["conversation_function"] =
                                 "conversation_opening"
                         },
@@ -218,43 +216,44 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
                         $"release-direct-{sourceIndex}-source-{promptIndex + 1}"));
             }
 
-            var responseTexts =
+            var responseComponents =
                 sourceIndex switch
                 {
-                    1 => new[]
+                    1 => new (string Function, string Intent)[]
                     {
-                        "Hello! How can I help you today?",
-                        "Hi! What can I help you with?",
-                        "Hello! What would you like to talk about?"
+                        ("Hello", "I can help"),
+                        ("Hi", "ready to assist"),
+                        ("Greetings", "here to support")
                     },
 
-                    2 => new[]
+                    2 => new (string Function, string Intent)[]
                     {
-                        "Hi there! How can I help?",
-                        "Hello! I'm ready to help.",
-                        "Hi! What can I do for you?"
+                        ("Welcome", "I can assist"),
+                        ("Hello", "ready to help"),
+                        ("Hi", "here to assist")
                     },
 
-                    _ => new[]
+                    _ => new (string Function, string Intent)[]
                     {
-                        "Hello! How may I help?",
-                        "Hi! What can we work on?",
-                        "Hello! What can I help you with?"
+                        ("Greetings", "I can support"),
+                        ("Welcome", "ready to support"),
+                        ("Hello", "here to help")
                     }
                 };
 
-            for (var responseIndex = 0; responseIndex < responseTexts.Length; responseIndex++)
+            for (var responseIndex = 0; responseIndex < responseComponents.Length; responseIndex++)
             {
-                var response = responseTexts[responseIndex];
+                var component = responseComponents[responseIndex];
+                var response = $"{component.Function}, {component.Intent}.";
                 examples.Add(
                     new LegendConnectCurriculumExampleSubmission(
                         response,
                         new Dictionary<string, string>
                         {
-                            ["surface_phrase"] =
-                                response,
                             ["conversation_function"] =
-                                "conversation_acknowledgement"
+                                "conversation_acknowledgement",
+                            ["intent"] =
+                                "offer_help"
                         },
                         new LegendConnectMeaningGraphSubmission(
                             [
@@ -262,9 +261,19 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
                                     "function",
                                     "conversation_function",
                                     "conversation_acknowledgement",
-                                    response)
+                                    component.Function),
+                                new LegendConnectMeaningNodeSubmission(
+                                    "intent",
+                                    "intent",
+                                    "offer_help",
+                                    component.Intent)
                             ],
-                            []),
+                            [
+                                new LegendConnectMeaningRelationSubmission(
+                                    "function",
+                                    "governs",
+                                    "intent")
+                            ]),
                         $"release-direct-{sourceIndex}-result-{responseIndex + 1}"));
             }
 
@@ -285,13 +294,10 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
                                 new Dictionary<string, string>
                                 {
                                     ["conversation_function"] =
-                                        "conversation_acknowledgement"
+                                        "conversation_acknowledgement",
+                                    ["intent"] =
+                                        "offer_help"
                                 }))
-                    ],
-                    [
-                        new LegendConnectSemanticSpanGroundingSubmission(
-                            "conversation_function",
-                            "surface_phrase")
                     ]);
 
             var accepted =
