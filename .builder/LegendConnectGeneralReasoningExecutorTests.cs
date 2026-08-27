@@ -21,15 +21,75 @@ public sealed class LegendConnectGeneralReasoningExecutorTests
         var fixture = CreateFixture(db);
         await SubmitStaticReasoningChainAsync(fixture.Curriculum, includeBranch: false, cycleOnly: false);
 
-        var stored = await db.LegendCurriculumExamples
-            .Where(example => example.SupersededUtc == null &&
+        var conclusionExamples = await (
+            from example in db.LegendCurriculumExamples
+            join family in db.LegendCurriculumFamilies on example.CurriculumFamilyId equals family.Id
+            join unit in db.LegendLanguageTextUnits on example.TextUnitId equals unit.Id
+            where example.SupersededUtc == null &&
                 db.LegendCurriculumExampleVariations.Any(variation =>
                     variation.CurriculumExampleId == example.Id &&
                     variation.Dimension == "reasoning_state" &&
-                    variation.Value == "conclusion"))
-            .Join(db.LegendLanguageTextUnits, example => example.TextUnitId, unit => unit.Id, (_, unit) => unit.Text)
-            .ToArrayAsync();
+                    variation.Value == "conclusion")
+            select new { example.Id, example.CurriculumFamilyId, family.FamilyKey, unit.Text }
+        ).ToArrayAsync();
+        Assert.Equal(3, conclusionExamples.Length);
+        Assert.Equal(3, conclusionExamples.Select(item => item.CurriculumFamilyId).Distinct().Count());
 
+        var conclusionIds = conclusionExamples.Select(item => item.Id).ToArray();
+        var anchors = await db.LegendLanguageCompositionalAnchors
+            .Where(item => conclusionIds.Contains(item.CurriculumExampleId) &&
+                item.SupersededUtc == null && item.LexemeId != null &&
+                item.ComponentStartTokenIndex != null && item.ComponentLength != null &&
+                item.ComponentLength > 0)
+            .OrderBy(item => item.CurriculumExampleId)
+            .ThenBy(item => item.ComponentStartTokenIndex)
+            .Select(item => new
+            {
+                item.CurriculumExampleId,
+                item.Dimension,
+                item.Value,
+                Start = item.ComponentStartTokenIndex!.Value,
+                Length = item.ComponentLength!.Value
+            })
+            .ToArrayAsync();
+        foreach (var example in conclusionExamples)
+        {
+            var semantic = anchors.Where(item => item.CurriculumExampleId == example.Id &&
+                    item.Dimension is "subject" or "register" or "reasoning_state")
+                .GroupBy(item => new { item.Dimension, item.Start, item.Length })
+                .Select(group => group.First())
+                .OrderBy(item => item.Start)
+                .ToArray();
+            Assert.Equal(3, semantic.Length);
+            Assert.Equal(new[] { "subject", "register", "reasoning_state" },
+                semantic.Select(item => item.Dimension).ToArray());
+            Assert.False(semantic.Zip(semantic.Skip(1), (left, right) =>
+                left.Start + left.Length > right.Start).Any(overlap => overlap));
+        }
+
+        var terminalTransitions = await db.LegendSemanticTransitionEvidence
+            .Where(item => item.SupersededUtc == null &&
+                item.FounderSemanticExampleRelationEvidenceId != null &&
+                conclusionIds.Contains(item.ResultCurriculumExampleId) &&
+                item.ContributionState == "Supported" &&
+                item.IsHumanVerifiedSupport)
+            .ToArrayAsync();
+        Assert.Equal(3, terminalTransitions
+            .Select(item => item.IndependentSourceIdentity)
+            .Distinct(StringComparer.Ordinal).Count());
+        Assert.Single(terminalTransitions
+            .Select(item => item.TransitionSignature)
+            .Distinct(StringComparer.Ordinal));
+
+        var planned = await fixture.Operations.TryPlanConversationAsync(
+            "Assess.", new LegendConnectDiscourseStateSnapshot([]));
+        Assert.True(planned.Supported, planned.ReasonCode);
+        var terminalPlan = Assert.IsType<LegendConnectResponseMeaningPlanSnapshot>(planned.Plan);
+        Assert.Equal("conclusion", terminalPlan.ResultDimensions["reasoning_state"]);
+        Assert.Equal("governed_case", terminalPlan.ResultDimensions["subject"]);
+        Assert.Equal("measured", terminalPlan.ResultDimensions["register"]);
+
+        var stored = conclusionExamples.Select(item => item.Text).ToArray();
         var native = await fixture.Operations.TryInferConversationWithDiscourseAsync(
             "Assess.", [], new LegendConnectDiscourseStateSnapshot([]));
 
@@ -50,10 +110,8 @@ public sealed class LegendConnectGeneralReasoningExecutorTests
         await using var db = ControllerTestHelpers.BuildDb();
         var fixture = CreateFixture(db);
         await SubmitVariableReasoningChainAsync(fixture.Curriculum);
-
         var planned = await fixture.Operations.TryPlanConversationAsync(
             "Assess alpha.", new LegendConnectDiscourseStateSnapshot([]));
-
         Assert.True(planned.Supported, planned.ReasonCode);
         var plan = Assert.IsType<LegendConnectResponseMeaningPlanSnapshot>(planned.Plan);
         Assert.Equal("conclusion", plan.ResultDimensions["reasoning_state"]);
@@ -67,10 +125,8 @@ public sealed class LegendConnectGeneralReasoningExecutorTests
         await using var db = ControllerTestHelpers.BuildDb();
         var fixture = CreateFixture(db);
         await SubmitStaticReasoningChainAsync(fixture.Curriculum, includeBranch: true, cycleOnly: false);
-
         var planned = await fixture.Operations.TryPlanConversationAsync(
             "Assess.", new LegendConnectDiscourseStateSnapshot([]));
-
         Assert.False(planned.Supported);
         Assert.Equal("ambiguous_semantic_reasoning_branch", planned.ReasonCode);
         Assert.Null(planned.Plan);
@@ -82,19 +138,14 @@ public sealed class LegendConnectGeneralReasoningExecutorTests
         await using var db = ControllerTestHelpers.BuildDb();
         var fixture = CreateFixture(db);
         await SubmitStaticReasoningChainAsync(fixture.Curriculum, includeBranch: false, cycleOnly: true);
-
         var planned = await fixture.Operations.TryPlanConversationAsync(
             "Assess.", new LegendConnectDiscourseStateSnapshot([]));
-
         Assert.False(planned.Supported);
         Assert.Equal("semantic_reasoning_cycle_detected", planned.ReasonCode);
         Assert.Null(planned.Plan);
     }
 
-    private static async Task SubmitStaticReasoningChainAsync(
-        LegendConnectCurriculumService curriculum,
-        bool includeBranch,
-        bool cycleOnly)
+    private static async Task SubmitStaticReasoningChainAsync(LegendConnectCurriculumService curriculum, bool includeBranch, bool cycleOnly)
     {
         for (var family = 1; family <= 3; family++)
         {
@@ -115,9 +166,7 @@ public sealed class LegendConnectGeneralReasoningExecutorTests
                     2 => ("This supported result plainly follows.", "This supported result", "plainly"),
                     _ => ("The verified conclusion expressly follows.", "The verified conclusion", "expressly")
                 };
-                examples.Add(ConclusionExample(
-                    conclusion, subjectSurface, registerSurface,
-                    "conclusion", conclusionKey));
+                examples.Add(ConclusionExample(conclusion, subjectSurface, registerSurface, "conclusion", conclusionKey));
                 if (includeBranch)
                 {
                     var (alternate, alternateSubject, alternateRegister) = family switch
@@ -126,50 +175,31 @@ public sealed class LegendConnectGeneralReasoningExecutorTests
                         2 => ("This supported alternative plainly remains.", "This supported alternative", "plainly"),
                         _ => ("The verified alternative expressly remains.", "The verified alternative", "expressly")
                     };
-                    examples.Add(ConclusionExample(
-                        alternate, alternateSubject, alternateRegister,
-                        "alternate_conclusion", alternateKey,
-                        stateSurface: "remains"));
+                    examples.Add(ConclusionExample(alternate, alternateSubject, alternateRegister,
+                        "alternate_conclusion", alternateKey, "remains"));
                 }
             }
-
             var mode = cycleOnly ? "cycle" : includeBranch ? "branch" : "chain";
             var submitted = await curriculum.SubmitFounderEnglishBatchAsync(new(
-                $"reasoning.general.static.{mode}.{family}",
-                "Content-agnostic Founder reasoning graph evidence",
-                examples));
+                $"reasoning.general.static.{mode}.{family}", "Content-agnostic Founder reasoning graph evidence", examples));
             Assert.True(submitted.Succeeded, submitted.Message);
-
-            await curriculum.PersistFounderCrossExampleSemanticRelationAsync(
-                new LegendConnectCrossExampleSemanticRelationshipSubmission(
-                    sourceKey, "reasoning.implication", middleKey),
-                LegendConnectLanguageIntelligenceEvaluatorVersion.Current);
-
+            await curriculum.PersistFounderCrossExampleSemanticRelationAsync(new(
+                sourceKey, "reasoning.implication", middleKey), LegendConnectLanguageIntelligenceEvaluatorVersion.Current);
             if (cycleOnly)
             {
-                await curriculum.PersistFounderCrossExampleSemanticRelationAsync(
-                    new LegendConnectCrossExampleSemanticRelationshipSubmission(
-                        middleKey, "reasoning.implication", sourceKey),
-                    LegendConnectLanguageIntelligenceEvaluatorVersion.Current);
+                await curriculum.PersistFounderCrossExampleSemanticRelationAsync(new(
+                    middleKey, "reasoning.implication", sourceKey), LegendConnectLanguageIntelligenceEvaluatorVersion.Current);
                 continue;
             }
-
-            await curriculum.PersistFounderCrossExampleSemanticRelationAsync(
-                new LegendConnectCrossExampleSemanticRelationshipSubmission(
-                    middleKey, "reasoning.implication", conclusionKey),
-                LegendConnectLanguageIntelligenceEvaluatorVersion.Current);
+            await curriculum.PersistFounderCrossExampleSemanticRelationAsync(new(
+                middleKey, "reasoning.implication", conclusionKey), LegendConnectLanguageIntelligenceEvaluatorVersion.Current);
             if (includeBranch)
-            {
-                await curriculum.PersistFounderCrossExampleSemanticRelationAsync(
-                    new LegendConnectCrossExampleSemanticRelationshipSubmission(
-                        middleKey, "reasoning.alternative", alternateKey),
-                    LegendConnectLanguageIntelligenceEvaluatorVersion.Current);
-            }
+                await curriculum.PersistFounderCrossExampleSemanticRelationAsync(new(
+                    middleKey, "reasoning.alternative", alternateKey), LegendConnectLanguageIntelligenceEvaluatorVersion.Current);
         }
     }
 
-    private static async Task SubmitVariableReasoningChainAsync(
-        LegendConnectCurriculumService curriculum)
+    private static async Task SubmitVariableReasoningChainAsync(LegendConnectCurriculumService curriculum)
     {
         for (var family = 1; family <= 3; family++)
         {
@@ -177,115 +207,66 @@ public sealed class LegendConnectGeneralReasoningExecutorTests
             var middleKey = $"reasoning-variable-middle-{family}";
             var conclusionKey = $"reasoning-variable-conclusion-{family}";
             var submitted = await curriculum.SubmitFounderEnglishBatchAsync(new(
-                $"reasoning.general.variables.{family}",
-                "Founder variable-propagation reasoning evidence",
+                $"reasoning.general.variables.{family}", "Founder variable-propagation reasoning evidence",
                 [
                     RelationalExample($"Variable source {family}: Assess alpha.", "premise", "Assess", sourceKey),
                     RelationalExample($"Variable middle {family}: Continue alpha.", "intermediate", "Continue", middleKey),
                     RelationalExample($"Variable result {family}: Conclude alpha.", "conclusion", "Conclude", conclusionKey)
                 ]));
             Assert.True(submitted.Succeeded, submitted.Message);
-
-            await curriculum.PersistFounderCrossExampleSemanticRelationAsync(
-                new LegendConnectCrossExampleSemanticRelationshipSubmission(
-                    sourceKey, "reasoning.variable.implication", middleKey),
-                LegendConnectLanguageIntelligenceEvaluatorVersion.Current);
-            await curriculum.PersistFounderCrossExampleSemanticRelationAsync(
-                new LegendConnectCrossExampleSemanticRelationshipSubmission(
-                    middleKey, "reasoning.variable.implication", conclusionKey),
-                LegendConnectLanguageIntelligenceEvaluatorVersion.Current);
+            await curriculum.PersistFounderCrossExampleSemanticRelationAsync(new(
+                sourceKey, "reasoning.variable.implication", middleKey), LegendConnectLanguageIntelligenceEvaluatorVersion.Current);
+            await curriculum.PersistFounderCrossExampleSemanticRelationAsync(new(
+                middleKey, "reasoning.variable.implication", conclusionKey), LegendConnectLanguageIntelligenceEvaluatorVersion.Current);
         }
     }
 
-    private static LegendConnectCurriculumExampleSubmission AtomicExample(
-        string text,
-        string state,
-        string surface,
-        string semanticKey) => new(
-            text,
-            new Dictionary<string, string> { ["reasoning_state"] = state },
-            new LegendConnectMeaningGraphSubmission(
-                [new LegendConnectMeaningNodeSubmission(
-                    "state", "reasoning_state", state, surface)],
-                []),
-            semanticKey);
+    private static LegendConnectCurriculumExampleSubmission AtomicExample(string text, string state, string surface, string semanticKey) => new(
+        text, new Dictionary<string, string> { ["reasoning_state"] = state },
+        new LegendConnectMeaningGraphSubmission([new LegendConnectMeaningNodeSubmission("state", "reasoning_state", state, surface)], []), semanticKey);
 
-    private static LegendConnectCurriculumExampleSubmission ConclusionExample(
-        string text,
-        string subjectSurface,
-        string registerSurface,
-        string state,
-        string semanticKey,
-        string stateSurface = "follows") => new(
-            text,
-            new Dictionary<string, string>
-            {
-                ["reasoning_state"] = state,
-                ["subject"] = "governed_case",
-                ["register"] = "measured"
-            },
-            new LegendConnectMeaningGraphSubmission(
-                [
-                    new LegendConnectMeaningNodeSubmission(
-                        "subject", "subject", "governed_case", subjectSurface),
-                    new LegendConnectMeaningNodeSubmission(
-                        "register", "register", "measured", registerSurface),
-                    new LegendConnectMeaningNodeSubmission(
-                        "state", "reasoning_state", state, stateSurface)
-                ],
-                [
-                    new LegendConnectMeaningRelationSubmission(
-                        "state", "applies-to", "subject"),
-                    new LegendConnectMeaningRelationSubmission(
-                        "state", "qualified-by", "register")
-                ]),
-            semanticKey);
+    private static LegendConnectCurriculumExampleSubmission ConclusionExample(string text, string subjectSurface, string registerSurface,
+        string state, string semanticKey, string stateSurface = "follows") => new(
+        text,
+        new Dictionary<string, string> { ["reasoning_state"] = state, ["subject"] = "governed_case", ["register"] = "measured" },
+        new LegendConnectMeaningGraphSubmission(
+            [
+                new LegendConnectMeaningNodeSubmission("subject", "subject", "governed_case", subjectSurface),
+                new LegendConnectMeaningNodeSubmission("register", "register", "measured", registerSurface),
+                new LegendConnectMeaningNodeSubmission("state", "reasoning_state", state, stateSurface)
+            ],
+            [
+                new LegendConnectMeaningRelationSubmission("state", "applies-to", "subject"),
+                new LegendConnectMeaningRelationSubmission("state", "qualified-by", "register")
+            ]), semanticKey);
 
-    private static LegendConnectCurriculumExampleSubmission RelationalExample(
-        string text,
-        string state,
-        string stateSurface,
-        string semanticKey) => new(
-            text,
-            new Dictionary<string, string>
-            {
-                ["reasoning_state"] = state,
-                ["subject"] = "alpha"
-            },
-            new LegendConnectMeaningGraphSubmission(
-                [
-                    new LegendConnectMeaningNodeSubmission(
-                        "state", "reasoning_state", state, stateSurface),
-                    new LegendConnectMeaningNodeSubmission(
-                        "subject", "subject", "alpha", "alpha")
-                ],
-                [new LegendConnectMeaningRelationSubmission(
-                    "state", "applies-to", "subject")]),
-            semanticKey);
+    private static LegendConnectCurriculumExampleSubmission RelationalExample(string text, string state, string stateSurface, string semanticKey) => new(
+        text,
+        new Dictionary<string, string> { ["reasoning_state"] = state, ["subject"] = "alpha" },
+        new LegendConnectMeaningGraphSubmission(
+            [
+                new LegendConnectMeaningNodeSubmission("state", "reasoning_state", state, stateSurface),
+                new LegendConnectMeaningNodeSubmission("subject", "subject", "alpha", "alpha")
+            ],
+            [new LegendConnectMeaningRelationSubmission("state", "applies-to", "subject")]), semanticKey);
 
     private static ReasoningFixture CreateFixture(MasterAppDbContext db)
     {
-        var configuration = new ConfigurationBuilder()
-            .AddInMemoryCollection(new Dictionary<string, string?>
-            {
-                ["LegendConnect:CorpusAcquisition:Enabled"] = "false",
-                ["LegendConnect:ContextualComposition:Mode"] = "Shadow",
-                ["LegendConnect:LanguageRegistry:Baseline:0:Code"] = "en",
-                ["LegendConnect:LanguageRegistry:Baseline:0:Name"] = "English",
-                ["LegendConnect:LanguageRegistry:Baseline:0:NativeName"] = "English"
-            }).Build();
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["LegendConnect:CorpusAcquisition:Enabled"] = "false",
+            ["LegendConnect:ContextualComposition:Mode"] = "Shadow",
+            ["LegendConnect:LanguageRegistry:Baseline:0:Code"] = "en",
+            ["LegendConnect:LanguageRegistry:Baseline:0:Name"] = "English",
+            ["LegendConnect:LanguageRegistry:Baseline:0:NativeName"] = "English"
+        }).Build();
         var registry = new LegendLanguageRegistry(db, configuration);
         var intelligence = new LegendConnectTranslationIntelligence(db, configuration);
-        var corpus = new LegendConnectCorpusService(
-            db, registry, NullLogger<LegendConnectCorpusService>.Instance,
-            intelligence: intelligence);
+        var corpus = new LegendConnectCorpusService(db, registry, NullLogger<LegendConnectCorpusService>.Instance, intelligence: intelligence);
         var curriculum = new LegendConnectCurriculumService(db, registry, corpus);
-        var operations = new LegendConnectOperations(
-            db, registry, corpus, configuration, curriculum: curriculum);
+        var operations = new LegendConnectOperations(db, registry, corpus, configuration, curriculum: curriculum);
         return new ReasoningFixture(curriculum, operations);
     }
 
-    private sealed record ReasoningFixture(
-        LegendConnectCurriculumService Curriculum,
-        LegendConnectOperations Operations);
+    private sealed record ReasoningFixture(LegendConnectCurriculumService Curriculum, LegendConnectOperations Operations);
 }
