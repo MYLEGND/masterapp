@@ -122,7 +122,7 @@ public sealed class LegendConnectSemanticSpanGroundingTests
             .ToArrayAsync();
 
         var native = await fixture.Operations.TryInferConversationWithDiscourseAsync(
-            "Hi there.",
+            "Good morning.",
             [],
             new LegendConnectDiscourseStateSnapshot([]));
 
@@ -1140,7 +1140,7 @@ public sealed class LegendConnectSemanticSpanGroundingTests
         var (resultText, openingSurface, assistanceSurface) = family switch
         {
             1 => ("Hello! What can I help you with?", "Hello", "What can I help you with"),
-            2 => ("Hi there! How may I support you?", "Hi there", "How may I support you"),
+            2 => ("Welcome! How may I support you?", "Welcome", "How may I support you"),
             _ => ("Greetings! What should we work on?", "Greetings", "What should we work on")
         };
 
@@ -1149,7 +1149,7 @@ public sealed class LegendConnectSemanticSpanGroundingTests
             "Founder-controlled repeated semantic-slot realization evidence",
             [
                 new LegendConnectCurriculumExampleSubmission(
-                    $"Founder opening evidence {family}: Hi there.",
+                    $"Founder opening evidence {family}: Good morning.",
                     new Dictionary<string, string>
                     {
                         ["conversation_function"] = "conversation_opening"
@@ -1157,7 +1157,7 @@ public sealed class LegendConnectSemanticSpanGroundingTests
                     new LegendConnectMeaningGraphSubmission(
                     [
                         new LegendConnectMeaningNodeSubmission(
-                            "opening", "conversation_function", "conversation_opening", "Hi there")
+                            "opening", "conversation_function", "conversation_opening", "Good morning")
                     ],
                     [])),
                 new LegendConnectCurriculumExampleSubmission(
