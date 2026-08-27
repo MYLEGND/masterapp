@@ -78,6 +78,14 @@ jobs:
             echo "::error::The governed Founder capability regression test was not discovered."
             exit 1
           fi
+          if ! grep -q "HostedWorker_ClaimsQueuedSourceFamilies_AndDrainsEveryPhaseWithoutManualAdvancement" test-discovery.log; then
+            echo "::error::The canonical hosted-worker convergence regression was not discovered."
+            exit 1
+          fi
+          if ! grep -q "HostedWorkerRestart_ReclaimsExpiredSourceFamilyLease_AndCompletesConvergence" test-discovery.log; then
+            echo "::error::The canonical hosted-worker restart regression was not discovered."
+            exit 1
+          fi
 
       - name: Test full suite including security regressions
         run: |
