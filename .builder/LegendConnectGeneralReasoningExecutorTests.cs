@@ -41,8 +41,7 @@ public sealed class LegendConnectGeneralReasoningExecutorTests
             LegendLanguageIdentity.NormalizeText(item),
             LegendLanguageIdentity.NormalizeText(native.Answer!),
             StringComparison.Ordinal));
-        Assert.Contains("!", native.Answer!, StringComparison.Ordinal);
-        Assert.EndsWith("?", native.Answer, StringComparison.Ordinal);
+        Assert.EndsWith(".", native.Answer, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -110,25 +109,27 @@ public sealed class LegendConnectGeneralReasoningExecutorTests
             };
             if (!cycleOnly)
             {
-                var (conclusion, lead, continuation) = family switch
+                var (conclusion, subjectSurface, registerSurface) = family switch
                 {
-                    1 => ("Therefore! The conclusion follows?", "Therefore", "The conclusion follows"),
-                    2 => ("Accordingly! The result follows?", "Accordingly", "The result follows"),
-                    _ => ("Consequently! The outcome follows?", "Consequently", "The outcome follows")
+                    1 => ("The governed outcome clearly follows.", "The governed outcome", "clearly"),
+                    2 => ("This supported result plainly follows.", "This supported result", "plainly"),
+                    _ => ("The verified conclusion expressly follows.", "The verified conclusion", "expressly")
                 };
-                examples.Add(SegmentedConclusionExample(
-                    conclusion, lead, continuation, "conclusion", conclusionKey));
+                examples.Add(ConclusionExample(
+                    conclusion, subjectSurface, registerSurface,
+                    "conclusion", conclusionKey));
                 if (includeBranch)
                 {
-                    var (alternate, alternateLead, alternateContinuation) = family switch
+                    var (alternate, alternateSubject, alternateRegister) = family switch
                     {
-                        1 => ("Alternatively! Another conclusion follows?", "Alternatively", "Another conclusion follows"),
-                        2 => ("Otherwise! A different result follows?", "Otherwise", "A different result follows"),
-                        _ => ("Instead! Another outcome follows?", "Instead", "Another outcome follows")
+                        1 => ("The governed alternative clearly remains.", "The governed alternative", "clearly"),
+                        2 => ("This supported alternative plainly remains.", "This supported alternative", "plainly"),
+                        _ => ("The verified alternative expressly remains.", "The verified alternative", "expressly")
                     };
-                    examples.Add(SegmentedConclusionExample(
-                        alternate, alternateLead, alternateContinuation,
-                        "alternate_conclusion", alternateKey));
+                    examples.Add(ConclusionExample(
+                        alternate, alternateSubject, alternateRegister,
+                        "alternate_conclusion", alternateKey,
+                        stateSurface: "remains"));
                 }
             }
 
@@ -159,11 +160,6 @@ public sealed class LegendConnectGeneralReasoningExecutorTests
                 LegendConnectLanguageIntelligenceEvaluatorVersion.Current);
             if (includeBranch)
             {
-                // A distinct semantic relationship identity keeps both edges
-                // individually supported instead of letting the existing
-                // contradiction authority collapse them first. The reasoning
-                // executor must therefore see the genuine competing branch and
-                // fail closed on branch ambiguity itself.
                 await curriculum.PersistFounderCrossExampleSemanticRelationAsync(
                     new LegendConnectCrossExampleSemanticRelationshipSubmission(
                         middleKey, "reasoning.alternative", alternateKey),
@@ -214,23 +210,35 @@ public sealed class LegendConnectGeneralReasoningExecutorTests
                 []),
             semanticKey);
 
-    private static LegendConnectCurriculumExampleSubmission SegmentedConclusionExample(
+    private static LegendConnectCurriculumExampleSubmission ConclusionExample(
         string text,
-        string leadSurface,
-        string continuationSurface,
+        string subjectSurface,
+        string registerSurface,
         string state,
-        string semanticKey) => new(
+        string semanticKey,
+        string stateSurface = "follows") => new(
             text,
-            new Dictionary<string, string> { ["reasoning_state"] = state },
+            new Dictionary<string, string>
+            {
+                ["reasoning_state"] = state,
+                ["subject"] = "governed_case",
+                ["register"] = "measured"
+            },
             new LegendConnectMeaningGraphSubmission(
                 [
                     new LegendConnectMeaningNodeSubmission(
-                        "lead", "reasoning_state", state, leadSurface),
+                        "subject", "subject", "governed_case", subjectSurface),
                     new LegendConnectMeaningNodeSubmission(
-                        "continuation", "reasoning_state", state, continuationSurface)
+                        "register", "register", "measured", registerSurface),
+                    new LegendConnectMeaningNodeSubmission(
+                        "state", "reasoning_state", state, stateSurface)
                 ],
-                [new LegendConnectMeaningRelationSubmission(
-                    "lead", "followed-by", "continuation")]),
+                [
+                    new LegendConnectMeaningRelationSubmission(
+                        "state", "applies-to", "subject"),
+                    new LegendConnectMeaningRelationSubmission(
+                        "state", "qualified-by", "register")
+                ]),
             semanticKey);
 
     private static LegendConnectCurriculumExampleSubmission RelationalExample(
