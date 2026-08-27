@@ -415,6 +415,18 @@ internal sealed class LegendConnectHistoricalReevaluationWorkAuthority
         if (seed.ProcessingState == Completed &&
             !await HasUnseededEligibleWorkAsync(evaluatorVersion, phase, cancellationToken))
         {
+            // A restarted/current-evaluator worker can inherit a phase whose
+            // canonical rows and scheduler seed are already fully drained
+            // while the convergence projection still says Queued. Adopt that
+            // completed durable boundary before phase advancement; otherwise
+            // the runtime correctly rewinds the unadopted plan to its earliest
+            // frontier on every refresh and the hosted worker oscillates
+            // forever without any claimable row.
+            await RecordSeededConvergenceWorkAsync(
+                evaluatorVersion,
+                phase,
+                0,
+                cancellationToken);
             return new LegendHistoricalReevaluationSeedResult(0, true, false);
         }
 
