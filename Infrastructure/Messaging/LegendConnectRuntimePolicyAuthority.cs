@@ -452,7 +452,13 @@ internal sealed class LegendConnectRuntimePolicyAuthority : ILegendConnectRuntim
             // and any resulting replay adoption one database-authoritative
             // decision across all application instances.
             if (!await HasDerivationContractDriftAsync(evaluatorVersion, cancellationToken))
+            {
+                await SynchronizeCompletedDerivationConvergenceAsync(
+                    policy,
+                    evaluatorVersion,
+                    cancellationToken);
                 return ToReevaluationSnapshot(policy);
+            }
         }
 
         // A newer binary must never reset, cancel, or silently replace a
@@ -485,6 +491,63 @@ internal sealed class LegendConnectRuntimePolicyAuthority : ILegendConnectRuntim
         }
 
         return await StartDependencyDrivenConvergenceAsync(policy, evaluatorVersion, cancellationToken);
+    }
+
+    /// <summary>
+    /// Keeps the existing convergence inspection row synchronized with the
+    /// canonical runtime policy after a completed phase boundary. A late
+    /// observability update must not leave the UI saying Processing when the
+    /// policy is complete and the durable work authority has no active row.
+    /// This method never advances work or declares completion while work or
+    /// contract drift remains.
+    /// </summary>
+    private async Task SynchronizeCompletedDerivationConvergenceAsync(
+        LegendConnectRuntimePolicy policy,
+        int evaluatorVersion,
+        CancellationToken cancellationToken)
+    {
+        if (policy.TargetLanguageIntelligenceEvaluatorVersion != evaluatorVersion ||
+            policy.CompletedLanguageIntelligenceEvaluatorVersion < evaluatorVersion ||
+            !string.Equals(
+                policy.LanguageIntelligenceReevaluationPhase,
+                LegendConnectLanguageIntelligenceReevaluationPhases.Complete,
+                StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        var hasActiveWork = await _db.Set<LegendHistoricalReevaluationWorkItem>()
+            .AsNoTracking()
+            .AnyAsync(item => item.EvaluatorVersion == evaluatorVersion &&
+                (item.ProcessingState == "Pending" ||
+                 item.ProcessingState == "Processing" ||
+                 item.ProcessingState == "Failed"),
+                cancellationToken);
+        if (hasActiveWork)
+            return;
+
+        var now = DateTime.UtcNow;
+        var query = _db.Set<LegendLanguageDerivationConvergence>()
+            .Where(item => item.TargetEvaluatorVersion == evaluatorVersion &&
+                (item.State == "Queued" || item.State == "Processing"));
+        if (_db.Database.IsRelational())
+        {
+            await query.ExecuteUpdateAsync(setters => setters
+                .SetProperty(item => item.State, "Completed")
+                .SetProperty(item => item.CompletedUtc,
+                    item => item.CompletedUtc ?? now)
+                .SetProperty(item => item.UpdatedUtc, now),
+                cancellationToken);
+            return;
+        }
+
+        var convergence = await query.SingleOrDefaultAsync(cancellationToken);
+        if (convergence is null)
+            return;
+        convergence.State = "Completed";
+        convergence.CompletedUtc ??= now;
+        convergence.UpdatedUtc = now;
+        await _db.SaveChangesAsync(cancellationToken);
     }
 
     /// <summary>

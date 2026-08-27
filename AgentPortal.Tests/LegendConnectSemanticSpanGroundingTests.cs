@@ -96,6 +96,51 @@ public sealed class LegendConnectSemanticSpanGroundingTests
     }
 
     [Fact]
+    public async Task NativeRealization_ComposesRepeatedSemanticSlots_FromIndependentFounderFamilies()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var fixture = CreateFixture(db);
+
+        for (var family = 1; family <= 3; family++)
+        {
+            var submitted = await fixture.Curriculum.SubmitFounderEnglishBatchAsync(
+                RepeatedSemanticSlotArticulationFamily(family));
+            Assert.True(submitted.Succeeded, submitted.Message);
+        }
+
+        var storedResults = await db.LegendCurriculumExamples
+            .Where(item => item.SupersededUtc == null &&
+                db.LegendCurriculumExampleVariations.Any(variation =>
+                    variation.CurriculumExampleId == item.Id &&
+                    variation.Dimension == "conversation_function" &&
+                    variation.Value == "conversation_acknowledgement"))
+            .Join(
+                db.LegendLanguageTextUnits,
+                example => example.TextUnitId,
+                unit => unit.Id,
+                (_, unit) => unit.Text)
+            .ToArrayAsync();
+
+        var native = await fixture.Operations.TryInferConversationWithDiscourseAsync(
+            "Good morning.",
+            [],
+            new LegendConnectDiscourseStateSnapshot([]));
+
+        Assert.True(native.Supported, native.ReasonCode);
+        Assert.Equal("semantic_transition_governed_composed", native.ReasonCode);
+        Assert.True(native.EvidenceCount >= 3);
+        Assert.False(string.IsNullOrWhiteSpace(native.Answer));
+        Assert.DoesNotContain(
+            storedResults,
+            stored => string.Equals(
+                LegendLanguageIdentity.NormalizeText(stored),
+                LegendLanguageIdentity.NormalizeText(native.Answer!),
+                StringComparison.Ordinal));
+        Assert.EndsWith("?", native.Answer, StringComparison.Ordinal);
+        Assert.False(native.RequiresEscalation);
+    }
+
+    [Fact]
     public async Task GovernedExecutableProjection_FailsClosedWhenOmittedMetadataCouldChangeTheResult()
     {
         await using var db = ControllerTestHelpers.BuildDb();
@@ -1086,6 +1131,59 @@ public sealed class LegendConnectSemanticSpanGroundingTests
                     ["subject"] = "status_message",
                     ["register"] = "measured",
                     ["intent"] = "acknowledge_receipt"
+                }))]);
+    }
+
+    private static LegendConnectCurriculumBatchSubmission
+        RepeatedSemanticSlotArticulationFamily(int family)
+    {
+        var (resultText, openingSurface, assistanceSurface) = family switch
+        {
+            1 => ("Hello! What can I help you with?", "Hello", "What can I help you with"),
+            2 => ("Welcome! How may I support you?", "Welcome", "How may I support you"),
+            _ => ("Greetings! What should we work on?", "Greetings", "What should we work on")
+        };
+
+        return new LegendConnectCurriculumBatchSubmission(
+            $"response.repeated-semantic-slots.{family}",
+            "Founder-controlled repeated semantic-slot realization evidence",
+            [
+                new LegendConnectCurriculumExampleSubmission(
+                    $"Founder opening evidence {family}: Good morning.",
+                    new Dictionary<string, string>
+                    {
+                        ["conversation_function"] = "conversation_opening"
+                    },
+                    new LegendConnectMeaningGraphSubmission(
+                    [
+                        new LegendConnectMeaningNodeSubmission(
+                            "opening", "conversation_function", "conversation_opening", "Good morning")
+                    ],
+                    [])),
+                new LegendConnectCurriculumExampleSubmission(
+                    resultText,
+                    new Dictionary<string, string>
+                    {
+                        ["conversation_function"] = "conversation_acknowledgement"
+                    },
+                    new LegendConnectMeaningGraphSubmission(
+                    [
+                        new LegendConnectMeaningNodeSubmission(
+                            "opening", "conversation_function", "conversation_acknowledgement", openingSurface),
+                        new LegendConnectMeaningNodeSubmission(
+                            "assistance", "conversation_function", "conversation_acknowledgement", assistanceSurface)
+                    ],
+                    [new LegendConnectMeaningRelationSubmission(
+                        "opening", "followed-by", "assistance")]))
+            ],
+            [new LegendConnectSemanticTransitionSubmission(
+                new LegendConnectSemanticFrameSubmission(new Dictionary<string, string>
+                {
+                    ["conversation_function"] = "conversation_opening"
+                }),
+                new LegendConnectSemanticFrameSubmission(new Dictionary<string, string>
+                {
+                    ["conversation_function"] = "conversation_acknowledgement"
                 }))]);
     }
 

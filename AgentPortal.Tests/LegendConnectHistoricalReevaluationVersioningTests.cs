@@ -349,6 +349,85 @@ public sealed class LegendConnectHistoricalReevaluationVersioningTests
     }
 
     [Fact]
+    public async Task CompletedPolicy_RepairsOnlyDrainedConvergenceInspectionProjection()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var configuration = Configuration();
+        var registry = new LegendLanguageRegistry(db, configuration);
+        var runtime = new LegendConnectRuntimePolicyAuthority(
+            db, new FounderAccess(), registry, configuration,
+            NullLogger<LegendConnectRuntimePolicyAuthority>.Instance);
+        var evaluator = LegendConnectLanguageIntelligenceEvaluatorVersion.Current;
+        await EstablishCompletedContractBaselineAsync(db, evaluator);
+        db.LegendLanguageDerivationConvergences.Add(new LegendLanguageDerivationConvergence
+        {
+            Id = Guid.NewGuid(),
+            TargetEvaluatorVersion = evaluator,
+            BaselineEvaluatorVersion = evaluator,
+            State = "Processing",
+            EarliestAffectedPhase = LegendConnectLanguageIntelligenceReevaluationPhases.SourceFamilies,
+            PlannedWorkItemCount = 0,
+            CreatedUtc = DateTime.UtcNow,
+            UpdatedUtc = DateTime.UtcNow
+        });
+        await db.SaveChangesAsync();
+
+        var replay = await runtime.GetOrStartLanguageIntelligenceReevaluationAsync(evaluator);
+
+        Assert.False(replay.RequiresWork);
+        Assert.Equal(LegendConnectLanguageIntelligenceReevaluationPhases.Complete, replay.Phase);
+        var convergence = await db.LegendLanguageDerivationConvergences.SingleAsync(item =>
+            item.TargetEvaluatorVersion == evaluator);
+        Assert.Equal("Completed", convergence.State);
+        Assert.NotNull(convergence.CompletedUtc);
+    }
+
+    [Fact]
+    public async Task CompletedPolicy_DoesNotHideActiveDurableConvergenceWork()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var configuration = Configuration();
+        var registry = new LegendLanguageRegistry(db, configuration);
+        var runtime = new LegendConnectRuntimePolicyAuthority(
+            db, new FounderAccess(), registry, configuration,
+            NullLogger<LegendConnectRuntimePolicyAuthority>.Instance);
+        var evaluator = LegendConnectLanguageIntelligenceEvaluatorVersion.Current;
+        await EstablishCompletedContractBaselineAsync(db, evaluator);
+        db.LegendLanguageDerivationConvergences.Add(new LegendLanguageDerivationConvergence
+        {
+            Id = Guid.NewGuid(),
+            TargetEvaluatorVersion = evaluator,
+            BaselineEvaluatorVersion = evaluator,
+            State = "Processing",
+            EarliestAffectedPhase = LegendConnectLanguageIntelligenceReevaluationPhases.SourceFamilies,
+            PlannedWorkItemCount = 1,
+            CreatedUtc = DateTime.UtcNow,
+            UpdatedUtc = DateTime.UtcNow
+        });
+        db.LegendHistoricalReevaluationWorkItems.Add(new LegendHistoricalReevaluationWorkItem
+        {
+            Id = Guid.NewGuid(),
+            EvaluatorVersion = evaluator,
+            Phase = LegendConnectLanguageIntelligenceReevaluationPhases.SourceFamilies,
+            WorkKind = "Canonical",
+            WorkIdentity = "active-convergence-regression",
+            SubjectScope = "en",
+            DependencyIdentity = "active-convergence-regression",
+            ProcessingState = "Pending",
+            CreatedUtc = DateTime.UtcNow,
+            UpdatedUtc = DateTime.UtcNow
+        });
+        await db.SaveChangesAsync();
+
+        _ = await runtime.GetOrStartLanguageIntelligenceReevaluationAsync(evaluator);
+
+        var convergence = await db.LegendLanguageDerivationConvergences.SingleAsync(item =>
+            item.TargetEvaluatorVersion == evaluator);
+        Assert.Equal("Processing", convergence.State);
+        Assert.Null(convergence.CompletedUtc);
+    }
+
+    [Fact]
     public async Task CompletedV21_WithAnUnpersistedV20Declaration_StillDetectsTheStaleSourceArtifact()
     {
         await using var db = ControllerTestHelpers.BuildDb();
