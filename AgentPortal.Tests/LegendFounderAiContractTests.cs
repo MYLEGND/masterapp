@@ -765,8 +765,30 @@ public sealed class LegendFounderAiContractTests
         Assert.DoesNotContain("run: ./scripts/db.sh validate\n", workflow, StringComparison.Ordinal);
         Assert.Contains("Merge exact validated PR head", workflow, StringComparison.Ordinal);
         Assert.Contains("Deploy immutable merged production tree", workflow, StringComparison.Ordinal);
+        Assert.Contains("verify-legend-convergence:", workflow, StringComparison.Ordinal);
+        Assert.Contains("Verify canonical worker drained production convergence", workflow, StringComparison.Ordinal);
+        Assert.Contains("dotnet run --file diagnostics/LegendProductionConvergenceGate.cs", workflow, StringComparison.Ordinal);
         Assert.DoesNotContain("push:", workflow, StringComparison.Ordinal);
         Assert.DoesNotContain("workflow_dispatch:", workflow, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ProductionConvergenceGate_IsReadOnlyAndPartOfTheUnifiedDeploymentFlow()
+    {
+        var workflow = File.ReadAllText(
+            Path.Combine(AppContext.BaseDirectory, "agentportal-production-deploy.yml"));
+        var diagnostic = File.ReadAllText(
+            Path.Combine(AppContext.BaseDirectory, "LegendProductionConvergenceGate.cs"));
+
+        var verifyStart = workflow.IndexOf("  verify-legend-convergence:", StringComparison.Ordinal);
+        Assert.True(verifyStart >= 0);
+        var verify = workflow[verifyStart..];
+        Assert.Contains("- deploy", verify, StringComparison.Ordinal);
+        Assert.Contains("ApplicationIntent = ApplicationIntent.ReadOnly", diagnostic, StringComparison.Ordinal);
+        Assert.Contains("PRODUCTION WRITE COMMANDS: 0", diagnostic, StringComparison.Ordinal);
+        Assert.DoesNotContain("INSERT ", diagnostic, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("UPDATE ", diagnostic, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("DELETE ", diagnostic, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
