@@ -193,8 +193,9 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
                 new List<
                     LegendConnectCurriculumExampleSubmission>();
 
-            foreach (var prompt in prompts)
+            for (var promptIndex = 0; promptIndex < prompts.Length; promptIndex++)
             {
+                var prompt = prompts[promptIndex];
                 examples.Add(
                     new LegendConnectCurriculumExampleSubmission(
                         prompt,
@@ -204,7 +205,17 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
                                 prompt,
                             ["conversation_function"] =
                                 "conversation_opening"
-                        }));
+                        },
+                        new LegendConnectMeaningGraphSubmission(
+                            [
+                                new LegendConnectMeaningNodeSubmission(
+                                    "function",
+                                    "conversation_function",
+                                    "conversation_opening",
+                                    prompt)
+                            ],
+                            []),
+                        $"release-direct-{sourceIndex}-source-{promptIndex + 1}"));
             }
 
             var responseTexts =
@@ -232,8 +243,9 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
                     }
                 };
 
-            foreach (var response in responseTexts)
+            for (var responseIndex = 0; responseIndex < responseTexts.Length; responseIndex++)
             {
+                var response = responseTexts[responseIndex];
                 examples.Add(
                     new LegendConnectCurriculumExampleSubmission(
                         response,
@@ -243,7 +255,17 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
                                 response,
                             ["conversation_function"] =
                                 "conversation_acknowledgement"
-                        }));
+                        },
+                        new LegendConnectMeaningGraphSubmission(
+                            [
+                                new LegendConnectMeaningNodeSubmission(
+                                    "function",
+                                    "conversation_function",
+                                    "conversation_acknowledgement",
+                                    response)
+                            ],
+                            []),
+                        $"release-direct-{sourceIndex}-result-{responseIndex + 1}"));
             }
 
             var batch =
@@ -351,11 +373,12 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
 
             var native =
                 await founderLegend
-                    .TryInferConversationAsync(
+                    .TryInferConversationWithDiscourseAsync(
                         founder,
                         prompt,
                         Array.Empty<
-                            LegendConnectConversationContextItem>());
+                            LegendConnectConversationContextItem>(),
+                        discourseState: null);
 
             _output.WriteLine("");
             _output.WriteLine(
