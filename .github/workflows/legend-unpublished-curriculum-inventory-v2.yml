@@ -1,0 +1,100 @@
+name: LEGEND unpublished curriculum inventory v2
+
+on:
+  push:
+    branches:
+      - fix/legend-governed-reasoning-executor-20260827
+    paths:
+      - .github/workflows/legend-unpublished-curriculum-inventory-v2.yml
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  AZURE_WEBAPP_NAME: masterapp-portal
+  AZURE_RESOURCE_GROUP: masterapp-rg
+  DOTNET_VERSION: '10.x'
+
+jobs:
+  inventory:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    environment:
+      name: Production
+    steps:
+      - name: Checkout unpublished candidate branch
+        uses: actions/checkout@v4
+        with:
+          ref: fix/legend-governed-reasoning-executor-20260827
+          fetch-depth: 0
+
+      - name: Materialize candidate and corrected read-only inventory
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/legend-governed-reasoning-patch.py
+          python3 - <<'PY'
+          from pathlib import Path
+          workflow = Path('.github/workflows/legend-unpublished-curriculum-inventory.yml').read_text()
+          start = workflow.index("          method = r'''    [Fact]") + len("          method = r'''")
+          end = workflow.index("\n          '''", start)
+          method = workflow[start:end]
+          method = method.replace('        _output.WriteLine($"PRODUCTION WRITE COMMANDS: {readOnlyGuard.WriteCommandCount}");\n', '')
+          method = method.replace('        Assert.Equal(0, readOnlyGuard.WriteCommandCount);\n', '')
+          path = Path('AgentPortal.Tests/LegendFounderCurriculumSqlServerE2ETests.cs')
+          text = path.read_text()
+          anchor = '    [Fact]\n    public async Task ProductionReadOnlyEightPromptNativeDiagnostic()'
+          if text.count(anchor) != 1:
+              raise SystemExit('inventory insertion anchor drifted')
+          path.write_text(text.replace(anchor, method + '\n\n' + anchor, 1))
+          PY
+          rm -f scripts/legend-governed-reasoning-patch.py
+          rm -f .github/workflows/legend-governed-reasoning-predeploy.yml
+          rm -f .github/workflows/legend-governed-reasoning-predeploy-v2.yml
+          rm -f .github/workflows/legend-governed-reasoning-predeploy-v3.yml
+          rm -f .github/workflows/legend-unpublished-curriculum-inventory.yml
+          rm -f .github/workflows/legend-unpublished-curriculum-inventory-v2.yml
+          git diff --check
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Restore and build exact unpublished candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          dotnet restore MASTERAPP.sln
+          dotnet build MASTERAPP.sln -c Release --no-restore
+
+      - name: Login to Azure for read-only inventory
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Run real production curriculum inventory
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $connection = ''
+          $connections = az webapp config connection-string list --resource-group $env:AZURE_RESOURCE_GROUP --name $env:AZURE_WEBAPP_NAME --output json | ConvertFrom-Json
+          $match = $connections | Where-Object { $_.name -eq 'MasterAppDb' } | Select-Object -First 1
+          if ($null -ne $match) { $connection = [string]$match.value }
+          $settings = @{}
+          foreach ($item in (az webapp config appsettings list --resource-group $env:AZURE_RESOURCE_GROUP --name $env:AZURE_WEBAPP_NAME --output json | ConvertFrom-Json)) { $settings[[string]$item.name] = [string]$item.value }
+          if ([string]::IsNullOrWhiteSpace($connection)) {
+            foreach ($name in @('ConnectionStrings__MasterAppDb','MasterAppDb','SQLCONNSTR_MasterAppDb')) {
+              if ($settings.ContainsKey($name) -and -not [string]::IsNullOrWhiteSpace($settings[$name])) { $connection = $settings[$name]; break }
+            }
+          }
+          if ([string]::IsNullOrWhiteSpace($connection)) { throw 'Production MasterAppDb connection string could not be resolved.' }
+          Write-Output "::add-mask::$connection"
+          $env:LEGEND_PRODUCTION_READONLY_CONNECTION = $connection
+          $env:OPENAI_API_KEY = ''
+          $env:OpenAI__ApiKey = ''
+          dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-build --filter 'FullyQualifiedName~ProductionReadOnlyMatureConversationCapabilityInventory' --logger 'console;verbosity=detailed'
+          if ($LASTEXITCODE -ne 0) { throw 'Production curriculum inventory failed.' }
