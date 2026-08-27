@@ -42,6 +42,9 @@
     <None Include="..\\.github\\workflows\\legend-production-readonly-diagnostic.yml"
           Link="legend-production-readonly-diagnostic.yml"
           CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\\diagnostics\\LegendProductionConvergenceGate.cs"
+          Link="LegendProductionConvergenceGate.cs"
+          CopyToOutputDirectory="PreserveNewest" />
     <None Include="..\\scripts\\db.sh"
           Link="db.sh"
           CopyToOutputDirectory="PreserveNewest" />
