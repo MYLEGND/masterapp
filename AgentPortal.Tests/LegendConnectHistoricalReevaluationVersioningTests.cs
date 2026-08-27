@@ -275,6 +275,18 @@ public sealed class LegendConnectHistoricalReevaluationVersioningTests
             CreatedUtc = DateTime.UtcNow,
             UpdatedUtc = DateTime.UtcNow
         });
+        db.LegendLanguageDerivationArtifacts.Add(new LegendLanguageDerivationArtifact
+        {
+            Id = Guid.NewGuid(),
+            ArtifactKind = "meaning-primitive",
+            ResultArtifactIdentity = "meaning-primitive:historical-v20",
+            SourceDependencyIdentity = "meaning-node:historical-v20",
+            SourceDependencySemanticVersion = "historical-v20",
+            DerivationContractIdentity = sourceV2,
+            State = "Current",
+            CreatedUtc = DateTime.UtcNow,
+            UpdatedUtc = DateTime.UtcNow
+        });
         db.LegendLanguageCompositionalAnchors.Add(new LegendLanguageCompositionalAnchor
         {
             Id = Guid.NewGuid(),
@@ -301,7 +313,8 @@ public sealed class LegendConnectHistoricalReevaluationVersioningTests
         Assert.True(first.RequiresWork);
         Assert.Equal(LegendConnectLanguageIntelligenceReevaluationPhases.SourceFamilies, first.Phase);
         Assert.Equal(first, second);
-        Assert.Equal("Stale", (await db.LegendLanguageDerivationArtifacts.SingleAsync()).State);
+        Assert.All(await db.LegendLanguageDerivationArtifacts.ToListAsync(),
+            item => Assert.Equal("Stale", item.State));
         Assert.Single(await db.LegendLanguageDerivationConvergences
             .Where(item => item.TargetEvaluatorVersion == LegendConnectLanguageIntelligenceEvaluatorVersion.Current)
             .ToListAsync());
@@ -310,6 +323,51 @@ public sealed class LegendConnectHistoricalReevaluationVersioningTests
         Assert.Equal(LegendConnectLanguageIntelligenceReevaluationPhases.SourceFamilies,
             convergence.EarliestAffectedPhase);
         Assert.True(convergence.AffectedCanonicalArtifactCount > 0);
+    }
+
+    [Fact]
+    public async Task DependencyInventory_ReactivatesTheExactRetainedArtifactWithoutCreatingADuplicate()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var configuration = Configuration();
+        var registry = new LegendLanguageRegistry(db, configuration);
+        var corpus = new LegendConnectCorpusService(
+            db, registry, NullLogger<LegendConnectCorpusService>.Instance);
+        var curriculum = new LegendConnectCurriculumService(db, registry, corpus);
+        var family = AddHistoricalSourceFamily(
+            db,
+            Guid.Parse("00000000-0000-0000-0000-000000000099"),
+            "replay.source.reactivate-exact-artifact");
+        await db.SaveChangesAsync();
+        var anchor = await db.LegendLanguageCompositionalAnchors.SingleAsync(item =>
+            item.Id == family.AnchorId);
+        var contractIdentity = LegendConnectDerivationContracts.ContractIdentityFor(
+            LegendConnectLanguageIntelligenceEvaluatorVersion.Current,
+            LegendConnectDerivationContracts.SourceSemanticProjection);
+        var retained = new LegendLanguageDerivationArtifact
+        {
+            Id = Guid.NewGuid(),
+            ArtifactKind = "compositional-anchor",
+            ResultArtifactIdentity = $"anchor:{anchor.CurriculumExampleId:D}:{anchor.AnchorSignature}",
+            SourceDependencyIdentity = $"anchor-evidence:{anchor.Id:D}",
+            SourceDependencySemanticVersion = "stale-semantic-version",
+            DerivationContractIdentity = contractIdentity,
+            State = "Stale",
+            CreatedUtc = DateTime.UtcNow,
+            UpdatedUtc = DateTime.UtcNow
+        };
+        db.LegendLanguageDerivationArtifacts.Add(retained);
+        await db.SaveChangesAsync();
+
+        await curriculum.InventoryHistoricalDerivationDependenciesAsync(
+            family.FamilyId,
+            LegendConnectLanguageIntelligenceEvaluatorVersion.Current);
+
+        var artifacts = await db.LegendLanguageDerivationArtifacts.ToListAsync();
+        Assert.Single(artifacts);
+        Assert.Equal(retained.Id, artifacts[0].Id);
+        Assert.Equal("Current", artifacts[0].State);
+        Assert.Equal(anchor.AnchorSignature, artifacts[0].SourceDependencySemanticVersion);
     }
 
     [Fact]

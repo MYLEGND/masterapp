@@ -1972,26 +1972,33 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
             .Where(item => resultIdentities.Contains(item.ResultArtifactIdentity) &&
                 sourceIdentities.Contains(item.SourceDependencyIdentity) &&
                 contractIdentities.Contains(item.DerivationContractIdentity))
-            .Select(item => new
-            {
-                item.ArtifactKind,
-                item.ResultArtifactIdentity,
-                item.SourceDependencyIdentity,
-                item.DerivationContractIdentity
-            })
             .ToListAsync(cancellationToken);
-        var existingKeys = existing.Select(item => (
+        var existingByKey = existing.ToDictionary(item => (
                 item.ArtifactKind,
                 item.ResultArtifactIdentity,
                 item.SourceDependencyIdentity,
-                item.DerivationContractIdentity))
-            .ToHashSet();
+                item.DerivationContractIdentity));
         var now = DateTime.UtcNow;
         foreach (var candidate in distinct)
         {
-            if (existingKeys.Contains((candidate.ArtifactKind, candidate.ResultArtifactIdentity,
-                    candidate.SourceDependencyIdentity, candidate.DerivationContractIdentity)))
+            if (existingByKey.TryGetValue((candidate.ArtifactKind, candidate.ResultArtifactIdentity,
+                    candidate.SourceDependencyIdentity, candidate.DerivationContractIdentity), out var retained))
             {
+                // The canonical family/evidence query above is the authority
+                // that this exact artifact still exists. A same-contract
+                // replay may have marked its ledger row Stale before bounded
+                // revalidation; restore that exact row rather than leaving a
+                // missing Current projection or inserting a duplicate.
+                if (!string.Equals(retained.State, "Current", StringComparison.Ordinal) ||
+                    !string.Equals(
+                        retained.SourceDependencySemanticVersion,
+                        candidate.SourceDependencySemanticVersion,
+                        StringComparison.Ordinal))
+                {
+                    retained.State = "Current";
+                    retained.SourceDependencySemanticVersion = candidate.SourceDependencySemanticVersion;
+                    retained.UpdatedUtc = now;
+                }
                 continue;
             }
             _db.Set<LegendLanguageDerivationArtifact>().Add(new LegendLanguageDerivationArtifact
