@@ -16,6 +16,7 @@ using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using Shared.Messaging;
@@ -3855,7 +3856,30 @@ public sealed class MessagingServiceTests
 
         Assert.IsAssignableFrom<IMessagingService>(scope.ServiceProvider.GetRequiredService<IMessagingService>());
         Assert.Single(services.Where(descriptor => descriptor.ServiceType == typeof(IMessagingService)));
+        Assert.DoesNotContain(services, IsLegendHostedService);
     }
+
+    [Fact]
+    public void AddLegendConnectHostedWorkers_RegistersOneCanonicalWorkerSet()
+    {
+        var services = new ServiceCollection();
+
+        services.AddLegendConnectHostedWorkers();
+        services.AddLegendConnectHostedWorkers();
+
+        Assert.Single(services.Where(descriptor => IsHostedService<LegendConnectCurriculumManifestHostedService>(descriptor)));
+        Assert.Single(services.Where(descriptor => IsHostedService<LegendConnectLearningHostedService>(descriptor)));
+        Assert.Single(services.Where(descriptor => IsHostedService<LegendConnectCorpusAcquisitionHostedService>(descriptor)));
+    }
+
+    private static bool IsLegendHostedService(ServiceDescriptor descriptor) =>
+        IsHostedService<LegendConnectCurriculumManifestHostedService>(descriptor) ||
+        IsHostedService<LegendConnectLearningHostedService>(descriptor) ||
+        IsHostedService<LegendConnectCorpusAcquisitionHostedService>(descriptor);
+
+    private static bool IsHostedService<TWorker>(ServiceDescriptor descriptor) =>
+        descriptor.ServiceType == typeof(IHostedService) &&
+        descriptor.ImplementationType == typeof(TWorker);
 
     private static MessagingService CreateService(
         Infrastructure.Data.MasterAppDbContext db,

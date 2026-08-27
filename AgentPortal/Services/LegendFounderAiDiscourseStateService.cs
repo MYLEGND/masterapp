@@ -22,16 +22,16 @@ public sealed class LegendFounderAiDiscourseStateService
     private const int MaximumConcurrentWriteAttempts = 3;
     private readonly MasterAppDbContext _db;
     private readonly AgentProfileAccessResolver _profiles;
-    private readonly ILegendConnectOperations? _operations;
+    private readonly ILegendConnectOperations _operations;
 
     public LegendFounderAiDiscourseStateService(
         MasterAppDbContext db,
         AgentProfileAccessResolver profiles,
-        ILegendConnectOperations? operations = null)
+        ILegendConnectOperations operations)
     {
         _db = db;
         _profiles = profiles;
-        _operations = operations;
+        _operations = operations ?? throw new ArgumentNullException(nameof(operations));
     }
 
     public async Task RecordObservationAsync(
@@ -247,7 +247,7 @@ public sealed class LegendFounderAiDiscourseStateService
         IReadOnlyList<LegendFounderAiDiscourseTurn> priorTurns,
         CancellationToken cancellationToken)
     {
-        if (_operations is null || !meaning.IsComposed || meaning.Nodes.Count == 0)
+        if (!meaning.IsComposed || meaning.Nodes.Count == 0)
             return [];
 
         var selectorSignatures = meaning.Nodes.Select(item => item.SemanticSignature)

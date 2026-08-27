@@ -151,10 +151,21 @@ public static class MessagingServiceCollectionExtensions
         services.AddSingleton<IMessagingRealtimePublisher, MessagingRealtimePublisher>();
         services.AddHostedService<MessagingRealtimeNotificationHostedService>();
 
-        // V20.1: the existing Founder curriculum manifest worker is the
-        // deployment-wide authority that seeds and drains current-evaluator
-        // durable manifest work. It must run in production alongside the
-        // learning and corpus workers.
+        return services;
+    }
+
+    /// <summary>
+    /// Starts the single canonical LEGEND background-worker set in the one
+    /// application composition root that owns production learning. Messaging
+    /// consumers deliberately do not start these workers merely by registering
+    /// messaging services. AddHostedService is idempotent per implementation,
+    /// so repeated calls cannot manufacture a competing in-process executor.
+    /// </summary>
+    public static IServiceCollection AddLegendConnectHostedWorkers(
+        this IServiceCollection services)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+
         services.AddHostedService<LegendConnectCurriculumManifestHostedService>();
         services.AddHostedService<LegendConnectLearningHostedService>();
         services.AddHostedService<LegendConnectCorpusAcquisitionHostedService>();

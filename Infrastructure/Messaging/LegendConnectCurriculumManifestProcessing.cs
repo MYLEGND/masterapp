@@ -545,7 +545,7 @@ internal sealed class LegendConnectCurriculumManifestProcessor
     }
 }
 
-public sealed class LegendConnectCurriculumManifestHostedService : BackgroundService
+internal sealed class LegendConnectCurriculumManifestHostedService : BackgroundService
 {
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<LegendConnectCurriculumManifestHostedService> _logger;

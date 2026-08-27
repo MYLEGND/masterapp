@@ -86,6 +86,14 @@ jobs:
             echo "::error::The canonical hosted-worker restart regression was not discovered."
             exit 1
           fi
+          if ! grep -q "HostedWorker_CurrentEvaluatorContractRewind_UsesDurableQueueInsteadOfLegacyCursor" test-discovery.log; then
+            echo "::error::The current-evaluator durable-queue boundary regression was not discovered."
+            exit 1
+          fi
+          if ! grep -q "HostedWorkerRestart_RecoversFailedPhaseSeed_AndCompletesConvergence" test-discovery.log; then
+            echo "::error::The failed phase-seed restart regression was not discovered."
+            exit 1
+          fi
 
       - name: Test full suite including security regressions
         run: |
@@ -151,6 +159,7 @@ jobs:
           check() { grep -q "$2" "$1" || { echo "::error::$1 missing shared authority '$2'"; exit 1; }; }
           check AgentPortal/Program.cs AddPlatformDataProtection
           check AgentPortal/Program.cs PlatformRateLimiting
+          check AgentPortal/Program.cs AddLegendConnectHostedWorkers
           check ClientApp/Program.cs AddPlatformDataProtection
           check ClientApp/Program.cs PlatformRateLimiting
           check ClientApp/Program.cs PlatformSecurityHeaders
@@ -159,6 +168,19 @@ jobs:
           check Protect-Website/Program.cs PlatformSecurityHeaders
           check ParfaitApp/Program.cs PlatformConfigValidation
           check ParfaitApp/Program.cs PlatformRateLimiting
+          if grep -REn 'AddHostedService<[^>]*LegendConnect' \
+                AgentPortal/Program.cs ClientApp/Program.cs Protect-Website/Program.cs ParfaitApp/Program.cs 2>/dev/null; then
+            echo "::error::An application composition root directly registers a LEGEND worker outside the canonical worker set."
+            exit 1
+          fi
+          if grep -q 'AddLegendConnectHostedWorkers' ClientApp/Program.cs; then
+            echo "::error::ClientApp must consume messaging services without becoming a competing LEGEND worker host."
+            exit 1
+          fi
+          if grep -q '_legend.TryInferConversationAsync' AgentPortal/Services/LegendFounderAiConversationService.cs; then
+            echo "::error::Founder production chat must not fall back to the legacy non-discourse LEGEND responder."
+            exit 1
+          fi
 
       - name: Architecture invariant - no inline Azure key-ring wiring
         run: |

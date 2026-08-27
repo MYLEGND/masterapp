@@ -193,57 +193,88 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
                 new List<
                     LegendConnectCurriculumExampleSubmission>();
 
-            foreach (var prompt in prompts)
+            for (var promptIndex = 0; promptIndex < prompts.Length; promptIndex++)
             {
+                var prompt = prompts[promptIndex];
                 examples.Add(
                     new LegendConnectCurriculumExampleSubmission(
                         prompt,
                         new Dictionary<string, string>
                         {
-                            ["surface_phrase"] =
-                                prompt,
                             ["conversation_function"] =
                                 "conversation_opening"
-                        }));
+                        },
+                        new LegendConnectMeaningGraphSubmission(
+                            [
+                                new LegendConnectMeaningNodeSubmission(
+                                    "function",
+                                    "conversation_function",
+                                    "conversation_opening",
+                                    prompt)
+                            ],
+                            []),
+                        $"release-direct-{sourceIndex}-source-{promptIndex + 1}"));
             }
 
-            var responseTexts =
+            var responseComponents =
                 sourceIndex switch
                 {
-                    1 => new[]
+                    1 => new (string Function, string Intent)[]
                     {
-                        "Hello! How can I help you today?",
-                        "Hi! What can I help you with?",
-                        "Hello! What would you like to talk about?"
+                        ("Welcome", "I can help"),
+                        ("Greetings", "ready to assist"),
+                        ("Salutations", "here to support")
                     },
 
-                    2 => new[]
+                    2 => new (string Function, string Intent)[]
                     {
-                        "Hi there! How can I help?",
-                        "Hello! I'm ready to help.",
-                        "Hi! What can I do for you?"
+                        ("Greetings", "I can assist"),
+                        ("Salutations", "ready to help"),
+                        ("Welcome", "here to assist")
                     },
 
-                    _ => new[]
+                    _ => new (string Function, string Intent)[]
                     {
-                        "Hello! How may I help?",
-                        "Hi! What can we work on?",
-                        "Hello! What can I help you with?"
+                        ("Salutations", "I can support"),
+                        ("Welcome", "ready to support"),
+                        ("Greetings", "here to help")
                     }
                 };
 
-            foreach (var response in responseTexts)
+            for (var responseIndex = 0; responseIndex < responseComponents.Length; responseIndex++)
             {
+                var component = responseComponents[responseIndex];
+                var response = $"{component.Function}, {component.Intent}.";
                 examples.Add(
                     new LegendConnectCurriculumExampleSubmission(
                         response,
                         new Dictionary<string, string>
                         {
-                            ["surface_phrase"] =
-                                response,
                             ["conversation_function"] =
-                                "conversation_acknowledgement"
-                        }));
+                                "conversation_acknowledgement",
+                            ["intent"] =
+                                "offer_help"
+                        },
+                        new LegendConnectMeaningGraphSubmission(
+                            [
+                                new LegendConnectMeaningNodeSubmission(
+                                    "function",
+                                    "conversation_function",
+                                    "conversation_acknowledgement",
+                                    component.Function),
+                                new LegendConnectMeaningNodeSubmission(
+                                    "intent",
+                                    "intent",
+                                    "offer_help",
+                                    component.Intent)
+                            ],
+                            [
+                                new LegendConnectMeaningRelationSubmission(
+                                    "function",
+                                    "governs",
+                                    "intent")
+                            ]),
+                        $"release-direct-{sourceIndex}-result-{responseIndex + 1}"));
             }
 
             var batch =
@@ -263,13 +294,10 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
                                 new Dictionary<string, string>
                                 {
                                     ["conversation_function"] =
-                                        "conversation_acknowledgement"
+                                        "conversation_acknowledgement",
+                                    ["intent"] =
+                                        "offer_help"
                                 }))
-                    ],
-                    [
-                        new LegendConnectSemanticSpanGroundingSubmission(
-                            "conversation_function",
-                            "surface_phrase")
                     ]);
 
             var accepted =
@@ -307,6 +335,7 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
 
         var factory =
             new CountingHttpClientFactory();
+        var discourseProfiles = new AgentProfileAccessResolver(db);
 
         var chat =
             new LegendFounderAiConversationService(
@@ -314,7 +343,9 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
                 configuration,
                 founderLegend,
                 NullLogger<
-                    LegendFounderAiConversationService>.Instance);
+                    LegendFounderAiConversationService>.Instance,
+                new LegendFounderAiDiscourseStateService(
+                    db, discourseProfiles, operations));
 
         var fallbackFragments = new[]
         {
@@ -348,11 +379,12 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
 
             var native =
                 await founderLegend
-                    .TryInferConversationAsync(
+                    .TryInferConversationWithDiscourseAsync(
                         founder,
                         prompt,
                         Array.Empty<
-                            LegendConnectConversationContextItem>());
+                            LegendConnectConversationContextItem>(),
+                        discourseState: null);
 
             _output.WriteLine("");
             _output.WriteLine(
@@ -664,15 +696,15 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
             curriculum: curriculum);
         var founder = new ClaimsPrincipal(
             new ClaimsIdentity([new Claim("oid", founderId!)], "production-read-only"));
-        var founderLegend = new FounderLegendConnectService(
-            operations,
-            new AgentProfileAccessResolver(db));
+        var profiles = new AgentProfileAccessResolver(db);
+        var founderLegend = new FounderLegendConnectService(operations, profiles);
         var factory = new CountingHttpClientFactory();
         var chat = new LegendFounderAiConversationService(
             factory,
             configuration,
             founderLegend,
-            NullLogger<LegendFounderAiConversationService>.Instance);
+            NullLogger<LegendFounderAiConversationService>.Instance,
+            new LegendFounderAiDiscourseStateService(db, profiles, operations));
 
         var corpusCounts = new
         {
@@ -1145,15 +1177,15 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
             var promptMatrix = await BuildShadowPromptMatrixAsync(shadow);
             var founder = new ClaimsPrincipal(new ClaimsIdentity(
                 [new Claim("oid", founderId!)], "production-shadow-founder"));
-            var founderLegend = new FounderLegendConnectService(
-                operations,
-                new AgentProfileAccessResolver(shadow));
+            var profiles = new AgentProfileAccessResolver(shadow);
+            var founderLegend = new FounderLegendConnectService(operations, profiles);
             var factory = new CountingHttpClientFactory();
             var chat = new LegendFounderAiConversationService(
                 factory,
                 configuration,
                 founderLegend,
-                NullLogger<LegendFounderAiConversationService>.Instance);
+                NullLogger<LegendFounderAiConversationService>.Instance,
+                new LegendFounderAiDiscourseStateService(shadow, profiles, operations));
             var nativePasses = 0;
             foreach (var request in promptMatrix)
             {
@@ -1366,15 +1398,15 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
 
             var founder = new ClaimsPrincipal(
                 new ClaimsIdentity([new Claim("oid", founderId)], "production-data-derived"));
-            var founderLegend = new FounderLegendConnectService(
-                operations,
-                new AgentProfileAccessResolver(db));
+            var profiles = new AgentProfileAccessResolver(db);
+            var founderLegend = new FounderLegendConnectService(operations, profiles);
             var factory = new CountingHttpClientFactory();
             var chat = new LegendFounderAiConversationService(
                 factory,
                 configuration,
                 founderLegend,
-                NullLogger<LegendFounderAiConversationService>.Instance);
+                NullLogger<LegendFounderAiConversationService>.Instance,
+                new LegendFounderAiDiscourseStateService(db, profiles, operations));
 
             _output.WriteLine("============================================================");
             _output.WriteLine("LEGEND® PRODUCTION-DATA-DERIVED v16 REPLAY TRANSCRIPT");
@@ -1862,7 +1894,9 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
             factory,
             configuration,
             founderLegend,
-            NullLogger<LegendFounderAiConversationService>.Instance);
+            NullLogger<LegendFounderAiConversationService>.Instance,
+            new LegendFounderAiDiscourseStateService(
+                db, new AgentProfileAccessResolver(db), operations));
         var replyClock = Stopwatch.StartNew();
         var reply = await service.ReplyAsync(
             founder,

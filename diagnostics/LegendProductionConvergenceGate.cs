@@ -1,4 +1,4 @@
-#:project ../Infrastructure/Infrastructure.csproj
+#:package Microsoft.Data.SqlClient@7.0.2
 
 using Microsoft.Data.SqlClient;
 using System.Data;
@@ -49,7 +49,22 @@ while (true)
              FROM [LegendCurriculumManifestWorkItems] m
              WHERE m.[ProcessingState] <> 'Completed'
                 OR m.[CompletedLanguageIntelligenceEvaluatorVersion] <
-                   p.[TargetLanguageIntelligenceEvaluatorVersion]) AS IncompleteManifests
+                   p.[TargetLanguageIntelligenceEvaluatorVersion]) AS IncompleteManifests,
+            (SELECT TOP (1) w.[ProcessingState]
+             FROM [LegendHistoricalReevaluationWorkItems] w
+             WHERE w.[EvaluatorVersion] = p.[TargetLanguageIntelligenceEvaluatorVersion]
+               AND w.[Phase] = p.[LanguageIntelligenceReevaluationPhase]
+               AND w.[WorkKind] = 'PhaseSeed') AS PhaseSeedState,
+            (SELECT TOP (1) w.[AttemptCount]
+             FROM [LegendHistoricalReevaluationWorkItems] w
+             WHERE w.[EvaluatorVersion] = p.[TargetLanguageIntelligenceEvaluatorVersion]
+               AND w.[Phase] = p.[LanguageIntelligenceReevaluationPhase]
+               AND w.[WorkKind] = 'PhaseSeed') AS PhaseSeedAttempts,
+            (SELECT TOP (1) w.[LastErrorCode]
+             FROM [LegendHistoricalReevaluationWorkItems] w
+             WHERE w.[EvaluatorVersion] = p.[TargetLanguageIntelligenceEvaluatorVersion]
+               AND w.[Phase] = p.[LanguageIntelligenceReevaluationPhase]
+               AND w.[WorkKind] = 'PhaseSeed') AS PhaseSeedError
         FROM [LegendConnectRuntimePolicies] p
         LEFT JOIN [LegendLanguageDerivationConvergences] c
           ON c.[TargetEvaluatorVersion] =
@@ -81,6 +96,9 @@ while (true)
     var activeOrFailedWork = reader.GetInt64(6);
     var terminalCanonicalFailures = reader.GetInt64(7);
     var incompleteManifests = reader.GetInt64(8);
+    var phaseSeedState = reader.IsDBNull(9) ? null : reader.GetString(9);
+    var phaseSeedAttempts = reader.IsDBNull(10) ? (int?)null : reader.GetInt32(10);
+    var phaseSeedError = reader.IsDBNull(11) ? null : reader.GetString(11);
 
     Console.WriteLine(
         $"{DateTime.UtcNow:O} target=v{target} completed=v{completed} " +
@@ -89,6 +107,9 @@ while (true)
         $"active_or_failed={activeOrFailedWork} " +
         $"terminal_failures={terminalCanonicalFailures} " +
         $"incomplete_manifests={incompleteManifests} " +
+        $"phase_seed={phaseSeedState ?? "<missing>"}/" +
+        $"{(phaseSeedAttempts.HasValue ? phaseSeedAttempts.Value.ToString() : "<none>")}/" +
+        $"{phaseSeedError ?? "<none>"} " +
         $"heartbeat={(heartbeat.HasValue ? heartbeat.Value.ToString("O") : "<missing>")}");
 
     observedPostDeployHeartbeat |= heartbeat is not null &&

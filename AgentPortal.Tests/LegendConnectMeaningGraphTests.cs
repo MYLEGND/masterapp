@@ -554,7 +554,8 @@ public sealed class LegendConnectMeaningGraphTests
         await db.SaveChangesAsync();
         var state = new LegendFounderAiDiscourseStateService(
             db,
-            new AgentProfileAccessResolver(db));
+            new AgentProfileAccessResolver(db),
+            CreateOperations(db));
         var graph = new LegendConnectUtteranceMeaningGraphSnapshot(
             true,
             [new LegendConnectUtteranceMeaningNode("signature", "goal", "compare", 0, 1, 3)],
@@ -622,7 +623,8 @@ public sealed class LegendConnectMeaningGraphTests
             await using var db = new MasterAppDbContext(options);
             var state = new LegendFounderAiDiscourseStateService(
                 db,
-                new AgentProfileAccessResolver(db));
+                new AgentProfileAccessResolver(db),
+                CreateOperations(db));
             await state.RecordObservationAsync(
                 ControllerTestHelpers.BuildUser(founderId),
                 conversationId.ToString(),
@@ -689,7 +691,7 @@ public sealed class LegendConnectMeaningGraphTests
                 configuration,
                 founderLegend,
                 NullLogger<LegendFounderAiConversationService>.Instance,
-                new LegendFounderAiDiscourseStateService(db, profiles));
+                new LegendFounderAiDiscourseStateService(db, profiles, operations));
             var conversationId = Guid.NewGuid();
             const string unseenInput = "A private ungoverned surface request";
 
@@ -707,7 +709,7 @@ public sealed class LegendConnectMeaningGraphTests
             Assert.Contains("ProviderFailure=provider_api_key_unavailable", response.Message, StringComparison.Ordinal);
             Assert.DoesNotContain(unseenInput, response.Message, StringComparison.OrdinalIgnoreCase);
             Assert.Equal(0, factory.CreateClientCalls);
-            var turns = await new LegendFounderAiDiscourseStateService(db, profiles)
+            var turns = await new LegendFounderAiDiscourseStateService(db, profiles, operations)
                 .GetTurnsAsync(founderId, conversationId);
             Assert.Single(turns);
             Assert.Equal("user", turns[0].Role);
@@ -825,6 +827,23 @@ public sealed class LegendConnectMeaningGraphTests
             registry,
             NullLogger<LegendConnectCorpusService>.Instance);
         return new LegendConnectCurriculumService(db, registry, corpus);
+    }
+
+    private static LegendConnectOperations CreateOperations(MasterAppDbContext db)
+    {
+        var configuration = Configuration();
+        var registry = new LegendLanguageRegistry(db, configuration);
+        var corpus = new LegendConnectCorpusService(
+            db,
+            registry,
+            NullLogger<LegendConnectCorpusService>.Instance);
+        var curriculum = new LegendConnectCurriculumService(db, registry, corpus);
+        return new LegendConnectOperations(
+            db,
+            registry,
+            corpus,
+            configuration,
+            curriculum: curriculum);
     }
 
     private static IConfiguration Configuration() =>
