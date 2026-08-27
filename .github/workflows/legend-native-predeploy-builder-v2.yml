@@ -1,4 +1,4 @@
-name: LEGEND canonical native predeploy builder v2
+name: LEGEND canonical native predeploy proof
 
 on:
   push:
@@ -34,213 +34,16 @@ jobs:
         with:
           dotnet-version: ${{ env.DOTNET_VERSION }}
 
-      - name: Replace defective canonical reasoning and articulation logic
-        shell: pwsh
+      - name: Apply canonical replacement patch
+        run: python3 scripts/legend-native-predeploy-patch.py
+
+      - name: Remove disposable branch-only harnesses
+        shell: bash
         run: |
-          @'
-          from pathlib import Path
-
-          def replace_once(path, old, new):
-              p = Path(path)
-              text = p.read_text(encoding='utf-8')
-              count = text.count(old)
-              if count != 1:
-                  raise SystemExit(f'{path}: expected one replacement target, found {count}')
-              p.write_text(text.replace(old, new, 1), encoding='utf-8')
-
-          curriculum = 'Infrastructure/Messaging/LegendConnectCurriculum.cs'
-          replace_once(
-              curriculum,
-              '''    internal async Task<LegendSemanticTransitionInference> TryInferComposedSemanticTransitionAsync(\n        string sourceLanguageCode,\n        string input,\n        LegendConnectDiscourseStateSnapshot? discourseState,\n        CancellationToken cancellationToken = default)\n''',
-              '''    internal async Task<LegendSemanticTransitionInference> TryInferComposedSemanticTransitionAsync(\n        string sourceLanguageCode,\n        string input,\n        IReadOnlyList<LegendConnectConversationContextItem> context,\n        LegendConnectDiscourseStateSnapshot? discourseState,\n        CancellationToken cancellationToken = default)\n''')
-          replace_once(
-              curriculum,
-              '''            sourceLanguageCode,\n            input,\n            [],\n            discourseState,\n            requireComposedGraph: true,\n''',
-              '''            sourceLanguageCode,\n            input,\n            context,\n            discourseState,\n            requireComposedGraph: true,\n''')
-          replace_once(
-              curriculum,
-              '''            IReadOnlyList<GroundedContextFrame> contextFrames;\n            if (discourseState is not null)\n            {\n                contextFrames = ResolveGroundedContextFramesFromDiscourseState(\n                    discourseState, observations);\n            }\n            else\n            {\n                contextFrames = await ResolveGroundedContextFramesAsync(\n                    language, context, observations, cancellationToken);\n            }\n            candidates = BindCandidatesFromGroundedContext(partialCandidates, contextFrames);\n''',
-              '''            // Persisted discourse and caller-supplied context are two\n            // evidence views of the same conversation. Feed both through the\n            // one grounded-context authority; do not let persistence timing\n            // make the native planner forget context already present in the\n            // serving request. BindCandidatesFromGroundedContext canonicalizes\n            // duplicate bindings before transition selection.\n            var contextFrames = new List<GroundedContextFrame>();\n            if (discourseState is not null)\n            {\n                contextFrames.AddRange(ResolveGroundedContextFramesFromDiscourseState(\n                    discourseState, observations));\n            }\n            contextFrames.AddRange(await ResolveGroundedContextFramesAsync(\n                language, context, observations, cancellationToken));\n            candidates = BindCandidatesFromGroundedContext(partialCandidates, contextFrames);\n''')
-
-          old_layout = '''        var components = BuildSemanticLayoutComponents(example, anchors, frameDimensions);\n        if (components.Count < 2 ||\n            components.Zip(components.Skip(1), (left, right) =>\n                    left.StartTokenIndex + left.TokenLength > right.StartTokenIndex)\n                .Any(item => item))\n'''
-          new_layout = '''        var components = BuildSemanticLayoutComponents(example, anchors, frameDimensions);\n\n        // Some valid Founder curricula intentionally govern an entire response\n        // as one semantic span instead of assigning artificial semantics to\n        // each clause. When that one exact lexical span covers the complete\n        // response, derive only its observed punctuation-delimited surface\n        // segments and feed them back into this same realization authority.\n        // No segment receives invented meaning; the whole-span semantic frame\n        // remains the authority and three independent families still have to\n        // support one structural layout before any recombination can serve.\n        if (components.Count == 1 &&\n            TryExpandWholeSpanSurfaceRealizationLayout(\n                example, components[0], out var surfaceComponents))\n        {\n            components = surfaceComponents;\n        }\n\n        if (components.Count < 2 ||\n            components.Zip(components.Skip(1), (left, right) =>\n                    left.StartTokenIndex + left.TokenLength > right.StartTokenIndex)\n                .Any(item => item))\n'''
-          replace_once(curriculum, old_layout, new_layout)
-
-          marker = '''    private static bool TryRealizeOriginalLearnedLayout(\n'''
-          helper = r'''    /// <summary>
-    /// Refines one exact whole-response semantic anchor into observed surface
-    /// segments only when internal punctuation supplies an explicit boundary.
-    /// This is representation refinement inside the canonical realization
-    /// authority: it does not create semantic nodes, templates, phrase rules,
-    /// response caches, or another responder.
-    /// </summary>
-    private static bool TryExpandWholeSpanSurfaceRealizationLayout(
-        SemanticResultExample example,
-        SemanticLayoutComponent wholeSpan,
-        out List<SemanticLayoutComponent> components)
-    {
-        components = [];
-        var normalized = LegendLanguageIdentity.NormalizeText(example.Text);
-        var tokens = SurfaceComponents(normalized);
-        if (tokens.Count < 2 ||
-            wholeSpan.StartTokenIndex != 0 ||
-            wholeSpan.TokenLength != tokens.Count)
-        {
-            return false;
-        }
-
-        var terminalPunctuation = TerminalPunctuation(normalized);
-        var bodyLength = normalized.Length - terminalPunctuation.Length;
-        if (bodyLength <= 0)
-            return false;
-
-        var starts = new List<int> { 0 };
-        var ends = new List<int>();
-        for (var index = 0; index < bodyLength; index++)
-        {
-            var character = normalized[index];
-            if (character is not ('!' or '?' or '.' or ';' or ':') ||
-                index + 1 >= bodyLength)
-            {
-                continue;
-            }
-
-            var next = index + 1;
-            while (next < bodyLength && char.IsWhiteSpace(normalized[next]))
-                next++;
-            if (next >= bodyLength)
-                continue;
-
-            ends.Add(index + 1);
-            starts.Add(next);
-            index = next - 1;
-        }
-        ends.Add(bodyLength);
-        if (starts.Count < 2 || starts.Count != ends.Count)
-            return false;
-
-        var tokenCursor = 0;
-        for (var index = 0; index < starts.Count; index++)
-        {
-            var surface = normalized[starts[index]..ends[index]].Trim();
-            if (string.IsNullOrWhiteSpace(surface))
-                return false;
-            var segmentTokenCount = SurfaceComponents(surface).Count;
-            if (segmentTokenCount <= 0)
-                return false;
-
-            components.Add(new SemanticLayoutComponent(
-                wholeSpan.Dimension + "#surface-" + (index + 1),
-                wholeSpan.Value,
-                tokenCursor,
-                segmentTokenCount,
-                surface));
-            tokenCursor += segmentTokenCount;
-        }
-
-        if (tokenCursor != wholeSpan.TokenLength)
-        {
-            components = [];
-            return false;
-        }
-        return components.Count >= 2;
-    }
-
-'''
-          p = Path(curriculum)
-          text = p.read_text(encoding='utf-8')
-          if text.count(marker) != 1:
-              raise SystemExit('realization helper insertion marker changed')
-          text = text.replace(marker, helper + marker, 1)
-          group_old = '''            .GroupBy(item => item.Shape, StringComparer.Ordinal)\n'''
-          if text.count(group_old) != 2:
-              raise SystemExit(f'expected two realization shape groupings, found {text.count(group_old)}')
-          text = text.replace(
-              group_old,
-              '''            .GroupBy(\n                item => item.Shape + "\\u001f" + item.TerminalPunctuation,\n                StringComparer.Ordinal)\n''')
-          p.write_text(text, encoding='utf-8')
-
-          operations = 'Infrastructure/Messaging/LegendConnectOperations.cs'
-          replace_once(
-              operations,
-              '''        var composed = await Curriculum.TryInferComposedSemanticTransitionAsync(\n            "en", input ?? string.Empty, discourseState, cancellationToken);\n''',
-              '''        var composed = await Curriculum.TryInferComposedSemanticTransitionAsync(\n            "en", input ?? string.Empty, context, discourseState, cancellationToken);\n''')
-
-          sql_tests = 'AgentPortal.Tests/LegendConnectFounderSemanticTransformationSqlTests.cs'
-          test_text = Path(sql_tests).read_text(encoding='utf-8')
-          old = '''            var composedInitial = await proofServices.Curriculum.TryInferComposedSemanticTransitionAsync(\n                "en",\n                establishingRequest,\n                new LegendConnectDiscourseStateSnapshot([]));\n'''
-          new = '''            var composedInitial = await proofServices.Curriculum.TryInferComposedSemanticTransitionAsync(\n                "en",\n                establishingRequest,\n                [],\n                new LegendConnectDiscourseStateSnapshot([]));\n'''
-          if test_text.count(old) != 1:
-              raise SystemExit('initial direct composed test call target changed')
-          test_text = test_text.replace(old, new, 1)
-          old = '''            var composedHeldOut = await proofServices.Curriculum.TryInferComposedSemanticTransitionAsync(\n                "en",\n                heldOutRequest,\n                state);\n'''
-          new = '''            var composedHeldOut = await proofServices.Curriculum.TryInferComposedSemanticTransitionAsync(\n                "en",\n                heldOutRequest,\n                [],\n                state);\n'''
-          if test_text.count(old) != 1:
-              raise SystemExit('held-out direct composed test call target changed')
-          Path(sql_tests).write_text(test_text.replace(old, new, 1), encoding='utf-8')
-
-          tests = 'AgentPortal.Tests/LegendConnectSemanticSpanGroundingTests.cs'
-          p = Path(tests)
-          text = p.read_text(encoding='utf-8')
-          test_marker = '''    [Fact]\n    public async Task GovernedExecutableProjection_FailsClosedWhenOmittedMetadataCouldChangeTheResult()\n'''
-          test_method = '''    [Fact]\n    public async Task WholeSpanFounderResponses_DecomposeObservedSurfaceStructure_WithoutStoredResponseRetrieval()\n    {\n        await using var db = ControllerTestHelpers.BuildDb();\n        var fixture = CreateFixture(db);\n\n        for (var family = 1; family <= 3; family++)\n        {\n            var submitted = await fixture.Curriculum.SubmitFounderEnglishBatchAsync(\n                WholeSpanArticulationFamily(family));\n            Assert.True(submitted.Succeeded, submitted.Message);\n        }\n\n        var storedResults = await db.LegendCurriculumExamples\n            .Where(item => item.SupersededUtc == null &&\n                db.LegendCurriculumExampleVariations.Any(variation =>\n                    variation.CurriculumExampleId == item.Id &&\n                    variation.Dimension == "conversation_function" &&\n                    variation.Value == "conversation_acknowledgement"))\n            .Join(db.LegendLanguageTextUnits, example => example.TextUnitId, unit => unit.Id, (_, unit) => unit.Text)\n            .ToArrayAsync();\n\n        var native = await fixture.Operations.TryInferConversationWithDiscourseAsync(\n            "Good morning.", [], new LegendConnectDiscourseStateSnapshot([]));\n\n        Assert.True(native.Supported, native.ReasonCode);\n        Assert.Equal("semantic_transition_governed_composed", native.ReasonCode);\n        Assert.True(native.EvidenceCount >= 3);\n        Assert.False(string.IsNullOrWhiteSpace(native.Answer));\n        Assert.DoesNotContain(storedResults, stored => string.Equals(\n            LegendLanguageIdentity.NormalizeText(stored),\n            LegendLanguageIdentity.NormalizeText(native.Answer!),\n            StringComparison.Ordinal));\n        Assert.Contains("!", native.Answer!, StringComparison.Ordinal);\n        Assert.EndsWith("?", native.Answer, StringComparison.Ordinal);\n        Assert.False(native.RequiresEscalation);\n    }\n\n'''
-          if text.count(test_marker) != 1:
-              raise SystemExit('whole-span test insertion marker changed')
-          text = text.replace(test_marker, test_method + test_marker, 1)
-
-          helper_marker = '''    private static LegendConnectCurriculumBatchSubmission\n        RepeatedSemanticSlotArticulationFamily(int family)\n'''
-          family_helper = '''    private static LegendConnectCurriculumBatchSubmission\n        WholeSpanArticulationFamily(int family)\n    {\n        var resultText = family switch\n        {\n            1 => "Hello! What can I help you with?",\n            2 => "Welcome! How may I support you?",\n            _ => "Greetings! What should we work on?"\n        };\n\n        return new LegendConnectCurriculumBatchSubmission(\n            $"response.whole-span-articulation.{family}",\n            "Founder-controlled whole-span response articulation evidence",\n            [\n                new LegendConnectCurriculumExampleSubmission(\n                    $"Founder opening evidence {family}: Good morning.",\n                    new Dictionary<string, string>\n                    {\n                        ["conversation_function"] = "conversation_opening"\n                    },\n                    new LegendConnectMeaningGraphSubmission(\n                    [\n                        new LegendConnectMeaningNodeSubmission(\n                            "opening", "conversation_function", "conversation_opening", "Good morning")\n                    ],\n                    [])),\n                new LegendConnectCurriculumExampleSubmission(\n                    resultText,\n                    new Dictionary<string, string>\n                    {\n                        ["conversation_function"] = "conversation_acknowledgement"\n                    },\n                    new LegendConnectMeaningGraphSubmission(\n                    [\n                        new LegendConnectMeaningNodeSubmission(\n                            "response", "conversation_function", "conversation_acknowledgement", resultText)\n                    ],\n                    []))\n            ],\n            [new LegendConnectSemanticTransitionSubmission(\n                new LegendConnectSemanticFrameSubmission(new Dictionary<string, string>\n                {\n                    ["conversation_function"] = "conversation_opening"\n                }),\n                new LegendConnectSemanticFrameSubmission(new Dictionary<string, string>\n                {\n                    ["conversation_function"] = "conversation_acknowledgement"\n                }))]);\n    }\n\n'''
-          if text.count(helper_marker) != 1:
-              raise SystemExit('whole-span family helper insertion marker changed')
-          p.write_text(text.replace(helper_marker, family_helper + helper_marker, 1), encoding='utf-8')
-          '@ | python3
-
-          @'
-          param()
-          $ErrorActionPreference = 'Stop'
-          $webapp = if ($env:AZURE_WEBAPP_NAME) { $env:AZURE_WEBAPP_NAME } else { 'masterapp-portal' }
-          $resourceGroup = if ($env:AZURE_RESOURCE_GROUP) { $env:AZURE_RESOURCE_GROUP } else { 'masterapp-rg' }
-          $connection = ''
-          $connections = az webapp config connection-string list --resource-group $resourceGroup --name $webapp --output json | ConvertFrom-Json
-          $match = $connections | Where-Object { $_.name -eq 'MasterAppDb' } | Select-Object -First 1
-          if ($null -ne $match) { $connection = [string]$match.value }
-          $settings = @{}
-          foreach ($item in (az webapp config appsettings list --resource-group $resourceGroup --name $webapp --output json | ConvertFrom-Json)) { $settings[[string]$item.name] = [string]$item.value }
-          if ([string]::IsNullOrWhiteSpace($connection)) {
-            foreach ($name in @('ConnectionStrings__MasterAppDb','MasterAppDb','SQLCONNSTR_MasterAppDb')) {
-              if ($settings.ContainsKey($name) -and -not [string]::IsNullOrWhiteSpace($settings[$name])) { $connection = $settings[$name]; break }
-            }
-          }
-          if ([string]::IsNullOrWhiteSpace($connection)) { throw 'Production MasterAppDb connection string could not be resolved.' }
-          if ($connection -notmatch '(?i)(server=tcp:|\.database\.windows\.net|initial catalog=)') { throw 'Resolved MasterAppDb is not recognized as production SQL Server.' }
-          $founderOid = ''
-          foreach ($name in @('FOUNDER_OID','Founder__Oid','Founder:Oid')) {
-            if ($settings.ContainsKey($name) -and -not [string]::IsNullOrWhiteSpace($settings[$name])) { $founderOid = $settings[$name]; break }
-          }
-          if ([string]::IsNullOrWhiteSpace($founderOid)) { throw 'Production Founder OID could not be resolved.' }
-          Write-Output "::add-mask::$connection"
-          Write-Output "::add-mask::$founderOid"
-          $env:LEGEND_PRODUCTION_READONLY_CONNECTION = $connection
-          $env:LEGEND_PRODUCTION_READONLY_FOUNDER_OID = $founderOid
-          $env:LEGEND_PRODUCTION_READONLY_EXPECT_NATIVE = 'true'
-          $env:OPENAI_API_KEY = ''
-          $env:OpenAI__ApiKey = ''
-          dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-build `
-            --filter 'FullyQualifiedName~LegendFounderCurriculumSqlServerE2ETests.ProductionReadOnlyEightPromptNativeDiagnostic' `
-            --logger 'console;verbosity=detailed'
-          if ($LASTEXITCODE -ne 0) { throw 'Live Founder native-only 8-prompt proof failed.' }
-          dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-build `
-            --filter 'FullyQualifiedName~LegendFounderCurriculumSqlServerE2ETests.ProductionReadOnlyV21ShadowRebuild_UsesLiveFounderEvidenceWithoutWrites' `
-            --logger 'console;verbosity=detailed'
-          if ($LASTEXITCODE -ne 0) { throw 'Live Founder V21 read-only shadow proof failed.' }
-          Write-Host 'LEGEND LIVE PREDEPLOY PROOF: PASS'
-          Write-Host 'OPENAI: BLOCKED'
-          Write-Host 'PRODUCTION WRITES: BLOCKED'
-          '@ | Set-Content -Path scripts/legend-production-native-proof.ps1 -Encoding utf8
-
           git rm .github/workflows/legend-native-predeploy-builder.yml
           git rm .github/workflows/legend-native-live-shape-diagnostic.yml
           git rm .github/workflows/legend-native-predeploy-builder-v2.yml
+          git rm scripts/legend-native-predeploy-patch.py
           git diff --check
 
       - name: Restore
@@ -253,18 +56,18 @@ jobs:
           dotnet build MASTERAPP.sln -c Release --no-restore 2>&1 | tee build.log
           grep -qE '^[[:space:]]*0 Warning\(s\)' build.log
 
-      - name: Login to Azure for live Founder proof before regression
+      - name: Login to Azure for live Founder proof
         uses: azure/login@v2
         with:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
-      - name: Prove native LEGEND against live Founder database with OpenAI blocked
+      - name: Prove native LEGEND on live Founder data with OpenAI blocked
         shell: pwsh
         run: ./scripts/legend-production-native-proof.ps1
 
-      - name: Run full regression only after live native proof passes
+      - name: Run full regression only after live proof passes
         shell: bash
         run: |
           set -o pipefail
@@ -278,13 +81,6 @@ jobs:
           git status --short
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add Infrastructure/Messaging/LegendConnectCurriculum.cs \
-                  Infrastructure/Messaging/LegendConnectOperations.cs \
-                  AgentPortal.Tests/LegendConnectFounderSemanticTransformationSqlTests.cs \
-                  AgentPortal.Tests/LegendConnectSemanticSpanGroundingTests.cs \
-                  scripts/legend-production-native-proof.ps1 \
-                  .github/workflows/legend-native-predeploy-builder.yml \
-                  .github/workflows/legend-native-live-shape-diagnostic.yml \
-                  .github/workflows/legend-native-predeploy-builder-v2.yml
+          git add -A
           git commit -m 'Advance LEGEND native contextual reasoning and governed articulation'
           git push origin HEAD:fix/legend-native-context-reasoning-20260827
