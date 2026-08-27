@@ -102,6 +102,10 @@ jobs:
             echo "::error::The failed phase-seed restart regression was not discovered."
             exit 1
           fi
+          if ! grep -q "ProductionReadOnlyEightPromptNativeDiagnostic" test-discovery.log; then
+            echo "::error::The production native-only Founder conversation regression was not discovered."
+            exit 1
+          fi
 
       - name: Test full suite including security regressions
         run: |
@@ -449,7 +453,7 @@ jobs:
       - merge
       - deploy
     runs-on: windows-latest
-    timeout-minutes: 40
+    timeout-minutes: 50
     environment:
       name: Production
     permissions:
@@ -518,8 +522,22 @@ jobs:
           }
           if ([string]::IsNullOrWhiteSpace($connection)) { throw 'Production MasterAppDb connection string could not be resolved.' }
           if ($connection -notmatch '(?i)(server=tcp:|\.database\.windows\.net|initial catalog=)') { throw 'Resolved MasterAppDb is not recognized as production SQL Server.' }
+          $rawSettings = az webapp config appsettings list --resource-group '${{ env.AZURE_RESOURCE_GROUP }}' --name '${{ env.AZURE_WEBAPP_NAME }}' --output json
+          if ($LASTEXITCODE -ne 0) { throw 'Unable to read the deployed Founder authority setting.' }
+          $settings = @{}
+          foreach ($item in ($rawSettings | ConvertFrom-Json)) { $settings[[string]$item.name] = [string]$item.value }
+          $founderOid = ''
+          foreach ($name in @('FOUNDER_OID','FounderOid','Founder__Oid','Founder:Oid')) {
+            if ($settings.ContainsKey($name) -and -not [string]::IsNullOrWhiteSpace($settings[$name])) {
+              $founderOid = $settings[$name]
+              break
+            }
+          }
+          if ([string]::IsNullOrWhiteSpace($founderOid)) { throw 'The deployed Founder OID authority is missing.' }
           Write-Output "::add-mask::$connection"
+          Write-Output "::add-mask::$founderOid"
           "LEGEND_PRODUCTION_READONLY_CONNECTION=$connection" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "LEGEND_PRODUCTION_READONLY_FOUNDER_OID=$founderOid" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           "LEGEND_CONVERGENCE_TIMEOUT_MINUTES=30" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
       - name: Verify canonical worker drained production convergence
@@ -535,5 +553,26 @@ jobs:
         with:
           name: legend-production-convergence-${{ github.run_id }}
           path: diagnostics/legend-production-convergence-gate.txt
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Verify production Founder chat uses canonical native inference only
+        shell: pwsh
+        env:
+          LEGEND_PRODUCTION_READONLY_EXPECT_NATIVE: 'true'
+          OPENAI_API_KEY: ''
+          OpenAI__ApiKey: ''
+        run: |
+          dotnet restore 'AgentPortal.Tests/AgentPortal.Tests.csproj'
+          if ($LASTEXITCODE -ne 0) { throw 'LEGEND native-only production gate restore failed.' }
+          dotnet test 'AgentPortal.Tests/AgentPortal.Tests.csproj' --configuration Release --filter 'FullyQualifiedName~ProductionReadOnlyEightPromptNativeDiagnostic' --logger 'console;verbosity=detailed' 2>&1 | Tee-Object -FilePath diagnostics/legend-production-native-only-gate.txt
+          if ($LASTEXITCODE -ne 0) { throw 'LEGEND native-only production conversation gate failed.' }
+
+      - name: Upload native-only production verification transcript
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: legend-production-native-only-${{ github.run_id }}
+          path: diagnostics/legend-production-native-only-gate.txt
           if-no-files-found: error
           retention-days: 7

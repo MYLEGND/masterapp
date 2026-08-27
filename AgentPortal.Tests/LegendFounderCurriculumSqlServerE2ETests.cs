@@ -858,15 +858,17 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
                     .ToArray();
             var source = await curriculum
                 .AnalyzeSemanticTransitionSourceSemanticsAsync("en", prompt);
-            var native = await founderLegend.TryInferConversationAsync(
+            var native = await founderLegend.TryInferConversationWithDiscourseAsync(
                 founder,
                 prompt,
-                Array.Empty<LegendConnectConversationContextItem>());
+                Array.Empty<LegendConnectConversationContextItem>(),
+                discourseState: null);
             var reply = await chat.ReplyAsync(
                 founder,
                 new LegendFounderAiChatRequest
                 {
                     Mode = "legend",
+                    NativeOnly = true,
                     Messages = [new LegendFounderAiChatMessage("user", prompt)]
                 });
 
@@ -910,6 +912,8 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
                 !native.RequiresEscalation &&
                 !string.IsNullOrWhiteSpace(native.Answer) &&
                 reply.Succeeded &&
+                reply.ResponseAuthority == "LegendAi" &&
+                reply.Stage == "native_response" &&
                 string.Equals(reply.Message, native.Answer, StringComparison.Ordinal);
             if (isNativePass)
                 nativePasses++;
@@ -1193,16 +1197,21 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
                 var graph = await operations.AnalyzeReusableMeaningGraphAsync(request.Text);
                 var plan = await operations.TryPlanConversationAsync(request.Text, null);
                 var binding = await operations.TryBindConversationContentAsync(request.Text, null);
-                var native = await founderLegend.TryInferConversationAsync(
-                    founder, request.Text, Array.Empty<LegendConnectConversationContextItem>());
+                var native = await founderLegend.TryInferConversationWithDiscourseAsync(
+                    founder,
+                    request.Text,
+                    Array.Empty<LegendConnectConversationContextItem>(),
+                    discourseState: null);
                 var response = await chat.ReplyAsync(founder, new LegendFounderAiChatRequest
                 {
                     Mode = "legend",
+                    NativeOnly = true,
                     Messages = [new LegendFounderAiChatMessage("user", request.Text)]
                 });
                 WriteShadowPromptTrace(request, source, graph, plan, binding, native, response, factory.CreateClientCalls);
                 var passed = native.Supported && native.EvidenceCount > 0 && !native.RequiresEscalation &&
                     !string.IsNullOrWhiteSpace(native.Answer) && response.Succeeded &&
+                    response.ResponseAuthority == "LegendAi" && response.Stage == "native_response" &&
                     string.Equals(native.Answer, response.Message, StringComparison.Ordinal);
                 if (request.ExpectNative)
                 {
@@ -1213,6 +1222,8 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
                 {
                     Assert.False(native.Supported, $"Shadow fail-closed prompt unexpectedly served for {request.Reference}.");
                     Assert.True(native.RequiresEscalation);
+                    Assert.Equal("SystemDiagnostic", response.ResponseAuthority);
+                    Assert.Equal("native_only_blocked", response.Stage);
                 }
             }
             Assert.Equal(promptMatrix.Count(item => item.ExpectNative), nativePasses);
@@ -1835,12 +1846,14 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
             StringComparison.OrdinalIgnoreCase);
         var source = await curriculum.AnalyzeSemanticTransitionSourceSemanticsAsync("en", request);
         var nativeClock = Stopwatch.StartNew();
-        var native = await founderLegend.TryInferConversationAsync(
+        var native = await founderLegend.TryInferConversationWithDiscourseAsync(
             founder,
             request,
             history.Select(item => new LegendConnectConversationContextItem(
-                item.Role ?? string.Empty,
-                item.Content ?? string.Empty)).ToArray());
+                    item.Role ?? string.Empty,
+                    item.Content ?? string.Empty))
+                .ToArray(),
+            discourseState: null);
         nativeClock.Stop();
 
         _output.WriteLine($"REQUEST: {request}");
@@ -1900,7 +1913,12 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
         var replyClock = Stopwatch.StartNew();
         var reply = await service.ReplyAsync(
             founder,
-            new LegendFounderAiChatRequest { Messages = [.. history, new("user", request)] });
+            new LegendFounderAiChatRequest
+            {
+                Mode = "legend",
+                NativeOnly = true,
+                Messages = [.. history, new("user", request)]
+            });
         replyClock.Stop();
 
         Assert.True(reply.Succeeded);
@@ -1908,6 +1926,8 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
         {
             var replyMessage = Assert.IsType<string>(reply.Message);
             Assert.Equal(native.Answer, replyMessage);
+            Assert.Equal("LegendAi", reply.ResponseAuthority);
+            Assert.Equal("native_response", reply.Stage);
 
             Assert.False(
                 replyMessage.Contains(
@@ -2174,6 +2194,8 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
             {
                 Content = JsonContent.Create(new LegendFounderAiChatRequest
                 {
+                    Mode = "legend",
+                    NativeOnly = true,
                     Messages = [new("user", request)]
                 })
             };
@@ -2269,6 +2291,8 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
                 {
                     Content = JsonContent.Create(new LegendFounderAiChatRequest
                     {
+                        Mode = "legend",
+                        NativeOnly = true,
                         Messages = [.. (request.History ?? []), new("user", request.Text)]
                     })
                 };
