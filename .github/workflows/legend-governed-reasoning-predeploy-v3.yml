@@ -1,0 +1,151 @@
+name: LEGEND governed reasoning predeploy proof v3
+
+on:
+  push:
+    branches:
+      - fix/legend-governed-reasoning-executor-20260827
+    paths:
+      - .github/workflows/legend-governed-reasoning-predeploy-v3.yml
+
+permissions:
+  contents: write
+  id-token: write
+
+env:
+  AZURE_WEBAPP_NAME: masterapp-portal
+  AZURE_RESOURCE_GROUP: masterapp-rg
+  DOTNET_VERSION: '10.x'
+
+jobs:
+  prove:
+    runs-on: ubuntu-latest
+    timeout-minutes: 70
+    environment:
+      name: Production
+    steps:
+      - name: Checkout isolated candidate
+        uses: actions/checkout@v4
+        with:
+          ref: fix/legend-governed-reasoning-executor-20260827
+          fetch-depth: 0
+
+      - name: Apply canonical integration and remove disposable machinery
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/legend-governed-reasoning-patch.py
+          git rm scripts/legend-governed-reasoning-patch.py
+          git rm .github/workflows/legend-governed-reasoning-predeploy.yml
+          git rm .github/workflows/legend-governed-reasoning-predeploy-v2.yml
+          git rm .github/workflows/legend-governed-reasoning-predeploy-v3.yml
+          git diff --check
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Restore
+        run: dotnet restore MASTERAPP.sln
+
+      - name: Release build with zero warnings
+        shell: bash
+        run: |
+          set -euo pipefail
+          dotnet build MASTERAPP.sln -c Release --no-restore 2>&1 | tee build.log
+          grep -qE '^[[:space:]]*0 Warning\(s\)' build.log
+          grep -qE '^[[:space:]]*0 Error\(s\)' build.log
+
+      - name: Prove governed multi-step reasoning and frozen architecture
+        shell: bash
+        run: |
+          set -euo pipefail
+          dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-build \
+            --filter 'FullyQualifiedName~LegendConnectGovernedReasoningExecutorTests|FullyQualifiedName~LegendConnectCompositionalUnderstandingTests|FullyQualifiedName~LegendConnectDiscourseReferenceBindingTests|FullyQualifiedName~LegendConnectMeaningGraphTests|FullyQualifiedName~LegendConnectSemanticSpanGroundingTests|FullyQualifiedName~LegendConnectFounderSemanticTransformationSqlTests' \
+            --logger 'console;verbosity=normal' 2>&1 | tee reasoning-proof.log
+          grep -q 'Test Run Successful' reasoning-proof.log
+          if grep -qE 'Failed:[[:space:]]*[1-9][0-9]*' reasoning-proof.log; then exit 1; fi
+
+      - name: Prove single-authority and content-agnostic boundaries
+        shell: bash
+        run: |
+          set -euo pipefail
+          test ! -e scripts/legend-governed-reasoning-patch.py
+          test ! -e .github/workflows/legend-governed-reasoning-predeploy.yml
+          test ! -e .github/workflows/legend-governed-reasoning-predeploy-v2.yml
+          test ! -e .github/workflows/legend-governed-reasoning-predeploy-v3.yml
+          if grep -nE 'HttpClient|OpenAI|Azure|SaveChanges|DbContext|response cache|prompt map' Infrastructure/Messaging/LegendConnectGovernedReasoningExecutor.cs; then
+            echo 'Reasoning executor crossed its pure semantic boundary.' >&2
+            exit 1
+          fi
+          if grep -nE '"Hi there\."|"Hi Legend\."|"Hey Legend\."|"Good morning\."|"Nice to meet you\."|"What.s up\?"' Infrastructure/Messaging/LegendConnectCurriculum.cs Infrastructure/Messaging/LegendConnectGovernedReasoningExecutor.cs; then
+            echo 'Prompt-specific native reasoning logic detected.' >&2
+            exit 1
+          fi
+          grep -q 'TryRealizeSemanticTransitionResultAsync' Infrastructure/Messaging/LegendConnectCurriculum.cs
+          grep -q 'ResolveGovernedResponseContentAsync' Infrastructure/Messaging/LegendConnectCurriculum.cs
+
+      - name: Login to Azure for live Founder proof
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Prove exact candidate on live Founder data with OpenAI blocked
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $connection = ''
+          $connections = az webapp config connection-string list --resource-group $env:AZURE_RESOURCE_GROUP --name $env:AZURE_WEBAPP_NAME --output json | ConvertFrom-Json
+          $match = $connections | Where-Object { $_.name -eq 'MasterAppDb' } | Select-Object -First 1
+          if ($null -ne $match) { $connection = [string]$match.value }
+          $settings = @{}
+          foreach ($item in (az webapp config appsettings list --resource-group $env:AZURE_RESOURCE_GROUP --name $env:AZURE_WEBAPP_NAME --output json | ConvertFrom-Json)) {
+            $settings[[string]$item.name] = [string]$item.value
+          }
+          if ([string]::IsNullOrWhiteSpace($connection)) {
+            foreach ($name in @('ConnectionStrings__MasterAppDb','MasterAppDb','SQLCONNSTR_MasterAppDb')) {
+              if ($settings.ContainsKey($name) -and -not [string]::IsNullOrWhiteSpace($settings[$name])) { $connection = $settings[$name]; break }
+            }
+          }
+          if ([string]::IsNullOrWhiteSpace($connection)) { throw 'Production MasterAppDb connection string could not be resolved.' }
+          $founderOid = ''
+          foreach ($name in @('FOUNDER_OID','Founder__Oid','Founder:Oid')) {
+            if ($settings.ContainsKey($name) -and -not [string]::IsNullOrWhiteSpace($settings[$name])) { $founderOid = $settings[$name]; break }
+          }
+          if ([string]::IsNullOrWhiteSpace($founderOid)) { throw 'Production Founder OID could not be resolved.' }
+          Write-Output "::add-mask::$connection"
+          Write-Output "::add-mask::$founderOid"
+          $env:LEGEND_PRODUCTION_READONLY_CONNECTION = $connection
+          $env:LEGEND_PRODUCTION_READONLY_FOUNDER_OID = $founderOid
+          $env:LEGEND_PRODUCTION_READONLY_EXPECT_NATIVE = 'true'
+          $env:OPENAI_API_KEY = ''
+          $env:OpenAI__ApiKey = ''
+          dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-build --filter 'FullyQualifiedName~LegendFounderCurriculumSqlServerE2ETests.ProductionReadOnlyEightPromptNativeDiagnostic' --logger 'console;verbosity=detailed'
+          if ($LASTEXITCODE -ne 0) { throw 'Live Founder native-only proof failed.' }
+
+      - name: Run complete AgentPortal regression on exact cleaned candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-build 2>&1 | tee full-regression.log
+          grep -q 'Test Run Successful' full-regression.log
+          if grep -qE 'Failed:[[:space:]]*[1-9][0-9]*' full-regression.log; then exit 1; fi
+
+      - name: Commit only the exact proven cleaned tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --check
+          test ! -e scripts/legend-governed-reasoning-patch.py
+          test ! -e .github/workflows/legend-governed-reasoning-predeploy.yml
+          test ! -e .github/workflows/legend-governed-reasoning-predeploy-v2.yml
+          test ! -e .github/workflows/legend-governed-reasoning-predeploy-v3.yml
+          echo '=== EXACT FINAL DELTA FROM FROZEN PROVEN BASELINE ==='
+          git diff --name-status 057144c6416c48a2d5db6a698ba95d80cb0ab318
+          git config user.name 'MYLEGND'
+          git config user.email 'zac.owen@mylegnd.com'
+          git add -A
+          git commit -m 'Add governed multi-step native reasoning executor'
+          git push origin HEAD:fix/legend-governed-reasoning-executor-20260827
