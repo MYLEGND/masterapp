@@ -273,6 +273,21 @@ public class MasterAppDbContext : DbContext
             entity.HasIndex(item => new { item.EvaluatorVersion, item.Phase, item.WorkKind, item.WorkIdentity })
                 .IsUnique()
                 .HasDatabaseName("IX_LegendHistoricalReevaluationWorkItems_Identity");
+            // Every historical phase discovers work by its canonical subject
+            // identity and scope before manufacturing a versioned work
+            // identity.  Without this lookup, the final empty-page check is a
+            // correlated scan of the full work ledger and can outlive the
+            // PhaseSeed lease in production, allowing another instance to
+            // reclaim the scheduler while the first is still reading.
+            entity.HasIndex(item => new
+                {
+                    item.EvaluatorVersion,
+                    item.Phase,
+                    item.WorkKind,
+                    item.SubjectId,
+                    item.SubjectScope
+                })
+                .HasDatabaseName("IX_LegendHistoricalReevaluationWorkItems_SubjectLookup");
             entity.HasIndex(item => new
                 {
                     item.EvaluatorVersion,

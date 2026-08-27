@@ -27,6 +27,22 @@ public sealed class LegendConnectHistoricalReevaluationWorkTests
     public LegendConnectHistoricalReevaluationWorkTests(ITestOutputHelper output) => _output = output;
 
     [Fact]
+    public async Task HistoricalWorkerModel_HasCanonicalSubjectLookupForBoundedSeedDiscovery()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var entity = fixture.Db.Model.FindEntityType(typeof(LegendHistoricalReevaluationWorkItem));
+        Assert.NotNull(entity);
+        var index = Assert.Single(entity!.GetIndexes(), candidate =>
+            candidate.GetDatabaseName() ==
+                "IX_LegendHistoricalReevaluationWorkItems_SubjectLookup");
+
+        Assert.Equal(
+            new[] { "EvaluatorVersion", "Phase", "WorkKind", "SubjectId", "SubjectScope" },
+            index.Properties.Select(property => property.Name));
+        Assert.False(index.IsUnique);
+    }
+
+    [Fact]
     public async Task SeededPhase_DoesNotAdvanceUntilEveryDurableWorkItemCompletes()
     {
         await using var fixture = await Fixture.CreateAsync();
@@ -332,6 +348,78 @@ public sealed class LegendConnectHistoricalReevaluationWorkTests
             .SingleAsync(item => item.TargetEvaluatorVersion ==
                 LegendConnectLanguageIntelligenceEvaluatorVersion.Current);
         Assert.Contains(completedConvergence.State, new[] { "Completed", "Reused" });
+    }
+
+    [Fact]
+    public async Task HostedWorker_ReclaimsExpiredProviderSeed_DrainsMultiplePages_AndCompletesWithoutManualAdvancement()
+    {
+        const int observationCount = 260;
+        await using var provider = CreateHostedWorkerProvider(leaseSeconds: 5);
+        await using (var setupScope = provider.CreateAsyncScope())
+        {
+            var db = setupScope.ServiceProvider.GetRequiredService<MasterAppDbContext>();
+            var runtime = setupScope.ServiceProvider
+                .GetRequiredService<ILegendConnectRuntimePolicyAuthority>();
+            _ = await runtime.GetOrStartLanguageIntelligenceReevaluationAsync(
+                LegendConnectLanguageIntelligenceEvaluatorVersion.Current);
+
+            var policy = await db.LegendConnectRuntimePolicies.SingleAsync();
+            policy.TargetLanguageIntelligenceEvaluatorVersion =
+                LegendConnectLanguageIntelligenceEvaluatorVersion.Current;
+            policy.CompletedLanguageIntelligenceEvaluatorVersion =
+                LegendConnectLanguageIntelligenceEvaluatorVersion.Current;
+            policy.CursorReplayCompatibilityEvaluatorVersion =
+                LegendConnectLanguageIntelligenceEvaluatorVersion.Current - 1;
+            policy.LanguageIntelligenceReevaluationPhase =
+                LegendConnectLanguageIntelligenceReevaluationPhases.ProviderObservations;
+            policy.LanguageIntelligenceReevaluationCompletedUtc = null;
+
+            var convergence = await db.LegendLanguageDerivationConvergences.SingleAsync(item =>
+                item.TargetEvaluatorVersion == LegendConnectLanguageIntelligenceEvaluatorVersion.Current);
+            convergence.State = "Processing";
+            convergence.EarliestAffectedPhase =
+                LegendConnectLanguageIntelligenceReevaluationPhases.SourceFamilies;
+            convergence.BlockingDependencyIdentity = "derivation-contract-phase:SourceFamilies";
+
+            db.LegendHistoricalReevaluationWorkItems.Add(new LegendHistoricalReevaluationWorkItem
+            {
+                EvaluatorVersion = LegendConnectLanguageIntelligenceEvaluatorVersion.Current,
+                Phase = LegendConnectLanguageIntelligenceReevaluationPhases.ProviderObservations,
+                WorkKind = "PhaseSeed",
+                WorkIdentity = "__phase_seed__",
+                SubjectScope = string.Empty,
+                DependencyIdentity = "phase-seed",
+                ProcessingState = "Processing",
+                LeaseOwner = "terminated-host",
+                LeaseToken = Guid.NewGuid(),
+                LeaseExpiresUtc = DateTime.UtcNow.AddMinutes(-1),
+                AttemptCount = 1,
+                LastErrorCode = "historical_reevaluation_lease_expired"
+            });
+            for (var index = 0; index < observationCount; index++)
+                AddProviderObservation(db, index);
+            await db.SaveChangesAsync();
+        }
+
+        var hosted = new LegendConnectLearningHostedService(
+            provider.GetRequiredService<IServiceScopeFactory>(),
+            NullLogger<LegendConnectLearningHostedService>.Instance);
+        await hosted.ProcessHistoricalReevaluationCycleAsync();
+
+        await using var verificationScope = provider.CreateAsyncScope();
+        var verificationDb = verificationScope.ServiceProvider
+            .GetRequiredService<MasterAppDbContext>();
+        var completedPolicy = await verificationDb.LegendConnectRuntimePolicies.SingleAsync();
+        Assert.Equal(
+            LegendConnectLanguageIntelligenceReevaluationPhases.Complete,
+            completedPolicy.LanguageIntelligenceReevaluationPhase);
+        Assert.Equal(observationCount, await verificationDb.LegendHistoricalReevaluationWorkItems
+            .CountAsync(item =>
+                item.Phase == LegendConnectLanguageIntelligenceReevaluationPhases.ProviderObservations &&
+                item.WorkKind == "Canonical" && item.ProcessingState == "Completed"));
+        Assert.DoesNotContain(
+            await verificationDb.LegendHistoricalReevaluationWorkItems.ToListAsync(),
+            item => item.ProcessingState is "Pending" or "Processing" or "Failed");
     }
 
     [Fact]
@@ -1366,6 +1454,41 @@ public sealed class LegendConnectHistoricalReevaluationWorkTests
                 LanguageCode = languageCode,
                 Provenance = LegendConnectKnowledgeProvenance.FounderApproved
             });
+    }
+
+    private static void AddProviderObservation(MasterAppDbContext db, int index)
+    {
+        var source = new LegendLanguageTextUnit
+        {
+            Id = Guid.NewGuid(),
+            LanguageCode = "en",
+            StoragePartition = "en",
+            NormalizedHash = LegendLanguageIdentity.TextHash($"hosted provider source {index}"),
+            Text = $"Hosted provider source {index}.",
+            Provenance = LegendConnectKnowledgeProvenance.ProviderDerived,
+            IsTrainingEligible = true
+        };
+        var target = new LegendLanguageTextUnit
+        {
+            Id = Guid.NewGuid(),
+            LanguageCode = "x-test",
+            StoragePartition = "x-test",
+            NormalizedHash = LegendLanguageIdentity.TextHash($"hosted provider target {index}"),
+            Text = $"Hosted provider target {index}.",
+            Provenance = LegendConnectKnowledgeProvenance.ProviderDerived,
+            IsTrainingEligible = true
+        };
+        db.AddRange(source, target, new LegendTranslationAlignment
+        {
+            Id = Guid.NewGuid(),
+            PairKey = "en:x-test",
+            SourceTextUnitId = source.Id,
+            TargetTextUnitId = target.Id,
+            Provider = "HostedWorkerRegression",
+            Provenance = LegendConnectKnowledgeProvenance.ProviderDerived,
+            QualityState = "Observation",
+            ObservationCount = 1
+        });
     }
 
     private static LegendConnectHistoricalReevaluationWorkAuthority CreateWorkAuthority(

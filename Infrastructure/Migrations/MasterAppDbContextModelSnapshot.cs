@@ -5920,6 +5920,9 @@ namespace Infrastructure.Migrations
                         .IsUnique()
                         .HasDatabaseName("IX_LegendHistoricalReevaluationWorkItems_Identity");
 
+                    b.HasIndex("EvaluatorVersion", "Phase", "WorkKind", "SubjectId", "SubjectScope")
+                        .HasDatabaseName("IX_LegendHistoricalReevaluationWorkItems_SubjectLookup");
+
                     b.HasIndex("EvaluatorVersion", "Phase", "ProcessingState", "LeaseExpiresUtc", "CreatedUtc")
                         .HasDatabaseName("IX_LegendHistoricalReevaluationWorkItems_Claim");
 
