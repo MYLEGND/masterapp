@@ -5021,7 +5021,6 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
     {
         var components = BuildSemanticLayoutComponents(example, anchors, frameDimensions);
         if (components.Count < 2 ||
-            components.Select(item => item.Dimension).Distinct(StringComparer.OrdinalIgnoreCase).Count() != components.Count ||
             components.Zip(components.Skip(1), (left, right) =>
                     left.StartTokenIndex + left.TokenLength > right.StartTokenIndex)
                 .Any(item => item))
@@ -5030,15 +5029,34 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
             return false;
         }
 
-        var firstStart = components[0].StartTokenIndex;
-        var shape = string.Join("|", components.Select(item =>
-            $"{item.Dimension}:{item.StartTokenIndex - firstStart}:{item.TokenLength}"));
         layout = new SemanticRealizationLayout(
             example.CurriculumFamilyId,
-            shape,
+            SemanticLayoutShape(components),
             components,
             TerminalPunctuation(example.Text));
         return true;
+    }
+
+    /// <summary>
+    /// Identifies the ordered semantic slots in a static result layout. A
+    /// meaning graph may legitimately ground more than one non-overlapping
+    /// surface span to the same semantic dimension; the occurrence ordinal
+    /// preserves those distinct slots without making token length or offset
+    /// part of the reusable semantic structure.
+    /// </summary>
+    private static string SemanticLayoutShape(
+        IReadOnlyList<SemanticLayoutComponent> components)
+    {
+        var occurrences = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        var slots = new string[components.Count];
+        for (var index = 0; index < components.Count; index++)
+        {
+            var dimension = components[index].Dimension;
+            var occurrence = occurrences.GetValueOrDefault(dimension) + 1;
+            occurrences[dimension] = occurrence;
+            slots[index] = $"{dimension}:{occurrence}";
+        }
+        return string.Join("|", slots);
     }
 
     private static bool TryRealizeOriginalLearnedLayout(

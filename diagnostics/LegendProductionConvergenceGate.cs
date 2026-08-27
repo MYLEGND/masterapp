@@ -17,6 +17,7 @@ var timeoutMinutes = int.TryParse(
 var deadline = DateTime.UtcNow.AddMinutes(timeoutMinutes);
 var verificationStartedUtc = DateTime.UtcNow;
 var observedPostDeployHeartbeat = false;
+var consecutiveCompleteObservations = 0;
 var builder = new SqlConnectionStringBuilder(connectionString)
 {
     ApplicationName = "LEGEND unified deployment convergence gate",
@@ -126,7 +127,12 @@ while (true)
         activeOrFailedWork == 0 &&
         incompleteManifests == 0 &&
         observedPostDeployHeartbeat;
-    if (complete)
+    consecutiveCompleteObservations = complete
+        ? consecutiveCompleteObservations + 1
+        : 0;
+    Console.WriteLine(
+        $"stable_complete_observations={consecutiveCompleteObservations}/3");
+    if (consecutiveCompleteObservations >= 3)
     {
         Console.WriteLine("LEGEND PRODUCTION CONVERGENCE GATE: PASSED");
         Console.WriteLine("PRODUCTION WRITE COMMANDS: 0");

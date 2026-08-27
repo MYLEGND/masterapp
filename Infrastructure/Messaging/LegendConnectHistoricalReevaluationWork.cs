@@ -1790,7 +1790,11 @@ internal sealed class LegendConnectHistoricalReevaluationWorkAuthority
         var now = DateTime.UtcNow;
         var query = _db.Set<LegendLanguageDerivationConvergence>()
             .Where(item => item.TargetEvaluatorVersion == evaluatorVersion &&
-                (item.State == "Queued" || item.State == "Processing"));
+                (item.State == "Queued" || item.State == "Processing") &&
+                _db.Set<LegendConnectRuntimePolicy>().Any(policy =>
+                    policy.ScopeKey == "Global" &&
+                    policy.TargetLanguageIntelligenceEvaluatorVersion == evaluatorVersion &&
+                    policy.LanguageIntelligenceReevaluationPhase == phase));
         if (_db.Database.IsRelational())
         {
             await query.ExecuteUpdateAsync(setters => setters
