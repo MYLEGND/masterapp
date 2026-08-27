@@ -94,6 +94,10 @@ jobs:
             echo "::error::The already-drained queued SourceFamilies hosted-worker regression was not discovered."
             exit 1
           fi
+          if ! grep -q "HostedWorker_ReclaimsExpiredProviderSeed_DrainsMultiplePages_AndCompletesWithoutManualAdvancement" test-discovery.log; then
+            echo "::error::The ProviderObservations lease-recovery and bounded subject-lookup regression was not discovered."
+            exit 1
+          fi
           if ! grep -q "HostedWorkerRestart_RecoversFailedPhaseSeed_AndCompletesConvergence" test-discovery.log; then
             echo "::error::The failed phase-seed restart regression was not discovered."
             exit 1
