@@ -69,6 +69,19 @@ jobs:
               '''        var composed = await Curriculum.TryInferComposedSemanticTransitionAsync(\n            "en", input ?? string.Empty, discourseState, cancellationToken);\n''',
               '''        var composed = await Curriculum.TryInferComposedSemanticTransitionAsync(\n            "en", input ?? string.Empty, context, discourseState, cancellationToken);\n''')
 
+          tests = 'AgentPortal.Tests/LegendConnectFounderSemanticTransformationSqlTests.cs'
+          test_text = Path(tests).read_text(encoding='utf-8')
+          old = '''            var composedInitial = await proofServices.Curriculum.TryInferComposedSemanticTransitionAsync(\n                "en",\n                establishingRequest,\n                new LegendConnectDiscourseStateSnapshot([]));\n'''
+          new = '''            var composedInitial = await proofServices.Curriculum.TryInferComposedSemanticTransitionAsync(\n                "en",\n                establishingRequest,\n                [],\n                new LegendConnectDiscourseStateSnapshot([]));\n'''
+          if test_text.count(old) != 1:
+              raise SystemExit('initial direct composed test call target changed')
+          test_text = test_text.replace(old, new, 1)
+          old = '''            var composedHeldOut = await proofServices.Curriculum.TryInferComposedSemanticTransitionAsync(\n                "en",\n                heldOutRequest,\n                state);\n'''
+          new = '''            var composedHeldOut = await proofServices.Curriculum.TryInferComposedSemanticTransitionAsync(\n                "en",\n                heldOutRequest,\n                [],\n                state);\n'''
+          if test_text.count(old) != 1:
+              raise SystemExit('held-out direct composed test call target changed')
+          Path(tests).write_text(test_text.replace(old, new, 1), encoding='utf-8')
+
           deploy = '.github/workflows/agentportal-production-deploy.yml'
           replace_once(
               deploy,
@@ -195,6 +208,7 @@ jobs:
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add Infrastructure/Messaging/LegendConnectCurriculum.cs \
                   Infrastructure/Messaging/LegendConnectOperations.cs \
+                  AgentPortal.Tests/LegendConnectFounderSemanticTransformationSqlTests.cs \
                   .github/workflows/agentportal-production-deploy.yml \
                   scripts/legend-production-native-proof.ps1 \
                   .github/workflows/legend-native-predeploy-builder.yml
