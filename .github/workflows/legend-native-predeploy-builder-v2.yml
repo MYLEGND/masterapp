@@ -1,5 +1,6 @@
 name: LEGEND canonical native predeploy proof
 
+# Current-state serving proof rerun after confirming production has no V20 source artifact.
 on:
   push:
     branches:
