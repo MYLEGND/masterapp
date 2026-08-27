@@ -221,23 +221,23 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
                 {
                     1 => new (string Function, string Intent)[]
                     {
-                        ("Hello", "I can help"),
-                        ("Hi", "ready to assist"),
-                        ("Greetings", "here to support")
+                        ("Welcome", "I can help"),
+                        ("Greetings", "ready to assist"),
+                        ("Salutations", "here to support")
                     },
 
                     2 => new (string Function, string Intent)[]
                     {
-                        ("Welcome", "I can assist"),
-                        ("Hello", "ready to help"),
-                        ("Hi", "here to assist")
+                        ("Greetings", "I can assist"),
+                        ("Salutations", "ready to help"),
+                        ("Welcome", "here to assist")
                     },
 
                     _ => new (string Function, string Intent)[]
                     {
-                        ("Greetings", "I can support"),
+                        ("Salutations", "I can support"),
                         ("Welcome", "ready to support"),
-                        ("Hello", "here to help")
+                        ("Greetings", "here to help")
                     }
                 };
 
