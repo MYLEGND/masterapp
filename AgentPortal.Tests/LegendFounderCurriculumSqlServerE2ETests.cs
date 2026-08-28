@@ -984,7 +984,15 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
             var readOnlyGuard = new ReadOnlyLegendDbCommandInterceptor();
             await using var production = new MasterAppDbContext(
                 new DbContextOptionsBuilder<MasterAppDbContext>()
-                    .UseSqlServer(connection.ConnectionString)
+                    // The full-shadow proof intentionally computes exact
+                    // counts over the live governed corpus before copying its
+                    // bounded snapshot. Production cardinality can exceed the
+                    // provider default 30-second command timeout; retain exact
+                    // reads and give this dedicated diagnostic context a
+                    // bounded allowance instead of weakening the proof.
+                    .UseSqlServer(
+                        connection.ConnectionString,
+                        sql => sql.CommandTimeout(180))
                     .UseQueryTrackingBehavior(QueryTrackingBehavior.NoTracking)
                     .AddInterceptors(readOnlyGuard)
                     .Options);
