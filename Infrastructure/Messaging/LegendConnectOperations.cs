@@ -418,14 +418,28 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
         if (string.Equals(composed.State, LegendSemanticTransitionInference.Supported, StringComparison.Ordinal) &&
             !string.IsNullOrWhiteSpace(composed.RealizedText))
         {
+            var evidenceStandard = composed.Reasons.Contains(
+                "higher_standard_semantic_transition",
+                StringComparer.Ordinal)
+                    ? "HigherStandard"
+                    : "BroadGoverned";
+            var articulationMode = composed.Reasons.Contains(
+                "original_compositional_anchor_realization",
+                StringComparer.Ordinal)
+                    ? "OriginalComposition"
+                    : "CanonicalGovernedEndpoint";
             return new LegendConnectNativeInferenceSnapshot(
                 true,
                 0m,
                 composed.RealizedText,
                 "semantic_transition_governed_composed",
                 composed.EvidenceCount,
-                "LEGEND composed governed meaning, applied one independently supported Founder transition, and articulated original wording from governed semantic anchors.",
-                false);
+                articulationMode == "OriginalComposition"
+                    ? $"LEGEND composed governed meaning, selected {evidenceStandard} evidence, and articulated original wording from governed semantic anchors."
+                    : $"LEGEND composed governed meaning, selected {evidenceStandard} evidence, and articulated the canonical endpoint authorized by that same transition.",
+                false,
+                evidenceStandard,
+                articulationMode);
         }
 
         // Existing explicit frame evidence remains governed by the same
@@ -505,7 +519,9 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
         reasonCode,
         0,
         "LEGEND could not establish one independently supported, contradiction-free semantic transition and original compositional realization for this request.",
-        requiresEscalation);
+        requiresEscalation,
+        "Unavailable",
+        "Unavailable");
 
     /// <summary>
     /// Stage-2 observational composition through the one canonical curriculum

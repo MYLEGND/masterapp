@@ -902,6 +902,8 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
             _output.WriteLine($"NATIVE SUPPORTED: {native.Supported}");
             _output.WriteLine($"NATIVE REASON: {native.ReasonCode}");
             _output.WriteLine($"NATIVE EVIDENCE: {native.EvidenceCount}");
+            _output.WriteLine($"EVIDENCE STANDARD: {native.EvidenceStandard}");
+            _output.WriteLine($"ARTICULATION MODE: {native.ArticulationMode}");
             _output.WriteLine($"REQUIRES ESCALATION: {native.RequiresEscalation}");
             _output.WriteLine($"NATIVE ANSWER: {native.Answer ?? "<NULL>"}");
             _output.WriteLine($"REPLYASYNC ANSWER: {reply.Message}");
@@ -909,6 +911,8 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
 
             var isNativePass = native.Supported &&
                 native.EvidenceCount > 0 &&
+                native.EvidenceStandard != "Unavailable" &&
+                native.ArticulationMode != "Unavailable" &&
                 !native.RequiresEscalation &&
                 !string.IsNullOrWhiteSpace(native.Answer) &&
                 reply.Succeeded &&

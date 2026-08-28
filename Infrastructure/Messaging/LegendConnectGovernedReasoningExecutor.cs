@@ -38,7 +38,13 @@ internal static class LegendConnectGovernedReasoningExecutor
 
         var normalizedRules = rules
             .Where(rule => ResolveMode(rule.OperatorIdentity) is not null)
-            .OrderBy(rule => rule.TransitionSignature, StringComparer.Ordinal)
+            // A lower-standard rule remains usable while the curriculum is
+            // growing, but it can never win a duplicate derived state over a
+            // higher-standard rule.  The visited-state authority below keeps
+            // the first proof, so evidence precedence must be deterministic
+            // here rather than being left to database enumeration order.
+            .OrderByDescending(rule => rule.EvidenceStandard)
+            .ThenBy(rule => rule.TransitionSignature, StringComparer.Ordinal)
             .ThenBy(rule => rule.OperatorIdentity, StringComparer.Ordinal)
             .ToArray();
         if (normalizedRules.Length == 0)
@@ -68,7 +74,7 @@ internal static class LegendConnectGovernedReasoningExecutor
         var initial = Copy(initialValues);
         var visited = new HashSet<string>(StringComparer.Ordinal) { CanonicalState(initial) };
         var queue = new Queue<LegendGovernedReasoningProof>();
-        queue.Enqueue(new(initial, [], 0, 0));
+        queue.Enqueue(new(initial, [], 0, 0, int.MaxValue));
         var derived = new List<LegendGovernedReasoningProof>();
 
         while (queue.Count > 0)
@@ -96,11 +102,15 @@ internal static class LegendConnectGovernedReasoningExecutor
                 var evidence = current.Depth == 0
                     ? rule.Rule.IndependentEvidenceCount
                     : Math.Min(current.EvidenceCount, rule.Rule.IndependentEvidenceCount);
+                var evidenceStandard = current.Depth == 0
+                    ? rule.Rule.EvidenceStandard
+                    : Math.Min(current.EvidenceStandard, rule.Rule.EvidenceStandard);
                 var proof = new LegendGovernedReasoningProof(
                     nextValues,
                     path,
                     current.Depth + 1,
-                    evidence);
+                    evidence,
+                    evidenceStandard);
                 derived.Add(proof);
                 queue.Enqueue(proof);
             }
@@ -253,13 +263,15 @@ internal sealed record LegendGovernedReasoningRule(
     string OperatorIdentity,
     IReadOnlyDictionary<string, string> SourceFrame,
     IReadOnlyDictionary<string, string> ResultFrame,
-    int IndependentEvidenceCount);
+    int IndependentEvidenceCount,
+    int EvidenceStandard = 2);
 
 internal sealed record LegendGovernedReasoningProof(
     IReadOnlyDictionary<string, string> Values,
     IReadOnlyList<string> TransitionPath,
     int Depth,
-    int EvidenceCount);
+    int EvidenceCount,
+    int EvidenceStandard);
 
 internal sealed record LegendGovernedReasoningExecution(
     bool InitialContradiction,

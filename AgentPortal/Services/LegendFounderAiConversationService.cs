@@ -257,7 +257,9 @@ public sealed class LegendFounderAiConversationService
                     progress,
                     new LegendFounderAiProgressEvent(
                         "native_response",
-                        $"Answered from {nativeInference.EvidenceCount} governed LEGEND evidence record(s)."),
+                        $"Answered from {nativeInference.EvidenceCount} governed LEGEND evidence record(s). " +
+                        $"EvidenceStandard={nativeInference.EvidenceStandard}; " +
+                        $"ArticulationMode={nativeInference.ArticulationMode}."),
                     effectiveToken);
 
                 return new LegendFounderAiChatResponse(

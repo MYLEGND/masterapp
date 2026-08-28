@@ -16,6 +16,34 @@ namespace AgentPortal.Tests;
 public sealed class LegendConnectGovernedReasoningExecutorTests
 {
     [Fact]
+    public void Executor_AlwaysKeepsHigherStandardProofWhenBroadRuleDerivesSameState()
+    {
+        var source = new Dictionary<string, string> { ["stage"] = "observed" };
+        var result = new Dictionary<string, string> { ["stage"] = "resolved" };
+        var broad = new LegendGovernedReasoningRule(
+            "a-broad",
+            "reasoning.forward.resolution",
+            source,
+            result,
+            1,
+            1);
+        var higher = new LegendGovernedReasoningRule(
+            "z-higher",
+            "reasoning.forward.resolution",
+            source,
+            result,
+            3,
+            2);
+
+        var execution = LegendConnectGovernedReasoningExecutor.Derive(source, [broad, higher]);
+
+        var resolved = Assert.Single(execution.DerivedStates);
+        Assert.Equal("z-higher", Assert.Single(resolved.TransitionPath));
+        Assert.Equal(3, resolved.EvidenceCount);
+        Assert.Equal(2, resolved.EvidenceStandard);
+    }
+
+    [Fact]
     public void Executor_ChainsVariablesAcrossMultipleGovernedRulesWithoutTopicLogic()
     {
         var rules = new[]
