@@ -870,7 +870,9 @@ public sealed record LegendConnectResponseMeaningPlanSnapshot(
     int IndependentEvidenceCount,
     bool UsesDiscourseState,
     IReadOnlyDictionary<string, string>? BoundSemanticVariables = null,
-    IReadOnlyDictionary<string, string>? UnboundResultVariables = null);
+    IReadOnlyDictionary<string, string>? UnboundResultVariables = null,
+    IReadOnlyList<string>? ReasoningTransitionPath = null,
+    int ReasoningEvidenceCount = 0);
 
 public sealed record LegendConnectResponseMeaningPlanResult(
     bool Supported,
