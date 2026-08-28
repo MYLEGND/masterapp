@@ -273,6 +273,104 @@ public sealed class LegendConnectSemanticSpanGroundingTests
     }
 
     [Fact]
+    public async Task ExactFounderEndpoint_BindsMissingVariableWhileProjectingMissingStaticMetadata()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var fixture = CreateFixture(db);
+
+        for (var family = 1; family <= 3; family++)
+        {
+            var submitted = await fixture.Curriculum.SubmitFounderEnglishBatchAsync(
+                CombinedProjectionFamily(family));
+            Assert.True(submitted.Succeeded, submitted.Message);
+        }
+
+        var planned = await fixture.Operations.TryPlanConversationAsync(
+            "Assess the software signal.",
+            new LegendConnectDiscourseStateSnapshot([]));
+
+        Assert.True(planned.Supported, planned.ReasonCode);
+        Assert.Equal("response_meaning_plan_governed", planned.ReasonCode);
+        var plan = Assert.IsType<LegendConnectResponseMeaningPlanSnapshot>(planned.Plan);
+        Assert.Equal("assessment_response", plan.ResultDimensions["conversation_function"]);
+        Assert.Equal("software", plan.ResultDimensions["domain_context"]);
+        Assert.Equal(3, plan.IndependentEvidenceCount);
+    }
+
+    [Fact]
+    public async Task Selector_UsesFounderObservedKnowledgeThenAutomaticallyPrefersMatureEvidence()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var fixture = CreateFixture(db);
+
+        Assert.True((await fixture.Curriculum.SubmitFounderEnglishBatchAsync(
+            RankedEvidenceFamily(1, includeTransition: true))).Succeeded);
+        Assert.True((await fixture.Curriculum.SubmitFounderEnglishBatchAsync(
+            RankedEvidenceFamily(2, includeTransition: false))).Succeeded);
+        Assert.True((await fixture.Curriculum.SubmitFounderEnglishBatchAsync(
+            RankedEvidenceFamily(3, includeTransition: false))).Succeeded);
+
+        var observed = await fixture.Operations.TryPlanConversationAsync(
+            "Assess the signal.",
+            new LegendConnectDiscourseStateSnapshot([]));
+
+        Assert.True(observed.Supported, observed.ReasonCode);
+        Assert.Equal("response_meaning_plan_governed_founder_observed", observed.ReasonCode);
+        Assert.Equal(1, Assert.IsType<LegendConnectResponseMeaningPlanSnapshot>(observed.Plan).IndependentEvidenceCount);
+
+        Assert.True((await fixture.Curriculum.SubmitFounderEnglishBatchAsync(
+            RankedEvidenceFamily(4, includeTransition: true))).Succeeded);
+        Assert.True((await fixture.Curriculum.SubmitFounderEnglishBatchAsync(
+            RankedEvidenceFamily(5, includeTransition: true))).Succeeded);
+
+        var mature = await fixture.Operations.TryPlanConversationAsync(
+            "Assess the signal.",
+            new LegendConnectDiscourseStateSnapshot([]));
+
+        Assert.True(mature.Supported, mature.ReasonCode);
+        Assert.Equal("response_meaning_plan_governed", mature.ReasonCode);
+        Assert.Equal(3, Assert.IsType<LegendConnectResponseMeaningPlanSnapshot>(mature.Plan).IndependentEvidenceCount);
+    }
+
+    [Fact]
+    public async Task NativeArticulation_UsesStrongestAvailableFounderLayoutsWithoutReturningAStoredSentence()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var fixture = CreateFixture(db);
+
+        Assert.True((await fixture.Curriculum.SubmitFounderEnglishBatchAsync(
+            RankedArticulationFamily(1, includeTransition: true))).Succeeded);
+        Assert.True((await fixture.Curriculum.SubmitFounderEnglishBatchAsync(
+            RankedArticulationFamily(2, includeTransition: false))).Succeeded);
+        Assert.True((await fixture.Curriculum.SubmitFounderEnglishBatchAsync(
+            RankedArticulationFamily(3, includeTransition: false))).Succeeded);
+
+        var storedResults = await db.LegendCurriculumExamples
+            .Where(item => item.SupersededUtc == null &&
+                db.LegendCurriculumExampleVariations.Any(variation =>
+                    variation.CurriculumExampleId == item.Id &&
+                    variation.Dimension == "conversation_function" &&
+                    variation.Value == "assessment_response"))
+            .Join(
+                db.LegendLanguageTextUnits,
+                example => example.TextUnitId,
+                unit => unit.Id,
+                (_, unit) => unit.Text)
+            .ToArrayAsync();
+
+        var native = await fixture.Operations.TryInferConversationWithDiscourseAsync(
+            "Assess the signal.",
+            [],
+            new LegendConnectDiscourseStateSnapshot([]));
+
+        Assert.True(native.Supported, native.ReasonCode);
+        Assert.NotNull(native.Answer);
+        Assert.DoesNotContain(storedResults, item =>
+            string.Equals(item, native.Answer, StringComparison.Ordinal));
+        Assert.True(native.EvidenceCount >= 2);
+    }
+
+    [Fact]
     public async Task GovernedExecutableProjection_FailsClosedWhenOmittedMetadataCouldChangeTheResult()
     {
         await using var db = ControllerTestHelpers.BuildDb();
@@ -1393,6 +1491,197 @@ public sealed class LegendConnectSemanticSpanGroundingTests
                 {
                     ["conversation_function"] = "comparison_response"
                 }))]);
+
+    private static LegendConnectCurriculumBatchSubmission CombinedProjectionFamily(int family)
+    {
+        var domain = family switch
+        {
+            1 => "software",
+            2 => "operations",
+            _ => "finance"
+        };
+        return new(
+            $"response.combined-projection.{family}",
+            "Exact source metadata completes one governed transition",
+            [
+                new LegendConnectCurriculumExampleSubmission(
+                    $"Assess the {domain} signal.",
+                    new Dictionary<string, string>
+                    {
+                        ["function"] = "assess",
+                        ["subject"] = "signal",
+                        ["selection_policy"] = "evidence_ranked",
+                        ["domain_context"] = domain
+                    },
+                    new LegendConnectMeaningGraphSubmission(
+                        [
+                            new LegendConnectMeaningNodeSubmission(
+                                "function", "function", "assess", "Assess"),
+                            new LegendConnectMeaningNodeSubmission(
+                                "subject", "subject", "signal", "signal"),
+                            new LegendConnectMeaningNodeSubmission(
+                                "domain", "domain_context", domain, domain)
+                        ],
+                        [new LegendConnectMeaningRelationSubmission(
+                            "function", "applies-to", "subject")])),
+                new LegendConnectCurriculumExampleSubmission(
+                    $"Use the strongest {domain} evidence. State the bounded result.",
+                    new Dictionary<string, string>
+                    {
+                        ["conversation_function"] = "assessment_response",
+                        ["domain_context"] = domain
+                    },
+                    new LegendConnectMeaningGraphSubmission(
+                        [
+                            new LegendConnectMeaningNodeSubmission(
+                                "response", "conversation_function", "assessment_response",
+                                "Use the strongest"),
+                            new LegendConnectMeaningNodeSubmission(
+                                "domain", "domain_context", domain, domain)
+                        ],
+                        [new LegendConnectMeaningRelationSubmission(
+                            "response", "qualifies", "domain")]))
+            ],
+            [new LegendConnectSemanticTransitionSubmission(
+                new LegendConnectSemanticFrameSubmission(new Dictionary<string, string>
+                {
+                    ["function"] = "assess",
+                    ["subject"] = "signal",
+                    ["selection_policy"] = "evidence_ranked",
+                    ["domain_context"] = "$domain"
+                }),
+                new LegendConnectSemanticFrameSubmission(new Dictionary<string, string>
+                {
+                    ["conversation_function"] = "assessment_response",
+                    ["domain_context"] = "$domain"
+                }))]);
+    }
+
+    private static LegendConnectCurriculumBatchSubmission RankedEvidenceFamily(
+        int family,
+        bool includeTransition)
+    {
+        var examples = new List<LegendConnectCurriculumExampleSubmission>
+        {
+            new(
+                "Assess the signal.",
+                new Dictionary<string, string>
+                {
+                    ["function"] = "assess",
+                    ["subject"] = "signal"
+                },
+                new LegendConnectMeaningGraphSubmission(
+                    [
+                        new LegendConnectMeaningNodeSubmission(
+                            "function", "function", "assess", "Assess"),
+                        new LegendConnectMeaningNodeSubmission(
+                            "subject", "subject", "signal", "signal")
+                    ],
+                    [new LegendConnectMeaningRelationSubmission(
+                        "function", "applies-to", "subject")])),
+            new(
+                $"Assessment response evidence {family}.",
+                new Dictionary<string, string>
+                {
+                    ["conversation_function"] = "assessment_response"
+                })
+        };
+        var transitions = includeTransition
+            ? new[]
+            {
+                new LegendConnectSemanticTransitionSubmission(
+                    new LegendConnectSemanticFrameSubmission(new Dictionary<string, string>
+                    {
+                        ["function"] = "assess",
+                        ["subject"] = "signal"
+                    }),
+                    new LegendConnectSemanticFrameSubmission(new Dictionary<string, string>
+                    {
+                        ["conversation_function"] = "assessment_response"
+                    }))
+            }
+            : [];
+        return new(
+            $"response.ranked-evidence.{family}",
+            "Strongest available Founder evidence retains its maturity tier",
+            examples,
+            transitions);
+    }
+
+    private static LegendConnectCurriculumBatchSubmission RankedArticulationFamily(
+        int family,
+        bool includeTransition)
+    {
+        var examples = new List<LegendConnectCurriculumExampleSubmission>
+        {
+            new(
+                "Assess the signal.",
+                new Dictionary<string, string>
+                {
+                    ["function"] = "assess",
+                    ["subject"] = "signal"
+                },
+                new LegendConnectMeaningGraphSubmission(
+                    [
+                        new LegendConnectMeaningNodeSubmission(
+                            "function", "function", "assess", "Assess"),
+                        new LegendConnectMeaningNodeSubmission(
+                            "subject", "subject", "signal", "signal")
+                    ],
+                    [new LegendConnectMeaningRelationSubmission(
+                        "function", "applies-to", "subject")]))
+        };
+        if (includeTransition)
+        {
+            var openings = new[] { "Use the evidence", "Prefer the record", "Follow the support" };
+            var closings = new[] { "state the bounded result", "give the qualified conclusion", "report only what follows" };
+            for (var index = 0; index < openings.Length; index++)
+            {
+                examples.Add(new LegendConnectCurriculumExampleSubmission(
+                    openings[index] + "; " + closings[index] + ".",
+                    new Dictionary<string, string>
+                    {
+                        ["conversation_function"] = "assessment_response"
+                    },
+                    new LegendConnectMeaningGraphSubmission(
+                        [
+                            new LegendConnectMeaningNodeSubmission(
+                                "opening", "conversation_function", "assessment_response", openings[index]),
+                            new LegendConnectMeaningNodeSubmission(
+                                "closing", "conversation_function", "assessment_response", closings[index])
+                        ],
+                        [new LegendConnectMeaningRelationSubmission(
+                            "opening", "followed-by", "closing")])));
+            }
+        }
+        else
+        {
+            examples.Add(new LegendConnectCurriculumExampleSubmission(
+                $"Unrelated articulation control {family}.",
+                new Dictionary<string, string> { ["control"] = $"control-{family}" }));
+        }
+
+        var transitions = includeTransition
+            ? new[]
+            {
+                new LegendConnectSemanticTransitionSubmission(
+                    new LegendConnectSemanticFrameSubmission(new Dictionary<string, string>
+                    {
+                        ["function"] = "assess",
+                        ["subject"] = "signal"
+                    }),
+                    new LegendConnectSemanticFrameSubmission(new Dictionary<string, string>
+                    {
+                        ["conversation_function"] = "assessment_response"
+                    }))
+            }
+            : [];
+        return new(
+            $"response.ranked-articulation.{family}",
+            "Original articulation uses the strongest available governed layout",
+            examples,
+            transitions);
+    }
 
     private static LegendConnectCurriculumBatchSubmission ConflictingReusableGraphFamily(int family) =>
         new(

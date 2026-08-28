@@ -10,19 +10,44 @@ namespace Infrastructure.Messaging;
 public static class LegendSemanticTransitionProductionEligibility
 {
     public static bool IsEligible(IEnumerable<LegendSemanticTransitionEligibilityObservation> source)
+        => Assess(source).Tier == LegendSemanticTransitionEvidenceTier.ProductionEligible;
+
+    /// <summary>
+    /// Classifies one contradiction-free Founder transition without changing
+    /// its evidence. Runtime inference can therefore prefer the production
+    /// tier while still retaining a bounded Founder-observed tier when no
+    /// mature alternative exists. Evaluation continues to count only the
+    /// production tier through <see cref="IsEligible"/>.
+    /// </summary>
+    public static LegendSemanticTransitionEvidenceAssessment Assess(
+        IEnumerable<LegendSemanticTransitionEligibilityObservation> source)
     {
         var observations = source as IReadOnlyList<LegendSemanticTransitionEligibilityObservation> ?? source.ToArray();
         if (observations.Count == 0 || observations.Any(item => item.ContributionState == "Contradictory"))
-            return false;
+            return LegendSemanticTransitionEvidenceAssessment.None;
 
         var representative = observations[0];
-        return observations
-                .Where(item => item.IsHumanVerifiedSupport && item.ContributionState == "Supported")
-                .Select(item => item.IndependentSourceIdentity)
-                .Distinct(StringComparer.Ordinal)
-                .Count() >= 3 &&
-            observations.All(item => item.SourceFrame == representative.SourceFrame && item.ResultFrame == representative.ResultFrame) &&
-            IsCanonicalFrame(representative.SourceFrame) && IsCanonicalFrame(representative.ResultFrame);
+        if (!observations.All(item =>
+                item.SourceFrame == representative.SourceFrame &&
+                item.ResultFrame == representative.ResultFrame) ||
+            !IsCanonicalFrame(representative.SourceFrame) ||
+            !IsCanonicalFrame(representative.ResultFrame))
+        {
+            return LegendSemanticTransitionEvidenceAssessment.None;
+        }
+
+        var independentSourceCount = observations
+            .Where(item => item.IsHumanVerifiedSupport && item.ContributionState == "Supported")
+            .Select(item => item.IndependentSourceIdentity)
+            .Distinct(StringComparer.Ordinal)
+            .Count();
+        var tier = independentSourceCount switch
+        {
+            >= 3 => LegendSemanticTransitionEvidenceTier.ProductionEligible,
+            >= 1 => LegendSemanticTransitionEvidenceTier.FounderObserved,
+            _ => LegendSemanticTransitionEvidenceTier.None
+        };
+        return new(tier, independentSourceCount);
     }
 
     private static bool IsCanonicalFrame(string serialized)
@@ -39,6 +64,21 @@ public static class LegendSemanticTransitionProductionEligibility
             return false;
         }
     }
+}
+
+public enum LegendSemanticTransitionEvidenceTier
+{
+    None = 0,
+    FounderObserved = 1,
+    ProductionEligible = 2
+}
+
+public sealed record LegendSemanticTransitionEvidenceAssessment(
+    LegendSemanticTransitionEvidenceTier Tier,
+    int IndependentSourceCount)
+{
+    public static LegendSemanticTransitionEvidenceAssessment None { get; } =
+        new(LegendSemanticTransitionEvidenceTier.None, 0);
 }
 
 public sealed record LegendSemanticTransitionEligibilityObservation(
