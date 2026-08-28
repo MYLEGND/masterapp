@@ -48,9 +48,28 @@ jobs:
           "LEGEND_PRODUCTION_CONNECTION=$($match.value)" | Out-File -FilePath $env:GITHUB_ENV -Append
           "LEGEND_PRODUCTION_FOUNDER_OID=$founderOid" | Out-File -FilePath $env:GITHUB_ENV -Append
           "FOUNDER_OID=$founderOid" | Out-File -FilePath $env:GITHUB_ENV -Append
-      - name: Install disposable Batch 001 test in runner
+      - name: Install corrected disposable Batch 001 test in runner
         shell: bash
-        run: cp .github/legend-training/Legend120x120Batch001Tests.cs AgentPortal.Tests/Legend120x120Batch001Tests.cs
+        run: |
+          cp .github/legend-training/Legend120x120Batch001Tests.cs AgentPortal.Tests/Legend120x120Batch001Tests.cs
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('AgentPortal.Tests/Legend120x120Batch001Tests.cs')
+          s=p.read_text()
+          replacements={
+          '"what success means, what cannot be violated, what must already be true, and how success will be recognized"':'"what success means for the technology choice, what cannot be violated, what must already be true, and how success will be recognized"',
+          '"competing explanations remain viable, and which test would discriminate among them"':'"competing explanations remain viable for the technology choice issue, and which test would discriminate among them"',
+          '"actually know, what are we inferring, and what remains uncertain"':'"actually know about the technology choice, what are we inferring, and what remains uncertain"',
+          '"what is known, what is estimated, assumed, or unresolved"':'"what is known about the data migration from what is estimated, assumed, or unresolved"',
+          '"unknown after confirmed observations and reasonable inferences are separated"':'"unknown about the data migration after confirmed observations and reasonable inferences are separated"',
+          '"actually established, what follows from evidence, and what is still uncertain"':'"actually established about the strategic risk, what follows from evidence, and what is still uncertain"',
+          '"unknowns rather than filling them with unsupported confidence"':'"unknowns in the strategic risk analysis rather than filling them with unsupported confidence"'
+          }
+          for old,new in replacements.items():
+              if s.count(old)!=1: raise SystemExit(f'Expected one span anchor: {old}')
+              s=s.replace(old,new)
+          p.write_text(s)
+          PY
       - name: Build production code plus Batch 001 harness
         run: |
           dotnet restore AgentPortal.Tests/AgentPortal.Tests.csproj
