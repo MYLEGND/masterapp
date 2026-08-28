@@ -6497,20 +6497,43 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
         out IReadOnlyDictionary<string, SemanticLayoutComponent> components)
     {
         var resolved = new Dictionary<string, SemanticLayoutComponent>(StringComparer.OrdinalIgnoreCase);
-        foreach (var group in layouts.SelectMany(item => item.Components)
-                     .Where(item => !dynamicDimensions.Contains(item.Dimension))
-                     .GroupBy(item => item.Dimension, StringComparer.OrdinalIgnoreCase))
+        foreach (var group in layouts
+                     .SelectMany(layout => layout.Components
+                         .Where(item => !dynamicDimensions.Contains(item.Dimension))
+                         .Select(item => new { layout.FamilyId, Component = item }))
+                     .GroupBy(item => item.Component.Dimension, StringComparer.OrdinalIgnoreCase))
         {
-            var possibilities = group
-                .GroupBy(item => item.Value + "\u001f" + item.SurfaceForm, StringComparer.Ordinal)
-                .Select(item => item.First())
+            // Surface diversity is articulation evidence, not a semantic
+            // contradiction. Fail closed only when the controlled semantic
+            // value itself differs. For one meaning, prefer the wording with
+            // the strongest independent-family support and use a stable hash
+            // only to choose among equally supported realizations.
+            var semanticValues = group
+                .Select(item => item.Component.Value)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
                 .ToArray();
-            if (possibilities.Length != 1)
+            if (semanticValues.Length != 1)
             {
                 components = resolved;
                 return false;
             }
-            resolved[group.Key] = possibilities[0];
+            resolved[group.Key] = group
+                .GroupBy(item => LegendLanguageIdentity.NormalizeText(item.Component.SurfaceForm),
+                    StringComparer.Ordinal)
+                .Select(surfaceGroup => new
+                {
+                    Component = surfaceGroup.First().Component,
+                    IndependentFamilies = surfaceGroup
+                        .Select(item => item.FamilyId)
+                        .Distinct()
+                        .Count()
+                })
+                .OrderByDescending(item => item.IndependentFamilies)
+                .ThenBy(item => LegendLanguageIdentity.TextHash(item.Component.SurfaceForm),
+                    StringComparer.Ordinal)
+                .ThenBy(item => item.Component.SurfaceForm, StringComparer.Ordinal)
+                .First()
+                .Component;
         }
 
         components = resolved;
