@@ -207,6 +207,7 @@ public sealed class LegendConnectSemanticSpanGroundingTests
         var native = await fixture.Operations.TryInferConversationWithDiscourseAsync(
             "Good morning.", [], new LegendConnectDiscourseStateSnapshot([]));
         Assert.True(native.Supported, native.ReasonCode);
+        Assert.Equal("semantic_transition_governed_composed", native.ReasonCode);
         Assert.True(native.EvidenceCount > 0);
         Assert.False(native.RequiresEscalation);
     }
