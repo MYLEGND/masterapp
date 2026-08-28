@@ -152,7 +152,11 @@ jobs:
           $preflight = 'diagnostics/test-preflight.txt'
           $nativeExit = 99
           $shadowExit = 0
-          $runFullShadow = '${{ github.event_name == 'workflow_dispatch' && inputs.run_full_shadow }}' -eq 'true'
+          # Validation branches are release-proof branches, so their exact
+          # commit must run both the bounded Founder prompt matrix and the
+          # live-evidence shadow rebuild. Manual operational diagnostics keep
+          # the explicit opt-in because they are not release candidates.
+          $runFullShadow = '${{ startsWith(github.ref, 'refs/heads/validation/legend-native-') || (github.event_name == 'workflow_dispatch' && inputs.run_full_shadow) }}' -eq 'true'
           try {
             dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-build --list-tests --diag diagnostics/vstest-discovery.txt 2>&1 | Tee-Object -FilePath $preflight
             $listExit = $LASTEXITCODE
@@ -199,7 +203,7 @@ jobs:
             "DiagnosticOutcome: ${{ steps.diagnostic.outcome }}"
             "NativeExit: ${{ steps.diagnostic.outputs.native_exit }}"
             "ShadowExit: ${{ steps.diagnostic.outputs.shadow_exit }}"
-            "ShadowRequested: ${{ github.event_name == 'workflow_dispatch' && inputs.run_full_shadow }}"
+            "ShadowRequested: ${{ startsWith(github.ref, 'refs/heads/validation/legend-native-') || (github.event_name == 'workflow_dispatch' && inputs.run_full_shadow) }}"
             ''
             '=== LIVE REPLAY / CURRICULUM STATUS ==='
             if (Test-Path diagnostics/replay-status.txt) { Get-Content diagnostics/replay-status.txt }
