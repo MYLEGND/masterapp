@@ -11,9 +11,10 @@ def once(old: str, new: str, label: str):
         raise SystemExit(f"{label}: expected 1 anchor, found {n}")
     text = text.replace(old, new, 1)
 
-# The realization layout remains an ephemeral view over the existing Founder
-# endpoints. Retaining its observed text in-memory lets the same authority
-# prove inter-slot surface grammar; it is not a persisted template store.
+# Keep the observed Founder sentence only inside the ephemeral realization
+# layout. This gives the existing articulation authority a language-native
+# scaffold to recombine; it creates no persisted template, response cache, or
+# second responder.
 once(
 '''    private sealed record SemanticRealizationLayout(
         Guid FamilyId,
@@ -42,8 +43,8 @@ once(
             example.Text);''',
 "static surface layout observed text")
 
-# The previous live-gap patch has already removed token geometry from the bound
-# layout shape. Preserve that correction while adding the observed surface.
+# The live-gap patch has already removed sentence-specific token geometry from
+# bound layout identity. Preserve that correction while carrying observed text.
 once(
 '''        layout = new SemanticRealizationLayout(
             example.CurriculumFamilyId,
@@ -58,12 +59,13 @@ once(
             example.Text);''',
 "bound surface layout observed text")
 
-# Variable-bearing result frames need a different original-articulation proof
-# than static frames. A cross-family layout may legitimately carry different
-# values for the variable slot; requiring identical values made all such
-# independently supported layouts unusable. Keep the existing static composer
-# unchanged and route only variable-bearing layouts through the governed
-# surface-pattern proof below.
+# The selected result frame is already unique and governed. The layout group is
+# already required to recur across >=3 independent Founder families. The old
+# original composer incorrectly required a semantic VARIABLE VALUE to be the
+# same across those families, which defeats the purpose of a variable. Route
+# only variable-bearing results through a variable-aware recomposition that
+# preserves the same cross-family shape gate and substitutes only exact governed
+# values into an observed language-native scaffold.
 once(
 '''                if (!TryRealizeOriginalLearnedLayout(
                         eligibleLayout.Layouts,
@@ -75,7 +77,7 @@ once(
                     continue;
                 }''',
 '''                var realized = hasResultVariables
-                    ? TryRealizeOriginalGovernedSurfacePattern(
+                    ? TryRealizeOriginalVariableAwareLayout(
                         eligibleLayout.Layouts,
                         layouts,
                         candidate.ResultFrame,
@@ -97,14 +99,16 @@ once(
 marker = '''    private static bool TryRealizeOriginalLearnedLayout(
 '''
 helper = r'''    /// <summary>
-    /// Realizes one variable-bearing response from a surface grammar pattern
-    /// that recurs across at least three independent Founder families. Literal
-    /// inter-slot material is admitted only as part of that independently
-    /// repeated observed pattern; semantic slots still come exclusively from
-    /// exact Founder anchors. The method is read-only, persists no template,
-    /// and rejects every supplied stored endpoint.
+    /// Produces an original response for a variable-bearing result without
+    /// weakening the existing cross-family articulation gate. The semantic
+    /// slot order/scaffold must already be supported by at least three Founder
+    /// families (enforced by the caller's eligible layout group). Static result
+    /// semantics remain fixed. Only declared variable slots may change, and
+    /// each replacement surface must be an exact Founder-approved lexical
+    /// anchor for the exact bound semantic value. Every active curriculum
+    /// sentence is still rejected by the caller.
     /// </summary>
-    private static bool TryRealizeOriginalGovernedSurfacePattern(
+    private static bool TryRealizeOriginalVariableAwareLayout(
         IReadOnlyList<SemanticRealizationLayout> supportLayouts,
         IReadOnlyList<SemanticRealizationLayout> allLayouts,
         NormalizedSemanticFrame resultFrame,
@@ -117,217 +121,167 @@ helper = r'''    /// <summary>
         if (supportLayouts.Count == 0 || supportLayouts[0].Components.Count < 2)
             return false;
 
+        // Re-prove the invariant that makes the scaffold reusable. The caller
+        // already groups by shape, but this method is intentionally defensive.
+        if (supportLayouts.Select(item => item.FamilyId).Distinct().Count() < 3)
+            return false;
+        var shape = supportLayouts[0].Shape;
+        if (supportLayouts.Any(item =>
+                !string.Equals(item.Shape, shape, StringComparison.Ordinal) ||
+                item.Components.Count != supportLayouts[0].Components.Count))
+        {
+            return false;
+        }
+
         var dynamicDimensions = resultFrame.Dimensions
             .Where(item => IsSemanticVariable(item.Value))
             .ToDictionary(item => item.Key, item => item.Value, StringComparer.OrdinalIgnoreCase);
         if (dynamicDimensions.Count == 0)
             return false;
 
-        var patterns = new List<(SemanticRealizationLayout Layout, ObservedSurfacePattern Pattern)>();
-        foreach (var layout in supportLayouts)
+        // Static slots must carry exactly the selected static semantic value in
+        // every independently supporting family. Variable slots may vary by
+        // design but may not change dimension or occurrence position.
+        for (var position = 0; position < supportLayouts[0].Components.Count; position++)
         {
-            if (TryBuildObservedSurfacePattern(layout, out var pattern))
-                patterns.Add((layout, pattern));
+            var reference = supportLayouts[0].Components[position];
+            var aligned = supportLayouts.Select(item => item.Components[position]).ToArray();
+            if (aligned.Any(item => !string.Equals(
+                    item.Dimension,
+                    reference.Dimension,
+                    StringComparison.OrdinalIgnoreCase)))
+            {
+                return false;
+            }
+
+            if (dynamicDimensions.ContainsKey(reference.Dimension))
+                continue;
+
+            if (!resultFrame.Dimensions.TryGetValue(reference.Dimension, out var expected) ||
+                IsSemanticVariable(expected) ||
+                aligned.Any(item => !string.Equals(item.Value, expected, StringComparison.OrdinalIgnoreCase)))
+            {
+                return false;
+            }
         }
-        if (patterns.Count == 0)
-            return false;
+
+        // Resolve every variable slot to an exact observed surface for its exact
+        // bound value. A value may be domain-specific and occur in only one
+        // curriculum family; independence is required for the reusable
+        // articulation STRUCTURE, not for duplicating every possible content
+        // value three times.
+        var boundSurfaces = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase);
+        foreach (var dynamic in dynamicDimensions)
+        {
+            if (!bindings.TryGetValue(dynamic.Value, out var boundValue) ||
+                string.IsNullOrWhiteSpace(boundValue))
+            {
+                return false;
+            }
+
+            var surfaces = allLayouts
+                .SelectMany(item => item.Components)
+                .Where(item =>
+                    string.Equals(item.Dimension, dynamic.Key, StringComparison.OrdinalIgnoreCase) &&
+                    string.Equals(item.Value, boundValue, StringComparison.OrdinalIgnoreCase))
+                .Select(item => LegendLanguageIdentity.NormalizeText(item.SurfaceForm))
+                .Where(item => !string.IsNullOrWhiteSpace(item))
+                .Distinct(StringComparer.Ordinal)
+                .OrderBy(item => LegendLanguageIdentity.TextHash(item), StringComparer.Ordinal)
+                .ThenBy(item => item, StringComparer.Ordinal)
+                .ToArray();
+            if (surfaces.Length == 0)
+                return false;
+            boundSurfaces[dynamic.Key] = surfaces;
+        }
 
         var stored = storedEndpoints
             .Select(item => LegendLanguageIdentity.NormalizeText(item.Text))
             .Where(item => !string.IsNullOrWhiteSpace(item))
             .ToHashSet(StringComparer.Ordinal);
 
-        foreach (var patternGroup in patterns
-                     .GroupBy(item => item.Pattern.Signature, StringComparer.Ordinal)
-                     .Select(group => new
-                     {
-                         Items = group.ToList(),
-                         IndependentFamilies = group.Select(item => item.Layout.FamilyId).Distinct().Count()
-                     })
-                     .Where(group => group.IndependentFamilies >= 3)
-                     .OrderBy(group => LegendLanguageIdentity.TextHash(seed + "|" + group.Items[0].Pattern.Signature), StringComparer.Ordinal))
+        // Prefer independently supported scaffolds deterministically. Each
+        // scaffold is an actual Founder-authored sentence whose semantic slot
+        // order belongs to the >=3-family group. Replacing only declared
+        // variable spans preserves native grammar without inventing a template.
+        var scaffolds = supportLayouts
+            .OrderBy(item => LegendLanguageIdentity.TextHash(seed + "|" + item.ObservedText), StringComparer.Ordinal)
+            .ThenBy(item => item.ObservedText, StringComparer.Ordinal)
+            .ToArray();
+
+        foreach (var scaffold in scaffolds)
         {
-            var reference = patternGroup.Items[0];
-            var componentCount = reference.Layout.Components.Count;
-            if (patternGroup.Items.Any(item => item.Layout.Components.Count != componentCount))
+            var normalized = LegendLanguageIdentity.NormalizeText(scaffold.ObservedText);
+            var tokens = SurfaceComponents(normalized);
+            if (tokens.Count == 0)
                 continue;
 
-            var alternativesByPosition = new List<string[]>(componentCount);
+            var dynamicComponents = scaffold.Components
+                .Where(item => dynamicDimensions.ContainsKey(item.Dimension))
+                .OrderBy(item => item.StartTokenIndex)
+                .ThenBy(item => item.Dimension, StringComparer.Ordinal)
+                .ToArray();
+            if (dynamicComponents.Length == 0)
+                continue;
+
+            // Compute one deterministic choice per bound semantic value, then
+            // splice from right to left so earlier character offsets remain
+            // stable. Multiple occurrences of the same variable share the same
+            // governed value surface.
+            var replacements = new List<(int Start, int End, string Surface)>();
             var valid = true;
-            for (var position = 0; position < componentCount; position++)
+            foreach (var component in dynamicComponents)
             {
-                var referenceComponent = reference.Layout.Components[position];
-                if (patternGroup.Items.Any(item => !string.Equals(
-                        item.Layout.Components[position].Dimension,
-                        referenceComponent.Dimension,
-                        StringComparison.OrdinalIgnoreCase)))
+                if (component.StartTokenIndex < 0 || component.TokenLength < 1 ||
+                    component.StartTokenIndex + component.TokenLength > tokens.Count ||
+                    !boundSurfaces.TryGetValue(component.Dimension, out var alternatives) ||
+                    alternatives.Length == 0)
                 {
                     valid = false;
                     break;
                 }
 
-                string[] alternatives;
-                if (dynamicDimensions.TryGetValue(referenceComponent.Dimension, out var variable))
-                {
-                    if (!bindings.TryGetValue(variable, out var boundValue) || string.IsNullOrWhiteSpace(boundValue))
-                    {
-                        valid = false;
-                        break;
-                    }
-
-                    var occurrence = reference.Layout.Components
-                        .Take(position + 1)
-                        .Count(item => string.Equals(item.Dimension, referenceComponent.Dimension, StringComparison.OrdinalIgnoreCase)) - 1;
-                    alternatives = allLayouts
-                        .Select(layout => layout.Components
-                            .Where(item => string.Equals(item.Dimension, referenceComponent.Dimension, StringComparison.OrdinalIgnoreCase) &&
-                                           string.Equals(item.Value, boundValue, StringComparison.OrdinalIgnoreCase))
-                            .Skip(occurrence)
-                            .FirstOrDefault())
-                        .Where(item => item is not null)
-                        .Select(item => LegendLanguageIdentity.NormalizeText(item!.SurfaceForm))
-                        .Where(item => !string.IsNullOrWhiteSpace(item))
-                        .Distinct(StringComparer.Ordinal)
-                        .OrderBy(item => LegendLanguageIdentity.TextHash(item), StringComparer.Ordinal)
-                        .ThenBy(item => item, StringComparer.Ordinal)
-                        .ToArray();
-                }
-                else
-                {
-                    var semanticValues = patternGroup.Items
-                        .Select(item => item.Layout.Components[position].Value)
-                        .Distinct(StringComparer.OrdinalIgnoreCase)
-                        .ToArray();
-                    if (semanticValues.Length != 1)
-                    {
-                        valid = false;
-                        break;
-                    }
-                    alternatives = patternGroup.Items
-                        .Select(item => LegendLanguageIdentity.NormalizeText(item.Layout.Components[position].SurfaceForm))
-                        .Where(item => !string.IsNullOrWhiteSpace(item))
-                        .Distinct(StringComparer.Ordinal)
-                        .OrderBy(item => LegendLanguageIdentity.TextHash(item), StringComparer.Ordinal)
-                        .ThenBy(item => item, StringComparer.Ordinal)
-                        .ToArray();
-                }
-
-                if (alternatives.Length == 0)
-                {
-                    valid = false;
-                    break;
-                }
-                alternativesByPosition.Add(alternatives);
+                var seedBytes = SHA256.HashData(Encoding.UTF8.GetBytes(
+                    seed + "|" + scaffold.Shape + "|" + component.Dimension));
+                var selected = alternatives[(int)(BitConverter.ToUInt64(seedBytes, 0) % (ulong)alternatives.Length)];
+                var first = tokens[component.StartTokenIndex];
+                var last = tokens[component.StartTokenIndex + component.TokenLength - 1];
+                replacements.Add((
+                    first.CharacterOffset,
+                    last.CharacterOffset + last.CharacterLength,
+                    selected));
             }
             if (!valid)
                 continue;
 
-            const long maximumCombinations = 4096;
-            long combinationCount = 1;
-            foreach (var alternatives in alternativesByPosition)
-                combinationCount = Math.Min(maximumCombinations, combinationCount * alternatives.Length);
-            if (combinationCount <= 0)
+            var builder = new StringBuilder(normalized);
+            foreach (var replacement in replacements.OrderByDescending(item => item.Start))
+            {
+                if (replacement.Start < 0 || replacement.End < replacement.Start || replacement.End > builder.Length)
+                {
+                    valid = false;
+                    break;
+                }
+                builder.Remove(replacement.Start, replacement.End - replacement.Start);
+                builder.Insert(replacement.Start, replacement.Surface);
+            }
+            if (!valid)
                 continue;
 
-            var seedBytes = SHA256.HashData(Encoding.UTF8.GetBytes(seed + "|" + reference.Pattern.Signature));
-            var startingOrdinal = (long)(BitConverter.ToUInt64(seedBytes, 0) % (ulong)combinationCount);
-            for (long attempt = 0; attempt < combinationCount; attempt++)
-            {
-                var ordinal = (startingOrdinal + attempt) % combinationCount;
-                var cursor = ordinal;
-                var selected = new string[componentCount];
-                for (var position = 0; position < componentCount; position++)
-                {
-                    var alternatives = alternativesByPosition[position];
-                    selected[position] = alternatives[(int)(cursor % alternatives.Length)];
-                    cursor /= alternatives.Length;
-                }
+            var candidate = LegendLanguageIdentity.NormalizeText(builder.ToString());
+            if (string.IsNullOrWhiteSpace(candidate) || stored.Contains(candidate))
+                continue;
 
-                var builder = new StringBuilder();
-                for (var position = 0; position < componentCount; position++)
-                {
-                    builder.Append(reference.Pattern.Gaps[position]);
-                    builder.Append(selected[position]);
-                }
-                builder.Append(reference.Pattern.Gaps[componentCount]);
-                if (!string.IsNullOrWhiteSpace(reference.Layout.TerminalPunctuation))
-                    builder.Append(reference.Layout.TerminalPunctuation);
-
-                var candidate = LegendLanguageIdentity.NormalizeText(builder.ToString());
-                if (string.IsNullOrWhiteSpace(candidate) || stored.Contains(candidate))
-                    continue;
-
-                text = candidate;
-                return true;
-            }
+            text = candidate;
+            return true;
         }
 
         return false;
     }
 
-    private static bool TryBuildObservedSurfacePattern(
-        SemanticRealizationLayout layout,
-        out ObservedSurfacePattern pattern)
-    {
-        pattern = null!;
-        if (layout.Components.Count < 2)
-            return false;
-
-        var normalized = LegendLanguageIdentity.NormalizeText(layout.ObservedText);
-        if (string.IsNullOrWhiteSpace(normalized))
-            return false;
-        var punctuation = layout.TerminalPunctuation ?? string.Empty;
-        var bodyLength = normalized.Length;
-        if (!string.IsNullOrWhiteSpace(punctuation) && normalized.EndsWith(punctuation, StringComparison.Ordinal))
-            bodyLength -= punctuation.Length;
-        if (bodyLength <= 0)
-            return false;
-
-        var tokens = SurfaceComponents(normalized);
-        if (tokens.Count == 0)
-            return false;
-
-        var ordered = layout.Components.OrderBy(item => item.StartTokenIndex).ToArray();
-        var gaps = new string[ordered.Length + 1];
-        var cursor = 0;
-        var occurrences = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
-        var signature = new StringBuilder();
-        for (var index = 0; index < ordered.Length; index++)
-        {
-            var component = ordered[index];
-            if (component.StartTokenIndex < 0 || component.TokenLength < 1 ||
-                component.StartTokenIndex + component.TokenLength > tokens.Count)
-                return false;
-            var first = tokens[component.StartTokenIndex];
-            var last = tokens[component.StartTokenIndex + component.TokenLength - 1];
-            var start = first.CharacterOffset;
-            var end = last.CharacterOffset + last.CharacterLength;
-            if (start < cursor || end > bodyLength)
-                return false;
-
-            gaps[index] = normalized[cursor..start];
-            occurrences.TryGetValue(component.Dimension, out var prior);
-            var occurrence = prior + 1;
-            occurrences[component.Dimension] = occurrence;
-            signature.Append(gaps[index]);
-            signature.Append("{").Append(component.Dimension).Append(":").Append(occurrence).Append("}");
-            cursor = end;
-        }
-        if (cursor > bodyLength)
-            return false;
-        gaps[^1] = normalized[cursor..bodyLength];
-        signature.Append(gaps[^1]);
-        pattern = new ObservedSurfacePattern(signature.ToString(), gaps);
-        return true;
-    }
-
-    private sealed record ObservedSurfacePattern(
-        string Signature,
-        IReadOnlyList<string> Gaps);
-
 '''
 if text.count(marker) != 1:
-    raise SystemExit(f"surface pattern helper marker: found {text.count(marker)}")
+    raise SystemExit(f"variable-aware articulation helper marker: found {text.count(marker)}")
 text = text.replace(marker, helper + marker, 1)
 
 P.write_text(text)
