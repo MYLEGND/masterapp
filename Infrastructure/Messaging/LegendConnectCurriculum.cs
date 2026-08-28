@@ -4266,9 +4266,9 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
 
                 if (observedCandidates.Count > 0)
                 {
-                    var strongestCandidates = StrongestCompatibleSemanticTransitionCandidates(
+                    var strongestObservedCandidates = StrongestCompatibleSemanticTransitionCandidates(
                         observedCandidates);
-                    if (strongestCandidates
+                    if (strongestObservedCandidates
                             .Select(item => item.ResultFrame.Signature)
                             .Distinct(StringComparer.Ordinal)
                             .Count() != 1)
@@ -4282,7 +4282,7 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
                     return new(
                         language,
                         sourceComponents,
-                        strongestCandidates
+                        strongestObservedCandidates
                             .OrderBy(item => item.TransitionSignature, StringComparer.Ordinal)
                             .First(),
                         "response_meaning_plan_governed_founder_observed",
