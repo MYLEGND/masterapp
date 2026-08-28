@@ -39,6 +39,7 @@ jobs:
           using System.Threading.Tasks;
           using AgentPortal.Models;
           using AgentPortal.Services;
+          using Domain.Messaging;
           using Infrastructure.Data;
           using Infrastructure.Messaging;
           using Microsoft.Data.SqlClient;
