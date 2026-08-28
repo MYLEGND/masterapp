@@ -145,8 +145,9 @@ public sealed class LegendProductionConversationDiscoveryTests
                 ["LegendConnect:LanguageRegistry:Baseline:0:NativeName"] = "English"
             }).Build();
         var registry = new LegendLanguageRegistry(db, configuration);
+        var access = new ControlledResourceAccessService(db, configuration, registry);
         var runtime = new LegendConnectRuntimePolicyAuthority(
-            db, new FounderAccess(), registry, configuration,
+            db, access, registry, configuration,
             NullLogger<LegendConnectRuntimePolicyAuthority>.Instance);
         var intelligence = new LegendConnectTranslationIntelligence(db, configuration, runtime);
         var corpus = new LegendConnectCorpusService(
@@ -177,9 +178,6 @@ public sealed class LegendProductionConversationDiscoveryTests
             "Project likely, best-case, and adverse outcomes for the learning iteration with explicit assumptions.",
             "A contradiction has been identified in the instruction execution; resolve it using the governing evidence.",
             "Synthesize the executive brief by combining compatible evidence without erasing disagreement.",
-            // Deliberately held-out connective language. This tests whether the
-            // accumulated transcript plus learned semantic anchors is enough to
-            // understand a natural continuation rather than another curriculum endpoint.
             "Now apply that same evidence-first discipline to the technology choice and tell me what would reverse the recommendation."
         };
 
