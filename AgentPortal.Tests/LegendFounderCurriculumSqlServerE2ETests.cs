@@ -1067,10 +1067,58 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
                 _output.WriteLine($"ANSWER: {native.Answer ?? "<NULL>"}");
                 if (!passed)
                 {
+                    foreach (var dimension in graph.Nodes
+                                 .GroupBy(item => item.SemanticDimension, StringComparer.Ordinal)
+                                 .Select(group => new
+                                 {
+                                     Dimension = group.Key,
+                                     Values = group
+                                         .GroupBy(item => item.SemanticValue, StringComparer.OrdinalIgnoreCase)
+                                         .Select(valueGroup =>
+                                             valueGroup.Key + "@" +
+                                             string.Join(",", valueGroup
+                                                 .Select(item => item.StartTokenIndex + ":" + item.TokenLength)
+                                                 .Distinct()) +
+                                             "#" + valueGroup.Max(item => item.IndependentSupportCount))
+                                         .OrderBy(item => item, StringComparer.Ordinal)
+                                         .ToArray()
+                                 })
+                                 .Where(item => item.Values.Length > 1)
+                                 .OrderBy(item => item.Dimension, StringComparer.Ordinal))
+                    {
+                        _output.WriteLine(
+                            $"AMBIGUOUS DIMENSION: {dimension.Dimension}=" +
+                            string.Join(" | ", dimension.Values));
+                    }
+                    foreach (var node in graph.Nodes
+                                 .OrderBy(item => item.StartTokenIndex)
+                                 .ThenByDescending(item => item.TokenLength)
+                                 .ThenBy(item => item.SemanticDimension, StringComparer.Ordinal))
+                    {
+                        _output.WriteLine(
+                            $"NODE: {node.StartTokenIndex}:{node.TokenLength} " +
+                            $"{node.SemanticDimension}={node.SemanticValue} " +
+                            $"SUPPORT={node.IndependentSupportCount} SIG={node.SemanticSignature}");
+                    }
+                    foreach (var relation in graph.Relations
+                                 .OrderBy(item => item.SourceNodeIndex)
+                                 .ThenBy(item => item.TargetNodeIndex)
+                                 .ThenBy(item => item.RelationKind, StringComparer.Ordinal))
+                    {
+                        _output.WriteLine(
+                            $"RELATION: {relation.SourceNodeIndex}->{relation.TargetNodeIndex} " +
+                            $"{relation.RelationKind} SUPPORT={relation.IndependentSupportCount} " +
+                            $"SIG={relation.RelationSignature}");
+                    }
+                    if (graph.UnknownSurfaceComponents.Count > 0)
+                    {
+                        _output.WriteLine(
+                            "UNKNOWN SURFACE: " + string.Join(" | ", graph.UnknownSurfaceComponents));
+                    }
                     failures.Add(
-                    $"'{prompt}': " +
-                    $"Graph={graph.ReasonCode}; Plan={plan.ReasonCode}; " +
-                    $"Native={native.ReasonCode}; Evidence={native.EvidenceCount}; Original={isOriginal}");
+                        $"'{prompt}': " +
+                        $"Graph={graph.ReasonCode}; Plan={plan.ReasonCode}; " +
+                        $"Native={native.ReasonCode}; Evidence={native.EvidenceCount}; Original={isOriginal}");
                 }
             }
 
