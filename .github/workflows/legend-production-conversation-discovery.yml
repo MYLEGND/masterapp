@@ -54,10 +54,11 @@ jobs:
           if ([string]::IsNullOrWhiteSpace($founderOid)) { throw 'Production Founder OID unavailable' }
           $env:LEGEND_PRODUCTION_READONLY_CONNECTION = [string]$match.value
           $env:LEGEND_PRODUCTION_READONLY_FOUNDER_OID = $founderOid
+          $env:FOUNDER_OID = $founderOid
           $env:OPENAI_API_KEY = ''
           $env:OpenAI__ApiKey = ''
           Write-Output "::add-mask::$env:LEGEND_PRODUCTION_READONLY_CONNECTION"
           Write-Output "::add-mask::$founderOid"
           dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-build --filter 'FullyQualifiedName~LegendProductionConversationDiscoveryTests.RunUnpublishedCandidateAsOneRealNativeConversationAgainstLiveCurriculum' --logger 'console;verbosity=detailed'
 
-# conversation proof revision 2
+# conversation proof revision 3
