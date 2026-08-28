@@ -173,17 +173,7 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
         // There is no phrase-specific production routing.
         // ---------------------------------------------------------
 
-        var prompts = new[]
-        {
-            "Hi there.",
-            "Hi Legend.",
-            "Hello.",
-            "Hey Legend.",
-            "Good morning.",
-            "How are you?",
-            "Nice to meet you.",
-            "What's up?"
-        };
+        var prompts = LiveFounderNativePrompts.Select(item => item.Text).ToArray();
 
         for (var sourceIndex = 1;
              sourceIndex <= 3;
@@ -764,17 +754,7 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
         _output.WriteLine($"ACTIVE TARGET REALIZATION CANDIDATES: {corpusCounts.ActiveTargetRealizationCandidates}");
         _output.WriteLine($"ACTIVE TARGET REALIZATION EVIDENCE: {corpusCounts.ActiveTargetRealizationEvidence}");
 
-        var prompts = new[]
-        {
-            "Hi there.",
-            "Hi Legend.",
-            "Hello.",
-            "Hey Legend.",
-            "Good morning.",
-            "How are you?",
-            "Nice to meet you.",
-            "What's up?"
-        };
+        var prompts = LiveFounderNativePrompts.Select(item => item.Text).ToArray();
 
         var nativePasses = 0;
         foreach (var prompt in prompts)
@@ -3147,15 +3127,10 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
             item.IsTrainingEligible && item.LanguageCode == "en" && item.Text == heldOutNormalized),
             "The held-out greeting must not already be a complete stored curriculum sentence.");
 
-        var knownGreetingTexts = new HashSet<string>(StringComparer.Ordinal)
-        {
-            LegendLanguageIdentity.NormalizeText("Hi"),
-            LegendLanguageIdentity.NormalizeText("Hello"),
-            LegendLanguageIdentity.NormalizeText("Hey Legend"),
-            LegendLanguageIdentity.NormalizeText("What's up?"),
-            LegendLanguageIdentity.NormalizeText("How's it going?"),
-            heldOutNormalized
-        };
+        var knownGreetingTexts = LiveFounderNativePrompts
+            .Select(item => LegendLanguageIdentity.NormalizeText(item.Text))
+            .Append(heldOutNormalized)
+            .ToHashSet(StringComparer.Ordinal);
         var governedReasoning = await (
             from transition in shadow.LegendSemanticTransitionEvidence.AsNoTracking()
             join source in shadow.LegendCurriculumExamples.AsNoTracking()
@@ -3177,17 +3152,30 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
 
         return
         [
-            new("greeting-hi", "Hi", true),
-            new("greeting-hello", "Hello", true),
-            new("greeting-hey-legend", "Hey Legend", true),
-            new("greeting-whats-up", "What's up?", true),
-            new("greeting-hows-it-going", "How's it going?", true),
+            ..LiveFounderNativePrompts,
             new("greeting-held-out", heldOutGreeting, true),
             new("curriculum-reasoning-" + governedReasoning!.NormalizedHash[..12], governedReasoning.Text, true),
             new("ambiguous-request", "Hello or goodbye?", false),
             new("contradictory-request", "Please greet me and do not greet me.", false)
         ];
     }
+
+    // One exact live-Founder prompt matrix owns the direct native proofs and
+    // the isolated full-corpus reconstruction gate. The
+    // shadow must never invent a stronger expected endpoint than the direct
+    // live proof established, and it must never omit an endpoint that the
+    // direct gate requires.
+    private static readonly ShadowPrompt[] LiveFounderNativePrompts =
+    [
+        new("greeting-hi-there", "Hi there.", true),
+        new("greeting-hi-legend", "Hi Legend.", true),
+        new("greeting-hello", "Hello.", true),
+        new("greeting-hey-legend", "Hey Legend.", true),
+        new("greeting-good-morning", "Good morning.", true),
+        new("greeting-how-are-you", "How are you?", true),
+        new("greeting-nice-to-meet-you", "Nice to meet you.", true),
+        new("greeting-whats-up", "What's up?", true)
+    ];
 
     private void WriteShadowPromptTrace(
         ShadowPrompt request,
