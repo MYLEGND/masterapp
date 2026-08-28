@@ -1088,32 +1088,25 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
 
             // This is a rebuild, so derived candidates, derived evidence,
             // dependency artifacts, and convergence rows were intentionally
-            // not copied. The canonical compiler below must reconstruct them
-            // from the complete governed source/evidence snapshot.
-            _output.WriteLine("SHADOW REBUILD PATH: current V21 governed inputs copied; all derived outputs must be regenerated canonically.");
+            // not copied. The canonical compiler below must reconstruct every
+            // output that the available governed source/evidence can support;
+            // an unavailable evidence class must remain absent rather than be
+            // fabricated to make the diagnostic positive.
+            _output.WriteLine("SHADOW REBUILD PATH: current V21 governed inputs copied; supported derived outputs must be regenerated canonically and unsupported paths must remain fail-closed.");
 
             // The shadow executes the same bounded canonical compiler that
             // the durable worker owns.  It does not write production and it
             // never changes a contract, manifest, or work item by hand.
-            await DrainShadowCurriculumPhaseAsync(
+            var replayedSourceFamilies = await DrainShadowCurriculumPhaseAsync(
                 curriculum,
                 LegendConnectLanguageIntelligenceReevaluationPhases.SourceFamilies);
-            await DrainShadowCurriculumPhaseAsync(
+            var replayedAlignments = await DrainShadowCurriculumPhaseAsync(
                 curriculum,
                 LegendConnectLanguageIntelligenceReevaluationPhases.Alignments);
-            var shadowAfterFirstReplay = await ReadShadowCountsAsync(shadow);
-            WriteShadowCounts("SHADOW AFTER FIRST CANONICAL REPLAY", shadowAfterFirstReplay);
-            Assert.True(shadowAfterFirstReplay.ActiveTargetRealizationCandidates > 0,
-                "The live-data shadow compiler produced no target-realization candidates.");
-            Assert.True(shadowAfterFirstReplay.TargetCandidatesWithEvidence ==
-                        shadowAfterFirstReplay.ActiveTargetRealizationCandidates,
-                "Every shadow target-realization candidate must retain active evidence.");
 
-            // Candidate evidence itself has exact source example, target
-            // example, and alignment identities. The compact source ledger
-            // below is refreshed through its existing authority to retain the
-            // corresponding V21 contract provenance without creating a
-            // candidate-specific authority.
+            // The compact dependency ledger is a projection of the canonical
+            // source replay, not a semantic input. Rebuild it only after the
+            // evaluator has reconstructed the governed source state.
             var familyIds = await shadow.LegendCurriculumExamples.AsNoTracking()
                 .Where(item => item.SupersededUtc == null)
                 .Select(item => item.CurriculumFamilyId)
@@ -1123,6 +1116,32 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
                 await curriculum.RefreshCurrentDerivationDependenciesForFamilyAsync(
                     familyId,
                     LegendConnectLanguageIntelligenceEvaluatorVersion.Current);
+
+            var shadowAfterFirstReplay = await ReadShadowCountsAsync(shadow);
+            WriteShadowCounts("SHADOW AFTER FIRST CANONICAL REPLAY", shadowAfterFirstReplay);
+            _output.WriteLine($"SHADOW REPLAYED SOURCE FAMILIES: {replayedSourceFamilies}");
+            _output.WriteLine($"SHADOW REPLAYED HUMAN-VERIFIED ALIGNMENTS: {replayedAlignments}");
+            Assert.Equal(copied["families"], replayedSourceFamilies);
+            Assert.Equal(copied["alignments"], replayedAlignments);
+            Assert.True(shadowAfterFirstReplay.SourceAnchors > 0,
+                "The live-data shadow compiler produced no governed source anchors.");
+            Assert.True(shadowAfterFirstReplay.CurrentArtifacts > 0,
+                "The live-data shadow compiler produced no current V21 lineage artifacts.");
+            Assert.True(shadowAfterFirstReplay.TargetCandidatesWithEvidence ==
+                        shadowAfterFirstReplay.ActiveTargetRealizationCandidates,
+                "Every shadow target-realization candidate must retain active evidence.");
+            if (replayedAlignments == 0)
+            {
+                Assert.Equal(0, shadowAfterFirstReplay.ActiveTargetRealizationCandidates);
+                Assert.Equal(0, shadowAfterFirstReplay.ActiveTargetRealizationEvidence);
+                _output.WriteLine("SHADOW TARGET REALIZATION PATH: fail-closed; the live governed snapshot contains no human-verified alignment evidence.");
+            }
+
+            // Candidate evidence itself has exact source example, target
+            // example, and alignment identities. The compact source ledger
+            // below is refreshed through its existing authority to retain the
+            // corresponding V21 contract provenance without creating a
+            // candidate-specific authority.
             var activeV21Artifacts = await shadow.LegendLanguageDerivationArtifacts
                 .LongCountAsync(item => item.State == "Current" &&
                     item.DerivationContractIdentity == sourceV21Contract);
