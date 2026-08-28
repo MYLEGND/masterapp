@@ -5619,11 +5619,20 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
                 out values);
         }
 
-        // A multi-node composed meaning graph is defined by governed relations,
-        // not by every independently recognized surface primitive. A dangling
-        // primitive can be legitimate lexical evidence for another meaning,
-        // but must not make the active connected meaning ambiguous.
+        // A multi-node composed meaning graph is defined by one coherent
+        // governed relation component, not by the union of every meaning ever
+        // observed for each matching surface token. Dense curricula commonly
+        // teach different meanings for words such as "what", "tell", "plan",
+        // and "check". Combining disconnected relation components manufactures
+        // a semantic supergraph that no Founder example asserted.
+        //
+        // Rank complete connected interpretations by present-turn surface
+        // coverage, governed relation density, relation maturity, and node
+        // maturity. Equal-ranked components that imply different frames remain
+        // ambiguous. This is graph disambiguation inside the canonical meaning
+        // authority; it neither adds lexical rules nor selects a response.
         var participatingNodeIndexes = new HashSet<int>();
+        var adjacency = new Dictionary<int, HashSet<int>>();
         foreach (var relation in relations)
         {
             if (relation.SourceNodeIndex < 0 || relation.SourceNodeIndex >= nodes.Count ||
@@ -5634,22 +5643,110 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
             }
             participatingNodeIndexes.Add(relation.SourceNodeIndex);
             participatingNodeIndexes.Add(relation.TargetNodeIndex);
+            if (!adjacency.TryGetValue(relation.SourceNodeIndex, out var sourceAdjacent))
+                adjacency[relation.SourceNodeIndex] = sourceAdjacent = [];
+            if (!adjacency.TryGetValue(relation.TargetNodeIndex, out var targetAdjacent))
+                adjacency[relation.TargetNodeIndex] = targetAdjacent = [];
+            sourceAdjacent.Add(relation.TargetNodeIndex);
+            targetAdjacent.Add(relation.SourceNodeIndex);
         }
-        components.AddRange(participatingNodeIndexes.OrderBy(index => index)
-            .Select(index => new KeyValuePair<string, string>(
-                nodes[index].SemanticDimension,
-                nodes[index].SemanticValue)));
-        foreach (var relation in relations)
+
+        var componentCandidates = new List<SemanticGraphComponentCandidate>();
+        var visited = new HashSet<int>();
+        foreach (var start in participatingNodeIndexes.OrderBy(index => index))
         {
-            components.Add(new KeyValuePair<string, string>(
-                StructuralRelationFrameDimension(
-                    relation.RelationKind,
-                    nodes[relation.SourceNodeIndex].SemanticDimension,
-                    nodes[relation.TargetNodeIndex].SemanticDimension,
-                    clauseKey: null),
-                "present"));
+            if (!visited.Add(start))
+                continue;
+            var componentNodeIndexes = new HashSet<int> { start };
+            var pending = new Stack<int>();
+            pending.Push(start);
+            while (pending.Count > 0)
+            {
+                var current = pending.Pop();
+                if (!adjacency.TryGetValue(current, out var adjacent))
+                    continue;
+                foreach (var next in adjacent)
+                {
+                    if (!visited.Add(next))
+                        continue;
+                    componentNodeIndexes.Add(next);
+                    pending.Push(next);
+                }
+            }
+
+            var componentRelations = relations
+                .Where(item => componentNodeIndexes.Contains(item.SourceNodeIndex) &&
+                    componentNodeIndexes.Contains(item.TargetNodeIndex))
+                .ToArray();
+            var componentValues = componentNodeIndexes
+                .OrderBy(index => index)
+                .Select(index => new KeyValuePair<string, string>(
+                    nodes[index].SemanticDimension,
+                    nodes[index].SemanticValue))
+                .Concat(componentRelations.Select(relation => new KeyValuePair<string, string>(
+                    StructuralRelationFrameDimension(
+                        relation.RelationKind,
+                        nodes[relation.SourceNodeIndex].SemanticDimension,
+                        nodes[relation.TargetNodeIndex].SemanticDimension,
+                        clauseKey: null),
+                    "present")))
+                .ToArray();
+            if (!TryToUnambiguousSemanticValues(componentValues, out var resolvedComponentValues))
+                continue;
+
+            var coveredTokens = componentNodeIndexes
+                .SelectMany(index => Enumerable.Range(
+                    nodes[index].StartTokenIndex,
+                    nodes[index].TokenLength))
+                .Distinct()
+                .Count();
+            componentCandidates.Add(new SemanticGraphComponentCandidate(
+                resolvedComponentValues,
+                coveredTokens,
+                componentRelations.Length,
+                componentRelations.Min(item => item.IndependentSupportCount),
+                componentRelations.Sum(item => item.IndependentSupportCount),
+                componentNodeIndexes.Sum(index => nodes[index].TokenLength),
+                componentNodeIndexes.Sum(index => nodes[index].IndependentSupportCount)));
         }
-        return TryToUnambiguousSemanticValues(components, out values);
+
+        if (componentCandidates.Count == 0)
+        {
+            values = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            return false;
+        }
+
+        var orderedCandidates = componentCandidates
+            .OrderByDescending(item => item.CoveredTokenCount)
+            .ThenByDescending(item => item.RelationCount)
+            .ThenByDescending(item => item.MinimumRelationSupport)
+            .ThenByDescending(item => item.TotalRelationSupport)
+            .ThenByDescending(item => item.TotalNodeTokenLength)
+            .ThenByDescending(item => item.TotalNodeSupport)
+            .ToArray();
+        var strongest = orderedCandidates[0];
+        var equallyStrong = orderedCandidates.Where(item =>
+                item.CoveredTokenCount == strongest.CoveredTokenCount &&
+                item.RelationCount == strongest.RelationCount &&
+                item.MinimumRelationSupport == strongest.MinimumRelationSupport &&
+                item.TotalRelationSupport == strongest.TotalRelationSupport &&
+                item.TotalNodeTokenLength == strongest.TotalNodeTokenLength &&
+                item.TotalNodeSupport == strongest.TotalNodeSupport)
+            .ToArray();
+        var distinctFrames = equallyStrong
+            .Select(item => JsonSerializer.Serialize(item.Values
+                .OrderBy(value => value.Key, StringComparer.Ordinal)))
+            .Distinct(StringComparer.Ordinal)
+            .Take(2)
+            .Count();
+        if (distinctFrames != 1)
+        {
+            values = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            return false;
+        }
+
+        values = strongest.Values;
+        return true;
     }
 
     private static bool TryToUnambiguousSemanticValues(
@@ -11676,6 +11773,15 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
         LegendSemanticTransitionEvidenceTier EvidenceTier,
         int ReasoningEvidenceCount = 0,
         IReadOnlyList<string>? ReasoningPath = null);
+
+    private sealed record SemanticGraphComponentCandidate(
+        IReadOnlyDictionary<string, string> Values,
+        int CoveredTokenCount,
+        int RelationCount,
+        int MinimumRelationSupport,
+        int TotalRelationSupport,
+        int TotalNodeTokenLength,
+        int TotalNodeSupport);
 
     private sealed record ResponseMeaningPlanSelection(
         string SourceLanguageCode,
