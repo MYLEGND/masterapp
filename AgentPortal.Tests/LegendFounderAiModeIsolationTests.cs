@@ -118,7 +118,8 @@ public sealed class LegendFounderAiModeIsolationTests
                 "Explain the governed gap.",
                 It.IsAny<IReadOnlyList<LegendConnectConversationContextItem>>(),
                 It.IsAny<LegendConnectDiscourseStateSnapshot?>(),
-                It.IsAny<CancellationToken>()))
+                It.IsAny<CancellationToken>(),
+                "en"))
             .ReturnsAsync(new LegendConnectNativeInferenceSnapshot(
                 false,
                 0m,
@@ -427,7 +428,8 @@ public sealed class LegendFounderAiModeIsolationTests
                 "Hello.",
                 It.IsAny<IReadOnlyList<LegendConnectConversationContextItem>>(),
                 It.IsAny<LegendConnectDiscourseStateSnapshot?>(),
-                It.IsAny<CancellationToken>()))
+                It.IsAny<CancellationToken>(),
+                "en"))
             .ReturnsAsync(new LegendConnectNativeInferenceSnapshot(
                 true,
                 1m,
@@ -454,6 +456,54 @@ public sealed class LegendFounderAiModeIsolationTests
     }
 
     [Fact]
+    public async Task LegendMode_ThreadsTheGovernedSourceLanguageThroughMeaningAndNativeInference()
+    {
+        using var founderEnvironment = new FounderEnvironmentScope();
+        await using var db = ControllerTestHelpers.BuildDb();
+        var founder = await AddFounderProfileAsync(db);
+        var operations = new Mock<ILegendConnectOperations>(MockBehavior.Strict);
+        operations
+            .Setup(operation => operation.AnalyzeReusableMeaningGraphAsync(
+                "Hola.",
+                It.IsAny<CancellationToken>(),
+                "es"))
+            .ReturnsAsync(new LegendConnectUtteranceMeaningGraphSnapshot(
+                false,
+                [],
+                [],
+                ["hola"],
+                "meaning_graph_component_unknown"));
+        operations
+            .Setup(operation => operation.TryInferConversationWithDiscourseAsync(
+                "Hola.",
+                It.IsAny<IReadOnlyList<LegendConnectConversationContextItem>>(),
+                It.IsAny<LegendConnectDiscourseStateSnapshot?>(),
+                It.IsAny<CancellationToken>(),
+                "es"))
+            .ReturnsAsync(new LegendConnectNativeInferenceSnapshot(
+                false,
+                0m,
+                null,
+                "meaning_graph_component_unknown",
+                0,
+                "The Spanish evidence partition does not yet support this request.",
+                true));
+
+        var handler = new FounderAiScenarioHandler();
+        var service = CreateService(db, operations.Object, handler);
+
+        var response = await service.ReplyAsync(
+            founder,
+            Request("legend", "Hola.", nativeOnly: true, sourceLanguageCode: "es"));
+
+        Assert.True(response.Succeeded, Describe(response));
+        Assert.Equal("native_only_blocked", response.Stage);
+        Assert.Equal("meaning_graph_component_unknown", response.Reason);
+        Assert.Equal(0, handler.RequestCount);
+        operations.VerifyAll();
+    }
+
+    [Fact]
     public async Task LegendMode_NativeOnlyReturnsNativeAnswerWithoutCallingOpenAi()
     {
         using var founderEnvironment = new FounderEnvironmentScope();
@@ -465,7 +515,8 @@ public sealed class LegendFounderAiModeIsolationTests
                 "Answer directly.",
                 It.IsAny<IReadOnlyList<LegendConnectConversationContextItem>>(),
                 It.IsAny<LegendConnectDiscourseStateSnapshot?>(),
-                It.IsAny<CancellationToken>()))
+                It.IsAny<CancellationToken>(),
+                "en"))
             .ReturnsAsync(new LegendConnectNativeInferenceSnapshot(
                 true,
                 1m,
@@ -503,7 +554,8 @@ public sealed class LegendFounderAiModeIsolationTests
                 "Explain the unsupported gap.",
                 It.IsAny<IReadOnlyList<LegendConnectConversationContextItem>>(),
                 It.IsAny<LegendConnectDiscourseStateSnapshot?>(),
-                It.IsAny<CancellationToken>()))
+                It.IsAny<CancellationToken>(),
+                "en"))
             .ReturnsAsync(new LegendConnectNativeInferenceSnapshot(
                 false,
                 0m,
@@ -563,7 +615,8 @@ public sealed class LegendFounderAiModeIsolationTests
                 "Explain the gap.",
                 It.IsAny<IReadOnlyList<LegendConnectConversationContextItem>>(),
                 It.IsAny<LegendConnectDiscourseStateSnapshot?>(),
-                It.IsAny<CancellationToken>()))
+                It.IsAny<CancellationToken>(),
+                "en"))
             .ReturnsAsync(new LegendConnectNativeInferenceSnapshot(
                 false,
                 0m,
@@ -625,11 +678,13 @@ public sealed class LegendFounderAiModeIsolationTests
     private static LegendFounderAiChatRequest Request(
         string? mode,
         string prompt,
-        bool nativeOnly = false) =>
+        bool nativeOnly = false,
+        string sourceLanguageCode = "en") =>
         new()
         {
             Mode = mode,
             NativeOnly = nativeOnly,
+            SourceLanguageCode = sourceLanguageCode,
             Messages = [new LegendFounderAiChatMessage("user", prompt)]
         };
 

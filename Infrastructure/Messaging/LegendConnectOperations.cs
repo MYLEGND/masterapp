@@ -354,14 +354,15 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
             string input,
             IReadOnlyList<LegendConnectConversationContextItem> context,
             LegendConnectDiscourseStateSnapshot? discourseState,
-            CancellationToken cancellationToken = default)
+            CancellationToken cancellationToken = default,
+            string sourceLanguageCode = "en")
     {
         cancellationToken.ThrowIfCancellationRequested();
         if (string.IsNullOrWhiteSpace(LegendLanguageIdentity.NormalizeText(input ?? string.Empty)))
             return NativeInferenceUnsupported("invalid_input");
 
         var composed = await Curriculum.TryInferComposedSemanticTransitionAsync(
-            "en", input ?? string.Empty, context, discourseState, cancellationToken);
+            sourceLanguageCode, input ?? string.Empty, context, discourseState, cancellationToken);
         if (string.Equals(composed.State, LegendSemanticTransitionInference.Supported, StringComparison.Ordinal) &&
             !string.IsNullOrWhiteSpace(composed.RealizedText))
         {
@@ -439,9 +440,10 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
     public Task<LegendConnectResponseMeaningPlanResult> TryPlanConversationAsync(
         string input,
         LegendConnectDiscourseStateSnapshot? discourseState,
-        CancellationToken cancellationToken = default) =>
+        CancellationToken cancellationToken = default,
+        string sourceLanguageCode = "en") =>
         Curriculum.TryPlanResponseMeaningAsync(
-            "en",
+            sourceLanguageCode,
             input ?? string.Empty,
             discourseState,
             cancellationToken);
@@ -450,9 +452,10 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
         TryBindConversationContentAsync(
             string input,
             LegendConnectDiscourseStateSnapshot? discourseState,
-            CancellationToken cancellationToken = default) =>
+            CancellationToken cancellationToken = default,
+            string sourceLanguageCode = "en") =>
         Curriculum.TryBindResponseContentAsync(
-            "en",
+            sourceLanguageCode,
             input ?? string.Empty,
             discourseState,
             cancellationToken);
@@ -477,8 +480,12 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
     /// </summary>
     public Task<LegendConnectUtteranceMeaningGraphSnapshot> AnalyzeReusableMeaningGraphAsync(
         string input,
-        CancellationToken cancellationToken = default) =>
-        Curriculum.AnalyzeReusableMeaningGraphAsync("en", input ?? string.Empty, cancellationToken);
+        CancellationToken cancellationToken = default,
+        string sourceLanguageCode = "en") =>
+        Curriculum.AnalyzeReusableMeaningGraphAsync(
+            sourceLanguageCode,
+            input ?? string.Empty,
+            cancellationToken);
 
     public Task<IReadOnlyList<LegendConnectDiscourseReferenceRuleSnapshot>>
         GetProductionDiscourseReferenceRulesAsync(

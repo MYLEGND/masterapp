@@ -39,7 +39,8 @@ public sealed class LegendFounderAiDiscourseStateService
         string? conversationId,
         string role,
         LegendConnectUtteranceMeaningGraphSnapshot meaning,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        string sourceLanguageCode = "en")
     {
         ArgumentNullException.ThrowIfNull(meaning);
 
@@ -66,6 +67,7 @@ public sealed class LegendFounderAiDiscourseStateService
                     parsedConversationId,
                     role,
                     meaning,
+                    sourceLanguageCode,
                     cancellationToken);
                 return;
             }
@@ -83,6 +85,7 @@ public sealed class LegendFounderAiDiscourseStateService
         Guid parsedConversationId,
         string role,
         LegendConnectUtteranceMeaningGraphSnapshot meaning,
+        string sourceLanguageCode,
         CancellationToken cancellationToken)
     {
         await using var transaction = _db.Database.IsRelational()
@@ -115,6 +118,7 @@ public sealed class LegendFounderAiDiscourseStateService
             role,
             meaning,
             priorTurns,
+            sourceLanguageCode,
             cancellationToken);
         _db.LegendFounderAiDiscourseTurns.Add(new LegendFounderAiDiscourseTurn
         {
@@ -245,6 +249,7 @@ public sealed class LegendFounderAiDiscourseStateService
         string role,
         LegendConnectUtteranceMeaningGraphSnapshot meaning,
         IReadOnlyList<LegendFounderAiDiscourseTurn> priorTurns,
+        string sourceLanguageCode,
         CancellationToken cancellationToken)
     {
         if (!meaning.IsComposed || meaning.Nodes.Count == 0)
@@ -253,7 +258,7 @@ public sealed class LegendFounderAiDiscourseStateService
         var selectorSignatures = meaning.Nodes.Select(item => item.SemanticSignature)
             .Distinct(StringComparer.Ordinal).ToArray();
         var rules = await _operations.GetProductionDiscourseReferenceRulesAsync(
-            "en", selectorSignatures, cancellationToken);
+            sourceLanguageCode, selectorSignatures, cancellationToken);
         if (rules.Count == 0)
             return [];
 

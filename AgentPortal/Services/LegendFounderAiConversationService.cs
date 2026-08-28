@@ -194,7 +194,8 @@ public sealed class LegendFounderAiConversationService
                     "user",
                     conversation[^1].Content ?? string.Empty,
                     effectiveToken,
-                    cancellationToken);
+                    cancellationToken,
+                    request.SourceLanguageCode);
                 var context = conversation
                     .Take(conversation.Count - 1)
                     .Select(message => new LegendConnectConversationContextItem(
@@ -210,7 +211,8 @@ public sealed class LegendFounderAiConversationService
                     conversation[^1].Content ?? string.Empty,
                     context,
                     discourseState,
-                    effectiveToken);
+                    effectiveToken,
+                    request.SourceLanguageCode);
             }
             catch (OperationCanceledException)
                 when (cancellationToken.IsCancellationRequested)
@@ -252,7 +254,8 @@ public sealed class LegendFounderAiConversationService
                     "assistant",
                     nativeInference.Answer,
                     effectiveToken,
-                    cancellationToken);
+                    cancellationToken,
+                    request.SourceLanguageCode);
                 await ReportProgressAsync(
                     progress,
                     new LegendFounderAiProgressEvent(
@@ -906,7 +909,8 @@ public sealed class LegendFounderAiConversationService
         string role,
         string surface,
         CancellationToken inferenceCancellationToken,
-        CancellationToken requestCancellationToken)
+        CancellationToken requestCancellationToken,
+        string sourceLanguageCode)
     {
         using var observationBudget = CancellationTokenSource.CreateLinkedTokenSource(
             inferenceCancellationToken);
@@ -917,13 +921,15 @@ public sealed class LegendFounderAiConversationService
             var meaning = await _legend.AnalyzeReusableMeaningGraphAsync(
                 founder,
                 surface,
-                observationBudget.Token);
+                observationBudget.Token,
+                sourceLanguageCode);
             await _discourse.RecordObservationAsync(
                 founder,
                 conversationId,
                 role,
                 meaning,
-                observationBudget.Token);
+                observationBudget.Token,
+                sourceLanguageCode);
         }
         catch (OperationCanceledException) when (requestCancellationToken.IsCancellationRequested)
         {
@@ -4200,6 +4206,13 @@ public sealed record LegendFounderAiChatMessage(
 public sealed class LegendFounderAiChatRequest
 {
     public string? Mode { get; init; }
+
+    /// <summary>
+    /// Governed language partition used by native meaning, discourse, plan,
+    /// and realization authorities. Existing clients default to English;
+    /// unsupported or disabled language identities fail closed.
+    /// </summary>
+    public string SourceLanguageCode { get; init; } = "en";
 
     /// <summary>
     /// Founder-selected hard boundary for direct LEGEND testing. When true in
