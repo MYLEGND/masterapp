@@ -13,7 +13,7 @@ def once(old: str, new: str, label: str):
 
 # Current-turn Founder source evidence is stronger than antecedent context for
 # variables that the source frame explicitly carries but that are not lexical
-# meaning nodes.  This does NOT retrieve an answer. It only completes the
+# meaning nodes. This does NOT retrieve an answer. It only completes the
 # already-selected production-eligible source frame when the current input is
 # itself an exact active Founder-controlled source endpoint and every matching
 # source contribution agrees on the missing controlled value.
@@ -209,5 +209,93 @@ new_shape = '''        layout = new SemanticRealizationLayout(
             TerminalPunctuation(example.Text));
 '''
 once(old_shape, new_shape, "bound semantic layout shape")
+
+# Several independently mature articulation layouts for one already-selected
+# semantic result are alternative realizations, not competing semantic answers.
+# Each layout group has already passed the same >=3 independent Founder-family
+# gate and every endpoint matches the selected result frame. Try those groups
+# deterministically inside this same realization authority and accept only a
+# non-verbatim composition. Semantic transition ambiguity remains upstream and
+# continues to fail closed.
+old_realize = '''        if (scopedExamples.Count > 0)
+        {
+            if (eligibleLayouts.Count == 0)
+                return SemanticTransitionRealization.Insufficient("result_realization_layout_insufficient");
+            if (eligibleLayouts.Count > 1)
+                return SemanticTransitionRealization.Ambiguous("ambiguous_result_realization_layout");
+
+            // A native conversational response must be composed from governed
+            // semantic components. Returning an entire stored curriculum
+            // sentence is retrieval, not articulation. The learned layout is
+            // independently supported by three Founder families; this method
+            // recombines only position-, dimension-, and value-compatible
+            // exact anchors and rejects every verbatim endpoint.
+            var realizationSeed = string.Join('|',
+                sourceComponents
+                    .OrderBy(item => item.StartTokenIndex)
+                    .ThenBy(item => item.Dimension, StringComparer.Ordinal)
+                    .Select(item => item.SemanticSignature + "=" + item.SurfaceForm));
+            if (!TryRealizeOriginalLearnedLayout(
+                    eligibleLayouts[0].Layouts,
+                    scopedExamples,
+                    candidate.TransitionSignature + "|" + realizationSeed,
+                    out var text))
+            {
+                return SemanticTransitionRealization.Insufficient(
+                    "result_original_realization_unavailable");
+            }
+            if (await IsActiveCurriculumSentenceAsync(languageCode, text, cancellationToken))
+            {
+                return SemanticTransitionRealization.Insufficient(
+                    "result_original_realization_matched_curriculum_sentence");
+            }
+            return new SemanticTransitionRealization(text, eligibleLayouts[0].IndependentFamilies, null, false);
+        }
+'''
+new_realize = '''        if (scopedExamples.Count > 0)
+        {
+            if (eligibleLayouts.Count == 0)
+                return SemanticTransitionRealization.Insufficient("result_realization_layout_insufficient");
+
+            // A native conversational response must be composed from governed
+            // semantic components. Returning an entire stored curriculum
+            // sentence is retrieval, not articulation. Multiple independently
+            // supported layouts under this one selected result frame represent
+            // articulation diversity, not a second semantic decision. Evaluate
+            // them deterministically here and retain the existing endpoint ban.
+            var realizationSeed = string.Join('|',
+                sourceComponents
+                    .OrderBy(item => item.StartTokenIndex)
+                    .ThenBy(item => item.Dimension, StringComparer.Ordinal)
+                    .Select(item => item.SemanticSignature + "=" + item.SurfaceForm));
+            foreach (var eligibleLayout in eligibleLayouts
+                         .OrderBy(item => LegendLanguageIdentity.TextHash(
+                             candidate.TransitionSignature + "|" + realizationSeed + "|" +
+                             item.Layouts[0].Shape + "|" + item.Layouts[0].TerminalPunctuation),
+                             StringComparer.Ordinal))
+            {
+                if (!TryRealizeOriginalLearnedLayout(
+                        eligibleLayout.Layouts,
+                        scopedExamples,
+                        candidate.TransitionSignature + "|" + realizationSeed + "|" +
+                        eligibleLayout.Layouts[0].Shape,
+                        out var text))
+                {
+                    continue;
+                }
+                if (await IsActiveCurriculumSentenceAsync(languageCode, text, cancellationToken))
+                    continue;
+                return new SemanticTransitionRealization(
+                    text,
+                    eligibleLayout.IndependentFamilies,
+                    null,
+                    false);
+            }
+
+            return SemanticTransitionRealization.Insufficient(
+                "result_original_realization_unavailable");
+        }
+'''
+once(old_realize, new_realize, "static articulation alternatives")
 
 P.write_text(text)
