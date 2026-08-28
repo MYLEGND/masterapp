@@ -23,6 +23,7 @@ internal static class LegendConnectGovernedReasoningExecutor
     internal const int MaximumDepth = 12;
     internal const int MaximumStates = 512;
     internal const int MaximumRules = 4096;
+    internal const int MaximumRuleEvaluations = MaximumStates * MaximumRules;
 
     internal static bool IsExecutableOperatorIdentity(string? identity) =>
         ResolveMode(identity) is not null;
@@ -38,11 +39,10 @@ internal static class LegendConnectGovernedReasoningExecutor
 
         var normalizedRules = rules
             .Where(rule => ResolveMode(rule.OperatorIdentity) is not null)
-            // A lower-standard rule remains usable while the curriculum is
-            // growing, but it can never win a duplicate derived state over a
-            // higher-standard rule.  The visited-state authority below keeps
-            // the first proof, so evidence precedence must be deterministic
-            // here rather than being left to database enumeration order.
+            // Enumeration order is deterministic for reproducibility. Proof
+            // authority is decided independently by IsStrongerProof so a
+            // later multi-hop HigherStandard proof can replace an earlier
+            // broad or weak proof of the same state.
             .OrderByDescending(rule => rule.EvidenceStandard)
             .ThenBy(rule => rule.TransitionSignature, StringComparer.Ordinal)
             .ThenBy(rule => rule.OperatorIdentity, StringComparer.Ordinal)
@@ -72,30 +72,44 @@ internal static class LegendConnectGovernedReasoningExecutor
         }
 
         var initial = Copy(initialValues);
-        var visited = new HashSet<string>(StringComparer.Ordinal) { CanonicalState(initial) };
+        var initialIdentity = CanonicalState(initial);
+        var initialProof = new LegendGovernedReasoningProof(
+            initial,
+            [],
+            0,
+            int.MaxValue,
+            int.MaxValue);
+        var bestProofs = new Dictionary<string, LegendGovernedReasoningProof>(StringComparer.Ordinal)
+        {
+            [initialIdentity] = initialProof
+        };
         var queue = new Queue<LegendGovernedReasoningProof>();
-        queue.Enqueue(new(initial, [], 0, 0, int.MaxValue));
-        var derived = new List<LegendGovernedReasoningProof>();
+        queue.Enqueue(initialProof);
+        var ruleEvaluations = 0;
 
         while (queue.Count > 0)
         {
             var current = queue.Dequeue();
+            var currentIdentity = CanonicalState(current.Values);
+            if (!bestProofs.TryGetValue(currentIdentity, out var authoritative) ||
+                !ReferenceEquals(authoritative, current))
+            {
+                continue;
+            }
             if (current.Depth >= MaximumDepth)
                 continue;
 
             foreach (var rule in directional)
             {
+                ruleEvaluations++;
+                if (ruleEvaluations > MaximumRuleEvaluations)
+                    return new(false, true, []);
                 if (!TryApply(rule.SourceFrame, rule.ResultFrame, current.Values, out var nextValues))
                     continue;
                 if (ViolatesConstraint(nextValues, constraints))
                     continue;
 
                 var identity = CanonicalState(nextValues);
-                if (!visited.Add(identity))
-                    continue;
-                if (visited.Count > MaximumStates)
-                    return new(false, true, []);
-
                 var transitionIdentity = rule.Rule.TransitionSignature +
                     (rule.Reversed ? ":reverse" : string.Empty);
                 var path = current.TransitionPath.Append(transitionIdentity).ToArray();
@@ -111,12 +125,61 @@ internal static class LegendConnectGovernedReasoningExecutor
                     current.Depth + 1,
                     evidence,
                     evidenceStandard);
-                derived.Add(proof);
+                if (bestProofs.TryGetValue(identity, out var existing) &&
+                    !IsStrongerProof(proof, existing))
+                {
+                    continue;
+                }
+                if (!bestProofs.ContainsKey(identity) && bestProofs.Count >= MaximumStates)
+                    return new(false, true, []);
+
+                bestProofs[identity] = proof;
                 queue.Enqueue(proof);
             }
         }
 
+        var derived = bestProofs
+            .Where(item => !string.Equals(item.Key, initialIdentity, StringComparison.Ordinal))
+            .OrderBy(item => item.Key, StringComparer.Ordinal)
+            .Select(item => item.Value)
+            .ToArray();
         return new(false, false, derived);
+    }
+
+    private static bool IsStrongerProof(
+        LegendGovernedReasoningProof candidate,
+        LegendGovernedReasoningProof existing)
+    {
+        var comparison = candidate.EvidenceStandard.CompareTo(existing.EvidenceStandard);
+        if (comparison != 0)
+            return comparison > 0;
+
+        comparison = candidate.Depth.CompareTo(existing.Depth);
+        if (comparison != 0)
+            return comparison < 0;
+
+        comparison = candidate.EvidenceCount.CompareTo(existing.EvidenceCount);
+        if (comparison != 0)
+            return comparison > 0;
+
+        return ComparePath(candidate.TransitionPath, existing.TransitionPath) < 0;
+    }
+
+    private static int ComparePath(
+        IReadOnlyList<string> left,
+        IReadOnlyList<string> right)
+    {
+        var length = Math.Min(left.Count, right.Count);
+        for (var index = 0; index < length; index++)
+        {
+            var comparison = string.Compare(
+                left[index],
+                right[index],
+                StringComparison.Ordinal);
+            if (comparison != 0)
+                return comparison;
+        }
+        return left.Count.CompareTo(right.Count);
     }
 
     private static bool TryApply(

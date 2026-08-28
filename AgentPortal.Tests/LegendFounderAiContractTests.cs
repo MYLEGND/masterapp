@@ -662,6 +662,62 @@ public sealed class LegendFounderAiContractTests
     }
 
     [Fact]
+    public async Task IntelligenceEvaluation_BlocksTakeoverClaimUntilEveryDomainBeatsOneLockedBaseline()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var service = new LegendIntelligenceEvaluationService(db);
+        _ = await service.CreateEvidenceSnapshotAsync("founder-1", CancellationToken.None);
+        var contract = await db.LegendIntelligenceEvaluationContracts.SingleAsync();
+        const string authority =
+            LegendArchitecturalTakeoverGate.EvaluatorAuthorityPrefix + "gpt-5.6-sol@locked-2026-08-28";
+        var metrics = new Dictionary<string, decimal>
+        {
+            ["blind_win_rate"] = 60m,
+            ["non_inferiority_rate"] = 100m,
+            ["adversarial_pass_rate"] = 100m,
+            ["unsupported_request_integrity"] = 100m,
+            ["latency_efficiency"] = 60m,
+            ["cost_efficiency"] = 60m
+        };
+        foreach (var domain in LegendIntelligenceEvaluationDomainCatalog.All)
+        foreach (var metric in metrics)
+        {
+            db.LegendIntelligenceEvaluationSignals.Add(new LegendIntelligenceEvaluationSignal
+            {
+                ContractId = contract.Id,
+                DomainKey = domain.Key,
+                MetricKey = metric.Key,
+                Value = metric.Value,
+                EvidenceAuthority = authority,
+                EvidenceReference = $"blind-suite:{domain.Key}:{metric.Key}",
+                State = "Current",
+                MeasuredUtc = DateTime.UtcNow
+            });
+        }
+        await db.SaveChangesAsync();
+
+        var proven = await service.CreateEvidenceSnapshotAsync("founder-1", CancellationToken.None);
+        Assert.True(proven.TakeoverReadiness.Proven);
+        Assert.Equal("PROVEN", proven.TakeoverReadiness.State);
+        Assert.Equal(LegendIntelligenceEvaluationDomainCatalog.All.Count,
+            proven.TakeoverReadiness.DomainWins);
+        Assert.Equal("gpt-5.6-sol@locked-2026-08-28",
+            proven.TakeoverReadiness.BaselineIdentity);
+
+        var regression = await db.LegendIntelligenceEvaluationSignals.SingleAsync(item =>
+            item.DomainKey == "software_systems" && item.MetricKey == "non_inferiority_rate");
+        regression.Value = 99m;
+        regression.MeasuredUtc = regression.MeasuredUtc.AddSeconds(1);
+        await db.SaveChangesAsync();
+
+        var blocked = await service.CreateEvidenceSnapshotAsync("founder-1", CancellationToken.None);
+        Assert.False(blocked.TakeoverReadiness.Proven);
+        Assert.Equal(11, blocked.TakeoverReadiness.DomainWins);
+        Assert.Contains(blocked.TakeoverReadiness.Blockers, item =>
+            item.Contains("software_systems: non_inferiority_rate", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public async Task SoftwareRemediation_InvalidReleaseIdentityCannotReachGitHub()
     {
         var factory = new ThrowingHttpClientFactory();

@@ -1006,11 +1006,6 @@ public interface ILegendConnectOperations
         int take = 12,
         CancellationToken cancellationToken = default);
 
-    Task<LegendConnectNativeInferenceSnapshot> TryInferConversationAsync(
-        string input,
-        IReadOnlyList<LegendConnectConversationContextItem> context,
-        CancellationToken cancellationToken = default);
-
     /// <summary>
     /// Native serving through the same transition authority with an optional
     /// persisted, semantic-only discourse snapshot. This is not a second

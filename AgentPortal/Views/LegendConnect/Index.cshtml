@@ -180,6 +180,7 @@
         <div class="lc-intelligence-summary-grid">
             <article><span>Demonstrated intelligence</span><strong>@(evaluation.DemonstratedIntelligence is null ? "Not evaluated" : $"{evaluation.DemonstratedIntelligence.Value:0.0}%")</strong></article>
             <article><span>LEGEND self-assessment</span><strong>@(evaluation.LegendSelfAssessment is null ? "Not assessed" : $"{evaluation.LegendSelfAssessment.Value:0.0}%")</strong></article>
+            <article><span>SOL takeover proof</span><strong>@evaluation.TakeoverReadiness.State</strong><small>@evaluation.TakeoverReadiness.DomainWins / @evaluation.TakeoverReadiness.RequiredDomains domain wins</small></article>
             <article><span>OpenAI independent assessment</span><strong>@(evaluation.OpenAiIndependentAssessment is null ? "Not assessed" : $"{evaluation.OpenAiIndependentAssessment.Value:0.0}%")</strong></article>
             <article><span>Calibration gap</span><strong>@(evaluation.CalibrationGap is null ? "Not available" : $"{evaluation.CalibrationGap.Value:+0.0;-0.0;0.0} pts")</strong></article>
         </div>

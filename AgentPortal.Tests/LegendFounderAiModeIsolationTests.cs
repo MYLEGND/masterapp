@@ -663,7 +663,6 @@ public sealed class LegendFounderAiModeIsolationTests
         Mock<ILegendConnectOperations> operations) =>
         operations.Invocations.Count(invocation =>
             invocation.Method.Name is
-                nameof(ILegendConnectOperations.TryInferConversationAsync) or
                 nameof(ILegendConnectOperations.TryInferConversationWithDiscourseAsync));
 
     private static int StatusFor(LegendFounderAiChatResponse response)

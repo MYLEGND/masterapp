@@ -228,23 +228,6 @@ public sealed class FounderLegendConnectService
     }
 
     public async Task<LegendConnectNativeInferenceSnapshot>
-        TryInferConversationAsync(
-            ClaimsPrincipal user,
-            string input,
-            IReadOnlyList<LegendConnectConversationContextItem> context,
-            CancellationToken cancellationToken = default)
-    {
-        _ = await ResolveFounderActorAsync(
-            user,
-            cancellationToken);
-
-        return await _operations.TryInferConversationAsync(
-            input,
-            context,
-            cancellationToken);
-    }
-
-    public async Task<LegendConnectNativeInferenceSnapshot>
         TryInferConversationWithDiscourseAsync(
             ClaimsPrincipal user,
             string input,
