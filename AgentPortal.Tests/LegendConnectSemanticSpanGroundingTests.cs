@@ -23,7 +23,7 @@ namespace AgentPortal.Tests;
 public sealed class LegendConnectSemanticSpanGroundingTests
 {
     [Fact]
-    public async Task ProductionConversation_RejectsWholeStoredEndpoint_WhenOriginalCompositionIsUnavailable()
+    public async Task ProductionConversation_UsesSelectedGovernedEndpoint_WhenOriginalCompositionIsUnavailable()
     {
         await using var db = ControllerTestHelpers.BuildDb();
         var fixture = CreateFixture(db);
@@ -44,10 +44,70 @@ public sealed class LegendConnectSemanticSpanGroundingTests
             [],
             new LegendConnectDiscourseStateSnapshot([]));
 
-        Assert.False(native.Supported);
-        Assert.Equal("result_realization_layout_insufficient", native.ReasonCode);
-        Assert.Null(native.Answer);
-        Assert.Equal(0, native.EvidenceCount);
+        Assert.True(native.Supported, native.ReasonCode);
+        Assert.Equal("semantic_transition_governed_composed", native.ReasonCode);
+        Assert.False(string.IsNullOrWhiteSpace(native.Answer));
+        Assert.True(native.EvidenceCount >= 3);
+        Assert.Equal("HigherStandard", native.EvidenceStandard);
+        Assert.Equal("CanonicalGovernedEndpoint", native.ArticulationMode);
+        Assert.False(native.RequiresEscalation);
+    }
+
+    [Fact]
+    public async Task GrowingCurriculum_UsesBroadGovernedEvidenceInsteadOfReportingKnownMeaningUnknown()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var fixture = CreateFixture(db);
+
+        var submitted = await fixture.Curriculum.SubmitFounderEnglishBatchAsync(
+            RichResponsePlanFamily(21, "neutral", "broad_acknowledgement"));
+        Assert.True(submitted.Succeeded, submitted.Message);
+
+        var graph = await fixture.Operations.AnalyzeReusableMeaningGraphAsync("Hi there.");
+        Assert.True(graph.IsComposed, graph.ReasonCode);
+
+        var native = await fixture.Operations.TryInferConversationWithDiscourseAsync(
+            "Hi there.",
+            [],
+            new LegendConnectDiscourseStateSnapshot([]));
+
+        Assert.True(native.Supported, native.ReasonCode);
+        Assert.Equal("semantic_transition_governed_composed", native.ReasonCode);
+        Assert.Equal("Founder rich response evidence 21.", native.Answer);
+        Assert.Equal("BroadGoverned", native.EvidenceStandard);
+        Assert.Equal("CanonicalGovernedEndpoint", native.ArticulationMode);
+        Assert.True(native.EvidenceCount >= 1);
+        Assert.False(native.RequiresEscalation);
+    }
+
+    [Fact]
+    public async Task HigherStandardIntentEvidence_MustWinOverCompatibleBroadEvidence()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var fixture = CreateFixture(db);
+
+        var broad = await fixture.Curriculum.SubmitFounderEnglishBatchAsync(
+            RichResponsePlanFamily(20, "neutral", "broad_dismissal"));
+        Assert.True(broad.Succeeded, broad.Message);
+
+        for (var family = 4; family <= 6; family++)
+        {
+            var higher = await fixture.Curriculum.SubmitFounderEnglishBatchAsync(
+                RichResponsePlanFamily(family, "formal", "higher_standard_acknowledgement"));
+            Assert.True(higher.Succeeded, higher.Message);
+        }
+
+        var native = await fixture.Operations.TryInferConversationWithDiscourseAsync(
+            "Hi there.",
+            [],
+            new LegendConnectDiscourseStateSnapshot([]));
+
+        Assert.True(native.Supported, native.ReasonCode);
+        Assert.Equal("HigherStandard", native.EvidenceStandard);
+        Assert.Equal("CanonicalGovernedEndpoint", native.ArticulationMode);
+        Assert.Contains("Founder rich response evidence", native.Answer!, StringComparison.Ordinal);
+        Assert.DoesNotContain("20", native.Answer!, StringComparison.Ordinal);
+        Assert.True(native.EvidenceCount >= 3);
         Assert.False(native.RequiresEscalation);
     }
 

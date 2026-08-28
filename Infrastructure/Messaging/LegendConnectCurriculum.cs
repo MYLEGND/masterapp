@@ -167,6 +167,13 @@ internal sealed record LegendShadowTargetFormulation(
 
 internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralCompositionGate
 {
+    // One canonical evidence hierarchy is consumed at every native stage.
+    // Broad means active, explicit, human-verified Founder evidence with no
+    // contradiction. HigherStandard means that same evidence also meets the
+    // existing independent three-source production-eligibility contract.
+    // These are selection ranks, not alternate stores or serving paths.
+    private const int BroadGovernedEvidenceStandard = 1;
+    private const int HigherGovernedEvidenceStandard = 2;
     private const int MaximumExamplesPerBatch = 100;
     // This value participates in the durable relationship identity. It is
     // advanced only when the canonical grouping meaning changes, allowing the
@@ -3485,13 +3492,19 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
                 anchor.ComponentStartTokenIndex != null && anchor.ComponentLength > 0 &&
                 lexeme.LanguageCode == languageCode &&
                 inputLexemeHashes.Contains(lexeme.NormalizedHash) &&
-                primitive.SupersededUtc == null && primitive.MaturityState == "Supported" &&
-                primitive.ContradictionCount == 0 && primitive.IndependentSourceCount >= 3
+                primitive.SupersededUtc == null &&
+                primitive.Provenance == LegendConnectKnowledgeProvenance.FounderApproved &&
+                primitive.MaturityState != "Contradicted" &&
+                primitive.ContradictionCount == 0 &&
+                primitive.IndependentSourceCount >= 1 &&
+                primitive.HumanVerifiedSupportCount >= 1
             select new ReusableMeaningAnchorCandidate(
                 node.SemanticSignature,
                 node.SemanticDimension,
                 node.SemanticValue,
                 primitive.IndependentSourceCount,
+                primitive.HumanVerifiedSupportCount,
+                primitive.MaturityState,
                 unit.Text,
                 anchor.ComponentStartTokenIndex,
                 anchor.ComponentLength)
@@ -3512,6 +3525,25 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
             .ToList();
         if (exactSourceCandidates.Count > 0)
             candidates = exactSourceCandidates;
+
+        // If the same surface span has both mature and still-growing Founder
+        // interpretations, retain only the highest evidence standard for that
+        // span. Equal-standard disagreements remain visible and fail closed;
+        // a broad interpretation can never dilute a higher-standard one.
+        candidates = candidates
+            .GroupBy(item => (item.StartTokenIndex, item.TokenLength))
+            .SelectMany(group =>
+            {
+                var standard = group.Max(item => MeaningEvidenceStandard(
+                    item.IndependentSupportCount,
+                    item.HumanVerifiedSupportCount,
+                    item.MaturityState));
+                return group.Where(item => MeaningEvidenceStandard(
+                    item.IndependentSupportCount,
+                    item.HumanVerifiedSupportCount,
+                    item.MaturityState) == standard);
+            })
+            .ToList();
 
         var nodes = new List<LegendConnectUtteranceMeaningNode>();
         foreach (var candidate in candidates)
@@ -3547,11 +3579,30 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
             var signatures = nodes.Select(item => item.SemanticSignature).Distinct(StringComparer.Ordinal).ToArray();
             var learnedRelations = await _db.Set<LegendLanguageMeaningRelation>().AsNoTracking()
                 .Where(item => item.LanguageCode == languageCode && item.SupersededUtc == null &&
-                    item.MaturityState == "Supported" && item.ContradictionCount == 0 &&
-                    item.IndependentSourceCount >= 3 &&
+                    item.Provenance == LegendConnectKnowledgeProvenance.FounderApproved &&
+                    item.MaturityState != "Contradicted" && item.ContradictionCount == 0 &&
+                    item.IndependentSourceCount >= 1 && item.HumanVerifiedSupportCount >= 1 &&
                     signatures.Contains(item.SourceSemanticSignature) &&
                     signatures.Contains(item.TargetSemanticSignature))
                 .ToListAsync(cancellationToken);
+            learnedRelations = learnedRelations
+                .GroupBy(item => new
+                {
+                    item.SourceSemanticSignature,
+                    item.TargetSemanticSignature
+                })
+                .SelectMany(group =>
+                {
+                    var standard = group.Max(item => MeaningEvidenceStandard(
+                        item.IndependentSourceCount,
+                        item.HumanVerifiedSupportCount,
+                        item.MaturityState));
+                    return group.Where(item => MeaningEvidenceStandard(
+                        item.IndependentSourceCount,
+                        item.HumanVerifiedSupportCount,
+                        item.MaturityState) == standard);
+                })
+                .ToList();
             foreach (var relation in learnedRelations)
             {
                 for (var sourceIndex = 0; sourceIndex < nodes.Count; sourceIndex++)
@@ -3687,9 +3738,21 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
         string SemanticDimension,
         string SemanticValue,
         int IndependentSupportCount,
+        int HumanVerifiedSupportCount,
+        string MaturityState,
         string Text,
         int? StartTokenIndex,
         int? TokenLength);
+
+    private static int MeaningEvidenceStandard(
+        int independentSourceCount,
+        int humanVerifiedSupportCount,
+        string maturityState) =>
+        independentSourceCount >= 3 &&
+        humanVerifiedSupportCount >= 3 &&
+        string.Equals(maturityState, "Supported", StringComparison.Ordinal)
+            ? HigherGovernedEvidenceStandard
+            : BroadGovernedEvidenceStandard;
 
     internal async Task<LegendSemanticTransitionInference> TryInferSemanticTransitionAsync(
         string sourceLanguageCode,
@@ -3769,7 +3832,13 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
         }
 
         var candidate = content.Succeeded
-            ? selection.Selected with { Bindings = content.MergedBindings }
+            ? selection.Selected with
+            {
+                Bindings = content.MergedBindings,
+                EvidenceStandard = Math.Min(
+                    selection.Selected.EvidenceStandard,
+                    content.EvidenceStandard)
+            }
             : selection.Selected;
         var realization = await TryRealizeSemanticTransitionResultAsync(
             candidate,
@@ -3789,7 +3858,17 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
             LegendSemanticTransitionInference.Supported,
             realization.Text,
             selection.Selected.IndependentEvidenceCount + selection.Selected.ReasoningEvidenceCount + content.EvidenceCount + realization.LayoutEvidenceCount,
-            ["governed_composed_meaning_graph", "independently_supported_semantic_transition", "governed_content_binding", "original_compositional_anchor_realization"]);
+            [
+                "governed_composed_meaning_graph",
+                Math.Min(candidate.EvidenceStandard, realization.EvidenceStandard) ==
+                    HigherGovernedEvidenceStandard
+                    ? "higher_standard_semantic_transition"
+                    : "broad_governed_semantic_transition",
+                "governed_content_binding",
+                realization.IsOriginal
+                    ? "original_compositional_anchor_realization"
+                    : "canonical_governed_endpoint_articulation"
+            ]);
     }
 
     internal async Task<LegendConnectResponseMeaningPlanResult> TryPlanResponseMeaningAsync(
@@ -3878,7 +3957,10 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
             selected.Bindings,
             unboundResultVariables,
             selected.ReasoningPath,
-            selected.ReasoningEvidenceCount),
+            selected.ReasoningEvidenceCount,
+            selected.EvidenceStandard == HigherGovernedEvidenceStandard
+                ? "HigherStandard"
+                : "BroadGoverned"),
             "response_meaning_plan_governed");
     }
 
@@ -3918,17 +4000,18 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
             return SemanticTransitionSelection.Insufficient("semantic_transition_evidence_unknown", language, sourceComponents);
         // Founder-declared reasoning.* relationships are internal semantic
         // operations, never direct conversational answer edges. They retain the
-        // exact canonical transition provenance and production-eligibility gates.
+        // exact canonical transition provenance and governed-evidence gates.
         var reasoningOperators = await LoadActiveGovernedReasoningOperatorsAsync(
             language,
             cancellationToken);
         var responseObservations = reasoningOperators.Count == 0
             ? observations
             : observations.Where(item => !reasoningOperators.ContainsKey(item.TransitionSignature)).ToList();
-        var candidates = BuildProductionSemanticTransitionCandidates(
+        var candidates = BuildGovernedSemanticTransitionCandidates(
             responseObservations,
             values,
             allowMissingVariables: false);
+        candidates = PreferHighestStandardCandidates(candidates);
         if (candidates.Count == 0)
         {
             if (HasContradictedSemanticTransition(responseObservations, values)) return SemanticTransitionSelection.Contradicted("semantic_transition_contradicted");
@@ -3943,15 +4026,19 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
             // static dimension may be omitted only when at least one other
             // source dimension matched this turn and every compatible,
             // independently production-eligible transition selects the same
-            // result frame.  Observed conflicts, semantic variables, genuine
+            // result frame. Higher-standard evidence is mandatory whenever it
+            // is present; broad governed evidence remains usable only when no
+            // higher-standard compatible candidate exists. Observed conflicts,
+            // semantic variables, genuine
             // result ambiguity, and contradictory evidence remain fail-closed.
-            var projectedCandidates = BuildProductionSemanticTransitionCandidates(
+            var projectedCandidates = BuildGovernedSemanticTransitionCandidates(
                     responseObservations,
                     values,
                     allowMissingVariables: false,
                     allowMissingStaticDimensions: true)
                 .Where(item => item.DirectSourceMatchCount > 0)
                 .ToList();
+            projectedCandidates = PreferHighestStandardCandidates(projectedCandidates);
             if (projectedCandidates.Count > 0)
             {
                 if (HasContradictedSemanticTransition(
@@ -3985,10 +4072,11 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
             }
 
             var failureReason = "semantic_transition_not_supported";
-            var partialCandidates = BuildProductionSemanticTransitionCandidates(
+            var partialCandidates = BuildGovernedSemanticTransitionCandidates(
                     responseObservations, values, allowMissingVariables: true)
                 .Where(item => item.MissingVariables.Count > 0 && item.DirectSourceMatchCount > 0)
                 .ToList();
+            partialCandidates = PreferHighestStandardCandidates(partialCandidates);
             if (partialCandidates.Count > 0)
             {
                 // First complete missing non-lexical source metadata when the
@@ -4075,9 +4163,14 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
             if (candidates.Count == 0)
                 return SemanticTransitionSelection.Insufficient(failureReason, language, sourceComponents);
         }
+        candidates = PreferHighestStandardCandidates(candidates);
         if (candidates.Select(item => item.ResultFrame.Signature).Distinct().Count() != 1)
             return SemanticTransitionSelection.Ambiguous("ambiguous_semantic_transition");
-        return new(language, sourceComponents, candidates.OrderBy(item => item.TransitionSignature).First(), "response_meaning_plan_governed", false, false);
+        return new(language, sourceComponents, candidates
+            .OrderByDescending(item => item.EvidenceStandard)
+            .ThenByDescending(item => item.DirectSourceMatchCount)
+            .ThenBy(item => item.TransitionSignature, StringComparer.Ordinal)
+            .First(), "response_meaning_plan_governed", false, false);
     }
 
     private static IReadOnlyDictionary<string, string> ActiveDiscourseBindings(LegendConnectDiscourseStateSnapshot? state) =>
@@ -4182,7 +4275,7 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
     }
 
     private static IReadOnlyList<SemanticTransitionCandidate>
-        BuildProductionSemanticTransitionCandidates(
+        BuildGovernedSemanticTransitionCandidates(
             IReadOnlyList<SemanticTransitionObservation> observations,
             IReadOnlyDictionary<string, string> inputValues,
             bool allowMissingVariables,
@@ -4191,11 +4284,12 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
         var candidates = new List<SemanticTransitionCandidate>();
         foreach (var group in observations.GroupBy(item => item.TransitionSignature, StringComparer.Ordinal))
         {
-            if (!TryGetProductionSemanticTransitionFrames(
+            if (!TryGetGovernedSemanticTransitionFrames(
                     group,
                     out var independentEvidenceCount,
                     out var sourceFrame,
-                    out var resultFrame))
+                    out var resultFrame,
+                    out var evidenceStandard))
             {
                 continue;
             }
@@ -4219,9 +4313,82 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
                 bindings,
                 missingVariables,
                 directSourceMatchCount,
-                independentEvidenceCount));
+                independentEvidenceCount,
+                evidenceStandard));
         }
         return candidates;
+    }
+
+    private static List<SemanticTransitionCandidate> PreferHighestStandardCandidates(
+        IReadOnlyList<SemanticTransitionCandidate> candidates)
+    {
+        if (candidates.Count == 0)
+            return candidates.ToList();
+
+        var highestStandard = candidates.Max(item => item.EvidenceStandard);
+        var highestStandardCandidates = candidates
+            .Where(item => item.EvidenceStandard == highestStandard)
+            .ToList();
+        var mostDirectMatches = highestStandardCandidates
+            .Max(item => item.DirectSourceMatchCount);
+        return highestStandardCandidates
+            .Where(item => item.DirectSourceMatchCount == mostDirectMatches)
+            .ToList();
+    }
+
+    private static bool TryGetGovernedSemanticTransitionFrames(
+        IEnumerable<SemanticTransitionObservation> observations,
+        out int independentEvidenceCount,
+        out NormalizedSemanticFrame sourceFrame,
+        out NormalizedSemanticFrame resultFrame,
+        out int evidenceStandard)
+    {
+        var group = observations as IReadOnlyList<SemanticTransitionObservation> ?? observations.ToList();
+        evidenceStandard = BroadGovernedEvidenceStandard;
+        if (TryGetProductionSemanticTransitionFrames(
+                group,
+                out independentEvidenceCount,
+                out sourceFrame,
+                out resultFrame))
+        {
+            evidenceStandard = HigherGovernedEvidenceStandard;
+            return true;
+        }
+
+        independentEvidenceCount = 0;
+        sourceFrame = null!;
+        resultFrame = null!;
+        if (group.Count == 0 ||
+            group.Any(item => string.Equals(
+                item.ContributionState,
+                "Contradictory",
+                StringComparison.Ordinal)))
+        {
+            return false;
+        }
+
+        var supported = group
+            .Where(item => item.IsHumanVerifiedSupport &&
+                string.Equals(item.ContributionState, "Supported", StringComparison.Ordinal))
+            .ToList();
+        independentEvidenceCount = supported
+            .Select(item => item.IndependentSourceIdentity)
+            .Distinct(StringComparer.Ordinal)
+            .Count();
+        if (independentEvidenceCount == 0)
+            return false;
+
+        var representative = supported[0];
+        if (group.Any(item =>
+                !string.Equals(item.SourceFrame, representative.SourceFrame, StringComparison.Ordinal) ||
+                !string.Equals(item.ResultFrame, representative.ResultFrame, StringComparison.Ordinal)) ||
+            !TryReadSemanticFrame(representative.SourceFrame, out sourceFrame) ||
+            !TryReadSemanticFrame(representative.ResultFrame, out resultFrame))
+        {
+            return false;
+        }
+
+        return true;
     }
 
     private static bool TryGetProductionSemanticTransitionFrames(
@@ -4349,11 +4516,12 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
                          LegendConnectGovernedReasoningExecutor.IsExecutableOperatorIdentity(operation))
                      .GroupBy(item => item.TransitionSignature, StringComparer.Ordinal))
         {
-            if (!TryGetProductionSemanticTransitionFrames(
+            if (!TryGetGovernedSemanticTransitionFrames(
                     group,
                     out var independentEvidenceCount,
                     out var sourceFrame,
-                    out var resultFrame))
+                    out var resultFrame,
+                    out var evidenceStandard))
             {
                 continue;
             }
@@ -4362,7 +4530,8 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
                 reasoningOperators[group.Key],
                 sourceFrame.Dimensions,
                 resultFrame.Dimensions,
-                independentEvidenceCount));
+                independentEvidenceCount,
+                evidenceStandard));
         }
         if (rules.Count == 0)
             return GovernedReasonedResponseSelection.None;
@@ -4389,15 +4558,31 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
         {
             if (HasContradictedSemanticTransition(responseObservations, proof.Values))
                 continue;
-            var proofCandidates = BuildProductionSemanticTransitionCandidates(
+            var proofCandidates = BuildGovernedSemanticTransitionCandidates(
                 responseObservations,
                 proof.Values,
                 allowMissingVariables: false);
             foreach (var candidate in proofCandidates)
-                responses.Add((candidate, proof));
+            {
+                responses.Add((candidate with
+                {
+                    EvidenceStandard = Math.Min(
+                        candidate.EvidenceStandard,
+                        proof.EvidenceStandard)
+                }, proof));
+            }
         }
         if (responses.Count == 0)
             return GovernedReasonedResponseSelection.None;
+
+        var highestResponseStandard = responses.Max(item => item.Candidate.EvidenceStandard);
+        responses = responses
+            .Where(item => item.Candidate.EvidenceStandard == highestResponseStandard)
+            .ToList();
+        var highestDirectMatchCount = responses.Max(item => item.Candidate.DirectSourceMatchCount);
+        responses = responses
+            .Where(item => item.Candidate.DirectSourceMatchCount == highestDirectMatchCount)
+            .ToList();
 
         var outcomes = new HashSet<string>(StringComparer.Ordinal);
         foreach (var response in responses)
@@ -4420,7 +4605,8 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
             return GovernedReasonedResponseSelection.Ambiguous("ambiguous_governed_reasoning_conclusion");
 
         var selected = responses
-            .OrderBy(item => item.Proof.Depth)
+            .OrderByDescending(item => item.Candidate.EvidenceStandard)
+            .ThenBy(item => item.Proof.Depth)
             .ThenByDescending(item => item.Proof.EvidenceCount)
             .ThenBy(item => item.Candidate.TransitionSignature, StringComparer.Ordinal)
             .First();
@@ -4428,7 +4614,10 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
             selected.Candidate with
             {
                 ReasoningEvidenceCount = selected.Proof.EvidenceCount,
-                ReasoningPath = selected.Proof.TransitionPath
+                ReasoningPath = selected.Proof.TransitionPath,
+                EvidenceStandard = Math.Min(
+                    selected.Candidate.EvidenceStandard,
+                    selected.Proof.EvidenceStandard)
             });
     }
 
@@ -4713,10 +4902,11 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
         IReadOnlyList<SemanticTransitionObservation> observations,
         IReadOnlyDictionary<string, string> values)
     {
-        var candidates = BuildProductionSemanticTransitionCandidates(
+        var candidates = BuildGovernedSemanticTransitionCandidates(
             observations,
             values,
             allowMissingVariables: false);
+        candidates = PreferHighestStandardCandidates(candidates);
         if (candidates.Select(item => item.ResultFrame.Signature).Distinct(StringComparer.Ordinal).Count() != 1)
             return;
         foreach (var candidate in candidates)
@@ -4836,9 +5026,9 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
                 evidence.IsHumanVerifiedSupport &&
                 evidence.Provenance == LegendConnectKnowledgeProvenance.FounderApproved &&
                 relation.LanguageCode == languageCode && relation.SupersededUtc == null &&
-                relation.MaturityState == "Supported" &&
-                relation.ContradictionCount == 0 && relation.IndependentSourceCount >= 3 &&
-                relation.HumanVerifiedSupportCount >= 3 &&
+                relation.MaturityState != "Contradicted" &&
+                relation.ContradictionCount == 0 && relation.IndependentSourceCount >= 1 &&
+                relation.HumanVerifiedSupportCount >= 1 &&
                 relation.Provenance == LegendConnectKnowledgeProvenance.FounderApproved &&
                 source.LanguageCode == languageCode && source.SupersededUtc == null &&
                 target.LanguageCode == languageCode && target.SupersededUtc == null &&
@@ -4846,13 +5036,13 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
                 target.SemanticSignature == relation.TargetSemanticSignature &&
                 boundSubjectSignatures.Contains(source.SemanticSignature) &&
                 contentDimensions.Contains(target.SemanticDimension) &&
-                sourcePrimitive.SupersededUtc == null && sourcePrimitive.MaturityState == "Supported" &&
-                sourcePrimitive.ContradictionCount == 0 && sourcePrimitive.IndependentSourceCount >= 3 &&
-                sourcePrimitive.HumanVerifiedSupportCount >= 3 &&
+                sourcePrimitive.SupersededUtc == null && sourcePrimitive.MaturityState != "Contradicted" &&
+                sourcePrimitive.ContradictionCount == 0 && sourcePrimitive.IndependentSourceCount >= 1 &&
+                sourcePrimitive.HumanVerifiedSupportCount >= 1 &&
                 sourcePrimitive.Provenance == LegendConnectKnowledgeProvenance.FounderApproved &&
-                targetPrimitive.SupersededUtc == null && targetPrimitive.MaturityState == "Supported" &&
-                targetPrimitive.ContradictionCount == 0 && targetPrimitive.IndependentSourceCount >= 3 &&
-                targetPrimitive.HumanVerifiedSupportCount >= 3 &&
+                targetPrimitive.SupersededUtc == null && targetPrimitive.MaturityState != "Contradicted" &&
+                targetPrimitive.ContradictionCount == 0 && targetPrimitive.IndependentSourceCount >= 1 &&
+                targetPrimitive.HumanVerifiedSupportCount >= 1 &&
                 targetPrimitive.Provenance == LegendConnectKnowledgeProvenance.FounderApproved
             select new GovernedContentEvidenceRow(
                 evidence.IndependentSourceIdentity,
@@ -4861,7 +5051,15 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
                 relation.IndependentSourceCount,
                 relation.ContradictionCount,
                 relation.MaturityState,
-                true,
+                relation.MaturityState == "Supported" &&
+                relation.IndependentSourceCount >= 3 &&
+                relation.HumanVerifiedSupportCount >= 3 &&
+                sourcePrimitive.MaturityState == "Supported" &&
+                sourcePrimitive.IndependentSourceCount >= 3 &&
+                sourcePrimitive.HumanVerifiedSupportCount >= 3 &&
+                targetPrimitive.MaturityState == "Supported" &&
+                targetPrimitive.IndependentSourceCount >= 3 &&
+                targetPrimitive.HumanVerifiedSupportCount >= 3,
                 source.SemanticSignature,
                 source.SemanticDimension,
                 source.SemanticValue,
@@ -4899,16 +5097,14 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
                         independentSources,
                         representative.ContradictionCount,
                         representative.MaturityState,
-                        // This fact has passed the existing production gates
-                        // above. The underlying primitive/relation aggregates
-                        // remain non-serving projections on their own; only
-                        // this content binding consumes them as one governed
-                        // fact with its full provenance chain.
-                        true),
+                        // This flag records which tier won; it no longer hides
+                        // active, non-contradicted Founder evidence while that
+                        // evidence is accumulating independent support.
+                        group.All(item => item.IsProductionEligible)),
                     IndependentSources = independentSources
                 };
             })
-            .Where(item => item.IndependentSources >= 3)
+            .Where(item => item.IndependentSources >= 1)
             .Select(item => item.Fact)
             .OrderBy(item => item.FactIdentity, StringComparer.Ordinal)
             .ToArray();
@@ -4925,11 +5121,24 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
                 .ToArray();
             if (candidates.Length == 0)
                 return GovernedContentResolution.Failure("governed_content_fact_unknown");
-            if (candidates.Length != 1)
+            var useHigherStandard = candidates.Any(fact => fact.IsProductionEligible);
+            var preferred = candidates
+                .Where(fact => fact.IsProductionEligible == useHigherStandard)
+                .ToArray();
+            var distinctValues = preferred
+                .Select(fact => fact.ContentSemanticSignature)
+                .Distinct(StringComparer.Ordinal)
+                .Take(2)
+                .ToArray();
+            if (distinctValues.Length != 1)
                 return GovernedContentResolution.Failure("ambiguous_governed_content_fact");
 
-            contentBindings[item.Key] = candidates[0].ContentValue;
-            selectedFacts.Add(candidates[0]);
+            var selected = preferred
+                .OrderByDescending(fact => fact.IndependentSourceCount)
+                .ThenBy(fact => fact.FactIdentity, StringComparer.Ordinal)
+                .First();
+            contentBindings[item.Key] = selected.ContentValue;
+            selectedFacts.Add(selected);
         }
 
         var mergedBindings = new Dictionary<string, string>(candidate.Bindings, StringComparer.Ordinal);
@@ -5162,15 +5371,22 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
             .Select(group => new
             {
                 Layouts = group.ToList(),
-                IndependentFamilies = group.Select(item => item.FamilyId).Distinct().Count()
+                IndependentFamilies = group.Select(item => item.FamilyId).Distinct().Count(),
+                EvidenceStandard = group.Select(item => item.FamilyId).Distinct().Count() >= 3
+                    ? HigherGovernedEvidenceStandard
+                    : BroadGovernedEvidenceStandard
             })
-            .Where(group => group.IndependentFamilies >= 3)
+            .Where(group => group.IndependentFamilies >= 1)
             .ToList();
+        if (eligibleLayouts.Count > 0)
+        {
+            var highestLayoutStandard = eligibleLayouts.Max(item => item.EvidenceStandard);
+            eligibleLayouts = eligibleLayouts
+                .Where(item => item.EvidenceStandard == highestLayoutStandard)
+                .ToList();
+        }
         if (scopedExamples.Count > 0)
         {
-            if (eligibleLayouts.Count == 0)
-                return SemanticTransitionRealization.Insufficient("result_realization_layout_insufficient");
-
             // A native response must remain under this same governed
             // articulation authority. Multiple independently mature layouts are
             // retained as alternative evidence; the downstream original
@@ -5181,7 +5397,7 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
                     .OrderBy(item => item.StartTokenIndex)
                     .ThenBy(item => item.Dimension, StringComparer.Ordinal)
                     .Select(item => item.SemanticSignature + "=" + item.SurfaceForm));
-            if (hasResultVariables &&
+            if (eligibleLayouts.Count > 0 && hasResultVariables &&
                 TryRealizeGovernedCrossArticulation(
                     eligibleLayouts.SelectMany(item => item.Layouts).ToArray(),
                     scopedExamples,
@@ -5198,7 +5414,9 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
                         crossArticulatedText,
                         crossArticulationEvidence,
                         null,
-                        false);
+                        false,
+                        Math.Min(candidate.EvidenceStandard, HigherGovernedEvidenceStandard),
+                        true);
                 }
             }
 
@@ -5222,11 +5440,34 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
                     text,
                     eligibleLayout.IndependentFamilies,
                     null,
+                    false,
+                    Math.Min(candidate.EvidenceStandard, eligibleLayout.EvidenceStandard),
+                    true);
+            }
+
+            // Original composition remains preferred, but the exact endpoint
+            // selected by the same governed transition is valid articulation
+            // evidence. Refusing it made known Founder knowledge appear
+            // unknown. This is not a phrase fallback: the selected transition
+            // signature and instantiated result frame still scope the result.
+            if (TryRealizeCanonicalGovernedResult(
+                    scopedExamples,
+                    out var governedText,
+                    out var governedIndependentFamilies))
+            {
+                var endpointStandard = governedIndependentFamilies >= 3
+                    ? HigherGovernedEvidenceStandard
+                    : BroadGovernedEvidenceStandard;
+                return new SemanticTransitionRealization(
+                    governedText,
+                    governedIndependentFamilies,
+                    null,
+                    false,
+                    Math.Min(candidate.EvidenceStandard, endpointStandard),
                     false);
             }
 
-            return SemanticTransitionRealization.Insufficient(
-                "result_original_realization_unavailable");
+            return SemanticTransitionRealization.Insufficient("result_canonical_evidence_unknown");
         }
 
         // A bound result value can be realized from the governed source only
@@ -5275,6 +5516,27 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
     private static bool TryRealizeCanonicalStaticResult(
         IReadOnlyList<SemanticResultExample> examples,
         out string text,
+        out int independentFamilies) =>
+        TryRealizeCanonicalGovernedResult(
+            examples,
+            3,
+            out text,
+            out independentFamilies);
+
+    private static bool TryRealizeCanonicalGovernedResult(
+        IReadOnlyList<SemanticResultExample> examples,
+        out string text,
+        out int independentFamilies) =>
+        TryRealizeCanonicalGovernedResult(
+            examples,
+            1,
+            out text,
+            out independentFamilies);
+
+    private static bool TryRealizeCanonicalGovernedResult(
+        IReadOnlyList<SemanticResultExample> examples,
+        int minimumIndependentFamilies,
+        out string text,
         out int independentFamilies)
     {
         text = string.Empty;
@@ -5282,7 +5544,7 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
             .Select(item => item.CurriculumFamilyId)
             .Distinct()
             .Count();
-        if (independentFamilies < 3)
+        if (independentFamilies < minimumIndependentFamilies)
             return false;
 
         var canonical = examples
@@ -5930,12 +6192,19 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
             .Select(group => new
             {
                 Layouts = group.ToList(),
-                IndependentFamilies = group.Select(item => item.FamilyId).Distinct().Count()
+                IndependentFamilies = group.Select(item => item.FamilyId).Distinct().Count(),
+                EvidenceStandard = group.Select(item => item.FamilyId).Distinct().Count() >= 3
+                    ? HigherGovernedEvidenceStandard
+                    : BroadGovernedEvidenceStandard
             })
-            .Where(group => group.IndependentFamilies >= 3)
+            .Where(group => group.IndependentFamilies >= 1)
             .ToList();
         if (eligibleLayouts.Count == 0)
             return SemanticTransitionRealization.Insufficient("result_bound_layout_insufficient");
+        var highestLayoutStandard = eligibleLayouts.Max(item => item.EvidenceStandard);
+        eligibleLayouts = eligibleLayouts
+            .Where(item => item.EvidenceStandard == highestLayoutStandard)
+            .ToList();
         if (eligibleLayouts.Count > 1)
             return SemanticTransitionRealization.Ambiguous("ambiguous_result_bound_layout");
 
@@ -6023,19 +6292,16 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
         if (!string.IsNullOrWhiteSpace(punctuation[0]))
             text += punctuation[0];
         text = LegendLanguageIdentity.NormalizeText(text);
-        if (requireOriginalRealization && layoutExamples.Any(item => string.Equals(
-                LegendLanguageIdentity.NormalizeText(item.Text),
-                text,
-                StringComparison.Ordinal)))
-        {
-            return SemanticTransitionRealization.Insufficient(
-                "result_original_realization_unavailable");
-        }
         return new SemanticTransitionRealization(
             text,
             eligibleLayouts[0].IndependentFamilies,
             null,
-            false);
+            false,
+            Math.Min(candidate.EvidenceStandard, eligibleLayouts[0].EvidenceStandard),
+            !layoutExamples.Any(item => string.Equals(
+                LegendLanguageIdentity.NormalizeText(item.Text),
+                text,
+                StringComparison.Ordinal)));
     }
 
     private static bool TryBuildBoundSemanticRealizationLayout(
@@ -11390,8 +11656,9 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
         IReadOnlyList<SemanticMissingVariable> MissingVariables,
         int DirectSourceMatchCount,
         int IndependentEvidenceCount,
-    int ReasoningEvidenceCount = 0,
-    IReadOnlyList<string>? ReasoningPath = null);
+        int EvidenceStandard,
+        int ReasoningEvidenceCount = 0,
+        IReadOnlyList<string>? ReasoningPath = null);
 
     private sealed record ResponseMeaningPlanSelection(
         string SourceLanguageCode,
@@ -11422,24 +11689,30 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
         IReadOnlyDictionary<string, string> MergedBindings,
         IReadOnlyDictionary<string, string> ContentVariableBindings,
         IReadOnlyList<LegendConnectGovernedContentFactSnapshot> Facts,
-        int EvidenceCount)
+        int EvidenceCount,
+        int EvidenceStandard)
     {
         internal static GovernedContentResolution NotRequired(
             IReadOnlyDictionary<string, string> bindings) =>
             new(false, true, "response_content_not_required", bindings,
-                new Dictionary<string, string>(StringComparer.Ordinal), [], 0);
+                new Dictionary<string, string>(StringComparer.Ordinal), [], 0,
+                HigherGovernedEvidenceStandard);
 
         internal static GovernedContentResolution Failure(string reasonCode) =>
             new(true, false, reasonCode,
                 new Dictionary<string, string>(StringComparer.Ordinal),
-                new Dictionary<string, string>(StringComparer.Ordinal), [], 0);
+                new Dictionary<string, string>(StringComparer.Ordinal), [], 0,
+                BroadGovernedEvidenceStandard);
 
         internal static GovernedContentResolution Success(
             IReadOnlyDictionary<string, string> mergedBindings,
             IReadOnlyDictionary<string, string> contentBindings,
             IReadOnlyList<LegendConnectGovernedContentFactSnapshot> facts) =>
             new(true, true, "response_content_bound_governed", mergedBindings,
-                contentBindings, facts, facts.Sum(item => item.IndependentSourceCount));
+                contentBindings, facts, facts.Sum(item => item.IndependentSourceCount),
+                facts.All(item => item.IsProductionEligible)
+                    ? HigherGovernedEvidenceStandard
+                    : BroadGovernedEvidenceStandard);
     }
 
     /// <summary>
@@ -11554,7 +11827,9 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
         string? Text,
         int LayoutEvidenceCount,
         string? Reason,
-        bool IsAmbiguous)
+        bool IsAmbiguous,
+        int EvidenceStandard = BroadGovernedEvidenceStandard,
+        bool IsOriginal = false)
     {
         internal static SemanticTransitionRealization Insufficient(string reason) =>
             new(null, 0, reason, false);

@@ -872,7 +872,8 @@ public sealed record LegendConnectResponseMeaningPlanSnapshot(
     IReadOnlyDictionary<string, string>? BoundSemanticVariables = null,
     IReadOnlyDictionary<string, string>? UnboundResultVariables = null,
     IReadOnlyList<string>? ReasoningTransitionPath = null,
-    int ReasoningEvidenceCount = 0);
+    int ReasoningEvidenceCount = 0,
+    string EvidenceStandard = "Unavailable");
 
 public sealed record LegendConnectResponseMeaningPlanResult(
     bool Supported,
@@ -928,7 +929,9 @@ public sealed record LegendConnectNativeInferenceSnapshot(
     string ReasonCode,
     int EvidenceCount,
     string AuthoritySummary,
-    bool RequiresEscalation);
+    bool RequiresEscalation,
+    string EvidenceStandard = "Unavailable",
+    string ArticulationMode = "Unavailable");
 
 /// <summary>
 /// The sole read/write authority for Legend Connect operations. Presentation

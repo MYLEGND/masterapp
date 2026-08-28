@@ -849,11 +849,15 @@ public sealed class LegendFounderAiContractTests
             Path.Combine(AppContext.BaseDirectory, "legend-production-readonly-diagnostic.yml"));
 
         Assert.Contains("contents: read", workflow, StringComparison.Ordinal);
-        Assert.Contains("timeout-minutes: 45", workflow, StringComparison.Ordinal);
+        Assert.Contains("timeout-minutes: 90", workflow, StringComparison.Ordinal);
         Assert.Contains("cancel-in-progress: true", workflow, StringComparison.Ordinal);
         Assert.Contains("run_full_shadow:", workflow, StringComparison.Ordinal);
         Assert.Contains("default: false", workflow, StringComparison.Ordinal);
         Assert.Contains("if ($runFullShadow)", workflow, StringComparison.Ordinal);
+        Assert.Contains(
+            "Production read-only diagnostic was not completed successfully.",
+            workflow,
+            StringComparison.Ordinal);
         Assert.Contains("Upload sanitized diagnostic transcript", workflow, StringComparison.Ordinal);
         Assert.DoesNotContain("git push", workflow, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("git commit", workflow, StringComparison.OrdinalIgnoreCase);
