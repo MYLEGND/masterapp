@@ -6,22 +6,23 @@ on:
       - training/legend-120x120-20260827
     paths:
       - .github/workflows/legend-120x120-founder-training.yml
+      - .github/legend-training/**
 
 permissions:
   contents: read
   id-token: write
 
 jobs:
-  fingerprint:
+  batch001:
     runs-on: ubuntu-latest
     timeout-minutes: 35
     environment:
       name: Production
     steps:
-      - name: Checkout exact production baseline
+      - name: Checkout isolated training branch
         uses: actions/checkout@v4
         with:
-          ref: production
+          ref: training/legend-120x120-20260827
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.x'
@@ -46,78 +47,13 @@ jobs:
           Write-Output "::add-mask::$founderOid"
           "LEGEND_PRODUCTION_CONNECTION=$($match.value)" | Out-File -FilePath $env:GITHUB_ENV -Append
           "LEGEND_PRODUCTION_FOUNDER_OID=$founderOid" | Out-File -FilePath $env:GITHUB_ENV -Append
-      - name: Create bounded read-only curriculum fingerprint
+          "FOUNDER_OID=$founderOid" | Out-File -FilePath $env:GITHUB_ENV -Append
+      - name: Install disposable Batch 001 test in runner
         shell: bash
-        run: |
-          cat > AgentPortal.Tests/Legend120x120FounderFingerprintTests.cs <<'EOF'
-          using System;
-          using System.Linq;
-          using System.Threading.Tasks;
-          using Domain.Entities;
-          using Infrastructure.Data;
-          using Microsoft.Data.SqlClient;
-          using Microsoft.EntityFrameworkCore;
-          using Xunit;
-          using Xunit.Abstractions;
-
-          namespace AgentPortal.Tests;
-
-          public sealed class Legend120x120FounderFingerprintTests
-          {
-              private readonly ITestOutputHelper _output;
-              public Legend120x120FounderFingerprintTests(ITestOutputHelper output) => _output = output;
-
-              [Fact]
-              public async Task LiveFounderCurriculumFingerprintIsReadable()
-              {
-                  var raw = Environment.GetEnvironmentVariable("LEGEND_PRODUCTION_CONNECTION");
-                  var founder = Environment.GetEnvironmentVariable("LEGEND_PRODUCTION_FOUNDER_OID");
-                  Assert.False(string.IsNullOrWhiteSpace(raw));
-                  Assert.False(string.IsNullOrWhiteSpace(founder));
-                  var cs = new SqlConnectionStringBuilder(raw!) { ApplicationIntent = ApplicationIntent.ReadOnly, ApplicationName = "LEGEND 120x120 fingerprint" };
-                  await using var db = new MasterAppDbContext(new DbContextOptionsBuilder<MasterAppDbContext>()
-                      .UseSqlServer(cs.ConnectionString).UseQueryTrackingBehavior(QueryTrackingBehavior.NoTracking).Options);
-
-                  var founderExists = await db.AgentProfiles.AsNoTracking().AnyAsync(x => x.IsActive && x.AgentUserId != null && x.AgentUserId.ToLower() == founder!.ToLower());
-                  Assert.True(founderExists);
-
-                  _output.WriteLine("=== ACTIVE CONTROLLED VALUES ===");
-                  var values = await db.Set<LegendLanguageCompositionalAnchor>().AsNoTracking()
-                      .Where(x => x.LanguageCode == "en" && x.SupersededUtc == null &&
-                          (x.Dimension == "conversation_function" || x.Dimension == "intent" || x.Dimension == "domain_context"))
-                      .GroupBy(x => new { x.Dimension, x.Value })
-                      .Select(g => new { g.Key.Dimension, g.Key.Value, Count = g.Count(), Families = g.Select(x => x.CurriculumFamilyId).Distinct().Count() })
-                      .OrderBy(x => x.Dimension).ThenBy(x => x.Value).ToListAsync();
-                  foreach (var v in values) _output.WriteLine($"VALUE {v.Dimension}={v.Value} anchors={v.Count} families={v.Families}");
-
-                  _output.WriteLine("=== ACTIVE MEANING RELATIONS ===");
-                  var relations = await db.Set<LegendLanguageMeaningRelation>().AsNoTracking()
-                      .Where(x => x.LanguageCode == "en" && x.SupersededUtc == null)
-                      .GroupBy(x => x.RelationKind)
-                      .Select(g => new { Kind = g.Key, Count = g.Count(), Eligible = g.Count(x => x.IsProductionEligible), Independent = g.Max(x => x.IndependentSourceCount) })
-                      .OrderBy(x => x.Kind).ToListAsync();
-                  foreach (var r in relations) _output.WriteLine($"RELATION {r.Kind} aggregates={r.Count} eligible={r.Eligible} maxIndependent={r.Independent}");
-
-                  _output.WriteLine("=== ACTIVE FAMILIES RELEVANT TO CONVERSATION ===");
-                  var families = await db.Set<LegendCurriculumFamily>().AsNoTracking()
-                      .Where(x => x.FamilyKey.Contains("request") || x.FamilyKey.Contains("diagn") || x.FamilyKey.Contains("decision") || x.FamilyKey.Contains("evidence") || x.FamilyKey.Contains("conversation") || x.FamilyKey.Contains("planning") || x.FamilyKey.Contains("synth"))
-                      .OrderBy(x => x.FamilyKey).Select(x => new { x.FamilyKey, x.SemanticCategory }).Take(250).ToListAsync();
-                  foreach (var f in families) _output.WriteLine($"FAMILY {f.FamilyKey} | {f.SemanticCategory}");
-
-                  _output.WriteLine("=== MATURE TRANSITION FRAMES ===");
-                  var transitions = await db.Set<LegendSemanticTransitionEvidence>().AsNoTracking()
-                      .Where(x => x.SupersededUtc == null && x.ContributionState == "Supported" && x.IsHumanVerifiedSupport)
-                      .GroupBy(x => new { x.SourceSemanticFrame, x.ResultSemanticFrame })
-                      .Select(g => new { g.Key.SourceSemanticFrame, g.Key.ResultSemanticFrame, Evidence = g.Count(), Independent = g.Select(x => x.IndependentSourceIdentity).Distinct().Count() })
-                      .Where(x => x.SourceSemanticFrame.Contains("conversation_function") || x.ResultSemanticFrame.Contains("conversation_function"))
-                      .OrderByDescending(x => x.Independent).ThenByDescending(x => x.Evidence).Take(100).ToListAsync();
-                  foreach (var t in transitions) _output.WriteLine($"TRANSITION independent={t.Independent} evidence={t.Evidence} :: {t.SourceSemanticFrame} => {t.ResultSemanticFrame}");
-              }
-          }
-          EOF
-      - name: Build exact production code plus disposable fingerprint
+        run: cp .github/legend-training/Legend120x120Batch001Tests.cs AgentPortal.Tests/Legend120x120Batch001Tests.cs
+      - name: Build production code plus Batch 001 harness
         run: |
           dotnet restore AgentPortal.Tests/AgentPortal.Tests.csproj
           dotnet build AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-restore
-      - name: Run live Founder curriculum fingerprint
-        run: dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-build --filter 'FullyQualifiedName~Legend120x120FounderFingerprintTests.LiveFounderCurriculumFingerprintIsReadable' --logger 'console;verbosity=detailed'
+      - name: Submit and verify Batch 001 through canonical Founder authority
+        run: dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-build --filter 'FullyQualifiedName~Legend120x120Batch001Tests.Batch001_SubmitsThroughCanonicalFounderAuthority_AndCompletesWithoutContradiction' --logger 'console;verbosity=detailed'
