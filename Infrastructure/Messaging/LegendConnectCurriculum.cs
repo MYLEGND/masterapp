@@ -3497,6 +3497,22 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
                 anchor.ComponentLength)
         ).ToListAsync(cancellationToken);
 
+        // When the current surface is itself an active Founder endpoint, its
+        // explicit graph is the strongest source-grounding authority. A dense
+        // curriculum may also contain reusable anchors with identical token
+        // spans but different meanings in other utterances; unioning those
+        // unrelated observations manufactures an ambiguous supergraph.
+        // Restrict only source-meaning candidates here. Response selection and
+        // realization continue through their existing independent authorities.
+        var exactSourceCandidates = candidates
+            .Where(item => string.Equals(
+                LegendLanguageIdentity.NormalizeText(item.Text),
+                normalizedInput,
+                StringComparison.Ordinal))
+            .ToList();
+        if (exactSourceCandidates.Count > 0)
+            candidates = exactSourceCandidates;
+
         var nodes = new List<LegendConnectUtteranceMeaningNode>();
         foreach (var candidate in candidates)
         {
