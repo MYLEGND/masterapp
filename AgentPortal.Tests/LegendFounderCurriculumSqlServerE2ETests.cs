@@ -1048,8 +1048,8 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
                     ? "<NONE>"
                     : $"family-count={recoverableManifest.FamilyCount}; error={recoverableManifest.LastErrorCode ?? "<NONE>"}"));
 
-            Assert.True(liveSourceV20Artifacts > 0 || liveSourceV21Artifacts > 0,
-                "The live production snapshot contains neither an upgradeable V20 nor current V21 source-projection artifact.");
+            Assert.True(liveSourceV21Artifacts > 0,
+                "The current live production snapshot contains no V21 source-projection lineage.");
             Assert.Contains(
                 "IX_LegendLanguageContextRelationships_SourceTextUnitId",
                 contextEndpointIndexes);
@@ -1086,36 +1086,11 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
                 curriculum: curriculum,
                 intelligence: intelligence);
 
-            var replay = await runtime.GetOrStartLanguageIntelligenceReevaluationAsync(
-                LegendConnectLanguageIntelligenceEvaluatorVersion.Current);
-            _output.WriteLine($"SHADOW REPLAY PLAN: target=v{replay.TargetEvaluatorVersion}; completed=v{replay.CompletedEvaluatorVersion}; phase={replay.Phase}; requires-work={replay.RequiresWork}");
-            if (liveSourceV20Artifacts > 0)
-            {
-                var convergence = await shadow.LegendLanguageDerivationConvergences
-                    .AsNoTracking()
-                    .SingleAsync(item => item.TargetEvaluatorVersion ==
-                        LegendConnectLanguageIntelligenceEvaluatorVersion.Current);
-                var staleSourceArtifacts = await shadow.LegendLanguageDerivationArtifacts
-                    .LongCountAsync(item => item.State == "Stale" &&
-                        item.DerivationContractIdentity == LegendConnectDerivationContracts.ContractIdentityFor(
-                            20,
-                            LegendConnectDerivationContracts.SourceSemanticProjection));
-                _output.WriteLine($"SHADOW CONVERGENCE: state={convergence.State}; earliest={convergence.EarliestAffectedPhase}; changed-contracts={convergence.ChangedContractCount}; affected={convergence.AffectedCanonicalArtifactCount}; reused={convergence.ReusedCanonicalArtifactCount}");
-                _output.WriteLine($"SHADOW STALE V20 SOURCE ARTIFACTS: {staleSourceArtifacts}");
-                Assert.True(replay.RequiresWork);
-                Assert.Equal(LegendConnectLanguageIntelligenceReevaluationPhases.SourceFamilies, replay.Phase);
-                Assert.True(convergence.AffectedCanonicalArtifactCount > 0);
-                Assert.True(staleSourceArtifacts > 0);
-            }
-            else
-            {
-                // A previously completed production repair is the healthy
-                // current state, not a reason to fabricate predecessor rows.
-                // The canonical phase APIs below still rebuild the full live
-                // Founder snapshot and prove serving plus idempotence at V21.
-                _output.WriteLine("SHADOW CONTRACT PATH: production source projection is already current V21; no predecessor state was fabricated.");
-                Assert.True(liveSourceV21Artifacts > 0);
-            }
+            // This is a rebuild, so derived candidates, derived evidence,
+            // dependency artifacts, and convergence rows were intentionally
+            // not copied. The canonical compiler below must reconstruct them
+            // from the complete governed source/evidence snapshot.
+            _output.WriteLine("SHADOW REBUILD PATH: current V21 governed inputs copied; all derived outputs must be regenerated canonically.");
 
             // The shadow executes the same bounded canonical compiler that
             // the durable worker owns.  It does not write production and it
@@ -2920,13 +2895,16 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
         await CopySnapshotSetAsync<LegendLanguageDiscourseReferenceRule>(production, shadow, copied, "reference-rules");
         await CopySnapshotSetAsync<LegendLanguageDiscourseReferenceRuleEvidence>(production, shadow, copied, "reference-rule-evidence",
             query => query.Where(item => replayExampleIds.Contains(item.CurriculumExampleId)));
-        await CopySnapshotSetAsync<LegendLanguageTargetRealizationCandidate>(production, shadow, copied, "target-candidates");
-        await CopySnapshotSetAsync<LegendLanguageTargetRealizationEvidence>(production, shadow, copied, "target-evidence");
+        // Do not copy compiled serving projections into a rebuild proof. The
+        // canonical alignment phase must recreate candidates and their exact
+        // evidence links from the governed source snapshot above.
         await CopySnapshotSetAsync<LegendConnectRuntimePolicy>(production, shadow, copied, "runtime-policy");
         await CopySnapshotSetAsync<LegendLanguageDerivationContract>(production, shadow, copied, "contracts");
         await CopySnapshotSetAsync<LegendLanguageDerivationContractDependency>(production, shadow, copied, "contract-dependencies");
-        await CopySnapshotSetAsync<LegendLanguageDerivationArtifact>(production, shadow, copied, "artifacts");
-        await CopySnapshotSetAsync<LegendLanguageDerivationConvergence>(production, shadow, copied, "convergences");
+        // Derivation artifacts and convergence rows are metadata projections,
+        // not semantic authority. Copying them would both weaken the rebuild
+        // proof and scale with unrelated historical output. They are rebuilt
+        // through the existing family dependency authority after compilation.
         return copied;
     }
 
