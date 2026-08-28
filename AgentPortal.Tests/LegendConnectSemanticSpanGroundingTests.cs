@@ -237,6 +237,41 @@ public sealed class LegendConnectSemanticSpanGroundingTests
     }
 
     [Fact]
+    public async Task ExactFounderSourceGraph_IsNotMergedWithConflictingReusableGraphsFromOtherUtterances()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var fixture = CreateFixture(db);
+
+        for (var family = 1; family <= 3; family++)
+        {
+            var exact = await fixture.Curriculum.SubmitFounderEnglishBatchAsync(
+                ExactCoherentGraphFamily(family));
+            Assert.True(exact.Succeeded, exact.Message);
+            var conflicting = await fixture.Curriculum.SubmitFounderEnglishBatchAsync(
+                ConflictingReusableGraphFamily(family));
+            Assert.True(conflicting.Succeeded, conflicting.Message);
+        }
+
+        var graph = await fixture.Operations.AnalyzeReusableMeaningGraphAsync(
+            "Compare the evidence.");
+
+        Assert.True(graph.IsComposed, graph.ReasonCode);
+        Assert.Contains(graph.Nodes, item =>
+            item.SemanticDimension == "function" && item.SemanticValue == "compare");
+        Assert.Contains(graph.Nodes, item =>
+            item.SemanticDimension == "subject" && item.SemanticValue == "evidence");
+        Assert.DoesNotContain(graph.Nodes, item => item.SemanticValue == "reject");
+        Assert.DoesNotContain(graph.Nodes, item => item.SemanticValue == "assumption");
+
+        var plan = await fixture.Operations.TryPlanConversationAsync(
+            "Compare the evidence.", new LegendConnectDiscourseStateSnapshot([]));
+        Assert.True(plan.Supported, plan.ReasonCode);
+        var snapshot = Assert.IsType<LegendConnectResponseMeaningPlanSnapshot>(plan.Plan);
+        Assert.Equal("comparison_response", snapshot.ResultDimensions["conversation_function"]);
+        Assert.Equal(3, snapshot.IndependentEvidenceCount);
+    }
+
+    [Fact]
     public async Task GovernedExecutableProjection_FailsClosedWhenOmittedMetadataCouldChangeTheResult()
     {
         await using var db = ControllerTestHelpers.BuildDb();
@@ -1312,6 +1347,76 @@ public sealed class LegendConnectSemanticSpanGroundingTests
                 new LegendConnectCurriculumExampleSubmission(
                     $"Founder social control {family}.",
                     new Dictionary<string, string> { ["control"] = $"social-{family}" })
+            ]);
+
+    private static LegendConnectCurriculumBatchSubmission ExactCoherentGraphFamily(int family) =>
+        new(
+            $"grounding.exact-coherent.{family}",
+            "Exact Founder graph remains the source-grounding authority",
+            [
+                new LegendConnectCurriculumExampleSubmission(
+                    "Compare the evidence.",
+                    new Dictionary<string, string>
+                    {
+                        ["function"] = "compare",
+                        ["subject"] = "evidence"
+                    },
+                    new LegendConnectMeaningGraphSubmission(
+                        [
+                            new LegendConnectMeaningNodeSubmission(
+                                "function", "function", "compare", "Compare"),
+                            new LegendConnectMeaningNodeSubmission(
+                                "subject", "subject", "evidence", "evidence")
+                        ],
+                        [new LegendConnectMeaningRelationSubmission(
+                            "function", "applies-to", "subject")])),
+                new LegendConnectCurriculumExampleSubmission(
+                    $"Comparison response evidence {family}.",
+                    new Dictionary<string, string>
+                    {
+                        ["conversation_function"] = "comparison_response"
+                    },
+                    new LegendConnectMeaningGraphSubmission(
+                        [new LegendConnectMeaningNodeSubmission(
+                            "response", "conversation_function", "comparison_response",
+                            $"Comparison response evidence {family}")],
+                        []))
+            ],
+            [new LegendConnectSemanticTransitionSubmission(
+                new LegendConnectSemanticFrameSubmission(new Dictionary<string, string>
+                {
+                    ["function"] = "compare",
+                    ["subject"] = "evidence"
+                }),
+                new LegendConnectSemanticFrameSubmission(new Dictionary<string, string>
+                {
+                    ["conversation_function"] = "comparison_response"
+                }))]);
+
+    private static LegendConnectCurriculumBatchSubmission ConflictingReusableGraphFamily(int family) =>
+        new(
+            $"grounding.conflicting-reusable.{family}",
+            "Reusable spans with different meaning remain scoped to their source graph",
+            [
+                new LegendConnectCurriculumExampleSubmission(
+                    $"Founder conflicting evidence {family}: Compare the evidence.",
+                    new Dictionary<string, string>
+                    {
+                        ["function"] = "reject",
+                        ["subject"] = "assumption"
+                    },
+                    new LegendConnectMeaningGraphSubmission(
+                        [
+                            new LegendConnectMeaningNodeSubmission(
+                                "function", "function", "reject", "Compare"),
+                            new LegendConnectMeaningNodeSubmission(
+                                "subject", "subject", "assumption", "evidence")
+                        ],
+                        [new LegendConnectMeaningRelationSubmission(
+                            "function", "applies-to", "subject")])),
+                new LegendConnectCurriculumExampleSubmission(
+                    $"Founder conflicting control {family}.",
+                    new Dictionary<string, string> { ["control"] = $"conflict-{family}" })
             ]);
 
     private static LegendConnectCurriculumBatchSubmission
