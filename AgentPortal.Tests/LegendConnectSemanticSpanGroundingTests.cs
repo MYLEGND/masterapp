@@ -266,6 +266,7 @@ public sealed class LegendConnectSemanticSpanGroundingTests
         var plan = await fixture.Operations.TryPlanConversationAsync(
             "Compare the evidence.", new LegendConnectDiscourseStateSnapshot([]));
         Assert.True(plan.Supported, plan.ReasonCode);
+        Assert.Equal("response_meaning_plan_governed", plan.ReasonCode);
         var snapshot = Assert.IsType<LegendConnectResponseMeaningPlanSnapshot>(plan.Plan);
         Assert.Equal("comparison_response", snapshot.ResultDimensions["conversation_function"]);
         Assert.Equal(3, snapshot.IndependentEvidenceCount);
