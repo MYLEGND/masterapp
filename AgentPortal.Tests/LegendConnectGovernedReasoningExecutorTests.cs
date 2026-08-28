@@ -176,6 +176,59 @@ public sealed class LegendConnectGovernedReasoningExecutorTests
             StringComparison.Ordinal));
     }
 
+    [Fact]
+    public async Task NativeSelector_PreservesReasoningNamedRelationsThatAreNotExecutableOperators()
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        var options = new DbContextOptionsBuilder<MasterAppDbContext>()
+            .UseSqlite(connection)
+            .Options;
+        await using var db = new MasterAppDbContext(options);
+        await db.Database.EnsureCreatedAsync();
+
+        var configuration = Configuration();
+        var registry = new LegendLanguageRegistry(db, configuration);
+        var corpus = new LegendConnectCorpusService(
+            db,
+            registry,
+            NullLogger<LegendConnectCorpusService>.Instance);
+        var curriculum = new LegendConnectCurriculumService(db, registry, corpus);
+        var operations = new LegendConnectOperations(
+            db,
+            registry,
+            corpus,
+            configuration,
+            curriculum: curriculum);
+
+        for (var support = 1; support <= 3; support++)
+        {
+            var submitted = await curriculum.SubmitFounderEnglishBatchAsync(
+                NonExecutableReasoningRelationFamily(support));
+            Assert.True(submitted.Succeeded, submitted.Message);
+            await curriculum.PersistFounderCrossExampleSemanticRelationAsync(
+                new LegendConnectCrossExampleSemanticRelationshipSubmission(
+                    $"limited-{support}",
+                    "reasoning.qualifies.evidence",
+                    $"preserve-{support}"),
+                LegendConnectLanguageIntelligenceEvaluatorVersion.Current);
+        }
+
+        Assert.False(LegendConnectGovernedReasoningExecutor.IsExecutableOperatorIdentity(
+            "reasoning.qualifies.evidence"));
+
+        var planResult = await operations.TryPlanConversationAsync(
+            "The evidence is limited.",
+            new LegendConnectDiscourseStateSnapshot([]));
+
+        Assert.True(planResult.Supported, planResult.ReasonCode);
+        var plan = Assert.IsType<LegendConnectResponseMeaningPlanSnapshot>(planResult.Plan);
+        Assert.Equal("preserve_alternatives", plan.ResultDimensions["decision_posture"]);
+        Assert.Null(plan.ReasoningTransitionPath);
+        Assert.Equal(0, plan.ReasoningEvidenceCount);
+        Assert.Equal(3, plan.IndependentEvidenceCount);
+    }
+
     private static LegendGovernedReasoningRule Rule(
         string signature,
         string operation,
@@ -240,6 +293,30 @@ public sealed class LegendConnectGovernedReasoningExecutorTests
                         ["conversation_function"] = "solution_response",
                         ["resolution"] = "complete"
                     }))]);
+
+    private static LegendConnectCurriculumBatchSubmission NonExecutableReasoningRelationFamily(
+        int support) =>
+        new(
+            $"reasoning.qualifier.{support}",
+            "Governed evidence qualification and alternative-preservation relation",
+            [
+                new LegendConnectCurriculumExampleSubmission(
+                    "The evidence is limited.",
+                    new Dictionary<string, string> { ["evidence_strength"] = "limited" },
+                    new LegendConnectMeaningGraphSubmission(
+                        [new LegendConnectMeaningNodeSubmission(
+                            "evidence", "evidence_strength", "limited", "limited")],
+                        []),
+                    $"limited-{support}"),
+                new LegendConnectCurriculumExampleSubmission(
+                    "Preserve the alternatives.",
+                    new Dictionary<string, string> { ["decision_posture"] = "preserve_alternatives" },
+                    new LegendConnectMeaningGraphSubmission(
+                        [new LegendConnectMeaningNodeSubmission(
+                            "posture", "decision_posture", "preserve_alternatives", "Preserve the alternatives")],
+                        []),
+                    $"preserve-{support}")
+            ]);
 
     private static IConfiguration Configuration() => new ConfigurationBuilder()
         .AddInMemoryCollection(new Dictionary<string, string?>
