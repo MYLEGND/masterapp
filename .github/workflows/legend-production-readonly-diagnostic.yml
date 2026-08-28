@@ -34,7 +34,10 @@ env:
 jobs:
   production-readonly-diagnostic:
     runs-on: windows-latest
-    timeout-minutes: 45
+    # A validation branch runs the complete application regression and then
+    # reconstructs the full governed Founder closure twice for idempotence.
+    # Keep a hard bound, but size it for the mandatory full-corpus proof.
+    timeout-minutes: 90
     environment:
       name: Production
 
@@ -249,5 +252,6 @@ jobs:
           if ('${{ steps.build.outcome }}' -ne 'success') { throw 'Production diagnostic build failed.' }
           if ('${{ steps.regression.outcome }}' -ne 'success') { throw 'Complete predeployment regression failed.' }
           if ('${{ steps.replay_status.outcome }}' -ne 'success') { throw 'Production replay-status diagnostic failed.' }
+          if ('${{ steps.diagnostic.outcome }}' -ne 'success') { throw 'Production read-only diagnostic was not completed successfully.' }
           if ('${{ steps.diagnostic.outputs.native_exit }}' -ne '0') { throw 'Production native diagnostic did not execute successfully.' }
           if ('${{ steps.diagnostic.outputs.shadow_exit }}' -ne '0') { throw 'Requested production V21 shadow diagnostic did not execute successfully.' }
