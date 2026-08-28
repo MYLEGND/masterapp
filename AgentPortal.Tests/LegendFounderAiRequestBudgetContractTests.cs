@@ -43,7 +43,8 @@ public sealed class LegendFounderAiRequestBudgetContractTests
     private static string ReadSource(params string[] path)
     {
         var root = FindRepositoryRoot();
-        return File.ReadAllText(Path.Combine(new[] { root }.Concat(path).ToArray()));
+        return File.ReadAllText(Path.Combine(new[] { root }.Concat(path).ToArray()))
+            .Replace("\r\n", "\n", StringComparison.Ordinal);
     }
 
     private static string FindRepositoryRoot()
