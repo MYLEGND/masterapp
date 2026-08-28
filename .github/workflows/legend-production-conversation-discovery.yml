@@ -77,4 +77,4 @@ jobs:
           if ($log -notmatch 'PRODUCTION WRITE COMMANDS: 0') { throw 'Production write activity occurred.' }
           Write-Output 'STRICT LIVE CONVERSATION PROOF: PASS'
 
-# governed cross-family surface lattice revision 3
+# safe governed cross-articulation revision 4
