@@ -70,3 +70,5 @@ jobs:
           if ($log -notmatch 'OPENAI HTTP CALLS: 0') { throw 'Provider HTTP activity occurred.' }
           if ($log -notmatch 'PRODUCTION WRITE COMMANDS: 0') { throw 'Production write activity occurred.' }
           Write-Output 'STRICT LIVE CONVERSATION PROOF: PASS'
+
+# articulation-diversity proof revision
