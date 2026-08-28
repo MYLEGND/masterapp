@@ -414,7 +414,7 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
             return NativeInferenceUnsupported("invalid_input");
 
         var composed = await Curriculum.TryInferComposedSemanticTransitionAsync(
-            "en", input ?? string.Empty, discourseState, cancellationToken);
+            "en", input ?? string.Empty, context, discourseState, cancellationToken);
         if (string.Equals(composed.State, LegendSemanticTransitionInference.Supported, StringComparison.Ordinal) &&
             !string.IsNullOrWhiteSpace(composed.RealizedText))
         {
