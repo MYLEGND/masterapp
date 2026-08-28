@@ -11,12 +11,12 @@ def once(old: str, new: str, label: str):
         raise SystemExit(f"{label}: expected 1 anchor, found {n}")
     text = text.replace(old, new, 1)
 
-# Current-turn Founder source evidence is stronger than antecedent context for
-# variables that the source frame explicitly carries but that are not lexical
-# meaning nodes. This does NOT retrieve an answer. It only completes the
-# already-selected production-eligible source frame when the current input is
-# itself an exact active Founder-controlled source endpoint and every matching
-# source contribution agrees on the missing controlled value.
+# A partially matched response transition may be missing content variables that
+# are not mature meaning primitives themselves. Bind them from the strongest
+# available canonical evidence in this order: exact current Founder endpoint,
+# exact lexical semantic evidence in the current utterance, then governed prior
+# conversation context. All three routes feed the SAME candidate binding
+# authority; none can select a response on its own.
 old = '''            if (partialCandidates.Count > 0)
             {
                 // Existing conversation grounding remains the sole context-binding
@@ -37,11 +37,10 @@ old = '''            if (partialCandidates.Count > 0)
 '''
 new = '''            if (partialCandidates.Count > 0)
             {
-                // The current utterance may itself be a Founder-controlled source
-                // endpoint whose non-lexical frame values are intentionally carried
-                // as controlled metadata. Complete only those missing variables from
-                // that exact source identity when all matching active endpoint
-                // evidence agrees. This is source understanding, never answer lookup.
+                // First complete missing non-lexical source metadata when the
+                // current utterance is itself an exact active Founder endpoint.
+                // This establishes source meaning only; it never retrieves the
+                // endpoint's answer.
                 candidates = await BindCandidatesFromCurrentSourceEndpointAsync(
                     language,
                     input,
@@ -50,9 +49,24 @@ new = '''            if (partialCandidates.Count > 0)
 
                 if (candidates.Count == 0)
                 {
-                    // Existing conversation grounding remains the sole antecedent
-                    // context-binding authority. Reasoning is considered only if
-                    // neither current-source evidence nor context yields a response.
+                    // A held-out utterance may explicitly contain the value of a
+                    // missing semantic variable (for example a domain/content
+                    // value) even when that value is intentionally not a
+                    // cross-family primitive. Bind only exact Founder-approved
+                    // lexical anchor surfaces for the candidate's missing
+                    // dimensions, and only when the current surface resolves to
+                    // one unambiguous semantic value.
+                    candidates = await BindCandidatesFromCurrentLexicalVariableEvidenceAsync(
+                        language,
+                        input,
+                        partialCandidates,
+                        cancellationToken);
+                }
+
+                if (candidates.Count == 0)
+                {
+                    // Existing discourse/context grounding remains the one
+                    // antecedent-binding authority after current-turn evidence.
                     var contextFrames = new List<GroundedContextFrame>();
                     if (discourseState is not null)
                     {
@@ -68,11 +82,11 @@ new = '''            if (partialCandidates.Count > 0)
                     failureReason = "semantic_context_not_governed";
             }
 '''
-once(old, new, "current source endpoint binding insertion")
+once(old, new, "current evidence binding insertion")
 
 marker = '''    private async Task<IReadOnlyList<GroundedContextFrame>> ResolveGroundedContextFramesAsync(
 '''
-method = r'''    private async Task<IReadOnlyList<SemanticTransitionCandidate>> BindCandidatesFromCurrentSourceEndpointAsync(
+methods = r'''    private async Task<IReadOnlyList<SemanticTransitionCandidate>> BindCandidatesFromCurrentSourceEndpointAsync(
         string sourceLanguage,
         string input,
         IReadOnlyList<SemanticTransitionCandidate> partialCandidates,
@@ -185,15 +199,151 @@ method = r'''    private async Task<IReadOnlyList<SemanticTransitionCandidate>> 
             .ToArray();
     }
 
+    private async Task<IReadOnlyList<SemanticTransitionCandidate>> BindCandidatesFromCurrentLexicalVariableEvidenceAsync(
+        string sourceLanguage,
+        string input,
+        IReadOnlyList<SemanticTransitionCandidate> partialCandidates,
+        CancellationToken cancellationToken)
+    {
+        if (partialCandidates.Count == 0)
+            return [];
+
+        var dimensions = partialCandidates
+            .SelectMany(item => item.MissingVariables)
+            .Select(item => item.Dimension)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        if (dimensions.Length == 0)
+            return [];
+
+        var normalizedInput = LegendLanguageIdentity.NormalizeText(input);
+        var inputTokens = SurfaceComponents(normalizedInput)
+            .Select(item => normalizedInput.Substring(item.CharacterOffset, item.CharacterLength))
+            .ToArray();
+        if (inputTokens.Length == 0)
+            return [];
+
+        var rows = await (
+            from anchor in _db.Set<LegendLanguageCompositionalAnchor>().AsNoTracking()
+            join unit in _db.Set<LegendLanguageTextUnit>().AsNoTracking()
+                on anchor.TextUnitId equals unit.Id
+            where anchor.LanguageCode == sourceLanguage &&
+                anchor.SupersededUtc == null &&
+                anchor.Provenance == LegendConnectKnowledgeProvenance.FounderApproved &&
+                anchor.LexemeId != null &&
+                anchor.ComponentStartTokenIndex != null &&
+                anchor.ComponentLength != null &&
+                anchor.ComponentLength > 0 &&
+                dimensions.Contains(anchor.Dimension) &&
+                unit.LanguageCode == sourceLanguage &&
+                unit.IsTrainingEligible &&
+                unit.Provenance == LegendConnectKnowledgeProvenance.FounderApproved
+            select new
+            {
+                anchor.Dimension,
+                anchor.Value,
+                Start = anchor.ComponentStartTokenIndex!.Value,
+                Length = anchor.ComponentLength!.Value,
+                Text = unit.Text
+            }).ToListAsync(cancellationToken);
+
+        var matched = new List<(string Dimension, string Value)>();
+        foreach (var row in rows)
+        {
+            var sourceTokens = SurfaceComponents(row.Text);
+            if (row.Start < 0 || row.Length < 1 || row.Start + row.Length > sourceTokens.Count)
+                continue;
+            var lexicalTokens = sourceTokens
+                .Skip(row.Start)
+                .Take(row.Length)
+                .Select(item => row.Text.Substring(item.CharacterOffset, item.CharacterLength))
+                .ToArray();
+            if (lexicalTokens.Length == 0 || !ContainsTokenSequence(inputTokens, lexicalTokens))
+                continue;
+            matched.Add((row.Dimension, row.Value));
+        }
+        if (matched.Count == 0)
+            return [];
+
+        var completed = new List<SemanticTransitionCandidate>();
+        foreach (var candidate in partialCandidates)
+        {
+            var bindings = new Dictionary<string, string>(candidate.Bindings, StringComparer.Ordinal);
+            var complete = true;
+            foreach (var missing in candidate.MissingVariables)
+            {
+                var values = matched
+                    .Where(item => string.Equals(item.Dimension, missing.Dimension, StringComparison.OrdinalIgnoreCase))
+                    .Select(item => item.Value)
+                    .Where(item => !string.IsNullOrWhiteSpace(item))
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .Take(2)
+                    .ToArray();
+                if (values.Length != 1)
+                {
+                    complete = false;
+                    break;
+                }
+                if (bindings.TryGetValue(missing.Variable, out var existing) &&
+                    !string.Equals(existing, values[0], StringComparison.OrdinalIgnoreCase))
+                {
+                    complete = false;
+                    break;
+                }
+                bindings[missing.Variable] = values[0];
+            }
+
+            if (!complete)
+                continue;
+            completed.Add(candidate with
+            {
+                Bindings = bindings,
+                MissingVariables = []
+            });
+        }
+
+        return completed
+            .GroupBy(item => item.TransitionSignature + "\u001f" + CanonicalBindings(item.Bindings), StringComparer.Ordinal)
+            .Select(group => group.First())
+            .ToArray();
+    }
+
+    private static bool ContainsTokenSequence(
+        IReadOnlyList<string> inputTokens,
+        IReadOnlyList<string> lexicalTokens)
+    {
+        if (lexicalTokens.Count == 0 || lexicalTokens.Count > inputTokens.Count)
+            return false;
+        for (var start = 0; start <= inputTokens.Count - lexicalTokens.Count; start++)
+        {
+            var matches = true;
+            for (var offset = 0; offset < lexicalTokens.Count; offset++)
+            {
+                if (string.Equals(
+                        inputTokens[start + offset],
+                        lexicalTokens[offset],
+                        StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+                matches = false;
+                break;
+            }
+            if (matches)
+                return true;
+        }
+        return false;
+    }
+
 '''
 if text.count(marker) != 1:
-    raise SystemExit(f"source endpoint method marker: found {text.count(marker)}")
-text = text.replace(marker, method + marker, 1)
+    raise SystemExit(f"source evidence methods marker: found {text.count(marker)}")
+text = text.replace(marker, methods + marker, 1)
 
 # Bound realization layouts are semantic slot layouts, not token-coordinate
 # templates. Sentence-specific offsets/lengths made independently equivalent
-# Founder realizations appear contradictory. Keep unique semantic dimensions,
-# ordering, overlap checks and punctuation gates; remove geometry from shape.
+# Founder realizations appear contradictory. Keep semantic slot order and
+# punctuation while removing sentence geometry from reusable identity.
 old_shape = '''        var firstStart = components[0].StartTokenIndex;
         layout = new SemanticRealizationLayout(
             example.CurriculumFamilyId,
@@ -210,13 +360,10 @@ new_shape = '''        layout = new SemanticRealizationLayout(
 '''
 once(old_shape, new_shape, "bound semantic layout shape")
 
-# Several independently mature articulation layouts for one already-selected
-# semantic result are alternative realizations, not competing semantic answers.
-# Each layout group has already passed the same >=3 independent Founder-family
-# gate and every endpoint matches the selected result frame. Try those groups
-# deterministically inside this same realization authority and accept only a
-# non-verbatim composition. Semantic transition ambiguity remains upstream and
-# continues to fail closed.
+# Multiple independently mature layouts for one already-selected semantic
+# result are alternative articulation evidence, not semantic disagreement. The
+# final articulation authority will decide which mature forms can safely
+# compose; do not fail merely because more than one mature layout exists.
 old_realize = '''        if (scopedExamples.Count > 0)
         {
             if (eligibleLayouts.Count == 0)
@@ -257,22 +404,20 @@ new_realize = '''        if (scopedExamples.Count > 0)
             if (eligibleLayouts.Count == 0)
                 return SemanticTransitionRealization.Insufficient("result_realization_layout_insufficient");
 
-            // A native conversational response must be composed from governed
-            // semantic components. Returning an entire stored curriculum
-            // sentence is retrieval, not articulation. Multiple independently
-            // supported layouts under this one selected result frame represent
-            // articulation diversity, not a second semantic decision. Evaluate
-            // them deterministically here and retain the existing endpoint ban.
+            // A native response must remain under this same governed
+            // articulation authority. Multiple independently mature layouts are
+            // retained as alternative evidence; the downstream original
+            // composer may use them without converting layout diversity into a
+            // false semantic contradiction.
             var realizationSeed = string.Join('|',
                 sourceComponents
                     .OrderBy(item => item.StartTokenIndex)
                     .ThenBy(item => item.Dimension, StringComparer.Ordinal)
                     .Select(item => item.SemanticSignature + "=" + item.SurfaceForm));
             foreach (var eligibleLayout in eligibleLayouts
-                         .OrderBy(item => LegendLanguageIdentity.TextHash(
-                             candidate.TransitionSignature + "|" + realizationSeed + "|" +
-                             item.Layouts[0].Shape + "|" + item.Layouts[0].TerminalPunctuation),
-                             StringComparer.Ordinal))
+                         .OrderByDescending(item => item.IndependentFamilies)
+                         .ThenBy(item => item.Layouts[0].Shape, StringComparer.Ordinal)
+                         .ThenBy(item => item.Layouts[0].TerminalPunctuation, StringComparer.Ordinal))
             {
                 if (!TryRealizeOriginalLearnedLayout(
                         eligibleLayout.Layouts,
