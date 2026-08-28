@@ -3992,6 +3992,48 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
         {
             if (HasContradictedSemanticTransition(responseObservations, values)) return SemanticTransitionSelection.Contradicted("semantic_transition_contradicted");
 
+            // An exact active Founder source endpoint is the strongest
+            // available source-grounding evidence for this turn. Resolve it
+            // before considering broader projections whose omitted metadata
+            // can make several otherwise compatible transitions appear
+            // equally applicable. This selects only the governed semantic
+            // transition; the production realization path still must compose
+            // original language and may never return the stored endpoint.
+            var exactEndpointCandidates = await BindCandidatesFromCurrentSourceEndpointAsync(
+                language,
+                input,
+                BuildGovernedSemanticTransitionCandidates(
+                        responseObservations,
+                        values,
+                        allowMissingVariables: true,
+                        allowMissingStaticDimensions: true)
+                    .Where(item => item.DirectSourceMatchCount > 0)
+                    .ToList(),
+                cancellationToken);
+            if (exactEndpointCandidates.Count > 0)
+            {
+                var strongestExactCandidates = StrongestCompatibleSemanticTransitionCandidates(
+                    exactEndpointCandidates);
+                if (strongestExactCandidates
+                        .Select(item => item.ResultFrame.Signature)
+                        .Distinct(StringComparer.Ordinal)
+                        .Count() != 1)
+                {
+                    return SemanticTransitionSelection.Ambiguous(
+                        "ambiguous_exact_founder_semantic_transition");
+                }
+
+                return new(
+                    language,
+                    sourceComponents,
+                    strongestExactCandidates
+                        .OrderBy(item => item.TransitionSignature, StringComparer.Ordinal)
+                        .First(),
+                    "response_meaning_plan_governed",
+                    false,
+                    false);
+            }
+
             // Founder curricula may carry controlled descriptive dimensions
             // which are not independently surfaced by the present-turn
             // meaning graph.  They remain canonical evidence, but they must
@@ -4022,7 +4064,9 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
                         "semantic_transition_projected_contradicted");
                 }
 
-                if (projectedCandidates
+                var strongestProjectedCandidates = StrongestCompatibleSemanticTransitionCandidates(
+                    projectedCandidates);
+                if (strongestProjectedCandidates
                         .Select(item => item.ResultFrame.Signature)
                         .Distinct(StringComparer.Ordinal)
                         .Count() != 1)
@@ -4034,9 +4078,8 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
                 return new(
                     language,
                     sourceComponents,
-                    projectedCandidates
-                        .OrderByDescending(item => item.DirectSourceMatchCount)
-                        .ThenBy(item => item.TransitionSignature, StringComparer.Ordinal)
+                    strongestProjectedCandidates
+                        .OrderBy(item => item.TransitionSignature, StringComparer.Ordinal)
                         .First(),
                     "response_meaning_plan_governed_projected",
                     false,
@@ -4223,10 +4266,8 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
 
                 if (observedCandidates.Count > 0)
                 {
-                    var strongestEvidenceCount = observedCandidates.Max(item => item.IndependentEvidenceCount);
-                    var strongestCandidates = observedCandidates
-                        .Where(item => item.IndependentEvidenceCount == strongestEvidenceCount)
-                        .ToList();
+                    var strongestCandidates = StrongestCompatibleSemanticTransitionCandidates(
+                        observedCandidates);
                     if (strongestCandidates
                             .Select(item => item.ResultFrame.Signature)
                             .Distinct(StringComparer.Ordinal)
@@ -4253,9 +4294,39 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
             if (candidates.Count == 0)
                 return SemanticTransitionSelection.Insufficient(failureReason, language, sourceComponents);
         }
-        if (candidates.Select(item => item.ResultFrame.Signature).Distinct().Count() != 1)
+        var strongestCandidates = StrongestCompatibleSemanticTransitionCandidates(candidates);
+        if (strongestCandidates.Select(item => item.ResultFrame.Signature).Distinct().Count() != 1)
             return SemanticTransitionSelection.Ambiguous("ambiguous_semantic_transition");
-        return new(language, sourceComponents, candidates.OrderBy(item => item.TransitionSignature).First(), "response_meaning_plan_governed", false, false);
+        return new(language, sourceComponents, strongestCandidates.OrderBy(item => item.TransitionSignature).First(), "response_meaning_plan_governed", false, false);
+    }
+
+    private static IReadOnlyList<SemanticTransitionCandidate> StrongestCompatibleSemanticTransitionCandidates(
+        IEnumerable<SemanticTransitionCandidate> candidates)
+    {
+        var ranked = candidates.ToList();
+        if (ranked.Count == 0)
+            return [];
+
+        var strongestTier = ranked.Max(item => item.EvidenceTier);
+        ranked = ranked.Where(item => item.EvidenceTier == strongestTier).ToList();
+
+        // Prefer the transition grounded by the greatest amount of present-
+        // turn meaning. Among equally grounded transitions, prefer the one
+        // that projected the least source metadata, then the strongest
+        // independent Founder evidence. Equal-ranked conflicting results stay
+        // present so the caller fails closed as genuinely ambiguous.
+        var strongestDirectMatch = ranked.Max(item => item.DirectSourceMatchCount);
+        ranked = ranked.Where(item => item.DirectSourceMatchCount == strongestDirectMatch).ToList();
+        var leastProjectedDimensions = ranked.Min(item =>
+            Math.Max(0, item.SourceFrame.Dimensions.Count - item.DirectSourceMatchCount - item.MissingVariables.Count));
+        ranked = ranked.Where(item =>
+                Math.Max(0, item.SourceFrame.Dimensions.Count - item.DirectSourceMatchCount - item.MissingVariables.Count) ==
+                leastProjectedDimensions)
+            .ToList();
+        var strongestEvidenceCount = ranked.Max(item => item.IndependentEvidenceCount);
+        return ranked
+            .Where(item => item.IndependentEvidenceCount == strongestEvidenceCount)
+            .ToArray();
     }
 
     private static IReadOnlyDictionary<string, string> ActiveDiscourseBindings(LegendConnectDiscourseStateSnapshot? state) =>

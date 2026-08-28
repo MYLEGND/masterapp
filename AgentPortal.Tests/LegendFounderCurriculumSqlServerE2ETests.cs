@@ -1031,6 +1031,7 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
             };
 
             var passes = 0;
+            var failures = new List<string>();
             foreach (var prompt in prompts)
             {
                 var graph = await founderLegend.AnalyzeReusableMeaningGraphAsync(founder, prompt);
@@ -1064,16 +1065,21 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
                 _output.WriteLine($"PLAN: {plan.ReasonCode}; EVIDENCE={plan.Plan?.IndependentEvidenceCount ?? 0}");
                 _output.WriteLine($"NATIVE: {native.ReasonCode}; EVIDENCE={native.EvidenceCount}; ORIGINAL={isOriginal}");
                 _output.WriteLine($"ANSWER: {native.Answer ?? "<NULL>"}");
-                Assert.True(passed,
-                    $"Governed production-data matrix failed for '{prompt}'. " +
+                if (!passed)
+                {
+                    failures.Add(
+                    $"'{prompt}': " +
                     $"Graph={graph.ReasonCode}; Plan={plan.ReasonCode}; " +
                     $"Native={native.ReasonCode}; Evidence={native.EvidenceCount}; Original={isOriginal}");
+                }
             }
 
-            Assert.Equal(prompts.Length, passes);
             _output.WriteLine($"GOVERNED MATRIX PASSES: {passes}/{prompts.Length}");
             _output.WriteLine("OPENAI HTTP CALLS: 0");
             _output.WriteLine("PRODUCTION WRITE COMMANDS: 0");
+            Assert.True(failures.Count == 0,
+                "Governed production-data matrix failures:" + Environment.NewLine +
+                string.Join(Environment.NewLine, failures));
         }
         finally
         {
