@@ -4319,11 +4319,11 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
         return candidates;
     }
 
-    private static IReadOnlyList<SemanticTransitionCandidate> PreferHighestStandardCandidates(
+    private static List<SemanticTransitionCandidate> PreferHighestStandardCandidates(
         IReadOnlyList<SemanticTransitionCandidate> candidates)
     {
         if (candidates.Count == 0)
-            return candidates;
+            return candidates.ToList();
 
         var highestStandard = candidates.Max(item => item.EvidenceStandard);
         var highestStandardCandidates = candidates
