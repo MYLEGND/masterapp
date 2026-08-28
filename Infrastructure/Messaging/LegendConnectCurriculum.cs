@@ -3588,6 +3588,35 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
             .ThenBy(item => item.TargetNodeIndex)
             .ThenBy(item => item.RelationSignature, StringComparer.Ordinal)
             .ToArray();
+        // A dense curriculum can recognize mature subspans inside one mature
+        // whole-span primitive. Those overlapping observations are not
+        // independent semantic components and do not require invented
+        // relations. When no relation is present, retain one atomic primitive
+        // only if its governed span contains every other matched span and all
+        // equally dominant candidates agree on the same semantic value.
+        // Conflicting coextensive meanings and genuinely disconnected spans
+        // continue to fail closed as relation-unproven.
+        if (orderedRelations.Length == 0 && orderedNodes.Length > 1)
+        {
+            var dominantNodes = orderedNodes
+                .Where(candidate => orderedNodes.All(other =>
+                    candidate.StartTokenIndex <= other.StartTokenIndex &&
+                    candidate.StartTokenIndex + candidate.TokenLength >=
+                        other.StartTokenIndex + other.TokenLength))
+                .ToArray();
+            var dominantMeanings = dominantNodes
+                .GroupBy(item => new { item.SemanticDimension, item.SemanticValue })
+                .Take(2)
+                .ToArray();
+            if (dominantMeanings.Length == 1)
+            {
+                orderedNodes =
+                [dominantMeanings[0]
+                    .OrderByDescending(item => item.IndependentSupportCount)
+                    .ThenBy(item => item.SemanticSignature, StringComparer.Ordinal)
+                    .First()];
+            }
+        }
         // V20.3: a reusable meaning graph does not require an artificial
         // second semantic node merely to prove that one independently mature
         // semantic primitive has meaning.
