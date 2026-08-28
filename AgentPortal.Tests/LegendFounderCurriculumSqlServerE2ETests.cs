@@ -942,6 +942,148 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
     }
 
     /// <summary>
+    /// Pre-deployment proof against the live Founder corpus. The candidate
+    /// code runs locally in the workflow, the production connection is
+    /// read-only and guarded against every mutation, and OpenAI is absent.
+    /// This gate covers graph understanding, ranked transition selection,
+    /// cross-family original articulation, and calibrated boundary behavior.
+    /// </summary>
+    [Fact]
+    public async Task ProductionReadOnlyGovernedKnowledgeMatrixDiagnostic()
+    {
+        var connectionString = Environment.GetEnvironmentVariable(
+            "LEGEND_PRODUCTION_READONLY_CONNECTION");
+        if (string.IsNullOrWhiteSpace(connectionString))
+        {
+            _output.WriteLine(
+                "Production governed knowledge matrix was not selected; " +
+                "LEGEND_PRODUCTION_READONLY_CONNECTION is unset.");
+            return;
+        }
+
+        var founderId = Environment.GetEnvironmentVariable(
+            "LEGEND_PRODUCTION_READONLY_FOUNDER_OID");
+        Assert.False(string.IsNullOrWhiteSpace(founderId),
+            "Production Founder OID was not supplied to the governed knowledge matrix.");
+        var previousFounderOid = Environment.GetEnvironmentVariable("FOUNDER_OID");
+        var previousOpenAiApiKey = Environment.GetEnvironmentVariable("OPENAI_API_KEY");
+        var previousOpenAiConfigApiKey = Environment.GetEnvironmentVariable("OpenAI__ApiKey");
+        Environment.SetEnvironmentVariable("FOUNDER_OID", founderId);
+        Environment.SetEnvironmentVariable("OPENAI_API_KEY", string.Empty);
+        Environment.SetEnvironmentVariable("OpenAI__ApiKey", string.Empty);
+        try
+        {
+            var connection = new SqlConnectionStringBuilder(connectionString)
+            {
+                ApplicationName = "LEGEND pre-deployment governed knowledge matrix",
+                ApplicationIntent = ApplicationIntent.ReadOnly
+            };
+            var readOnlyGuard = new ReadOnlyLegendDbCommandInterceptor();
+            await using var db = new MasterAppDbContext(
+                new DbContextOptionsBuilder<MasterAppDbContext>()
+                    .UseSqlServer(connection.ConnectionString)
+                    .UseQueryTrackingBehavior(QueryTrackingBehavior.NoTracking)
+                    .AddInterceptors(readOnlyGuard)
+                    .Options);
+            Assert.True(await db.AgentProfiles.AsNoTracking().AnyAsync(item =>
+                    item.IsActive && item.AgentUserId != null &&
+                    item.AgentUserId.ToLower() == founderId!.ToLower()),
+                "The configured production Founder OID has no active AgentProfile.");
+
+            var configuration = new ConfigurationBuilder()
+                .AddInMemoryCollection(new[]
+                {
+                    new KeyValuePair<string, string?>("OpenAI:ApiKey", string.Empty),
+                    new KeyValuePair<string, string?>("LegendConnect:CorpusAcquisition:Enabled", "false"),
+                    new KeyValuePair<string, string?>("LegendConnect:ContextualComposition:Mode", "Shadow")
+                })
+                .Build();
+            var registry = new LegendLanguageRegistry(db, configuration);
+            var corpus = new LegendConnectCorpusService(
+                db,
+                registry,
+                NullLogger<LegendConnectCorpusService>.Instance);
+            var curriculum = new LegendConnectCurriculumService(db, registry, corpus);
+            var operations = new LegendConnectOperations(
+                db,
+                registry,
+                corpus,
+                configuration,
+                curriculum: curriculum);
+            var profiles = new AgentProfileAccessResolver(db);
+            var founderLegend = new FounderLegendConnectService(operations, profiles);
+            var founder = new ClaimsPrincipal(
+                new ClaimsIdentity([new Claim("oid", founderId!)], "production-read-only"));
+
+            var prompts = new[]
+            {
+                "How are you?",
+                "For the failed deployment, which log evidence would distinguish a bad configuration from a broken dependency?",
+                "Before blaming either team for the delay, identify a record that differs under a handoff failure and a capacity shortage.",
+                "Both a late handoff and a staffing shortage predict delay; can the delay itself choose between them?",
+                "The renewal clause and the termination clause both changed. What does that affect?",
+                "I’m not asking for a diagnosis yet. What evidence would distinguish the two most plausible explanations?",
+                "Eliminate any option that violates the deadline or budget, then compare the survivors and explain the tradeoff.",
+                "Separate what the records establish from what we are only assuming, and tell me what still cannot be concluded.",
+                "Give me the plan in dependency order, including the check that confirms each step and the recovery point if it fails.",
+                "The alarm happened after the update, so prove that the update caused it.",
+                "We have no measurements. Tell me which option is definitely best."
+            };
+
+            var passes = 0;
+            foreach (var prompt in prompts)
+            {
+                var graph = await founderLegend.AnalyzeReusableMeaningGraphAsync(founder, prompt);
+                var plan = await operations.TryPlanConversationAsync(
+                    prompt,
+                    new LegendConnectDiscourseStateSnapshot([]));
+                var native = await founderLegend.TryInferConversationWithDiscourseAsync(
+                    founder,
+                    prompt,
+                    [],
+                    new LegendConnectDiscourseStateSnapshot([]));
+                var isOriginal = !string.IsNullOrWhiteSpace(native.Answer) &&
+                    !await db.LegendLanguageTextUnits.AsNoTracking().AnyAsync(unit =>
+                        unit.LanguageCode == "en" &&
+                        unit.IsTrainingEligible &&
+                        unit.NormalizedHash == LegendLanguageIdentity.TextHash(native.Answer!));
+                var passed = graph.IsComposed &&
+                    plan.Supported &&
+                    plan.Plan is not null &&
+                    plan.Plan.IndependentEvidenceCount > 0 &&
+                    native.Supported &&
+                    native.EvidenceCount > 0 &&
+                    !native.RequiresEscalation &&
+                    isOriginal;
+                if (passed)
+                    passes++;
+
+                _output.WriteLine("============================================================");
+                _output.WriteLine($"USER: {prompt}");
+                _output.WriteLine($"GRAPH: {graph.ReasonCode}; NODES={graph.Nodes.Count}; RELATIONS={graph.Relations.Count}");
+                _output.WriteLine($"PLAN: {plan.ReasonCode}; EVIDENCE={plan.Plan?.IndependentEvidenceCount ?? 0}");
+                _output.WriteLine($"NATIVE: {native.ReasonCode}; EVIDENCE={native.EvidenceCount}; ORIGINAL={isOriginal}");
+                _output.WriteLine($"ANSWER: {native.Answer ?? "<NULL>"}");
+                Assert.True(passed,
+                    $"Governed production-data matrix failed for '{prompt}'. " +
+                    $"Graph={graph.ReasonCode}; Plan={plan.ReasonCode}; " +
+                    $"Native={native.ReasonCode}; Evidence={native.EvidenceCount}; Original={isOriginal}");
+            }
+
+            Assert.Equal(prompts.Length, passes);
+            _output.WriteLine($"GOVERNED MATRIX PASSES: {passes}/{prompts.Length}");
+            _output.WriteLine("OPENAI HTTP CALLS: 0");
+            _output.WriteLine("PRODUCTION WRITE COMMANDS: 0");
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("FOUNDER_OID", previousFounderOid);
+            Environment.SetEnvironmentVariable("OPENAI_API_KEY", previousOpenAiApiKey);
+            Environment.SetEnvironmentVariable("OpenAI__ApiKey", previousOpenAiConfigApiKey);
+        }
+    }
+
+    /// <summary>
     /// A production-data shadow rebuild for pre-deployment proof.  The source
     /// context is SQL Server with a read-only connection and an interceptor
     /// that rejects every non-SELECT command.  The second context is an
