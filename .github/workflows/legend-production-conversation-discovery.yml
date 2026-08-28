@@ -77,4 +77,4 @@ jobs:
           if ($log -notmatch 'PRODUCTION WRITE COMMANDS: 0') { throw 'Production write activity occurred.' }
           Write-Output 'STRICT LIVE CONVERSATION PROOF: PASS'
 
-# cross-family skeleton diagnostic revision 1
+# variable-aware cross-family articulation revision 2
