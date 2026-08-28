@@ -179,6 +179,64 @@ public sealed class LegendConnectSemanticSpanGroundingTests
     }
 
     [Fact]
+    public async Task WholeSpanPrimitive_RemainsAtomicWhenDenseCurriculumRecognizesContainedSubspans()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var fixture = CreateFixture(db);
+
+        for (var family = 1; family <= 3; family++)
+        {
+            var response = await fixture.Curriculum.SubmitFounderEnglishBatchAsync(
+                WholeSpanArticulationFamily(family));
+            Assert.True(response.Succeeded, response.Message);
+            var subspan = await fixture.Curriculum.SubmitFounderEnglishBatchAsync(
+                ContainedSubspanFamily(family));
+            Assert.True(subspan.Succeeded, subspan.Message);
+        }
+
+        var graph = await fixture.Operations.AnalyzeReusableMeaningGraphAsync("Good morning.");
+
+        Assert.True(graph.IsComposed, graph.ReasonCode);
+        var node = Assert.Single(graph.Nodes);
+        Assert.Equal("conversation_function", node.SemanticDimension);
+        Assert.Equal("conversation_opening", node.SemanticValue);
+        Assert.Equal(0, node.StartTokenIndex);
+        Assert.Equal(2, node.TokenLength);
+        Assert.Empty(graph.Relations);
+
+        var native = await fixture.Operations.TryInferConversationWithDiscourseAsync(
+            "Good morning.", [], new LegendConnectDiscourseStateSnapshot([]));
+        Assert.True(native.Supported, native.ReasonCode);
+        Assert.Equal("semantic_transition_governed_composed", native.ReasonCode);
+        Assert.True(native.EvidenceCount > 0);
+        Assert.False(native.RequiresEscalation);
+    }
+
+    [Fact]
+    public async Task CoextensiveWholeSpanMeanings_StillRequireAGovernedRelation()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var fixture = CreateFixture(db);
+
+        for (var family = 1; family <= 3; family++)
+        {
+            var opening = await fixture.Curriculum.SubmitFounderEnglishBatchAsync(
+                WholeSpanArticulationFamily(family));
+            Assert.True(opening.Succeeded, opening.Message);
+            var competing = await fixture.Curriculum.SubmitFounderEnglishBatchAsync(
+                CompetingWholeSpanFamily(family));
+            Assert.True(competing.Succeeded, competing.Message);
+        }
+
+        var graph = await fixture.Operations.AnalyzeReusableMeaningGraphAsync("Good morning.");
+
+        Assert.False(graph.IsComposed);
+        Assert.Equal("meaning_graph_relation_unproven", graph.ReasonCode);
+        Assert.Contains(graph.Nodes, item => item.SemanticDimension == "conversation_function");
+        Assert.Contains(graph.Nodes, item => item.SemanticDimension == "social_act");
+    }
+
+    [Fact]
     public async Task GovernedExecutableProjection_FailsClosedWhenOmittedMetadataCouldChangeTheResult()
     {
         await using var db = ControllerTestHelpers.BuildDb();
@@ -1221,6 +1279,40 @@ public sealed class LegendConnectSemanticSpanGroundingTests
                     ["conversation_function"] = "conversation_acknowledgement"
                 }))]);
     }
+
+    private static LegendConnectCurriculumBatchSubmission ContainedSubspanFamily(int family) =>
+        new(
+            $"grounding.contained-subspan.{family}",
+            "Independent mature subspan evidence inside a governed whole-span primitive",
+            [
+                new LegendConnectCurriculumExampleSubmission(
+                    $"Founder time evidence {family}: morning.",
+                    new Dictionary<string, string> { ["time_reference"] = "morning" },
+                    new LegendConnectMeaningGraphSubmission(
+                        [new LegendConnectMeaningNodeSubmission(
+                            "time", "time_reference", "morning", "morning")],
+                        [])),
+                new LegendConnectCurriculumExampleSubmission(
+                    $"Founder time control {family}.",
+                    new Dictionary<string, string> { ["control"] = $"time-{family}" })
+            ]);
+
+    private static LegendConnectCurriculumBatchSubmission CompetingWholeSpanFamily(int family) =>
+        new(
+            $"grounding.competing-whole-span.{family}",
+            "Independent coextensive meaning that has no governed relation to the opening",
+            [
+                new LegendConnectCurriculumExampleSubmission(
+                    $"Founder social evidence {family}: Good morning.",
+                    new Dictionary<string, string> { ["social_act"] = "wellbeing_inquiry" },
+                    new LegendConnectMeaningGraphSubmission(
+                        [new LegendConnectMeaningNodeSubmission(
+                            "social", "social_act", "wellbeing_inquiry", "Good morning")],
+                        [])),
+                new LegendConnectCurriculumExampleSubmission(
+                    $"Founder social control {family}.",
+                    new Dictionary<string, string> { ["control"] = $"social-{family}" })
+            ]);
 
     private static LegendConnectCurriculumBatchSubmission
         RepeatedSemanticSlotArticulationFamily(int family)
