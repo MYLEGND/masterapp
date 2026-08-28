@@ -21,11 +21,13 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: fix/legend-governed-reasoning-executor-20260827
-      - name: Apply unpublished reasoning candidate
+      - name: Apply unpublished canonical reasoning candidate
         shell: bash
         run: |
           set -euo pipefail
           python3 scripts/legend-governed-reasoning-patch.py
+          python3 scripts/legend-live-conversation-gap-patch.py
+          git diff --check
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.x'
@@ -36,7 +38,7 @@ jobs:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-      - name: Run real multi-turn native conversation against live Founder curriculum
+      - name: Run and strictly grade real multi-turn native conversation
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
@@ -59,6 +61,12 @@ jobs:
           $env:OpenAI__ApiKey = ''
           Write-Output "::add-mask::$env:LEGEND_PRODUCTION_READONLY_CONNECTION"
           Write-Output "::add-mask::$founderOid"
-          dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-build --filter 'FullyQualifiedName~LegendProductionConversationDiscoveryTests.RunUnpublishedCandidateAsOneRealNativeConversationAgainstLiveCurriculum' --logger 'console;verbosity=detailed'
-
-# conversation proof revision 3
+          dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-build --filter 'FullyQualifiedName~LegendProductionConversationDiscoveryTests.RunUnpublishedCandidateAsOneRealNativeConversationAgainstLiveCurriculum' --logger 'console;verbosity=detailed' 2>&1 | Tee-Object -FilePath conversation.log
+          if ($LASTEXITCODE -ne 0) { throw 'Conversation execution test failed.' }
+          $log = Get-Content conversation.log -Raw
+          if ($log -notmatch 'NATIVE CONVERSATION TURNS: 9/9') { throw 'LEGEND did not serve all 9 conversation turns natively.' }
+          if ($log -notmatch 'EXACT STORED ANSWERS: 0/9') { throw 'LEGEND returned a stored curriculum endpoint instead of original articulation.' }
+          if ($log -notmatch 'OPENAI CLIENT CREATIONS: 0') { throw 'Provider client creation occurred.' }
+          if ($log -notmatch 'OPENAI HTTP CALLS: 0') { throw 'Provider HTTP activity occurred.' }
+          if ($log -notmatch 'PRODUCTION WRITE COMMANDS: 0') { throw 'Production write activity occurred.' }
+          Write-Output 'STRICT LIVE CONVERSATION PROOF: PASS'
