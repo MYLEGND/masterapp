@@ -276,6 +276,36 @@ public sealed class LegendConnectModelEvaluationTests
             run.PromotionState);
     }
 
+    [Fact]
+    public async Task CapabilityWithoutRegisteredEvaluator_IsRejectedBeforeModelOrBaselineExecution()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var run = Run();
+        db.Add(run);
+        await db.SaveChangesAsync();
+        var backend = new FakeEvaluationBackend { ChallengerText = "must-not-run" };
+        var service = Service(db, backend, new FakeBaseline { Text = "must-not-run" });
+        var heldOut = HeldOut("Resolved governed state") with
+        {
+            CapabilityKey = "governed.semantic_transition",
+            Instructions = "Apply only the governed transition.",
+            OutputContract = "governed_state_only"
+        };
+
+        await service.EvaluateManifestAsync(
+            run,
+            new LegendConnectTrainingDatasetManifest(
+                "dataset",
+                13,
+                "Global",
+                [],
+                [heldOut]));
+
+        Assert.Equal("Rejected", run.EvaluationState);
+        Assert.Equal("model_evaluation_capability_evaluator_unavailable", run.FailureCode);
+        Assert.Equal(0, backend.GenerateCalls);
+    }
+
     private static LegendConnectModelEvaluationService Service(
         Infrastructure.Data.MasterAppDbContext db,
         ILegendConnectModelEvaluationBackend backend,
@@ -377,6 +407,8 @@ public sealed class LegendConnectModelEvaluationTests
     private sealed class FakeEvaluationBackend
         : ILegendConnectModelEvaluationBackend
     {
+        public int GenerateCalls { get; private set; }
+
         public string ChallengerText { get; init; } =
             string.Empty;
 
@@ -386,11 +418,14 @@ public sealed class LegendConnectModelEvaluationTests
         public Task<LegendModelEvaluationGenerationResult> GenerateAsync(
             string model,
             LegendConnectTrainingDatasetExample example,
-            CancellationToken cancellationToken = default) =>
-            Task.FromResult(
+            CancellationToken cancellationToken = default)
+        {
+            GenerateCalls++;
+            return Task.FromResult(
                 new LegendModelEvaluationGenerationResult(
                     true,
                     ChallengerText));
+        }
 
         public Task<LegendModelEvaluationJudgement> JudgeAsync(
             LegendModelEvaluationJudgeRequest request,

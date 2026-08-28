@@ -93,7 +93,8 @@ internal sealed class LegendConnectTrainingDatasetCompiler
                 row.Provenance,
                 row.Weight,
                 row.SourceTextHash,
-                row.TargetTextHash);
+                row.TargetTextHash,
+                LegendModelCapabilityKeys.Translation);
 
             if (IsHeldOut(row.EvidenceIdentity))
                 heldOut.Add(example);
@@ -424,7 +425,7 @@ internal sealed class LegendConnectTrainingDatasetCompiler
     {
         var canonical = new
         {
-            Schema = "legend-training-dataset-v1",
+            Schema = "legend-training-dataset-v2",
             EvaluatorVersion = evaluatorVersion,
             ScopeKey = scopeKey,
             Training = training
@@ -456,7 +457,9 @@ internal sealed class LegendConnectTrainingDatasetCompiler
             item.SourceTextHash,
             item.TargetTextHash,
             item.Provenance,
-            item.Weight
+            item.Weight,
+            item.CapabilityKey,
+            item.Instructions
         };
 
     private sealed record CandidateRow(
@@ -493,4 +496,26 @@ internal sealed record LegendConnectTrainingDatasetExample(
     string Provenance,
     int Weight,
     string SourceTextHash,
-    string TargetTextHash);
+    string TargetTextHash,
+    string CapabilityKey = LegendModelCapabilityKeys.Translation,
+    string? Instructions = null,
+    string OutputContract = "target_language_text_only")
+{
+    internal LegendModelTaskRequest ToTaskRequest() =>
+        string.Equals(
+            CapabilityKey,
+            LegendModelCapabilityKeys.Translation,
+            StringComparison.Ordinal) &&
+        string.IsNullOrWhiteSpace(Instructions)
+            ? LegendModelTaskRequest.Translation(
+                SourceLanguageCode,
+                TargetLanguageCode,
+                SourceText)
+            : new LegendModelTaskRequest(
+                CapabilityKey,
+                Instructions ?? string.Empty,
+                SourceText,
+                OutputContract,
+                SourceLanguageCode,
+                TargetLanguageCode);
+}

@@ -33,11 +33,13 @@ public sealed class LegendConnectProductionNeuralRoutingTests
 
         await db.SaveChangesAsync();
 
+        var transport =
+            new FakeTransport(
+                "Neural translation");
         var inference =
             new LegendConnectActiveModelInference(
                 db,
-                new FakeTransport(
-                    "Neural translation"));
+                transport);
 
         var result =
             await inference.TryTranslateAsync(
@@ -55,6 +57,11 @@ public sealed class LegendConnectProductionNeuralRoutingTests
         Assert.Equal(
             "ft:legend:active",
             result.ModelVersion);
+        Assert.NotNull(transport.LastTask);
+        Assert.Equal(LegendModelCapabilityKeys.Translation, transport.LastTask!.CapabilityKey);
+        Assert.Equal("Hello", transport.LastTask.Input);
+        Assert.Equal("en", transport.LastTask.SourceLanguageCode);
+        Assert.Equal("ht", transport.LastTask.TargetLanguageCode);
     }
 
     [Fact]
@@ -291,6 +298,8 @@ public sealed class LegendConnectProductionNeuralRoutingTests
     {
         private readonly string _text;
 
+        public LegendModelTaskRequest? LastTask { get; private set; }
+
         public FakeTransport(
             string text)
         {
@@ -299,13 +308,14 @@ public sealed class LegendConnectProductionNeuralRoutingTests
 
         public Task<LegendModelEvaluationGenerationResult> GenerateAsync(
             string model,
-            string sourceLanguageCode,
-            string targetLanguageCode,
-            string text,
-            CancellationToken cancellationToken = default) =>
-            Task.FromResult(
+            LegendModelTaskRequest task,
+            CancellationToken cancellationToken = default)
+        {
+            LastTask = task;
+            return Task.FromResult(
                 new LegendModelEvaluationGenerationResult(
                     true,
                     _text));
+        }
     }
 }

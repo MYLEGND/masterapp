@@ -16,6 +16,39 @@ internal sealed record LegendModelEvaluationGenerationResult(
     string? ErrorCode = null,
     bool Retryable = false);
 
+internal static class LegendModelCapabilityKeys
+{
+    internal const string Translation = "translation";
+}
+
+/// <summary>
+/// Provider-neutral task boundary for a governed LEGEND model. The active
+/// capability authority supplies the instructions and output contract; the
+/// transport only executes that exact task and owns no domain behavior.
+/// </summary>
+internal sealed record LegendModelTaskRequest(
+    string CapabilityKey,
+    string Instructions,
+    string Input,
+    string OutputContract,
+    string? SourceLanguageCode = null,
+    string? TargetLanguageCode = null)
+{
+    internal static LegendModelTaskRequest Translation(
+        string sourceLanguageCode,
+        string targetLanguageCode,
+        string text) =>
+        new(
+            LegendModelCapabilityKeys.Translation,
+            $"Translate from {sourceLanguageCode} to {targetLanguageCode}. " +
+            "Preserve all meaning, context, tone, discourse function, and grammatical information. " +
+            "Return only the target-language translation.",
+            text,
+            "target_language_text_only",
+            sourceLanguageCode,
+            targetLanguageCode);
+}
+
 internal sealed record LegendCurrentProductionEvaluationResult(
     bool Succeeded,
     string? Text,
@@ -48,9 +81,7 @@ internal interface ILegendConnectModelInferenceTransport
 {
     Task<LegendModelEvaluationGenerationResult> GenerateAsync(
         string model,
-        string sourceLanguageCode,
-        string targetLanguageCode,
-        string text,
+        LegendModelTaskRequest task,
         CancellationToken cancellationToken = default);
 }
 
@@ -158,16 +189,18 @@ internal sealed class OpenAiLegendConnectModelInferenceTransport
 
     public async Task<LegendModelEvaluationGenerationResult> GenerateAsync(
         string model,
-        string sourceLanguageCode,
-        string targetLanguageCode,
-        string text,
+        LegendModelTaskRequest task,
         CancellationToken cancellationToken = default)
     {
         if (!TryGetConfiguration(
                 out var endpoint,
                 out var key) ||
             string.IsNullOrWhiteSpace(model) ||
-            model.Length > 200)
+            model.Length > 200 ||
+            string.IsNullOrWhiteSpace(task.CapabilityKey) ||
+            string.IsNullOrWhiteSpace(task.Instructions) ||
+            string.IsNullOrWhiteSpace(task.Input) ||
+            string.IsNullOrWhiteSpace(task.OutputContract))
         {
             return new(
                 false,
@@ -175,17 +208,12 @@ internal sealed class OpenAiLegendConnectModelInferenceTransport
                 "model_inference_provider_unavailable");
         }
 
-        var instructions =
-            $"Translate from {sourceLanguageCode} to {targetLanguageCode}. " +
-            "Preserve all meaning, context, tone, discourse function, and grammatical information. " +
-            "Return only the target-language translation.";
-
         return await SendTextAsync(
             endpoint,
             key,
             model,
-            instructions,
-            text,
+            task.Instructions,
+            task.Input,
             cancellationToken);
     }
 
@@ -552,9 +580,7 @@ Rules:
         CancellationToken cancellationToken = default) =>
         _inference.GenerateAsync(
             model,
-            example.SourceLanguageCode,
-            example.TargetLanguageCode,
-            example.SourceText,
+            example.ToTaskRequest(),
             cancellationToken);
 
     public async Task<LegendModelEvaluationJudgement> JudgeAsync(
@@ -1083,6 +1109,22 @@ internal sealed class LegendConnectModelEvaluationService
         var selected =
             SelectHeldOut(
                 manifest);
+
+        if (selected.Any(item =>
+                !string.Equals(
+                    item.CapabilityKey,
+                    LegendModelCapabilityKeys.Translation,
+                    StringComparison.Ordinal)))
+        {
+            await RejectAsync(
+                run,
+                "model_evaluation_capability_evaluator_unavailable",
+                0m,
+                0m,
+                "A governed capability-specific evaluator is required before this task can enter model promotion.",
+                cancellationToken);
+            return;
+        }
 
         if (selected.Count == 0)
         {

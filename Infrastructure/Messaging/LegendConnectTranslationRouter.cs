@@ -73,9 +73,10 @@ internal sealed class LegendConnectActiveModelInference
         var result =
             await _transport.GenerateAsync(
                 pair.ActiveModelVersion,
-                sourceLanguageCode,
-                targetLanguageCode,
-                text,
+                LegendModelTaskRequest.Translation(
+                    sourceLanguageCode,
+                    targetLanguageCode,
+                    text),
                 cancellationToken);
 
         if (!result.Succeeded ||

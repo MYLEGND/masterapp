@@ -495,6 +495,38 @@ public sealed class LegendConnectModelTrainingTests
             StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void TrainingJsonl_UsesTheGovernedCapabilityTaskContractWithoutTranslationFallback()
+    {
+        var manifest = new LegendConnectTrainingDatasetManifest(
+            "capability-dataset",
+            13,
+            "Global",
+            [new LegendConnectTrainingDatasetExample(
+                "governed-task",
+                "global:semantic-transition",
+                "en",
+                "en",
+                "Observed governed state",
+                "Resolved governed state",
+                "FounderApproved",
+                1,
+                "source",
+                "target",
+                "governed.semantic_transition",
+                "Apply only the supplied governed semantic transition. Return the resolved state only.",
+                "governed_state_only")],
+            []);
+
+        var jsonl = Encoding.UTF8.GetString(
+            LegendConnectModelTrainingService.BuildTrainingJsonl(manifest));
+
+        Assert.Contains("governed semantic transition", jsonl, StringComparison.Ordinal);
+        Assert.Contains("Observed governed state", jsonl, StringComparison.Ordinal);
+        Assert.Contains("Resolved governed state", jsonl, StringComparison.Ordinal);
+        Assert.DoesNotContain("Translate from", jsonl, StringComparison.Ordinal);
+    }
+
     private static LegendConnectModelTrainingService Service(
         Infrastructure.Data.MasterAppDbContext db,
         FakeBackend backend,

@@ -1120,6 +1120,7 @@ internal sealed class LegendConnectModelTrainingService
                          item => item.EvidenceIdentity,
                          StringComparer.Ordinal))
         {
+            var task = example.ToTaskRequest();
             var repetitions =
                 Math.Clamp(example.Weight, 1, 4);
 
@@ -1133,13 +1134,12 @@ internal sealed class LegendConnectModelTrainingService
                             new
                             {
                                 role = "system",
-                                content =
-                                    $"Translate from {example.SourceLanguageCode} to {example.TargetLanguageCode}. Preserve meaning, controlled semantics, context, tone, and register. Return only the target-language text."
+                                content = task.Instructions
                             },
                             new
                             {
                                 role = "user",
-                                content = example.SourceText
+                                content = task.Input
                             },
                             new
                             {
