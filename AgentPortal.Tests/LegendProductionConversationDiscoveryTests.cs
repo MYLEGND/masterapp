@@ -178,7 +178,10 @@ public sealed class LegendProductionConversationDiscoveryTests
             "Project likely, best-case, and adverse outcomes for the learning iteration with explicit assumptions.",
             "A contradiction has been identified in the instruction execution; resolve it using the governing evidence.",
             "Synthesize the executive brief by combining compatible evidence without erasing disagreement.",
-            "Now apply that same evidence-first discipline to the technology choice and tell me what would reverse the recommendation."
+            // Held out: the governed core is a learned decision source form, but
+            // the leading discourse connective makes the complete sentence a
+            // new surface that does not exist in the curriculum.
+            "Now compare the technology choice alternatives using explicit criteria rather than preference."
         };
 
         var transcript = new List<LegendFounderAiChatMessage>();
@@ -253,6 +256,21 @@ public sealed class LegendProductionConversationDiscoveryTests
             }
         }
 
+        // Negative control: this wording contains semantics that the live
+        // curriculum has not established. Native LEGEND must not invent a
+        // meaning merely to satisfy the test.
+        const string untrainedProbe = "Now apply that same evidence-first discipline to the technology choice and tell me what would reverse the recommendation.";
+        var negativeGraph = await operations.AnalyzeReusableMeaningGraphAsync(untrainedProbe);
+        var negativeNative = await founderLegend.TryInferConversationWithDiscourseAsync(
+            founder, untrainedProbe, context, discourseState: null);
+        _output.WriteLine("------------------------------------------------------------");
+        _output.WriteLine("NEGATIVE CONTROL USER: " + untrainedProbe);
+        _output.WriteLine("NEGATIVE CONTROL MEANING COMPOSED: " + negativeGraph.IsComposed);
+        _output.WriteLine("NEGATIVE CONTROL MEANING REASON: " + negativeGraph.ReasonCode);
+        _output.WriteLine("NEGATIVE CONTROL NATIVE SUPPORTED: " + negativeNative.Supported);
+        _output.WriteLine("NEGATIVE CONTROL NATIVE REASON: " + negativeNative.ReasonCode);
+        _output.WriteLine("NEGATIVE CONTROL PASS: " + (!negativeGraph.IsComposed && !negativeNative.Supported));
+
         _output.WriteLine("============================================================");
         _output.WriteLine($"NATIVE CONVERSATION TURNS: {supported}/{turns.Length}");
         _output.WriteLine($"EXACT STORED ANSWERS: {exactStoredAnswers}/{turns.Length}");
@@ -262,6 +280,8 @@ public sealed class LegendProductionConversationDiscoveryTests
         _output.WriteLine($"PRODUCTION WRITE COMMANDS: {guard.WriteCommands}");
         _output.WriteLine("============================================================");
 
+        Assert.False(negativeGraph.IsComposed);
+        Assert.False(negativeNative.Supported);
         Assert.Equal(0, guard.WriteCommands);
         Assert.Equal(0, http.CreateClientCalls);
     }
