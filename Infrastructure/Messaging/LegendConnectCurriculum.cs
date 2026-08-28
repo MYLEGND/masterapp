@@ -6276,10 +6276,23 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
 
         var resultFrameDimensions = candidate.ResultFrame.Dimensions.Keys
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var staticLayoutExamples = layoutExamples
+            .Where(item => variationMaps.TryGetValue(item.Id, out var values) &&
+                MatchesStaticSemanticFrame(candidate.ResultFrame, values))
+            .ToList();
+        var instantiatedLayoutExamples = staticLayoutExamples
+            .Where(item => variationMaps.TryGetValue(item.Id, out var values) &&
+                MatchesInstantiatedSemanticFrame(candidate.ResultFrame, values, candidate.Bindings))
+            .ToList();
+        // Exact bound-value layouts are more specific than cross-value layout
+        // evidence and therefore must win whenever they exist. Cross-value
+        // layouts remain available only for a genuinely novel governed value;
+        // they can teach grammar without changing the selected semantic frame.
+        var governedLayoutExamples = instantiatedLayoutExamples.Count > 0
+            ? instantiatedLayoutExamples
+            : staticLayoutExamples;
         var layouts = new List<SemanticRealizationLayout>();
-        foreach (var example in layoutExamples.Where(item =>
-                     variationMaps.TryGetValue(item.Id, out var values) &&
-                     MatchesStaticSemanticFrame(candidate.ResultFrame, values)))
+        foreach (var example in governedLayoutExamples)
         {
             if (!anchorsByExample.TryGetValue(example.Id, out var anchors) ||
                 !TryBuildBoundSemanticRealizationLayout(
