@@ -907,6 +907,7 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
                 Assert.True(isNativePass,
                     $"Production native inference failed for '{prompt}'. " +
                     $"Reason={native.ReasonCode}; Evidence={native.EvidenceCount}");
+                Assert.Equal("HigherStandard", native.EvidenceStandard);
             }
         }
 
@@ -1187,11 +1188,14 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
                 _output.WriteLine("SHADOW RECOVERABLE MANIFEST ADMISSION: not applicable; production has no recoverable failed manifest.");
             }
 
-            var promptMatrix = await BuildShadowPromptMatrixAsync(shadow);
             var founder = new ClaimsPrincipal(new ClaimsIdentity(
                 [new Claim("oid", founderId!)], "production-shadow-founder"));
             var profiles = new AgentProfileAccessResolver(shadow);
             var founderLegend = new FounderLegendConnectService(operations, profiles);
+            var promptMatrix = await BuildShadowPromptMatrixAsync(
+                shadow,
+                founderLegend,
+                founder);
             var factory = new CountingHttpClientFactory();
             var chat = new LegendFounderAiConversationService(
                 factory,
@@ -1225,6 +1229,8 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
                 if (request.ExpectNative)
                 {
                     Assert.True(passed, $"Shadow native inference failed for {request.Reference}; reason={native.ReasonCode}");
+                    if (request.ExpectedEvidenceStandard is not null)
+                        Assert.Equal(request.ExpectedEvidenceStandard, native.EvidenceStandard);
                     nativePasses++;
                 }
                 else
@@ -2746,7 +2752,8 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
     private sealed record ShadowPrompt(
         string Reference,
         string Text,
-        bool ExpectNative);
+        bool ExpectNative,
+        string? ExpectedEvidenceStandard = null);
 
     private static async Task<ShadowCorpusCounts> ReadShadowCountsAsync(
         MasterAppDbContext db) => new(
@@ -3118,19 +3125,88 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
             $"The live-data shadow rebuild did not drain canonical {phase} work within its bounded page limit.");
     }
 
-    private static async Task<IReadOnlyList<ShadowPrompt>> BuildShadowPromptMatrixAsync(
-        MasterAppDbContext shadow)
+    private async Task<IReadOnlyList<ShadowPrompt>> BuildShadowPromptMatrixAsync(
+        MasterAppDbContext shadow,
+        FounderLegendConnectService founderLegend,
+        ClaimsPrincipal founder)
     {
-        const string heldOutGreeting = "Greetings, Legend.";
-        var heldOutNormalized = LegendLanguageIdentity.NormalizeText(heldOutGreeting);
-        Assert.False(await shadow.LegendLanguageTextUnits.AsNoTracking().AnyAsync(item =>
-            item.IsTrainingEligible && item.LanguageCode == "en" && item.Text == heldOutNormalized),
-            "The held-out greeting must not already be a complete stored curriculum sentence.");
-
         var knownGreetingTexts = LiveFounderNativePrompts
             .Select(item => LegendLanguageIdentity.NormalizeText(item.Text))
-            .Append(heldOutNormalized)
             .ToHashSet(StringComparer.Ordinal);
+
+        // Find an end-to-end broad-governed example from the current live
+        // snapshot itself. A fixed phrase is not evidence: if its semantic
+        // primitives do not exist, fail-closed is the correct result. This
+        // selection starts only from active, human-verified, contradiction-
+        // free transition signatures with one or two independent sources,
+        // then asks the unchanged native authority whether the complete
+        // source endpoint is actually governable at BroadGoverned standard.
+        var activeTransitions = await shadow.LegendSemanticTransitionEvidence
+            .AsNoTracking()
+            .Where(item => item.SupersededUtc == null &&
+                item.SourceLanguageCode == "en" && item.ResultLanguageCode == "en" &&
+                item.Provenance == LegendConnectKnowledgeProvenance.FounderApproved &&
+                (item.ContributionState == "Supported" ||
+                 item.ContributionState == "Contradictory"))
+            .Select(item => new
+            {
+                item.TransitionSignature,
+                item.SourceCurriculumExampleId,
+                item.IndependentSourceIdentity,
+                item.ContributionState,
+                item.IsHumanVerifiedSupport
+            })
+            .ToListAsync();
+        var broadSourceExampleIds = activeTransitions
+            .GroupBy(item => item.TransitionSignature, StringComparer.Ordinal)
+            .Where(group => !group.Any(item => item.ContributionState == "Contradictory") &&
+                group.Where(item => item.ContributionState == "Supported" &&
+                        item.IsHumanVerifiedSupport)
+                    .Select(item => item.IndependentSourceIdentity)
+                    .Distinct(StringComparer.Ordinal)
+                    .Count() is > 0 and < 3)
+            .SelectMany(group => group
+                .Where(item => item.ContributionState == "Supported" &&
+                    item.IsHumanVerifiedSupport)
+                .Select(item => item.SourceCurriculumExampleId))
+            .Distinct()
+            .ToArray();
+        var broadSourceTexts = await (
+            from example in shadow.LegendCurriculumExamples.AsNoTracking()
+            join unit in shadow.LegendLanguageTextUnits.AsNoTracking()
+                on example.TextUnitId equals unit.Id
+            join family in shadow.LegendCurriculumFamilies.AsNoTracking()
+                on example.CurriculumFamilyId equals family.Id
+            where broadSourceExampleIds.Contains(example.Id) &&
+                example.SupersededUtc == null && unit.IsTrainingEligible &&
+                !knownGreetingTexts.Contains(unit.Text) &&
+                !family.FamilyKey.StartsWith("conversation.")
+            orderby family.FamilyKey, unit.NormalizedHash
+            select new { unit.Text, unit.NormalizedHash })
+            .Distinct()
+            .Take(128)
+            .ToListAsync();
+        ShadowPrompt? broadGovernedPrompt = null;
+        foreach (var candidate in broadSourceTexts)
+        {
+            var native = await founderLegend.TryInferConversationWithDiscourseAsync(
+                founder,
+                candidate.Text,
+                Array.Empty<LegendConnectConversationContextItem>(),
+                discourseState: null);
+            if (!native.Supported || native.EvidenceStandard != "BroadGoverned")
+                continue;
+            broadGovernedPrompt = new(
+                "broad-governed-" + candidate.NormalizedHash[..12],
+                candidate.Text,
+                true,
+                "BroadGoverned");
+            break;
+        }
+        _output.WriteLine(broadGovernedPrompt is null
+            ? "SHADOW BROAD-GOVERNED NATIVE PROMPT: not applicable; the live snapshot exposes no end-to-end broad-only source endpoint."
+            : $"SHADOW BROAD-GOVERNED NATIVE PROMPT: {broadGovernedPrompt.Reference}");
+
         var governedReasoning = await (
             from transition in shadow.LegendSemanticTransitionEvidence.AsNoTracking()
             join source in shadow.LegendCurriculumExamples.AsNoTracking()
@@ -3150,14 +3226,18 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
             select new { unit.Text, unit.NormalizedHash }).FirstOrDefaultAsync();
         Assert.NotNull(governedReasoning);
 
-        return
-        [
-            ..LiveFounderNativePrompts,
-            new("greeting-held-out", heldOutGreeting, true),
+        var prompts = new List<ShadowPrompt>(LiveFounderNativePrompts)
+        {
             new("curriculum-reasoning-" + governedReasoning!.NormalizedHash[..12], governedReasoning.Text, true),
             new("ambiguous-request", "Hello or goodbye?", false),
             new("contradictory-request", "Please greet me and do not greet me.", false)
-        ];
+        };
+        if (broadGovernedPrompt is not null &&
+            !prompts.Any(item => string.Equals(item.Text, broadGovernedPrompt.Text, StringComparison.Ordinal)))
+        {
+            prompts.Insert(LiveFounderNativePrompts.Length, broadGovernedPrompt);
+        }
+        return prompts;
     }
 
     // One exact live-Founder prompt matrix owns the direct native proofs and
@@ -3167,14 +3247,14 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
     // direct gate requires.
     private static readonly ShadowPrompt[] LiveFounderNativePrompts =
     [
-        new("greeting-hi-there", "Hi there.", true),
-        new("greeting-hi-legend", "Hi Legend.", true),
-        new("greeting-hello", "Hello.", true),
-        new("greeting-hey-legend", "Hey Legend.", true),
-        new("greeting-good-morning", "Good morning.", true),
-        new("greeting-how-are-you", "How are you?", true),
-        new("greeting-nice-to-meet-you", "Nice to meet you.", true),
-        new("greeting-whats-up", "What's up?", true)
+        new("greeting-hi-there", "Hi there.", true, "HigherStandard"),
+        new("greeting-hi-legend", "Hi Legend.", true, "HigherStandard"),
+        new("greeting-hello", "Hello.", true, "HigherStandard"),
+        new("greeting-hey-legend", "Hey Legend.", true, "HigherStandard"),
+        new("greeting-good-morning", "Good morning.", true, "HigherStandard"),
+        new("greeting-how-are-you", "How are you?", true, "HigherStandard"),
+        new("greeting-nice-to-meet-you", "Nice to meet you.", true, "HigherStandard"),
+        new("greeting-whats-up", "What's up?", true, "HigherStandard")
     ];
 
     private void WriteShadowPromptTrace(
@@ -3201,6 +3281,7 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
         _output.WriteLine($"  graph-relations={graph.Relations.Count}; plan=supported:{plan.Supported},reason:{plan.ReasonCode},transition:{plan.Plan?.TransitionSignature[..12] ?? "<NONE>"}");
         _output.WriteLine($"  content-binding=supported:{binding.Supported},reason:{binding.ReasonCode},facts:{binding.Plan?.Facts.Count ?? 0}");
         _output.WriteLine($"  native=supported:{native.Supported},reason:{native.ReasonCode},evidence:{native.EvidenceCount},escalation:{native.RequiresEscalation}");
+        _output.WriteLine($"  evidence-standard={native.EvidenceStandard}; articulation-mode={native.ArticulationMode}");
         _output.WriteLine($"  realization=succeeded:{response.Succeeded},failure:{response.FailureKind ?? "<NONE>"},provider-clients:{providerClientCalls}");
     }
 
