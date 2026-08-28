@@ -27,6 +27,7 @@ jobs:
           set -euo pipefail
           python3 scripts/legend-governed-reasoning-patch.py
           python3 scripts/legend-live-conversation-gap-patch.py
+          python3 scripts/legend-governed-surface-pattern-patch.py
           git diff --check
       - uses: actions/setup-dotnet@v4
         with:
@@ -75,4 +76,4 @@ jobs:
           if ($log -notmatch 'PRODUCTION WRITE COMMANDS: 0') { throw 'Production write activity occurred.' }
           Write-Output 'STRICT LIVE CONVERSATION PROOF: PASS'
 
-# provenance diagnostic revision 1
+# governed surface-pattern revision 1
