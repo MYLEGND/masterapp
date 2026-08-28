@@ -4268,22 +4268,24 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
             }
         ).Distinct().ToListAsync(cancellationToken);
 
+        // A reasoning-prefixed Founder relation is an internal operator only
+        // when one unambiguous identity is executable by the governed executor.
+        // All other relations remain ordinary canonical response evidence.
         return rows
             .GroupBy(item => item.TransitionSignature, StringComparer.Ordinal)
+            .Where(group =>
+            {
+                var identities = group
+                    .Select(item => item.RelationshipSemanticIdentity)
+                    .Distinct(StringComparer.Ordinal)
+                    .Take(2)
+                    .ToArray();
+                return identities.Length == 1 &&
+                    LegendConnectGovernedReasoningExecutor.IsExecutableOperatorIdentity(identities[0]);
+            })
             .ToDictionary(
                 group => group.Key,
-                group =>
-                {
-                    var identities = group
-                        .Select(item => item.RelationshipSemanticIdentity)
-                        .Distinct(StringComparer.Ordinal)
-                        .Take(2)
-                        .ToArray();
-                    return identities.Length == 1 &&
-                        LegendConnectGovernedReasoningExecutor.IsExecutableOperatorIdentity(identities[0])
-                            ? identities[0]
-                            : string.Empty;
-                },
+                group => group.First().RelationshipSemanticIdentity,
                 StringComparer.Ordinal);
     }
 
