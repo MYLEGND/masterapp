@@ -74,7 +74,10 @@ jobs:
         run: dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-build --filter "FullyQualifiedName~LegendConnectDiscourseReferenceBindingTests|FullyQualifiedName~LegendFounderAiConversationRoutingTests" --logger "trx;LogFileName=legend-language-proof.trx"
 
       - name: Run governed model lifecycle proof
-        run: dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-build --filter "FullyQualifiedName~LegendConnectModelEvaluationTests|FullyQualifiedName~LegendConnectModelTrainingTests|FullyQualifiedName~LegendConnectModelTrainingLifecycleTests|FullyQualifiedName~LegendConnectModelPromotionTests|FullyQualifiedName~LegendConnectProductionNeuralRoutingTests" --logger "trx;LogFileName=legend-model-proof.trx"
+        run: dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-build --filter "FullyQualifiedName~LegendConnectModelEvaluationTests|FullyQualifiedName~LegendConnectModelTrainingTests|FullyQualifiedName~LegendConnectTrainingDatasetCompilerTests|FullyQualifiedName~LegendConnectModelTrainingLifecycleTests|FullyQualifiedName~LegendConnectModelPromotionTests|FullyQualifiedName~LegendConnectProductionNeuralRoutingTests" --logger "trx;LogFileName=legend-model-proof.trx"
+
+      - name: Run Founder tool authority proof
+        run: dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-build --filter "FullyQualifiedName~FounderCapabilities_AreDiscoveredFromTheExecutableToolRegistry|FullyQualifiedName~ComprehensiveInspection_RequiresMultipleDistinctEvidenceAuthorities|FullyQualifiedName~RetainedKnowledgeTakeScalesButRemainsBounded" --logger "trx;LogFileName=legend-tool-authority-proof.trx"
 
       - name: Run architectural takeover gate proof
         run: dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-build --filter "FullyQualifiedName~IntelligenceEvaluation_BlocksTakeoverClaimUntilEveryDomainBeatsOneLockedBaseline|FullyQualifiedName~LegendBlindComparativeBenchmarkTests" --logger "trx;LogFileName=legend-takeover-gate-proof.trx"
