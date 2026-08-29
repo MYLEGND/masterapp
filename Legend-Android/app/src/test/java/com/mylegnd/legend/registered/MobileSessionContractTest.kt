@@ -13,12 +13,17 @@ import com.mylegnd.legend.registered.core.model.DailyScriptureManagementSnapshot
 import com.mylegnd.legend.registered.core.model.CommunitySafetyReport
 import com.mylegnd.legend.registered.core.model.MobileClientCreationPortalLaunch
 import com.mylegnd.legend.registered.core.auth.CachedLegendSession
+import com.mylegnd.legend.registered.core.auth.LegendAuthClient
+import com.mylegnd.legend.registered.core.auth.LegendAuthenticatedAccount
+import com.mylegnd.legend.registered.core.auth.LegendBearerTokenAuthority
+import com.mylegnd.legend.registered.core.model.MobileReviewTokenResponse
 import com.mylegnd.legend.registered.core.realtime.toHubUrl
 import okhttp3.Request
 import kotlinx.serialization.json.Json
 import org.junit.Assert.*
 import org.junit.Test
 import java.time.Instant
+import kotlinx.coroutines.runBlocking
 
 class MobileSessionContractTest {
     private val json = Json { ignoreUnknownKeys = true }
@@ -39,6 +44,33 @@ class MobileSessionContractTest {
 
         assertFalse(valid.requiresInteractiveSignIn(retentionDays = 90, now = now))
         assertTrue(expired.requiresInteractiveSignIn(retentionDays = 90, now = now))
+    }
+
+    @Test fun `App Review response uses the canonical server token contract`() {
+        val response = json.decodeFromString(
+            MobileReviewTokenResponse.serializer(),
+            """{"accessToken":"server-issued-review-token","expiresIn":900}""",
+        )
+
+        assertEquals("server-issued-review-token", response.accessToken)
+        assertEquals(900, response.expiresIn)
+    }
+
+    @Test fun `one bearer authority prefers a live review credential and revokes it immediately`() = runBlocking {
+        val msal = object : LegendAuthClient {
+            override suspend fun restoreAccessToken(accountId: String?) = "msal-token"
+            override suspend fun signIn(activity: android.app.Activity, forceReauthentication: Boolean) =
+                LegendAuthenticatedAccount("account", "Member")
+            override suspend fun signedInAccounts() = emptyList<LegendAuthenticatedAccount>()
+            override suspend fun signOut(accountId: String?) = Unit
+        }
+        val authority = LegendBearerTokenAuthority(msal)
+
+        assertEquals("msal-token", authority.accessToken())
+        authority.activateReviewCredential("review-token", 900)
+        assertEquals("review-token", authority.accessToken())
+        authority.clearReviewCredential()
+        assertEquals("msal-token", authority.accessToken())
     }
     @Test fun `session fixture preserves typed actor and server capabilities`() {
         val fixture = """{"authenticated":true,"actor":{"identity":{"userId":"sanitized-user","participantType":"Client"},"profileId":"00000000-0000-0000-0000-000000000001","displayName":"Sanitized Member","avatar":{"kind":"remote","contentType":"image/jpeg","resourcePath":"/api/v1/mobile/profile-images/Client/00000000-0000-0000-0000-000000000001"}},"permittedParticipantTypes":["Client"],"requiresParticipantSelection":false,"capabilities":{"messaging":true,"isFounder":false,"canManageScripture":false,"canManageCommunity":false},"correlationId":"sanitized-correlation"}"""

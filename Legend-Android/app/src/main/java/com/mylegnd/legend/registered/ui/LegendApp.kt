@@ -63,6 +63,7 @@ import com.mylegnd.legend.registered.core.design.LegendCopy
 import com.mylegnd.legend.registered.core.design.LegendAccountSessionPolicy
 import com.mylegnd.legend.registered.core.design.LegendGradients
 import com.mylegnd.legend.registered.core.design.LegendOpacity
+import com.mylegnd.legend.registered.core.design.LegendNavigationPolicy
 import com.mylegnd.legend.registered.core.design.LegendShapes
 import com.mylegnd.legend.registered.core.design.LegendSize
 import com.mylegnd.legend.registered.core.design.LegendSpacing
@@ -110,10 +111,14 @@ fun LegendRoot(sessionViewModel: SessionViewModel, container: LegendContainer) {
             "This build is waiting for LEGEND® environment configuration before secure sign-in can begin.",
         )
 
-        SessionState.SignedOut -> SignInScreen(sessionViewModel::signIn)
+        SessionState.SignedOut -> SignInScreen(
+            onSignIn = sessionViewModel::signIn,
+            onAppReviewSignIn = sessionViewModel::signInForAppReview,
+        )
         is SessionState.RoleSelection -> RoleSelectionScreen(
             roles = (state as SessionState.RoleSelection).roles,
             select = sessionViewModel::selectRole,
+            signOut = sessionViewModel::signOut,
         )
 
         is SessionState.Failure -> LegendErrorState(
@@ -144,78 +149,239 @@ fun LegendRoot(sessionViewModel: SessionViewModel, container: LegendContainer) {
 }
 
 @Composable
-private fun SignInScreen(onSignIn: (Activity) -> Unit) {
+private fun SignInScreen(
+    onSignIn: (Activity) -> Unit,
+    onAppReviewSignIn: (String, String) -> Unit,
+) {
     val activity = LocalActivity.current
+    var appReviewOpen by remember { mutableStateOf(false) }
     Column(
-        Modifier.fillMaxSize().background(LegendColors.Canvas).padding(horizontal = LegendSpacing.PageHorizontal, vertical = LegendSpacing.Xxl),
+        Modifier.fillMaxSize().background(LegendColors.Canvas).padding(horizontal = LegendSpacing.PageHorizontal, vertical = LegendSpacing.Lg),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center,
+        verticalArrangement = Arrangement.Top,
     ) {
-        LegendBrandArtwork()
         Spacer(Modifier.height(LegendSpacing.Xl))
-        Text("Secure sign in", style = LegendTypography.Hero, color = LegendColors.TextPrimary)
-        Spacer(Modifier.height(LegendSpacing.Xs))
-        Text(
-            "Verify your LEGEND account to continue.",
-            style = LegendTypography.Supporting,
-            color = LegendColors.TextSecondary,
-        )
-        Spacer(Modifier.height(LegendSpacing.Xl))
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(LegendShapes.Card)
+                .background(LegendGradients.Hero)
+                .border(1.dp, LegendColors.Gold.copy(alpha = 0.56f), LegendShapes.Card)
+                .padding(LegendSpacing.Lg),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(LegendSpacing.Xs),
+        ) {
+            LegendBrandArtwork(size = 72.dp)
+            Text("LEGEND ACCOUNT", style = LegendTypography.Eyebrow, color = LegendColors.GoldBright)
+            Text("Secure sign in", style = LegendTypography.Title, color = LegendColors.OnNavy)
+            Text(
+                "Verify your Legend account to continue.",
+                style = LegendTypography.Supporting,
+                color = LegendColors.OnNavy.copy(alpha = 0.76f),
+            )
+        }
+        Spacer(Modifier.height(LegendSpacing.Md))
         LegendPrimaryButton("Sign in securely", modifier = Modifier.fillMaxWidth(), enabled = activity != null) {
             activity?.let(onSignIn)
         }
+        TextButton(onClick = { appReviewOpen = true }) {
+            Text(
+                "App Review Sign In",
+                style = LegendTypography.Supporting,
+                color = LegendColors.NavyElevated,
+            )
+        }
+        Text(
+            "Device authentication is optional and can be enabled after sign in in Profile settings.",
+            style = LegendTypography.Caption,
+            color = LegendColors.TextSecondary,
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+            modifier = Modifier.padding(horizontal = LegendSpacing.Xl),
+        )
     }
+    if (appReviewOpen) {
+        AppReviewSignInDialog(
+            dismiss = { appReviewOpen = false },
+            submit = { username, password ->
+                appReviewOpen = false
+                onAppReviewSignIn(username, password)
+            },
+        )
+    }
+}
+
+@Composable
+private fun AppReviewSignInDialog(
+    dismiss: () -> Unit,
+    submit: (String, String) -> Unit,
+) {
+    var username by remember { mutableStateOf("") }
+    var password by remember { mutableStateOf("") }
+    AlertDialog(
+        onDismissRequest = {
+            password = ""
+            dismiss()
+        },
+        title = { Text("App Review Sign In", style = LegendTypography.Section) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(LegendSpacing.Sm)) {
+                Text(
+                    "Use the review credentials provided in Google Play Console.",
+                    style = LegendTypography.Supporting,
+                    color = LegendColors.TextSecondary,
+                )
+                OutlinedTextField(
+                    value = username,
+                    onValueChange = { username = it },
+                    label = { Text("Username") },
+                    singleLine = true,
+                )
+                OutlinedTextField(
+                    value = password,
+                    onValueChange = { password = it },
+                    label = { Text("Password") },
+                    singleLine = true,
+                    visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    val submittedPassword = password
+                    password = ""
+                    submit(username.trim(), submittedPassword)
+                },
+                enabled = username.isNotBlank() && password.isNotBlank(),
+            ) { Text("Sign In") }
+        },
+        dismissButton = {
+            TextButton(onClick = {
+                password = ""
+                dismiss()
+            }) { Text("Cancel") }
+        },
+    )
 }
 
 /** The same iOS-owned artwork bundled by Gradle; Android keeps no forked logo file. */
 @Composable
-private fun LegendBrandArtwork(modifier: Modifier = Modifier) {
+private fun LegendBrandArtwork(modifier: Modifier = Modifier, size: androidx.compose.ui.unit.Dp = 96.dp) {
     AsyncImage(
         model = "file:///android_asset/legend-logo.png",
         contentDescription = "LEGEND®",
         contentScale = androidx.compose.ui.layout.ContentScale.Fit,
-        modifier = modifier.size(96.dp),
+        modifier = modifier.size(size),
     )
 }
 
 @Composable
-private fun RoleSelectionScreen(roles: List<String>, select: (String) -> Unit) {
+private fun RoleSelectionScreen(
+    roles: List<String>,
+    select: (String) -> Unit,
+    signOut: () -> Unit,
+) {
     Column(
-        Modifier.fillMaxSize().background(LegendColors.Canvas).padding(horizontal = LegendSpacing.PageHorizontal, vertical = LegendSpacing.Xxl),
-        verticalArrangement = Arrangement.Center,
+        Modifier.fillMaxSize().background(LegendColors.Canvas).padding(horizontal = LegendSpacing.PageHorizontal, vertical = LegendSpacing.Lg),
+        verticalArrangement = Arrangement.Top,
     ) {
-        Text("LEGEND ACCOUNT", style = LegendTypography.Eyebrow, color = LegendColors.Gold)
-        Text("Choose your experience", style = LegendTypography.Hero, color = LegendColors.TextPrimary)
-        Spacer(Modifier.height(LegendSpacing.Xs))
-        Text("Choose the account you want to use. LEGEND will reopen this account next time.", style = LegendTypography.Supporting, color = LegendColors.TextSecondary)
-        Spacer(Modifier.height(LegendSpacing.Lg))
+        Spacer(Modifier.height(LegendSpacing.Xl))
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(LegendShapes.Card)
+                .background(LegendGradients.Hero)
+                .border(1.dp, LegendColors.Gold.copy(alpha = 0.56f), LegendShapes.Card)
+                .padding(LegendSpacing.Lg),
+            verticalArrangement = Arrangement.spacedBy(LegendSpacing.Xs),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("LEGEND ACCOUNT", style = LegendTypography.Eyebrow, color = LegendColors.GoldBright, modifier = Modifier.weight(1f))
+                LegendBrandArtwork(size = 48.dp)
+            }
+            Text("Choose your experience", style = LegendTypography.Title, color = LegendColors.OnNavy)
+            Text(
+                "Choose the account you want to use. Legend will reopen it next time.",
+                style = LegendTypography.Supporting,
+                color = LegendColors.OnNavy.copy(alpha = 0.76f),
+            )
+        }
+        Spacer(Modifier.height(LegendSpacing.Md))
         Text("Available workspaces", style = LegendTypography.Section, color = LegendColors.TextPrimary)
-        Spacer(Modifier.height(LegendSpacing.Sm))
+        Spacer(Modifier.height(LegendSpacing.Xs))
         roles.forEach { role ->
             Surface(
-                color = LegendColors.SurfaceInset,
+                color = LegendColors.Surface,
                 shape = LegendShapes.Control,
-                modifier = Modifier.fillMaxWidth().padding(bottom = LegendSpacing.Xs).clickable { select(role) },
+                shadowElevation = 3.dp,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = LegendSpacing.Xs)
+                    .border(1.dp, LegendColors.Gold.copy(alpha = 0.48f), LegendShapes.Control)
+                    .clickable { select(role) },
             ) {
-                Row(Modifier.padding(LegendSpacing.Md), verticalAlignment = Alignment.CenterVertically) {
-                    Icon(if (role.equals("Agent", ignoreCase = true)) Icons.Default.BusinessCenter else Icons.Default.Person, null, tint = LegendColors.Gold)
+                Row(
+                    Modifier.heightIn(min = 48.dp).padding(horizontal = LegendSpacing.Sm, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Box(
+                        modifier = Modifier.size(30.dp).clip(CircleShape).background(LegendColors.GoldSoft),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(
+                            if (role.equals("Agent", ignoreCase = true)) Icons.Default.BusinessCenter else Icons.Default.Person,
+                            null,
+                            tint = LegendColors.Gold,
+                            modifier = Modifier.size(17.dp),
+                        )
+                    }
                     Spacer(Modifier.width(LegendSpacing.Sm))
-                    Text("Continue as $role", style = LegendTypography.CardTitle, color = LegendColors.TextPrimary, modifier = Modifier.weight(1f))
+                    Text("Continue as $role", style = LegendTypography.BodyEmphasis, color = LegendColors.TextPrimary, modifier = Modifier.weight(1f))
                     Icon(Icons.Default.ChevronRight, null, tint = LegendColors.Gold)
                 }
             }
         }
+        OutlinedButton(
+            onClick = signOut,
+            modifier = Modifier.fillMaxWidth().heightIn(min = 38.dp),
+            shape = LegendShapes.Compact,
+            colors = ButtonDefaults.outlinedButtonColors(contentColor = LegendColors.Error),
+            border = androidx.compose.foundation.BorderStroke(
+                1.dp,
+                LegendColors.Error.copy(alpha = 0.22f),
+            ),
+        ) {
+            Text("Sign out", style = LegendTypography.Supporting, fontWeight = FontWeight.SemiBold)
+        }
     }
 }
 
-private enum class LegendTab(private val copyKey: String) {
+internal enum class LegendTab(private val copyKey: String) {
     HOME("tab.home"),
+    CLIENTS("tab.clients"),
     DISCOVER("tab.discover"),
     SOCIAL("tab.forYou"),
     MESSAGES("tab.messages"),
     ACCOUNT("tab.account");
 
     val label get() = LegendCopy.value(copyKey)
+
+    companion object {
+        fun available(participantType: String): List<LegendTab> {
+            val configured = LegendNavigationPolicy.Tabs.map { title ->
+                entries.singleOrNull { it.label == title }
+                    ?: error("Shared LEGEND navigation contains an unsupported tab: $title")
+            }
+            check(configured.distinct().size == configured.size) {
+                "Shared LEGEND navigation contains duplicate tabs."
+            }
+            return if (participantType.equals("Agent", ignoreCase = true)) {
+                configured
+            } else {
+                configured.filterNot { it.label == LegendNavigationPolicy.AgentOnlyTab }
+            }
+        }
+    }
 }
 
 /**
@@ -225,20 +391,31 @@ private enum class LegendTab(private val copyKey: String) {
  */
 private val LocalLegendSocialShare = staticCompositionLocalOf<(SocialPost) -> Unit> { {} }
 
-/** A shell event, not a second home controller. Home remains the owner of both sheets. */
-private enum class LegendHomeChromeAction { CREATE, NOTIFICATIONS }
+/** A shell event, not a second home controller. Home remains the owner of creation. */
+private enum class LegendHomeChromeAction { CREATE }
 
 @Composable
 private fun LegendPillNavigation(
+    tabs: List<LegendTab>,
     selection: LegendTab,
     unreadMessageCount: Int,
     accountName: String,
     accountAvatar: MobileAvatar?,
     mediaRepository: AuthenticatedMediaRepository,
     participantType: String,
+    alternateParticipantTypes: List<String>,
+    signedInAccounts: List<SignedInLegendAccount>,
+    currentAccountId: String,
     select: (LegendTab) -> Unit,
+    switchRole: (String) -> Unit,
+    switchSignedInAccount: (String) -> Unit,
+    addAccount: () -> Unit,
     cycleAccount: () -> Unit,
 ) {
+    var accountSwitcherOpen by remember { mutableStateOf(false) }
+    val hasAccountOptions = alternateParticipantTypes.isNotEmpty() ||
+        signedInAccounts.any { it.accountId != currentAccountId } ||
+        LegendAccountSessionPolicy.AllowsAdditionalSignedInAccounts
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -258,7 +435,7 @@ private fun LegendPillNavigation(
                 .padding(horizontal = LegendSpacing.Xs, vertical = LegendSpacing.Micro),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            LegendTab.entries.forEach { tab ->
+            tabs.forEach { tab ->
                 val selected = selection == tab
                 Box(
                     modifier = Modifier.weight(1f),
@@ -272,6 +449,9 @@ private fun LegendPillNavigation(
                                     onClick = { select(tab) },
                                     onDoubleClick = {
                                         if (LegendAccountSessionPolicy.ProfileDoubleTapCyclesAccount) cycleAccount()
+                                    },
+                                    onLongClick = {
+                                        if (hasAccountOptions) accountSwitcherOpen = true
                                     },
                                 ),
                             contentAlignment = Alignment.Center,
@@ -309,14 +489,141 @@ private fun LegendPillNavigation(
             }
         }
     }
+    if (accountSwitcherOpen) {
+        LegendAccountSwitcherSheet(
+            accountName = accountName,
+            participantType = participantType,
+            alternateParticipantTypes = alternateParticipantTypes,
+            signedInAccounts = signedInAccounts,
+            currentAccountId = currentAccountId,
+            dismiss = { accountSwitcherOpen = false },
+            switchRole = {
+                accountSwitcherOpen = false
+                switchRole(it)
+            },
+            switchSignedInAccount = {
+                accountSwitcherOpen = false
+                switchSignedInAccount(it)
+            },
+            addAccount = {
+                accountSwitcherOpen = false
+                addAccount()
+            },
+        )
+    }
 }
 
 private fun legendTabIcon(tab: LegendTab, selected: Boolean) = when (tab) {
     LegendTab.HOME -> Icons.Default.Home
+    LegendTab.CLIENTS -> Icons.Default.People
     LegendTab.DISCOVER -> Icons.Default.Search
     LegendTab.SOCIAL -> Icons.Default.VideoLibrary
     LegendTab.MESSAGES -> if (selected) Icons.Default.ChatBubble else Icons.Default.ChatBubbleOutline
     LegendTab.ACCOUNT -> Icons.Default.Person
+}
+
+@Composable
+private fun LegendAccountSwitcherSheet(
+    accountName: String,
+    participantType: String,
+    alternateParticipantTypes: List<String>,
+    signedInAccounts: List<SignedInLegendAccount>,
+    currentAccountId: String,
+    dismiss: () -> Unit,
+    switchRole: (String) -> Unit,
+    switchSignedInAccount: (String) -> Unit,
+    addAccount: () -> Unit,
+) {
+    ModalBottomSheet(
+        onDismissRequest = dismiss,
+        containerColor = LegendColors.Midnight,
+        contentColor = LegendColors.OnNavy,
+    ) {
+        LazyColumn(
+            modifier = Modifier.fillMaxWidth(),
+            contentPadding = PaddingValues(
+                start = LegendSpacing.PageHorizontal,
+                end = LegendSpacing.PageHorizontal,
+                bottom = LegendSpacing.Xl,
+            ),
+            verticalArrangement = Arrangement.spacedBy(LegendSpacing.Sm),
+        ) {
+            item {
+                Text("ACCOUNT", style = LegendTypography.Eyebrow, color = LegendColors.GoldBright)
+                Text("Switch account", style = LegendTypography.Title, color = LegendColors.OnNavy)
+            }
+            item {
+                Surface(
+                    color = LegendColors.Navy,
+                    shape = LegendShapes.Card,
+                    modifier = Modifier.fillMaxWidth().border(1.dp, LegendColors.Gold.copy(alpha = 0.34f), LegendShapes.Card),
+                ) {
+                    Column(Modifier.padding(LegendSpacing.Sm)) {
+                        Text(accountName, style = LegendTypography.CardTitle, color = LegendColors.OnNavy)
+                        Text("Current $participantType workspace", style = LegendTypography.Supporting, color = LegendColors.GoldSoft)
+                    }
+                }
+            }
+            items(alternateParticipantTypes, key = { "role:$it" }) { role ->
+                OutlinedButton(
+                    onClick = { switchRole(role) },
+                    modifier = Modifier.fillMaxWidth().heightIn(min = LegendSize.ControlHeight),
+                    shape = LegendShapes.Control,
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = LegendColors.OnNavy),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, LegendColors.Gold.copy(alpha = 0.46f)),
+                ) {
+                    Icon(if (role.equals("Agent", true)) Icons.Default.BusinessCenter else Icons.Default.Person, null)
+                    Spacer(Modifier.width(LegendSpacing.Xs))
+                    Text("Continue as $role")
+                }
+            }
+            items(
+                signedInAccounts.filter { it.accountId != currentAccountId },
+                key = { "account:${it.accountId}" },
+            ) { account ->
+                OutlinedButton(
+                    onClick = { switchSignedInAccount(account.accountId) },
+                    modifier = Modifier.fillMaxWidth().heightIn(min = LegendSize.ControlHeight),
+                    shape = LegendShapes.Control,
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = LegendColors.OnNavy),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, LegendColors.Divider),
+                ) {
+                    Icon(Icons.Default.AccountCircle, null)
+                    Spacer(Modifier.width(LegendSpacing.Xs))
+                    Column(Modifier.weight(1f)) {
+                        Text(account.displayName, style = LegendTypography.BodyEmphasis)
+                        Text(account.participantType, style = LegendTypography.Caption, color = LegendColors.GoldSoft)
+                    }
+                }
+            }
+            if (LegendAccountSessionPolicy.AllowsAdditionalSignedInAccounts) {
+                item {
+                    Button(
+                        onClick = addAccount,
+                        modifier = Modifier.fillMaxWidth().heightIn(min = LegendSize.ControlHeight),
+                        shape = LegendShapes.Control,
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = LegendColors.GoldBright,
+                            contentColor = LegendColors.OnGold,
+                        ),
+                    ) {
+                        Icon(Icons.Default.PersonAdd, null)
+                        Spacer(Modifier.width(LegendSpacing.Xs))
+                        Text(LegendCopy.value("account.add"))
+                    }
+                }
+            }
+            item {
+                Text(
+                    LegendCopy.value("account.securityCheckpoint"),
+                    style = LegendTypography.Caption,
+                    color = LegendColors.GoldSoft,
+                    modifier = Modifier.fillMaxWidth(),
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                )
+            }
+        }
+    }
 }
 
 @Composable
@@ -334,8 +641,13 @@ private fun AuthenticatedShell(
     var requestedConversationId by remember { mutableStateOf<String?>(null) }
     var isMessageThreadOpen by remember { mutableStateOf(false) }
     var sharingPost by remember { mutableStateOf<SocialPost?>(null) }
+    var founderAiOpen by remember { mutableStateOf(false) }
     val notificationDestination by container.notificationNavigation.destination.collectAsStateWithLifecycle()
     val participantType = session.actor.identity.participantType
+    val availableTabs = remember(participantType) { LegendTab.available(participantType) }
+    LaunchedEffect(availableTabs) {
+        if (tab !in availableTabs) tab = LegendTab.HOME
+    }
     val home: HomeViewModel = viewModel(
         factory = LegendViewModelFactory { HomeViewModel(container.homeRepository, participantType) },
     )
@@ -371,6 +683,10 @@ private fun AuthenticatedShell(
     val notifications: NotificationsViewModel = viewModel(
         factory = LegendViewModelFactory { NotificationsViewModel(container.notificationRepository, participantType) },
     )
+    val founderAi: FounderAiViewModel = viewModel(
+        key = "founder-ai-$participantType",
+        factory = LegendViewModelFactory { FounderAiViewModel(container.founderAiRepository, participantType) },
+    )
     val messagingRealtime = remember(participantType) { container.messagingRealtime(participantType) }
     DisposableEffect(messagingRealtime) {
         // Match iOS bootstrap behavior: keep the sanctioned server stream
@@ -380,9 +696,11 @@ private fun AuthenticatedShell(
         onDispose { messagingRealtime.close() }
     }
     val homeState by home.state.collectAsStateWithLifecycle()
-    val notificationState by notifications.state.collectAsStateWithLifecycle()
-    val notificationCount = (notificationState as? LoadState.Data<NotificationSnapshot>)?.value?.badge?.unreadCount ?: 0
+    val founderAiState by founderAi.state.collectAsStateWithLifecycle()
     LaunchedEffect(participantType) { container.fcmPushRegistration.registerForAuthenticatedActor(participantType) }
+    LaunchedEffect(session.capabilities.isFounder, participantType) {
+        if (session.capabilities.isFounder) founderAi.resolveAvailability()
+    }
     LaunchedEffect(messages, notifications, home) {
         LegendRealtimeEvents.events.collectLatest { event ->
             notifications.applyRealtime(event)
@@ -404,34 +722,48 @@ private fun AuthenticatedShell(
         topBar = {
             // A thread alone hides chrome. A stale detail callback must never
             // hide another tab's stationary iOS-equivalent wordmark.
-            if (tab != LegendTab.MESSAGES || !isMessageThreadOpen) {
+            if (!LegendNavigationPolicy.MessagesSuppressesBottomNavigationInThread ||
+                tab != LegendTab.MESSAGES || !isMessageThreadOpen
+            ) {
                 LegendHomeBrandBar(
-                    notificationCount = notificationCount,
+                    openFounderAi = if (
+                        session.capabilities.isFounder &&
+                        (founderAiState.availability as? LoadState.Data)?.value == true
+                    ) {
+                        { founderAiOpen = true }
+                    } else {
+                        null
+                    },
                     create = if (tab == LegendTab.HOME) {
                         { homeChromeAction = LegendHomeChromeAction.CREATE }
                     } else {
                         null
                     },
-                    notifications = if (tab == LegendTab.HOME) {
-                        { homeChromeAction = LegendHomeChromeAction.NOTIFICATIONS }
-                    } else {
-                        null
-                    },
                     showsHomeActions = tab == LegendTab.HOME,
-                    usesDarkSurface = tab == LegendTab.DISCOVER,
+                    usesDarkSurface = tab == LegendTab.DISCOVER && LegendNavigationPolicy.DiscoverUsesNavySurface,
                 )
             }
         },
         bottomBar = {
-            if (tab != LegendTab.MESSAGES || !isMessageThreadOpen) {
+            if (!LegendNavigationPolicy.MessagesSuppressesBottomNavigationInThread ||
+                tab != LegendTab.MESSAGES || !isMessageThreadOpen
+            ) {
                 LegendPillNavigation(
+                    tabs = availableTabs,
                     selection = tab,
                     unreadMessageCount = (homeState as? LoadState.Data<MobileHomeResponse>)?.value?.messaging?.unreadCount ?: 0,
                     accountName = session.actor.displayName,
                     accountAvatar = session.actor.avatar,
                     mediaRepository = container.authenticatedMediaRepository,
                     participantType = participantType,
+                    alternateParticipantTypes = session.permittedParticipantTypes
+                        .filterNot { it.equals(participantType, ignoreCase = true) },
+                    signedInAccounts = session.signedInAccounts,
+                    currentAccountId = session.accountId,
                     select = { tab = it },
+                    switchRole = switchRole,
+                    switchSignedInAccount = switchSignedInAccount,
+                    addAccount = addAccount,
                     cycleAccount = cycleAccount,
                 )
             }
@@ -442,7 +774,6 @@ private fun AuthenticatedShell(
             when (tab) {
                 LegendTab.HOME -> HomeScreen(
                     homeViewModel = home,
-                    agentWorkspaceViewModel = agentWorkspace,
                     socialViewModel = social,
                     notificationsViewModel = notifications,
                     mediaRepository = container.authenticatedMediaRepository,
@@ -453,6 +784,16 @@ private fun AuthenticatedShell(
                     openSocial = { tab = LegendTab.SOCIAL },
                     openConversation = { conversationId ->
                         messages.load()
+                        requestedConversationId = conversationId
+                        tab = LegendTab.MESSAGES
+                    },
+                )
+                LegendTab.CLIENTS -> AgentClientsScreen(
+                    agentWorkspaceViewModel = agentWorkspace,
+                    messagingViewModel = messages,
+                    mediaRepository = container.authenticatedMediaRepository,
+                    participantType = participantType,
+                    openConversation = { conversationId ->
                         requestedConversationId = conversationId
                         tab = LegendTab.MESSAGES
                     },
@@ -492,6 +833,12 @@ private fun AuthenticatedShell(
             }
         }
     }
+    }
+    if (founderAiOpen) {
+        FounderAiConversationDialog(
+            viewModel = founderAi,
+            onDismiss = { founderAiOpen = false },
+        )
     }
     sharingPost?.let { post ->
         LegendGlobalSocialShareSheet(
@@ -1088,7 +1435,6 @@ private fun LegendJourneySafetyActions(disconnect: (() -> Unit)?, block: (() -> 
 @Composable
 private fun HomeScreen(
     homeViewModel: HomeViewModel,
-    agentWorkspaceViewModel: AgentWorkspaceViewModel,
     socialViewModel: SocialViewModel,
     notificationsViewModel: NotificationsViewModel,
     mediaRepository: AuthenticatedMediaRepository,
@@ -1100,9 +1446,6 @@ private fun HomeScreen(
     openConversation: (String) -> Unit,
 ) {
     val homeState by homeViewModel.state.collectAsStateWithLifecycle()
-    val agentClients by agentWorkspaceViewModel.clients.collectAsStateWithLifecycle()
-    val agentLeads by agentWorkspaceViewModel.leads.collectAsStateWithLifecycle()
-    val clientCreationPortal by agentWorkspaceViewModel.clientCreationPortal.collectAsStateWithLifecycle()
     val socialState by socialViewModel.state.collectAsStateWithLifecycle()
     val notificationState by notificationsViewModel.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
@@ -1114,10 +1457,6 @@ private fun HomeScreen(
     LaunchedEffect(chromeAction) {
         when (chromeAction) {
             LegendHomeChromeAction.CREATE -> creating = true
-            LegendHomeChromeAction.NOTIFICATIONS -> {
-                notificationsViewModel.load()
-                notificationsOpen = true
-            }
             null -> Unit
         }
         if (chromeAction != null) onChromeActionHandled()
@@ -1125,7 +1464,6 @@ private fun HomeScreen(
 
     LaunchedEffect(Unit) {
         homeViewModel.load()
-        agentWorkspaceViewModel.load()
         socialViewModel.load()
         notificationsViewModel.load()
     }
@@ -1156,21 +1494,25 @@ private fun HomeScreen(
                     )
                 }
                 item {
-                    LegendHomeActivityPill(
-                        count = activityCount,
-                        hasActivity = home.actions.isNotEmpty() || activityCount > 0,
-                        openActivity = { activityOpen = true },
-                    )
-                }
-                if (participantType.equals("Agent", ignoreCase = true)) item {
-                    LegendAgentWorkspaceCard(
-                        clients = agentClients,
-                        leads = agentLeads,
-                        clientCreationPortal = clientCreationPortal,
-                        mediaRepository = mediaRepository,
-                        participantType = participantType,
-                        createClient = agentWorkspaceViewModel::launchClientCreationPortal,
-                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(LegendSpacing.Xs),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        LegendHomeActivityPill(
+                            count = activityCount,
+                            hasActivity = home.actions.isNotEmpty() || activityCount > 0,
+                            openActivity = { activityOpen = true },
+                            modifier = Modifier.weight(1f),
+                        )
+                        LegendNotificationButton(
+                            notificationCount = notificationCount,
+                            openNotifications = {
+                                notificationsViewModel.load()
+                                notificationsOpen = true
+                            },
+                        )
+                    }
                 }
                 when (socialState) {
                     LoadState.Idle,
@@ -1271,6 +1613,175 @@ private fun HomeScreen(
             },
         )
     }
+}
+
+@Composable
+private fun AgentClientsScreen(
+    agentWorkspaceViewModel: AgentWorkspaceViewModel,
+    messagingViewModel: MessagingViewModel,
+    mediaRepository: AuthenticatedMediaRepository,
+    participantType: String,
+    openConversation: (String) -> Unit,
+) {
+    val clients by agentWorkspaceViewModel.clients.collectAsStateWithLifecycle()
+    val leads by agentWorkspaceViewModel.leads.collectAsStateWithLifecycle()
+    val clientCreationPortal by agentWorkspaceViewModel.clientCreationPortal.collectAsStateWithLifecycle()
+    val recipients by messagingViewModel.recipients.collectAsStateWithLifecycle()
+    val isStartingConversation by messagingViewModel.isSending.collectAsStateWithLifecycle()
+    val clientCount = (clients as? LoadState.Data)?.value?.size
+    var leadsOpen by remember { mutableStateOf(false) }
+
+    LaunchedEffect(Unit) { agentWorkspaceViewModel.load() }
+
+    LazyColumn(
+        modifier = Modifier.fillMaxSize().background(LegendColors.Canvas),
+        contentPadding = PaddingValues(
+            horizontal = LegendSpacing.PageHorizontal,
+            vertical = LegendSpacing.Md,
+        ),
+        verticalArrangement = Arrangement.spacedBy(LegendSpacing.Sm),
+    ) {
+        item {
+            Column(verticalArrangement = Arrangement.spacedBy(LegendSpacing.Micro)) {
+                Text("CRM", style = LegendTypography.Eyebrow, color = LegendColors.Gold)
+                Text("Client CRM", style = LegendTypography.Title, color = LegendColors.TextPrimary)
+                Text(
+                    clientCount?.let { "$it live records" } ?: "Live server-authorized records",
+                    style = LegendTypography.Supporting,
+                    color = LegendColors.TextSecondary,
+                )
+            }
+        }
+        item {
+            Row(horizontalArrangement = Arrangement.spacedBy(LegendSpacing.Sm)) {
+                OutlinedButton(
+                    onClick = {
+                        agentWorkspaceViewModel.load()
+                        leadsOpen = true
+                    },
+                    modifier = Modifier.weight(1f).heightIn(min = LegendSize.ControlHeight),
+                    shape = LegendShapes.Control,
+                ) {
+                    Icon(Icons.Default.PersonAdd, null)
+                    Spacer(Modifier.width(LegendSpacing.Xs))
+                    Text("Leads")
+                }
+                Button(
+                    onClick = agentWorkspaceViewModel::launchClientCreationPortal,
+                    modifier = Modifier.weight(1f).heightIn(min = LegendSize.ControlHeight),
+                    shape = LegendShapes.Control,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = LegendColors.GoldBright,
+                        contentColor = LegendColors.OnGold,
+                    ),
+                ) {
+                    Icon(Icons.Default.Add, null)
+                    Spacer(Modifier.width(LegendSpacing.Xs))
+                    Text("Add Client")
+                }
+            }
+        }
+        when (val clientState = clients) {
+            LoadState.Idle, LoadState.Loading -> items(6) { LegendClientRowSkeleton() }
+            is LoadState.Error -> item {
+                LegendInlineRetry(clientState.message, agentWorkspaceViewModel::load)
+            }
+            is LoadState.Data -> {
+                if (clientState.value.isEmpty()) {
+                    item {
+                        LegendEmptyState(
+                            "No active client members",
+                            "Client and Business Client records with active shared-app access will appear here.",
+                        )
+                    }
+                } else {
+                    items(clientState.value, key = { it.profileId }) { client ->
+                        Surface(
+                            color = LegendColors.Surface,
+                            shape = LegendShapes.Card,
+                            shadowElevation = 3.dp,
+                            modifier = Modifier.fillMaxWidth().border(
+                                1.dp,
+                                LegendColors.Divider,
+                                LegendShapes.Card,
+                            ),
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(LegendSpacing.Sm),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(LegendSpacing.Sm),
+                            ) {
+                                LegendProtectedAvatar(
+                                    client.avatar,
+                                    client.displayName,
+                                    participantType,
+                                    mediaRepository,
+                                    size = 46.dp,
+                                )
+                                Column(Modifier.weight(1f)) {
+                                    Text(client.displayName, style = LegendTypography.CardTitle, color = LegendColors.TextPrimary)
+                                    Text(client.email, style = LegendTypography.Supporting, color = LegendColors.TextSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    Text(client.crmStatus, style = LegendTypography.Caption, color = LegendColors.TextTertiary)
+                                }
+                                Button(
+                                    onClick = {
+                                        messagingViewModel.startConversationForClient(
+                                            client.profileId,
+                                            openConversation,
+                                        )
+                                    },
+                                    enabled = !isStartingConversation,
+                                    shape = LegendShapes.Compact,
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = LegendColors.Navy,
+                                        contentColor = LegendColors.OnNavy,
+                                    ),
+                                    contentPadding = PaddingValues(horizontal = LegendSpacing.Sm, vertical = LegendSpacing.Xs),
+                                ) {
+                                    Icon(Icons.Default.ChatBubble, null, modifier = Modifier.size(16.dp))
+                                    Spacer(Modifier.width(LegendSpacing.Xs))
+                                    Text("Message", style = LegendTypography.Label)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        (recipients as? LoadState.Error)?.let { failure ->
+            item { Text(failure.message, style = LegendTypography.Supporting, color = LegendColors.Error) }
+        }
+    }
+
+    if (leadsOpen) {
+        ModalBottomSheet(onDismissRequest = { leadsOpen = false }) {
+            Column(
+                modifier = Modifier.fillMaxWidth().padding(LegendSpacing.Md),
+                verticalArrangement = Arrangement.spacedBy(LegendSpacing.Sm),
+            ) {
+                Text("Leads", style = LegendTypography.Title, color = LegendColors.TextPrimary)
+                when (val leadState = leads) {
+                    is LoadState.Data -> if (leadState.value.isEmpty()) {
+                        LegendEmptyState("No leads", "Live CRM leads will appear here.")
+                    } else {
+                        leadState.value.forEach { lead ->
+                            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                Column(Modifier.weight(1f)) {
+                                    Text(lead.displayName, style = LegendTypography.BodyEmphasis, color = LegendColors.TextPrimary)
+                                    Text(lead.crmStage, style = LegendTypography.Supporting, color = LegendColors.TextSecondary)
+                                }
+                                Text(legendCompactTime(lead.updatedUtc), style = LegendTypography.Caption, color = LegendColors.TextTertiary)
+                            }
+                        }
+                    }
+                    is LoadState.Error -> LegendInlineRetry(leadState.message, agentWorkspaceViewModel::load)
+                    else -> LegendLoadingState()
+                }
+                Spacer(Modifier.height(LegendSpacing.Md))
+            }
+        }
+    }
+
     (clientCreationPortal as? LoadState.Data<MobileClientCreationPortalLaunch>)?.value?.let { launch ->
         LegendAgentClientCreationPortal(
             launchPath = launch.launchPath,
@@ -1278,79 +1789,27 @@ private fun HomeScreen(
                 agentWorkspaceViewModel.clearClientCreationPortal()
                 agentWorkspaceViewModel.load()
             },
-            recoverExpiredTicket = {
-                agentWorkspaceViewModel.launchClientCreationPortal()
-            },
+            recoverExpiredTicket = agentWorkspaceViewModel::launchClientCreationPortal,
         )
     }
 }
 
 @Composable
-private fun LegendAgentWorkspaceCard(
-    clients: LoadState<List<MobileAgentClient>>,
-    leads: LoadState<List<MobileAgentLead>>,
-    clientCreationPortal: LoadState<MobileClientCreationPortalLaunch>,
-    mediaRepository: AuthenticatedMediaRepository,
-    participantType: String,
-    createClient: () -> Unit,
-) {
-    Surface(color = LegendColors.Navy, shape = LegendShapes.Card, modifier = Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(LegendSpacing.Md), verticalArrangement = Arrangement.spacedBy(LegendSpacing.Sm)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Default.BusinessCenter, null, tint = LegendColors.GoldBright)
-                Spacer(Modifier.width(LegendSpacing.Xs))
-                Column(Modifier.weight(1f)) {
-                    Text("AGENT WORKSPACE", style = LegendTypography.Eyebrow, color = LegendColors.GoldBright)
-                    Text("Your client relationship desk", style = LegendTypography.CardTitle, color = LegendColors.OnNavy)
-                }
-            }
-            when (clients) {
-                is LoadState.Data -> {
-                    Text("${clients.value.size} active client members", style = LegendTypography.Label, color = LegendColors.GoldSoft)
-                    clients.value.take(3).forEach { client ->
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            LegendProtectedAvatar(client.avatar, client.displayName, participantType, mediaRepository, size = 34.dp)
-                            Spacer(Modifier.width(LegendSpacing.Xs))
-                            Column(Modifier.weight(1f)) {
-                                Text(client.displayName, style = LegendTypography.Label, color = LegendColors.OnNavy)
-                                Text(client.crmStatus, style = LegendTypography.Supporting, color = LegendColors.GoldSoft)
-                            }
-                        }
-                    }
-                    if (clients.value.isEmpty()) Text("No active client members are currently available from the CRM authority.", style = LegendTypography.Supporting, color = LegendColors.GoldSoft)
-                }
-                is LoadState.Error -> Text(clients.message, style = LegendTypography.Supporting, color = LegendColors.GoldSoft)
-                else -> Row(verticalAlignment = Alignment.CenterVertically) { CircularProgressIndicator(modifier = Modifier.size(16.dp), color = LegendColors.GoldBright, strokeWidth = 2.dp); Spacer(Modifier.width(LegendSpacing.Xs)); Text("Loading client CRM", style = LegendTypography.Supporting, color = LegendColors.GoldSoft) }
-            }
-            when (leads) {
-                is LoadState.Data -> if (leads.value.isNotEmpty()) {
-                    Text("LEADS", style = LegendTypography.Eyebrow, color = LegendColors.GoldBright)
-                    leads.value.take(3).forEach { lead ->
-                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                            Column(Modifier.weight(1f)) {
-                                Text(lead.displayName, style = LegendTypography.Label, color = LegendColors.OnNavy)
-                                Text(lead.crmStage, style = LegendTypography.Supporting, color = LegendColors.GoldSoft)
-                            }
-                            Text(legendCompactTime(lead.updatedUtc), style = LegendTypography.Label, color = LegendColors.TextTertiary)
-                        }
-                    }
-                }
-                else -> Unit
-            }
-            when (clientCreationPortal) {
-                LoadState.Loading -> Row(verticalAlignment = Alignment.CenterVertically) {
-                    CircularProgressIndicator(modifier = Modifier.size(16.dp), color = LegendColors.GoldBright, strokeWidth = 2.dp)
-                    Spacer(Modifier.width(LegendSpacing.Xs))
-                    Text("Opening client intake", style = LegendTypography.Supporting, color = LegendColors.GoldSoft)
-                }
-                is LoadState.Error -> Column(verticalArrangement = Arrangement.spacedBy(LegendSpacing.Xs)) {
-                    Text(clientCreationPortal.message, style = LegendTypography.Supporting, color = LegendColors.Warning)
-                    OutlinedButton(onClick = createClient, modifier = Modifier.fillMaxWidth(), shape = LegendShapes.Control) {
-                        Text("Retry client intake", color = LegendColors.GoldBright)
-                    }
-                }
-                else -> LegendPrimaryButton("Create client", modifier = Modifier.fillMaxWidth(), onClick = createClient)
-            }
+private fun LegendClientRowSkeleton() {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(70.dp)
+            .clip(LegendShapes.Card)
+            .background(LegendColors.SurfaceInset)
+            .padding(LegendSpacing.Sm),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(Modifier.size(46.dp).clip(CircleShape).background(LegendColors.BrandBlueInset))
+        Spacer(Modifier.width(LegendSpacing.Sm))
+        Column(verticalArrangement = Arrangement.spacedBy(LegendSpacing.Xs)) {
+            Box(Modifier.width(140.dp).height(12.dp).clip(CircleShape).background(LegendColors.BrandBlueInset))
+            Box(Modifier.width(210.dp).height(9.dp).clip(CircleShape).background(LegendColors.BrandBlueInset))
         }
     }
 }
@@ -1486,9 +1945,8 @@ private class LegendClientCreationPortalWebViewClient(
 
 @Composable
 private fun LegendHomeBrandBar(
-    notificationCount: Int,
+    openFounderAi: (() -> Unit)?,
     create: (() -> Unit)?,
-    notifications: (() -> Unit)?,
     showsHomeActions: Boolean = true,
     usesDarkSurface: Boolean = false,
 ) {
@@ -1512,32 +1970,20 @@ private fun LegendHomeBrandBar(
             Spacer(Modifier.size(LegendSize.MinimumTapTarget))
         }
         Text(
-            text = "LEGEND®",
+            text = LegendNavigationPolicy.Brand,
             style = LegendTypography.Wordmark,
             color = if (usesDarkSurface) LegendColors.OnNavy else LegendColors.Navy,
         )
-        if (showsHomeActions && notifications != null) {
-            Box {
-                LegendHomeChromeButton(
-                    icon = Icons.Default.FavoriteBorder,
-                    description = "Open notifications",
-                    onClick = notifications,
-                )
-                if (notificationCount > 0) {
-                    Text(
-                        text = notificationCount.coerceAtMost(99).toString(),
-                        style = LegendTypography.Label,
-                        color = LegendColors.OnNavy,
-                        modifier = Modifier
-                            .align(Alignment.TopEnd)
-                            .offset(x = LegendSpacing.Xs, y = -LegendSpacing.Micro)
-                            .background(LegendColors.Error, CircleShape)
-                            .padding(horizontal = LegendSpacing.Xs, vertical = LegendSpacing.Micro),
-                    )
-                }
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(LegendSpacing.Xs),
+        ) {
+            openFounderAi?.let { open ->
+                LegendFounderAiLauncherButton(onClick = open)
             }
-        } else {
-            Spacer(Modifier.size(LegendSize.MinimumTapTarget))
+            if (openFounderAi == null) {
+                Spacer(Modifier.size(LegendSize.MinimumTapTarget))
+            }
         }
     }
 }
@@ -1607,10 +2053,14 @@ private fun LegendHomeHero(home: MobileHomeResponse, openScripture: () -> Unit) 
 }
 
 @Composable
-private fun LegendHomeActivityPill(count: Int, hasActivity: Boolean, openActivity: () -> Unit) = Card(
+private fun LegendHomeActivityPill(
+    count: Int,
+    hasActivity: Boolean,
+    openActivity: () -> Unit,
+    modifier: Modifier = Modifier,
+) = Card(
     onClick = openActivity,
-    modifier = Modifier
-        .fillMaxWidth()
+    modifier = modifier
         .border(
             LegendSpacing.Hairline,
             LegendColors.Gold.copy(alpha = 0.58f),
@@ -1644,6 +2094,40 @@ private fun LegendHomeActivityPill(count: Int, hasActivity: Boolean, openActivit
         Text(count.toString(), style = LegendTypography.Title, color = if (count > 0) LegendColors.Error else LegendColors.OnNavy)
         Spacer(Modifier.width(LegendSpacing.Xs))
         Icon(Icons.Default.ChevronRight, contentDescription = "Open today's activity", tint = LegendColors.OnNavy.copy(alpha = 0.70f))
+    }
+}
+
+@Composable
+private fun LegendNotificationButton(
+    notificationCount: Int,
+    openNotifications: () -> Unit,
+) {
+    Box {
+        IconButton(
+            onClick = openNotifications,
+            modifier = Modifier
+                .size(LegendSize.MinimumTapTarget)
+                .clip(CircleShape)
+                .background(LegendColors.Navy),
+        ) {
+            Icon(
+                Icons.Default.FavoriteBorder,
+                contentDescription = "Open notifications, $notificationCount recent interactions",
+                tint = LegendColors.OnNavy,
+            )
+        }
+        if (notificationCount > 0) {
+            Text(
+                text = notificationCount.coerceAtMost(99).toString(),
+                style = LegendTypography.Eyebrow,
+                color = LegendColors.OnNavy,
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .offset(x = LegendSpacing.Xs, y = -LegendSpacing.Micro)
+                    .background(LegendColors.Error, CircleShape)
+                    .padding(horizontal = LegendSpacing.Xs, vertical = LegendSpacing.Micro),
+            )
+        }
     }
 }
 

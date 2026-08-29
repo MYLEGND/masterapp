@@ -1,7 +1,11 @@
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import org.gradle.api.tasks.Sync
 import java.net.URLDecoder
+import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
+import java.security.KeyStore
+import java.security.MessageDigest
+import java.util.Base64
 import java.util.Properties
 
 plugins {
@@ -22,9 +26,13 @@ val legendProperties = Properties().apply {
 }
 fun legendValue(name: String): String = legendProperties.getProperty(name)?.trim().orEmpty()
 
-val legendRuntimeRoot = layout.buildDirectory.dir("generated/legend-runtime")
-val legendRuntimeAssets = legendRuntimeRoot.map { it.dir("assets") }
-val legendRuntimeRes = legendRuntimeRoot.map { it.dir("res") }
+val legendApplicationId = "com.mylegnd.legend.registered"
+val legendDebugRuntimeRoot = layout.buildDirectory.dir("generated/legend-runtime/debug")
+val legendReleaseRuntimeRoot = layout.buildDirectory.dir("generated/legend-runtime/release")
+val legendDebugRuntimeAssets = legendDebugRuntimeRoot.map { it.dir("assets") }
+val legendDebugRuntimeRes = legendDebugRuntimeRoot.map { it.dir("res") }
+val legendReleaseRuntimeAssets = legendReleaseRuntimeRoot.map { it.dir("assets") }
+val legendReleaseRuntimeRes = legendReleaseRuntimeRoot.map { it.dir("res") }
 val sharedLegendDesignSpec = rootProject.file("../Legend-Design/legend-design.tokens.json")
 val legendDesignAssets = layout.buildDirectory.dir("generated/legend-design/assets")
 // The iOS asset catalog owns the brand artwork. Android packages that source
@@ -32,26 +40,53 @@ val legendDesignAssets = layout.buildDirectory.dir("generated/legend-design/asse
 val sharedLegendBrandLogo = rootProject.file(
     "../Legend-ios/Legend/Resources/Assets.xcassets/LegendLogo.imageset/legend-logo.png",
 )
+val sharedLegendFounderAiLogo = rootProject.file(
+    "../Legend-ios/Legend/Resources/Assets.xcassets/LegendAiIcon.imageset/legendai.png",
+)
+val sharedLegendAppIcon = rootProject.file(
+    "../Legend-ios/Legend/Resources/Assets.xcassets/AppIcon.appiconset/AppIcon-1024.png",
+)
 val legendBrandAssets = layout.buildDirectory.dir("generated/legend-brand/assets")
-val msalRedirectUri = legendValue("LEGEND_MSAL_REDIRECT_URI")
+val legendBrandRes = layout.buildDirectory.dir("generated/legend-brand/res")
+val productionMsalRedirectUri = legendValue("LEGEND_MSAL_REDIRECT_URI")
+
+fun signingCertificateHash(keyStoreFile: File): String? = runCatching {
+    val keyStore = KeyStore.getInstance("JKS")
+    keyStoreFile.inputStream().use { keyStore.load(it, "android".toCharArray()) }
+    val certificate = keyStore.getCertificate("androiddebugkey") ?: return@runCatching null
+    Base64.getEncoder().encodeToString(
+        MessageDigest.getInstance("SHA-1").digest(certificate.encoded),
+    )
+}.getOrNull()
+
+val debugSigningHash = signingCertificateHash(
+    file(System.getProperty("user.home")).resolve(".android/debug.keystore"),
+)
+val debugMsalRedirectUri = legendValue("LEGEND_MSAL_DEBUG_REDIRECT_URI").ifBlank {
+    debugSigningHash?.let { signatureHash ->
+        "msauth://$legendApplicationId/${URLEncoder.encode(signatureHash, StandardCharsets.UTF_8)}"
+    }.orEmpty()
+}
+
 // MSAL's config/Entra URI uses a URL-encoded Base64 hash. Android's manifest intent filter
 // needs that same hash decoded for its path matcher. Deriving both from one value prevents drift.
-val msalSignatureHash = URLDecoder.decode(
-    msalRedirectUri.substringAfterLast('/', missingDelimiterValue = ""),
+fun msalSignatureHash(redirectUri: String): String = URLDecoder.decode(
+    redirectUri.substringAfterLast('/', missingDelimiterValue = ""),
     StandardCharsets.UTF_8,
-)
-    .takeIf { it.isNotBlank() }
-    ?: "unconfigured"
+).takeIf { it.isNotBlank() } ?: "unconfigured"
+
+val productionMsalSignatureHash = msalSignatureHash(productionMsalRedirectUri)
+val debugMsalSignatureHash = msalSignatureHash(debugMsalRedirectUri)
 
 /**
  * Packages non-secret environment values into generated runtime resources.  A Sync task keeps
  * this work configuration-cache compatible: it owns only immutable input values and declared
  * output directories, rather than a build-script closure captured by a DefaultTask action.
  */
-val generateLegendRuntimeConfiguration by tasks.registering(Sync::class) {
+val generateLegendDebugRuntimeConfiguration by tasks.registering(Sync::class) {
     inputs.file(rootProject.file("legend.properties")).optional()
     from("src/main/legend-template")
-    into(legendRuntimeRoot)
+    into(legendDebugRuntimeRoot)
     expand(
         mapOf(
             "apiBaseUrl" to legendValue("LEGEND_API_BASE_URL"),
@@ -59,7 +94,23 @@ val generateLegendRuntimeConfiguration by tasks.registering(Sync::class) {
             "entraAuthority" to legendValue("LEGEND_ENTRA_AUTHORITY"),
             "entraScope" to legendValue("LEGEND_ENTRA_SCOPE"),
             "entraTenantId" to legendValue("LEGEND_ENTRA_TENANT_ID"),
-            "msalRedirectUri" to msalRedirectUri,
+            "msalRedirectUri" to debugMsalRedirectUri,
+        ),
+    )
+}
+
+val generateLegendReleaseRuntimeConfiguration by tasks.registering(Sync::class) {
+    inputs.file(rootProject.file("legend.properties")).optional()
+    from("src/main/legend-template")
+    into(legendReleaseRuntimeRoot)
+    expand(
+        mapOf(
+            "apiBaseUrl" to legendValue("LEGEND_API_BASE_URL"),
+            "entraClientId" to legendValue("LEGEND_ENTRA_CLIENT_ID"),
+            "entraAuthority" to legendValue("LEGEND_ENTRA_AUTHORITY"),
+            "entraScope" to legendValue("LEGEND_ENTRA_SCOPE"),
+            "entraTenantId" to legendValue("LEGEND_ENTRA_TENANT_ID"),
+            "msalRedirectUri" to productionMsalRedirectUri,
         ),
     )
 }
@@ -70,34 +121,45 @@ val bundleLegendDesignSpecification by tasks.registering(Sync::class) {
     into(legendDesignAssets)
 }
 
-/** Packages the exact iOS-owned LEGEND® artwork for the Android sign-in shell. */
+/** Packages the exact iOS-owned LEGEND® and Founder AI artwork without an Android copy. */
 val bundleLegendBrandArtwork by tasks.registering(Sync::class) {
     from(sharedLegendBrandLogo)
+    from(sharedLegendFounderAiLogo)
     into(legendBrandAssets)
 }
 
+/** Android packages the exact iOS AppIcon source; no second launcher artwork is retained. */
+val bundleLegendLauncherArtwork by tasks.registering(Sync::class) {
+    from(sharedLegendAppIcon) {
+        rename { "ic_legend_launcher.png" }
+    }
+    into(legendBrandRes.map { it.dir("drawable-nodpi") })
+}
+
 android {
-    namespace = "com.mylegnd.legend.registered"
+    namespace = legendApplicationId
     compileSdk = 37
 
     defaultConfig {
-        applicationId = "com.mylegnd.legend.registered"
+        applicationId = legendApplicationId
         minSdk = 26
         targetSdk = 37
-        versionCode = 2
+        versionCode = 3
         versionName = "1.0.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-        manifestPlaceholders["msalSignatureHash"] = msalSignatureHash
+        manifestPlaceholders["msalSignatureHash"] = productionMsalSignatureHash
     }
 
     buildTypes {
         debug {
             versionNameSuffix = "-debug"
+            manifestPlaceholders["msalSignatureHash"] = debugMsalSignatureHash
         }
         release {
             isMinifyEnabled = true
             isShrinkResources = true
+            manifestPlaceholders["msalSignatureHash"] = productionMsalSignatureHash
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
@@ -126,17 +188,32 @@ android {
     }
 
     sourceSets.getByName("main") {
-        assets.directories.add(legendRuntimeAssets.get().asFile.absolutePath)
         assets.directories.add(legendDesignAssets.get().asFile.absolutePath)
         assets.directories.add(legendBrandAssets.get().asFile.absolutePath)
-        res.directories.add(legendRuntimeRes.get().asFile.absolutePath)
+        res.directories.add(legendBrandRes.get().asFile.absolutePath)
+    }
+    sourceSets.getByName("debug") {
+        assets.directories.add(legendDebugRuntimeAssets.get().asFile.absolutePath)
+        res.directories.add(legendDebugRuntimeRes.get().asFile.absolutePath)
+    }
+    sourceSets.getByName("release") {
+        assets.directories.add(legendReleaseRuntimeAssets.get().asFile.absolutePath)
+        res.directories.add(legendReleaseRuntimeRes.get().asFile.absolutePath)
     }
 }
 
+tasks.matching { it.name == "preDebugBuild" }.configureEach {
+    dependsOn(generateLegendDebugRuntimeConfiguration)
+}
+
+tasks.matching { it.name == "preReleaseBuild" }.configureEach {
+    dependsOn(generateLegendReleaseRuntimeConfiguration)
+}
+
 tasks.named("preBuild").configure {
-    dependsOn(generateLegendRuntimeConfiguration)
     dependsOn(bundleLegendDesignSpecification)
     dependsOn(bundleLegendBrandArtwork)
+    dependsOn(bundleLegendLauncherArtwork)
 }
 
 dependencies {
