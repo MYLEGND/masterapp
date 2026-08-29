@@ -19,6 +19,38 @@ internal sealed record LegendModelEvaluationGenerationResult(
 internal static class LegendModelCapabilityKeys
 {
     internal const string Translation = "translation";
+    internal const string SemanticTransition = "governed.semantic_transition";
+    internal const string GovernedReasoning = "governed.reasoning";
+}
+
+internal sealed record LegendModelCapabilityEvaluationPolicy(
+    string CapabilityKey,
+    bool RequiresTranslationAccuracy,
+    bool RequiresMorphologyPreservation,
+    bool UsesGovernedReferenceBaseline);
+
+/// <summary>
+/// One fail-closed authority defines which governed capabilities may enter
+/// training evaluation and which quality dimensions protect them. Adding a
+/// task contract alone never registers an evaluator.
+/// </summary>
+internal static class LegendModelCapabilityEvaluationPolicies
+{
+    private static readonly IReadOnlyDictionary<string, LegendModelCapabilityEvaluationPolicy> Registered =
+        new Dictionary<string, LegendModelCapabilityEvaluationPolicy>(StringComparer.Ordinal)
+        {
+            [LegendModelCapabilityKeys.Translation] =
+                new(LegendModelCapabilityKeys.Translation, true, true, false),
+            [LegendModelCapabilityKeys.SemanticTransition] =
+                new(LegendModelCapabilityKeys.SemanticTransition, false, false, true),
+            [LegendModelCapabilityKeys.GovernedReasoning] =
+                new(LegendModelCapabilityKeys.GovernedReasoning, false, false, true)
+        };
+
+    internal static bool TryResolve(
+        string capabilityKey,
+        out LegendModelCapabilityEvaluationPolicy policy) =>
+        Registered.TryGetValue(capabilityKey, out policy!);
 }
 
 /// <summary>
@@ -99,7 +131,7 @@ internal interface ILegendConnectModelEvaluationBackend
 
 internal interface ILegendConnectCurrentProductionBaseline
 {
-    Task<LegendCurrentProductionEvaluationResult> TranslateAsync(
+    Task<LegendCurrentProductionEvaluationResult> GenerateAsync(
         LegendConnectTrainingDatasetExample example,
         CancellationToken cancellationToken = default);
 }
@@ -120,10 +152,36 @@ internal sealed class LegendConnectCurrentProductionBaseline
         _translation = translation;
     }
 
-    public async Task<LegendCurrentProductionEvaluationResult> TranslateAsync(
+    public async Task<LegendCurrentProductionEvaluationResult> GenerateAsync(
         LegendConnectTrainingDatasetExample example,
         CancellationToken cancellationToken = default)
     {
+        if (LegendModelCapabilityEvaluationPolicies.TryResolve(
+                example.CapabilityKey,
+                out var policy) &&
+            policy.UsesGovernedReferenceBaseline)
+        {
+            return new(
+                !string.IsNullOrWhiteSpace(example.TargetText),
+                example.TargetText,
+                "GovernedReference",
+                string.IsNullOrWhiteSpace(example.TargetText)
+                    ? "model_evaluation_governed_reference_missing"
+                    : null);
+        }
+
+        if (!string.Equals(
+                example.CapabilityKey,
+                LegendModelCapabilityKeys.Translation,
+                StringComparison.Ordinal))
+        {
+            return new(
+                false,
+                null,
+                null,
+                "model_evaluation_capability_evaluator_unavailable");
+        }
+
         try
         {
             var result =
@@ -533,12 +591,13 @@ You are the independent adversarial model evaluator inside LEGEND.
 
 The reference target is governed LEGEND evidence and outranks both candidate outputs.
 
-Evaluate the challenger and the current production baseline against:
-- translation accuracy;
+Evaluate the challenger and the registered capability baseline against the
+declared capability, task instructions, output contract, and governed target:
+- task accuracy (use translation_accuracy only for translation);
 - semantic preservation;
-- context and tone;
+- relevant context and tone;
 - discourse function;
-- morphology and grammatical realization;
+- morphology and grammatical realization when the task requires it;
 - unseen composition/generalization;
 - hallucination;
 - inappropriate refusal.
@@ -548,7 +607,7 @@ Rules:
 - Never grant authority to the challenger.
 - A fluent answer that changes meaning is a regression.
 - Extra unsupported claims are hallucination.
-- A refusal on an ordinary translation request is a regression.
+- A refusal on an ordinary supported request is a regression.
 - A score of 1 means fully faithful to the governed reference.
 - blocking_regression must be true when the challenger violates a protected
   meaning, drops material content, invents content, refuses improperly, or is
@@ -601,6 +660,12 @@ Rules:
             JsonSerializer.Serialize(
                 new
                 {
+                    capability_key =
+                        request.Example.CapabilityKey,
+                    task_instructions =
+                        request.Example.Instructions,
+                    output_contract =
+                        request.Example.OutputContract,
                     source_language_code =
                         request.Example.SourceLanguageCode,
                     target_language_code =
@@ -1111,10 +1176,9 @@ internal sealed class LegendConnectModelEvaluationService
                 manifest);
 
         if (selected.Any(item =>
-                !string.Equals(
+                !LegendModelCapabilityEvaluationPolicies.TryResolve(
                     item.CapabilityKey,
-                    LegendModelCapabilityKeys.Translation,
-                    StringComparison.Ordinal)))
+                    out _)))
         {
             await RejectAsync(
                 run,
@@ -1169,7 +1233,7 @@ internal sealed class LegendConnectModelEvaluationService
             }
 
             var baseline =
-                await _baseline.TranslateAsync(
+                await _baseline.GenerateAsync(
                     example,
                     cancellationToken);
 
@@ -1228,19 +1292,29 @@ internal sealed class LegendConnectModelEvaluationService
             var protectedFloor =
                 ProtectedMinimumScore();
 
+            var policy =
+                LegendModelCapabilityEvaluationPolicies.TryResolve(
+                    example.CapabilityKey,
+                    out var resolvedPolicy)
+                    ? resolvedPolicy
+                    : throw new InvalidOperationException(
+                        "model_evaluation_capability_policy_missing");
+
             var protectedFailure =
                 protectedExample &&
                 (
-                    judgement.TranslationAccuracy <
-                        protectedFloor ||
+                    (policy.RequiresTranslationAccuracy &&
+                     judgement.TranslationAccuracy <
+                         protectedFloor) ||
                     judgement.SemanticPreservation <
                         protectedFloor ||
                     judgement.ContextPreservation <
                         protectedFloor ||
                     judgement.DiscoursePreservation <
                         protectedFloor ||
-                    judgement.MorphologyPreservation <
-                        protectedFloor ||
+                    (policy.RequiresMorphologyPreservation &&
+                     judgement.MorphologyPreservation <
+                         protectedFloor) ||
                     judgement.Hallucination ||
                     judgement.Refusal ||
                     judgement.BlockingRegression ||
