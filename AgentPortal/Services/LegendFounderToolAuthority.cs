@@ -1503,7 +1503,7 @@ internal sealed class LegendFounderToolAuthority
         ];
     }
 
-    private static int ResolveRetainedKnowledgeTake(string query)
+    internal static int ResolveRetainedKnowledgeTake(string query)
     {
         var words = query.Split(
             [' ', '\r', '\n', '\t', ',', '.', ';', ':', '!', '?', '(', ')', '[', ']'],
