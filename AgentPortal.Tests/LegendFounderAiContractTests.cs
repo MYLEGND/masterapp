@@ -849,6 +849,30 @@ public sealed class LegendFounderAiContractTests
         Assert.Contains("- deploy", verify, StringComparison.Ordinal);
         Assert.Contains("ApplicationIntent = ApplicationIntent.ReadOnly", diagnostic, StringComparison.Ordinal);
         Assert.Contains("PRODUCTION WRITE COMMANDS: 0", diagnostic, StringComparison.Ordinal);
+        Assert.Contains(
+            "p.[LanguageIntelligenceReevaluationPhase] <> 'Complete'",
+            diagnostic,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "w.[Phase] = p.[LanguageIntelligenceReevaluationPhase]",
+            diagnostic,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "m.[ProcessingState] <> 'Retired'",
+            diagnostic,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "'curriculum_manifest_payload_invalid'",
+            diagnostic,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "'curriculum_manifest_payload_mismatch'",
+            diagnostic,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "m.[TargetLanguageIntelligenceEvaluatorVersion] <",
+            diagnostic,
+            StringComparison.Ordinal);
         Assert.DoesNotContain("INSERT ", diagnostic, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("UPDATE ", diagnostic, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("DELETE ", diagnostic, StringComparison.OrdinalIgnoreCase);
