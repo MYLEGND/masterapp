@@ -371,6 +371,35 @@ public sealed class LegendConnectModelEvaluationTests
                 out _));
     }
 
+    [Fact]
+    public void MultimodalEvidenceAdmission_RequiresGovernanceHashAndNoContradiction()
+    {
+        const string hash =
+            "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+        var admitted = new LegendModelEvidencePart(
+            "image",
+            "https://evidence.example/founder-approved.png",
+            "image/png",
+            "founder-image-1",
+            hash,
+            "FounderApproved");
+        var contradicted = admitted with
+        {
+            ContradictionState = "Contradictory"
+        };
+        var unverified = admitted with
+        {
+            ContentSha256 = "not-a-content-hash"
+        };
+
+        Assert.True(
+            LegendModelEvidenceAdmission.IsAdmitted(admitted));
+        Assert.False(
+            LegendModelEvidenceAdmission.IsAdmitted(contradicted));
+        Assert.False(
+            LegendModelEvidenceAdmission.IsAdmitted(unverified));
+    }
+
     private static LegendConnectModelEvaluationService Service(
         Infrastructure.Data.MasterAppDbContext db,
         ILegendConnectModelEvaluationBackend backend,
