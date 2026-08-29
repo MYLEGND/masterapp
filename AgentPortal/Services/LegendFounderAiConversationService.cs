@@ -461,7 +461,24 @@ public sealed class LegendFounderAiConversationService
                 new HashSet<string>(StringComparer.Ordinal);
 
             var governedInspectionCompleted =
-                !requiresMandatoryGovernedInspection;
+                !requiresGovernedInspection ||
+                preloadRetainedKnowledge;
+
+            var confirmedLearningMutationRequired =
+                request.FounderCommandConfirmed &&
+                IsTeacherMode(mode) &&
+                RequestsFounderLearningMutation(conversation);
+
+            var automaticNativeGapLearningWindow =
+                nativeInference is
+                {
+                    Supported: false,
+                    RequiresEscalation: true
+                } &&
+                string.Equals(mode, "legend", StringComparison.Ordinal);
+
+            var learningMutationCompleted = false;
+            string? learningMutationReceipt = null;
 
             var accumulatedProviderAnswer = string.Empty;
 
@@ -496,7 +513,13 @@ public sealed class LegendFounderAiConversationService
 
                 var allowTools =
                     requiresGovernedInspection &&
-                    !governedInspectionCompleted &&
+                    (
+                        !governedInspectionCompleted ||
+                        (confirmedLearningMutationRequired &&
+                         !learningMutationCompleted) ||
+                        (automaticNativeGapLearningWindow &&
+                         !learningMutationCompleted)
+                    ) &&
                     round < maximumToolRounds - 1 &&
                     remaining >
                         TimeSpan.FromSeconds(
@@ -517,9 +540,14 @@ public sealed class LegendFounderAiConversationService
                 }
 
                 var requireToolCall =
-                    requiresMandatoryGovernedInspection &&
-                    !governedInspectionCompleted &&
-                    allowTools;
+                    allowTools &&
+                    (
+                        (requiresMandatoryGovernedInspection &&
+                         !governedInspectionCompleted) ||
+                        (confirmedLearningMutationRequired &&
+                         governedInspectionCompleted &&
+                         !learningMutationCompleted)
+                    );
 
                 var providerBudget =
                     ResolveProviderBudget(
@@ -637,10 +665,26 @@ public sealed class LegendFounderAiConversationService
 
                     if (!string.IsNullOrWhiteSpace(accumulatedProviderAnswer))
                     {
+                        if (confirmedLearningMutationRequired &&
+                            !learningMutationCompleted)
+                        {
+                            return LegendFounderAiChatResponse.ModeFailure(
+                                mode,
+                                FailureMessageForMode(
+                                    mode,
+                                    "The confirmed teaching request ended before the existing governed learning authority returned a successful receipt."),
+                                "learning_submission_incomplete",
+                                "governed_tool",
+                                "confirmed_learning_mutation_missing");
+                        }
+
                         return new LegendFounderAiChatResponse(
                             true,
                             mode,
-                            accumulatedProviderAnswer,
+                            AppendLearningReceipt(
+                                accumulatedProviderAnswer,
+                                learningMutationReceipt,
+                                automaticNativeGapLearningWindow),
                             null,
                             ResponseAuthority: "OpenAITeacher",
                             Stage: "provider_response");
@@ -685,6 +729,19 @@ public sealed class LegendFounderAiConversationService
                             "required_governed_inspection_missing");
                     }
 
+                    if (confirmedLearningMutationRequired &&
+                        !learningMutationCompleted)
+                    {
+                        return LegendFounderAiChatResponse.ModeFailure(
+                            mode,
+                            FailureMessageForMode(
+                                mode,
+                                "The provider completed without executing the confirmed governed teaching submission."),
+                            "learning_submission_incomplete",
+                            "governed_tool",
+                            "confirmed_learning_mutation_missing");
+                    }
+
                     await ReportProgressAsync(
                         progress,
                         new LegendFounderAiProgressEvent(
@@ -715,7 +772,10 @@ public sealed class LegendFounderAiConversationService
                     return new LegendFounderAiChatResponse(
                         true,
                         mode,
-                        accumulatedProviderAnswer,
+                        AppendLearningReceipt(
+                            accumulatedProviderAnswer,
+                            learningMutationReceipt,
+                            automaticNativeGapLearningWindow),
                         null,
                         ResponseAuthority: "OpenAITeacher",
                         Stage: "provider_response");
@@ -783,6 +843,12 @@ public sealed class LegendFounderAiConversationService
                                 successfulGovernedEvidenceTools.Count >=
                                 requiredGovernedEvidenceReads;
                         }
+                    }
+                    else if (IsLearningMutationTool(call.Name))
+                    {
+                        learningMutationReceipt = toolOutput;
+                        learningMutationCompleted =
+                            IsSuccessfulLearningMutationOutput(toolOutput);
                     }
 
                     await ReportProgressAsync(
@@ -1764,6 +1830,49 @@ public sealed class LegendFounderAiConversationService
         }
     }
 
+    private static bool IsSuccessfulLearningMutationOutput(string output)
+    {
+        if (!IsSuccessfulFounderToolOutput(output))
+            return false;
+
+        try
+        {
+            using var document = JsonDocument.Parse(output);
+            return document.RootElement.ValueKind != JsonValueKind.Object ||
+                   !document.RootElement.TryGetProperty("succeeded", out var succeeded) ||
+                   succeeded.ValueKind != JsonValueKind.False;
+        }
+        catch (JsonException)
+        {
+            return true;
+        }
+    }
+
+    private static bool IsLearningMutationTool(string toolName) =>
+        toolName is
+            "legend_submit_machine_learning_candidate" or
+            "legend_submit_founder_seed" or
+            "legend_submit_founder_curriculum";
+
+    private static string AppendLearningReceipt(
+        string answer,
+        string? receipt,
+        bool automaticNativeGapLearningWindow)
+    {
+        if (!string.IsNullOrWhiteSpace(receipt))
+        {
+            return answer.TrimEnd() +
+                   "\n\nLEGEND_GOVERNED_LEARNING_RECEIPT\n" +
+                   receipt.Trim();
+        }
+
+        return automaticNativeGapLearningWindow
+            ? answer.TrimEnd() +
+              "\n\nLEGEND_GOVERNED_LEARNING_RECEIPT\n" +
+              "{\"retained\":false,\"state\":\"NoSupportedProposal\",\"detail\":\"OpenAI answered this escalation but did not submit a supported reusable learning candidate.\"}"
+            : answer;
+    }
+
     private static string MergeProviderAnswerSegment(
         string accumulated,
         string? segment)
@@ -2467,6 +2576,36 @@ Never upgrade an unresolved, rejected or contradicted record merely because it a
                    text.Contains(signal, StringComparison.Ordinal)) &&
                legendSubjects.Any(subject =>
                    text.Contains(subject, StringComparison.Ordinal));
+    }
+
+    private static bool RequestsFounderLearningMutation(
+        IReadOnlyList<LegendFounderAiChatMessage> conversation)
+    {
+        var latest = conversation
+            .Last(message => string.Equals(message.Role, "user", StringComparison.Ordinal))
+            .Content?.Trim()
+            .ToLowerInvariant() ?? string.Empty;
+
+        if (latest.Length == 0)
+            return false;
+
+        var learningAction =
+            latest.Contains("teach", StringComparison.Ordinal) ||
+            latest.Contains("train", StringComparison.Ordinal) ||
+            latest.Contains("submit", StringComparison.Ordinal) ||
+            latest.Contains("retain", StringComparison.Ordinal) ||
+            latest.StartsWith("add ", StringComparison.Ordinal) ||
+            latest.Contains(" add ", StringComparison.Ordinal);
+
+        var learningSubject =
+            latest.Contains("legend", StringComparison.Ordinal) ||
+            latest.Contains("curriculum", StringComparison.Ordinal) ||
+            latest.Contains("machineproposed", StringComparison.Ordinal) ||
+            latest.Contains("machine proposed", StringComparison.Ordinal) ||
+            latest.Contains("learning candidate", StringComparison.Ordinal) ||
+            latest.Contains("training", StringComparison.Ordinal);
+
+        return learningAction && learningSubject;
     }
 
     private static bool RequiresComprehensiveGovernedInspection(
