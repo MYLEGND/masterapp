@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Reflection;
 using AgentPortal.Services;
 using Domain.Messaging;
+using Infrastructure.Messaging;
 using Xunit;
 
 namespace AgentPortal.Tests;
@@ -51,6 +52,48 @@ public sealed class LegendFounderAiConversationRoutingTests
         Assert.NotNull(method);
         IReadOnlyList<LegendFounderAiChatMessage> conversation = [new("user", "Hi")];
         Assert.False(Assert.IsType<bool>(method!.Invoke(null, new object[] { conversation, "teacher" })));
+    }
+
+    [Theory]
+    [InlineData("Train LEGEND on this exact reusable distinction.", true)]
+    [InlineData("Teach Legend using the governed curriculum.", true)]
+    [InlineData("Inspect LEGEND training status without changing anything.", false)]
+    [InlineData("Hello Legend.", false)]
+    public void FounderLearningMutationIntent_IsExplicitAndNatural(
+        string text,
+        bool expected)
+    {
+        var method = typeof(LegendFounderAiConversationService)
+            .GetMethod("RequestsFounderLearningMutation", BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.NotNull(method);
+        IReadOnlyList<LegendFounderAiChatMessage> conversation = [new("user", text)];
+        Assert.Equal(
+            expected,
+            Assert.IsType<bool>(method!.Invoke(null, new object[] { conversation })));
+    }
+
+    [Theory]
+    [InlineData("meaning_graph_component_unknown", true)]
+    [InlineData("meaning_graph_relation_unproven", true)]
+    [InlineData("semantic_transition_not_supported", true)]
+    [InlineData("ambiguous_composed_meaning", false)]
+    [InlineData("contradicted_semantic_transition", false)]
+    public void NativeEscalation_AllowsMissingKnowledgeButNotAmbiguityOrContradiction(
+        string reason,
+        bool expected)
+    {
+        var method = typeof(LegendConnectOperations)
+            .GetMethod("CanEscalateFromUnavailableComposedSource", BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.NotNull(method);
+        var inference = new LegendSemanticTransitionInference(
+            LegendSemanticTransitionInference.InsufficientEvidence,
+            null,
+            0,
+            [reason]);
+
+        Assert.Equal(
+            expected,
+            Assert.IsType<bool>(method!.Invoke(null, new object[] { inference })));
     }
 
     [Theory]

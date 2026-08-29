@@ -494,6 +494,13 @@ internal sealed class LegendFounderToolAuthority
                             components));
                 }
 
+                if (!TryReadMachineSemanticTransitions(
+                        arguments.RootElement,
+                        out var semanticTransitions))
+                {
+                    return """{"error":"invalid_machine_learning_semantic_transitions"}""";
+                }
+
                 var result =
                     await _legend
                         .QueueMachineTeachingProposalAsync(
@@ -505,7 +512,8 @@ internal sealed class LegendFounderToolAuthority
                                 semanticCategory,
                                 rationale,
                                 confidence,
-                                examples),
+                                examples,
+                                semanticTransitions),
                             cancellationToken);
 
                 return SerializeUnbounded(
@@ -1050,7 +1058,7 @@ internal sealed class LegendFounderToolAuthority
                 type = "function",
                 name = "legend_submit_machine_learning_candidate",
                 description =
-                    "Retain reusable machine-derived LANGUAGE teaching from the current conversation in LEGEND's existing MachineProposed lifecycle. This tool does NOT approve, validate, train or promote the material. The existing independent critic and canonical validator remain authoritative. Use only for reusable linguistic knowledge with controlled contrasts; never use it for personal facts, private messages, transient platform facts or unsupported speculation.",
+                    "Retain reusable machine-derived LANGUAGE teaching from the current conversation in LEGEND's existing MachineProposed lifecycle. Conversational learning must include explicit language-neutral semantic_transitions connecting controlled source and result frames. This tool does NOT approve, validate, train or promote the material. The existing independent critic and canonical validator remain authoritative. Use only for reusable linguistic knowledge with controlled contrasts; never use it for personal facts, private messages, transient platform facts or unsupported speculation.",
                 parameters = new
                 {
                     type = "object",
@@ -1164,6 +1172,23 @@ internal sealed class LegendFounderToolAuthority
                                 },
                                 additionalProperties = false
                             }
+                        },
+                        semantic_transitions = new
+                        {
+                            type = new[] { "array", "null" },
+                            minItems = 1,
+                            maxItems = 12,
+                            items = new
+                            {
+                                type = "object",
+                                properties = new
+                                {
+                                    source = SemanticFrameSchema(),
+                                    result = SemanticFrameSchema()
+                                },
+                                required = new[] { "source", "result" },
+                                additionalProperties = false
+                            }
                         }
                     },
                     required = new[]
@@ -1174,7 +1199,8 @@ internal sealed class LegendFounderToolAuthority
                         "semantic_category",
                         "rationale",
                         "confidence",
-                        "examples"
+                        "examples",
+                        "semantic_transitions"
                     },
                     additionalProperties = false
                 },
@@ -1540,6 +1566,91 @@ internal sealed class LegendFounderToolAuthority
         property.TryGetInt32(out var value)
             ? value
             : 0;
+
+    private static bool TryReadMachineSemanticTransitions(
+        JsonElement root,
+        out IReadOnlyList<LegendConnectSemanticTransitionSubmission>? transitions)
+    {
+        transitions = null;
+        if (!root.TryGetProperty("semantic_transitions", out var element) ||
+            element.ValueKind == JsonValueKind.Null)
+        {
+            return true;
+        }
+
+        if (element.ValueKind != JsonValueKind.Array ||
+            element.GetArrayLength() is < 1 or > 12)
+        {
+            return false;
+        }
+
+        var parsed = new List<LegendConnectSemanticTransitionSubmission>();
+        foreach (var item in element.EnumerateArray())
+        {
+            if (!TryReadSemanticFrame(item, "source", out var source) ||
+                !TryReadSemanticFrame(item, "result", out var result))
+            {
+                return false;
+            }
+
+            parsed.Add(new LegendConnectSemanticTransitionSubmission(source, result));
+        }
+
+        transitions = parsed;
+        return true;
+    }
+
+    private static bool TryReadSemanticFrame(
+        JsonElement root,
+        string propertyName,
+        out LegendConnectSemanticFrameSubmission frame)
+    {
+        frame = null!;
+        if (!root.TryGetProperty(propertyName, out var element) ||
+            element.ValueKind != JsonValueKind.Object ||
+            !element.TryGetProperty("dimensions", out var dimensionsElement) ||
+            dimensionsElement.ValueKind != JsonValueKind.Object)
+        {
+            return false;
+        }
+
+        var dimensions = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var property in dimensionsElement.EnumerateObject())
+        {
+            var value = property.Value.ValueKind == JsonValueKind.String
+                ? property.Value.GetString()?.Trim()
+                : null;
+            if (string.IsNullOrWhiteSpace(property.Name) ||
+                string.IsNullOrWhiteSpace(value) ||
+                !dimensions.TryAdd(property.Name.Trim(), value))
+            {
+                return false;
+            }
+        }
+
+        if (dimensions.Count is < 1 or > 12)
+            return false;
+
+        frame = new LegendConnectSemanticFrameSubmission(dimensions);
+        return true;
+    }
+
+    private static object SemanticFrameSchema() => new
+    {
+        type = "object",
+        properties = new
+        {
+            dimensions = new
+            {
+                type = "object",
+                minProperties = 1,
+                maxProperties = 12,
+                additionalProperties = new { type = "string", minLength = 1, maxLength = 160 }
+            }
+        },
+        required = new[] { "dimensions" },
+        additionalProperties = false
+    };
 
     private static object SoftwareRemediationNotAvailable() => new
     {

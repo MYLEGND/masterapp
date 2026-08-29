@@ -420,8 +420,10 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
         // is a semantic fail-closed boundary. An external model may not
         // manufacture an answer across that boundary.
         //
-        // External escalation remains available only when Stage 1 itself
-        // cannot establish reusable source meaning.
+        // External escalation remains available when reusable source meaning
+        // or its required governed transition is missing. Ambiguous,
+        // contradicted, unresolved-content, and unrealizable governed states
+        // remain fail-closed.
         return NativeInferenceUnsupported(
             reasonCode,
             CanEscalateFromUnavailableComposedSource(composed));
@@ -431,7 +433,8 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
         LegendSemanticTransitionInference inference) =>
         inference.Reasons.FirstOrDefault() is
             "meaning_graph_component_unknown" or
-            "meaning_graph_relation_unproven";
+            "meaning_graph_relation_unproven" or
+            "semantic_transition_not_supported";
 
     /// <summary>
     /// Observational Stage 4 boundary. It deliberately returns governed result

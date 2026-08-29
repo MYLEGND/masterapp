@@ -915,6 +915,66 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
         if (expectNative)
             Assert.Equal(prompts.Length, nativePasses);
         _output.WriteLine($"NATIVE PASSES: {nativePasses}/{prompts.Length}");
+
+        // Reproduce the exact live-corpus selection used by the full shadow
+        // diagnostic for its non-conversation reasoning probe. This focused
+        // read-only gate catches the canonical-endpoint projection defect
+        // directly, without rebuilding every live family before each fix.
+        var governedReasoning = await (
+            from transition in db.LegendSemanticTransitionEvidence.AsNoTracking()
+            join sourceExample in db.LegendCurriculumExamples.AsNoTracking()
+                on transition.SourceCurriculumExampleId equals sourceExample.Id
+            join sourceUnit in db.LegendLanguageTextUnits.AsNoTracking()
+                on sourceExample.TextUnitId equals sourceUnit.Id
+            join sourceFamily in db.LegendCurriculumFamilies.AsNoTracking()
+                on sourceExample.CurriculumFamilyId equals sourceFamily.Id
+            where transition.SupersededUtc == null &&
+                transition.SourceLanguageCode == "en" &&
+                transition.ResultLanguageCode == "en" &&
+                transition.ContributionState == "Supported" &&
+                transition.IsHumanVerifiedSupport &&
+                transition.Provenance == LegendConnectKnowledgeProvenance.FounderApproved &&
+                sourceExample.SupersededUtc == null &&
+                sourceUnit.IsTrainingEligible &&
+                !prompts.Contains(sourceUnit.Text) &&
+                !sourceFamily.FamilyKey.StartsWith("conversation.")
+            orderby sourceFamily.FamilyKey, sourceUnit.NormalizedHash
+            select new { sourceUnit.Text, sourceUnit.NormalizedHash })
+            .FirstOrDefaultAsync();
+        Assert.NotNull(governedReasoning);
+
+        var governedNative = await founderLegend.TryInferConversationWithDiscourseAsync(
+            founder,
+            governedReasoning!.Text,
+            Array.Empty<LegendConnectConversationContextItem>(),
+            discourseState: null);
+        var governedReply = await chat.ReplyAsync(
+            founder,
+            new LegendFounderAiChatRequest
+            {
+                Mode = "legend",
+                NativeOnly = true,
+                Messages = [new LegendFounderAiChatMessage("user", governedReasoning.Text)]
+            });
+        var governedReference = "curriculum-reasoning-" + governedReasoning.NormalizedHash[..12];
+        _output.WriteLine($"FOCUSED LIVE CURRICULUM REFERENCE: {governedReference}");
+        _output.WriteLine($"FOCUSED LIVE CURRICULUM SUPPORTED: {governedNative.Supported}");
+        _output.WriteLine($"FOCUSED LIVE CURRICULUM REASON: {governedNative.ReasonCode}");
+        _output.WriteLine($"FOCUSED LIVE CURRICULUM EVIDENCE: {governedNative.EvidenceCount}");
+        if (expectNative)
+        {
+            Assert.True(governedNative.Supported,
+                $"Focused production curriculum inference failed for {governedReference}; " +
+                $"reason={governedNative.ReasonCode}; evidence={governedNative.EvidenceCount}");
+            Assert.True(governedNative.EvidenceCount > 0);
+            Assert.False(governedNative.RequiresEscalation);
+            Assert.False(string.IsNullOrWhiteSpace(governedNative.Answer));
+            Assert.True(governedReply.Succeeded);
+            Assert.Equal("LegendAi", governedReply.ResponseAuthority);
+            Assert.Equal("native_response", governedReply.Stage);
+            Assert.Equal(governedNative.Answer, governedReply.Message);
+        }
+        Assert.Equal(0, factory.CreateClientCalls);
         _output.WriteLine("OPENAI HTTP CALLS: 0");
         _output.WriteLine("PRODUCTION WRITE COMMANDS: 0");
         }

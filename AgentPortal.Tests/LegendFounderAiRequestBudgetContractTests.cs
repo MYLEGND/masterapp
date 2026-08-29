@@ -24,7 +24,11 @@ public sealed class LegendFounderAiRequestBudgetContractTests
         var source = ReadSource("AgentPortal", "Services", "LegendFounderAiConversationService.cs");
 
         Assert.Contains(
-            "requiresGovernedInspection &&\n                    !governedInspectionCompleted &&",
+            "!governedInspectionCompleted ||\n                        (confirmedLearningMutationRequired &&\n                         !learningMutationCompleted) ||\n                        (automaticNativeGapLearningWindow &&\n                         !learningMutationCompleted)",
+            source,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "round < maximumToolRounds - 1",
             source,
             StringComparison.Ordinal);
         Assert.Contains("parallel_tool_calls = allowTools", source, StringComparison.Ordinal);

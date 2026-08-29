@@ -212,6 +212,8 @@ public sealed class LegendFounderAiModeIsolationTests
     [Fact]
     public async Task NativeGap_AutomaticallyRetainsOneMachineProposalWithoutFounderApproval()
     {
+        var candidateId = Guid.Parse("11111111-1111-1111-1111-111111111111");
+        var proposalId = Guid.Parse("22222222-2222-2222-2222-222222222222");
         using var founderEnvironment = new FounderEnvironmentScope();
         await using var db = ControllerTestHelpers.BuildDb();
         var founder = await AddFounderProfileAsync(db);
@@ -237,7 +239,7 @@ public sealed class LegendFounderAiModeIsolationTests
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(new LegendConnectMachineTeachingSubmissionResult(
                 true, false, "AwaitingCritic", null,
-                "Retained as MachineProposed.", Guid.NewGuid(), Guid.NewGuid()));
+                "Retained as MachineProposed.", candidateId, proposalId));
 
         var handler = new FounderAiScenarioHandler(
             ProviderTool("legend_submit_machine_learning_candidate", MachineProposalArguments()),
@@ -250,6 +252,10 @@ public sealed class LegendFounderAiModeIsolationTests
 
         Assert.True(response.Succeeded, Describe(response));
         Assert.Equal("OpenAITeacher", response.ResponseAuthority);
+        Assert.Contains("LEGEND_GOVERNED_LEARNING_RECEIPT", response.Message);
+        Assert.Contains(candidateId.ToString(), response.Message);
+        Assert.Contains(proposalId.ToString(), response.Message);
+        Assert.Contains("AwaitingCritic", response.Message);
         operations.Verify(operation => operation.SubmitMachineTeachingProposalAsync(
             It.IsAny<LegendConnectMachineTeachingSubmission>(),
             It.IsAny<CancellationToken>()), Times.Once);
@@ -258,6 +264,8 @@ public sealed class LegendFounderAiModeIsolationTests
     [Fact]
     public async Task TeacherMode_ExplicitConfirmedTraining_ExecutesCanonicalProposalTool()
     {
+        var candidateId = Guid.Parse("33333333-3333-3333-3333-333333333333");
+        var proposalId = Guid.Parse("44444444-4444-4444-4444-444444444444");
         using var founderEnvironment = new FounderEnvironmentScope();
         await using var db = ControllerTestHelpers.BuildDb();
         var founder = await AddFounderProfileAsync(db);
@@ -277,30 +285,15 @@ public sealed class LegendFounderAiModeIsolationTests
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(new LegendConnectMachineTeachingSubmissionResult(
                 true, false, "AwaitingCritic", null,
-                "Retained as MachineProposed.", Guid.NewGuid(), Guid.NewGuid()));
+                "Retained as MachineProposed.", candidateId, proposalId));
 
         var handler = new FounderAiScenarioHandler(
-            ProviderResponse(new
-            {
-                status = "completed",
-                output = new object[]
-                {
-                    new
-                    {
-                        type = "function_call",
-                        call_id = "tool-call-read",
-                        name = "legend_search_retained_knowledge",
-                        arguments = "{\"query\":\"reusable distinction\"}"
-                    },
-                    new
-                    {
-                        type = "function_call",
-                        call_id = "tool-call-proposal",
-                        name = "legend_submit_machine_learning_candidate",
-                        arguments = MachineProposalArguments()
-                    }
-                }
-            }),
+            ProviderTool(
+                "legend_search_retained_knowledge",
+                "{\"query\":\"reusable distinction\"}"),
+            ProviderTool(
+                "legend_submit_machine_learning_candidate",
+                MachineProposalArguments()),
             ProviderText("The exact teaching family entered the governed critic lifecycle."));
         var service = CreateService(db, operations.Object, handler);
 
@@ -313,6 +306,11 @@ public sealed class LegendFounderAiModeIsolationTests
 
         Assert.True(response.Succeeded, Describe(response));
         Assert.Equal("OpenAITeacher", response.ResponseAuthority);
+        Assert.Equal(3, handler.RequestCount);
+        Assert.Contains("LEGEND_GOVERNED_LEARNING_RECEIPT", response.Message);
+        Assert.Contains(candidateId.ToString(), response.Message);
+        Assert.Contains(proposalId.ToString(), response.Message);
+        Assert.Contains("AwaitingCritic", response.Message);
         operations.Verify(operation => operation.SearchRetainedKnowledgeAsync(
             "reusable distinction",
             null,
@@ -822,9 +820,15 @@ public sealed class LegendFounderAiModeIsolationTests
               "components":[{"dimension":"conversation_function","value":"wellbeing_inquiry","surface_form":"How are you doing"}]
             },
             {
-              "source_text":"How have you been?",
-              "target_text":"¿Cómo has estado?",
-              "components":[{"dimension":"conversation_function","value":"wellbeing_inquiry","surface_form":"How have you been"}]
+              "source_text":"I'm doing well.",
+              "target_text":"Estoy bien.",
+              "components":[{"dimension":"conversation_response","value":"wellbeing_positive","surface_form":"doing well"}]
+            }
+          ],
+          "semantic_transitions":[
+            {
+              "source":{"dimensions":{"conversation_function":"wellbeing_inquiry"}},
+              "result":{"dimensions":{"conversation_response":"wellbeing_positive"}}
             }
           ]
         }

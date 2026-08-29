@@ -1,6 +1,7 @@
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
+using Domain.Messaging;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 
@@ -48,7 +49,8 @@ internal sealed record LegendLanguageTeacherFamilyProposal(
     string SemanticCategory,
     string Rationale,
     decimal Confidence,
-    IReadOnlyList<LegendLanguageTeacherExampleProposal> Examples);
+    IReadOnlyList<LegendLanguageTeacherExampleProposal> Examples,
+    IReadOnlyList<LegendConnectSemanticTransitionSubmission>? SemanticTransitions = null);
 
 internal sealed record LegendLanguageTeacherProposalRequest(
     string SourceLanguageCode,

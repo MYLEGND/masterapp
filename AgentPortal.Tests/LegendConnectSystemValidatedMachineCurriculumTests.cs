@@ -17,6 +17,137 @@ namespace AgentPortal.Tests;
 public sealed class LegendConnectSystemValidatedMachineCurriculumTests
 {
     [Fact]
+    public async Task CanonicalMachineConversationTransition_BecomesBroadGovernedNativeReuse()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var configuration = Configuration();
+        var registry = new LegendLanguageRegistry(db, configuration);
+        var corpus = new LegendConnectCorpusService(
+            db, registry, NullLogger<LegendConnectCorpusService>.Instance);
+        var curriculum = new LegendConnectCurriculumService(db, registry, corpus);
+
+        for (var index = 1; index <= 3; index++)
+        {
+            var submitted = await curriculum.SubmitFounderEnglishBatchAsync(
+                new LegendConnectCurriculumBatchSubmission(
+                    $"machine.native.primitives.{index}",
+                    "Founder-controlled native semantic primitives",
+                    [
+                        new LegendConnectCurriculumExampleSubmission(
+                            "Hello.",
+                            new Dictionary<string, string>
+                            {
+                                ["conversation_function"] = "greeting"
+                            },
+                            new LegendConnectMeaningGraphSubmission(
+                                [new LegendConnectMeaningNodeSubmission(
+                                    "source", "conversation_function", "greeting", "Hello")],
+                                [])),
+                        new LegendConnectCurriculumExampleSubmission(
+                            "Welcome.",
+                            new Dictionary<string, string>
+                            {
+                                ["conversation_response"] = "welcome"
+                            },
+                            new LegendConnectMeaningGraphSubmission(
+                                [new LegendConnectMeaningNodeSubmission(
+                                    "result", "conversation_response", "welcome", "Welcome")],
+                                []))
+                    ]));
+            Assert.True(submitted.Succeeded, submitted.Message);
+        }
+
+        var founderFamilyIds = await db.LegendCurriculumFamilies
+            .Where(item => item.FamilyKey.StartsWith("machine.native.primitives."))
+            .Select(item => item.Id)
+            .ToListAsync();
+        foreach (var familyId in founderFamilyIds)
+        {
+            await curriculum.ReevaluateHistoricalWorkItemAsync(
+                LegendConnectLanguageIntelligenceReevaluationPhases.SourceFamilies,
+                familyId,
+                "en");
+        }
+
+        var family = new LegendLanguageTeacherFamilyProposal(
+            "machine.native.greeting.transition",
+            "Conversation",
+            "Critic-approved lower-tier transition over established Founder semantic primitives.",
+            0.98m,
+            [
+                new LegendLanguageTeacherExampleProposal(
+                    "Hello.", null,
+                    [new LegendLanguageTeacherSemanticComponent(
+                        "conversation_function", "greeting", "Hello")]),
+                new LegendLanguageTeacherExampleProposal(
+                    "Welcome.", null,
+                    [new LegendLanguageTeacherSemanticComponent(
+                        "conversation_response", "welcome", "Welcome")])
+            ],
+            [new LegendConnectSemanticTransitionSubmission(
+                new LegendConnectSemanticFrameSubmission(
+                    new Dictionary<string, string> { ["conversation_function"] = "greeting" }),
+                new LegendConnectSemanticFrameSubmission(
+                    new Dictionary<string, string> { ["conversation_response"] = "welcome" }))]);
+        var payload = JsonSerializer.Serialize(family);
+        var candidate = new LegendCorpusCandidate
+        {
+            Id = Guid.NewGuid(),
+            IdempotencyKey = "machine-native-transition-candidate",
+            SourceLanguageCode = "en",
+            TargetLanguageCode = "es",
+            SourceText = "Hello.",
+            SourceTextHash = LegendLanguageIdentity.TextHash("Hello."),
+            Category = "Conversation",
+            Provenance = "MachineConversation",
+            IsApproved = false,
+            Priority = 0,
+            ProcessingState = "ConversationProposal",
+            TeacherProposalProcessingState = "AwaitingCanonicalValidation",
+            CreatedUtc = DateTime.UtcNow
+        };
+        var proposal = new LegendLanguageTeacherProposal
+        {
+            Id = Guid.NewGuid(),
+            CorpusCandidateId = candidate.Id,
+            ProposalIdentity = LegendLanguageIdentity.TextHash("machine-native-transition|" + payload),
+            PairKey = "en:es",
+            SourceLanguageCode = "en",
+            TargetLanguageCode = "es",
+            EvidenceIdentityHash = LegendLanguageIdentity.TextHash("machine-native-transition-evidence"),
+            FamilyKey = family.FamilyKey,
+            SemanticCategory = family.SemanticCategory,
+            Rationale = family.Rationale,
+            Confidence = family.Confidence,
+            ProposalPayloadJson = payload,
+            CriticApproved = true,
+            CriticConfidence = 0.98m,
+            CriticReasonCodesJson = "[]",
+            ValidationState = "SystemValidated",
+            Provenance = "SystemValidatedMachine",
+            CanonicalValidationAttemptCount = 1,
+            CanonicalValidatedUtc = DateTime.UtcNow,
+            CreatedUtc = DateTime.UtcNow,
+            UpdatedUtc = DateTime.UtcNow
+        };
+        db.AddRange(candidate, proposal);
+        await db.SaveChangesAsync();
+
+        Assert.True(await curriculum.ProcessOneSystemValidatedMachineProposalAsync());
+        var inference = await curriculum.TryInferComposedSemanticTransitionAsync(
+            "en", "Hello.", [], null);
+
+        Assert.Equal(LegendSemanticTransitionInference.Supported, inference.State);
+        Assert.False(string.IsNullOrWhiteSpace(inference.RealizedText));
+        Assert.Contains("broad_governed_semantic_transition", inference.Reasons);
+        var transition = Assert.Single(await db.LegendSemanticTransitionEvidence
+            .Where(item => item.Provenance == "SystemValidatedMachine")
+            .ToListAsync());
+        Assert.False(transition.IsHumanVerifiedSupport);
+        Assert.Equal("Supported", transition.ContributionState);
+    }
+
+    [Fact]
     public async Task CanonicalMachineProposal_AdmitsWithoutFounderOrProviderLaundering()
     {
         await using var db =
