@@ -21,6 +21,7 @@ internal static class LegendModelCapabilityKeys
     internal const string Translation = "translation";
     internal const string SemanticTransition = "governed.semantic_transition";
     internal const string GovernedReasoning = "governed.reasoning";
+    internal const string MultimodalUnderstanding = "governed.multimodal_understanding";
 }
 
 internal sealed record LegendModelCapabilityEvaluationPolicy(
@@ -53,6 +54,50 @@ internal static class LegendModelCapabilityEvaluationPolicies
         Registered.TryGetValue(capabilityKey, out policy!);
 }
 
+internal sealed record LegendModelEvidencePart(
+    string Modality,
+    string ContentReference,
+    string MediaType,
+    string EvidenceIdentity,
+    string ContentSha256,
+    string Provenance,
+    string ContradictionState = "Clear");
+
+/// <summary>
+/// Single fail-closed admission predicate for model-visible non-text evidence.
+/// A transport cannot turn an ungoverned attachment into task context.
+/// </summary>
+internal static class LegendModelEvidenceAdmission
+{
+    internal static bool IsAdmitted(LegendModelEvidencePart part)
+    {
+        if (string.IsNullOrWhiteSpace(part.EvidenceIdentity) ||
+            part.EvidenceIdentity.Length > 256 ||
+            string.IsNullOrWhiteSpace(part.MediaType) ||
+            !string.Equals(part.ContradictionState, "Clear", StringComparison.Ordinal) ||
+            part.ContentSha256.Length != 64 ||
+            part.ContentSha256.Any(character =>
+                character is not (>= '0' and <= '9') and
+                not (>= 'a' and <= 'f')) ||
+            part.Provenance is not ("FounderApproved" or "HumanVerified" or "SystemValidatedMachine"))
+        {
+            return false;
+        }
+
+        return part.Modality switch
+        {
+            "image" =>
+                part.ContentReference.StartsWith("https://", StringComparison.Ordinal) ||
+                part.ContentReference.StartsWith("data:image/", StringComparison.Ordinal) ||
+                part.ContentReference.StartsWith("file-", StringComparison.Ordinal),
+            "file" =>
+                part.ContentReference.StartsWith("data:", StringComparison.Ordinal) ||
+                part.ContentReference.StartsWith("file-", StringComparison.Ordinal),
+            _ => false
+        };
+    }
+}
+
 /// <summary>
 /// Provider-neutral task boundary for a governed LEGEND model. The active
 /// capability authority supplies the instructions and output contract; the
@@ -64,7 +109,8 @@ internal sealed record LegendModelTaskRequest(
     string Input,
     string OutputContract,
     string? SourceLanguageCode = null,
-    string? TargetLanguageCode = null)
+    string? TargetLanguageCode = null,
+    IReadOnlyList<LegendModelEvidencePart>? EvidenceParts = null)
 {
     internal static LegendModelTaskRequest Translation(
         string sourceLanguageCode,
@@ -250,15 +296,25 @@ internal sealed class OpenAiLegendConnectModelInferenceTransport
         LegendModelTaskRequest task,
         CancellationToken cancellationToken = default)
     {
+        var evidenceParts = task.EvidenceParts ?? Array.Empty<LegendModelEvidencePart>();
+        if (string.IsNullOrWhiteSpace(task.CapabilityKey) ||
+            string.IsNullOrWhiteSpace(task.Instructions) ||
+            string.IsNullOrWhiteSpace(task.Input) ||
+            string.IsNullOrWhiteSpace(task.OutputContract) ||
+            evidenceParts.Count > 12 ||
+            evidenceParts.Any(part => !LegendModelEvidenceAdmission.IsAdmitted(part)))
+        {
+            return new(
+                false,
+                null,
+                "model_inference_governed_evidence_rejected");
+        }
+
         if (!TryGetConfiguration(
                 out var endpoint,
                 out var key) ||
             string.IsNullOrWhiteSpace(model) ||
-            model.Length > 200 ||
-            string.IsNullOrWhiteSpace(task.CapabilityKey) ||
-            string.IsNullOrWhiteSpace(task.Instructions) ||
-            string.IsNullOrWhiteSpace(task.Input) ||
-            string.IsNullOrWhiteSpace(task.OutputContract))
+            model.Length > 200)
         {
             return new(
                 false,
@@ -266,21 +322,19 @@ internal sealed class OpenAiLegendConnectModelInferenceTransport
                 "model_inference_provider_unavailable");
         }
 
-        return await SendTextAsync(
+        return await SendTaskAsync(
             endpoint,
             key,
             model,
-            task.Instructions,
-            task.Input,
+            task,
             cancellationToken);
     }
 
-    private async Task<LegendModelEvaluationGenerationResult> SendTextAsync(
+    private async Task<LegendModelEvaluationGenerationResult> SendTaskAsync(
         Uri endpoint,
         string key,
         string model,
-        string instructions,
-        string input,
+        LegendModelTaskRequest task,
         CancellationToken cancellationToken)
     {
         try
@@ -291,8 +345,8 @@ internal sealed class OpenAiLegendConnectModelInferenceTransport
                     model,
                     store = false,
                     max_output_tokens = 1200,
-                    instructions,
-                    input
+                    instructions = task.Instructions,
+                    input = BuildProviderInput(task)
                 };
 
             using var request =
@@ -391,6 +445,64 @@ internal sealed class OpenAiLegendConnectModelInferenceTransport
         }
     }
 
+
+    private static object BuildProviderInput(LegendModelTaskRequest task)
+    {
+        var evidenceParts =
+            task.EvidenceParts ?? Array.Empty<LegendModelEvidencePart>();
+        if (evidenceParts.Count == 0)
+            return task.Input;
+
+        var content = new List<Dictionary<string, object?>>
+        {
+            new()
+            {
+                ["type"] = "input_text",
+                ["text"] = task.Input
+            }
+        };
+
+        foreach (var part in evidenceParts)
+        {
+            if (part.Modality == "image")
+            {
+                var image = new Dictionary<string, object?>
+                {
+                    ["type"] = "input_image",
+                    ["detail"] = "high"
+                };
+                if (part.ContentReference.StartsWith("file-", StringComparison.Ordinal))
+                    image["file_id"] = part.ContentReference;
+                else
+                    image["image_url"] = part.ContentReference;
+                content.Add(image);
+                continue;
+            }
+
+            var file = new Dictionary<string, object?>
+            {
+                ["type"] = "input_file",
+                ["detail"] = part.MediaType == "application/pdf" ? "high" : null
+            };
+            if (part.ContentReference.StartsWith("file-", StringComparison.Ordinal))
+                file["file_id"] = part.ContentReference;
+            else
+            {
+                file["filename"] = $"governed-evidence-{part.EvidenceIdentity}";
+                file["file_data"] = part.ContentReference;
+            }
+            content.Add(file);
+        }
+
+        return new object[]
+        {
+            new Dictionary<string, object?>
+            {
+                ["role"] = "user",
+                ["content"] = content
+            }
+        };
+    }
 
     private bool TryGetConfiguration(
         out Uri endpoint,
