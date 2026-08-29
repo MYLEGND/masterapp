@@ -1,0 +1,1 @@
+This transient synchronization marker exists only to invoke the repository's canonical pull-request validation event. It must be deleted before validation completes and must never enter production.
