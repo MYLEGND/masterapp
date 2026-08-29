@@ -640,7 +640,9 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
         var readOnlyGuard = new ReadOnlyLegendDbCommandInterceptor();
         await using var db = new MasterAppDbContext(
             new DbContextOptionsBuilder<MasterAppDbContext>()
-                .UseSqlServer(connection.ConnectionString)
+                .UseSqlServer(
+                    connection.ConnectionString,
+                    sql => sql.CommandTimeout(180))
                 .UseQueryTrackingBehavior(QueryTrackingBehavior.NoTracking)
                 .AddInterceptors(readOnlyGuard)
                 .Options);
@@ -3208,7 +3210,12 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
             ? "SHADOW BROAD-GOVERNED NATIVE PROMPT: not applicable; the live snapshot exposes no end-to-end broad-only source endpoint."
             : $"SHADOW BROAD-GOVERNED NATIVE PROMPT: {broadGovernedPrompt.Reference}");
 
-        var governedReasoning = await (
+        // Transition rows are governed evidence, but they are not a second
+        // serving authority. Select the extra curriculum-reasoning endpoint
+        // by asking the unchanged native authority itself; this prevents the
+        // proof from duplicating eligibility rules or asserting that an
+        // ambiguous source endpoint must be served.
+        var governedReasoningCandidates = await (
             from transition in shadow.LegendSemanticTransitionEvidence.AsNoTracking()
             join source in shadow.LegendCurriculumExamples.AsNoTracking()
                 on transition.SourceCurriculumExampleId equals source.Id
@@ -3224,8 +3231,38 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
                 !knownGreetingTexts.Contains(unit.Text) &&
                 !family.FamilyKey.StartsWith("conversation.")
             orderby family.FamilyKey, unit.NormalizedHash
-            select new { unit.Text, unit.NormalizedHash }).FirstOrDefaultAsync();
+            select new { unit.Text, unit.NormalizedHash })
+            .Distinct()
+            .Take(128)
+            .ToListAsync();
+        ShadowPrompt? governedReasoning = null;
+        foreach (var candidate in governedReasoningCandidates)
+        {
+            var native = await founderLegend.TryInferConversationWithDiscourseAsync(
+                founder,
+                candidate.Text,
+                Array.Empty<LegendConnectConversationContextItem>(),
+                discourseState: null);
+            if (!native.Supported ||
+                native.EvidenceCount <= 0 ||
+                native.RequiresEscalation ||
+                string.IsNullOrWhiteSpace(native.Answer) ||
+                native.EvidenceStandard == "Unavailable")
+            {
+                continue;
+            }
+
+            governedReasoning = new(
+                "curriculum-reasoning-" + candidate.NormalizedHash[..12],
+                candidate.Text,
+                true,
+                native.EvidenceStandard);
+            break;
+        }
         Assert.NotNull(governedReasoning);
+        _output.WriteLine(
+            $"SHADOW GOVERNED REASONING PROMPT: {governedReasoning!.Reference}; " +
+            $"standard={governedReasoning.ExpectedEvidenceStandard}");
 
         var prompts = new List<ShadowPrompt>(LiveFounderNativePrompts)
         {
