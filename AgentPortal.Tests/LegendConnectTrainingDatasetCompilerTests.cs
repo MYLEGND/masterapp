@@ -237,6 +237,7 @@ public sealed class LegendConnectTrainingDatasetCompilerTests
         });
 
         const string sourceFrame = "{\"state\":\"observed\"}";
+        const string intermediateFrame = "{\"state\":\"verified\"}";
         const string resultFrame = "{\"state\":\"resolved\"}";
         for (var index = 0; index < 3; index++)
         {
@@ -250,6 +251,11 @@ public sealed class LegendConnectTrainingDatasetCompilerTests
                 $"Observed state {index}",
                 $"semantic-source-{index}",
                 "FounderApproved");
+            var intermediateUnit = Unit(
+                "en",
+                $"Verified state {index}",
+                $"semantic-intermediate-{index}",
+                "FounderApproved");
             var resultUnit = Unit(
                 "en",
                 $"Resolved state {index}",
@@ -262,6 +268,13 @@ public sealed class LegendConnectTrainingDatasetCompilerTests
                 LanguageCode = "en",
                 Provenance = "FounderApproved"
             };
+            var intermediateExample = new LegendCurriculumExample
+            {
+                CurriculumFamilyId = family.Id,
+                TextUnitId = intermediateUnit.Id,
+                LanguageCode = "en",
+                Provenance = "FounderApproved"
+            };
             var resultExample = new LegendCurriculumExample
             {
                 CurriculumFamilyId = family.Id,
@@ -270,23 +283,47 @@ public sealed class LegendConnectTrainingDatasetCompilerTests
                 Provenance = "FounderApproved"
             };
 
-            db.AddRange(family, sourceUnit, resultUnit, sourceExample, resultExample);
-            db.Add(new LegendSemanticTransitionEvidence
-            {
-                TransitionSignature = "semantic-transition",
-                SourceSemanticFrameSignature = "source-frame",
-                ResultSemanticFrameSignature = "result-frame",
-                SourceSemanticFrame = sourceFrame,
-                ResultSemanticFrame = resultFrame,
-                SourceLanguageCode = "en",
-                ResultLanguageCode = "en",
-                SourceCurriculumExampleId = sourceExample.Id,
-                ResultCurriculumExampleId = resultExample.Id,
-                IndependentSourceIdentity = $"independent-{index}",
-                ContributionState = "Supported",
-                IsHumanVerifiedSupport = true,
-                Provenance = "FounderApproved"
-            });
+            db.AddRange(
+                family,
+                sourceUnit,
+                intermediateUnit,
+                resultUnit,
+                sourceExample,
+                intermediateExample,
+                resultExample);
+            db.AddRange(
+                new LegendSemanticTransitionEvidence
+                {
+                    TransitionSignature = "observe-to-verify",
+                    SourceSemanticFrameSignature = "source-frame",
+                    ResultSemanticFrameSignature = "intermediate-frame",
+                    SourceSemanticFrame = sourceFrame,
+                    ResultSemanticFrame = intermediateFrame,
+                    SourceLanguageCode = "en",
+                    ResultLanguageCode = "en",
+                    SourceCurriculumExampleId = sourceExample.Id,
+                    ResultCurriculumExampleId = intermediateExample.Id,
+                    IndependentSourceIdentity = $"first-independent-{index}",
+                    ContributionState = "Supported",
+                    IsHumanVerifiedSupport = true,
+                    Provenance = "FounderApproved"
+                },
+                new LegendSemanticTransitionEvidence
+                {
+                    TransitionSignature = "verify-to-resolve",
+                    SourceSemanticFrameSignature = "intermediate-frame",
+                    ResultSemanticFrameSignature = "result-frame",
+                    SourceSemanticFrame = intermediateFrame,
+                    ResultSemanticFrame = resultFrame,
+                    SourceLanguageCode = "en",
+                    ResultLanguageCode = "en",
+                    SourceCurriculumExampleId = intermediateExample.Id,
+                    ResultCurriculumExampleId = resultExample.Id,
+                    IndependentSourceIdentity = $"second-independent-{index}",
+                    ContributionState = "Supported",
+                    IsHumanVerifiedSupport = true,
+                    Provenance = "FounderApproved"
+                });
         }
 
         await db.SaveChangesAsync();
@@ -294,15 +331,22 @@ public sealed class LegendConnectTrainingDatasetCompilerTests
         var manifest =
             await new LegendConnectTrainingDatasetCompiler(db)
                 .CompileAsync();
-
-        var semantic = manifest.Training
+        var all = manifest.Training
             .Concat(manifest.HeldOut)
+            .ToArray();
+        var semantic = all
             .Where(item =>
                 item.CapabilityKey ==
                     LegendModelCapabilityKeys.SemanticTransition)
             .ToArray();
+        var reasoning = all
+            .Where(item =>
+                item.CapabilityKey ==
+                    LegendModelCapabilityKeys.GovernedReasoning)
+            .ToArray();
 
-        Assert.Equal(3, semantic.Length);
+        Assert.Equal(6, semantic.Length);
+        Assert.Equal(3, reasoning.Length);
         Assert.All(semantic, item =>
         {
             Assert.Equal(
@@ -311,6 +355,20 @@ public sealed class LegendConnectTrainingDatasetCompilerTests
             Assert.Contains(
                 "transition_signature",
                 item.SourceText,
+                StringComparison.Ordinal);
+        });
+        Assert.All(reasoning, item =>
+        {
+            Assert.Equal(
+                "governed_final_state_only",
+                item.OutputContract);
+            Assert.Contains(
+                "transition_path",
+                item.SourceText,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "Resolved state",
+                item.TargetText,
                 StringComparison.Ordinal);
             Assert.DoesNotContain(
                 "Translate from",
