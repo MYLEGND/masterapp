@@ -54,8 +54,12 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.core.content.ContextCompat
+import androidx.fragment.app.FragmentActivity
 import com.mylegnd.legend.registered.LegendContainer
 import com.mylegnd.legend.registered.LegendViewModelFactory
 import com.mylegnd.legend.registered.core.design.LegendColors
@@ -87,6 +91,8 @@ import com.mylegnd.legend.registered.core.session.ActiveLegendSession
 import com.mylegnd.legend.registered.core.session.SignedInLegendAccount
 import com.mylegnd.legend.registered.core.session.SessionState
 import com.mylegnd.legend.registered.core.session.SessionViewModel
+import com.mylegnd.legend.registered.core.security.FinancialReportingAccessAuthenticator
+import com.mylegnd.legend.registered.core.security.FinancialReportingAccessResult
 import com.mylegnd.legend.registered.data.FinancialRepository
 import com.mylegnd.legend.registered.data.LoadState
 import com.mylegnd.legend.registered.feature.*
@@ -4772,8 +4778,15 @@ private fun AccountScreen(
         modifier = Modifier.fillMaxSize(),
     ) { page ->
         if (page == 1) {
-            FinancialScreen(financialRepository, participantType) {
-                profilePagerScope.launch { profilePagerState.animateScrollToPage(0) }
+            FinancialReportingGate(
+                isActive = financial,
+                backToProfile = {
+                    profilePagerScope.launch { profilePagerState.animateScrollToPage(0) }
+                },
+            ) {
+                FinancialScreen(financialRepository, participantType) {
+                    profilePagerScope.launch { profilePagerState.animateScrollToPage(0) }
+                }
             }
         } else {
         when (profile) {
@@ -6114,6 +6127,143 @@ private fun DeletionDialog(onDismiss: () -> Unit, submit: (String) -> Unit) {
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
     )
+}
+
+private enum class FinancialReportingGateState {
+    Locked,
+    Authenticating,
+    Denied,
+    Unavailable,
+    Granted,
+}
+
+/**
+ * Keeps financial reporting and its view model out of composition until the
+ * Android system has authenticated the device owner. The gate relocks as soon
+ * as the app leaves the foreground, so returning to an open finance page never
+ * exposes its contents without another device verification.
+ */
+@Composable
+private fun FinancialReportingGate(
+    isActive: Boolean,
+    backToProfile: () -> Unit,
+    content: @Composable () -> Unit,
+) {
+    val activity = LocalActivity.current as? FragmentActivity
+    val lifecycleOwner = LocalLifecycleOwner.current
+    val authenticator = remember { FinancialReportingAccessAuthenticator() }
+    var state by remember { mutableStateOf(FinancialReportingGateState.Locked) }
+    var authenticationAttempt by remember { mutableIntStateOf(0) }
+    var securityEpoch by remember { mutableIntStateOf(0) }
+
+    DisposableEffect(lifecycleOwner, isActive) {
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_STOP -> {
+                    state = FinancialReportingGateState.Locked
+                    securityEpoch += 1
+                }
+
+                Lifecycle.Event.ON_RESUME -> {
+                    if (isActive) authenticationAttempt += 1
+                }
+
+                else -> Unit
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    LaunchedEffect(isActive, authenticationAttempt, securityEpoch) {
+        if (!isActive) {
+            state = FinancialReportingGateState.Locked
+            return@LaunchedEffect
+        }
+        if (lifecycleOwner.lifecycle.currentState != Lifecycle.State.RESUMED) return@LaunchedEffect
+        val host = activity ?: run {
+            state = FinancialReportingGateState.Unavailable
+            return@LaunchedEffect
+        }
+
+        state = FinancialReportingGateState.Authenticating
+        val activeEpoch = securityEpoch
+        state = when (authenticator.authenticate(host)) {
+            FinancialReportingAccessResult.Granted -> {
+                if (isActive &&
+                    lifecycleOwner.lifecycle.currentState == Lifecycle.State.RESUMED &&
+                    activeEpoch == securityEpoch
+                ) {
+                    FinancialReportingGateState.Granted
+                } else {
+                    FinancialReportingGateState.Locked
+                }
+            }
+
+            FinancialReportingAccessResult.Denied -> FinancialReportingGateState.Denied
+            FinancialReportingAccessResult.Unavailable -> FinancialReportingGateState.Unavailable
+        }
+    }
+
+    if (state == FinancialReportingGateState.Granted) {
+        content()
+    } else {
+        FinancialReportingLockedScreen(
+            state = state,
+            retry = { authenticationAttempt += 1 },
+            backToProfile = backToProfile,
+        )
+    }
+}
+
+@Composable
+private fun FinancialReportingLockedScreen(
+    state: FinancialReportingGateState,
+    retry: () -> Unit,
+    backToProfile: () -> Unit,
+) {
+    val detail = when (state) {
+        FinancialReportingGateState.Locked -> "Use Face ID or your device PIN, pattern, or password before financial information is shown."
+        FinancialReportingGateState.Authenticating -> "Waiting for device authentication."
+        FinancialReportingGateState.Denied -> "Financial reporting remains locked until device authentication succeeds."
+        FinancialReportingGateState.Unavailable -> "Set up a device screen lock to access financial reporting."
+        FinancialReportingGateState.Granted -> ""
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(LegendColors.Canvas)
+            .padding(horizontal = LegendSpacing.PageHorizontal),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+    ) {
+        Icon(
+            Icons.Default.Shield,
+            contentDescription = null,
+            tint = LegendColors.Gold,
+            modifier = Modifier.size(42.dp),
+        )
+        Spacer(Modifier.height(LegendSpacing.Md))
+        Text("Financial reporting is protected", style = LegendTypography.Section, color = LegendColors.TextPrimary)
+        Spacer(Modifier.height(LegendSpacing.Xs))
+        Text(
+            detail,
+            style = LegendTypography.Supporting,
+            color = LegendColors.TextSecondary,
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+        )
+        Spacer(Modifier.height(LegendSpacing.Md))
+        if (state == FinancialReportingGateState.Authenticating) {
+            CircularProgressIndicator(color = LegendColors.Gold)
+        } else {
+            LegendPrimaryButton("Authenticate", onClick = retry)
+        }
+        Spacer(Modifier.height(LegendSpacing.Sm))
+        TextButton(onClick = backToProfile) {
+            Text("Back to profile", color = LegendColors.Navy)
+        }
+    }
 }
 
 @Composable
