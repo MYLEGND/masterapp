@@ -333,6 +333,43 @@ public sealed class LegendConnectSemanticSpanGroundingTests
     }
 
     [Fact]
+    public async Task ExactCanonicalEndpoint_RemainsConsumableWhenAnotherConnectedGraphDominatesTheSameSurface()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var fixture = CreateFixture(db);
+
+        for (var family = 1; family <= 3; family++)
+        {
+            var canonical = await fixture.Curriculum.SubmitFounderEnglishBatchAsync(
+                ExactAtomicEndpointFamily(family));
+            Assert.True(canonical.Succeeded, canonical.Message);
+            var dense = await fixture.Curriculum.SubmitFounderEnglishBatchAsync(
+                ExactDenseConnectedGraphFamily(family));
+            Assert.True(dense.Succeeded, dense.Message);
+        }
+
+        var graph = await fixture.Operations.AnalyzeReusableMeaningGraphAsync("Review the cost.");
+        Assert.True(graph.IsComposed, graph.ReasonCode);
+        Assert.NotEmpty(graph.Relations);
+        Assert.Contains(graph.Nodes, item =>
+            item.SemanticDimension == "task" && item.SemanticValue == "cost_review");
+
+        var plan = await fixture.Operations.TryPlanConversationAsync(
+            "Review the cost.", new LegendConnectDiscourseStateSnapshot([]));
+
+        Assert.True(plan.Supported, plan.ReasonCode);
+        var snapshot = Assert.IsType<LegendConnectResponseMeaningPlanSnapshot>(plan.Plan);
+        Assert.Equal("cost_review_response", snapshot.ResultDimensions["conversation_function"]);
+        Assert.Equal("HigherStandard", snapshot.EvidenceStandard);
+
+        var native = await fixture.Operations.TryInferConversationWithDiscourseAsync(
+            "Review the cost.", [], new LegendConnectDiscourseStateSnapshot([]));
+        Assert.True(native.Supported, native.ReasonCode);
+        Assert.True(native.EvidenceCount >= 3);
+        Assert.False(native.RequiresEscalation);
+    }
+
+    [Fact]
     public async Task GovernedExecutableProjection_FailsClosedWhenOmittedMetadataCouldChangeTheResult()
     {
         await using var db = ControllerTestHelpers.BuildDb();
@@ -1455,6 +1492,66 @@ public sealed class LegendConnectSemanticSpanGroundingTests
                 new LegendConnectCurriculumExampleSubmission(
                     $"Founder conflicting control {family}.",
                     new Dictionary<string, string> { ["control"] = $"conflict-{family}" })
+            ]);
+
+    private static LegendConnectCurriculumBatchSubmission ExactAtomicEndpointFamily(int family) =>
+        new(
+            $"grounding.exact-atomic-endpoint.{family}",
+            "Exact canonical source endpoint remains independently executable",
+            [
+                new LegendConnectCurriculumExampleSubmission(
+                    "Review the cost.",
+                    new Dictionary<string, string> { ["task"] = "cost_review" },
+                    new LegendConnectMeaningGraphSubmission(
+                        [new LegendConnectMeaningNodeSubmission(
+                            "task", "task", "cost_review", "Review the cost")],
+                        [])),
+                new LegendConnectCurriculumExampleSubmission(
+                    $"Founder cost review response {family}.",
+                    new Dictionary<string, string>
+                    {
+                        ["conversation_function"] = "cost_review_response"
+                    },
+                    new LegendConnectMeaningGraphSubmission(
+                        [new LegendConnectMeaningNodeSubmission(
+                            "response", "conversation_function", "cost_review_response",
+                            $"Founder cost review response {family}")],
+                        []))
+            ],
+            [new LegendConnectSemanticTransitionSubmission(
+                new LegendConnectSemanticFrameSubmission(new Dictionary<string, string>
+                {
+                    ["task"] = "cost_review"
+                }),
+                new LegendConnectSemanticFrameSubmission(new Dictionary<string, string>
+                {
+                    ["conversation_function"] = "cost_review_response"
+                }))]);
+
+    private static LegendConnectCurriculumBatchSubmission ExactDenseConnectedGraphFamily(int family) =>
+        new(
+            $"grounding.exact-dense-connected.{family}",
+            "Independent connected observations coexist on the exact canonical surface",
+            [
+                new LegendConnectCurriculumExampleSubmission(
+                    "Review the cost.",
+                    new Dictionary<string, string>
+                    {
+                        ["conversation_function"] = "evidence_question",
+                        ["test"] = "probe"
+                    },
+                    new LegendConnectMeaningGraphSubmission(
+                        [
+                            new LegendConnectMeaningNodeSubmission(
+                                "question", "conversation_function", "evidence_question", "Review"),
+                            new LegendConnectMeaningNodeSubmission(
+                                "probe", "test", "probe", "cost")
+                        ],
+                        [new LegendConnectMeaningRelationSubmission(
+                            "question", "uses", "probe")])),
+                new LegendConnectCurriculumExampleSubmission(
+                    $"Founder dense graph control {family}.",
+                    new Dictionary<string, string> { ["control"] = $"dense-{family}" })
             ]);
 
     private static LegendConnectCurriculumBatchSubmission
