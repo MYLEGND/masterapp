@@ -305,14 +305,21 @@ internal sealed class LegendConnectTrainingDatasetCompiler
         string scopeKey,
         CancellationToken cancellationToken)
     {
-        if (!string.Equals(scopeKey, "Global", StringComparison.Ordinal) &&
-            !string.Equals(
+        var includeSemanticTransitions =
+            string.Equals(scopeKey, "Global", StringComparison.Ordinal) ||
+            string.Equals(
                 scopeKey,
                 $"capability:{LegendModelCapabilityKeys.SemanticTransition}",
-                StringComparison.Ordinal))
-        {
+                StringComparison.Ordinal);
+        var includeGovernedReasoning =
+            string.Equals(scopeKey, "Global", StringComparison.Ordinal) ||
+            string.Equals(
+                scopeKey,
+                $"capability:{LegendModelCapabilityKeys.GovernedReasoning}",
+                StringComparison.Ordinal);
+
+        if (!includeSemanticTransitions && !includeGovernedReasoning)
             return;
-        }
 
         var observations = await (
             from transition in _db.Set<LegendSemanticTransitionEvidence>()
@@ -361,6 +368,7 @@ internal sealed class LegendConnectTrainingDatasetCompiler
             .SelectMany(group => group.Select(item => item.Transition.Id))
             .ToHashSet();
 
+        if (includeSemanticTransitions)
         foreach (var item in observations)
         {
             if (!eligibleTransitionIds.Contains(item.Transition.Id))
@@ -409,6 +417,113 @@ internal sealed class LegendConnectTrainingDatasetCompiler
                     LegendModelCapabilityKeys.SemanticTransition,
                     "Apply only the supplied governed semantic transition. Return the resolved governed state only.",
                     "governed_state_only"));
+        }
+
+        if (!includeGovernedReasoning)
+            return;
+
+        var eligibleGroups = observations
+            .Where(item => eligibleTransitionIds.Contains(item.Transition.Id))
+            .GroupBy(
+                item => item.Transition.TransitionSignature,
+                StringComparer.Ordinal)
+            .Select(group => new
+            {
+                Signature = group.Key,
+                SourceFrame = group.First().Transition.SourceSemanticFrame,
+                ResultFrame = group.First().Transition.ResultSemanticFrame,
+                SourceLanguageCode = group.First().Transition.SourceLanguageCode,
+                ResultLanguageCode = group.First().Transition.ResultLanguageCode,
+                Items = group
+                    .OrderBy(
+                        item => item.Transition.IndependentSourceIdentity,
+                        StringComparer.Ordinal)
+                    .ThenBy(item => item.Transition.Id)
+                    .ToArray()
+            })
+            .OrderBy(item => item.Signature, StringComparer.Ordinal)
+            .ToArray();
+
+        foreach (var firstGroup in eligibleGroups)
+        foreach (var secondGroup in eligibleGroups)
+        {
+            if (string.Equals(
+                    firstGroup.Signature,
+                    secondGroup.Signature,
+                    StringComparison.Ordinal) ||
+                !string.Equals(
+                    firstGroup.ResultFrame,
+                    secondGroup.SourceFrame,
+                    StringComparison.Ordinal) ||
+                !string.Equals(
+                    firstGroup.ResultLanguageCode,
+                    secondGroup.SourceLanguageCode,
+                    StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            var exampleCount = Math.Min(
+                firstGroup.Items.Length,
+                secondGroup.Items.Length);
+            for (var index = 0; index < exampleCount; index++)
+            {
+                var first = firstGroup.Items[index];
+                var second = secondGroup.Items[index];
+                var provenance = StrongerProvenance(
+                    first.Transition.Provenance,
+                    second.Transition.Provenance,
+                    first.SourceExample.Provenance,
+                    first.ResultExample.Provenance,
+                    second.SourceExample.Provenance,
+                    second.ResultExample.Provenance,
+                    first.SourceUnit.Provenance,
+                    first.ResultUnit.Provenance,
+                    second.SourceUnit.Provenance,
+                    second.ResultUnit.Provenance);
+                var weight = WeightFor(
+                    provenance,
+                    first.Transition.IsHumanVerifiedSupport &&
+                    second.Transition.IsHumanVerifiedSupport);
+                if (weight == 0)
+                    continue;
+
+                var input = JsonSerializer.Serialize(new
+                {
+                    observed_text = first.SourceUnit.Text,
+                    source_semantic_frame = first.Transition.SourceSemanticFrame,
+                    transition_path = new[]
+                    {
+                        first.Transition.TransitionSignature,
+                        second.Transition.TransitionSignature
+                    }
+                });
+                var evidenceIdentity = StableHash(
+                    string.Join('|',
+                        "governed-reasoning",
+                        first.Transition.Id.ToString("D"),
+                        second.Transition.Id.ToString("D"),
+                        first.SourceUnit.NormalizedHash,
+                        second.ResultUnit.NormalizedHash,
+                        provenance));
+
+                AddOrStrengthen(
+                    rows,
+                    new CandidateRow(
+                        evidenceIdentity,
+                        $"capability:{LegendModelCapabilityKeys.GovernedReasoning}",
+                        first.Transition.SourceLanguageCode,
+                        second.Transition.ResultLanguageCode,
+                        input,
+                        second.ResultUnit.Text,
+                        StableHash(input),
+                        second.ResultUnit.NormalizedHash,
+                        provenance,
+                        weight,
+                        LegendModelCapabilityKeys.GovernedReasoning,
+                        "Apply the supplied governed transition path in order. Return only the final governed state.",
+                        "governed_final_state_only"));
+            }
         }
     }
 
