@@ -1984,7 +1984,7 @@ If the Founder asks for current LEGEND system facts, that request belongs to the
                 .SearchRetainedKnowledgeAsync(
                     founder,
                     query,
-                    take: ResolveRetainedKnowledgeTake(query),
+                    take: LegendFounderToolAuthority.ResolveRetainedKnowledgeTake(query),
                     cancellationToken:
                         lookupBudget.Token);
         }
@@ -2270,15 +2270,6 @@ Never upgrade an unresolved, rejected or contradicted record merely because it a
     }
 
 
-
-    private static int ResolveRetainedKnowledgeTake(string query)
-    {
-        var words = query.Split(
-            [' ', '\r', '\n', '\t', ',', '.', ';', ':', '!', '?', '(', ')', '[', ']'],
-            StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Length;
-
-        return Math.Clamp(12 + words / 25, 12, 32);
-    }
 
     private static int ResolveMaximumToolRounds(
         IReadOnlyList<LegendFounderAiChatMessage> conversation)
