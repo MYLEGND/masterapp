@@ -1,5 +1,6 @@
 using System;
 using System.Linq;
+using AgentPortal.Models;
 using AgentPortal.Services;
 using Domain.Entities;
 using Xunit;
