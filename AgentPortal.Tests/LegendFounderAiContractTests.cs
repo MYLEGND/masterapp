@@ -672,13 +672,20 @@ public sealed class LegendFounderAiContractTests
             LegendArchitecturalTakeoverGate.EvaluatorAuthorityPrefix + "gpt-5.6-sol@locked-2026-08-28";
         var metrics = new Dictionary<string, decimal>
         {
+            ["sample_size"] = 200m,
             ["blind_win_rate"] = 60m,
+            ["blind_win_rate_lower_confidence_bound"] = 51m,
             ["non_inferiority_rate"] = 100m,
             ["adversarial_pass_rate"] = 100m,
             ["unsupported_request_integrity"] = 100m,
+            ["prompt_holdout_integrity"] = 100m,
+            ["assignment_blinding_integrity"] = 100m,
+            ["independent_judge_agreement"] = 90m,
             ["latency_efficiency"] = 60m,
             ["cost_efficiency"] = 60m
         };
+        const string suiteIdentity =
+            "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
         foreach (var domain in LegendIntelligenceEvaluationDomainCatalog.All)
         foreach (var metric in metrics)
         {
@@ -689,7 +696,7 @@ public sealed class LegendFounderAiContractTests
                 MetricKey = metric.Key,
                 Value = metric.Value,
                 EvidenceAuthority = authority,
-                EvidenceReference = $"blind-suite:{domain.Key}:{metric.Key}",
+                EvidenceReference = $"{LegendArchitecturalTakeoverGate.SuiteReferencePrefix}{suiteIdentity}:{domain.Key}:{metric.Key}",
                 State = "Current",
                 MeasuredUtc = DateTime.UtcNow
             });
