@@ -21,7 +21,11 @@ static async Task PrintQueryAsync(SqlConnection connection, string title, string
     Console.WriteLine($"=== {title} ===");
     await using var command = new SqlCommand(sql, connection)
     {
-        CommandTimeout = 30
+        // Exact production aggregates can exceed the provider default while
+        // the application is serving traffic. Keep this diagnostic read-only
+        // and bounded without treating a 30-second reporting timeout as an
+        // architectural failure.
+        CommandTimeout = 180
     };
     await using var reader = await command.ExecuteReaderAsync(CommandBehavior.SequentialAccess);
     var rowCount = 0;
@@ -48,36 +52,103 @@ SELECT
     [LanguageIntelligenceReevaluationStartedUtc] AS ReplayStartedUtc,
     [LanguageIntelligenceReevaluationCompletedUtc] AS ReplayCompletedUtc,
     [CursorReplayCompatibilityEvaluatorVersion] AS CursorCompatibilityEvaluator
-FROM [LegendConnectRuntimePolicies];
+FROM [LegendConnectRuntimePolicies]
+WHERE [ScopeKey] = 'Global';
 """);
 
-await PrintQueryAsync(connection, "HISTORICAL WORK BY STATE", """
+// Report the exact existing scheduler boundary first. This query exposes no
+// payload or identity and performs no write; it distinguishes an executable
+// receipt from retained fail-closed or retired audit history.
+await PrintQueryAsync(connection, "SCHEDULER-ELIGIBLE FOUNDER MANIFESTS", """
 SELECT
-    [EvaluatorVersion],
-    [Phase],
-    [WorkKind],
-    [ProcessingState],
-    COUNT_BIG(*) AS WorkCount,
-    MIN([CreatedUtc]) AS OldestCreatedUtc,
-    MAX([UpdatedUtc]) AS LatestUpdatedUtc,
-    SUM(CASE WHEN [LeaseExpiresUtc] IS NOT NULL AND [LeaseExpiresUtc] < SYSUTCDATETIME() AND [ProcessingState] = 'Processing' THEN 1 ELSE 0 END) AS ExpiredProcessingLeases
-FROM [LegendHistoricalReevaluationWorkItems]
-GROUP BY [EvaluatorVersion], [Phase], [WorkKind], [ProcessingState]
-ORDER BY [EvaluatorVersion] DESC, [Phase], [WorkKind], [ProcessingState];
+    m.[TargetLanguageIntelligenceEvaluatorVersion] AS TargetEvaluator,
+    m.[CompletedLanguageIntelligenceEvaluatorVersion] AS CompletedEvaluator,
+    m.[ProcessingState],
+    m.[LastErrorCode],
+    m.[AttemptCount],
+    m.[FamilyCount],
+    m.[NextFamilyIndex],
+    m.[CreatedUtc],
+    m.[UpdatedUtc],
+    (SELECT COUNT_BIG(*)
+     FROM [LegendHistoricalReevaluationWorkItems] w
+     WHERE w.[EvaluatorVersion] = p.[TargetLanguageIntelligenceEvaluatorVersion]
+       AND w.[Phase] = 'FounderCurriculum'
+       AND w.[SubjectId] = m.[Id]
+       AND w.[ProcessingState] = 'Pending') AS PendingChildren,
+    (SELECT COUNT_BIG(*)
+     FROM [LegendHistoricalReevaluationWorkItems] w
+     WHERE w.[EvaluatorVersion] = p.[TargetLanguageIntelligenceEvaluatorVersion]
+       AND w.[Phase] = 'FounderCurriculum'
+       AND w.[SubjectId] = m.[Id]
+       AND w.[ProcessingState] = 'Processing') AS ProcessingChildren,
+    (SELECT COUNT_BIG(*)
+     FROM [LegendHistoricalReevaluationWorkItems] w
+     WHERE w.[EvaluatorVersion] = p.[TargetLanguageIntelligenceEvaluatorVersion]
+       AND w.[Phase] = 'FounderCurriculum'
+       AND w.[SubjectId] = m.[Id]
+       AND w.[ProcessingState] = 'Completed') AS CompletedChildren,
+    (SELECT COUNT_BIG(*)
+     FROM [LegendHistoricalReevaluationWorkItems] w
+     WHERE w.[EvaluatorVersion] = p.[TargetLanguageIntelligenceEvaluatorVersion]
+       AND w.[Phase] = 'FounderCurriculum'
+       AND w.[SubjectId] = m.[Id]
+       AND w.[ProcessingState] IN ('Failed', 'Retired')) AS TerminalChildren
+FROM [LegendCurriculumManifestWorkItems] m
+CROSS JOIN [LegendConnectRuntimePolicies] p
+WHERE p.[ScopeKey] = 'Global'
+  AND m.[ProcessingState] <> 'Retired'
+  AND (
+      m.[ProcessingState] <> 'Failed'
+      OR (
+          COALESCE(m.[LastErrorCode], '') NOT IN (
+              'curriculum_manifest_payload_invalid',
+              'curriculum_manifest_payload_mismatch')
+          AND m.[TargetLanguageIntelligenceEvaluatorVersion] <
+              p.[TargetLanguageIntelligenceEvaluatorVersion]))
+  AND (
+      m.[ProcessingState] <> 'Completed'
+      OR m.[CompletedLanguageIntelligenceEvaluatorVersion] <
+          p.[TargetLanguageIntelligenceEvaluatorVersion])
+ORDER BY m.[CreatedUtc], m.[UpdatedUtc];
 """);
 
-await PrintQueryAsync(connection, "FAILED HISTORICAL WORK CODES", """
+await PrintQueryAsync(connection, "CURRENT-EVALUATOR HISTORICAL WORK BY STATE", """
+SELECT
+    w.[EvaluatorVersion],
+    w.[Phase],
+    w.[WorkKind],
+    w.[ProcessingState],
+    COUNT_BIG(*) AS WorkCount,
+    MIN(w.[CreatedUtc]) AS OldestCreatedUtc,
+    MAX(w.[UpdatedUtc]) AS LatestUpdatedUtc,
+    SUM(CASE WHEN w.[LeaseExpiresUtc] IS NOT NULL
+                  AND w.[LeaseExpiresUtc] < SYSUTCDATETIME()
+                  AND w.[ProcessingState] = 'Processing'
+             THEN 1 ELSE 0 END) AS ExpiredProcessingLeases
+FROM [LegendHistoricalReevaluationWorkItems] w
+CROSS JOIN [LegendConnectRuntimePolicies] p
+WHERE p.[ScopeKey] = 'Global'
+  AND w.[EvaluatorVersion] = p.[TargetLanguageIntelligenceEvaluatorVersion]
+GROUP BY w.[EvaluatorVersion], w.[Phase], w.[WorkKind], w.[ProcessingState]
+ORDER BY w.[Phase], w.[WorkKind], w.[ProcessingState];
+""");
+
+await PrintQueryAsync(connection, "CURRENT-EVALUATOR FAILED HISTORICAL WORK CODES", """
 SELECT TOP (50)
-    [EvaluatorVersion],
-    [Phase],
-    [WorkKind],
-    [LastErrorCode],
+    w.[EvaluatorVersion],
+    w.[Phase],
+    w.[WorkKind],
+    w.[LastErrorCode],
     COUNT_BIG(*) AS FailureCount,
-    MAX([UpdatedUtc]) AS LatestUpdatedUtc
-FROM [LegendHistoricalReevaluationWorkItems]
-WHERE [ProcessingState] = 'Failed'
-GROUP BY [EvaluatorVersion], [Phase], [WorkKind], [LastErrorCode]
-ORDER BY COUNT_BIG(*) DESC, MAX([UpdatedUtc]) DESC;
+    MAX(w.[UpdatedUtc]) AS LatestUpdatedUtc
+FROM [LegendHistoricalReevaluationWorkItems] w
+CROSS JOIN [LegendConnectRuntimePolicies] p
+WHERE p.[ScopeKey] = 'Global'
+  AND w.[EvaluatorVersion] = p.[TargetLanguageIntelligenceEvaluatorVersion]
+  AND w.[ProcessingState] = 'Failed'
+GROUP BY w.[EvaluatorVersion], w.[Phase], w.[WorkKind], w.[LastErrorCode]
+ORDER BY COUNT_BIG(*) DESC, MAX(w.[UpdatedUtc]) DESC;
 """);
 
 await PrintQueryAsync(connection, "FOUNDER CURRICULUM MANIFEST STATUS", """
@@ -85,13 +156,20 @@ SELECT
     [TargetLanguageIntelligenceEvaluatorVersion] AS TargetEvaluator,
     [CompletedLanguageIntelligenceEvaluatorVersion] AS CompletedEvaluator,
     [ProcessingState],
+    [LastErrorCode],
     COUNT_BIG(*) AS ManifestCount,
     SUM(CAST([FamilyCount] AS bigint)) AS FamilyCount,
     MIN([CreatedUtc]) AS OldestCreatedUtc,
     MAX([UpdatedUtc]) AS LatestUpdatedUtc
 FROM [LegendCurriculumManifestWorkItems]
-GROUP BY [TargetLanguageIntelligenceEvaluatorVersion], [CompletedLanguageIntelligenceEvaluatorVersion], [ProcessingState]
-ORDER BY [TargetLanguageIntelligenceEvaluatorVersion] DESC, [CompletedLanguageIntelligenceEvaluatorVersion] DESC, [ProcessingState];
+GROUP BY [TargetLanguageIntelligenceEvaluatorVersion],
+         [CompletedLanguageIntelligenceEvaluatorVersion],
+         [ProcessingState],
+         [LastErrorCode]
+ORDER BY [TargetLanguageIntelligenceEvaluatorVersion] DESC,
+         [CompletedLanguageIntelligenceEvaluatorVersion] DESC,
+         [ProcessingState],
+         [LastErrorCode];
 """);
 
 await PrintQueryAsync(connection, "FOUNDER RAW SUBMISSION REPLAY STATUS", """
