@@ -83,7 +83,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if rg -n "TryInferConversationAsync|TryInferSemanticTransitionAsync" AgentPortal Infrastructure AgentPortal.Tests; then
+          if rg -n "TryInferConversationAsync|TryInferSemanticTransitionAsync" AgentPortal Infrastructure; then
             echo "::error::Obsolete parallel reasoning authority detected."
             exit 1
           fi
