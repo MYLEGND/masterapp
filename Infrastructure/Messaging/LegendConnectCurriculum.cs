@@ -4224,7 +4224,7 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
             return null;
 
         var sourceExampleIds = observations
-            .Select(item => item.SourceCurriculumExampleId)
+            .Select(item => item.SourceExampleId)
             .Distinct()
             .ToArray();
         var exactSourceExampleIds = await (
@@ -4243,7 +4243,7 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
 
         var exactIds = exactSourceExampleIds.ToHashSet();
         var exactObservations = observations
-            .Where(item => exactIds.Contains(item.SourceCurriculumExampleId))
+            .Where(item => exactIds.Contains(item.SourceExampleId))
             .ToList();
         if (exactObservations.Any(item => string.Equals(
                 item.ContributionState,
