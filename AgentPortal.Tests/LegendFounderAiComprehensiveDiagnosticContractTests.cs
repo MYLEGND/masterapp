@@ -59,7 +59,11 @@ public sealed class LegendFounderAiComprehensiveDiagnosticContractTests
         Assert.Contains("requiresComprehensiveGovernedInspection", source, StringComparison.Ordinal);
         Assert.Contains("? 3", source, StringComparison.Ordinal);
         Assert.Contains("new HashSet<string>(StringComparer.Ordinal)", source, StringComparison.Ordinal);
-        Assert.Contains("!string.Equals(name, \"legend_capabilities\"", source, StringComparison.Ordinal);
+        var authority = ReadRepositoryFile(
+            "AgentPortal",
+            "Services",
+            "LegendFounderToolAuthority.cs");
+        Assert.Contains("!string.Equals(name, \"legend_capabilities\"", authority, StringComparison.Ordinal);
     }
 
     [Fact]
