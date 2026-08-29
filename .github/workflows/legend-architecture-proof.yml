@@ -89,6 +89,12 @@ jobs:
           fi
           test "$(git grep -l "class LegendConnectGovernedReasoningExecutor" -- Infrastructure | wc -l)" -eq 1
           test "$(git grep -l "class LegendArchitecturalTakeoverGate" -- AgentPortal | wc -l)" -eq 1
+          test "$(git grep -l "class LegendFounderToolAuthority" -- AgentPortal | wc -l)" -eq 1
+          test "$(git grep -l "switch (call.Name)" -- AgentPortal/Services | wc -l)" -eq 1
+          if git grep -n "ExecuteFounderToolAsync" -- AgentPortal/Services/LegendFounderAiConversationService.cs; then
+            echo "::error::Conversation service still contains a parallel Founder tool executor."
+            exit 1
+          fi
 
       - name: Upload proof artifacts
         if: always()
