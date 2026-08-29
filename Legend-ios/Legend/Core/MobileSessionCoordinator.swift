@@ -1631,6 +1631,50 @@ final class MobileBiometricSessionSecurity: MobileBiometricSessionSecuring {
     }
 }
 
+/// Device authentication for financial reporting. Unlike the optional session
+/// Face ID preference, this is a mandatory, per-entry protection boundary. The
+/// device-owner policy prefers Face ID when it is enrolled and safely falls
+/// back to the device passcode when biometric authentication is unavailable.
+enum MobileFinancialReportingAccessResult: Equatable, Sendable {
+    case granted
+    case denied
+    case unavailable
+}
+
+@MainActor
+protocol MobileFinancialReportingAccessAuthenticating: AnyObject {
+    func authenticate() async -> MobileFinancialReportingAccessResult
+}
+
+@MainActor
+final class MobileFinancialReportingAccessAuthenticator:
+    MobileFinancialReportingAccessAuthenticating
+{
+    private let contextFactory: () -> LAContext
+
+    init(contextFactory: @escaping () -> LAContext = { LAContext() }) {
+        self.contextFactory = contextFactory
+    }
+
+    func authenticate() async -> MobileFinancialReportingAccessResult {
+        let context = contextFactory()
+        var error: NSError?
+        guard context.canEvaluatePolicy(
+            .deviceOwnerAuthentication,
+            error: &error) else {
+            return .unavailable
+        }
+
+        return await withCheckedContinuation { continuation in
+            context.evaluatePolicy(
+                .deviceOwnerAuthentication,
+                localizedReason: "Authenticate to view your financial reporting.") { success, _ in
+                    continuation.resume(returning: success ? .granted : .denied)
+                }
+        }
+    }
+}
+
 private struct MobileSessionAPI: MobileSessionServicing {
     let client: MobileHTTPClient
 

@@ -2,8 +2,8 @@ package com.mylegnd.legend.registered
 
 import android.app.Activity
 import android.os.Bundle
-import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.fragment.app.FragmentActivity
 import androidx.compose.runtime.*
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
@@ -13,7 +13,7 @@ import com.mylegnd.legend.registered.core.design.LegendTheme
 import com.mylegnd.legend.registered.core.session.SessionViewModel
 import com.mylegnd.legend.registered.ui.LegendRoot
 
-class MainActivity : ComponentActivity() {
+class MainActivity : FragmentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) { super.onCreate(savedInstanceState); val container = (application as LegendApplication).container
         container.notificationNavigation.capture(intent)
         setContent { LegendTheme { val session: SessionViewModel = viewModel(factory = LegendViewModelFactory { SessionViewModel(container.sessionRepository) }); LaunchedEffect(Unit) { session.restore() }; LegendRoot(session, container) } }

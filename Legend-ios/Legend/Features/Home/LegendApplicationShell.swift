@@ -3055,6 +3055,157 @@ private enum LegendFinancialOutlookSelection: Identifiable {
     }
 }
 
+private enum LegendFinancialReportingGateState {
+    case locked
+    case authenticating
+    case denied
+    case unavailable
+}
+
+private struct LegendFinancialReportingGateRequest: Hashable {
+    let isActive: Bool
+    let attempt: Int
+}
+
+/// Finance is a protected profile page, not a profile preference. This gate
+/// keeps the finance view (and its first network request) out of the view tree
+/// until the device owner has authenticated with Face ID or device passcode.
+private struct LegendFinancialReportingGate<Content: View>: View {
+    @Environment(\.scenePhase) private var scenePhase
+
+    let isActive: Bool
+    let authenticator: any MobileFinancialReportingAccessAuthenticating
+    let backToProfile: () -> Void
+    let content: () -> Content
+
+    @State private var state: LegendFinancialReportingGateState = .locked
+    @State private var isAuthorized = false
+    @State private var authenticationAttempt = 0
+
+    init(
+        isActive: Bool,
+        authenticator: any MobileFinancialReportingAccessAuthenticating,
+        backToProfile: @escaping () -> Void,
+        @ViewBuilder content: @escaping () -> Content
+    ) {
+        self.isActive = isActive
+        self.authenticator = authenticator
+        self.backToProfile = backToProfile
+        self.content = content
+    }
+
+    var body: some View {
+        Group {
+            if isAuthorized {
+                content()
+            } else {
+                lockedContent
+            }
+        }
+        .task(
+            id: LegendFinancialReportingGateRequest(
+                isActive: isActive,
+                attempt: authenticationAttempt)
+        ) {
+            guard isActive, scenePhase == .active else { return }
+            await authenticate()
+        }
+        .onChange(of: isActive) { _, active in
+            guard !active else { return }
+            lock()
+        }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active {
+                guard isActive else { return }
+                authenticationAttempt += 1
+            } else {
+                lock()
+            }
+        }
+    }
+
+    private var lockedContent: some View {
+        VStack(spacing: LegendNextSpacing.md) {
+            Spacer()
+
+            Image(systemName: "lock.shield.fill")
+                .font(.system(size: 40, weight: .semibold))
+                .foregroundStyle(LegendNextColor.gold)
+
+            Text("Financial reporting is protected")
+                .font(LegendNextTypography.section)
+                .foregroundStyle(LegendNextColor.textPrimary)
+
+            Text(accessDetail)
+                .font(LegendNextTypography.supporting)
+                .foregroundStyle(LegendNextColor.textSecondary)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+
+            if state == .authenticating {
+                ProgressView()
+                    .tint(LegendNextColor.gold)
+                    .padding(.top, LegendNextSpacing.xs)
+            } else {
+                Button("Authenticate") {
+                    authenticationAttempt += 1
+                }
+                .buttonStyle(LegendNextButtonStyle(kind: .primary))
+                .padding(.top, LegendNextSpacing.xs)
+            }
+
+            Button("Back to profile", action: backToProfile)
+                .font(LegendNextTypography.supporting)
+                .foregroundStyle(LegendNextColor.navyElevated)
+                .buttonStyle(.plain)
+
+            Spacer()
+        }
+        .padding(.horizontal, LegendNextSpacing.pageHorizontal)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .legendNextPageBackground()
+        .accessibilityElement(children: .contain)
+    }
+
+    private var accessDetail: String {
+        switch state {
+        case .locked:
+            return "Use Face ID or your device passcode before financial information is shown."
+        case .authenticating:
+            return "Waiting for device authentication."
+        case .denied:
+            return "Financial reporting remains locked until device authentication succeeds."
+        case .unavailable:
+            return "Set up a device screen lock to access financial reporting."
+        }
+    }
+
+    @MainActor
+    private func authenticate() async {
+        guard isActive,
+              scenePhase == .active,
+              !isAuthorized,
+              state != .authenticating else {
+            return
+        }
+
+        state = .authenticating
+        switch await authenticator.authenticate() {
+        case .granted:
+            guard isActive, scenePhase == .active else { return }
+            isAuthorized = true
+        case .denied:
+            state = .denied
+        case .unavailable:
+            state = .unavailable
+        }
+    }
+
+    private func lock() {
+        isAuthorized = false
+        state = .locked
+    }
+}
 
 private struct LegendFinancialProfilePanel: View {
     @ObservedObject private var store: MobileFinancialStore
@@ -3119,6 +3270,9 @@ private struct LegendFinancialProfilePanel: View {
             }
         }
         .legendNextPageBackground()
+        .task {
+            await bootstrap.loadFinancialIntelligenceIfNeeded()
+        }
         .sheet(item: $selectedOutlook) { selection in
             LegendFinancialOutlookSheet(selection: selection)
         }
@@ -5640,6 +5794,7 @@ private struct LegendAccountView: View {
     @State private var profilePage = 0
     @State private var controlledResourceRequestFeedback: LegendRequestSubmissionFeedback?
     @State private var selectedProfilePhoto: PhotosPickerItem?
+    private let financialReportingAccess = MobileFinancialReportingAccessAuthenticator()
 
     init(
         currentSession: MobileSession,
@@ -5914,11 +6069,17 @@ private struct LegendAccountView: View {
             profileContent(profile)
                 .tag(0)
 
-            LegendFinancialProfilePanel(
-                store: bootstrap.stores.financial,
-                bootstrap: bootstrap,
-                openFinancialIntelligence: openFinancialIntelligence
-            )
+            LegendFinancialReportingGate(
+                isActive: profilePage == 1,
+                authenticator: financialReportingAccess,
+                backToProfile: { profilePage = 0 }
+            ) {
+                LegendFinancialProfilePanel(
+                    store: bootstrap.stores.financial,
+                    bootstrap: bootstrap,
+                    openFinancialIntelligence: openFinancialIntelligence
+                )
+            }
             .tag(1)
         }
         .tabViewStyle(.page(indexDisplayMode: .never))
@@ -5939,13 +6100,6 @@ private struct LegendAccountView: View {
                     }
                 }
         )
-        .onChange(of: profilePage) { _, page in
-            guard page == 1 else { return }
-
-            Task {
-                await bootstrap.loadFinancialIntelligenceIfNeeded()
-            }
-        }
     }
 
     private func profileIdentityHeader(

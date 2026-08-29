@@ -449,6 +449,12 @@ jobs:
           package: ./package
 
   verify-legend-convergence:
+    # Convergence remains mandatory by default. A release manager can explicitly
+    # omit this post-deploy verifier for a bounded release by applying the
+    # skip-legend-convergence label to its production PR.
+    if: >-
+      github.event.pull_request.draft == false &&
+      !contains(github.event.pull_request.labels.*.name, 'skip-legend-convergence')
     needs:
       - merge
       - deploy
