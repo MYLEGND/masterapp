@@ -287,7 +287,7 @@ public sealed class LegendConnectModelEvaluationTests
         var service = Service(db, backend, new FakeBaseline { Text = "must-not-run" });
         var heldOut = HeldOut("Resolved governed state") with
         {
-            CapabilityKey = "governed.semantic_transition",
+            CapabilityKey = "governed.unregistered",
             Instructions = "Apply only the governed transition.",
             OutputContract = "governed_state_only"
         };
@@ -304,6 +304,71 @@ public sealed class LegendConnectModelEvaluationTests
         Assert.Equal("Rejected", run.EvaluationState);
         Assert.Equal("model_evaluation_capability_evaluator_unavailable", run.FailureCode);
         Assert.Equal(0, backend.GenerateCalls);
+    }
+
+    [Fact]
+    public async Task RegisteredGovernedSemanticCapability_UsesItsPolicyAndPassesWithoutTranslationMetrics()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var run = Run();
+        db.Add(run);
+        await db.SaveChangesAsync();
+
+        var semantic = HeldOut("Resolved governed state") with
+        {
+            CapabilityKey = LegendModelCapabilityKeys.SemanticTransition,
+            Instructions = "Apply only the supplied governed semantic transition. Return the resolved state only.",
+            OutputContract = "governed_state_only"
+        };
+        var service = Service(
+            db,
+            new FakeEvaluationBackend
+            {
+                ChallengerText = "Resolved governed state",
+                Judgement = Perfect() with
+                {
+                    TranslationAccuracy = 0m,
+                    MorphologyPreservation = 0m
+                }
+            },
+            new FakeBaseline { Text = "Resolved governed state" });
+
+        await service.EvaluateManifestAsync(
+            run,
+            new LegendConnectTrainingDatasetManifest(
+                "dataset",
+                13,
+                "Global",
+                [],
+                [semantic]));
+
+        Assert.Equal("Passed", run.EvaluationState);
+        Assert.Equal(1m, run.HeldOutScore);
+        Assert.Equal(1m, run.RegressionScore);
+        Assert.Equal("NotEvaluated", run.PromotionState);
+    }
+
+    [Fact]
+    public void CapabilityPolicyRegistry_IsFailClosedAndSingleAuthority()
+    {
+        Assert.True(
+            LegendModelCapabilityEvaluationPolicies.TryResolve(
+                LegendModelCapabilityKeys.Translation,
+                out var translation));
+        Assert.True(translation.RequiresTranslationAccuracy);
+        Assert.False(translation.UsesGovernedReferenceBaseline);
+
+        Assert.True(
+            LegendModelCapabilityEvaluationPolicies.TryResolve(
+                LegendModelCapabilityKeys.SemanticTransition,
+                out var semantic));
+        Assert.False(semantic.RequiresTranslationAccuracy);
+        Assert.True(semantic.UsesGovernedReferenceBaseline);
+
+        Assert.False(
+            LegendModelCapabilityEvaluationPolicies.TryResolve(
+                "governed.unregistered",
+                out _));
     }
 
     private static LegendConnectModelEvaluationService Service(
@@ -440,7 +505,7 @@ public sealed class LegendConnectModelEvaluationTests
         public string Text { get; init; } =
             string.Empty;
 
-        public Task<LegendCurrentProductionEvaluationResult> TranslateAsync(
+        public Task<LegendCurrentProductionEvaluationResult> GenerateAsync(
             LegendConnectTrainingDatasetExample example,
             CancellationToken cancellationToken = default) =>
             Task.FromResult(
