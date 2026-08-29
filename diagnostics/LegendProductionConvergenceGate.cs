@@ -37,20 +37,38 @@ while (true)
             p.[LastLearningWorkerHeartbeatUtc],
             c.[State],
             c.[EarliestAffectedPhase],
+            -- Phase advancement is the canonical serializable barrier. Once
+            -- the policy has advanced, older-phase/superseded-generation rows
+            -- are immutable audit history and are not executable work.
             (SELECT COUNT_BIG(*)
              FROM [LegendHistoricalReevaluationWorkItems] w
              WHERE w.[EvaluatorVersion] = p.[TargetLanguageIntelligenceEvaluatorVersion]
+               AND p.[LanguageIntelligenceReevaluationPhase] <> 'Complete'
+               AND w.[Phase] = p.[LanguageIntelligenceReevaluationPhase]
                AND w.[ProcessingState] IN ('Pending', 'Processing', 'Failed')) AS ActiveOrFailedWork,
             (SELECT COUNT_BIG(*)
              FROM [LegendHistoricalReevaluationWorkItems] w
              WHERE w.[EvaluatorVersion] = p.[TargetLanguageIntelligenceEvaluatorVersion]
                AND w.[ProcessingState] = 'Retired'
                AND COALESCE(w.[LastErrorCode], '') <> 'historical_reevaluation_contract_superseded') AS TerminalCanonicalFailures,
+            -- Mirror the one canonical manifest scheduler's executable
+            -- boundary. Retired receipts and payloads deliberately retained
+            -- fail-closed as invalid/mismatched are audit records, not work.
             (SELECT COUNT_BIG(*)
              FROM [LegendCurriculumManifestWorkItems] m
-             WHERE m.[ProcessingState] <> 'Completed'
-                OR m.[CompletedLanguageIntelligenceEvaluatorVersion] <
-                   p.[TargetLanguageIntelligenceEvaluatorVersion]) AS IncompleteManifests,
+             WHERE m.[ProcessingState] <> 'Retired'
+               AND (
+                   m.[ProcessingState] <> 'Failed'
+                   OR (
+                       COALESCE(m.[LastErrorCode], '') NOT IN (
+                           'curriculum_manifest_payload_invalid',
+                           'curriculum_manifest_payload_mismatch')
+                       AND m.[TargetLanguageIntelligenceEvaluatorVersion] <
+                           p.[TargetLanguageIntelligenceEvaluatorVersion]))
+               AND (
+                   m.[ProcessingState] <> 'Completed'
+                   OR m.[CompletedLanguageIntelligenceEvaluatorVersion] <
+                       p.[TargetLanguageIntelligenceEvaluatorVersion])) AS IncompleteManifests,
             (SELECT TOP (1) w.[ProcessingState]
              FROM [LegendHistoricalReevaluationWorkItems] w
              WHERE w.[EvaluatorVersion] = p.[TargetLanguageIntelligenceEvaluatorVersion]
