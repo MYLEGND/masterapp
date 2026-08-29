@@ -3266,7 +3266,7 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
 
         var prompts = new List<ShadowPrompt>(LiveFounderNativePrompts)
         {
-            new("curriculum-reasoning-" + governedReasoning!.NormalizedHash[..12], governedReasoning.Text, true),
+            governedReasoning!,
             new("ambiguous-request", "Hello or goodbye?", false),
             new("contradictory-request", "Please greet me and do not greet me.", false)
         };
