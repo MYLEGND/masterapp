@@ -15,6 +15,13 @@
 
   <ItemGroup>
     <Content Include="Properties/launchSettings.json" CopyToOutputDirectory="Never" />
+    <!-- The web Founder interface reads the same versioned visual contract
+         that the native iOS client bundles. The JSON file remains the only
+         design-token source; this is a publish-time link, not a mirror. -->
+    <Content Include="..\Legend-Design\legend-design.tokens.json"
+             Link="wwwroot\design\legend-design.tokens.json"
+             CopyToOutputDirectory="PreserveNewest"
+             CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 
   <ItemGroup>

@@ -99,6 +99,16 @@ public sealed class MobileFounderAiController : MobileApiControllerBase
             return Ok(result);
         }
         catch (ForbidResultException) { return Forbid(); }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            // A mobile Stop action cancels the original HTTP request.  The
+            // conversation service receives that same token, so there is no
+            // background responder or mutation to keep running after it.
+            _logger.LogInformation(
+                "LEGEND Founder AI mobile conversation was cancelled by the client. OperationId={OperationId}",
+                operationId);
+            return new EmptyResult();
+        }
         catch (Exception exception)
         {
             _logger.LogError(exception, "LEGEND Founder AI mobile conversation failed.");

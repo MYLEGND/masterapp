@@ -180,9 +180,106 @@ public sealed class LegendFounderAiContractTests
         Assert.Contains("result.reason", script, StringComparison.Ordinal);
         Assert.Contains("nativeOnly:", script, StringComparison.Ordinal);
         Assert.Contains("result.responseAuthority ||", script, StringComparison.Ordinal);
-        Assert.Contains("Verified native LEGEND · OpenAI responder not used", script, StringComparison.Ordinal);
+        Assert.Contains("'Legend® Ai'", script, StringComparison.Ordinal);
+        Assert.Contains("'OpenAI'", script, StringComparison.Ordinal);
+        Assert.DoesNotContain("Verified native LEGEND · OpenAI responder not used", script, StringComparison.Ordinal);
+        Assert.DoesNotContain("OpenAI Teacher · ${stage || 'provider response'}", script, StringComparison.Ordinal);
         Assert.Contains("OpenAI escalation is blocked for this clean conversation", script, StringComparison.Ordinal);
         Assert.DoesNotContain("progressUrlFor(modalElement.dataset.chatUrl, operationId)", script, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void FounderChatPresentation_UsesOneResponsiveControlTreeAndSharedTokens()
+    {
+        var script = File.ReadAllText(
+            Path.Combine(AppContext.BaseDirectory, "legend-founder-ai.js"));
+        var css = File.ReadAllText(
+            Path.Combine(AppContext.BaseDirectory, "legend-founder-ai.css"));
+        var modal = File.ReadAllText(
+            Path.Combine(AppContext.BaseDirectory, "legend-founder-ai-modal.cshtml"));
+        var mobile = File.ReadAllText(
+            Path.Combine(AppContext.BaseDirectory, "LegendApplicationShell.swift"));
+        var androidBuild = File.ReadAllText(
+            Path.Combine(AppContext.BaseDirectory, "Legend-Android.build.gradle.kts"));
+        var androidApi = File.ReadAllText(
+            Path.Combine(AppContext.BaseDirectory, "LegendApi.kt"));
+        var androidRepository = File.ReadAllText(
+            Path.Combine(AppContext.BaseDirectory, "LegendRepositories.kt"));
+        var androidPresentation = File.ReadAllText(
+            Path.Combine(AppContext.BaseDirectory, "LegendFounderAiConversation.kt"));
+        var tokens = File.ReadAllText(
+            Path.Combine(AppContext.BaseDirectory, "legend-design.tokens.json"));
+
+        Assert.Contains("DESIGN_TOKEN_URL", script, StringComparison.Ordinal);
+        Assert.Contains("applySharedDesignTokens", script, StringComparison.Ordinal);
+        Assert.Contains("syncControlPlacement", script, StringComparison.Ordinal);
+        Assert.Contains("AbortController", script, StringComparison.Ordinal);
+        Assert.Contains("abortActiveRequest", script, StringComparison.Ordinal);
+        Assert.Contains("logo.className", script, StringComparison.Ordinal);
+        Assert.Contains("legend-founder-ai-logo-image", script, StringComparison.Ordinal);
+        Assert.DoesNotContain("mobileNew", script, StringComparison.Ordinal);
+
+        Assert.Contains("legendFounderAiMobileControls", modal, StringComparison.Ordinal);
+        Assert.Equal(
+            1,
+            modal.Split("id=\"legendFounderAiModebar\"", StringSplitOptions.None).Length - 1);
+        Assert.Equal(
+            1,
+            modal.Split("id=\"legendFounderAiNativeOnly\"", StringSplitOptions.None).Length - 1);
+        Assert.Equal(
+            2,
+            modal.Split("legend-founder-ai-logo-image", StringSplitOptions.None).Length - 1);
+        Assert.DoesNotContain("legendFounderAiMobileNew", modal, StringComparison.Ordinal);
+        Assert.DoesNotContain("Governed intelligence conversation", modal, StringComparison.Ordinal);
+        Assert.DoesNotContain("legendFounderAiSubtitle", modal, StringComparison.Ordinal);
+        Assert.DoesNotContain("legend-founder-ai-governance-mark", modal, StringComparison.Ordinal);
+        Assert.True(
+            modal.IndexOf("legendFounderAiMobileMenu", StringComparison.Ordinal) <
+            modal.IndexOf("legend-founder-ai-close", StringComparison.Ordinal));
+
+        Assert.DoesNotContain("legend-founder-ai-mobile-actions", css, StringComparison.Ordinal);
+        Assert.DoesNotContain("is-reading", css, StringComparison.Ordinal);
+        Assert.Contains("--legend-design-midnight", css, StringComparison.Ordinal);
+        Assert.Contains(".legend-founder-ai-logo-image", css, StringComparison.Ordinal);
+        Assert.Contains("object-fit: cover", css, StringComparison.Ordinal);
+        Assert.Contains("grid-template-rows: 80px minmax(0, 1fr)", css, StringComparison.Ordinal);
+        Assert.Equal(
+            1,
+            css.Split("@media (max-width: 820px)", StringSplitOptions.None).Length - 1);
+        Assert.Contains("linear-gradient(135deg, #f0c767", css, StringComparison.Ordinal);
+
+        Assert.DoesNotContain("LegendFounderAiMobileWebStyle", mobile, StringComparison.Ordinal);
+        Assert.Contains("LegendFounderAiPresentationTokens", mobile, StringComparison.Ordinal);
+        Assert.Contains("LegendFounderAiProfileMark", mobile, StringComparison.Ordinal);
+        Assert.Contains(".scaledToFill()", mobile, StringComparison.Ordinal);
+        Assert.DoesNotContain("scaleEffect(1.62)", mobile, StringComparison.Ordinal);
+        Assert.Contains(".frame(height: 84)", mobile, StringComparison.Ordinal);
+        Assert.DoesNotContain("Governed intelligence conversation", mobile, StringComparison.Ordinal);
+        Assert.Contains("symbol: \"line.3.horizontal\"", mobile, StringComparison.Ordinal);
+        Assert.Contains(".fill(LegendNextGradient.gold)", mobile, StringComparison.Ordinal);
+        Assert.Equal(
+            1,
+            mobile.Split("Image(\"LegendAiIcon\")", StringSplitOptions.None).Length - 1);
+        Assert.Contains("nativeOnly: Bool", mobile, StringComparison.Ordinal);
+        Assert.Contains("stop.fill", mobile, StringComparison.Ordinal);
+        Assert.Contains("Keep OpenAI off for this direct LEGEND test.", mobile, StringComparison.Ordinal);
+        Assert.Contains("Toggle(\"Native-only\"", mobile, StringComparison.Ordinal);
+        Assert.Contains("responseAuthority", mobile, StringComparison.Ordinal);
+        Assert.Contains("LegendAiIcon.imageset/legendai.png", androidBuild, StringComparison.Ordinal);
+        Assert.Contains("FounderAiRepository", androidRepository, StringComparison.Ordinal);
+        Assert.Contains("api/v1/mobile/founder/legend-ai/access", androidApi, StringComparison.Ordinal);
+        Assert.Contains("api/v1/mobile/founder/legend-ai/chat", androidApi, StringComparison.Ordinal);
+        Assert.Contains("api/v1/mobile/founder/legend-ai/progress", androidRepository, StringComparison.Ordinal);
+        Assert.DoesNotContain("openai.com", androidApi, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("openai.com", androidRepository, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("LegendColors.Success", androidPresentation, StringComparison.Ordinal);
+        Assert.Contains("LegendColors.Royal", androidPresentation, StringComparison.Ordinal);
+        Assert.Contains("LegendColors.BrandBlueSurface", androidPresentation, StringComparison.Ordinal);
+        Assert.Contains("responseAuthority", androidPresentation, StringComparison.Ordinal);
+        Assert.DoesNotContain("Governed intelligence conversation", androidPresentation, StringComparison.Ordinal);
+        Assert.Contains("FounderAiHeaderAction(Icons.Default.Menu", androidPresentation, StringComparison.Ordinal);
+        Assert.Contains(".background(LegendGradients.Gold)", androidPresentation, StringComparison.Ordinal);
+        Assert.Contains("\"midnight\"", tokens, StringComparison.Ordinal);
     }
 
     [Fact]

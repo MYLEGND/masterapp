@@ -7,10 +7,62 @@ import android.net.Uri
 import com.mylegnd.legend.registered.core.media.SocialMediaUploader
 import com.mylegnd.legend.registered.core.media.MessagingAttachmentUploader
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
+import okhttp3.Request
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.flowOn
+import kotlinx.serialization.decodeFromString
+import kotlinx.serialization.json.Json
 
 sealed interface LoadState<out T> { data object Idle : LoadState<Nothing>; data object Loading : LoadState<Nothing>; data class Data<T>(val value: T) : LoadState<T>; data class Error(val message: String) : LoadState<Nothing> }
 private suspend fun <T> request(block: suspend () -> T): LoadState<T> = runCatching { LoadState.Data(block()) }.getOrElse { LoadState.Error((it as? LegendApiException)?.problem?.message ?: "Legend is unavailable right now.") }
 class HomeRepository(private val client: LegendApiClient) { suspend fun load(role: String) = request { client.api.home(role).legendBody() } }
+class FounderAiRepository(private val client: LegendApiClient) {
+    private val json = Json { ignoreUnknownKeys = true }
+
+    suspend fun access(role: String): LoadState<FounderAiAccessResponse> = request {
+        client.api.founderAiAccess(role).legendBody()
+    }
+
+    suspend fun chat(
+        role: String,
+        operationId: String,
+        chatRequest: FounderAiChatRequest,
+    ): LoadState<FounderAiChatResponse> = request {
+        client.api.founderAiChat(role, operationId, chatRequest).legendBody()
+    }
+
+    /** Advisory progress only; the same chat response remains authoritative. */
+    fun progress(role: String, operationId: String): Flow<FounderAiProgressEnvelope> = flow<FounderAiProgressEnvelope> {
+        val base = client.baseUrl.toHttpUrlOrNull()
+            ?: return@flow
+        val url = base.newBuilder()
+            .addPathSegments("api/v1/mobile/founder/legend-ai/progress/$operationId")
+            .build()
+        val request = Request.Builder()
+            .url(url)
+            .header("Accept", "application/x-ndjson")
+            .header("X-Legend-Participant-Type", role)
+            .build()
+
+        client.httpClient.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) return@use
+            val source = response.body.source()
+            while (!source.exhausted()) {
+                currentCoroutineContext().ensureActive()
+                val line = source.readUtf8Line()?.trim().orEmpty()
+                if (line.isBlank()) continue
+                val envelope = runCatching {
+                    json.decodeFromString(FounderAiProgressEnvelope.serializer(), line)
+                }.getOrNull()
+                if (envelope != null) emit(envelope)
+            }
+        }
+    }.flowOn(Dispatchers.IO)
+}
 class AgentWorkspaceRepository(private val client: LegendApiClient) {
     suspend fun clients(role: String) = request { client.api.agentClients(role).legendBody() }
     suspend fun leads(role: String) = request { client.api.agentLeads(role).legendBody() }

@@ -21,8 +21,11 @@ interface AccessTokenProvider { suspend fun accessToken(): String? }
 class LegendApiException(val status: Int, val problem: MobileApiProblem?, cause: Throwable? = null) : IOException(problem?.message ?: "Legend request failed.", cause)
 
 interface LegendApi {
+    @POST("api/v1/mobile/review-session") suspend fun reviewSession(@Body request: MobileReviewSignInRequest): Response<MobileReviewTokenResponse>
     @GET("api/v1/mobile/session") suspend fun session(@Header("X-Legend-Participant-Type") participantType: String? = null): Response<MobileSessionResponse>
     @POST("api/v1/mobile/session/select-role") suspend fun selectRole(@Body request: SelectRoleRequest): Response<MobileRoleSelectionResponse>
+    @GET("api/v1/mobile/founder/legend-ai/access") suspend fun founderAiAccess(@Header("X-Legend-Participant-Type") participantType: String): Response<FounderAiAccessResponse>
+    @POST("api/v1/mobile/founder/legend-ai/chat") suspend fun founderAiChat(@Header("X-Legend-Participant-Type") participantType: String, @Header("X-Legend-Ai-Operation-Id") operationId: String, @Body request: FounderAiChatRequest): Response<FounderAiChatResponse>
     @GET("api/v1/mobile/home") suspend fun home(@Header("X-Legend-Participant-Type") participantType: String): Response<MobileHomeResponse>
     @GET("api/v1/mobile/financial") suspend fun financial(@Header("X-Legend-Participant-Type") participantType: String): Response<FinancialSnapshot>
     @GET("api/v1/mobile/agent/clients") suspend fun agentClients(@Header("X-Legend-Participant-Type") participantType: String): Response<List<MobileAgentClient>>
@@ -160,7 +163,13 @@ class LegendApiClient private constructor(val api: LegendApi, val httpClient: Ok
         fun create(baseUrl: String, tokenProvider: AccessTokenProvider, json: Json = Json { ignoreUnknownKeys = true; explicitNulls = false }): LegendApiClient {
             val auth = Interceptor { chain ->
                 val token = kotlinx.coroutines.runBlocking { tokenProvider.accessToken() }
-                val request = chain.request().newBuilder().header("Accept", "application/json").header("X-Correlation-ID", UUID.randomUUID().toString()).apply {
+                val incoming = chain.request()
+                val request = incoming.newBuilder().apply {
+                    // Streaming Founder-chat progress deliberately uses NDJSON. Preserve a
+                    // caller-specified media preference while retaining JSON as the mobile
+                    // default for every established API call.
+                    if (incoming.header("Accept").isNullOrBlank()) header("Accept", "application/json")
+                }.header("X-Correlation-ID", UUID.randomUUID().toString()).apply {
                     if (!token.isNullOrBlank()) header("Authorization", "Bearer $token")
                 }.build()
                 chain.proceed(request)

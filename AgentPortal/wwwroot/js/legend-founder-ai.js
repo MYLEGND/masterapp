@@ -10,6 +10,7 @@
 
     const STORAGE_KEY = 'legendFounderAi.conversations.v1';
     const UI_STORAGE_KEY = 'legendFounderAi.ui.v2';
+    const DESIGN_TOKEN_URL = '/design/legend-design.tokens.json';
     const MAX_CONVERSATIONS = 30;
     const MAX_MESSAGES = 30;
     const MOBILE_QUERY = '(max-width: 820px)';
@@ -19,13 +20,13 @@
     const form = document.getElementById('legendFounderAiForm');
     const input = document.getElementById('legendFounderAiInput');
     const send = document.getElementById('legendFounderAiSend');
+    const sendIcon = document.getElementById('legendFounderAiSendIcon');
     const newConversation = document.getElementById('legendFounderAiNew');
     const clearHistory = document.getElementById('legendFounderAiClearHistory');
     const history = document.getElementById('legendFounderAiHistory');
     const historyEmpty = document.getElementById('legendFounderAiHistoryEmpty');
     const conversationCount = document.getElementById('legendFounderAiConversationCount');
     const status = document.getElementById('legendFounderAiStatus');
-    const subtitle = document.getElementById('legendFounderAiSubtitle');
     const conversationState = document.getElementById('legendFounderAiConversationState');
     const founderCommandConfirmed = document.getElementById(
         'legendFounderAiFounderCommandConfirmed'
@@ -37,7 +38,9 @@
     const sidebarCollapse = document.getElementById('legendFounderAiSidebarCollapse');
     const sidebarScrim = document.getElementById('legendFounderAiSidebarScrim');
     const mobileMenu = document.getElementById('legendFounderAiMobileMenu');
-    const mobileNew = document.getElementById('legendFounderAiMobileNew');
+    const modebar = document.getElementById('legendFounderAiModebar');
+    const modebarHome = document.getElementById('legendFounderAiModebarHome');
+    const mobileControls = document.getElementById('legendFounderAiMobileControls');
 
     const modeButtons = Array.from(
         modalElement.querySelectorAll('[data-legend-ai-mode]')
@@ -50,13 +53,16 @@
         '/images/legend-ai/legendai.png';
 
     let busy = false;
+    let activeRequest = null;
     let state = loadState();
     let uiState = loadUiState();
-    let lastTranscriptScrollTop = 0;
 
     ensureActiveConversation();
+    applySharedDesignTokens();
+    syncControlPlacement();
     applyDesktopSidebarState();
     syncViewportHeight();
+    setBusy(false);
 
     function isMobile() {
         return window.matchMedia(MOBILE_QUERY).matches;
@@ -98,6 +104,72 @@
             '--legend-ai-viewport-height',
             `${Math.round(height)}px`
         );
+    }
+
+    async function applySharedDesignTokens() {
+        try {
+            const response = await fetch(
+                DESIGN_TOKEN_URL,
+                {
+                    credentials: 'same-origin',
+                    cache: 'force-cache'
+                }
+            );
+
+            if (!response.ok) {
+                return;
+            }
+
+            const specification = await response.json();
+            const colors = specification?.colors;
+            if (!colors || typeof colors !== 'object') {
+                return;
+            }
+
+            for (const [name, token] of Object.entries(colors)) {
+                const value = token?.light;
+                if (typeof value === 'string' && /^#[0-9a-f]{6}$/i.test(value)) {
+                    modalElement.style.setProperty(
+                        `--legend-design-${name}`,
+                        value
+                    );
+                }
+            }
+
+            const sizes = specification?.sizes;
+            if (sizes && typeof sizes === 'object') {
+                for (const [name, value] of Object.entries(sizes)) {
+                    if (typeof value === 'number' && Number.isFinite(value)) {
+                        modalElement.style.setProperty(
+                            `--legend-design-${name}`,
+                            `${value}px`
+                        );
+                    }
+                }
+            }
+
+            modalElement.dataset.designSource = 'legend-design.tokens.v1';
+        } catch {
+            // The component has safe CSS fallbacks, but production and iOS
+            // normally consume the same versioned design-token resource.
+        }
+    }
+
+    // The same controls have one DOM owner. On a compact viewport, move that
+    // owner into the hamburger drawer instead of rendering a second mobile
+    // mode/native-only implementation.
+    function syncControlPlacement() {
+        if (!modebar) {
+            return;
+        }
+
+        const destination = isMobile()
+            ? mobileControls
+            : modebarHome;
+
+        if (destination && modebar.parentElement !== destination) {
+            destination.appendChild(modebar);
+        }
     }
 
     function focusComposer() {
@@ -172,17 +244,10 @@
         );
     }
 
-    function setReadingMode() {
-        // Keep the primary chat chrome reachable on mobile. Scrolling may
-        // still dismiss the keyboard, but it must never hide the header,
-        // responder selector, status, or composer behind a persistent class.
-        modalElement.classList.remove('is-reading');
-    }
-
     trigger.addEventListener('click', () => {
         syncViewportHeight();
-        setReadingMode(false);
         setSidebarOpen(false);
+        syncControlPlacement();
         applyDesktopSidebarState();
         modal.show();
         renderAll({ forceBottom: true });
@@ -199,15 +264,14 @@
     });
 
     modalElement.addEventListener('hidden.bs.modal', () => {
-        setReadingMode(false);
         setSidebarOpen(false);
         input?.blur();
     });
 
     window.addEventListener('resize', () => {
         syncViewportHeight();
-        setReadingMode(false);
         setSidebarOpen(false);
+        syncControlPlacement();
         applyDesktopSidebarState();
     });
 
@@ -380,7 +444,6 @@
         state.activeConversationId = conversation.id;
         saveState();
         setSidebarOpen(false);
-        setReadingMode(false);
         renderAll({ forceBottom: true });
 
         if (status) {
@@ -407,7 +470,6 @@
 
         saveState();
         setSidebarOpen(false);
-        setReadingMode(false);
         renderAll({ forceBottom: true });
 
         if (status) {
@@ -435,7 +497,6 @@
 
         saveState();
         setSidebarOpen(false);
-        setReadingMode(false);
         renderAll({ forceBottom: true });
         focusComposer();
     }
@@ -454,7 +515,6 @@
 
         saveState();
         setSidebarOpen(false);
-        setReadingMode(false);
         renderAll({ forceBottom: true });
 
         if (status) {
@@ -525,8 +585,6 @@
             transcript.scrollTop = priorScrollTop;
         }
 
-        lastTranscriptScrollTop =
-            transcript.scrollTop;
     }
 
     function renderModes() {
@@ -546,15 +604,6 @@
                 'aria-selected',
                 active ? 'true' : 'false'
             );
-        }
-
-        if (subtitle) {
-            subtitle.textContent =
-                conversation.mode === 'teacher'
-                    ? 'Direct OpenAI Teacher · LEGEND native inference bypassed'
-                    : conversation.nativeOnly === true
-                        ? 'Legend® Ai · native-only test · every OpenAI escalation blocked'
-                    : 'Legend® Ai · governed native intelligence first';
         }
 
         if (nativeOnly) {
@@ -800,6 +849,8 @@
             const logo =
                 document.createElement('img');
 
+            logo.className =
+                'legend-founder-ai-logo-image';
             logo.src = logoSource;
             logo.alt = '';
             logo.setAttribute(
@@ -826,26 +877,25 @@
             authority.className =
                 'legend-founder-ai-response-authority';
 
-            if (
-                responseAuthority === 'LegendAi' &&
-                stage === 'native_response'
-            ) {
+            const hasNamedAuthority =
+                responseAuthority === 'LegendAi' ||
+                responseAuthority === 'OpenAITeacher';
+
+            if (responseAuthority === 'LegendAi') {
                 authority.classList.add('is-native');
                 authority.textContent =
-                    'Verified native LEGEND · OpenAI responder not used';
+                    'Legend® Ai';
             } else if (
                 responseAuthority === 'OpenAITeacher'
             ) {
                 authority.classList.add('is-provider');
                 authority.textContent =
-                    `OpenAI Teacher · ${stage || 'provider response'}`;
-            } else {
-                authority.classList.add('is-diagnostic');
-                authority.textContent =
-                    `${responseAuthority || 'System diagnostic'} · ${stage || 'unclassified'}`;
+                    'OpenAI';
             }
 
-            bubble.appendChild(authority);
+            if (hasNamedAuthority) {
+                bubble.appendChild(authority);
+            }
         }
 
         message.appendChild(bubble);
@@ -864,10 +914,6 @@
         transcript.scrollTop =
             transcript.scrollHeight;
 
-        lastTranscriptScrollTop =
-            transcript.scrollTop;
-
-        setReadingMode(false);
     }
 
     function setBusy(
@@ -876,20 +922,30 @@
     ) {
         busy = value;
 
+        modalElement.classList.toggle(
+            'is-responding',
+            value
+        );
+
         if (send) {
-            send.disabled = value;
+            // While a response is running this same control becomes Stop.
+            // The composer stays editable so the next request can be prepared
+            // without opening a parallel conversation or endpoint.
+            send.disabled = !value && !input?.value.trim();
+            send.setAttribute(
+                'aria-label',
+                value
+                    ? 'Stop generating'
+                    : 'Send message'
+            );
         }
 
-        if (input) {
-            input.disabled = value;
+        if (sendIcon) {
+            sendIcon.textContent = value ? '■' : '↑';
         }
 
         if (newConversation) {
             newConversation.disabled = value;
-        }
-
-        if (mobileNew) {
-            mobileNew.disabled = value;
         }
 
         if (clearHistory) {
@@ -909,6 +965,16 @@
         if (status) {
             status.textContent = message;
         }
+    }
+
+    function abortActiveRequest() {
+        if (!busy || !activeRequest) {
+            return;
+        }
+
+        status && (status.textContent =
+            'Stopping the current response. Your next message remains in the composer.');
+        activeRequest.abort();
     }
 
     function applyOperationalProgress(payload) {
@@ -1032,13 +1098,18 @@
 
     input?.addEventListener(
         'input',
-        resizeInput
+        () => {
+            resizeInput();
+
+            if (!busy && send) {
+                send.disabled = !input.value.trim();
+            }
+        }
     );
 
     input?.addEventListener(
         'focus',
         () => {
-            setReadingMode(false);
             window.setTimeout(
                 syncViewportHeight,
                 40
@@ -1055,47 +1126,13 @@
             ) {
                 event.preventDefault();
 
-                if (!busy) {
+                if (busy) {
+                    abortActiveRequest();
+                } else {
                     form?.requestSubmit();
                 }
             }
         }
-    );
-
-    transcript?.addEventListener(
-        'scroll',
-        () => {
-            if (!isMobile()) {
-                return;
-            }
-
-            const current =
-                transcript.scrollTop;
-
-            const delta =
-                current -
-                lastTranscriptScrollTop;
-
-            const nearBottom =
-                isTranscriptNearBottom();
-
-            if (nearBottom) {
-                setReadingMode(false);
-            } else if (
-                delta > 6 &&
-                current > 44
-            ) {
-                setReadingMode(true);
-                setSidebarOpen(false);
-                input?.blur();
-            } else if (delta < -6) {
-                setReadingMode(false);
-            }
-
-            lastTranscriptScrollTop =
-                current;
-        },
-        { passive: true }
     );
 
     sidebarCollapse?.addEventListener(
@@ -1108,11 +1145,6 @@
         startNewConversation
     );
 
-    mobileNew?.addEventListener(
-        'click',
-        startNewConversation
-    );
-
     clearHistory?.addEventListener(
         'click',
         clearAllHistory
@@ -1121,8 +1153,6 @@
     mobileMenu?.addEventListener(
         'click',
         () => {
-            setReadingMode(false);
-
             setSidebarOpen(
                 !modalElement.classList
                     .contains('is-sidebar-open')
@@ -1175,7 +1205,6 @@
             state.activeConversationId = conversation.id;
             saveState();
             setSidebarOpen(false);
-            setReadingMode(false);
             renderAll({ forceBottom: true });
 
             if (status) {
@@ -1193,7 +1222,12 @@
         async event => {
             event.preventDefault();
 
-            if (busy || !input) {
+            if (!input) {
+                return;
+            }
+
+            if (busy) {
+                abortActiveRequest();
                 return;
             }
 
@@ -1231,13 +1265,12 @@
 
             input.value = '';
             resizeInput();
-            setReadingMode(false);
             renderAll({ forceBottom: true });
 
-            setBusy(
-                true,
-                ''
-            );
+            setBusy(true, 'Preparing a response…');
+
+            const request = new AbortController();
+            activeRequest = request;
 
             try {
                 const token =
@@ -1267,11 +1300,19 @@
                                 founderCommandConfirmed:
                                     founderCommandConfirmed?.checked === true,
                                 messages: conversation.messages
-                            })
+                            }),
+                            signal: request.signal
                         }
                     );
 
-                const result = await consumeChatResultStream(response);
+                const result = await consumeChatResultStream(
+                    response,
+                    request.signal
+                );
+
+                if (activeRequest !== request) {
+                    return;
+                }
 
                 conversation.messages.push({
                     role: 'assistant',
@@ -1301,21 +1342,38 @@
 
                 saveState();
                 renderAll({ forceBottom: true });
-                setBusy(false, '');
                 focusComposer();
             } catch (error) {
-                setBusy(
-                    false,
-                    error instanceof Error
-                        ? error.message
-                        : 'Legend® Ai could not complete that response.'
-                );
+                const stopped = request.signal.aborted;
+
+                if (activeRequest === request && status) {
+                    status.textContent = stopped
+                        ? 'Response stopped. Your draft is ready to send.'
+                        : error instanceof Error
+                            ? error.message
+                            : 'Legend® Ai could not complete that response.';
+                }
 
                 focusComposer();
             } finally {
+                if (activeRequest === request) {
+                    activeRequest = null;
+                    setBusy(false, status?.textContent || '');
+                }
+
                 if (founderCommandConfirmed) {
                     founderCommandConfirmed.checked = false;
                 }
+            }
+        }
+    );
+
+    send?.addEventListener(
+        'click',
+        event => {
+            if (busy) {
+                event.preventDefault();
+                abortActiveRequest();
             }
         }
     );

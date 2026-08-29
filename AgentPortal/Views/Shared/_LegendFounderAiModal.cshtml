@@ -14,7 +14,7 @@
                         <img src="~/images/legend-ai/legendai.png"
                              asp-append-version="true"
                              alt=""
-                             class="legend-founder-ai-logo" />
+                             class="legend-founder-ai-logo legend-founder-ai-logo-image" />
                     </div>
 
                     <div class="legend-founder-ai-heading">
@@ -22,21 +22,19 @@
                             <h2 id="legendFounderAiTitle">
                                 Legend<sup>®</sup> Ai
                             </h2>
-                            <span class="legend-founder-ai-founder-pill">
-                                FOUNDER
-                            </span>
                         </div>
-                        <p id="legendFounderAiSubtitle">
-                            Governed intelligence conversation
-                        </p>
                     </div>
                 </div>
 
                 <div class="legend-founder-ai-header-actions">
-                    <span class="legend-founder-ai-governance-mark">
-                        <span aria-hidden="true">◆</span>
-                        Governed V14
-                    </span>
+                    <button type="button"
+                            id="legendFounderAiMobileMenu"
+                            class="legend-founder-ai-mobile-menu"
+                            aria-expanded="false"
+                            aria-controls="legendFounderAiSidebar"
+                            aria-label="Open conversations and Legend® Ai controls">
+                        <span aria-hidden="true">☰</span>
+                    </button>
 
                     <button type="button"
                             class="legend-founder-ai-close"
@@ -72,6 +70,11 @@
                                 New conversation
                             </span>
                         </button>
+                    </div>
+
+                    <div id="legendFounderAiMobileControls"
+                         class="legend-founder-ai-mobile-controls"
+                         aria-label="Legend® Ai conversation controls">
                     </div>
 
                     <section class="legend-founder-ai-sidebar-section legend-founder-ai-conversations-section">
@@ -175,64 +178,43 @@
                 </button>
 
                 <section class="legend-founder-ai-main">
+                    <div id="legendFounderAiModebarHome"
+                         class="legend-founder-ai-modebar-home">
+                        <div id="legendFounderAiModebar"
+                             class="legend-founder-ai-modebar">
+                            <div class="legend-founder-ai-mode-tabs"
+                                 role="tablist"
+                                 aria-label="Conversation mode">
+                                <button type="button"
+                                        class="legend-founder-ai-mode is-active"
+                                        data-legend-ai-mode="legend"
+                                        role="tab"
+                                        aria-selected="true">
+                                    <span class="legend-founder-ai-mode-dot" aria-hidden="true"></span>
+                                    Legend<sup>®</sup> Ai
+                                </button>
 
-                    <div class="legend-founder-ai-mobile-actions"
-                         aria-label="Conversation actions">
-                        <button type="button"
-                                id="legendFounderAiMobileMenu"
-                                class="legend-founder-ai-mobile-action"
-                                aria-expanded="false"
-                                aria-controls="legendFounderAiSidebar">
-                            <span aria-hidden="true">☰</span>
-                            <span>Chats</span>
-                        </button>
+                                <button type="button"
+                                        class="legend-founder-ai-mode"
+                                        data-legend-ai-mode="teacher"
+                                        role="tab"
+                                        aria-selected="false">
+                                    <span class="legend-founder-ai-mode-dot" aria-hidden="true"></span>
+                                    OpenAI
+                                    <span class="visually-hidden">Direct OpenAI mode; native LEGEND responder bypassed</span>
+                                </button>
+                            </div>
 
-                        <span class="legend-founder-ai-mobile-title">
-                            Legend<sup>®</sup> Ai
-                        </span>
-
-                        <button type="button"
-                                id="legendFounderAiMobileNew"
-                                class="legend-founder-ai-mobile-action is-primary"
-                                aria-label="Start a new conversation">
-                            <span aria-hidden="true">＋</span>
-                            <span>New</span>
-                        </button>
-                    </div>
-
-                    <div class="legend-founder-ai-modebar">
-                        <div class="legend-founder-ai-mode-tabs"
-                             role="tablist"
-                             aria-label="Conversation mode">
-                            <button type="button"
-                                    class="legend-founder-ai-mode is-active"
-                                    data-legend-ai-mode="legend"
-                                    role="tab"
-                                    aria-selected="true">
-                                <span class="legend-founder-ai-mode-dot" aria-hidden="true"></span>
-                                Legend<sup>®</sup> Ai
-                            </button>
-
-                            <button type="button"
-                                    class="legend-founder-ai-mode"
-                                    data-legend-ai-mode="teacher"
-                                    role="tab"
-                                    aria-selected="false">
-                                <span class="legend-founder-ai-mode-dot" aria-hidden="true"></span>
-                                OpenAI Teacher
-                                <span class="visually-hidden">Direct OpenAI mode; native LEGEND responder bypassed</span>
-                            </button>
+                            <label class="legend-founder-ai-native-only"
+                                   for="legendFounderAiNativeOnly">
+                                <input type="checkbox"
+                                       id="legendFounderAiNativeOnly" />
+                                <span>
+                                    <strong>Native-only test</strong>
+                                    <small>Block every OpenAI escalation and fail closed when LEGEND cannot answer.</small>
+                                </span>
+                            </label>
                         </div>
-
-                        <label class="legend-founder-ai-native-only"
-                               for="legendFounderAiNativeOnly">
-                            <input type="checkbox"
-                                   id="legendFounderAiNativeOnly" />
-                            <span>
-                                <strong>Native-only test</strong>
-                                <small>Block every OpenAI escalation and fail closed when LEGEND cannot answer.</small>
-                            </span>
-                        </label>
                     </div>
 
                     <main class="legend-founder-ai-transcript"
@@ -244,7 +226,8 @@
                             <div class="legend-founder-ai-welcome-mark">
                                 <img src="~/images/legend-ai/legendai.png"
                                      asp-append-version="true"
-                                     alt="" />
+                                     alt=""
+                                     class="legend-founder-ai-logo-image" />
                             </div>
 
                             <span class="legend-founder-ai-eyebrow">
@@ -287,7 +270,7 @@
                                         id="legendFounderAiSend"
                                         class="legend-founder-ai-send"
                                         aria-label="Send message">
-                                    <span aria-hidden="true">↑</span>
+                                    <span id="legendFounderAiSendIcon" aria-hidden="true">↑</span>
                                 </button>
                             </div>
 
