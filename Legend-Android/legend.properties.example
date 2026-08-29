@@ -1,9 +1,13 @@
-# Supply in untracked Legend-Android/legend.properties or CI secrets, then render both
-# app/src/main/assets/legend-runtime.json and app/src/main/res/raw/legend_msal_config.json.
+# Supply in untracked Legend-Android/legend.properties or CI secrets. Gradle renders
+# isolated debug/release runtime assets and MSAL resources from these non-secret values.
 # No bearer token, refresh token, client secret, Firebase service-account credential, or translator key belongs here.
 LEGEND_API_BASE_URL=
 LEGEND_ENTRA_TENANT_ID=
 LEGEND_ENTRA_CLIENT_ID=
 LEGEND_ENTRA_AUTHORITY=
 LEGEND_ENTRA_SCOPE=
+# Optional: a registered redirect for a nonstandard debug signing certificate.
+# When omitted, Gradle derives this URI from the current Android debug keystore.
+LEGEND_MSAL_DEBUG_REDIRECT_URI=
+# Production must remain the registered Google Play App Signing redirect URI.
 LEGEND_MSAL_REDIRECT_URI=

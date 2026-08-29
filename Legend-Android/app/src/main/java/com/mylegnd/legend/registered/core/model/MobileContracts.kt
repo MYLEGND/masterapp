@@ -29,6 +29,38 @@ import kotlinx.serialization.Serializable
     val canManageCommunity: Boolean = false,
 )
 
+/** Shared Founder-only conversation contract served by MobileFounderAiController. */
+@Serializable data class FounderAiAccessResponse(val available: Boolean)
+@Serializable data class FounderAiChatMessage(val role: String, val content: String)
+@Serializable data class FounderAiChatRequest(
+    val mode: String,
+    @SerialName("nativeOnly") val nativeOnly: Boolean,
+    val messages: List<FounderAiChatMessage>,
+    @SerialName("conversationId") val conversationId: String,
+)
+@Serializable data class FounderAiChatResponse(
+    val succeeded: Boolean,
+    val mode: String,
+    val message: String? = null,
+    val error: String? = null,
+    @SerialName("failureKind") val failureKind: String? = null,
+    @SerialName("providerStatusCode") val providerStatusCode: Int? = null,
+    val reference: String? = null,
+    @SerialName("responseAuthority") val responseAuthority: String? = null,
+    val stage: String? = null,
+)
+@Serializable data class FounderAiProgressEnvelope(
+    val type: String,
+    @SerialName("elapsedSeconds") val elapsedSeconds: Int? = null,
+    val progress: FounderAiProgressUpdate? = null,
+)
+@Serializable data class FounderAiProgressUpdate(
+    val stage: String,
+    val message: String,
+    val round: Int? = null,
+    val tool: String? = null,
+)
+
 @Serializable data class MobileSessionResponse(
     val authenticated: Boolean,
     val actor: MobileActor? = null,
@@ -39,6 +71,11 @@ import kotlinx.serialization.Serializable
 )
 
 @Serializable data class SelectRoleRequest(@SerialName("participantType") val participantType: String)
+@Serializable data class MobileReviewSignInRequest(val username: String, val password: String)
+@Serializable data class MobileReviewTokenResponse(
+    @SerialName("accessToken") val accessToken: String,
+    @SerialName("expiresIn") val expiresIn: Int,
+)
 @Serializable data class MobileRoleSelectionResponse(
     val actor: MobileActor,
     @SerialName("permittedParticipantTypes") val permittedParticipantTypes: List<String>,

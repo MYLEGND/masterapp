@@ -13,13 +13,153 @@ import com.mylegnd.legend.registered.core.network.NotificationSnapshot
 import com.mylegnd.legend.registered.core.network.SocialViewRequest
 import com.mylegnd.legend.registered.core.realtime.LegendMessagingRealtimeEvent
 import com.mylegnd.legend.registered.data.*
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 import android.content.Context
 import android.net.Uri
 import com.mylegnd.legend.registered.core.media.ProfileAvatarPreparer
+import java.util.UUID
+
+data class FounderAiTranscriptMessage(
+    val role: String,
+    val content: String,
+    val responseAuthority: String? = null,
+)
+
+data class FounderAiConversationState(
+    val availability: LoadState<Boolean> = LoadState.Idle,
+    val messages: List<FounderAiTranscriptMessage> = emptyList(),
+    val isSending: Boolean = false,
+    val operationId: String? = null,
+    val progress: String? = null,
+    val failure: String? = null,
+)
+
+/**
+ * Android is a client of the same Founder-only conversation authority as web
+ * and iOS. It never selects a provider or implements a responder locally.
+ */
+class FounderAiViewModel(
+    private val repository: FounderAiRepository,
+    private val role: String,
+) : ViewModel() {
+    private val _state = MutableStateFlow(FounderAiConversationState())
+    val state: StateFlow<FounderAiConversationState> = _state.asStateFlow()
+    private var conversationId = UUID.randomUUID().toString()
+    private var operation: Job? = null
+
+    fun resolveAvailability() {
+        if (_state.value.availability !is LoadState.Idle) return
+        viewModelScope.launch {
+            _state.value = _state.value.copy(availability = LoadState.Loading)
+            _state.value = _state.value.copy(
+                availability = when (val result = repository.access(role)) {
+                    is LoadState.Data -> LoadState.Data(result.value.available)
+                    is LoadState.Error -> LoadState.Error(result.message)
+                    else -> LoadState.Error("Founder AI availability could not be determined.")
+                },
+            )
+        }
+    }
+
+    fun send(rawText: String, mode: String, nativeOnly: Boolean) {
+        val text = rawText.trim()
+        if (text.isBlank() || _state.value.isSending || mode !in setOf("legend", "teacher")) return
+        if ((_state.value.availability as? LoadState.Data)?.value != true) return
+
+        val operationId = UUID.randomUUID().toString()
+        val submitted = _state.value.messages + FounderAiTranscriptMessage("user", text)
+        _state.value = _state.value.copy(
+            messages = submitted,
+            isSending = true,
+            operationId = operationId,
+            progress = "Preparing governed conversation…",
+            failure = null,
+        )
+        operation = viewModelScope.launch {
+            val progressJob = launch {
+                repository.progress(role, operationId).collect { envelope ->
+                    val update = envelope.progress?.message?.trim().orEmpty()
+                    if (update.isNotBlank() && _state.value.operationId == operationId) {
+                        _state.value = _state.value.copy(
+                            progress = envelope.elapsedSeconds?.let { "$update · ${it}s" } ?: update,
+                        )
+                    }
+                }
+            }
+            try {
+                when (val result = repository.chat(
+                    role = role,
+                    operationId = operationId,
+                    chatRequest = FounderAiChatRequest(
+                        mode = mode,
+                        nativeOnly = mode == "legend" && nativeOnly,
+                        messages = submitted.map { FounderAiChatMessage(it.role, it.content) },
+                        conversationId = conversationId,
+                    ),
+                )) {
+                    is LoadState.Data -> {
+                        val response = result.value
+                        if (_state.value.operationId != operationId) return@launch
+                        if (response.succeeded && !response.message.isNullOrBlank()) {
+                            _state.value = _state.value.copy(
+                                messages = _state.value.messages + FounderAiTranscriptMessage(
+                                    role = "assistant",
+                                    content = response.message,
+                                    responseAuthority = response.responseAuthority,
+                                ),
+                            )
+                        } else {
+                            _state.value = _state.value.copy(failure = response.safeFailure())
+                        }
+                    }
+                    is LoadState.Error -> if (_state.value.operationId == operationId) {
+                        _state.value = _state.value.copy(failure = result.message)
+                    }
+                    else -> Unit
+                }
+            } catch (_: CancellationException) {
+                // cancel() has already returned a truthful local status. The
+                // server receives the cancelled mobile request and stops work.
+            } finally {
+                progressJob.cancel()
+                if (_state.value.operationId == operationId) {
+                    _state.value = _state.value.copy(isSending = false, operationId = null, progress = null)
+                }
+            }
+        }
+    }
+
+    fun cancel() {
+        val active = operation ?: return
+        if (!active.isActive) return
+        active.cancel()
+        operation = null
+        _state.value = _state.value.copy(
+            isSending = false,
+            operationId = null,
+            progress = null,
+            failure = "Response stopped. Your draft remains available.",
+        )
+    }
+
+    fun startNewConversation() {
+        if (_state.value.isSending) return
+        conversationId = UUID.randomUUID().toString()
+        _state.value = _state.value.copy(messages = emptyList(), failure = null, progress = null)
+    }
+
+    private fun FounderAiChatResponse.safeFailure(): String = buildList {
+        error?.trim()?.takeIf(String::isNotBlank)?.let(::add)
+        if (failureKind?.isNotBlank() == true) add("Stage: ${stage ?: failureKind}.")
+        reference?.trim()?.takeIf(String::isNotBlank)?.let { add("Reference: $it.") }
+    }.ifEmpty { listOf("The Founder AI request did not produce a response.") }.joinToString(" ")
+}
 
 class HomeViewModel(private val repository: HomeRepository, private val role: String) : ViewModel() {
     private val _state = MutableStateFlow<LoadState<MobileHomeResponse>>(LoadState.Idle)
@@ -129,17 +269,9 @@ class MessagingViewModel(private val repository: MessagingRepository, private va
 
     fun startConversation(recipient: MessagingRecipient, opened: (String) -> Unit) = viewModelScope.launch {
         _isSending.value = true
-        var openedConversationId: String? = null
+        val openedConversationId: String?
         try {
-            when (val result = repository.startConversation(role, recipient)) {
-                is LoadState.Data -> {
-                    _detail.value = result
-                    refreshInboxSilently()
-                    openedConversationId = result.value.id
-                }
-                is LoadState.Error -> _recipients.value = LoadState.Error(result.message)
-                else -> Unit
-            }
+            openedConversationId = beginConversation(recipient)
         } finally {
             _isSending.value = false
         }
@@ -147,6 +279,55 @@ class MessagingViewModel(private val repository: MessagingRepository, private va
         // continuation only after the in-flight start state is released.
         openedConversationId?.let(opened)
     }
+
+    /**
+     * Matches iOS: a CRM profile is never promoted to a messaging identity on
+     * the device. Resolve it through the existing clients recipient scope,
+     * then use the one canonical conversation start path.
+     */
+    fun startConversationForClient(profileId: String, opened: (String) -> Unit) = viewModelScope.launch {
+        if (_isSending.value) return@launch
+        _isSending.value = true
+        val openedConversationId: String?
+        try {
+            openedConversationId = when (val recipients = repository.recipients(role, scope = "clients")) {
+                is LoadState.Data -> {
+                    val recipient = recipients.value.singleOrNull {
+                        it.profileId == profileId &&
+                            it.identity.participantType.equals("Client", ignoreCase = true)
+                    }
+                    if (recipient == null) {
+                        _recipients.value = LoadState.Error("That client is no longer available to message.")
+                        null
+                    } else {
+                        beginConversation(recipient)
+                    }
+                }
+                is LoadState.Error -> {
+                    _recipients.value = recipients
+                    null
+                }
+                else -> null
+            }
+        } finally {
+            _isSending.value = false
+        }
+        openedConversationId?.let(opened)
+    }
+
+    private suspend fun beginConversation(recipient: MessagingRecipient): String? =
+        when (val result = repository.startConversation(role, recipient)) {
+            is LoadState.Data -> {
+                _detail.value = result
+                refreshInboxSilently()
+                result.value.id
+            }
+            is LoadState.Error -> {
+                _recipients.value = LoadState.Error(result.message)
+                null
+            }
+            else -> null
+        }
 
     fun createGroup(
         context: Context,

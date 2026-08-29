@@ -38,6 +38,7 @@ object LegendDesignAuthority {
     internal fun size(name: String) = required().sizes.required(name).dp
     internal fun socialFormat(name: String) = required().socialFormats.required(name)
     internal fun accountSession() = required().accountSession
+    internal fun navigation() = required().navigation
     internal fun gradient(name: String): Brush = Brush.linearGradient(
         required().gradients.required(name).map(::color),
     )
@@ -171,6 +172,7 @@ private data class LegendDesignSpecification(
     val sizes: Map<String, Float>,
     val typography: Map<String, LegendTypographyToken>,
     val socialFormats: Map<String, LegendSocialFormatToken>,
+    val navigation: LegendNavigationToken,
     val accountSession: LegendAccountSessionToken,
     val copy: Map<String, String>,
 )
@@ -184,6 +186,20 @@ internal object LegendAccountSessionPolicy {
     val InteractiveSignInRetentionDays get() = LegendDesignAuthority.accountSession().interactiveSignInRetentionDays
     val ProfileDoubleTapCyclesAccount get() = LegendDesignAuthority.accountSession().profileDoubleTapCyclesAccount
     val AllowsAdditionalSignedInAccounts get() = LegendDesignAuthority.accountSession().allowsAdditionalSignedInAccounts
+}
+
+/**
+ * The shared iOS-authored primary-navigation contract. Compose owns only the
+ * native renderer; tab order, role visibility, surface behavior, and brand
+ * identity come from the same platform-neutral authority as iOS and web.
+ */
+internal object LegendNavigationPolicy {
+    val Tabs get() = LegendDesignAuthority.navigation().tabs
+    val AgentOnlyTab get() = LegendDesignAuthority.navigation().agentOnlyTab
+    val DiscoverUsesNavySurface get() = LegendDesignAuthority.navigation().discoverUsesNavySurface
+    val MessagesSuppressesBottomNavigationInThread get() =
+        LegendDesignAuthority.navigation().messagesSuppressesBottomNavigationInThread
+    val Brand get() = LegendDesignAuthority.navigation().brand
 }
 
 /** Platform-neutral social canvas and picker rules extracted from iOS. */
@@ -231,6 +247,15 @@ internal data class LegendAccountSessionToken(
     val interactiveSignInRetentionDays: Int,
     val profileDoubleTapCyclesAccount: Boolean,
     val allowsAdditionalSignedInAccounts: Boolean,
+)
+
+@Serializable
+internal data class LegendNavigationToken(
+    val tabs: List<String>,
+    val agentOnlyTab: String,
+    val discoverUsesNavySurface: Boolean,
+    val messagesSuppressesBottomNavigationInThread: Boolean,
+    val brand: String,
 )
 
 private fun String.asColor(alpha: Float = 1f): Color {

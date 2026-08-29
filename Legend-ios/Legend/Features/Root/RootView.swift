@@ -82,15 +82,50 @@ private struct RoleSelectionView: View {
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(spacing: LegendNextSpacing.lg) {
-                    LegendNextHero(
-                        eyebrow: "Legend account",
-                        title: "Choose your experience",
-                        detail: "Choose the account you want to use. Legend will reopen this account next time."
-                    )
+                VStack(spacing: LegendNextSpacing.md) {
+                    VStack(alignment: .leading, spacing: LegendNextSpacing.xs) {
+                        HStack {
+                            Text("LEGEND ACCOUNT")
+                                .font(LegendNextTypography.eyebrow)
+                                .foregroundStyle(LegendNextColor.goldBright)
+
+                            Spacer()
+
+                            LegendBrandLogo(maximumWidth: 52)
+                                .frame(width: 46, height: 46)
+                                .clipShape(Circle())
+                                .accessibilityHidden(true)
+                        }
+
+                        Text("Choose your experience")
+                            .font(.system(size: 27, weight: .bold))
+                            .foregroundStyle(LegendNextColor.contactTitle)
+
+                        Text("Choose the account you want to use. Legend will reopen it next time.")
+                            .font(LegendNextTypography.supporting)
+                            .foregroundStyle(LegendNextColor.contactTitle.opacity(0.76))
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .padding(.horizontal, LegendNextSpacing.lg)
+                    .padding(.vertical, LegendNextSpacing.md)
+                    .background {
+                        ZStack {
+                            LegendNextGradient.hero
+                            LegendNextGradient.heroGlow
+                        }
+                        .clipShape(
+                            RoundedRectangle(
+                                cornerRadius: 24,
+                                style: .continuous))
+                    }
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 24, style: .continuous)
+                            .strokeBorder(LegendNextGradient.premiumStroke, lineWidth: 1)
+                    }
+                    .shadow(color: LegendNextColor.navy.opacity(0.16), radius: 18, y: 9)
 
                     LegendNextSurface(style: .elevated) {
-                        VStack(alignment: .leading, spacing: LegendNextSpacing.sm) {
+                        VStack(alignment: .leading, spacing: LegendNextSpacing.xs) {
                             Text("Available workspaces")
                                 .font(LegendNextTypography.section)
                                 .foregroundStyle(LegendNextColor.textPrimary)
@@ -105,16 +140,17 @@ private struct RoleSelectionView: View {
                                                 ? "briefcase.fill"
                                                 : "person.fill"
                                         )
-                                        .font(.system(size: 18, weight: .semibold))
+                                        .font(.system(size: 15, weight: .semibold))
                                         .foregroundStyle(LegendNextColor.gold)
-                                        .frame(width: 30)
+                                        .frame(width: 31, height: 31)
+                                        .background(LegendNextColor.goldSoft, in: Circle())
 
                                         Text(
                                             role == .agent
                                                 ? "Continue as Agent"
                                                 : "Continue as Client"
                                         )
-                                        .font(LegendNextTypography.cardTitle)
+                                        .font(.system(size: 15, weight: .semibold))
                                         .foregroundStyle(LegendNextColor.textPrimary)
 
                                         Spacer()
@@ -123,16 +159,23 @@ private struct RoleSelectionView: View {
                                             .font(.caption.weight(.bold))
                                             .foregroundStyle(LegendNextColor.gold)
                                     }
-                                    .padding(.horizontal, LegendNextSpacing.md)
-                                    .frame(maxWidth: .infinity, minHeight: 56)
-                                    .background(LegendNextColor.surfaceInset)
+                                    .padding(.horizontal, LegendNextSpacing.sm)
+                                    .frame(maxWidth: .infinity, minHeight: 48)
+                                    .background(
+                                        LinearGradient(
+                                            colors: [
+                                                LegendNextColor.surface,
+                                                LegendNextColor.surfaceInset
+                                            ],
+                                            startPoint: .topLeading,
+                                            endPoint: .bottomTrailing))
                                     .overlay {
                                         RoundedRectangle(
                                             cornerRadius: LegendNextRadius.control,
                                             style: .continuous
                                         )
                                         .stroke(
-                                            LegendNextColor.gold.opacity(0.42),
+                                            LegendNextColor.gold.opacity(0.58),
                                             lineWidth: 1
                                         )
                                     }
@@ -142,6 +185,10 @@ private struct RoleSelectionView: View {
                                             style: .continuous
                                         )
                                     )
+                                    .shadow(
+                                        color: LegendNextColor.gold.opacity(0.10),
+                                        radius: 8,
+                                        y: 3)
                                 }
                                 .buttonStyle(.plain)
                             }
@@ -151,12 +198,22 @@ private struct RoleSelectionView: View {
                     Button("Sign out") {
                         session.signOut()
                     }
-                    .buttonStyle(LegendNextButtonStyle(kind: .destructive))
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(LegendNextColor.danger)
+                    .frame(maxWidth: .infinity, minHeight: 38)
+                    .background(
+                        LegendNextColor.danger.opacity(0.07),
+                        in: RoundedRectangle(cornerRadius: 13, style: .continuous))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 13, style: .continuous)
+                            .strokeBorder(LegendNextColor.danger.opacity(0.22), lineWidth: 1)
+                    }
+                    .buttonStyle(.plain)
                 }
                 .frame(maxWidth: 520)
                 .padding(.horizontal, LegendNextSpacing.pageHorizontal)
-                .padding(.top, LegendNextSpacing.xxl)
-                .padding(.bottom, LegendNextSpacing.xxl)
+                .padding(.top, LegendNextSpacing.lg)
+                .padding(.bottom, LegendNextSpacing.xl)
                 .frame(maxWidth: .infinity)
             }
             .background(LegendNextCanvas())
@@ -236,23 +293,55 @@ private struct SignInView: View {
 
     var body: some View {
         NavigationStack {
-            VStack(spacing: LegendNextSpacing.lg) {
-                Spacer(minLength: LegendNextSpacing.section)
-
+            VStack(spacing: LegendNextSpacing.md) {
                 VStack(spacing: LegendNextSpacing.sm) {
+                    LegendBrandLogo(maximumWidth: 78)
+                        .frame(width: 68, height: 68)
+                        .clipShape(Circle())
+                        .overlay {
+                            Circle()
+                                .strokeBorder(
+                                    LegendNextColor.goldBright.opacity(0.72),
+                                    lineWidth: 1)
+                        }
+                        .accessibilityHidden(true)
+
+                    Text("LEGEND ACCOUNT")
+                        .font(LegendNextTypography.eyebrow)
+                        .foregroundStyle(LegendNextColor.goldBright)
+
                     Text("Secure sign in")
-                        .font(LegendNextTypography.hero)
-                        .foregroundStyle(LegendNextColor.textPrimary)
+                        .font(.system(size: 27, weight: .bold))
+                        .foregroundStyle(LegendNextColor.contactTitle)
                     Text("Verify your Legend account to continue.")
                         .font(LegendNextTypography.supporting)
-                        .foregroundStyle(LegendNextColor.textSecondary)
+                        .foregroundStyle(LegendNextColor.contactTitle.opacity(0.76))
                         .multilineTextAlignment(.center)
                 }
+                .frame(maxWidth: .infinity)
+                .padding(.horizontal, LegendNextSpacing.lg)
+                .padding(.vertical, LegendNextSpacing.lg)
+                .background {
+                    ZStack {
+                        LegendNextGradient.hero
+                        LegendNextGradient.heroGlow
+                    }
+                    .clipShape(
+                        RoundedRectangle(
+                            cornerRadius: 26,
+                            style: .continuous))
+                }
+                .overlay {
+                    RoundedRectangle(cornerRadius: 26, style: .continuous)
+                        .strokeBorder(LegendNextGradient.premiumStroke, lineWidth: 1)
+                }
+                .shadow(color: LegendNextColor.navy.opacity(0.16), radius: 20, y: 10)
 
                 Button("Sign in securely") {
                     session.signIn()
                 }
                 .buttonStyle(LegendNextButtonStyle(kind: .primary))
+                .frame(maxHeight: 48)
                 .accessibilityHint("Opens secure Legend sign-in and verification.")
 
                 Button("App Review Sign In") {
@@ -268,11 +357,12 @@ private struct SignInView: View {
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, LegendNextSpacing.xl)
 
-                Spacer()
+                Spacer(minLength: LegendNextSpacing.section)
             }
             .frame(maxWidth: 520)
             .padding(.horizontal, LegendNextSpacing.pageHorizontal)
-            .padding(.vertical, LegendNextSpacing.xxl)
+            .padding(.top, LegendNextSpacing.xl)
+            .padding(.bottom, LegendNextSpacing.lg)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(LegendNextCanvas())
             .toolbar(.hidden, for: .navigationBar)

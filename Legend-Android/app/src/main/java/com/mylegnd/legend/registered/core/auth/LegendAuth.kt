@@ -7,9 +7,11 @@ import com.microsoft.identity.client.exception.MsalException
 import com.mylegnd.legend.registered.R
 import com.mylegnd.legend.registered.core.config.LegendRuntimeConfiguration
 import com.mylegnd.legend.registered.core.logging.LegendLogger
+import com.mylegnd.legend.registered.core.network.AccessTokenProvider
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
+import java.time.Instant
 
 /** MSAL owns OAuth/refresh-token persistence; bearer tokens are never written by Legend code. */
 interface LegendAuthClient {
@@ -20,6 +22,42 @@ interface LegendAuthClient {
 }
 
 data class LegendAuthenticatedAccount(val id: String, val displayName: String)
+
+/**
+ * One bearer authority for the existing API client. Ordinary accounts remain
+ * owned by MSAL. The server-issued App Review token is deliberately held only
+ * in memory, has no refresh credential, and can never outlive its signed TTL.
+ */
+class LegendBearerTokenAuthority(
+    private val auth: LegendAuthClient,
+) : AccessTokenProvider {
+    private data class ReviewCredential(val token: String, val expiresUtc: Instant)
+    @Volatile private var reviewCredential: ReviewCredential? = null
+    @Volatile private var reviewSessionActive = false
+
+    fun activateReviewCredential(token: String, expiresInSeconds: Int) {
+        require(token.isNotBlank() && expiresInSeconds > 0) { "The review credential is invalid." }
+        reviewCredential = ReviewCredential(token, Instant.now().plusSeconds(expiresInSeconds.toLong()))
+        reviewSessionActive = true
+    }
+
+    fun clearReviewCredential() {
+        reviewCredential = null
+        reviewSessionActive = false
+    }
+
+    override suspend fun accessToken(): String? {
+        if (reviewSessionActive) {
+            val credential = reviewCredential
+            if (credential != null && credential.expiresUtc.isAfter(Instant.now().plusSeconds(30))) {
+                return credential.token
+            }
+            reviewCredential = null
+            return null
+        }
+        return auth.restoreAccessToken()
+    }
+}
 
 class MsalLegendAuthClient(private val context: Context, private val configuration: LegendRuntimeConfiguration) : LegendAuthClient {
     private var activeAccountId: String? = null
