@@ -77,7 +77,7 @@ jobs:
         run: dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-build --filter "FullyQualifiedName~LegendConnectModelEvaluationTests|FullyQualifiedName~LegendConnectModelTrainingTests|FullyQualifiedName~LegendConnectModelTrainingLifecycleTests|FullyQualifiedName~LegendConnectModelPromotionTests|FullyQualifiedName~LegendConnectProductionNeuralRoutingTests" --logger "trx;LogFileName=legend-model-proof.trx"
 
       - name: Run architectural takeover gate proof
-        run: dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-build --filter "FullyQualifiedName~IntelligenceEvaluation_BlocksTakeoverClaimUntilEveryDomainBeatsOneLockedBaseline" --logger "trx;LogFileName=legend-takeover-gate-proof.trx"
+        run: dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-build --filter "FullyQualifiedName~IntelligenceEvaluation_BlocksTakeoverClaimUntilEveryDomainBeatsOneLockedBaseline|FullyQualifiedName~LegendBlindComparativeBenchmarkTests" --logger "trx;LogFileName=legend-takeover-gate-proof.trx"
 
       - name: Prove one serving reasoning authority
         shell: bash
@@ -90,6 +90,7 @@ jobs:
           test "$(git grep -l "class LegendConnectGovernedReasoningExecutor" -- Infrastructure | wc -l)" -eq 1
           test "$(git grep -l "class LegendArchitecturalTakeoverGate" -- AgentPortal | wc -l)" -eq 1
           test "$(git grep -l "class LegendFounderToolAuthority" -- AgentPortal | wc -l)" -eq 1
+          test "$(git grep -l "class LegendBlindComparativeBenchmarkEvaluator" -- AgentPortal | wc -l)" -eq 1
           test "$(git grep -l "switch (call.Name)" -- AgentPortal/Services | wc -l)" -eq 1
           if git grep -n "ExecuteFounderToolAsync" -- AgentPortal/Services/LegendFounderAiConversationService.cs; then
             echo "::error::Conversation service still contains a parallel Founder tool executor."
