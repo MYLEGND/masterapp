@@ -1643,8 +1643,6 @@ internal sealed class LegendFounderToolAuthority
             dimensions = new
             {
                 type = "object",
-                minProperties = 1,
-                maxProperties = 12,
                 additionalProperties = new { type = "string", minLength = 1, maxLength = 160 }
             }
         },

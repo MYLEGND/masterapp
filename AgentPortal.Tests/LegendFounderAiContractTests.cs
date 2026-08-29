@@ -504,6 +504,23 @@ public sealed class LegendFounderAiContractTests
     }
 
     [Fact]
+    public void FounderToolSchemas_ExcludeProviderUnsupportedObjectCardinalityKeywords()
+    {
+        var buildTools = typeof(LegendFounderToolAuthority)
+            .GetMethod("BuildFounderTools", BindingFlags.NonPublic | BindingFlags.Static);
+
+        Assert.NotNull(buildTools);
+        var tools = Assert.IsAssignableFrom<IReadOnlyList<object>>(
+            buildTools!.Invoke(null, null));
+        var serialized = JsonSerializer.Serialize(tools);
+
+        // OpenAI strict function schemas reject minProperties/maxProperties.
+        // Runtime parsing remains the canonical 1..12 dimension guard.
+        Assert.DoesNotContain("\"minProperties\"", serialized, StringComparison.Ordinal);
+        Assert.DoesNotContain("\"maxProperties\"", serialized, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task SoftwareRemediation_FailsClosedWithoutCanonicalConfiguration()
     {
         var factory = new ThrowingHttpClientFactory();
