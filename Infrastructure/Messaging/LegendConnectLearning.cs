@@ -2486,7 +2486,8 @@ internal sealed class LegendConnectAutonomousLearningService
                     submission.Confidence,
                     0m,
                     1m),
-                examples);
+                examples,
+                submission.SemanticTransitions);
 
         var payload =
             JsonSerializer.Serialize(family);
@@ -3214,6 +3215,17 @@ internal sealed class LegendConnectAutonomousLearningService
                     proposal,
                     "Rejected",
                     "canonical_proposal_payload_invalid",
+                    cancellationToken);
+                return true;
+            }
+
+            if (IsConversationMachineCandidate(candidate) &&
+                (family.SemanticTransitions is null || family.SemanticTransitions.Count == 0))
+            {
+                await CompleteCanonicalLanguageProposalAsync(
+                    proposal,
+                    "Rejected",
+                    "canonical_conversation_transition_missing",
                     cancellationToken);
                 return true;
             }

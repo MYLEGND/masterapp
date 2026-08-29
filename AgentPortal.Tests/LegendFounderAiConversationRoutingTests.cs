@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Reflection;
 using AgentPortal.Services;
 using Domain.Messaging;
+using Infrastructure.Messaging;
 using Xunit;
 
 namespace AgentPortal.Tests;
@@ -54,6 +55,48 @@ public sealed class LegendFounderAiConversationRoutingTests
     }
 
     [Theory]
+    [InlineData("Train LEGEND on this exact reusable distinction.", true)]
+    [InlineData("Teach Legend using the governed curriculum.", true)]
+    [InlineData("Inspect LEGEND training status without changing anything.", false)]
+    [InlineData("Hello Legend.", false)]
+    public void FounderLearningMutationIntent_IsExplicitAndNatural(
+        string text,
+        bool expected)
+    {
+        var method = typeof(LegendFounderAiConversationService)
+            .GetMethod("RequestsFounderLearningMutation", BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.NotNull(method);
+        IReadOnlyList<LegendFounderAiChatMessage> conversation = [new("user", text)];
+        Assert.Equal(
+            expected,
+            Assert.IsType<bool>(method!.Invoke(null, new object[] { conversation })));
+    }
+
+    [Theory]
+    [InlineData("meaning_graph_component_unknown", true)]
+    [InlineData("meaning_graph_relation_unproven", true)]
+    [InlineData("semantic_transition_not_supported", true)]
+    [InlineData("ambiguous_composed_meaning", false)]
+    [InlineData("contradicted_semantic_transition", false)]
+    public void NativeEscalation_AllowsMissingKnowledgeButNotAmbiguityOrContradiction(
+        string reason,
+        bool expected)
+    {
+        var method = typeof(LegendConnectOperations)
+            .GetMethod("CanEscalateFromUnavailableComposedSource", BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.NotNull(method);
+        var inference = new LegendSemanticTransitionInference(
+            LegendSemanticTransitionInference.InsufficientEvidence,
+            null,
+            0,
+            [reason]);
+
+        Assert.Equal(
+            expected,
+            Assert.IsType<bool>(method!.Invoke(null, new object[] { inference })));
+    }
+
+    [Theory]
     [InlineData("legend", true)]
     [InlineData("teacher", false)]
     public void ConversationMode_ExplicitlyControlsNativeInference(string mode, bool expected)
@@ -76,6 +119,9 @@ public sealed class LegendFounderAiConversationRoutingTests
         Assert.Contains("existing governed tools", instructions);
         Assert.Contains("execute that tool rather than merely describing", instructions);
         Assert.Contains("explicit Founder instruction and request-level Founder confirmation", instructions);
+        Assert.Contains("must execute the matching existing governed training tool", instructions);
+        Assert.Contains("legend_submit_founder_curriculum", instructions);
+        Assert.Contains("legend_submit_machine_learning_candidate", instructions);
         Assert.DoesNotContain("may autonomously retain", instructions, StringComparison.OrdinalIgnoreCase);
     }
 
@@ -121,8 +167,40 @@ public sealed class LegendFounderAiConversationRoutingTests
         Assert.Contains("legend_submit_machine_learning_candidate", context);
         Assert.Contains("MachineProposed", context);
         Assert.Contains("independent critic", context);
-        Assert.Contains("request explicit Founder confirmation", context, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("submit exactly one bounded MachineProposed proposal", context, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("lower-ranked non-serving proposal", context, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("instead of inventing", context, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Theory]
+    [InlineData("legend_submit_machine_learning_candidate", "legend", false, true, true)]
+    [InlineData("legend_submit_machine_learning_candidate", "legend", true, false, false)]
+    [InlineData("legend_submit_machine_learning_candidate", "teacher", false, true, false)]
+    [InlineData("legend_submit_founder_curriculum", "legend", false, true, false)]
+    public void AutomaticProposalAuthority_IsLimitedToOneRealNativeGap(
+        string toolName,
+        string mode,
+        bool supported,
+        bool requiresEscalation,
+        bool expected)
+    {
+        var method = typeof(LegendFounderAiConversationService)
+            .GetMethod("CanAutomaticallyRetainNativeGapProposal", BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.NotNull(method);
+        var snapshot = new LegendConnectNativeInferenceSnapshot(
+            supported,
+            supported ? 1m : 0m,
+            supported ? "answer" : null,
+            supported ? "supported" : "meaning_graph_component_unknown",
+            0,
+            "diagnostic",
+            requiresEscalation);
+
+        Assert.Equal(
+            expected,
+            Assert.IsType<bool>(method!.Invoke(
+                null,
+                new object?[] { toolName, mode, snapshot })));
     }
 
     [Fact]

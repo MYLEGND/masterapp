@@ -299,6 +299,38 @@ public sealed class LegendConnectCurriculumTests
             .CountAsync(group => group.Count() > 1));
         Assert.Equal(0, await processor.SeedDurableFamilyWorkAsync(
             durable, LegendConnectLanguageIntelligenceEvaluatorVersion.Current, 4));
+
+        // An older work-identity contract may leave an auditable child with
+        // the same manifest subject/scope. Parent projection must use only
+        // the exact deterministic identities declared by the current
+        // manifest rather than remaining Processing forever because the raw
+        // subject row count is larger.
+        db.LegendHistoricalReevaluationWorkItems.Add(new LegendHistoricalReevaluationWorkItem
+        {
+            Id = Guid.NewGuid(),
+            EvaluatorVersion = LegendConnectLanguageIntelligenceEvaluatorVersion.Current,
+            Phase = LegendConnectHistoricalReevaluationWorkAuthority.FounderCurriculumPhase,
+            WorkKind = LegendConnectHistoricalReevaluationWorkAuthority.FounderManifestFamilyWorkKind,
+            WorkIdentity = $"legacy-founder-manifest:{manifest.Id:D}:family:0",
+            SubjectId = manifest.Id,
+            SubjectScope = "0",
+            DependencyIdentity = "legacy-founder-manifest-audit",
+            ProcessingState = LegendConnectHistoricalReevaluationWorkAuthority.Completed,
+            CreatedUtc = DateTime.UtcNow,
+            UpdatedUtc = DateTime.UtcNow
+        });
+        manifest.ProcessingState = "Processing";
+        manifest.CompletedLanguageIntelligenceEvaluatorVersion = 0;
+        await db.SaveChangesAsync();
+
+        await processor.RefreshDurableManifestStatusAsync(
+            manifest.Id,
+            LegendConnectLanguageIntelligenceEvaluatorVersion.Current);
+
+        Assert.Equal("Completed", manifest.ProcessingState);
+        Assert.Equal(
+            LegendConnectLanguageIntelligenceEvaluatorVersion.Current,
+            manifest.CompletedLanguageIntelligenceEvaluatorVersion);
     }
 
     [Fact]

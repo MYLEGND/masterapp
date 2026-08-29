@@ -444,16 +444,24 @@ internal sealed class LegendConnectCurriculumManifestProcessor
         // with its own durable work/state. It must not reopen or prolong the
         // accepted Founder manifest receipt merely because a newer evaluator
         // requires metadata projection.
-        var children = await _db.Set<LegendHistoricalReevaluationWorkItem>()
-            .Where(item => item.EvaluatorVersion == evaluatorVersion &&
-                item.Phase == LegendConnectHistoricalReevaluationWorkAuthority.FounderCurriculumPhase &&
-                (item.WorkKind == LegendConnectHistoricalReevaluationWorkAuthority.FounderManifestFamilyWorkKind ||
-                 item.WorkKind == LegendConnectHistoricalReevaluationWorkAuthority.FounderManifestSemanticRelationWorkKind) &&
-                item.SubjectId == manifestId)
-            .ToListAsync(cancellationToken);
         var payload = JsonSerializer.Deserialize<LegendConnectCurriculumManifestSubmission>(manifest.PayloadJson);
         var relationshipCount = payload?.CrossExampleSemanticRelationships?.Count ?? 0;
         var requiredWorkCount = manifest.FamilyCount + relationshipCount;
+        // Parent completion is projected from the exact deterministic child
+        // identities declared by this immutable manifest. Historical rows
+        // from an older work-identity contract remain auditable, but they
+        // cannot keep a current receipt Processing merely by sharing its
+        // subject ID or scope.
+        var expectedWorkIdentities = Enumerable.Range(0, manifest.FamilyCount)
+            .Select(index => $"founder-manifest:{manifestId:D}:family:{index}")
+            .Concat(Enumerable.Range(0, relationshipCount)
+                .Select(index => $"founder-manifest:{manifestId:D}:semantic-relation:{index}"))
+            .ToArray();
+        var children = await _db.Set<LegendHistoricalReevaluationWorkItem>()
+            .Where(item => item.EvaluatorVersion == evaluatorVersion &&
+                item.Phase == LegendConnectHistoricalReevaluationWorkAuthority.FounderCurriculumPhase &&
+                expectedWorkIdentities.Contains(item.WorkIdentity))
+            .ToListAsync(cancellationToken);
         var completed = children.Count(item => item.ProcessingState == "Completed");
         var completedFamilies = children.Count(item =>
             item.WorkKind == LegendConnectHistoricalReevaluationWorkAuthority.FounderManifestFamilyWorkKind &&
@@ -461,6 +469,22 @@ internal sealed class LegendConnectCurriculumManifestProcessor
         var failed = children.FirstOrDefault(item =>
             item.ProcessingState == "Failed" ||
             item.ProcessingState == LegendConnectHistoricalReevaluationWorkAuthority.Retired);
+        // Deterministic identities govern completion, but terminal history is
+        // intentionally broader: a failed/retired child already belonging to
+        // this manifest must remain authoritative even if its identity came
+        // from an older work contract. Otherwise an evaluator upgrade could
+        // silently resurrect terminal curriculum work.
+        failed ??= await _db.Set<LegendHistoricalReevaluationWorkItem>()
+            .Where(item => item.EvaluatorVersion == evaluatorVersion &&
+                item.Phase == LegendConnectHistoricalReevaluationWorkAuthority.FounderCurriculumPhase &&
+                item.SubjectId == manifestId &&
+                (item.WorkKind == LegendConnectHistoricalReevaluationWorkAuthority.FounderManifestFamilyWorkKind ||
+                 item.WorkKind == LegendConnectHistoricalReevaluationWorkAuthority.FounderManifestSemanticRelationWorkKind) &&
+                (item.ProcessingState == "Failed" ||
+                 item.ProcessingState == LegendConnectHistoricalReevaluationWorkAuthority.Retired))
+            .OrderByDescending(item => item.ProcessingState == LegendConnectHistoricalReevaluationWorkAuthority.Retired)
+            .ThenByDescending(item => item.UpdatedUtc)
+            .FirstOrDefaultAsync(cancellationToken);
         // This is the existing UI/progress field for family ingestion.  The
         // later semantic-relation work belongs to the same durable manifest
         // lifecycle, but must not make the family counter exceed FamilyCount.

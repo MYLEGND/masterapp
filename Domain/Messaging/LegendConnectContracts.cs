@@ -742,7 +742,8 @@ public sealed record LegendConnectMachineTeachingSubmission(
     string SemanticCategory,
     string Rationale,
     decimal Confidence,
-    IReadOnlyList<LegendConnectMachineTeachingExampleSubmission> Examples);
+    IReadOnlyList<LegendConnectMachineTeachingExampleSubmission> Examples,
+    IReadOnlyList<LegendConnectSemanticTransitionSubmission>? SemanticTransitions = null);
 
 public sealed record LegendConnectMachineTeachingSubmissionResult(
     bool Succeeded,
