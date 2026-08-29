@@ -2271,6 +2271,15 @@ Never upgrade an unresolved, rejected or contradicted record merely because it a
 
 
 
+    private static int ResolveRetainedKnowledgeTake(string query)
+    {
+        var words = query.Split(
+            [' ', '\r', '\n', '\t', ',', '.', ';', ':', '!', '?', '(', ')', '[', ']'],
+            StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Length;
+
+        return Math.Clamp(12 + words / 25, 12, 32);
+    }
+
     private static int ResolveMaximumToolRounds(
         IReadOnlyList<LegendFounderAiChatMessage> conversation)
     {
