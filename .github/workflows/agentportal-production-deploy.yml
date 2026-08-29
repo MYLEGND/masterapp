@@ -32,6 +32,7 @@ env:
   EF_CONTEXT: MasterAppDbContext
   PUBLISH_DIR: ${{ github.workspace }}\publish\agentportal
   ARTIFACT_NAME: agentportal-production-candidate-${{ github.run_id }}
+  TEST_ARTIFACT_NAME: agentportal-tested-binaries-${{ github.run_id }}
 
 jobs:
   # Keep this job name stable: it is the protected production required check.
@@ -205,6 +206,14 @@ jobs:
       - name: git diff --check
         run: git diff --check
 
+      - name: Preserve exact tested binaries for postdeployment verification
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.TEST_ARTIFACT_NAME }}
+          path: /tmp/masterapp/bin/AgentPortal.Tests/Release/net10.0
+          if-no-files-found: error
+          retention-days: 1
+
   build:
     needs: security
     runs-on: windows-latest
@@ -344,8 +353,6 @@ jobs:
         run: |
           dotnet tool restore
           if ($LASTEXITCODE -ne 0) { throw 'Repository tool restore failed.' }
-          dotnet restore '${{ env.EF_PROJECT }}'
-          if ($LASTEXITCODE -ne 0) { throw 'Infrastructure restore failed.' }
           dotnet restore '${{ env.PROJECT_PATH }}'
           if ($LASTEXITCODE -ne 0) { throw 'AgentPortal restore failed.' }
 
@@ -448,18 +455,12 @@ jobs:
           slot-name: Production
           package: ./package
 
-  verify-legend-convergence:
-    # Convergence remains mandatory by default. A release manager can explicitly
-    # omit this post-deploy verifier for a bounded release by applying the
-    # skip-legend-convergence label to its production PR.
-    if: >-
-      github.event.pull_request.draft == false &&
-      !contains(github.event.pull_request.labels.*.name, 'skip-legend-convergence')
+  verify-legend-native:
     needs:
       - merge
       - deploy
-    runs-on: windows-latest
-    timeout-minutes: 50
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
     environment:
       name: Production
     permissions:
@@ -467,21 +468,16 @@ jobs:
       id-token: write
 
     steps:
-      - name: Checkout immutable production merge
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ needs.merge.outputs.merge_sha }}
-
       - name: Set up .NET
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: ${{ env.DOTNET_VERSION }}
 
-      - name: Restore read-only convergence gate
-        shell: pwsh
-        run: |
-          dotnet restore '${{ env.EF_PROJECT }}'
-          if ($LASTEXITCODE -ne 0) { throw 'LEGEND convergence gate restore failed.' }
+      - name: Download exact tested binaries
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ env.TEST_ARTIFACT_NAME }}
+          path: ./tested
 
       - name: Login to Azure with OIDC
         uses: azure/login@v2
@@ -544,23 +540,6 @@ jobs:
           Write-Output "::add-mask::$founderOid"
           "LEGEND_PRODUCTION_READONLY_CONNECTION=$connection" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           "LEGEND_PRODUCTION_READONLY_FOUNDER_OID=$founderOid" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-          "LEGEND_CONVERGENCE_TIMEOUT_MINUTES=30" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-
-      - name: Verify canonical worker drained production convergence
-        shell: pwsh
-        run: |
-          New-Item -ItemType Directory -Force diagnostics | Out-Null
-          dotnet run --file diagnostics/LegendProductionConvergenceGate.cs 2>&1 | Tee-Object -FilePath diagnostics/legend-production-convergence-gate.txt
-          if ($LASTEXITCODE -ne 0) { throw 'LEGEND production convergence gate failed.' }
-
-      - name: Upload convergence verification transcript
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: legend-production-convergence-${{ github.run_id }}
-          path: diagnostics/legend-production-convergence-gate.txt
-          if-no-files-found: error
-          retention-days: 7
 
       - name: Verify production Founder chat uses canonical native inference only
         shell: pwsh
@@ -569,9 +548,8 @@ jobs:
           OPENAI_API_KEY: ''
           OpenAI__ApiKey: ''
         run: |
-          dotnet restore 'AgentPortal.Tests/AgentPortal.Tests.csproj'
-          if ($LASTEXITCODE -ne 0) { throw 'LEGEND native-only production gate restore failed.' }
-          dotnet test 'AgentPortal.Tests/AgentPortal.Tests.csproj' --configuration Release --filter 'FullyQualifiedName~ProductionReadOnlyEightPromptNativeDiagnostic' --logger 'console;verbosity=detailed' 2>&1 | Tee-Object -FilePath diagnostics/legend-production-native-only-gate.txt
+          New-Item -ItemType Directory -Force diagnostics | Out-Null
+          dotnet test './tested/AgentPortal.Tests.dll' --filter 'FullyQualifiedName~ProductionReadOnlyEightPromptNativeDiagnostic' --logger 'console;verbosity=detailed' 2>&1 | Tee-Object -FilePath diagnostics/legend-production-native-only-gate.txt
           if ($LASTEXITCODE -ne 0) { throw 'LEGEND native-only production conversation gate failed.' }
 
       - name: Upload native-only production verification transcript

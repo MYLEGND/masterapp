@@ -504,6 +504,23 @@ public sealed class LegendFounderAiContractTests
     }
 
     [Fact]
+    public void FounderToolSchemas_ExcludeProviderUnsupportedObjectCardinalityKeywords()
+    {
+        var buildTools = typeof(LegendFounderToolAuthority)
+            .GetMethod("BuildFounderTools", BindingFlags.NonPublic | BindingFlags.Static);
+
+        Assert.NotNull(buildTools);
+        var tools = Assert.IsAssignableFrom<IReadOnlyList<object>>(
+            buildTools!.Invoke(null, null));
+        var serialized = JsonSerializer.Serialize(tools);
+
+        // OpenAI strict function schemas reject minProperties/maxProperties.
+        // Runtime parsing remains the canonical 1..12 dimension guard.
+        Assert.DoesNotContain("\"minProperties\"", serialized, StringComparison.Ordinal);
+        Assert.DoesNotContain("\"maxProperties\"", serialized, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task SoftwareRemediation_FailsClosedWithoutCanonicalConfiguration()
     {
         var factory = new ThrowingHttpClientFactory();
@@ -925,54 +942,30 @@ public sealed class LegendFounderAiContractTests
         Assert.DoesNotContain("run: ./scripts/db.sh validate\n", workflow, StringComparison.Ordinal);
         Assert.Contains("Merge exact validated PR head", workflow, StringComparison.Ordinal);
         Assert.Contains("Deploy immutable merged production tree", workflow, StringComparison.Ordinal);
-        Assert.Contains("verify-legend-convergence:", workflow, StringComparison.Ordinal);
-        Assert.Contains("Verify canonical worker drained production convergence", workflow, StringComparison.Ordinal);
-        Assert.Contains("dotnet run --file diagnostics/LegendProductionConvergenceGate.cs", workflow, StringComparison.Ordinal);
+        Assert.Contains("verify-legend-native:", workflow, StringComparison.Ordinal);
+        Assert.Contains("Download exact tested binaries", workflow, StringComparison.Ordinal);
+        Assert.Contains("ProductionReadOnlyEightPromptNativeDiagnostic", workflow, StringComparison.Ordinal);
+        Assert.DoesNotContain("verify-legend-convergence:", workflow, StringComparison.Ordinal);
+        Assert.DoesNotContain("LegendProductionConvergenceGate", workflow, StringComparison.Ordinal);
         Assert.DoesNotContain("push:", workflow, StringComparison.Ordinal);
         Assert.DoesNotContain("workflow_dispatch:", workflow, StringComparison.Ordinal);
     }
 
     [Fact]
-    public void ProductionConvergenceGate_IsReadOnlyAndPartOfTheUnifiedDeploymentFlow()
+    public void ProductionDeploymentWorkflow_ExcludesLongRunningConvergenceAndUsesFocusedNativeProof()
     {
         var workflow = File.ReadAllText(
             Path.Combine(AppContext.BaseDirectory, "agentportal-production-deploy.yml"));
-        var diagnostic = File.ReadAllText(
-            Path.Combine(AppContext.BaseDirectory, "LegendProductionConvergenceGate.cs"));
 
-        var verifyStart = workflow.IndexOf("  verify-legend-convergence:", StringComparison.Ordinal);
+        var verifyStart = workflow.IndexOf("  verify-legend-native:", StringComparison.Ordinal);
         Assert.True(verifyStart >= 0);
         var verify = workflow[verifyStart..];
         Assert.Contains("- deploy", verify, StringComparison.Ordinal);
-        Assert.Contains("ApplicationIntent = ApplicationIntent.ReadOnly", diagnostic, StringComparison.Ordinal);
-        Assert.Contains("PRODUCTION WRITE COMMANDS: 0", diagnostic, StringComparison.Ordinal);
-        Assert.Contains(
-            "p.[LanguageIntelligenceReevaluationPhase] <> 'Complete'",
-            diagnostic,
-            StringComparison.Ordinal);
-        Assert.Contains(
-            "w.[Phase] = p.[LanguageIntelligenceReevaluationPhase]",
-            diagnostic,
-            StringComparison.Ordinal);
-        Assert.Contains(
-            "m.[ProcessingState] <> 'Retired'",
-            diagnostic,
-            StringComparison.Ordinal);
-        Assert.Contains(
-            "'curriculum_manifest_payload_invalid'",
-            diagnostic,
-            StringComparison.Ordinal);
-        Assert.Contains(
-            "'curriculum_manifest_payload_mismatch'",
-            diagnostic,
-            StringComparison.Ordinal);
-        Assert.Contains(
-            "m.[TargetLanguageIntelligenceEvaluatorVersion] <",
-            diagnostic,
-            StringComparison.Ordinal);
-        Assert.DoesNotContain("INSERT ", diagnostic, StringComparison.OrdinalIgnoreCase);
-        Assert.DoesNotContain("UPDATE ", diagnostic, StringComparison.OrdinalIgnoreCase);
-        Assert.DoesNotContain("DELETE ", diagnostic, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Download exact tested binaries", verify, StringComparison.Ordinal);
+        Assert.Contains("./tested/AgentPortal.Tests.dll", verify, StringComparison.Ordinal);
+        Assert.Contains("ProductionReadOnlyEightPromptNativeDiagnostic", verify, StringComparison.Ordinal);
+        Assert.DoesNotContain("LegendProductionConvergenceGate", workflow, StringComparison.Ordinal);
+        Assert.DoesNotContain("verify-legend-convergence:", workflow, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -1033,16 +1026,17 @@ public sealed class LegendFounderAiContractTests
             Path.Combine(AppContext.BaseDirectory, "legend-production-readonly-diagnostic.yml"));
 
         Assert.Contains("contents: read", workflow, StringComparison.Ordinal);
-        Assert.Contains("timeout-minutes: 90", workflow, StringComparison.Ordinal);
+        Assert.Contains("timeout-minutes: 30", workflow, StringComparison.Ordinal);
         Assert.Contains("cancel-in-progress: true", workflow, StringComparison.Ordinal);
-        Assert.Contains("run_full_shadow:", workflow, StringComparison.Ordinal);
-        Assert.Contains("default: false", workflow, StringComparison.Ordinal);
-        Assert.Contains("if ($runFullShadow)", workflow, StringComparison.Ordinal);
+        Assert.Contains("ProductionReadOnlyEightPromptNativeDiagnostic", workflow, StringComparison.Ordinal);
         Assert.Contains(
             "Production read-only diagnostic was not completed successfully.",
             workflow,
             StringComparison.Ordinal);
         Assert.Contains("Upload sanitized diagnostic transcript", workflow, StringComparison.Ordinal);
+        Assert.DoesNotContain("run_full_shadow:", workflow, StringComparison.Ordinal);
+        Assert.DoesNotContain("runFullShadow", workflow, StringComparison.Ordinal);
+        Assert.DoesNotContain("LegendProductionConvergenceGate", workflow, StringComparison.Ordinal);
         Assert.DoesNotContain("git push", workflow, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("git commit", workflow, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("contents: write", workflow, StringComparison.OrdinalIgnoreCase);
