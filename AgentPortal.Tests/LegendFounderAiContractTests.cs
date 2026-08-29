@@ -189,7 +189,7 @@ public sealed class LegendFounderAiContractTests
     public void FounderCurriculumTool_UsesClosedStrictVariationSchema()
     {
         var buildTools =
-            typeof(LegendFounderAiConversationService)
+            typeof(LegendFounderToolAuthority)
                 .GetMethod(
                     "BuildFounderTools",
                     BindingFlags.NonPublic |
@@ -273,7 +273,7 @@ public sealed class LegendFounderAiContractTests
     public void FounderTools_IncludeNativeWebResearchWithoutReplacingGovernedTools()
     {
         var buildTools =
-            typeof(LegendFounderAiConversationService)
+            typeof(LegendFounderToolAuthority)
                 .GetMethod(
                     "BuildFounderTools",
                     BindingFlags.NonPublic |
@@ -337,9 +337,9 @@ public sealed class LegendFounderAiContractTests
     [Fact]
     public void FounderCapabilities_AreDiscoveredFromTheExecutableToolRegistry()
     {
-        var buildTools = typeof(LegendFounderAiConversationService)
+        var buildTools = typeof(LegendFounderToolAuthority)
             .GetMethod("BuildFounderTools", BindingFlags.NonPublic | BindingFlags.Static);
-        var describe = typeof(LegendFounderAiConversationService)
+        var describe = typeof(LegendFounderToolAuthority)
             .GetMethod("DescribeFounderCapabilities", BindingFlags.NonPublic | BindingFlags.Static);
 
         Assert.NotNull(buildTools);
