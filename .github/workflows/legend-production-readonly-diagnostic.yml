@@ -34,9 +34,10 @@ env:
 jobs:
   production-readonly-diagnostic:
     runs-on: windows-latest
-    # A validation branch runs the complete application regression and then
-    # reconstructs the full governed Founder closure twice for idempotence.
-    # Keep a hard bound, but size it for the mandatory full-corpus proof.
+    # This workflow owns production read-only capability evidence only.
+    # Complete regression belongs to the protected release workflow and is
+    # never duplicated here. Keep a hard bound for the mandatory full-corpus
+    # reconstruction and second-pass idempotence proof.
     timeout-minutes: 90
     environment:
       name: Production
@@ -70,17 +71,8 @@ jobs:
           dotnet build AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-restore 2>&1 | Tee-Object -FilePath diagnostics/build.txt
           exit $LASTEXITCODE
 
-      - name: Run complete predeployment regression suite
-        id: regression
-        if: steps.build.outcome == 'success'
-        shell: pwsh
-        continue-on-error: true
-        run: |
-          dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-build 2>&1 | Tee-Object -FilePath diagnostics/regression.txt
-          exit $LASTEXITCODE
-
       - name: Login to Azure with OIDC
-        if: steps.build.outcome == 'success' && steps.regression.outcome == 'success'
+        if: steps.build.outcome == 'success'
         uses: azure/login@v2
         with:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
@@ -88,7 +80,7 @@ jobs:
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
       - name: Resolve production database and Founder identity securely
-        if: steps.build.outcome == 'success' && steps.regression.outcome == 'success'
+        if: steps.build.outcome == 'success'
         shell: pwsh
         run: |
           $connection = ''
@@ -136,7 +128,7 @@ jobs:
 
       - name: Read live replay and curriculum processing status
         id: replay_status
-        if: steps.build.outcome == 'success' && steps.regression.outcome == 'success'
+        if: steps.build.outcome == 'success'
         shell: pwsh
         continue-on-error: true
         run: |
@@ -145,7 +137,7 @@ jobs:
 
       - name: Run canonical production read-only diagnostics
         id: diagnostic
-        if: steps.build.outcome == 'success' && steps.regression.outcome == 'success'
+        if: steps.build.outcome == 'success'
         shell: pwsh
         continue-on-error: true
         run: |
@@ -201,7 +193,6 @@ jobs:
             "Commit: $env:GITHUB_SHA"
             "RestoreOutcome: ${{ steps.restore.outcome }}"
             "BuildOutcome: ${{ steps.build.outcome }}"
-            "RegressionOutcome: ${{ steps.regression.outcome }}"
             "ReplayStatusOutcome: ${{ steps.replay_status.outcome }}"
             "DiagnosticOutcome: ${{ steps.diagnostic.outcome }}"
             "NativeExit: ${{ steps.diagnostic.outputs.native_exit }}"
@@ -222,9 +213,7 @@ jobs:
             ''
             '=== BUILD ==='
             if (Test-Path diagnostics/build.txt) { Get-Content diagnostics/build.txt }
-            ''
-            '=== COMPLETE PREDEPLOYMENT REGRESSION ==='
-            if (Test-Path diagnostics/regression.txt) { Get-Content diagnostics/regression.txt }
+
             ''
             '=== NATIVE LIVE DATABASE DIAGNOSTIC ==='
             if (Test-Path diagnostics/native.txt) { Get-Content diagnostics/native.txt }
@@ -250,7 +239,6 @@ jobs:
         run: |
           if ('${{ steps.restore.outcome }}' -ne 'success') { throw 'Production diagnostic restore failed.' }
           if ('${{ steps.build.outcome }}' -ne 'success') { throw 'Production diagnostic build failed.' }
-          if ('${{ steps.regression.outcome }}' -ne 'success') { throw 'Complete predeployment regression failed.' }
           if ('${{ steps.replay_status.outcome }}' -ne 'success') { throw 'Production replay-status diagnostic failed.' }
           if ('${{ steps.diagnostic.outcome }}' -ne 'success') { throw 'Production read-only diagnostic was not completed successfully.' }
           if ('${{ steps.diagnostic.outputs.native_exit }}' -ne '0') { throw 'Production native diagnostic did not execute successfully.' }
