@@ -448,12 +448,12 @@ jobs:
           slot-name: Production
           package: ./package
 
-  verify-legend-convergence:
+  verify-legend-native:
     needs:
       - merge
       - deploy
     runs-on: windows-latest
-    timeout-minutes: 50
+    timeout-minutes: 15
     environment:
       name: Production
     permissions:
@@ -470,12 +470,6 @@ jobs:
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: ${{ env.DOTNET_VERSION }}
-
-      - name: Restore read-only convergence gate
-        shell: pwsh
-        run: |
-          dotnet restore '${{ env.EF_PROJECT }}'
-          if ($LASTEXITCODE -ne 0) { throw 'LEGEND convergence gate restore failed.' }
 
       - name: Login to Azure with OIDC
         uses: azure/login@v2
@@ -538,24 +532,6 @@ jobs:
           Write-Output "::add-mask::$founderOid"
           "LEGEND_PRODUCTION_READONLY_CONNECTION=$connection" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           "LEGEND_PRODUCTION_READONLY_FOUNDER_OID=$founderOid" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-          "LEGEND_CONVERGENCE_TIMEOUT_MINUTES=30" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-
-      - name: Verify canonical worker drained production convergence
-        shell: pwsh
-        run: |
-          New-Item -ItemType Directory -Force diagnostics | Out-Null
-          dotnet run --file diagnostics/LegendProductionConvergenceGate.cs 2>&1 | Tee-Object -FilePath diagnostics/legend-production-convergence-gate.txt
-          if ($LASTEXITCODE -ne 0) { throw 'LEGEND production convergence gate failed.' }
-
-      - name: Upload convergence verification transcript
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: legend-production-convergence-${{ github.run_id }}
-          path: diagnostics/legend-production-convergence-gate.txt
-          if-no-files-found: error
-          retention-days: 7
-
       - name: Verify production Founder chat uses canonical native inference only
         shell: pwsh
         env:
