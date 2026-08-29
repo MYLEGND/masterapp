@@ -263,6 +263,15 @@ public sealed class LegendFounderAiModeIsolationTests
         var founder = await AddFounderProfileAsync(db);
         var operations = new Mock<ILegendConnectOperations>(MockBehavior.Strict);
         operations
+            .Setup(operation => operation.SearchRetainedKnowledgeAsync(
+                "reusable distinction",
+                null,
+                null,
+                It.IsAny<int>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new LegendConnectRetainedKnowledgeSearchSnapshot(
+                "reusable distinction", 0, []));
+        operations
             .Setup(operation => operation.SubmitMachineTeachingProposalAsync(
                 It.IsAny<LegendConnectMachineTeachingSubmission>(),
                 It.IsAny<CancellationToken>()))
@@ -271,7 +280,27 @@ public sealed class LegendFounderAiModeIsolationTests
                 "Retained as MachineProposed.", Guid.NewGuid(), Guid.NewGuid()));
 
         var handler = new FounderAiScenarioHandler(
-            ProviderTool("legend_submit_machine_learning_candidate", MachineProposalArguments()),
+            ProviderResponse(new
+            {
+                status = "completed",
+                output = new object[]
+                {
+                    new
+                    {
+                        type = "function_call",
+                        call_id = "tool-call-read",
+                        name = "legend_search_retained_knowledge",
+                        arguments = "{\"query\":\"reusable distinction\"}"
+                    },
+                    new
+                    {
+                        type = "function_call",
+                        call_id = "tool-call-proposal",
+                        name = "legend_submit_machine_learning_candidate",
+                        arguments = MachineProposalArguments()
+                    }
+                }
+            }),
             ProviderText("The exact teaching family entered the governed critic lifecycle."));
         var service = CreateService(db, operations.Object, handler);
 
@@ -284,6 +313,12 @@ public sealed class LegendFounderAiModeIsolationTests
 
         Assert.True(response.Succeeded, Describe(response));
         Assert.Equal("OpenAITeacher", response.ResponseAuthority);
+        operations.Verify(operation => operation.SearchRetainedKnowledgeAsync(
+            "reusable distinction",
+            null,
+            null,
+            It.IsAny<int>(),
+            It.IsAny<CancellationToken>()), Times.Once);
         operations.Verify(operation => operation.SubmitMachineTeachingProposalAsync(
             It.IsAny<LegendConnectMachineTeachingSubmission>(),
             It.IsAny<CancellationToken>()), Times.Once);
