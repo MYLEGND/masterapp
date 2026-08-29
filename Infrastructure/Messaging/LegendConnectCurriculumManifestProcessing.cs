@@ -469,6 +469,22 @@ internal sealed class LegendConnectCurriculumManifestProcessor
         var failed = children.FirstOrDefault(item =>
             item.ProcessingState == "Failed" ||
             item.ProcessingState == LegendConnectHistoricalReevaluationWorkAuthority.Retired);
+        // Deterministic identities govern completion, but terminal history is
+        // intentionally broader: a failed/retired child already belonging to
+        // this manifest must remain authoritative even if its identity came
+        // from an older work contract. Otherwise an evaluator upgrade could
+        // silently resurrect terminal curriculum work.
+        failed ??= await _db.Set<LegendHistoricalReevaluationWorkItem>()
+            .Where(item => item.EvaluatorVersion == evaluatorVersion &&
+                item.Phase == LegendConnectHistoricalReevaluationWorkAuthority.FounderCurriculumPhase &&
+                item.SubjectId == manifestId &&
+                (item.WorkKind == LegendConnectHistoricalReevaluationWorkAuthority.FounderManifestFamilyWorkKind ||
+                 item.WorkKind == LegendConnectHistoricalReevaluationWorkAuthority.FounderManifestSemanticRelationWorkKind) &&
+                (item.ProcessingState == "Failed" ||
+                 item.ProcessingState == LegendConnectHistoricalReevaluationWorkAuthority.Retired))
+            .OrderByDescending(item => item.ProcessingState == LegendConnectHistoricalReevaluationWorkAuthority.Retired)
+            .ThenByDescending(item => item.UpdatedUtc)
+            .FirstOrDefaultAsync(cancellationToken);
         // This is the existing UI/progress field for family ingestion.  The
         // later semantic-relation work belongs to the same durable manifest
         // lifecycle, but must not make the family counter exceed FamilyCount.
