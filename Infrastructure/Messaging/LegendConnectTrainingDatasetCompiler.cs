@@ -70,6 +70,11 @@ internal sealed class LegendConnectTrainingDatasetCompiler
             scopeKey,
             cancellationToken);
 
+        await AddGovernedSemanticTransitionsAsync(
+            rows,
+            scopeKey,
+            cancellationToken);
+
         var ordered = rows.Values
             .OrderBy(item => item.EvidenceIdentity, StringComparer.Ordinal)
             .ThenBy(item => item.SourceLanguageCode, StringComparer.Ordinal)
@@ -94,7 +99,9 @@ internal sealed class LegendConnectTrainingDatasetCompiler
                 row.Weight,
                 row.SourceTextHash,
                 row.TargetTextHash,
-                LegendModelCapabilityKeys.Translation);
+                row.CapabilityKey,
+                row.Instructions,
+                row.OutputContract);
 
             if (IsHeldOut(row.EvidenceIdentity))
                 heldOut.Add(example);
@@ -293,6 +300,118 @@ internal sealed class LegendConnectTrainingDatasetCompiler
         }
     }
 
+    private async Task AddGovernedSemanticTransitionsAsync(
+        IDictionary<string, CandidateRow> rows,
+        string scopeKey,
+        CancellationToken cancellationToken)
+    {
+        if (!string.Equals(scopeKey, "Global", StringComparison.Ordinal) &&
+            !string.Equals(
+                scopeKey,
+                $"capability:{LegendModelCapabilityKeys.SemanticTransition}",
+                StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        var observations = await (
+            from transition in _db.Set<LegendSemanticTransitionEvidence>()
+                .AsNoTracking()
+            join sourceExample in _db.Set<LegendCurriculumExample>()
+                .AsNoTracking()
+                on transition.SourceCurriculumExampleId equals sourceExample.Id
+            join resultExample in _db.Set<LegendCurriculumExample>()
+                .AsNoTracking()
+                on transition.ResultCurriculumExampleId equals resultExample.Id
+            join sourceUnit in _db.Set<LegendLanguageTextUnit>()
+                .AsNoTracking()
+                on sourceExample.TextUnitId equals sourceUnit.Id
+            join resultUnit in _db.Set<LegendLanguageTextUnit>()
+                .AsNoTracking()
+                on resultExample.TextUnitId equals resultUnit.Id
+            where transition.SupersededUtc == null &&
+                  sourceExample.SupersededUtc == null &&
+                  resultExample.SupersededUtc == null &&
+                  sourceUnit.IsTrainingEligible &&
+                  resultUnit.IsTrainingEligible &&
+                  transition.ContributionState == "Supported"
+            select new
+            {
+                Transition = transition,
+                SourceExample = sourceExample,
+                ResultExample = resultExample,
+                SourceUnit = sourceUnit,
+                ResultUnit = resultUnit
+            })
+            .ToListAsync(cancellationToken);
+
+        var eligibleTransitionIds = observations
+            .GroupBy(
+                item => item.Transition.TransitionSignature,
+                StringComparer.Ordinal)
+            .Where(group =>
+                LegendSemanticTransitionProductionEligibility.IsEligible(
+                    group.Select(item =>
+                        new LegendSemanticTransitionEligibilityObservation(
+                            item.Transition.SourceSemanticFrame,
+                            item.Transition.ResultSemanticFrame,
+                            item.Transition.IndependentSourceIdentity,
+                            item.Transition.ContributionState,
+                            item.Transition.IsHumanVerifiedSupport))))
+            .SelectMany(group => group.Select(item => item.Transition.Id))
+            .ToHashSet();
+
+        foreach (var item in observations)
+        {
+            if (!eligibleTransitionIds.Contains(item.Transition.Id))
+                continue;
+
+            var provenance = StrongerProvenance(
+                item.Transition.Provenance,
+                item.SourceExample.Provenance,
+                item.ResultExample.Provenance,
+                item.SourceUnit.Provenance,
+                item.ResultUnit.Provenance);
+            var weight = WeightFor(
+                provenance,
+                item.Transition.IsHumanVerifiedSupport);
+            if (weight == 0)
+                continue;
+
+            var input = JsonSerializer.Serialize(new
+            {
+                observed_text = item.SourceUnit.Text,
+                source_semantic_frame = item.Transition.SourceSemanticFrame,
+                transition_signature = item.Transition.TransitionSignature
+            });
+            var evidenceIdentity = StableHash(
+                string.Join('|',
+                    "semantic-transition",
+                    item.Transition.Id.ToString("D"),
+                    item.Transition.TransitionSignature,
+                    item.SourceUnit.NormalizedHash,
+                    item.ResultUnit.NormalizedHash,
+                    provenance));
+
+            AddOrStrengthen(
+                rows,
+                new CandidateRow(
+                    evidenceIdentity,
+                    $"capability:{LegendModelCapabilityKeys.SemanticTransition}",
+                    item.Transition.SourceLanguageCode,
+                    item.Transition.ResultLanguageCode,
+                    input,
+                    item.ResultUnit.Text,
+                    StableHash(input),
+                    item.ResultUnit.NormalizedHash,
+                    provenance,
+                    weight,
+                    LegendModelCapabilityKeys.SemanticTransition,
+                    "Apply only the supplied governed semantic transition. Return the resolved governed state only.",
+                    "governed_state_only"));
+        }
+    }
+
     private static string EffectiveAlignmentProvenance(
         LegendTranslationAlignment alignment,
         LegendLanguageTextUnit source,
@@ -386,6 +505,7 @@ internal sealed class LegendConnectTrainingDatasetCompiler
     {
         var contentIdentity = StableHash(
             string.Join('|',
+                candidate.CapabilityKey,
                 candidate.PairKey,
                 candidate.SourceTextHash,
                 candidate.TargetTextHash));
@@ -425,7 +545,7 @@ internal sealed class LegendConnectTrainingDatasetCompiler
     {
         var canonical = new
         {
-            Schema = "legend-training-dataset-v2",
+            Schema = "legend-training-dataset-v3",
             EvaluatorVersion = evaluatorVersion,
             ScopeKey = scopeKey,
             Training = training
@@ -459,7 +579,8 @@ internal sealed class LegendConnectTrainingDatasetCompiler
             item.Provenance,
             item.Weight,
             item.CapabilityKey,
-            item.Instructions
+            item.Instructions,
+            item.OutputContract
         };
 
     private sealed record CandidateRow(
@@ -472,7 +593,10 @@ internal sealed class LegendConnectTrainingDatasetCompiler
         string SourceTextHash,
         string TargetTextHash,
         string Provenance,
-        int Weight);
+        int Weight,
+        string CapabilityKey = LegendModelCapabilityKeys.Translation,
+        string? Instructions = null,
+        string OutputContract = "target_language_text_only");
 }
 
 internal sealed record LegendConnectTrainingDatasetManifest(
