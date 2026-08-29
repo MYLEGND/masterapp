@@ -83,12 +83,12 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if rg -n "TryInferConversationAsync|TryInferSemanticTransitionAsync" AgentPortal Infrastructure; then
+          if git grep -n -E "TryInferConversationAsync|TryInferSemanticTransitionAsync" -- AgentPortal Infrastructure; then
             echo "::error::Obsolete parallel reasoning authority detected."
             exit 1
           fi
-          test "$(rg -l "class LegendConnectGovernedReasoningExecutor" Infrastructure | wc -l)" -eq 1
-          test "$(rg -l "class LegendArchitecturalTakeoverGate" AgentPortal | wc -l)" -eq 1
+          test "$(git grep -l "class LegendConnectGovernedReasoningExecutor" -- Infrastructure | wc -l)" -eq 1
+          test "$(git grep -l "class LegendArchitecturalTakeoverGate" -- AgentPortal | wc -l)" -eq 1
 
       - name: Upload proof artifacts
         if: always()
