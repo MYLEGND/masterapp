@@ -5,6 +5,7 @@ using System.Net.Http.Json;
 using System.Security.Claims;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Text.RegularExpressions;
 using AgentPortal.Services.Analytics;
 using Domain.Messaging;
 using Microsoft.Extensions.Configuration;
@@ -2012,9 +2013,9 @@ Never pretend that OpenAI conversational reasoning itself is canonical LEGEND kn
 
 Before external recall, use LEGEND's retained evidence when it is relevant. Treat unresolved machine/provider observations as evidence to reason about, never as truth.
 
-Outside a native-gap escalation, submit a bounded MachineProposed family through legend_submit_machine_learning_candidate only when the Founder explicitly directs and confirms the submission. During a genuine LEGEND_NATIVE_GAP_CONTEXT escalation, automatically submit at most one supported, bounded family before the final answer so the same reusable capability enters the existing governed lifecycle without creating a second memory system.
+Outside a native-gap escalation, submit a bounded MachineProposed family through legend_submit_machine_learning_candidate only when the Founder explicitly directs and confirms the submission. During a genuine LEGEND_NATIVE_GAP_CONTEXT escalation, automatically submit at most one supported, bounded family before the final answer so the same reusable capability enters the existing governed lifecycle without creating a second memory system. A conversational candidate must declare at least one language-neutral semantic_transitions source/result frame over its controlled example components; examples without a governed transition cannot close a native conversation gap and must not be reported as reusable learning.
 
-When LEGEND_NATIVE_GAP_CONTEXT is supplied, the provider is acting as a diagnostic teacher because native LEGEND failed and explicitly allowed escalation. Inspect retained LEGEND evidence first. If governed evidence supports a reusable semantic distinction that would close the native gap, automatically submit exactly one bounded family through legend_submit_machine_learning_candidate before the final answer. It remains MachineProposed and cannot serve until the existing critic, validator, curriculum, evaluation and promotion authorities approve it. If evidence is insufficient, state the exact missing distinction and do not fabricate a proposal.
+When LEGEND_NATIVE_GAP_CONTEXT is supplied, the provider is acting as a diagnostic teacher because native LEGEND failed and explicitly allowed escalation. Inspect retained LEGEND evidence first. If governed evidence supports a reusable semantic distinction and a source-to-result semantic transition that would close the native gap, automatically submit exactly one bounded family through legend_submit_machine_learning_candidate before the final answer. It remains MachineProposed and cannot serve until the existing critic, validator and canonical curriculum authorities approve it as lower-ranked SystemValidatedMachine evidence. If evidence is insufficient, state the exact missing distinction and do not fabricate a proposal.
 Never retain the one-off generated reply as a canned answer. Retain reusable meaning, semantic components, controlled contrasts, discourse behavior, and realization evidence that explain how the class of utterance should be understood and composed.
 If retained evidence is insufficient or contradictory, do not fabricate curriculum. State the exact missing evidence/contrast so the Founder and existing autonomous learning authorities can resolve it.
 
@@ -2589,13 +2590,20 @@ Never upgrade an unresolved, rejected or contradicted record merely because it a
         if (latest.Length == 0)
             return false;
 
+        // Mutation authority must come from an actual action directed at the
+        // learning system.  Do not infer a write from nouns such as
+        // "training status" or from an inspection request that merely
+        // discusses teaching.
+        var directsLegendTraining = Regex.IsMatch(
+            latest,
+            @"\b(?:teach|train)\s+(?:legend(?:®)?|the\s+(?:legend(?:®)?\s+)?(?:curriculum|system))\b",
+            RegexOptions.CultureInvariant);
         var learningAction =
-            latest.Contains("teach", StringComparison.Ordinal) ||
-            latest.Contains("train", StringComparison.Ordinal) ||
-            latest.Contains("submit", StringComparison.Ordinal) ||
-            latest.Contains("retain", StringComparison.Ordinal) ||
-            latest.StartsWith("add ", StringComparison.Ordinal) ||
-            latest.Contains(" add ", StringComparison.Ordinal);
+            directsLegendTraining ||
+            Regex.IsMatch(
+                latest,
+                @"\b(?:submit|retain|add)\b",
+                RegexOptions.CultureInvariant);
 
         var learningSubject =
             latest.Contains("legend", StringComparison.Ordinal) ||

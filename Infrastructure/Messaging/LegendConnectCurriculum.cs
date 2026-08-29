@@ -468,6 +468,21 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
             return "machine_curriculum_payload_invalid";
         }
 
+        var semanticTransitions = NormalizeSemanticTransitions(
+            machineFamily.SemanticTransitions);
+        if (semanticTransitions is null)
+            return "machine_curriculum_semantic_transition_invalid";
+        var machineCandidate = await _db.Set<LegendCorpusCandidate>()
+            .AsNoTracking()
+            .SingleOrDefaultAsync(
+                item => item.Id == proposal.CorpusCandidateId,
+                cancellationToken);
+        var isConversationMachineProposal = machineCandidate is not null &&
+            string.Equals(machineCandidate.Provenance, "MachineConversation", StringComparison.Ordinal) &&
+            string.Equals(machineCandidate.ProcessingState, "ConversationProposal", StringComparison.Ordinal);
+        if (isConversationMachineProposal && semanticTransitions.Count == 0)
+            return "machine_conversation_semantic_transition_required";
+
         var familyKey =
             NormalizeFamilyKey(machineFamily.FamilyKey);
 
@@ -613,6 +628,24 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
                     sourceText,
                     variations,
                     understanding));
+        }
+
+        foreach (var transition in semanticTransitions)
+        {
+            var sources = prepared
+                .Where(item => TryBindSemanticFrame(transition.Source, item.Variations, out _))
+                .ToArray();
+            var results = prepared
+                .Where(item => TryBindSemanticFrame(transition.Result, item.Variations, out _))
+                .ToArray();
+            var hasCompatibleDistinctEndpoints = sources.Any(source =>
+                results.Any(result =>
+                    !ReferenceEquals(source.Proposal, result.Proposal) &&
+                    TryBindSemanticFrame(transition.Source, source.Variations, out var sourceBindings) &&
+                    TryBindSemanticFrame(transition.Result, result.Variations, out var resultBindings) &&
+                    BindingsAreCompatible(sourceBindings, resultBindings)));
+            if (!hasCompatibleDistinctEndpoints)
+                return "machine_curriculum_semantic_transition_unbound";
         }
 
         var family = await LegendConnectCanonicalCurriculumPersistence.AdmitFamilyAsync(
@@ -767,6 +800,28 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
             sourceLanguage,
             pairKey: null,
             cancellationToken);
+
+        if (semanticTransitions.Count > 0)
+        {
+            var machineVariations = sourceExamples.ToDictionary(
+                item => item.Example.Id,
+                item => (IReadOnlyDictionary<string, string>)item.Proposal.Components
+                    .ToDictionary(
+                        component => component.Dimension.Trim().ToLowerInvariant(),
+                        component => component.Value.Trim(),
+                        StringComparer.Ordinal),
+                EqualityComparer<Guid>.Default);
+            await PersistGovernedSemanticTransitionEvidenceAsync(
+                family,
+                sourceExamples.Select(item => item.Example).ToArray(),
+                semanticTransitions,
+                sourceLanguage,
+                machineVariations,
+                knownNewCurriculumExampleIds: null,
+                provenance: LegendConnectKnowledgeProvenance.SystemValidatedMachine,
+                isHumanVerifiedSupport: false,
+                cancellationToken: cancellationToken);
+        }
 
         foreach (var item in sourceExamples)
         {
@@ -1234,14 +1289,16 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
             sourceTextUnitsById,
             knownVariationsByExample,
             cancellationToken);
-        await PersistFounderSemanticTransitionEvidenceAsync(
+        await PersistGovernedSemanticTransitionEvidenceAsync(
             family,
             sourceExamples,
             semanticTransitions,
             english,
             knownVariationsByExample,
             newlyCreatedSourceExampleIds,
-            cancellationToken);
+            provenance: LegendConnectKnowledgeProvenance.FounderApproved,
+            isHumanVerifiedSupport: true,
+            cancellationToken: cancellationToken);
 
         // Ordinary Founder ingestion and historical replay must converge
         // through the same canonical source-evidence authority. Once retained
@@ -2208,14 +2265,16 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
                     resultFrame));
         }
 
-        await PersistFounderSemanticTransitionEvidenceAsync(
+        await PersistGovernedSemanticTransitionEvidenceAsync(
             family,
             examples,
             transitions,
             languageCode,
             knownVariationsByExample: null,
             knownNewCurriculumExampleIds: null,
-            cancellationToken);
+            provenance: LegendConnectKnowledgeProvenance.FounderApproved,
+            isHumanVerifiedSupport: true,
+            cancellationToken: cancellationToken);
     }
 
     private async Task ReevaluateHistoricalSourceFamilyLanguageAsync(
@@ -4189,14 +4248,23 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
                 (transitionSignatures == null || transitionSignatures.Contains(evidence.TransitionSignature)) &&
                 (evidence.ContributionState == "Supported" ||
                  evidence.ContributionState == "Contradictory") &&
-                evidence.Provenance == LegendConnectKnowledgeProvenance.FounderApproved &&
                 source.SupersededUtc == null && result.SupersededUtc == null &&
                 source.LanguageCode == sourceLanguage && result.LanguageCode == sourceLanguage &&
-                source.Provenance == LegendConnectKnowledgeProvenance.FounderApproved &&
-                result.Provenance == LegendConnectKnowledgeProvenance.FounderApproved &&
                 sourceUnit.IsTrainingEligible && resultUnit.IsTrainingEligible &&
-                sourceUnit.Provenance == LegendConnectKnowledgeProvenance.FounderApproved &&
-                resultUnit.Provenance == LegendConnectKnowledgeProvenance.FounderApproved
+                ((evidence.Provenance == LegendConnectKnowledgeProvenance.FounderApproved &&
+                  evidence.IsHumanVerifiedSupport &&
+                  source.Provenance == LegendConnectKnowledgeProvenance.FounderApproved &&
+                  result.Provenance == LegendConnectKnowledgeProvenance.FounderApproved &&
+                  sourceUnit.Provenance == LegendConnectKnowledgeProvenance.FounderApproved &&
+                  resultUnit.Provenance == LegendConnectKnowledgeProvenance.FounderApproved) ||
+                 (evidence.Provenance == LegendConnectKnowledgeProvenance.SystemValidatedMachine &&
+                  !evidence.IsHumanVerifiedSupport &&
+                  source.Provenance == LegendConnectKnowledgeProvenance.SystemValidatedMachine &&
+                  result.Provenance == LegendConnectKnowledgeProvenance.SystemValidatedMachine &&
+                  (sourceUnit.Provenance == LegendConnectKnowledgeProvenance.FounderApproved ||
+                   sourceUnit.Provenance == LegendConnectKnowledgeProvenance.SystemValidatedMachine) &&
+                  (resultUnit.Provenance == LegendConnectKnowledgeProvenance.FounderApproved ||
+                   resultUnit.Provenance == LegendConnectKnowledgeProvenance.SystemValidatedMachine)))
             select new SemanticTransitionObservation(
                 evidence.TransitionSignature,
                 evidence.SourceSemanticFrame,
@@ -4204,6 +4272,7 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
                 evidence.IndependentSourceIdentity,
                 evidence.ContributionState,
                 evidence.IsHumanVerifiedSupport,
+                evidence.Provenance,
                 evidence.SourceCurriculumExampleId,
                 evidence.ResultCurriculumExampleId)
         ).ToListAsync(cancellationToken);
@@ -4331,8 +4400,12 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
         }
 
         var supported = group
-            .Where(item => item.IsHumanVerifiedSupport &&
-                string.Equals(item.ContributionState, "Supported", StringComparison.Ordinal))
+            .Where(item =>
+                string.Equals(item.ContributionState, "Supported", StringComparison.Ordinal) &&
+                ((item.IsHumanVerifiedSupport &&
+                  string.Equals(item.Provenance, LegendConnectKnowledgeProvenance.FounderApproved, StringComparison.Ordinal)) ||
+                 (!item.IsHumanVerifiedSupport &&
+                  string.Equals(item.Provenance, LegendConnectKnowledgeProvenance.SystemValidatedMachine, StringComparison.Ordinal))))
             .ToList();
         independentEvidenceCount = supported
             .Select(item => item.IndependentSourceIdentity)
@@ -5160,15 +5233,21 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
         if (!TryInstantiateFrame(candidate.ResultFrame, candidate.Bindings, out var resultValues))
             return SemanticTransitionRealization.Insufficient("result_semantic_variable_unbound_frame");
 
+        var allowSystemValidatedMachine =
+            candidate.EvidenceStandard == BroadGovernedEvidenceStandard;
         var activeExamples =
             from example in _db.Set<LegendCurriculumExample>().AsNoTracking()
             join unit in _db.Set<LegendLanguageTextUnit>().AsNoTracking()
                 on example.TextUnitId equals unit.Id
             where example.SupersededUtc == null &&
                 example.LanguageCode == languageCode &&
-                example.Provenance == LegendConnectKnowledgeProvenance.FounderApproved &&
+                (example.Provenance == LegendConnectKnowledgeProvenance.FounderApproved ||
+                 (allowSystemValidatedMachine &&
+                  example.Provenance == LegendConnectKnowledgeProvenance.SystemValidatedMachine)) &&
                 unit.LanguageCode == languageCode && unit.IsTrainingEligible &&
-                unit.Provenance == LegendConnectKnowledgeProvenance.FounderApproved
+                (unit.Provenance == LegendConnectKnowledgeProvenance.FounderApproved ||
+                 (allowSystemValidatedMachine &&
+                  unit.Provenance == LegendConnectKnowledgeProvenance.SystemValidatedMachine))
             select new { Example = example, Unit = unit };
 
         // Frame relevance is applied in SQL before materialization. This uses
@@ -5190,8 +5269,11 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
                 evidence.ResultLanguageCode == languageCode &&
                 evidence.SupersededUtc == null &&
                 evidence.ContributionState == "Supported" &&
-                evidence.IsHumanVerifiedSupport &&
-                evidence.Provenance == LegendConnectKnowledgeProvenance.FounderApproved));
+                ((evidence.IsHumanVerifiedSupport &&
+                  evidence.Provenance == LegendConnectKnowledgeProvenance.FounderApproved) ||
+                 (allowSystemValidatedMachine &&
+                  !evidence.IsHumanVerifiedSupport &&
+                  evidence.Provenance == LegendConnectKnowledgeProvenance.SystemValidatedMachine))));
         foreach (var dimension in candidate.ResultFrame.Dimensions)
         {
             var dimensionName = dimension.Key;
@@ -5290,7 +5372,9 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
         var anchors = await _db.Set<LegendLanguageCompositionalAnchor>().AsNoTracking()
             .Where(item => exampleIds.Contains(item.CurriculumExampleId) &&
                 item.LanguageCode == languageCode &&
-                item.Provenance == LegendConnectKnowledgeProvenance.FounderApproved &&
+                (item.Provenance == LegendConnectKnowledgeProvenance.FounderApproved ||
+                 (allowSystemValidatedMachine &&
+                  item.Provenance == LegendConnectKnowledgeProvenance.SystemValidatedMachine)) &&
                 item.SupersededUtc == null && item.LexemeId != null &&
                 item.ComponentStartTokenIndex != null && item.ComponentLength != null && item.ComponentLength > 0)
             .Select(item => new SemanticAnchor(
@@ -11578,6 +11662,7 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
         string IndependentSourceIdentity,
         string ContributionState,
         bool IsHumanVerifiedSupport,
+        string Provenance,
         Guid SourceExampleId,
         Guid ResultExampleId);
 
@@ -12101,13 +12186,15 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
         return true;
     }
 
-    private async Task PersistFounderSemanticTransitionEvidenceAsync(
+    private async Task PersistGovernedSemanticTransitionEvidenceAsync(
         LegendCurriculumFamily family,
         IReadOnlyList<LegendCurriculumExample> examples,
         IReadOnlyList<NormalizedSemanticTransition> transitions,
         string languageCode,
         IReadOnlyDictionary<Guid, IReadOnlyDictionary<string, string>>? knownVariationsByExample,
         IReadOnlySet<Guid>? knownNewCurriculumExampleIds,
+        string provenance,
+        bool isHumanVerifiedSupport,
         CancellationToken cancellationToken)
     {
         if (transitions.Count == 0)
@@ -12223,8 +12310,8 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
                         ResultCurriculumExampleId = result.Id,
                         IndependentSourceIdentity = independentSourceIdentity,
                         ContributionState = "Supported",
-                        IsHumanVerifiedSupport = true,
-                        Provenance = LegendConnectKnowledgeProvenance.FounderApproved,
+                        IsHumanVerifiedSupport = isHumanVerifiedSupport,
+                        Provenance = provenance,
                         CreatedUtc = now,
                         UpdatedUtc = now
                     });

@@ -820,9 +820,15 @@ public sealed class LegendFounderAiModeIsolationTests
               "components":[{"dimension":"conversation_function","value":"wellbeing_inquiry","surface_form":"How are you doing"}]
             },
             {
-              "source_text":"How have you been?",
-              "target_text":"¿Cómo has estado?",
-              "components":[{"dimension":"conversation_function","value":"wellbeing_inquiry","surface_form":"How have you been"}]
+              "source_text":"I'm doing well.",
+              "target_text":"Estoy bien.",
+              "components":[{"dimension":"conversation_response","value":"wellbeing_positive","surface_form":"doing well"}]
+            }
+          ],
+          "semantic_transitions":[
+            {
+              "source":{"dimensions":{"conversation_function":"wellbeing_inquiry"}},
+              "result":{"dimensions":{"conversation_response":"wellbeing_positive"}}
             }
           ]
         }
