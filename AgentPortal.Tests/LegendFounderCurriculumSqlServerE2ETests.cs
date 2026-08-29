@@ -698,63 +698,11 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
             NullLogger<LegendFounderAiConversationService>.Instance,
             new LegendFounderAiDiscourseStateService(db, profiles, operations));
 
-        var corpusCounts = new
-        {
-            EnglishFounderExamples = await (
-                from example in db.LegendCurriculumExamples.AsNoTracking()
-                join unit in db.LegendLanguageTextUnits.AsNoTracking()
-                    on example.TextUnitId equals unit.Id
-                where example.LanguageCode == "en" &&
-                    example.SupersededUtc == null &&
-                    example.Provenance == LegendConnectKnowledgeProvenance.FounderApproved &&
-                    unit.LanguageCode == "en" &&
-                    unit.IsTrainingEligible &&
-                    unit.Provenance == LegendConnectKnowledgeProvenance.FounderApproved
-                select example.Id).LongCountAsync(),
-            SemanticSpanAnchors = await db.LegendLanguageCompositionalAnchors
-                .AsNoTracking()
-                .LongCountAsync(item =>
-                    item.LanguageCode == "en" &&
-                    item.Provenance == LegendConnectKnowledgeProvenance.FounderApproved &&
-                    item.SupersededUtc == null &&
-                    item.LexemeId != null &&
-                    item.ComponentStartTokenIndex != null &&
-                    item.ComponentLength != null &&
-                    item.ComponentLength > 0 &&
-                    item.SemanticSignature != null &&
-                    item.SemanticSignature != string.Empty),
-            ActiveTransitionEvidence = await db.LegendSemanticTransitionEvidence
-                .AsNoTracking()
-                .LongCountAsync(item =>
-                    item.SourceLanguageCode == "en" &&
-                    item.ResultLanguageCode == "en" &&
-                    item.SupersededUtc == null &&
-                    item.Provenance == LegendConnectKnowledgeProvenance.FounderApproved),
-            SupportedHumanVerifiedTransitions = await db.LegendSemanticTransitionEvidence
-                .AsNoTracking()
-                .LongCountAsync(item =>
-                    item.SourceLanguageCode == "en" &&
-                    item.ResultLanguageCode == "en" &&
-                    item.SupersededUtc == null &&
-                    item.Provenance == LegendConnectKnowledgeProvenance.FounderApproved &&
-                    item.ContributionState == "Supported" &&
-                    item.IsHumanVerifiedSupport),
-            ActiveTargetRealizationCandidates = await db.LegendLanguageTargetRealizationCandidates
-                .AsNoTracking()
-                .LongCountAsync(item => item.SupersededUtc == null),
-            ActiveTargetRealizationEvidence = await db.LegendLanguageTargetRealizationEvidence
-                .AsNoTracking()
-                .LongCountAsync(item => item.SupersededUtc == null)
-        };
-        _output.WriteLine("============================================================");
-        _output.WriteLine("LEGEND® PRODUCTION READ-ONLY NATIVE DIAGNOSTIC");
-        _output.WriteLine("============================================================");
-        _output.WriteLine($"ACTIVE ENGLISH FOUNDER EXAMPLES: {corpusCounts.EnglishFounderExamples}");
-        _output.WriteLine($"SEMANTIC SPAN ANCHORS: {corpusCounts.SemanticSpanAnchors}");
-        _output.WriteLine($"ACTIVE TRANSITION EVIDENCE: {corpusCounts.ActiveTransitionEvidence}");
-        _output.WriteLine($"SUPPORTED HUMAN-VERIFIED TRANSITIONS: {corpusCounts.SupportedHumanVerifiedTransitions}");
-        _output.WriteLine($"ACTIVE TARGET REALIZATION CANDIDATES: {corpusCounts.ActiveTargetRealizationCandidates}");
-        _output.WriteLine($"ACTIVE TARGET REALIZATION EVIDENCE: {corpusCounts.ActiveTargetRealizationEvidence}");
+        // This gate owns serving behavior, not production-wide reporting.
+        // Corpus cardinality is already collected by the separate bounded
+        // replay-status diagnostic. Begin directly with the exact prompt
+        // evidence and canonical native inference path so a non-gating
+        // aggregate cannot prevent capability verification.
 
         var prompts = LiveFounderNativePrompts.Select(item => item.Text).ToArray();
 
