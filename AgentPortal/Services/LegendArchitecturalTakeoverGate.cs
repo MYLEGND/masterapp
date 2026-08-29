@@ -14,15 +14,22 @@ internal static class LegendArchitecturalTakeoverGate
     internal const string EvaluatorAuthorityPrefix =
         "legend-locked-blind-comparative-evaluator-v1:";
 
-    private static readonly IReadOnlyDictionary<string, decimal> RequiredMetrics =
-        new Dictionary<string, decimal>(StringComparer.Ordinal)
+    internal const string SuiteReferencePrefix = "blind-suite:";
+
+    private static readonly IReadOnlyDictionary<string, MetricRequirement> RequiredMetrics =
+        new Dictionary<string, MetricRequirement>(StringComparer.Ordinal)
         {
-            ["blind_win_rate"] = 50m,
-            ["non_inferiority_rate"] = 100m,
-            ["adversarial_pass_rate"] = 100m,
-            ["unsupported_request_integrity"] = 100m,
-            ["latency_efficiency"] = 50m,
-            ["cost_efficiency"] = 50m
+            ["sample_size"] = new(100m, true),
+            ["blind_win_rate"] = new(50m, false),
+            ["blind_win_rate_lower_confidence_bound"] = new(50m, false),
+            ["non_inferiority_rate"] = new(100m, true),
+            ["adversarial_pass_rate"] = new(100m, true),
+            ["unsupported_request_integrity"] = new(100m, true),
+            ["prompt_holdout_integrity"] = new(100m, true),
+            ["assignment_blinding_integrity"] = new(100m, true),
+            ["independent_judge_agreement"] = new(80m, true),
+            ["latency_efficiency"] = new(50m, false),
+            ["cost_efficiency"] = new(50m, false)
         };
 
     internal static LegendArchitecturalTakeoverReadinessSnapshot Evaluate(
@@ -40,6 +47,23 @@ internal static class LegendArchitecturalTakeoverGate
             .OrderBy(item => item, StringComparer.Ordinal)
             .ToArray();
         var blockers = new List<string>();
+        var suiteIdentities = comparative
+            .Select(item => TryReadSuiteIdentity(item.EvidenceReference))
+            .Where(item => item is not null)
+            .Cast<string>()
+            .Distinct(StringComparer.Ordinal)
+            .OrderBy(item => item, StringComparer.Ordinal)
+            .ToArray();
+
+        if (comparative.Any(item => TryReadSuiteIdentity(item.EvidenceReference) is null))
+            blockers.Add("Comparative evidence contains a non-immutable suite reference.");
+
+        if (suiteIdentities.Length != 1)
+        {
+            blockers.Add(suiteIdentities.Length == 0
+                ? "No immutable blind-suite identity has been recorded."
+                : "Comparative evidence references more than one blind-suite identity.");
+        }
 
         if (baselines.Length != 1)
         {
@@ -68,9 +92,9 @@ internal static class LegendArchitecturalTakeoverGate
                     continue;
                 }
 
-                var passes = requirement.Key is "blind_win_rate" or "latency_efficiency" or "cost_efficiency"
-                    ? signal.Value > requirement.Value
-                    : signal.Value >= requirement.Value;
+                var passes = requirement.Value.Inclusive
+                    ? signal.Value >= requirement.Value.Threshold
+                    : signal.Value > requirement.Value.Threshold;
                 if (!passes)
                 {
                     blockers.Add($"{domain.Key}: {requirement.Key} did not pass the locked threshold.");
@@ -83,6 +107,7 @@ internal static class LegendArchitecturalTakeoverGate
         }
 
         var proven = baselines.Length == 1 &&
+            suiteIdentities.Length == 1 &&
             domainWins == domains.Count &&
             blockers.Count == 0;
         return new(
@@ -96,4 +121,23 @@ internal static class LegendArchitecturalTakeoverGate
                 ? "LEGEND passed every locked blind comparative gate without a domain regression."
                 : "No universal-superiority claim is permitted until every locked blind comparative gate passes.");
     }
+
+    private static string? TryReadSuiteIdentity(string reference)
+    {
+        if (!reference.StartsWith(SuiteReferencePrefix, StringComparison.Ordinal))
+            return null;
+
+        var remainder = reference[SuiteReferencePrefix.Length..];
+        var separator = remainder.IndexOf(':');
+        var identity = separator < 0 ? remainder : remainder[..separator];
+        return identity.Length == 64 &&
+            identity.All(character =>
+                character is >= '0' and <= '9' or >= 'a' and <= 'f')
+                ? identity
+                : null;
+    }
+
+    private sealed record MetricRequirement(
+        decimal Threshold,
+        bool Inclusive);
 }
