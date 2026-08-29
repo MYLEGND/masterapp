@@ -1006,11 +1006,6 @@ public interface ILegendConnectOperations
         int take = 12,
         CancellationToken cancellationToken = default);
 
-    Task<LegendConnectNativeInferenceSnapshot> TryInferConversationAsync(
-        string input,
-        IReadOnlyList<LegendConnectConversationContextItem> context,
-        CancellationToken cancellationToken = default);
-
     /// <summary>
     /// Native serving through the same transition authority with an optional
     /// persisted, semantic-only discourse snapshot. This is not a second
@@ -1021,12 +1016,14 @@ public interface ILegendConnectOperations
         string input,
         IReadOnlyList<LegendConnectConversationContextItem> context,
         LegendConnectDiscourseStateSnapshot? discourseState,
-        CancellationToken cancellationToken = default);
+        CancellationToken cancellationToken = default,
+        string sourceLanguageCode = "en");
 
     Task<LegendConnectResponseMeaningPlanResult> TryPlanConversationAsync(
         string input,
         LegendConnectDiscourseStateSnapshot? discourseState,
-        CancellationToken cancellationToken = default);
+        CancellationToken cancellationToken = default,
+        string sourceLanguageCode = "en");
 
     /// <summary>
     /// Binds the text-free Stage-4 response plan to mature, governed semantic
@@ -1036,11 +1033,13 @@ public interface ILegendConnectOperations
     Task<LegendConnectContentBoundResponseMeaningPlanResult> TryBindConversationContentAsync(
         string input,
         LegendConnectDiscourseStateSnapshot? discourseState,
-        CancellationToken cancellationToken = default);
+        CancellationToken cancellationToken = default,
+        string sourceLanguageCode = "en");
 
     Task<LegendConnectUtteranceMeaningGraphSnapshot> AnalyzeReusableMeaningGraphAsync(
         string input,
-        CancellationToken cancellationToken = default);
+        CancellationToken cancellationToken = default,
+        string sourceLanguageCode = "en");
 
     Task<IReadOnlyList<LegendConnectDiscourseReferenceRuleSnapshot>>
         GetProductionDiscourseReferenceRulesAsync(

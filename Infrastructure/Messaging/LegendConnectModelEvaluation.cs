@@ -16,6 +16,117 @@ internal sealed record LegendModelEvaluationGenerationResult(
     string? ErrorCode = null,
     bool Retryable = false);
 
+internal static class LegendModelCapabilityKeys
+{
+    internal const string Translation = "translation";
+    internal const string SemanticTransition = "governed.semantic_transition";
+    internal const string GovernedReasoning = "governed.reasoning";
+    internal const string MultimodalUnderstanding = "governed.multimodal_understanding";
+}
+
+internal sealed record LegendModelCapabilityEvaluationPolicy(
+    string CapabilityKey,
+    bool RequiresTranslationAccuracy,
+    bool RequiresMorphologyPreservation,
+    bool UsesGovernedReferenceBaseline);
+
+/// <summary>
+/// One fail-closed authority defines which governed capabilities may enter
+/// training evaluation and which quality dimensions protect them. Adding a
+/// task contract alone never registers an evaluator.
+/// </summary>
+internal static class LegendModelCapabilityEvaluationPolicies
+{
+    private static readonly IReadOnlyDictionary<string, LegendModelCapabilityEvaluationPolicy> Registered =
+        new Dictionary<string, LegendModelCapabilityEvaluationPolicy>(StringComparer.Ordinal)
+        {
+            [LegendModelCapabilityKeys.Translation] =
+                new(LegendModelCapabilityKeys.Translation, true, true, false),
+            [LegendModelCapabilityKeys.SemanticTransition] =
+                new(LegendModelCapabilityKeys.SemanticTransition, false, false, true),
+            [LegendModelCapabilityKeys.GovernedReasoning] =
+                new(LegendModelCapabilityKeys.GovernedReasoning, false, false, true)
+        };
+
+    internal static bool TryResolve(
+        string capabilityKey,
+        out LegendModelCapabilityEvaluationPolicy policy) =>
+        Registered.TryGetValue(capabilityKey, out policy!);
+}
+
+internal sealed record LegendModelEvidencePart(
+    string Modality,
+    string ContentReference,
+    string MediaType,
+    string EvidenceIdentity,
+    string ContentSha256,
+    string Provenance,
+    string ContradictionState = "Clear");
+
+/// <summary>
+/// Single fail-closed admission predicate for model-visible non-text evidence.
+/// A transport cannot turn an ungoverned attachment into task context.
+/// </summary>
+internal static class LegendModelEvidenceAdmission
+{
+    internal static bool IsAdmitted(LegendModelEvidencePart part)
+    {
+        if (string.IsNullOrWhiteSpace(part.EvidenceIdentity) ||
+            part.EvidenceIdentity.Length > 256 ||
+            string.IsNullOrWhiteSpace(part.MediaType) ||
+            !string.Equals(part.ContradictionState, "Clear", StringComparison.Ordinal) ||
+            part.ContentSha256.Length != 64 ||
+            part.ContentSha256.Any(character =>
+                character is not (>= '0' and <= '9') and
+                not (>= 'a' and <= 'f')) ||
+            part.Provenance is not ("FounderApproved" or "HumanVerified" or "SystemValidatedMachine"))
+        {
+            return false;
+        }
+
+        return part.Modality switch
+        {
+            "image" =>
+                part.ContentReference.StartsWith("https://", StringComparison.Ordinal) ||
+                part.ContentReference.StartsWith("data:image/", StringComparison.Ordinal) ||
+                part.ContentReference.StartsWith("file-", StringComparison.Ordinal),
+            "file" =>
+                part.ContentReference.StartsWith("data:", StringComparison.Ordinal) ||
+                part.ContentReference.StartsWith("file-", StringComparison.Ordinal),
+            _ => false
+        };
+    }
+}
+
+/// <summary>
+/// Provider-neutral task boundary for a governed LEGEND model. The active
+/// capability authority supplies the instructions and output contract; the
+/// transport only executes that exact task and owns no domain behavior.
+/// </summary>
+internal sealed record LegendModelTaskRequest(
+    string CapabilityKey,
+    string Instructions,
+    string Input,
+    string OutputContract,
+    string? SourceLanguageCode = null,
+    string? TargetLanguageCode = null,
+    IReadOnlyList<LegendModelEvidencePart>? EvidenceParts = null)
+{
+    internal static LegendModelTaskRequest Translation(
+        string sourceLanguageCode,
+        string targetLanguageCode,
+        string text) =>
+        new(
+            LegendModelCapabilityKeys.Translation,
+            $"Translate from {sourceLanguageCode} to {targetLanguageCode}. " +
+            "Preserve all meaning, context, tone, discourse function, and grammatical information. " +
+            "Return only the target-language translation.",
+            text,
+            "target_language_text_only",
+            sourceLanguageCode,
+            targetLanguageCode);
+}
+
 internal sealed record LegendCurrentProductionEvaluationResult(
     bool Succeeded,
     string? Text,
@@ -48,9 +159,7 @@ internal interface ILegendConnectModelInferenceTransport
 {
     Task<LegendModelEvaluationGenerationResult> GenerateAsync(
         string model,
-        string sourceLanguageCode,
-        string targetLanguageCode,
-        string text,
+        LegendModelTaskRequest task,
         CancellationToken cancellationToken = default);
 }
 
@@ -68,7 +177,7 @@ internal interface ILegendConnectModelEvaluationBackend
 
 internal interface ILegendConnectCurrentProductionBaseline
 {
-    Task<LegendCurrentProductionEvaluationResult> TranslateAsync(
+    Task<LegendCurrentProductionEvaluationResult> GenerateAsync(
         LegendConnectTrainingDatasetExample example,
         CancellationToken cancellationToken = default);
 }
@@ -89,10 +198,36 @@ internal sealed class LegendConnectCurrentProductionBaseline
         _translation = translation;
     }
 
-    public async Task<LegendCurrentProductionEvaluationResult> TranslateAsync(
+    public async Task<LegendCurrentProductionEvaluationResult> GenerateAsync(
         LegendConnectTrainingDatasetExample example,
         CancellationToken cancellationToken = default)
     {
+        if (LegendModelCapabilityEvaluationPolicies.TryResolve(
+                example.CapabilityKey,
+                out var policy) &&
+            policy.UsesGovernedReferenceBaseline)
+        {
+            return new(
+                !string.IsNullOrWhiteSpace(example.TargetText),
+                example.TargetText,
+                "GovernedReference",
+                string.IsNullOrWhiteSpace(example.TargetText)
+                    ? "model_evaluation_governed_reference_missing"
+                    : null);
+        }
+
+        if (!string.Equals(
+                example.CapabilityKey,
+                LegendModelCapabilityKeys.Translation,
+                StringComparison.Ordinal))
+        {
+            return new(
+                false,
+                null,
+                null,
+                "model_evaluation_capability_evaluator_unavailable");
+        }
+
         try
         {
             var result =
@@ -158,11 +293,23 @@ internal sealed class OpenAiLegendConnectModelInferenceTransport
 
     public async Task<LegendModelEvaluationGenerationResult> GenerateAsync(
         string model,
-        string sourceLanguageCode,
-        string targetLanguageCode,
-        string text,
+        LegendModelTaskRequest task,
         CancellationToken cancellationToken = default)
     {
+        var evidenceParts = task.EvidenceParts ?? Array.Empty<LegendModelEvidencePart>();
+        if (string.IsNullOrWhiteSpace(task.CapabilityKey) ||
+            string.IsNullOrWhiteSpace(task.Instructions) ||
+            string.IsNullOrWhiteSpace(task.Input) ||
+            string.IsNullOrWhiteSpace(task.OutputContract) ||
+            evidenceParts.Count > 12 ||
+            evidenceParts.Any(part => !LegendModelEvidenceAdmission.IsAdmitted(part)))
+        {
+            return new(
+                false,
+                null,
+                "model_inference_governed_evidence_rejected");
+        }
+
         if (!TryGetConfiguration(
                 out var endpoint,
                 out var key) ||
@@ -175,26 +322,19 @@ internal sealed class OpenAiLegendConnectModelInferenceTransport
                 "model_inference_provider_unavailable");
         }
 
-        var instructions =
-            $"Translate from {sourceLanguageCode} to {targetLanguageCode}. " +
-            "Preserve all meaning, context, tone, discourse function, and grammatical information. " +
-            "Return only the target-language translation.";
-
-        return await SendTextAsync(
+        return await SendTaskAsync(
             endpoint,
             key,
             model,
-            instructions,
-            text,
+            task,
             cancellationToken);
     }
 
-    private async Task<LegendModelEvaluationGenerationResult> SendTextAsync(
+    private async Task<LegendModelEvaluationGenerationResult> SendTaskAsync(
         Uri endpoint,
         string key,
         string model,
-        string instructions,
-        string input,
+        LegendModelTaskRequest task,
         CancellationToken cancellationToken)
     {
         try
@@ -205,8 +345,8 @@ internal sealed class OpenAiLegendConnectModelInferenceTransport
                     model,
                     store = false,
                     max_output_tokens = 1200,
-                    instructions,
-                    input
+                    instructions = task.Instructions,
+                    input = BuildProviderInput(task)
                 };
 
             using var request =
@@ -305,6 +445,64 @@ internal sealed class OpenAiLegendConnectModelInferenceTransport
         }
     }
 
+
+    private static object BuildProviderInput(LegendModelTaskRequest task)
+    {
+        var evidenceParts =
+            task.EvidenceParts ?? Array.Empty<LegendModelEvidencePart>();
+        if (evidenceParts.Count == 0)
+            return task.Input;
+
+        var content = new List<Dictionary<string, object?>>
+        {
+            new()
+            {
+                ["type"] = "input_text",
+                ["text"] = task.Input
+            }
+        };
+
+        foreach (var part in evidenceParts)
+        {
+            if (part.Modality == "image")
+            {
+                var image = new Dictionary<string, object?>
+                {
+                    ["type"] = "input_image",
+                    ["detail"] = "high"
+                };
+                if (part.ContentReference.StartsWith("file-", StringComparison.Ordinal))
+                    image["file_id"] = part.ContentReference;
+                else
+                    image["image_url"] = part.ContentReference;
+                content.Add(image);
+                continue;
+            }
+
+            var file = new Dictionary<string, object?>
+            {
+                ["type"] = "input_file",
+                ["detail"] = part.MediaType == "application/pdf" ? "high" : null
+            };
+            if (part.ContentReference.StartsWith("file-", StringComparison.Ordinal))
+                file["file_id"] = part.ContentReference;
+            else
+            {
+                file["filename"] = $"governed-evidence-{part.EvidenceIdentity}";
+                file["file_data"] = part.ContentReference;
+            }
+            content.Add(file);
+        }
+
+        return new object[]
+        {
+            new Dictionary<string, object?>
+            {
+                ["role"] = "user",
+                ["content"] = content
+            }
+        };
+    }
 
     private bool TryGetConfiguration(
         out Uri endpoint,
@@ -505,12 +703,13 @@ You are the independent adversarial model evaluator inside LEGEND.
 
 The reference target is governed LEGEND evidence and outranks both candidate outputs.
 
-Evaluate the challenger and the current production baseline against:
-- translation accuracy;
+Evaluate the challenger and the registered capability baseline against the
+declared capability, task instructions, output contract, and governed target:
+- task accuracy (use translation_accuracy only for translation);
 - semantic preservation;
-- context and tone;
+- relevant context and tone;
 - discourse function;
-- morphology and grammatical realization;
+- morphology and grammatical realization when the task requires it;
 - unseen composition/generalization;
 - hallucination;
 - inappropriate refusal.
@@ -520,7 +719,7 @@ Rules:
 - Never grant authority to the challenger.
 - A fluent answer that changes meaning is a regression.
 - Extra unsupported claims are hallucination.
-- A refusal on an ordinary translation request is a regression.
+- A refusal on an ordinary supported request is a regression.
 - A score of 1 means fully faithful to the governed reference.
 - blocking_regression must be true when the challenger violates a protected
   meaning, drops material content, invents content, refuses improperly, or is
@@ -552,9 +751,7 @@ Rules:
         CancellationToken cancellationToken = default) =>
         _inference.GenerateAsync(
             model,
-            example.SourceLanguageCode,
-            example.TargetLanguageCode,
-            example.SourceText,
+            example.ToTaskRequest(),
             cancellationToken);
 
     public async Task<LegendModelEvaluationJudgement> JudgeAsync(
@@ -575,6 +772,12 @@ Rules:
             JsonSerializer.Serialize(
                 new
                 {
+                    capability_key =
+                        request.Example.CapabilityKey,
+                    task_instructions =
+                        request.Example.Instructions,
+                    output_contract =
+                        request.Example.OutputContract,
                     source_language_code =
                         request.Example.SourceLanguageCode,
                     target_language_code =
@@ -1084,6 +1287,21 @@ internal sealed class LegendConnectModelEvaluationService
             SelectHeldOut(
                 manifest);
 
+        if (selected.Any(item =>
+                !LegendModelCapabilityEvaluationPolicies.TryResolve(
+                    item.CapabilityKey,
+                    out _)))
+        {
+            await RejectAsync(
+                run,
+                "model_evaluation_capability_evaluator_unavailable",
+                0m,
+                0m,
+                "A governed capability-specific evaluator is required before this task can enter model promotion.",
+                cancellationToken);
+            return;
+        }
+
         if (selected.Count == 0)
         {
             await RejectAsync(
@@ -1127,7 +1345,7 @@ internal sealed class LegendConnectModelEvaluationService
             }
 
             var baseline =
-                await _baseline.TranslateAsync(
+                await _baseline.GenerateAsync(
                     example,
                     cancellationToken);
 
@@ -1186,19 +1404,29 @@ internal sealed class LegendConnectModelEvaluationService
             var protectedFloor =
                 ProtectedMinimumScore();
 
+            var policy =
+                LegendModelCapabilityEvaluationPolicies.TryResolve(
+                    example.CapabilityKey,
+                    out var resolvedPolicy)
+                    ? resolvedPolicy
+                    : throw new InvalidOperationException(
+                        "model_evaluation_capability_policy_missing");
+
             var protectedFailure =
                 protectedExample &&
                 (
-                    judgement.TranslationAccuracy <
-                        protectedFloor ||
+                    (policy.RequiresTranslationAccuracy &&
+                     judgement.TranslationAccuracy <
+                         protectedFloor) ||
                     judgement.SemanticPreservation <
                         protectedFloor ||
                     judgement.ContextPreservation <
                         protectedFloor ||
                     judgement.DiscoursePreservation <
                         protectedFloor ||
-                    judgement.MorphologyPreservation <
-                        protectedFloor ||
+                    (policy.RequiresMorphologyPreservation &&
+                     judgement.MorphologyPreservation <
+                         protectedFloor) ||
                     judgement.Hallucination ||
                     judgement.Refusal ||
                     judgement.BlockingRegression ||

@@ -1440,10 +1440,11 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
             foreach (var prompt in prompts)
             {
                 var source = await curriculum.AnalyzeSemanticTransitionSourceSemanticsAsync("en", prompt);
-                var native = await founderLegend.TryInferConversationAsync(
+                var native = await founderLegend.TryInferConversationWithDiscourseAsync(
                     founder,
                     prompt,
-                    Array.Empty<LegendConnectConversationContextItem>());
+                    Array.Empty<LegendConnectConversationContextItem>(),
+                    new LegendConnectDiscourseStateSnapshot([]));
                 var reply = await chat.ReplyAsync(
                     founder,
                     new LegendFounderAiChatRequest

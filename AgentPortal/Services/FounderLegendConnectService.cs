@@ -228,36 +228,21 @@ public sealed class FounderLegendConnectService
     }
 
     public async Task<LegendConnectNativeInferenceSnapshot>
-        TryInferConversationAsync(
-            ClaimsPrincipal user,
-            string input,
-            IReadOnlyList<LegendConnectConversationContextItem> context,
-            CancellationToken cancellationToken = default)
-    {
-        _ = await ResolveFounderActorAsync(
-            user,
-            cancellationToken);
-
-        return await _operations.TryInferConversationAsync(
-            input,
-            context,
-            cancellationToken);
-    }
-
-    public async Task<LegendConnectNativeInferenceSnapshot>
         TryInferConversationWithDiscourseAsync(
             ClaimsPrincipal user,
             string input,
             IReadOnlyList<LegendConnectConversationContextItem> context,
             LegendConnectDiscourseStateSnapshot? discourseState,
-            CancellationToken cancellationToken = default)
+            CancellationToken cancellationToken = default,
+            string sourceLanguageCode = "en")
     {
         _ = await ResolveFounderActorAsync(user, cancellationToken);
         return await _operations.TryInferConversationWithDiscourseAsync(
             input,
             context,
             discourseState,
-            cancellationToken);
+            cancellationToken,
+            sourceLanguageCode);
     }
 
     /// <summary>
@@ -268,10 +253,14 @@ public sealed class FounderLegendConnectService
         AnalyzeReusableMeaningGraphAsync(
             ClaimsPrincipal user,
             string input,
-            CancellationToken cancellationToken = default)
+            CancellationToken cancellationToken = default,
+            string sourceLanguageCode = "en")
     {
         _ = await ResolveFounderActorAsync(user, cancellationToken);
-        return await _operations.AnalyzeReusableMeaningGraphAsync(input, cancellationToken);
+        return await _operations.AnalyzeReusableMeaningGraphAsync(
+            input,
+            cancellationToken,
+            sourceLanguageCode);
     }
 
     public async Task<LegendConnectMachineTeachingSubmissionResult>

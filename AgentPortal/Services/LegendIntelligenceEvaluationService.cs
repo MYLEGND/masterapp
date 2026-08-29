@@ -140,6 +140,10 @@ public sealed class LegendIntelligenceEvaluationService : ILegendIntelligenceEva
             .AsNoTracking()
             .Where(item => item.SnapshotId == snapshot.Id)
             .ToListAsync(cancellationToken);
+        var currentSignals = await _db.LegendIntelligenceEvaluationSignals
+            .AsNoTracking()
+            .Where(item => item.ContractId == contract.Id && item.State == "Current")
+            .ToListAsync(cancellationToken);
         var previous = snapshot.PreviousSnapshotId is null
             ? Array.Empty<LegendIntelligenceEvaluationDomainSnapshot>()
             : await _db.LegendIntelligenceEvaluationDomainSnapshots
@@ -213,7 +217,12 @@ public sealed class LegendIntelligenceEvaluationService : ILegendIntelligenceEva
             growth,
             snapshot.CreatedUtc,
             displayDomains,
-            detail);
+            detail)
+        {
+            TakeoverReadiness = LegendArchitecturalTakeoverGate.Evaluate(
+                LegendIntelligenceEvaluationDomainCatalog.All,
+                currentSignals)
+        };
     }
 
     private async Task<LegendIntelligenceEvaluationContract?> CurrentContractAsync(CancellationToken cancellationToken) =>

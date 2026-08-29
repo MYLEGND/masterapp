@@ -76,6 +76,10 @@ public sealed record LegendIntelligenceEvaluationDashboardSnapshot(
     IReadOnlyList<LegendIntelligenceEvaluationDomainDisplaySnapshot> Domains,
     string Detail)
 {
+    public LegendArchitecturalTakeoverReadinessSnapshot TakeoverReadiness { get; init; } =
+        LegendArchitecturalTakeoverReadinessSnapshot.NotProven(
+            LegendIntelligenceEvaluationDomainCatalog.All.Count);
+
     public static LegendIntelligenceEvaluationDashboardSnapshot NotEvaluated() => new(
         "LEGEND Intelligence Evaluation Contract V1",
         "V1",
@@ -92,6 +96,25 @@ public sealed record LegendIntelligenceEvaluationDashboardSnapshot(
                 Array.Empty<string>(), Array.Empty<string>(), "No governed evaluation evidence has been recorded for this domain."))
             .ToArray(),
         "This contract does not infer intelligence from curriculum row counts. Scores appear only after the canonical evaluators emit cited coverage, quality, diversity, validation, held-out, transfer, native-execution, and calibration evidence.");
+}
+
+public sealed record LegendArchitecturalTakeoverReadinessSnapshot(
+    bool Proven,
+    string State,
+    string? BaselineIdentity,
+    int DomainWins,
+    int RequiredDomains,
+    IReadOnlyList<string> Blockers,
+    string Detail)
+{
+    public static LegendArchitecturalTakeoverReadinessSnapshot NotProven(int requiredDomains) => new(
+        false,
+        "BLOCKED",
+        null,
+        0,
+        requiredDomains,
+        ["No immutable blind SOL baseline has been recorded."],
+        "No universal-superiority claim is permitted until every locked blind comparative gate passes.");
 }
 
 public sealed record LegendIntelligenceEvaluationDomainDisplaySnapshot(

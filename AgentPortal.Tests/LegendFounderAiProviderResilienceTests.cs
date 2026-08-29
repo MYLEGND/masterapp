@@ -173,7 +173,7 @@ public sealed class LegendFounderAiProviderResilienceTests
     [Fact]
     public void RetainedKnowledgeTakeScalesButRemainsBounded()
     {
-        var method = typeof(LegendFounderAiConversationService).GetMethod("ResolveRetainedKnowledgeTake", BindingFlags.NonPublic | BindingFlags.Static);
+        var method = typeof(LegendFounderToolAuthority).GetMethod("ResolveRetainedKnowledgeTake", BindingFlags.NonPublic | BindingFlags.Static);
         Assert.NotNull(method);
 
         var shortTake = Assert.IsType<int>(method!.Invoke(null, new object[] { "simple query" }));

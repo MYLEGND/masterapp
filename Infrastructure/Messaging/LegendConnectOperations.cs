@@ -349,72 +349,20 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
                     submission,
                     cancellationToken);
 
-    /// <summary>
-    /// Native conversational serving delegates to the existing curriculum
-    /// authority's generic semantic-transition evaluator. It neither retrieves
-    /// nearby text as an answer nor has a prompt/answer store: every supported
-    /// result must pass source understanding, independently supported frame
-    /// transition, contradiction checks, and governed realization. This
-    /// legacy non-discourse entry point is retained for historical diagnostics;
-    /// production chat uses TryInferConversationWithDiscourseAsync.
-    /// </summary>
-    public async Task<LegendConnectNativeInferenceSnapshot>
-        TryInferConversationAsync(
-            string input,
-            IReadOnlyList<LegendConnectConversationContextItem> context,
-            CancellationToken cancellationToken = default)
-    {
-        cancellationToken.ThrowIfCancellationRequested();
-        if (string.IsNullOrWhiteSpace(
-                LegendLanguageIdentity.NormalizeText(input ?? string.Empty)))
-        {
-            return NativeInferenceUnsupported("invalid_input");
-        }
-
-        // Founder curriculum is currently admitted directly in English. The
-        // evidence query is language-partitioned throughout; no English record
-        // can authorize a different language, and an unavailable language
-        // simply returns unsupported.
-        var inference = await Curriculum.TryInferSemanticTransitionAsync(
-            "en",
-            input ?? string.Empty,
-            context ?? [],
-            cancellationToken);
-        if (string.Equals(inference.State, LegendSemanticTransitionInference.Supported,
-                StringComparison.Ordinal) &&
-            !string.IsNullOrWhiteSpace(inference.RealizedText))
-        {
-            return new LegendConnectNativeInferenceSnapshot(
-                true,
-                // The legacy chat contract has one decimal but no existing
-                // semantic-transition confidence calibration. Do not invent a
-                // certainty score from provenance; callers receive the
-                // independently counted evidence and explicit gate outcome.
-                0m,
-                inference.RealizedText,
-                "semantic_transition_governed",
-                inference.EvidenceCount,
-                "LEGEND independently interpreted the controlled source frame, selected one contradiction-free Founder-supported semantic transition, and returned its governed canonical endpoint.",
-                false);
-        }
-
-        return NativeInferenceUnsupported(
-            inference.Reasons.FirstOrDefault() ?? "semantic_transition_not_governed");
-    }
-
     public async Task<LegendConnectNativeInferenceSnapshot>
         TryInferConversationWithDiscourseAsync(
             string input,
             IReadOnlyList<LegendConnectConversationContextItem> context,
             LegendConnectDiscourseStateSnapshot? discourseState,
-            CancellationToken cancellationToken = default)
+            CancellationToken cancellationToken = default,
+            string sourceLanguageCode = "en")
     {
         cancellationToken.ThrowIfCancellationRequested();
         if (string.IsNullOrWhiteSpace(LegendLanguageIdentity.NormalizeText(input ?? string.Empty)))
             return NativeInferenceUnsupported("invalid_input");
 
         var composed = await Curriculum.TryInferComposedSemanticTransitionAsync(
-            "en", input ?? string.Empty, context, discourseState, cancellationToken);
+            sourceLanguageCode, input ?? string.Empty, context, discourseState, cancellationToken);
         if (string.Equals(composed.State, LegendSemanticTransitionInference.Supported, StringComparison.Ordinal) &&
             !string.IsNullOrWhiteSpace(composed.RealizedText))
         {
@@ -492,9 +440,10 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
     public Task<LegendConnectResponseMeaningPlanResult> TryPlanConversationAsync(
         string input,
         LegendConnectDiscourseStateSnapshot? discourseState,
-        CancellationToken cancellationToken = default) =>
+        CancellationToken cancellationToken = default,
+        string sourceLanguageCode = "en") =>
         Curriculum.TryPlanResponseMeaningAsync(
-            "en",
+            sourceLanguageCode,
             input ?? string.Empty,
             discourseState,
             cancellationToken);
@@ -503,9 +452,10 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
         TryBindConversationContentAsync(
             string input,
             LegendConnectDiscourseStateSnapshot? discourseState,
-            CancellationToken cancellationToken = default) =>
+            CancellationToken cancellationToken = default,
+            string sourceLanguageCode = "en") =>
         Curriculum.TryBindResponseContentAsync(
-            "en",
+            sourceLanguageCode,
             input ?? string.Empty,
             discourseState,
             cancellationToken);
@@ -530,8 +480,12 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
     /// </summary>
     public Task<LegendConnectUtteranceMeaningGraphSnapshot> AnalyzeReusableMeaningGraphAsync(
         string input,
-        CancellationToken cancellationToken = default) =>
-        Curriculum.AnalyzeReusableMeaningGraphAsync("en", input ?? string.Empty, cancellationToken);
+        CancellationToken cancellationToken = default,
+        string sourceLanguageCode = "en") =>
+        Curriculum.AnalyzeReusableMeaningGraphAsync(
+            sourceLanguageCode,
+            input ?? string.Empty,
+            cancellationToken);
 
     public Task<IReadOnlyList<LegendConnectDiscourseReferenceRuleSnapshot>>
         GetProductionDiscourseReferenceRulesAsync(

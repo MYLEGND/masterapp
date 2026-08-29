@@ -3754,43 +3754,6 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
             ? HigherGovernedEvidenceStandard
             : BroadGovernedEvidenceStandard;
 
-    internal async Task<LegendSemanticTransitionInference> TryInferSemanticTransitionAsync(
-        string sourceLanguageCode,
-        string input,
-        IReadOnlyList<LegendConnectConversationContextItem> context,
-        CancellationToken cancellationToken = default)
-    {
-        var selection = await SelectSemanticTransitionAsync(
-            sourceLanguageCode, input, context, discourseState: null, requireComposedGraph: false,
-            composedGraph: null, cancellationToken: cancellationToken);
-        if (selection.Selected is null)
-            return selection.IsAmbiguous
-                ? SemanticTransitionAmbiguous(selection.ReasonCode)
-                : selection.IsContradicted
-                    ? SemanticTransitionContradicted(selection.ReasonCode)
-                    : SemanticTransitionInsufficient(selection.ReasonCode);
-        var selected = selection.Selected;
-        var realization = await TryRealizeSemanticTransitionResultAsync(
-            selected,
-            selection.SourceLanguageCode,
-            selection.SourceComponents,
-            null,
-            requireOriginalRealization: false,
-            cancellationToken: cancellationToken);
-        if (realization.Reason is not null)
-        {
-            return realization.IsAmbiguous
-                ? SemanticTransitionAmbiguous(realization.Reason)
-                : SemanticTransitionInsufficient(realization.Reason);
-        }
-
-        return new LegendSemanticTransitionInference(
-            LegendSemanticTransitionInference.Supported,
-            realization.Text,
-            selected.IndependentEvidenceCount + selected.ReasoningEvidenceCount + realization.LayoutEvidenceCount,
-            ["independently_supported_semantic_transition", "canonical_endpoint_realization"]);
-    }
-
     /// <summary>
     /// Stage-5 serving projection: the existing selector receives the Stage-1
     /// composed graph and Stage-3 durable discourse bindings before the same

@@ -189,7 +189,7 @@ public sealed class LegendFounderAiContractTests
     public void FounderCurriculumTool_UsesClosedStrictVariationSchema()
     {
         var buildTools =
-            typeof(LegendFounderAiConversationService)
+            typeof(LegendFounderToolAuthority)
                 .GetMethod(
                     "BuildFounderTools",
                     BindingFlags.NonPublic |
@@ -273,7 +273,7 @@ public sealed class LegendFounderAiContractTests
     public void FounderTools_IncludeNativeWebResearchWithoutReplacingGovernedTools()
     {
         var buildTools =
-            typeof(LegendFounderAiConversationService)
+            typeof(LegendFounderToolAuthority)
                 .GetMethod(
                     "BuildFounderTools",
                     BindingFlags.NonPublic |
@@ -337,9 +337,9 @@ public sealed class LegendFounderAiContractTests
     [Fact]
     public void FounderCapabilities_AreDiscoveredFromTheExecutableToolRegistry()
     {
-        var buildTools = typeof(LegendFounderAiConversationService)
+        var buildTools = typeof(LegendFounderToolAuthority)
             .GetMethod("BuildFounderTools", BindingFlags.NonPublic | BindingFlags.Static);
-        var describe = typeof(LegendFounderAiConversationService)
+        var describe = typeof(LegendFounderToolAuthority)
             .GetMethod("DescribeFounderCapabilities", BindingFlags.NonPublic | BindingFlags.Static);
 
         Assert.NotNull(buildTools);
@@ -659,6 +659,69 @@ public sealed class LegendFounderAiContractTests
         Assert.Contains("Missing required factors:", partial.Detail, StringComparison.Ordinal);
         Assert.Null(partial.LegendSelfAssessment);
         Assert.Null(partial.OpenAiIndependentAssessment);
+    }
+
+    [Fact]
+    public async Task IntelligenceEvaluation_BlocksTakeoverClaimUntilEveryDomainBeatsOneLockedBaseline()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var service = new LegendIntelligenceEvaluationService(db);
+        _ = await service.CreateEvidenceSnapshotAsync("founder-1", CancellationToken.None);
+        var contract = await db.LegendIntelligenceEvaluationContracts.SingleAsync();
+        const string authority =
+            LegendArchitecturalTakeoverGate.EvaluatorAuthorityPrefix + "gpt-5.6-sol@locked-2026-08-28";
+        var metrics = new Dictionary<string, decimal>
+        {
+            ["sample_size"] = 200m,
+            ["blind_win_rate"] = 60m,
+            ["blind_win_rate_lower_confidence_bound"] = 51m,
+            ["non_inferiority_rate"] = 100m,
+            ["adversarial_pass_rate"] = 100m,
+            ["unsupported_request_integrity"] = 100m,
+            ["prompt_holdout_integrity"] = 100m,
+            ["assignment_blinding_integrity"] = 100m,
+            ["independent_judge_agreement"] = 90m,
+            ["latency_efficiency"] = 60m,
+            ["cost_efficiency"] = 60m
+        };
+        const string suiteIdentity =
+            "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+        foreach (var domain in LegendIntelligenceEvaluationDomainCatalog.All)
+        foreach (var metric in metrics)
+        {
+            db.LegendIntelligenceEvaluationSignals.Add(new LegendIntelligenceEvaluationSignal
+            {
+                ContractId = contract.Id,
+                DomainKey = domain.Key,
+                MetricKey = metric.Key,
+                Value = metric.Value,
+                EvidenceAuthority = authority,
+                EvidenceReference = $"{LegendArchitecturalTakeoverGate.SuiteReferencePrefix}{suiteIdentity}:{domain.Key}:{metric.Key}",
+                State = "Current",
+                MeasuredUtc = DateTime.UtcNow
+            });
+        }
+        await db.SaveChangesAsync();
+
+        var proven = await service.CreateEvidenceSnapshotAsync("founder-1", CancellationToken.None);
+        Assert.True(proven.TakeoverReadiness.Proven);
+        Assert.Equal("PROVEN", proven.TakeoverReadiness.State);
+        Assert.Equal(LegendIntelligenceEvaluationDomainCatalog.All.Count,
+            proven.TakeoverReadiness.DomainWins);
+        Assert.Equal("gpt-5.6-sol@locked-2026-08-28",
+            proven.TakeoverReadiness.BaselineIdentity);
+
+        var regression = await db.LegendIntelligenceEvaluationSignals.SingleAsync(item =>
+            item.DomainKey == "software_systems" && item.MetricKey == "non_inferiority_rate");
+        regression.Value = 99m;
+        regression.MeasuredUtc = regression.MeasuredUtc.AddSeconds(1);
+        await db.SaveChangesAsync();
+
+        var blocked = await service.CreateEvidenceSnapshotAsync("founder-1", CancellationToken.None);
+        Assert.False(blocked.TakeoverReadiness.Proven);
+        Assert.Equal(11, blocked.TakeoverReadiness.DomainWins);
+        Assert.Contains(blocked.TakeoverReadiness.Blockers, item =>
+            item.Contains("software_systems: non_inferiority_rate", StringComparison.Ordinal));
     }
 
     [Fact]

@@ -34,7 +34,14 @@ public sealed class LegendFounderAiComprehensiveDiagnosticContractTests
         Assert.Contains("correlationId", source, StringComparison.Ordinal);
         Assert.Contains("successfulGovernedEvidenceTools", source, StringComparison.Ordinal);
         Assert.Contains("IsSuccessfulFounderToolOutput", source, StringComparison.Ordinal);
-        Assert.Contains("IsGovernedEvidenceTool", source, StringComparison.Ordinal);
+        Assert.Contains("_toolAuthority.IsGovernedEvidence", source, StringComparison.Ordinal);
+        var authority = ReadRepositoryFile(
+            "AgentPortal",
+            "Services",
+            "LegendFounderToolAuthority.cs");
+        Assert.Contains("IsGovernedEvidenceTool", authority, StringComparison.Ordinal);
+        Assert.Contains("ExecuteAsync", authority, StringComparison.Ordinal);
+        Assert.DoesNotContain("ExecuteFounderToolAsync", source, StringComparison.Ordinal);
         Assert.DoesNotContain(
             "Independent broad inspection was not requested",
             source,
@@ -52,7 +59,11 @@ public sealed class LegendFounderAiComprehensiveDiagnosticContractTests
         Assert.Contains("requiresComprehensiveGovernedInspection", source, StringComparison.Ordinal);
         Assert.Contains("? 3", source, StringComparison.Ordinal);
         Assert.Contains("new HashSet<string>(StringComparer.Ordinal)", source, StringComparison.Ordinal);
-        Assert.Contains("!string.Equals(name, \"legend_capabilities\"", source, StringComparison.Ordinal);
+        var authority = ReadRepositoryFile(
+            "AgentPortal",
+            "Services",
+            "LegendFounderToolAuthority.cs");
+        Assert.Contains("!string.Equals(name, \"legend_capabilities\"", authority, StringComparison.Ordinal);
     }
 
     [Fact]

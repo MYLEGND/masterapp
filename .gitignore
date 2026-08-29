@@ -65,6 +65,11 @@ web.config
 clientlogs/
 webapp_logs.zip
 delete_candidates.csv
+audit.txt
+codex-findings-verification.txt
+inspect-health-disability-parity-output.txt
+diagnostics/legend-production-readonly-*.txt
+**/DEPLOYMENT_TRIGGER_*.md
 
 # =========================
 # Azure / editor artifacts

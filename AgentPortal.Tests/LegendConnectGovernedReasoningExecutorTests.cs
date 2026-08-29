@@ -44,6 +44,109 @@ public sealed class LegendConnectGovernedReasoningExecutorTests
     }
 
     [Fact]
+    public void Executor_ReplacesEarlierBroadDirectProofWithLaterHigherStandardChain()
+    {
+        var rules = new[]
+        {
+            new LegendGovernedReasoningRule(
+                "a-higher-first",
+                "reasoning.forward.resolution",
+                new Dictionary<string, string> { ["stage"] = "observed" },
+                new Dictionary<string, string> { ["stage"] = "verified" },
+                4,
+                2),
+            new LegendGovernedReasoningRule(
+                "b-higher-second",
+                "reasoning.forward.resolution",
+                new Dictionary<string, string> { ["stage"] = "verified" },
+                new Dictionary<string, string> { ["stage"] = "resolved" },
+                4,
+                2),
+            new LegendGovernedReasoningRule(
+                "z-broad-direct",
+                "reasoning.forward.resolution",
+                new Dictionary<string, string> { ["stage"] = "observed" },
+                new Dictionary<string, string> { ["stage"] = "resolved" },
+                1,
+                1)
+        };
+
+        var execution = LegendConnectGovernedReasoningExecutor.Derive(
+            new Dictionary<string, string> { ["stage"] = "observed" },
+            rules);
+
+        var resolved = Assert.Single(execution.DerivedStates.Where(item =>
+            item.Values.GetValueOrDefault("stage") == "resolved"));
+        Assert.Equal(["a-higher-first", "b-higher-second"], resolved.TransitionPath);
+        Assert.Equal(4, resolved.EvidenceCount);
+        Assert.Equal(2, resolved.EvidenceStandard);
+        Assert.Equal(2, resolved.Depth);
+    }
+
+    [Fact]
+    public void Executor_ReplacesEarlierWeakProofWithStrongerEquivalentProofAtSameStandard()
+    {
+        var rules = new[]
+        {
+            new LegendGovernedReasoningRule(
+                "a-weak-direct",
+                "reasoning.forward.resolution",
+                new Dictionary<string, string> { ["stage"] = "observed" },
+                new Dictionary<string, string> { ["stage"] = "resolved" },
+                1,
+                2),
+            new LegendGovernedReasoningRule(
+                "z-strong-direct",
+                "reasoning.forward.resolution",
+                new Dictionary<string, string> { ["stage"] = "observed" },
+                new Dictionary<string, string> { ["stage"] = "resolved" },
+                5,
+                2)
+        };
+
+        var execution = LegendConnectGovernedReasoningExecutor.Derive(
+            new Dictionary<string, string> { ["stage"] = "observed" },
+            rules);
+
+        var resolved = Assert.Single(execution.DerivedStates.Where(item =>
+            item.Values.GetValueOrDefault("stage") == "resolved"));
+        Assert.Equal(["z-strong-direct"], resolved.TransitionPath);
+        Assert.Equal(5, resolved.EvidenceCount);
+        Assert.Equal(2, resolved.EvidenceStandard);
+        Assert.Equal(1, resolved.Depth);
+    }
+
+    [Fact]
+    public void Executor_ConvergesDeterministicallyAcrossGovernedCycles()
+    {
+        var rules = new[]
+        {
+            Rule("forward", "reasoning.bidirectional.stage",
+                new Dictionary<string, string> { ["stage"] = "observed" },
+                new Dictionary<string, string> { ["stage"] = "verified" }),
+            Rule("resolve", "reasoning.forward.stage",
+                new Dictionary<string, string> { ["stage"] = "verified" },
+                new Dictionary<string, string> { ["stage"] = "resolved" })
+        };
+        var initial = new Dictionary<string, string> { ["stage"] = "observed" };
+
+        var first = LegendConnectGovernedReasoningExecutor.Derive(initial, rules);
+        var second = LegendConnectGovernedReasoningExecutor.Derive(initial, rules.Reverse().ToArray());
+
+        Assert.False(first.BudgetExceeded);
+        Assert.Equal(
+            first.DerivedStates.Select(ProofIdentity),
+            second.DerivedStates.Select(ProofIdentity));
+        Assert.Equal(2, first.DerivedStates.Count);
+        Assert.DoesNotContain(first.DerivedStates, item =>
+            item.Values.GetValueOrDefault("stage") == "observed");
+    }
+
+    private static string ProofIdentity(LegendGovernedReasoningProof proof) =>
+        string.Join("|", proof.Values.OrderBy(item => item.Key).Select(item => $"{item.Key}={item.Value}")) +
+        $"::{string.Join(">", proof.TransitionPath)}::{proof.Depth}::{proof.EvidenceCount}::{proof.EvidenceStandard}";
+
+    [Fact]
     public void Executor_ChainsVariablesAcrossMultipleGovernedRulesWithoutTopicLogic()
     {
         var rules = new[]

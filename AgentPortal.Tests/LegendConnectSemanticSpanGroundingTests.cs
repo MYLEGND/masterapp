@@ -924,7 +924,7 @@ public sealed class LegendConnectSemanticSpanGroundingTests
     }
 
     [Fact]
-    public async Task HistoricalControlledSourceFrame_IsAvailableAfterIndependentEligibilityAndThenPersistedByReplay()
+    public async Task HistoricalControlledSourceFrameProjection_IsPersistedAfterIndependentEligibility()
     {
         await using var db = ControllerTestHelpers.BuildDb();
         var fixture = CreateFixture(db);
@@ -1002,17 +1002,6 @@ public sealed class LegendConnectSemanticSpanGroundingTests
                 item.SupersededUtc == null);
         Assert.Equal(1, beforeReplay);
 
-        var beforeInference = await fixture.Curriculum
-            .TryInferSemanticTransitionAsync(
-                "en",
-                "Historic opening 1.",
-                Array.Empty<LegendConnectConversationContextItem>());
-        Assert.Equal(
-            LegendSemanticTransitionInference.Supported,
-            beforeInference.State);
-        Assert.False(string.IsNullOrWhiteSpace(beforeInference.RealizedText));
-        Assert.True(beforeInference.EvidenceCount > 0);
-
         var transitionSignatures = await db.LegendSemanticTransitionEvidence
             .Where(item => item.SupersededUtc == null &&
                 item.SourceLanguageCode == "en" &&
@@ -1031,9 +1020,8 @@ public sealed class LegendConnectSemanticSpanGroundingTests
                     transitionSignatures));
 
         // The normal historical source-family evaluator persists the same
-        // bounded, production-eligible source-frame projection used for the
-        // read-only compatibility proof above. It must use transition gates,
-        // not a phrase list or proximity heuristic.
+        // bounded, production-eligible source-frame projection. It must use
+        // transition gates, not a phrase list or proximity heuristic.
         await fixture.Curriculum.ReevaluateHistoricalAlignmentsAsync(100);
 
         var projected = await db.LegendLanguageCompositionalAnchors
@@ -1053,17 +1041,6 @@ public sealed class LegendConnectSemanticSpanGroundingTests
             Assert.Equal(0, item.ComponentStartTokenIndex);
             Assert.NotNull(item.SemanticSignature);
         });
-
-        var afterInference = await fixture.Curriculum
-            .TryInferSemanticTransitionAsync(
-                "en",
-                "Historic opening 1.",
-                Array.Empty<LegendConnectConversationContextItem>());
-        Assert.Equal(
-            LegendSemanticTransitionInference.Supported,
-            afterInference.State);
-        Assert.False(string.IsNullOrWhiteSpace(afterInference.RealizedText));
-        Assert.True(afterInference.EvidenceCount > 0);
 
         await fixture.Curriculum.ReevaluateHistoricalAlignmentsAsync(100);
         Assert.Equal(
