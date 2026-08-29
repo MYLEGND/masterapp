@@ -72,15 +72,13 @@ public sealed class LegendFounderAiConversationService
         FounderLegendConnectService legend,
         ILogger<LegendFounderAiConversationService> logger,
         LegendFounderAiDiscourseStateService discourse,
-        IFounderSoftwareRemediationService? softwareRemediation = null,
-        LegendFounderToolAuthority? toolAuthority = null)
+        IFounderSoftwareRemediationService? softwareRemediation = null)
     {
         _httpClientFactory = httpClientFactory;
         _configuration = configuration;
         _legend = legend;
         _discourse = discourse ?? throw new ArgumentNullException(nameof(discourse));
         _toolAuthority =
-            toolAuthority ??
             new LegendFounderToolAuthority(
                 legend,
                 softwareRemediation);
