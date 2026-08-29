@@ -4222,22 +4222,27 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
         var normalizedInput = LegendLanguageIdentity.NormalizeText(input);
         if (string.IsNullOrWhiteSpace(normalizedInput))
             return null;
+        var normalizedInputHash = LegendLanguageIdentity.TextHash(normalizedInput);
 
-        var sourceExampleIds = observations
-            .Select(item => item.SourceExampleId)
-            .Distinct()
-            .ToArray();
-        var exactSourceExampleIds = await (
-            from source in _db.Set<LegendCurriculumExample>().AsNoTracking()
-            join unit in _db.Set<LegendLanguageTextUnit>().AsNoTracking()
-                on source.TextUnitId equals unit.Id
-            where sourceExampleIds.Contains(source.Id) &&
-                source.SupersededUtc == null &&
-                source.LanguageCode == sourceLanguage &&
+        var exactTextUnitId = await _db.Set<LegendLanguageTextUnit>()
+            .AsNoTracking()
+            .Where(unit =>
                 unit.LanguageCode == sourceLanguage &&
-                unit.IsTrainingEligible &&
-                unit.Text == normalizedInput
-            select source.Id).Distinct().ToArrayAsync(cancellationToken);
+                unit.NormalizedHash == normalizedInputHash &&
+                unit.IsTrainingEligible)
+            .Select(unit => (Guid?)unit.Id)
+            .SingleOrDefaultAsync(cancellationToken);
+        if (exactTextUnitId is null)
+            return null;
+
+        var exactSourceExampleIds = await _db.Set<LegendCurriculumExample>()
+            .AsNoTracking()
+            .Where(source =>
+                source.TextUnitId == exactTextUnitId.Value &&
+                source.SupersededUtc == null &&
+                source.LanguageCode == sourceLanguage)
+            .Select(source => source.Id)
+            .ToArrayAsync(cancellationToken);
         if (exactSourceExampleIds.Length == 0)
             return null;
 
