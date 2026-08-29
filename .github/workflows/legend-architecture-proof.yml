@@ -77,7 +77,7 @@ jobs:
         run: dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-build --filter "FullyQualifiedName~LegendConnectModelEvaluationTests|FullyQualifiedName~LegendConnectModelTrainingTests|FullyQualifiedName~LegendConnectModelTrainingLifecycleTests|FullyQualifiedName~LegendConnectModelPromotionTests|FullyQualifiedName~LegendConnectProductionNeuralRoutingTests" --logger "trx;LogFileName=legend-model-proof.trx"
 
       - name: Run architectural takeover gate proof
-        run: dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-build --filter "FullyQualifiedName~LegendIntelligenceEvaluationServiceTests" --logger "trx;LogFileName=legend-takeover-gate-proof.trx"
+        run: dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-build --filter "FullyQualifiedName~IntelligenceEvaluation_BlocksTakeoverClaimUntilEveryDomainBeatsOneLockedBaseline" --logger "trx;LogFileName=legend-takeover-gate-proof.trx"
 
       - name: Prove one serving reasoning authority
         shell: bash
