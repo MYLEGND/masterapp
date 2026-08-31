@@ -4282,10 +4282,11 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
         }
 
         var endpointCandidates = BuildGovernedSemanticTransitionCandidates(
-            exactObservations,
+            observations,
             new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase),
             allowMissingVariables: true,
-            allowMissingStaticDimensions: true);
+            allowMissingStaticDimensions: true,
+            requiredSourceExampleIds: exactIds);
         var completeCandidates = endpointCandidates
             .Where(item => item.MissingVariables.Count == 0)
             .ToList();
@@ -4532,7 +4533,8 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
             IReadOnlyDictionary<string, string> inputValues,
             bool allowMissingVariables,
             bool allowMissingStaticDimensions = false,
-            CanonicalSemanticProjectionScope? projectionScope = null)
+            CanonicalSemanticProjectionScope? projectionScope = null,
+            IReadOnlySet<Guid>? requiredSourceExampleIds = null)
     {
         var candidates = new List<SemanticTransitionCandidate>();
         foreach (var groupedObservations in observations.GroupBy(
@@ -4547,6 +4549,11 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
             var group = groupedObservations
                 .Where(HasGovernedSemanticFamilyConnection)
                 .ToList();
+            if (requiredSourceExampleIds is not null &&
+                !group.Any(item => requiredSourceExampleIds.Contains(item.SourceExampleId)))
+            {
+                continue;
+            }
             if (!TryGetGovernedSemanticTransitionFrames(
                     group,
                     out var independentEvidenceCount,
@@ -4575,6 +4582,13 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
                 continue;
             }
 
+            var lineage = BuildSemanticTransitionLineage(group, evidenceStandard);
+            if (lineage.ResultCurriculumFamilyIds.Count == 0 ||
+                lineage.ResultCurriculumExampleIds.Count == 0)
+            {
+                continue;
+            }
+
             if (!TryBindInputSemanticFrame(
                     sourceFrame,
                     inputValues,
@@ -4595,9 +4609,31 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
                 missingVariables,
                 directSourceMatchCount,
                 independentEvidenceCount,
-                evidenceStandard));
+                evidenceStandard,
+                lineage));
         }
         return candidates;
+    }
+
+    private static SemanticTransitionLineage BuildSemanticTransitionLineage(
+        IReadOnlyList<SemanticTransitionObservation> observations,
+        int evidenceStandard)
+    {
+        var authorized = observations.Where(item =>
+            string.Equals(item.ContributionState, "Supported", StringComparison.Ordinal) &&
+            (item.SourceCurriculumFamilyId == item.ResultCurriculumFamilyId ||
+             (evidenceStandard == HigherGovernedEvidenceStandard &&
+              item.HasExplicitGovernedTransferRelationship &&
+              string.Equals(
+                  item.FounderTransferContributionState,
+                  "Supported",
+                  StringComparison.Ordinal))))
+            .ToArray();
+        return new(
+            authorized.Select(item => item.SourceCurriculumFamilyId).ToHashSet(),
+            authorized.Select(item => item.ResultCurriculumFamilyId).ToHashSet(),
+            authorized.Select(item => item.SourceExampleId).ToHashSet(),
+            authorized.Select(item => item.ResultExampleId).ToHashSet());
     }
 
     private static bool HasGovernedSemanticFamilyConnection(SemanticTransitionObservation observation) =>
@@ -5517,6 +5553,11 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
         if (!TryInstantiateFrame(candidate.ResultFrame, candidate.Bindings, out var resultValues))
             return SemanticTransitionRealization.Insufficient("result_semantic_variable_unbound_frame");
 
+        var lineageResultFamilyIds = candidate.Lineage.ResultCurriculumFamilyIds.ToArray();
+        var lineageResultExampleIds = candidate.Lineage.ResultCurriculumExampleIds.ToArray();
+        if (lineageResultFamilyIds.Length == 0 || lineageResultExampleIds.Length == 0)
+            return SemanticTransitionRealization.Insufficient("result_semantic_lineage_unknown");
+
         var allowSystemValidatedMachine =
             candidate.EvidenceStandard == BroadGovernedEvidenceStandard;
         var activeExamples =
@@ -5524,6 +5565,7 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
             join unit in _db.Set<LegendLanguageTextUnit>().AsNoTracking()
                 on example.TextUnitId equals unit.Id
             where example.SupersededUtc == null &&
+                lineageResultFamilyIds.Contains(example.CurriculumFamilyId) &&
                 example.LanguageCode == languageCode &&
                 (example.Provenance == LegendConnectKnowledgeProvenance.FounderApproved ||
                  (allowSystemValidatedMachine &&
@@ -5534,10 +5576,11 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
                   unit.Provenance == LegendConnectKnowledgeProvenance.SystemValidatedMachine))
             select new { Example = example, Unit = unit };
 
-        // Frame relevance is applied in SQL before materialization. This uses
-        // the existing variation rows as the semantic index and deliberately
-        // does not turn the full English curriculum into an in-memory
-        // candidate universe.
+        // Family lineage and frame relevance are applied in SQL before
+        // materialization. This uses the selected transition's existing
+        // governed source/result pairs and variation rows as the semantic
+        // index; a shared result-frame signature cannot turn unrelated
+        // curriculum language into a realization candidate.
         var scopedQuery = activeExamples;
         var layoutQuery = activeExamples;
         // An exact static response may be served only from an example that is
@@ -5546,6 +5589,7 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
         // transition provenance as selection; a merely similar curriculum
         // example cannot become a conversational answer.
         scopedQuery = scopedQuery.Where(item =>
+            lineageResultExampleIds.Contains(item.Example.Id) &&
             _db.Set<LegendSemanticTransitionEvidence>().Any(evidence =>
                 evidence.TransitionSignature == candidate.TransitionSignature &&
                 evidence.ResultCurriculumExampleId == item.Example.Id &&
@@ -5626,10 +5670,9 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
                     StringComparer.OrdinalIgnoreCase));
 
         // Keep canonical static realization on the transition's exact
-        // Founder-approved result endpoints.  The broader layout set below
-        // is evidence for a bound-variable composition only; it must never
-        // introduce an otherwise similar curriculum example as a static
-        // conversational response.
+        // Founder-approved result endpoints. The family-lineage layout set
+        // below is evidence for bound-variable composition only; it must never
+        // introduce a same-frame example from outside the selected transition.
         var scopedExamples = scopedDatabaseExamples
             .Where(item => variationMaps.TryGetValue(item.Id, out var values) &&
                 MatchesInstantiatedSemanticFrame(candidate.ResultFrame, values, candidate.Bindings))
@@ -5676,9 +5719,9 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
             .Where(item => !IsStructuralRelationFrameDimension(item))
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
         var hasResultVariables = candidate.ResultFrame.Dimensions.Values.Any(IsSemanticVariable);
-        // Static responses may use only the selected transition's exact
-        // Founder-approved endpoints. Bound-variable responses retain the
-        // broader same-frame layout evidence needed to realize a new value.
+        // Static responses use only the selected transition's exact endpoints.
+        // Bound-variable responses may use same-frame layouts only inside the
+        // selected transition's governed result-family lineage.
         var layoutExamples = hasResultVariables
             ? examples
             : scopedDatabaseExamples;
@@ -11993,6 +12036,12 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
         string Dimension,
         string Variable);
 
+    private sealed record SemanticTransitionLineage(
+        IReadOnlySet<Guid> SourceCurriculumFamilyIds,
+        IReadOnlySet<Guid> ResultCurriculumFamilyIds,
+        IReadOnlySet<Guid> SourceCurriculumExampleIds,
+        IReadOnlySet<Guid> ResultCurriculumExampleIds);
+
     private sealed record SemanticTransitionCandidate(
         string TransitionSignature,
         NormalizedSemanticFrame SourceFrame,
@@ -12002,6 +12051,7 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
         int DirectSourceMatchCount,
         int IndependentEvidenceCount,
         int EvidenceStandard,
+        SemanticTransitionLineage Lineage,
         int ReasoningEvidenceCount = 0,
         IReadOnlyList<string>? ReasoningPath = null);
 

@@ -156,6 +156,153 @@ public sealed class LegendConnectSemanticSpanGroundingTests
     }
 
     [Fact]
+    public async Task NativeRealization_UsesValidLayoutsFromTheSelectedSameFamilyLineage()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var fixture = CreateFixture(db);
+
+        for (var support = 1; support <= 3; support++)
+        {
+            var submitted = await fixture.Curriculum.SubmitFounderEnglishBatchAsync(
+                RealizationLineageFamily("selected", support));
+            Assert.True(submitted.Succeeded, submitted.Message);
+        }
+
+        var native = await fixture.Operations.TryInferConversationWithDiscourseAsync(
+            "Use selected realization.",
+            [],
+            new LegendConnectDiscourseStateSnapshot([]));
+
+        Assert.True(native.Supported, native.ReasonCode);
+        Assert.Equal("OriginalComposition", native.ArticulationMode);
+        Assert.NotNull(native.Answer);
+        Assert.DoesNotContain(
+            new[] { "dispatch", "inventory", "scheduling" },
+            word => native.Answer!.Contains(word, StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task NativeRealization_SharedResultFrameDoesNotAuthorizeDifferentFamilyLanguage()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var fixture = CreateFixture(db);
+
+        for (var support = 1; support <= 3; support++)
+        {
+            var selected = await fixture.Curriculum.SubmitFounderEnglishBatchAsync(
+                RealizationLineageFamily("selected", support));
+            Assert.True(selected.Succeeded, selected.Message);
+            var unrelated = await fixture.Curriculum.SubmitFounderEnglishBatchAsync(
+                RealizationLineageFamily("unrelated", support));
+            Assert.True(unrelated.Succeeded, unrelated.Message);
+        }
+
+        var native = await fixture.Operations.TryInferConversationWithDiscourseAsync(
+            "Use selected realization.",
+            [],
+            new LegendConnectDiscourseStateSnapshot([]));
+
+        Assert.True(native.Supported, native.ReasonCode);
+        Assert.Equal("OriginalComposition", native.ArticulationMode);
+        Assert.NotNull(native.Answer);
+        Assert.DoesNotContain(
+            new[] { "missed", "dispatch", "absent", "inventory", "broken", "scheduling" },
+            word => native.Answer!.Contains(word, StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task NativeRealization_ExplicitGovernedTransferCarriesItsResultFamilyLineage()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var fixture = CreateFixture(db);
+
+        for (var support = 1; support <= 3; support++)
+        {
+            var source = await fixture.Curriculum.SubmitFounderEnglishBatchAsync(
+                RealizationTransferSourceFamily(support));
+            Assert.True(source.Succeeded, source.Message);
+            var result = await fixture.Curriculum.SubmitFounderEnglishBatchAsync(
+                RealizationTransferResultFamily(support));
+            Assert.True(result.Succeeded, result.Message);
+            await fixture.Curriculum.PersistFounderCrossExampleSemanticRelationAsync(
+                new LegendConnectCrossExampleSemanticRelationshipSubmission(
+                    $"realization-transfer-source-{support}",
+                    "transfer.realization.authorized",
+                    $"realization-transfer-result-{support}"),
+                LegendConnectLanguageIntelligenceEvaluatorVersion.Current);
+
+            var unrelated = await fixture.Curriculum.SubmitFounderEnglishBatchAsync(
+                RealizationTransferUnrelatedFamily(support));
+            Assert.True(unrelated.Succeeded, unrelated.Message);
+        }
+
+        var native = await fixture.Operations.TryInferConversationWithDiscourseAsync(
+            "Authorize governed transfer.",
+            [],
+            new LegendConnectDiscourseStateSnapshot([]));
+
+        Assert.True(native.Supported, native.ReasonCode);
+        Assert.Equal("HigherStandard", native.EvidenceStandard);
+        Assert.Equal("OriginalComposition", native.ArticulationMode);
+        Assert.NotNull(native.Answer);
+        Assert.DoesNotContain(
+            new[] { "missed", "dispatch", "absent", "inventory", "broken", "scheduling" },
+            word => native.Answer!.Contains(word, StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task NativeRealization_EverySurfaceComponentComesFromTheCompleteSelectedLineage()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var fixture = CreateFixture(db);
+
+        for (var support = 1; support <= 3; support++)
+        {
+            Assert.True((await fixture.Curriculum.SubmitFounderEnglishBatchAsync(
+                RealizationLineageFamily("selected", support))).Succeeded);
+            Assert.True((await fixture.Curriculum.SubmitFounderEnglishBatchAsync(
+                RealizationLineageFamily("unrelated", support))).Succeeded);
+        }
+
+        var selectedResultFamilyIds = await (
+            from transition in db.LegendSemanticTransitionEvidence
+            join result in db.LegendCurriculumExamples
+                on transition.ResultCurriculumExampleId equals result.Id
+            where transition.SupersededUtc == null &&
+                transition.SourceSemanticFrame.Contains("selected_realization_request")
+            select result.CurriculumFamilyId
+        ).Distinct().ToArrayAsync();
+        Assert.Equal(3, selectedResultFamilyIds.Length);
+
+        var lineageResultTexts = await (
+            from example in db.LegendCurriculumExamples
+            join unit in db.LegendLanguageTextUnits on example.TextUnitId equals unit.Id
+            where selectedResultFamilyIds.Contains(example.CurriculumFamilyId) &&
+                db.LegendCurriculumExampleVariations.Any(variation =>
+                    variation.CurriculumExampleId == example.Id &&
+                    variation.Dimension == "conversation_function" &&
+                    variation.Value == "shared_lineage_response")
+            select unit.Text
+        ).ToArrayAsync();
+        var lineageWords = lineageResultTexts
+            .SelectMany(item => item.Split(' ', StringSplitOptions.RemoveEmptyEntries))
+            .Select(item => item.Trim('.', ',', ';', ':', '!', '?'))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        var native = await fixture.Operations.TryInferConversationWithDiscourseAsync(
+            "Use selected realization.",
+            [],
+            new LegendConnectDiscourseStateSnapshot([]));
+
+        Assert.True(native.Supported, native.ReasonCode);
+        Assert.NotNull(native.Answer);
+        var realizedWords = native.Answer!
+            .Split(' ', StringSplitOptions.RemoveEmptyEntries)
+            .Select(item => item.Trim('.', ',', ';', ':', '!', '?'));
+        Assert.All(realizedWords, word => Assert.Contains(word, lineageWords));
+    }
+
+    [Fact]
     public async Task NativeRealization_ComposesRepeatedSemanticSlots_FromIndependentFounderFamilies()
     {
         await using var db = ControllerTestHelpers.BuildDb();
@@ -1700,6 +1847,202 @@ public sealed class LegendConnectSemanticSpanGroundingTests
                     ["subject"] = "status_message",
                     ["register"] = "measured",
                     ["intent"] = "acknowledge_receipt"
+                }))]);
+    }
+
+    private static LegendConnectCurriculumBatchSubmission RealizationLineageFamily(
+        string group,
+        int support)
+    {
+        var selected = string.Equals(group, "selected", StringComparison.Ordinal);
+        var (resultText, firstSurface, secondSurface) = (selected, support) switch
+        {
+            (true, 1) => ("Verified route.", "Verified", "route"),
+            (true, 2) => ("Governed path.", "Governed", "path"),
+            (true, _) => ("Confirmed course.", "Confirmed", "course"),
+            (false, 1) => ("Foreign Missed dispatch evidence.", "Missed", "dispatch"),
+            (false, 2) => ("Foreign Absent inventory evidence.", "Absent", "inventory"),
+            _ => ("Foreign Broken scheduling evidence.", "Broken", "scheduling")
+        };
+        var requestValue = selected
+            ? "selected_realization_request"
+            : "unrelated_realization_request";
+        var requestText = selected
+            ? "Use selected realization."
+            : "Use unrelated realization.";
+        var firstDimension = selected ? "selected_lead" : "a_foreign_lead";
+        var secondDimension = selected ? "selected_tail" : "b_foreign_tail";
+        var firstValue = selected ? "approved_lead" : "foreign_lead";
+        var secondValue = selected ? "approved_tail" : "foreign_tail";
+
+        return new LegendConnectCurriculumBatchSubmission(
+            $"realization.lineage.{group}.{support}",
+            "Transition-scoped semantic realization lineage",
+            [
+                new LegendConnectCurriculumExampleSubmission(
+                    requestText,
+                    new Dictionary<string, string>
+                    {
+                        ["realization_request"] = requestValue
+                    },
+                    new LegendConnectMeaningGraphSubmission(
+                    [
+                        new LegendConnectMeaningNodeSubmission(
+                            "request", "realization_request", requestValue,
+                            requestText.TrimEnd('.'))
+                    ],
+                    [])),
+                new LegendConnectCurriculumExampleSubmission(
+                    resultText,
+                    new Dictionary<string, string>
+                    {
+                        ["conversation_function"] = "shared_lineage_response",
+                        [firstDimension] = firstValue,
+                        [secondDimension] = secondValue
+                    },
+                    new LegendConnectMeaningGraphSubmission(
+                    [
+                        new LegendConnectMeaningNodeSubmission(
+                            "first", firstDimension, firstValue, firstSurface),
+                        new LegendConnectMeaningNodeSubmission(
+                            "second", secondDimension, secondValue, secondSurface)
+                    ],
+                    [new LegendConnectMeaningRelationSubmission(
+                        "first", "followed-by", "second")]))
+            ],
+            [new LegendConnectSemanticTransitionSubmission(
+                new LegendConnectSemanticFrameSubmission(new Dictionary<string, string>
+                {
+                    ["realization_request"] = requestValue
+                }),
+                new LegendConnectSemanticFrameSubmission(new Dictionary<string, string>
+                {
+                    ["conversation_function"] = "shared_lineage_response"
+                }))]);
+    }
+
+    private static LegendConnectCurriculumBatchSubmission RealizationTransferSourceFamily(int support) =>
+        new(
+            $"realization.transfer.source.{support}",
+            "Source lineage for an explicit governed realization transfer",
+            [
+                new LegendConnectCurriculumExampleSubmission(
+                    "Authorize governed transfer.",
+                    new Dictionary<string, string>
+                    {
+                        ["transfer_request"] = "handoff"
+                    },
+                    new LegendConnectMeaningGraphSubmission(
+                    [
+                        new LegendConnectMeaningNodeSubmission(
+                            "request", "transfer_request", "handoff",
+                            "Authorize governed transfer")
+                    ],
+                    []),
+                    $"realization-transfer-source-{support}"),
+                new LegendConnectCurriculumExampleSubmission(
+                    $"Realization transfer source control {support}.",
+                    new Dictionary<string, string>
+                    {
+                        ["control"] = $"realization-transfer-source-{support}"
+                    })
+            ]);
+
+    private static LegendConnectCurriculumBatchSubmission RealizationTransferResultFamily(int support)
+    {
+        var (text, decisionSurface, registerSurface) = support switch
+        {
+            1 => ("Approved clearly.", "Approved", "clearly"),
+            2 => ("Authorized plainly.", "Authorized", "plainly"),
+            _ => ("Validated expressly.", "Validated", "expressly")
+        };
+        return new(
+            $"realization.transfer.result.{support}",
+            "Result lineage for an explicit governed realization transfer",
+            [
+                new LegendConnectCurriculumExampleSubmission(
+                    text,
+                    new Dictionary<string, string>
+                    {
+                        ["decision_posture"] = "governed_transfer_response",
+                        ["register"] = "measured"
+                    },
+                    new LegendConnectMeaningGraphSubmission(
+                    [
+                        new LegendConnectMeaningNodeSubmission(
+                            "decision", "decision_posture", "governed_transfer_response",
+                            decisionSurface),
+                        new LegendConnectMeaningNodeSubmission(
+                            "register", "register", "measured", registerSurface)
+                    ],
+                    []),
+                    $"realization-transfer-result-{support}"),
+                new LegendConnectCurriculumExampleSubmission(
+                    $"Realization transfer result control {support}.",
+                    new Dictionary<string, string>
+                    {
+                        ["control"] = $"realization-transfer-result-{support}"
+                    })
+            ]);
+    }
+
+    private static LegendConnectCurriculumBatchSubmission RealizationTransferUnrelatedFamily(int support)
+    {
+        var (text, firstSurface, secondSurface) = support switch
+        {
+            1 => ("Foreign Missed dispatch evidence.", "Missed", "dispatch"),
+            2 => ("Foreign Absent inventory evidence.", "Absent", "inventory"),
+            _ => ("Foreign Broken scheduling evidence.", "Broken", "scheduling")
+        };
+        return new(
+            $"realization.transfer.unrelated.{support}",
+            "Unrelated same-frame transfer realization language",
+            [
+                new LegendConnectCurriculumExampleSubmission(
+                    "Use unrelated transfer realization.",
+                    new Dictionary<string, string>
+                    {
+                        ["transfer_request"] = "unrelated"
+                    },
+                    new LegendConnectMeaningGraphSubmission(
+                    [
+                        new LegendConnectMeaningNodeSubmission(
+                            "request", "transfer_request", "unrelated",
+                            "Use unrelated transfer realization")
+                    ],
+                    [])),
+                new LegendConnectCurriculumExampleSubmission(
+                    text,
+                    new Dictionary<string, string>
+                    {
+                        ["decision_posture"] = "governed_transfer_response",
+                        ["register"] = "measured",
+                        ["a_foreign_lead"] = "foreign_lead",
+                        ["b_foreign_tail"] = "foreign_tail"
+                    },
+                    new LegendConnectMeaningGraphSubmission(
+                    [
+                        new LegendConnectMeaningNodeSubmission(
+                            "decision", "decision_posture", "governed_transfer_response",
+                            firstSurface),
+                        new LegendConnectMeaningNodeSubmission(
+                            "register", "register", "measured", secondSurface),
+                        new LegendConnectMeaningNodeSubmission(
+                            "foreign-first", "a_foreign_lead", "foreign_lead", firstSurface),
+                        new LegendConnectMeaningNodeSubmission(
+                            "foreign-second", "b_foreign_tail", "foreign_tail", secondSurface)
+                    ],
+                    []))
+            ],
+            [new LegendConnectSemanticTransitionSubmission(
+                new LegendConnectSemanticFrameSubmission(new Dictionary<string, string>
+                {
+                    ["transfer_request"] = "unrelated"
+                }),
+                new LegendConnectSemanticFrameSubmission(new Dictionary<string, string>
+                {
+                    ["decision_posture"] = "governed_transfer_response",
+                    ["register"] = "measured"
                 }))]);
     }
 
