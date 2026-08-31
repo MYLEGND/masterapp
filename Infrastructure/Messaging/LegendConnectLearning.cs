@@ -2271,6 +2271,12 @@ internal sealed class LegendConnectAutonomousLearningService
 {
     private const string MachineConversationProvenance =
         "MachineConversation";
+    private const string LanguageTeacherIssueCategory =
+        "LanguageTeacherCircuitIssue";
+    private const string LanguageTeacherFailureCategory =
+        "LanguageTeacherFailureOccurrence";
+    private const string LanguageTeacherRecoveryCategory =
+        "LanguageTeacherCircuitRecovery";
 
     private readonly MasterAppDbContext _db;
     private readonly ILegendLanguageRegistry _registry;
@@ -4121,10 +4127,49 @@ internal sealed class LegendConnectAutonomousLearningService
             1,
             5);
 
-        var candidate = await TryClaimLanguageProposalCandidateAsync(
+        var selected = await SelectLanguageProposalCandidateAsync(
             maximumAttempts,
             cancellationToken);
+        if (selected is null)
+            return false;
 
+        var requiredRoles = selected.CriticOnly
+            ? new[] { LegendLanguageTeacherRole.Critic }
+            : new[]
+            {
+                LegendLanguageTeacherRole.Teacher,
+                LegendLanguageTeacherRole.Critic
+            };
+        var preflights = new Dictionary<
+            string,
+            LegendLanguageTeacherConfigurationPreflight>(
+                StringComparer.Ordinal);
+        var preflightSucceeded = true;
+        foreach (var role in requiredRoles)
+        {
+            var preflight = _languageTeacher!.Preflight(role);
+            preflights[role] = preflight;
+            if (!await PreflightLanguageTeacherRoleAsync(
+                    selected,
+                    preflight,
+                    cancellationToken))
+            {
+                preflightSucceeded = false;
+            }
+        }
+
+        if (!preflightSucceeded)
+        {
+            // The candidate remains unleased. Configuration absence or an
+            // open provider circuit never consumes an attempt. All required
+            // roles are inspected so each role/fingerprint issue is visible.
+            return true;
+        }
+
+        var candidate = await TryClaimLanguageProposalCandidateAsync(
+            selected.Id,
+            maximumAttempts,
+            cancellationToken);
         if (candidate is null)
             return false;
 
@@ -4176,6 +4221,7 @@ internal sealed class LegendConnectAutonomousLearningService
             return await ProcessConversationMachineCritiqueAsync(
                 candidate,
                 request,
+                preflights[LegendLanguageTeacherRole.Critic],
                 maximumAttempts,
                 cancellationToken);
         }
@@ -4201,22 +4247,13 @@ internal sealed class LegendConnectAutonomousLearningService
         {
             throw;
         }
-        catch (Exception)
+        catch (Exception exception)
         {
-            await DeferLanguageProposalAsync(
+            await HandleLanguageTeacherFailureAsync(
                 candidate,
-                "language_teacher_failed",
+                preflights[LegendLanguageTeacherRole.Teacher],
+                ClassifyLanguageTeacherException(exception),
                 maximumAttempts,
-                CancellationToken.None);
-
-            await RecordAsync(
-                "LanguageTeacherProposal",
-                "Warning",
-                candidate.TeacherProposalProcessingState,
-                candidate.SourceLanguageCode,
-                pairKey,
-                candidate.TeacherProposalFailureCode,
-                "The teacher boundary failed without changing canonical knowledge.",
                 CancellationToken.None);
 
             return true;
@@ -4224,24 +4261,24 @@ internal sealed class LegendConnectAutonomousLearningService
 
         if (!teacherResult.Succeeded || teacherResult.Families.Count == 0)
         {
-            await DeferLanguageProposalAsync(
+            await HandleLanguageTeacherFailureAsync(
                 candidate,
-                teacherResult.ErrorCode ?? "language_teacher_failed",
+                preflights[LegendLanguageTeacherRole.Teacher],
+                teacherResult.Succeeded
+                    ? LegendLanguageTeacherFailureClassification.Parsing
+                    : NormalizeLanguageTeacherFailureCode(
+                        teacherResult.ErrorCode,
+                        LegendLanguageTeacherFailureClassification.Provider),
                 maximumAttempts,
-                cancellationToken);
-
-            await RecordAsync(
-                "LanguageTeacherProposal",
-                "Warning",
-                candidate.TeacherProposalProcessingState,
-                candidate.SourceLanguageCode,
-                pairKey,
-                candidate.TeacherProposalFailureCode,
-                "The teacher returned no admissible proposal artifact; canonical knowledge was unchanged.",
                 cancellationToken);
 
             return true;
         }
+
+        await ResolveLanguageTeacherCircuitAsync(
+            preflights[LegendLanguageTeacherRole.Teacher],
+            "ProviderRecovered",
+            cancellationToken);
 
         // Phase-2 already bounds this to four; autonomous Phase-3 orchestration
         // deliberately narrows it further to two families per candidate.
@@ -4251,6 +4288,7 @@ internal sealed class LegendConnectAutonomousLearningService
             LegendLanguageTeacherCritiqueResult Critique,
             LegendLanguageTeacherProposalRequest? Request,
             string? PacketFailureCode)>(families.Length);
+        var criticProviderCompleted = false;
 
         foreach (var family in families)
         {
@@ -4295,22 +4333,13 @@ internal sealed class LegendConnectAutonomousLearningService
             {
                 throw;
             }
-            catch (Exception)
+            catch (Exception exception)
             {
-                await DeferLanguageProposalAsync(
+                await HandleLanguageTeacherFailureAsync(
                     candidate,
-                    "language_critic_failed",
+                    preflights[LegendLanguageTeacherRole.Critic],
+                    ClassifyLanguageTeacherException(exception),
                     maximumAttempts,
-                    CancellationToken.None);
-
-                await RecordAsync(
-                    "LanguageTeacherProposal",
-                    "Warning",
-                    candidate.TeacherProposalProcessingState,
-                    candidate.SourceLanguageCode,
-                    pairKey,
-                    candidate.TeacherProposalFailureCode,
-                    "Independent critique failed; no machine proposal was admitted to canonical knowledge.",
                     CancellationToken.None);
 
                 return true;
@@ -4318,26 +4347,28 @@ internal sealed class LegendConnectAutonomousLearningService
 
             if (!critique.Succeeded)
             {
-                await DeferLanguageProposalAsync(
+                await HandleLanguageTeacherFailureAsync(
                     candidate,
-                    critique.ErrorCode ?? "language_critic_failed",
+                    preflights[LegendLanguageTeacherRole.Critic],
+                    NormalizeLanguageTeacherFailureCode(
+                        critique.ErrorCode,
+                        LegendLanguageTeacherFailureClassification.Provider),
                     maximumAttempts,
-                    cancellationToken);
-
-                await RecordAsync(
-                    "LanguageTeacherProposal",
-                    "Warning",
-                    candidate.TeacherProposalProcessingState,
-                    candidate.SourceLanguageCode,
-                    pairKey,
-                    candidate.TeacherProposalFailureCode,
-                    "Independent critique did not complete; canonical knowledge was unchanged.",
                     cancellationToken);
 
                 return true;
             }
 
+            criticProviderCompleted = true;
             critiques.Add((family, critique, criticRequest, null));
+        }
+
+        if (criticProviderCompleted)
+        {
+            await ResolveLanguageTeacherCircuitAsync(
+                preflights[LegendLanguageTeacherRole.Critic],
+                "ProviderRecovered",
+                cancellationToken);
         }
 
         var anyApproved = false;
@@ -5264,15 +5295,439 @@ internal sealed class LegendConnectAutonomousLearningService
         LanguageFamilyExampleLineage TargetExample,
         string EvidenceIdentity);
 
-    private async Task<LegendCorpusCandidate?>
-        TryClaimLanguageProposalCandidateAsync(
+    private async Task<bool> PreflightLanguageTeacherRoleAsync(
+        LanguageProposalWorkCandidate selected,
+        LegendLanguageTeacherConfigurationPreflight preflight,
+        CancellationToken cancellationToken)
+    {
+        var normalizedRole = NormalizeLanguageTeacherRole(
+            preflight.Role);
+        var fingerprint = NormalizeLanguageTeacherFingerprint(
+            normalizedRole,
+            preflight.ConfigurationFingerprint);
+        var normalized = preflight with
+        {
+            Role = normalizedRole,
+            ConfigurationFingerprint = fingerprint,
+            FailureCode = preflight.IsReady
+                ? null
+                : NormalizeLanguageTeacherFailureCode(
+                    preflight.FailureCode,
+                    LegendLanguageTeacherFailureClassification
+                        .ConfigurationInvalid)
+        };
+
+        if (normalized.IsReady)
+        {
+            await ResolveSupersededLanguageTeacherCircuitsAsync(
+                normalized,
+                cancellationToken);
+        }
+
+        if (await IsLanguageTeacherCircuitCoolingAsync(
+                normalized,
+                cancellationToken))
+        {
+            return false;
+        }
+
+        if (normalized.IsReady)
+            return true;
+
+        await RecordLanguageTeacherFailureAsync(
+            normalized,
+            normalized.FailureCode!,
+            selected.SourceLanguageCode,
+            LegendLanguageIdentity.PairKey(
+                selected.SourceLanguageCode,
+                selected.TargetLanguageCode),
+            cancellationToken);
+        return false;
+    }
+
+    private async Task HandleLanguageTeacherFailureAsync(
+        LegendCorpusCandidate candidate,
+        LegendLanguageTeacherConfigurationPreflight preflight,
+        string failureCode,
+        int maximumAttempts,
+        CancellationToken cancellationToken)
+    {
+        var normalizedFailure = NormalizeLanguageTeacherFailureCode(
+            failureCode,
+            LegendLanguageTeacherFailureClassification.Provider);
+        var normalizedPreflight = preflight with
+        {
+            Role = NormalizeLanguageTeacherRole(preflight.Role),
+            ConfigurationFingerprint =
+                NormalizeLanguageTeacherFingerprint(
+                    preflight.Role,
+                    preflight.ConfigurationFingerprint)
+        };
+        await RecordLanguageTeacherFailureAsync(
+            normalizedPreflight,
+            normalizedFailure,
+            candidate.SourceLanguageCode,
+            candidate.PairKey(),
+            cancellationToken);
+
+        if (LegendLanguageTeacherFailureClassification
+            .IsLocalConfiguration(normalizedFailure))
+        {
+            // Configuration disappeared after preflight. Return the exact
+            // lease attempt because no provider work could have occurred.
+            candidate.TeacherProposalAttemptCount = Math.Max(
+                0,
+                candidate.TeacherProposalAttemptCount - 1);
+            candidate.TeacherProposalProcessingState = "Pending";
+            candidate.TeacherProposalFailureCode = normalizedFailure;
+            candidate.TeacherProposalLeaseExpiresUtc = null;
+            candidate.TeacherProposalProcessedUtc = null;
+            await _db.SaveChangesAsync(cancellationToken);
+            return;
+        }
+
+        await DeferLanguageProposalAsync(
+            candidate,
+            normalizedFailure,
+            maximumAttempts,
+            DateTime.UtcNow.Add(LanguageTeacherFailureCooldown()),
+            cancellationToken);
+    }
+
+    private async Task<bool> IsLanguageTeacherCircuitCoolingAsync(
+        LegendLanguageTeacherConfigurationPreflight preflight,
+        CancellationToken cancellationToken)
+    {
+        var correlationId = LanguageTeacherCircuitCorrelation(
+            preflight.Role,
+            preflight.ConfigurationFingerprint);
+        var issueId = LanguageTeacherIssueId(correlationId);
+        var openIssue = await _db
+            .Set<LegendConnectOperationalEvent>()
+            .AsNoTracking()
+            .AnyAsync(item =>
+                item.Id == issueId &&
+                item.Category == LanguageTeacherIssueCategory &&
+                !item.IsResolved,
+                cancellationToken);
+        if (!openIssue)
+            return false;
+
+        var latestOccurrence = await _db
+            .Set<LegendConnectOperationalEvent>()
+            .AsNoTracking()
+            .Where(item =>
+                item.Category == LanguageTeacherFailureCategory &&
+                item.CorrelationId == correlationId)
+            .Select(item => (DateTime?)item.OccurredUtc)
+            .MaxAsync(cancellationToken);
+        return latestOccurrence is null ||
+            latestOccurrence.Value.Add(
+                LanguageTeacherFailureCooldown()) > DateTime.UtcNow;
+    }
+
+    private async Task RecordLanguageTeacherFailureAsync(
+        LegendLanguageTeacherConfigurationPreflight preflight,
+        string failureCode,
+        string? languageCode,
+        string? pairKey,
+        CancellationToken cancellationToken)
+    {
+        var role = NormalizeLanguageTeacherRole(preflight.Role);
+        var fingerprint = NormalizeLanguageTeacherFingerprint(
+            role,
+            preflight.ConfigurationFingerprint);
+        var correlationId = LanguageTeacherCircuitCorrelation(
+            role,
+            fingerprint);
+        var now = DateTime.UtcNow;
+        _db.Set<LegendConnectOperationalEvent>().Add(
+            new LegendConnectOperationalEvent
+            {
+                Id = Guid.NewGuid(),
+                Category = LanguageTeacherFailureCategory,
+                Severity = "Info",
+                Status = "Occurrence",
+                LanguageCode = BoundedLanguageTeacherValue(
+                    languageCode,
+                    32),
+                PairKey = BoundedLanguageTeacherValue(pairKey, 72),
+                CorrelationId = correlationId,
+                ErrorCode = failureCode,
+                Summary =
+                    $"{role} failure evidence for configuration {fingerprint[..12]}.",
+                IsResolved = true,
+                OccurredUtc = now
+            });
+        await _db.SaveChangesAsync(cancellationToken);
+
+        var occurrences = await _db
+            .Set<LegendConnectOperationalEvent>()
+            .AsNoTracking()
+            .Where(item =>
+                item.Category == LanguageTeacherFailureCategory &&
+                item.CorrelationId == correlationId)
+            .Select(item => item.OccurredUtc)
+            .ToListAsync(cancellationToken);
+        var summary =
+            $"{role} configuration {fingerprint[..12]} circuit open; " +
+            $"Occurrences={occurrences.Count}; " +
+            $"FirstUtc={occurrences.Min():O}; " +
+            $"LastUtc={occurrences.Max():O}; " +
+            $"Latest={failureCode}.";
+        var issueId = LanguageTeacherIssueId(correlationId);
+        var issue = await _db.Set<LegendConnectOperationalEvent>()
+            .SingleOrDefaultAsync(
+                item => item.Id == issueId,
+                cancellationToken);
+        if (issue is null)
+        {
+            issue = new LegendConnectOperationalEvent
+            {
+                Id = issueId,
+                Category = LanguageTeacherIssueCategory,
+                Severity = LanguageTeacherFailureSeverity(failureCode),
+                Status = "CircuitOpen",
+                LanguageCode = BoundedLanguageTeacherValue(
+                    languageCode,
+                    32),
+                PairKey = BoundedLanguageTeacherValue(pairKey, 72),
+                CorrelationId = correlationId,
+                ErrorCode = failureCode,
+                Summary = summary[..Math.Min(summary.Length, 500)],
+                IsResolved = false,
+                OccurredUtc = occurrences.Min()
+            };
+            _db.Set<LegendConnectOperationalEvent>().Add(issue);
+        }
+        else
+        {
+            issue.Severity = LanguageTeacherFailureSeverity(
+                failureCode);
+            issue.Status = "CircuitOpen";
+            issue.LanguageCode ??= BoundedLanguageTeacherValue(
+                languageCode,
+                32);
+            issue.PairKey ??= BoundedLanguageTeacherValue(pairKey, 72);
+            issue.ErrorCode = failureCode;
+            issue.Summary = summary[..Math.Min(summary.Length, 500)];
+            issue.IsResolved = false;
+        }
+
+        try
+        {
+            await _db.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateException)
+        {
+            // The deterministic issue identity makes concurrent openings one
+            // logical issue. Re-read and refresh the winning row so its
+            // aggregate remains consistent with every immutable occurrence.
+            var entry = _db.Entry(issue);
+            if (entry.State != EntityState.Added)
+                throw;
+
+            entry.State = EntityState.Detached;
+            var persistedIssue = await _db
+                .Set<LegendConnectOperationalEvent>()
+                .SingleOrDefaultAsync(
+                    item => item.Id == issueId,
+                    cancellationToken);
+            if (persistedIssue is null)
+                throw;
+
+            var concurrentOccurrences = await _db
+                .Set<LegendConnectOperationalEvent>()
+                .AsNoTracking()
+                .Where(item =>
+                    item.Category == LanguageTeacherFailureCategory &&
+                    item.CorrelationId == correlationId)
+                .Select(item => item.OccurredUtc)
+                .ToListAsync(cancellationToken);
+            var concurrentSummary =
+                $"{role} configuration {fingerprint[..12]} circuit open; " +
+                $"Occurrences={concurrentOccurrences.Count}; " +
+                $"FirstUtc={concurrentOccurrences.Min():O}; " +
+                $"LastUtc={concurrentOccurrences.Max():O}; " +
+                $"Latest={failureCode}.";
+            persistedIssue.Severity =
+                LanguageTeacherFailureSeverity(failureCode);
+            persistedIssue.Status = "CircuitOpen";
+            persistedIssue.ErrorCode = failureCode;
+            persistedIssue.Summary = concurrentSummary[..Math.Min(
+                concurrentSummary.Length,
+                500)];
+            persistedIssue.IsResolved = false;
+            await _db.SaveChangesAsync(cancellationToken);
+        }
+    }
+
+    private async Task ResolveSupersededLanguageTeacherCircuitsAsync(
+        LegendLanguageTeacherConfigurationPreflight preflight,
+        CancellationToken cancellationToken)
+    {
+        var rolePrefix = NormalizeLanguageTeacherRole(preflight.Role) + ":";
+        var currentCorrelation = LanguageTeacherCircuitCorrelation(
+            preflight.Role,
+            preflight.ConfigurationFingerprint);
+        var superseded = await _db
+            .Set<LegendConnectOperationalEvent>()
+            .Where(item =>
+                item.Category == LanguageTeacherIssueCategory &&
+                item.CorrelationId != null &&
+                item.CorrelationId.StartsWith(rolePrefix) &&
+                item.CorrelationId != currentCorrelation &&
+                !item.IsResolved)
+            .ToListAsync(cancellationToken);
+        foreach (var issue in superseded)
+        {
+            await ResolveLanguageTeacherIssueAsync(
+                issue,
+                "ConfigurationChanged",
+                cancellationToken);
+        }
+    }
+
+    private async Task ResolveLanguageTeacherCircuitAsync(
+        LegendLanguageTeacherConfigurationPreflight preflight,
+        string recoveryStatus,
+        CancellationToken cancellationToken)
+    {
+        var correlationId = LanguageTeacherCircuitCorrelation(
+            preflight.Role,
+            preflight.ConfigurationFingerprint);
+        var issue = await _db.Set<LegendConnectOperationalEvent>()
+            .SingleOrDefaultAsync(item =>
+                item.Id == LanguageTeacherIssueId(correlationId) &&
+                !item.IsResolved,
+                cancellationToken);
+        if (issue is null)
+            return;
+
+        await ResolveLanguageTeacherIssueAsync(
+            issue,
+            recoveryStatus,
+            cancellationToken);
+    }
+
+    private async Task ResolveLanguageTeacherIssueAsync(
+        LegendConnectOperationalEvent issue,
+        string recoveryStatus,
+        CancellationToken cancellationToken)
+    {
+        issue.IsResolved = true;
+        issue.Status = recoveryStatus;
+        var recoveredUtc = DateTime.UtcNow;
+        var existingSummary = issue.Summary ?? string.Empty;
+        var summary = existingSummary +
+            $" RecoveredUtc={recoveredUtc:O}.";
+        issue.Summary = summary[..Math.Min(summary.Length, 500)];
+        _db.Set<LegendConnectOperationalEvent>().Add(
+            new LegendConnectOperationalEvent
+            {
+                Id = Guid.NewGuid(),
+                Category = LanguageTeacherRecoveryCategory,
+                Severity = "Info",
+                Status = recoveryStatus,
+                LanguageCode = issue.LanguageCode,
+                PairKey = issue.PairKey,
+                CorrelationId = issue.CorrelationId,
+                ErrorCode = issue.ErrorCode,
+                Summary =
+                    "The existing language teacher/critic circuit recovered; prior failure occurrences remain retained.",
+                IsResolved = true,
+                OccurredUtc = recoveredUtc
+            });
+        await _db.SaveChangesAsync(cancellationToken);
+    }
+
+    private TimeSpan LanguageTeacherFailureCooldown() =>
+        TimeSpan.FromMinutes(
+            Math.Clamp(
+                _configuration.GetValue<int?>(
+                    "LegendConnect:LanguageTeacher:FailureCooldownMinutes") ??
+                15,
+                1,
+                60));
+
+    private static string NormalizeLanguageTeacherRole(string? role) =>
+        string.Equals(
+            role,
+            LegendLanguageTeacherRole.Critic,
+            StringComparison.OrdinalIgnoreCase)
+                ? LegendLanguageTeacherRole.Critic
+                : LegendLanguageTeacherRole.Teacher;
+
+    private static string NormalizeLanguageTeacherFingerprint(
+        string role,
+        string? fingerprint)
+    {
+        var normalized = fingerprint?.Trim().ToLowerInvariant();
+        return !string.IsNullOrWhiteSpace(normalized) &&
+               normalized.Length <= 80
+            ? normalized
+            : LegendLanguageIdentity.TextHash(
+                "invalid-language-teacher-fingerprint|" +
+                NormalizeLanguageTeacherRole(role));
+    }
+
+    private static string NormalizeLanguageTeacherFailureCode(
+        string? failureCode,
+        string fallback) =>
+        LegendLanguageTeacherFailureClassification.Normalize(
+            failureCode,
+            fallback);
+
+    private static string ClassifyLanguageTeacherException(
+        Exception exception) =>
+        LegendLanguageTeacherFailureClassification.FromException(
+            exception);
+
+    private static string LanguageTeacherCircuitCorrelation(
+        string role,
+        string fingerprint) =>
+        NormalizeLanguageTeacherRole(role) + ":" +
+        NormalizeLanguageTeacherFingerprint(role, fingerprint);
+
+    private static Guid LanguageTeacherIssueId(string correlationId)
+    {
+        var hash = LegendLanguageIdentity.TextHash(
+            "language-teacher-provider-issue:v1|" + correlationId);
+        return Guid.ParseExact(hash[..32], "N");
+    }
+
+    private static string LanguageTeacherFailureSeverity(
+        string failureCode) =>
+        failureCode is
+            LegendLanguageTeacherFailureClassification.Authentication or
+            LegendLanguageTeacherFailureClassification.Schema or
+            LegendLanguageTeacherFailureClassification.Parsing
+                ? "Error"
+                : "Warning";
+
+    private static string? BoundedLanguageTeacherValue(
+        string? value,
+        int maximumLength)
+    {
+        var normalized = value?.Trim();
+        return string.IsNullOrWhiteSpace(normalized)
+            ? null
+            : normalized[..Math.Min(normalized.Length, maximumLength)];
+    }
+
+    private sealed record LanguageProposalWorkCandidate(
+        Guid Id,
+        bool CriticOnly,
+        string SourceLanguageCode,
+        string TargetLanguageCode);
+
+    private async Task<LanguageProposalWorkCandidate?>
+        SelectLanguageProposalCandidateAsync(
             int maximumAttempts,
             CancellationToken cancellationToken)
     {
         var now = DateTime.UtcNow;
-        var expires = now.AddMinutes(10);
-
-        var candidateId = await _db.Set<LegendCorpusCandidate>()
+        return await _db.Set<LegendCorpusCandidate>()
             .AsNoTracking()
             .Where(item =>
                 (
@@ -5293,18 +5748,33 @@ internal sealed class LegendConnectAutonomousLearningService
                 ))
             .OrderByDescending(item => item.Priority)
             .ThenBy(item => item.CreatedUtc)
-            .Select(item => (Guid?)item.Id)
+            .Select(item => new LanguageProposalWorkCandidate(
+                item.Id,
+                !item.IsApproved &&
+                    item.Provenance ==
+                        MachineConversationProvenance &&
+                    item.ProcessingState ==
+                        "ConversationProposal",
+                item.SourceLanguageCode,
+                item.TargetLanguageCode))
             .FirstOrDefaultAsync(cancellationToken);
+    }
 
-        if (candidateId is null)
-            return null;
+    private async Task<LegendCorpusCandidate?>
+        TryClaimLanguageProposalCandidateAsync(
+            Guid candidateId,
+            int maximumAttempts,
+            CancellationToken cancellationToken)
+    {
+        var now = DateTime.UtcNow;
+        var expires = now.AddMinutes(10);
 
         if (!_db.Database.IsRelational())
         {
             var candidate = await _db.Set<LegendCorpusCandidate>()
                 .SingleOrDefaultAsync(
                     item =>
-                        item.Id == candidateId.Value &&
+                        item.Id == candidateId &&
                         (
                             (item.IsApproved &&
                              item.ProcessingState == "Queued") ||
@@ -5341,7 +5811,7 @@ internal sealed class LegendConnectAutonomousLearningService
 
         var claimed = await _db.Set<LegendCorpusCandidate>()
             .Where(item =>
-                item.Id == candidateId.Value &&
+                item.Id == candidateId &&
                 (
                     (item.IsApproved &&
                      item.ProcessingState == "Queued") ||
@@ -5374,7 +5844,7 @@ internal sealed class LegendConnectAutonomousLearningService
         return claimed == 1
             ? await _db.Set<LegendCorpusCandidate>()
                 .SingleAsync(
-                    item => item.Id == candidateId.Value,
+                    item => item.Id == candidateId,
                     cancellationToken)
             : null;
     }
@@ -5383,6 +5853,7 @@ internal sealed class LegendConnectAutonomousLearningService
         ProcessConversationMachineCritiqueAsync(
             LegendCorpusCandidate candidate,
             LegendLanguageTeacherProposalRequest request,
+            LegendLanguageTeacherConfigurationPreflight preflight,
             int maximumAttempts,
             CancellationToken cancellationToken)
     {
@@ -5475,22 +5946,13 @@ internal sealed class LegendConnectAutonomousLearningService
         {
             throw;
         }
-        catch (Exception)
+        catch (Exception exception)
         {
-            await DeferLanguageProposalAsync(
+            await HandleLanguageTeacherFailureAsync(
                 candidate,
-                "language_critic_failed",
+                preflight,
+                ClassifyLanguageTeacherException(exception),
                 maximumAttempts,
-                CancellationToken.None);
-
-            await RecordAsync(
-                "ConversationMachineProposal",
-                "Warning",
-                candidate.TeacherProposalProcessingState,
-                candidate.SourceLanguageCode,
-                candidate.PairKey(),
-                candidate.TeacherProposalFailureCode,
-                "The independent critic failed; the MachineProposed artifact remains retained and retryable on the existing candidate lease.",
                 CancellationToken.None);
 
             return true;
@@ -5498,15 +5960,22 @@ internal sealed class LegendConnectAutonomousLearningService
 
         if (!critique.Succeeded)
         {
-            await DeferLanguageProposalAsync(
+            await HandleLanguageTeacherFailureAsync(
                 candidate,
-                critique.ErrorCode ??
-                    "language_critic_failed",
+                preflight,
+                NormalizeLanguageTeacherFailureCode(
+                    critique.ErrorCode,
+                    LegendLanguageTeacherFailureClassification.Provider),
                 maximumAttempts,
                 cancellationToken);
 
             return true;
         }
+
+        await ResolveLanguageTeacherCircuitAsync(
+            preflight,
+            "ProviderRecovered",
+            cancellationToken);
 
         proposal.CriticApproved =
             critique.Approved;
@@ -5565,11 +6034,12 @@ internal sealed class LegendConnectAutonomousLearningService
         LegendCorpusCandidate candidate,
         string failureCode,
         int maximumAttempts,
+        DateTime minimumLeaseExpiresUtc,
         CancellationToken cancellationToken)
     {
         candidate.TeacherProposalFailureCode =
             string.IsNullOrWhiteSpace(failureCode)
-                ? "language_teacher_failed"
+                ? LegendLanguageTeacherFailureClassification.Provider
                 : failureCode[..Math.Min(failureCode.Length, 120)];
 
         if (candidate.TeacherProposalAttemptCount >= maximumAttempts)
@@ -5581,13 +6051,16 @@ internal sealed class LegendConnectAutonomousLearningService
         else
         {
             candidate.TeacherProposalProcessingState = "Processing";
-            candidate.TeacherProposalLeaseExpiresUtc =
-                DateTime.UtcNow.AddMinutes(
+            var retryLease = DateTime.UtcNow.AddMinutes(
                     Math.Min(
                         30,
                         Math.Max(
                             5,
                             candidate.TeacherProposalAttemptCount * 5)));
+            candidate.TeacherProposalLeaseExpiresUtc =
+                retryLease > minimumLeaseExpiresUtc
+                    ? retryLease
+                    : minimumLeaseExpiresUtc;
             candidate.TeacherProposalProcessedUtc = null;
         }
 

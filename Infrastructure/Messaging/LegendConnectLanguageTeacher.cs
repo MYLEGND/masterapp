@@ -85,6 +85,94 @@ internal sealed record LegendLanguageTeacherCritiqueResult(
     IReadOnlyList<string> ReasonCodes,
     string? ErrorCode = null);
 
+internal static class LegendLanguageTeacherRole
+{
+    internal const string Teacher = "teacher";
+    internal const string Critic = "critic";
+}
+
+internal static class LegendLanguageTeacherFailureClassification
+{
+    internal const string ConfigurationMissing =
+        "language_teacher_configuration_missing";
+    internal const string ConfigurationInvalid =
+        "language_teacher_configuration_invalid";
+    internal const string Authentication =
+        "language_teacher_authentication_failed";
+    internal const string Schema =
+        "language_teacher_schema_failed";
+    internal const string Quota =
+        "language_teacher_quota_exceeded";
+    internal const string Timeout =
+        "language_teacher_timeout";
+    internal const string Parsing =
+        "language_teacher_parsing_failed";
+    internal const string Provider =
+        "language_teacher_provider_failed";
+
+    internal static bool IsLocalConfiguration(string failureCode) =>
+        failureCode is ConfigurationMissing or ConfigurationInvalid;
+
+    internal static string Normalize(
+        string? failureCode,
+        string fallback = Provider) =>
+        failureCode switch
+        {
+            ConfigurationMissing or
+            ConfigurationInvalid or
+            Authentication or
+            Schema or
+            Quota or
+            Timeout or
+            Parsing or
+            Provider => failureCode,
+            _ => fallback
+        };
+
+    internal static string FromStatusCode(
+        System.Net.HttpStatusCode statusCode) =>
+        statusCode switch
+        {
+            System.Net.HttpStatusCode.Unauthorized or
+                System.Net.HttpStatusCode.Forbidden => Authentication,
+            System.Net.HttpStatusCode.BadRequest or
+                System.Net.HttpStatusCode.UnprocessableEntity => Schema,
+            System.Net.HttpStatusCode.TooManyRequests => Quota,
+            System.Net.HttpStatusCode.RequestTimeout or
+                System.Net.HttpStatusCode.GatewayTimeout => Timeout,
+            _ => Provider
+        };
+
+    internal static string FromException(Exception exception) =>
+        exception switch
+        {
+            TimeoutException => Timeout,
+            OperationCanceledException => Timeout,
+            JsonException => Parsing,
+            HttpRequestException requestException
+                when requestException.StatusCode is { } statusCode =>
+                FromStatusCode(statusCode),
+            _ => Provider
+        };
+}
+
+/// <summary>
+/// Secret-free local configuration preflight consumed by the existing
+/// autonomous worker before it leases a candidate. The fingerprint contains
+/// only hashes and bounded public configuration identities.
+/// </summary>
+internal sealed record LegendLanguageTeacherConfigurationPreflight(
+    string Role,
+    string ConfigurationFingerprint,
+    bool IsReady,
+    string? FailureCode)
+{
+    internal static LegendLanguageTeacherConfigurationPreflight Ready(
+        string role,
+        string fingerprint) =>
+        new(role, fingerprint, true, null);
+}
+
 /// <summary>
 /// Non-authoritative external reasoning boundary.
 ///
@@ -94,6 +182,9 @@ internal sealed record LegendLanguageTeacherCritiqueResult(
 /// </summary>
 internal interface ILegendConnectLanguageTeacher
 {
+    LegendLanguageTeacherConfigurationPreflight Preflight(
+        string role);
+
     Task<LegendLanguageTeacherProposalResult> ProposeAsync(
         LegendLanguageTeacherProposalRequest request,
         CancellationToken cancellationToken = default);
@@ -317,6 +408,17 @@ Return only the requested structured result.
         _logger = logger;
     }
 
+    public LegendLanguageTeacherConfigurationPreflight Preflight(
+        string role)
+    {
+        var configuration = ReadConfiguration(role);
+        return new LegendLanguageTeacherConfigurationPreflight(
+            role,
+            configuration.Fingerprint,
+            configuration.IsReady,
+            configuration.FailureCode);
+    }
+
     public async Task<LegendLanguageTeacherProposalResult> ProposeAsync(
         LegendLanguageTeacherProposalRequest request,
         CancellationToken cancellationToken = default)
@@ -330,15 +432,16 @@ Return only the requested structured result.
         }
 
         if (!TryGetConfiguration(
-                "TeacherModel",
+                LegendLanguageTeacherRole.Teacher,
                 out var endpoint,
                 out var key,
-                out var model))
+                out var model,
+                out var configurationFailureCode))
         {
             return new LegendLanguageTeacherProposalResult(
                 false,
                 [],
-                "language_teacher_unavailable");
+                configurationFailureCode);
         }
 
         var input = JsonSerializer.Serialize(new
@@ -387,7 +490,7 @@ Return only the requested structured result.
             return new LegendLanguageTeacherProposalResult(
                 false,
                 [],
-                "language_teacher_invalid_response");
+                "language_teacher_parsing_failed");
         }
 
         return new LegendLanguageTeacherProposalResult(
@@ -410,17 +513,18 @@ Return only the requested structured result.
         }
 
         if (!TryGetConfiguration(
-                "CriticModel",
+                LegendLanguageTeacherRole.Critic,
                 out var endpoint,
                 out var key,
-                out var model))
+                out var model,
+                out var configurationFailureCode))
         {
             return new LegendLanguageTeacherCritiqueResult(
                 false,
                 false,
                 null,
                 [],
-                "language_teacher_unavailable");
+                configurationFailureCode);
         }
 
         var input = JsonSerializer.Serialize(new
@@ -507,7 +611,7 @@ Return only the requested structured result.
                 false,
                 null,
                 [],
-                "language_teacher_invalid_response");
+                "language_teacher_parsing_failed");
         }
 
         return new LegendLanguageTeacherCritiqueResult(
@@ -582,7 +686,8 @@ Return only the requested structured result.
                 return new ProviderResponse(
                     false,
                     null,
-                    "language_teacher_provider_failed");
+                    LegendLanguageTeacherFailureClassification.FromStatusCode(
+                        response.StatusCode));
             }
 
             await using var stream =
@@ -605,7 +710,7 @@ Return only the requested structured result.
                 return new ProviderResponse(
                     false,
                     null,
-                    "language_teacher_provider_failed");
+                    LegendLanguageTeacherFailureClassification.Parsing);
             }
 
             var outputText =
@@ -615,7 +720,7 @@ Return only the requested structured result.
                 ? new ProviderResponse(
                     false,
                     null,
-                    "language_teacher_invalid_response")
+                    LegendLanguageTeacherFailureClassification.Parsing)
                 : new ProviderResponse(
                     true,
                     outputText,
@@ -627,7 +732,7 @@ Return only the requested structured result.
             return new ProviderResponse(
                 false,
                 null,
-                "language_teacher_timeout");
+                LegendLanguageTeacherFailureClassification.Timeout);
         }
         catch (HttpRequestException exception)
         {
@@ -638,7 +743,10 @@ Return only the requested structured result.
             return new ProviderResponse(
                 false,
                 null,
-                "language_teacher_provider_failed");
+                exception.StatusCode is null
+                    ? LegendLanguageTeacherFailureClassification.Provider
+                    : LegendLanguageTeacherFailureClassification.FromStatusCode(
+                        exception.StatusCode.Value));
         }
         catch (JsonException exception)
         {
@@ -649,51 +757,143 @@ Return only the requested structured result.
             return new ProviderResponse(
                 false,
                 null,
-                "language_teacher_invalid_response");
+                LegendLanguageTeacherFailureClassification.Parsing);
         }
     }
 
     private bool TryGetConfiguration(
-        string modelKey,
+        string role,
         out Uri endpoint,
         out string key,
-        out string model)
+        out string model,
+        out string failureCode)
     {
+        var configuration = ReadConfiguration(role);
+        failureCode = configuration.FailureCode ??
+            LegendLanguageTeacherFailureClassification
+                .ConfigurationInvalid;
+        if (!configuration.IsReady ||
+            configuration.Endpoint is null)
+        {
+            endpoint = default!;
+            key = string.Empty;
+            model = string.Empty;
+            return false;
+        }
+
+        endpoint = configuration.Endpoint;
+        key = configuration.ApiKey;
+        model = configuration.Model;
+        return true;
+    }
+
+    private TeacherConfiguration ReadConfiguration(string role)
+    {
+        var modelKey = string.Equals(
+            role,
+            LegendLanguageTeacherRole.Teacher,
+            StringComparison.Ordinal)
+                ? "TeacherModel"
+                : string.Equals(
+                    role,
+                    LegendLanguageTeacherRole.Critic,
+                    StringComparison.Ordinal)
+                    ? "CriticModel"
+                    : null;
         var endpointValue =
             (_configuration[
                 ConfigurationPrefix + "Endpoint"] ??
              DefaultEndpoint)
             .Trim();
-
-        key =
+        var key =
             (_configuration[
                 ConfigurationPrefix + "ApiKey"] ??
              Environment.GetEnvironmentVariable(
                  "OPENAI_API_KEY") ??
              string.Empty)
             .Trim();
-
-        model =
-            (_configuration[
+        var model = modelKey is null
+            ? string.Empty
+            : (_configuration[
                 ConfigurationPrefix + modelKey] ??
-             string.Empty)
-            .Trim();
+               string.Empty)
+                .Trim();
+        var schema = string.Equals(
+            role,
+            LegendLanguageTeacherRole.Critic,
+            StringComparison.Ordinal)
+                ? CritiqueSchema
+                : ProposalSchema;
+        var fingerprint = LegendLanguageIdentity.TextHash(
+            string.Join(
+                "|",
+                "legend-language-teacher-config:v1",
+                role.Trim().ToLowerInvariant(),
+                endpointValue.ToLowerInvariant(),
+                model,
+                string.IsNullOrWhiteSpace(key)
+                    ? "key:missing"
+                    : "key:" + LegendLanguageIdentity.TextHash(key),
+                "schema:" + LegendLanguageIdentity.TextHash(schema)));
 
-        if (!Uri.TryCreate(
+        if (modelKey is null ||
+            !Uri.TryCreate(
                 endpointValue,
                 UriKind.Absolute,
-                out var parsedEndpoint) ||
-            parsedEndpoint.Scheme != Uri.UriSchemeHttps ||
-            string.IsNullOrWhiteSpace(key) ||
-            string.IsNullOrWhiteSpace(model) ||
+                out var endpoint) ||
+            endpoint.Scheme != Uri.UriSchemeHttps ||
             model.Length > 160)
         {
-            endpoint = default!;
-            return false;
+            return new TeacherConfiguration(
+                false,
+                null,
+                string.Empty,
+                string.Empty,
+                fingerprint,
+                LegendLanguageTeacherFailureClassification
+                    .ConfigurationInvalid);
         }
 
-        endpoint = parsedEndpoint;
-        return true;
+        if (string.IsNullOrWhiteSpace(key) ||
+            string.IsNullOrWhiteSpace(model))
+        {
+            return new TeacherConfiguration(
+                false,
+                endpoint,
+                string.Empty,
+                model,
+                fingerprint,
+                LegendLanguageTeacherFailureClassification
+                    .ConfigurationMissing);
+        }
+
+        try
+        {
+            using var schemaDocument = JsonDocument.Parse(schema);
+            if (schemaDocument.RootElement.ValueKind !=
+                JsonValueKind.Object)
+            {
+                throw new JsonException();
+            }
+        }
+        catch (JsonException)
+        {
+            return new TeacherConfiguration(
+                false,
+                endpoint,
+                string.Empty,
+                model,
+                fingerprint,
+                LegendLanguageTeacherFailureClassification.Schema);
+        }
+
+        return new TeacherConfiguration(
+            true,
+            endpoint,
+            key,
+            model,
+            fingerprint,
+            null);
     }
 
     private static string? ExtractOutputText(
@@ -1320,4 +1520,12 @@ Return only the requested structured result.
         bool Succeeded,
         string? OutputText,
         string? ErrorCode);
+
+    private sealed record TeacherConfiguration(
+        bool IsReady,
+        Uri? Endpoint,
+        string ApiKey,
+        string Model,
+        string Fingerprint,
+        string? FailureCode);
 }

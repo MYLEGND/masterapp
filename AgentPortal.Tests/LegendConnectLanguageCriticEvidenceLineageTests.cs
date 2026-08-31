@@ -603,6 +603,12 @@ public sealed class LegendConnectLanguageCriticEvidenceLineageTests
     {
         internal List<LegendLanguageTeacherCritiqueRequest> Requests { get; } = [];
 
+        public LegendLanguageTeacherConfigurationPreflight Preflight(
+            string role) =>
+            LegendLanguageTeacherConfigurationPreflight.Ready(
+                role,
+                "test-recording-critic");
+
         public Task<LegendLanguageTeacherProposalResult> ProposeAsync(
             LegendLanguageTeacherProposalRequest request,
             CancellationToken cancellationToken = default) =>

@@ -694,6 +694,12 @@ public sealed class LegendConnectConversationMachineProposalTests
         internal int ProposeCalls { get; private set; }
         internal int CritiqueCalls { get; private set; }
 
+        public LegendLanguageTeacherConfigurationPreflight Preflight(
+            string role) =>
+            LegendLanguageTeacherConfigurationPreflight.Ready(
+                role,
+                "test-recording-critic");
+
         public Task<LegendLanguageTeacherProposalResult> ProposeAsync(
             LegendLanguageTeacherProposalRequest request,
             CancellationToken cancellationToken = default)

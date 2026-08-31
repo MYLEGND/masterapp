@@ -7,6 +7,7 @@ using Domain.Entities;
 using Domain.Messaging;
 using Infrastructure.Data;
 using Infrastructure.Messaging;
+using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -229,6 +230,296 @@ public sealed class LegendConnectAutonomousLanguageProposalTests
     }
 
     [Fact]
+    public async Task MissingConfiguration_PreflightDoesNotLeaseOrConsumeAttempts_AndCooldownDeduplicatesIssue()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var configuration = Configuration();
+        var registry = new LegendLanguageRegistry(db, configuration);
+        var corpus = new LegendConnectCorpusService(
+            db,
+            registry,
+            NullLogger<LegendConnectCorpusService>.Instance);
+        var candidate = Candidate(
+            "phase3-missing-configuration",
+            "Do not lease this candidate without configuration.",
+            proposalState: "Pending");
+        db.Add(candidate);
+        await db.SaveChangesAsync();
+        var teacher = PreflightTeacher.MissingConfiguration();
+        var service = Service(
+            db,
+            configuration,
+            registry,
+            corpus,
+            new NoopTranslationProvider(),
+            teacher);
+
+        await service.ProcessOneAsync();
+        await service.ProcessOneAsync();
+
+        var persisted = await db.LegendCorpusCandidates
+            .SingleAsync(item => item.Id == candidate.Id);
+        Assert.Equal(0, persisted.TeacherProposalAttemptCount);
+        Assert.Equal(
+            "Pending",
+            persisted.TeacherProposalProcessingState);
+        Assert.Null(persisted.TeacherProposalLeaseExpiresUtc);
+        Assert.Equal(0, teacher.ProposeCalls);
+        Assert.Equal(0, teacher.CritiqueCalls);
+
+        var issues = await db.LegendConnectOperationalEvents
+            .Where(item =>
+                item.Category == "LanguageTeacherCircuitIssue")
+            .OrderBy(item => item.CorrelationId)
+            .ToListAsync();
+        var occurrences = await db.LegendConnectOperationalEvents
+            .Where(item =>
+                item.Category == "LanguageTeacherFailureOccurrence")
+            .ToListAsync();
+        Assert.Equal(2, issues.Count);
+        Assert.Equal(2, occurrences.Count);
+        Assert.Contains(
+            issues,
+            item => item.CorrelationId?.StartsWith(
+                "teacher:",
+                StringComparison.Ordinal) == true);
+        Assert.Contains(
+            issues,
+            item => item.CorrelationId?.StartsWith(
+                "critic:",
+                StringComparison.Ordinal) == true);
+        foreach (var issue in issues)
+        {
+            Assert.False(issue.IsResolved);
+            Assert.Equal("CircuitOpen", issue.Status);
+            Assert.Equal(
+                "language_teacher_configuration_missing",
+                issue.ErrorCode);
+            var occurrence = Assert.Single(
+                occurrences.Where(item =>
+                    item.CorrelationId == issue.CorrelationId));
+            Assert.Contains(
+                "Occurrences=1;",
+                issue.Summary ?? string.Empty);
+            Assert.Equal(occurrence.OccurredUtc, issue.OccurredUtc);
+        }
+    }
+
+    [Fact]
+    public async Task ConcurrentMissingConfiguration_PreflightsCreateOneFingerprintIssueWithoutLeasing()
+    {
+        var connectionString =
+            $"Data Source=file:legend-teacher-{Guid.NewGuid():N}" +
+            "?mode=memory&cache=shared;Default Timeout=30";
+        await using var keeper = new SqliteConnection(connectionString);
+        await keeper.OpenAsync();
+        var options = new DbContextOptionsBuilder<MasterAppDbContext>()
+            .UseSqlite(connectionString)
+            .Options;
+        var candidate = Candidate(
+            "phase3-concurrent-missing-configuration",
+            "Keep this unleased across worker instances.",
+            proposalState: "Pending");
+        await using (var seed = new MasterAppDbContext(options))
+        {
+            await seed.Database.EnsureCreatedAsync();
+            seed.Add(candidate);
+            await seed.SaveChangesAsync();
+        }
+
+        var configuration = Configuration();
+        var teacher = PreflightTeacher.MissingConfiguration();
+        await using var dbOne = new MasterAppDbContext(options);
+        await using var dbTwo = new MasterAppDbContext(options);
+        var registryOne = new LegendLanguageRegistry(
+            dbOne,
+            configuration);
+        var registryTwo = new LegendLanguageRegistry(
+            dbTwo,
+            configuration);
+        var first = Service(
+            dbOne,
+            configuration,
+            registryOne,
+            new LegendConnectCorpusService(
+                dbOne,
+                registryOne,
+                NullLogger<LegendConnectCorpusService>.Instance),
+            new NoopTranslationProvider(),
+            teacher);
+        var second = Service(
+            dbTwo,
+            configuration,
+            registryTwo,
+            new LegendConnectCorpusService(
+                dbTwo,
+                registryTwo,
+                NullLogger<LegendConnectCorpusService>.Instance),
+            new NoopTranslationProvider(),
+            teacher);
+
+        await Task.WhenAll(
+            first.ProcessOneAsync(),
+            second.ProcessOneAsync());
+
+        await using var verify = new MasterAppDbContext(options);
+        var persisted = await verify.LegendCorpusCandidates
+            .SingleAsync(item => item.Id == candidate.Id);
+        var issues = await verify.LegendConnectOperationalEvents
+            .Where(item =>
+                item.Category == "LanguageTeacherCircuitIssue")
+            .ToListAsync();
+        var occurrences = await verify.LegendConnectOperationalEvents
+            .Where(item =>
+                item.Category == "LanguageTeacherFailureOccurrence")
+            .OrderBy(item => item.OccurredUtc)
+            .ToListAsync();
+
+        Assert.Equal(2, issues.Count);
+        Assert.InRange(occurrences.Count, 2, 4);
+        foreach (var issue in issues)
+        {
+            var roleOccurrences = occurrences
+                .Where(item =>
+                    item.CorrelationId == issue.CorrelationId)
+                .ToArray();
+            Assert.InRange(roleOccurrences.Length, 1, 2);
+            Assert.Contains(
+                $"Occurrences={roleOccurrences.Length};",
+                issue.Summary ?? string.Empty);
+            Assert.Equal(
+                roleOccurrences[0].OccurredUtc,
+                issue.OccurredUtc);
+        }
+        Assert.Equal(0, persisted.TeacherProposalAttemptCount);
+        Assert.Null(persisted.TeacherProposalLeaseExpiresUtc);
+        Assert.Equal(0, teacher.ProposeCalls);
+        Assert.Equal(0, teacher.CritiqueCalls);
+    }
+
+    [Fact]
+    public async Task TimeoutCircuit_CoolsDownWithoutAnotherAttempt_ThenRecordsRecovery()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var configuration = Configuration();
+        var registry = new LegendLanguageRegistry(db, configuration);
+        var corpus = new LegendConnectCorpusService(
+            db,
+            registry,
+            NullLogger<LegendConnectCorpusService>.Instance);
+        var candidate = Candidate(
+            "phase3-timeout-recovery",
+            "Recover this governed proposal after cooldown.",
+            proposalState: "Pending");
+        await SeedGovernedCriticEvidenceAsync(db, candidate);
+        var teacher = RecordingTeacher.RecoveringAfterTimeout();
+        var service = Service(
+            db,
+            configuration,
+            registry,
+            corpus,
+            new NoopTranslationProvider(),
+            teacher);
+
+        await service.ProcessOneAsync();
+
+        var persisted = await db.LegendCorpusCandidates
+            .SingleAsync(item => item.Id == candidate.Id);
+        Assert.Equal(1, persisted.TeacherProposalAttemptCount);
+        Assert.Equal(
+            "language_teacher_timeout",
+            persisted.TeacherProposalFailureCode);
+        Assert.Equal(1, teacher.ProposeCalls);
+        var issue = await db.LegendConnectOperationalEvents
+            .SingleAsync(item =>
+                item.Category == "LanguageTeacherCircuitIssue");
+        Assert.False(issue.IsResolved);
+        Assert.Equal("CircuitOpen", issue.Status);
+
+        persisted.TeacherProposalLeaseExpiresUtc =
+            DateTime.UtcNow.AddMinutes(-1);
+        await db.SaveChangesAsync();
+        await service.ProcessOneAsync();
+
+        Assert.Equal(1, persisted.TeacherProposalAttemptCount);
+        Assert.Equal(1, teacher.ProposeCalls);
+
+        await ExpireLanguageTeacherCooldownAsync(
+            db,
+            persisted);
+        await service.ProcessOneAsync();
+
+        Assert.Equal(2, teacher.ProposeCalls);
+        Assert.Equal(1, teacher.CritiqueCalls);
+        Assert.Equal(2, persisted.TeacherProposalAttemptCount);
+        Assert.Equal(
+            "AwaitingCanonicalValidation",
+            persisted.TeacherProposalProcessingState);
+        Assert.True(issue.IsResolved);
+        Assert.Equal("ProviderRecovered", issue.Status);
+        var recovery = Assert.Single(
+            await db.LegendConnectOperationalEvents
+                .Where(item =>
+                    item.Category ==
+                        "LanguageTeacherCircuitRecovery")
+                .ToListAsync());
+        Assert.Equal(issue.CorrelationId, recovery.CorrelationId);
+        Assert.True(recovery.IsResolved);
+        Assert.Contains(
+            "RecoveredUtc=",
+            issue.Summary ?? string.Empty);
+    }
+
+    [Fact]
+    public async Task CriticAuthenticationFailure_OpensOnlyCriticFingerprintCircuit()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var configuration = Configuration();
+        var registry = new LegendLanguageRegistry(db, configuration);
+        var corpus = new LegendConnectCorpusService(
+            db,
+            registry,
+            NullLogger<LegendConnectCorpusService>.Instance);
+        var candidate = Candidate(
+            "phase3-critic-authentication",
+            "Keep the critic failure role isolated.",
+            proposalState: "Pending");
+        await SeedGovernedCriticEvidenceAsync(db, candidate);
+        var teacher = RecordingTeacher.CriticAuthenticationFailure();
+
+        await Service(
+            db,
+            configuration,
+            registry,
+            corpus,
+            new NoopTranslationProvider(),
+            teacher)
+            .ProcessOneAsync();
+
+        var persisted = await db.LegendCorpusCandidates
+            .SingleAsync(item => item.Id == candidate.Id);
+        var issue = Assert.Single(
+            await db.LegendConnectOperationalEvents
+                .Where(item =>
+                    item.Category == "LanguageTeacherCircuitIssue")
+                .ToListAsync());
+        Assert.Equal(1, teacher.ProposeCalls);
+        Assert.Equal(1, teacher.CritiqueCalls);
+        Assert.Equal(1, persisted.TeacherProposalAttemptCount);
+        Assert.Equal(
+            "language_teacher_authentication_failed",
+            persisted.TeacherProposalFailureCode);
+        Assert.StartsWith(
+            "critic:",
+            issue.CorrelationId ?? string.Empty,
+            StringComparison.Ordinal);
+        Assert.Equal(
+            "language_teacher_authentication_failed",
+            issue.ErrorCode);
+        Assert.False(issue.IsResolved);
+    }
+
+    [Fact]
     public async Task TeacherFailure_RetriesThroughExistingCandidateAuthorityAndStopsAtBound()
     {
         await using var db = ControllerTestHelpers.BuildDb();
@@ -275,10 +566,9 @@ public sealed class LegendConnectAutonomousLanguageProposalTests
                     "Processing",
                     persisted.TeacherProposalProcessingState);
 
-                persisted.TeacherProposalLeaseExpiresUtc =
-                    DateTime.UtcNow.AddMinutes(-1);
-
-                await db.SaveChangesAsync();
+                await ExpireLanguageTeacherCooldownAsync(
+                    db,
+                    persisted);
             }
         }
 
@@ -307,6 +597,22 @@ public sealed class LegendConnectAutonomousLanguageProposalTests
         await service.ProcessOneAsync();
 
         Assert.Equal(3, teacher.ProposeCalls);
+    }
+
+    private static async Task ExpireLanguageTeacherCooldownAsync(
+        MasterAppDbContext db,
+        LegendCorpusCandidate candidate)
+    {
+        candidate.TeacherProposalLeaseExpiresUtc =
+            DateTime.UtcNow.AddMinutes(-1);
+        var oldOccurrenceUtc = DateTime.UtcNow.AddMinutes(-20);
+        var occurrences = await db.LegendConnectOperationalEvents
+            .Where(item =>
+                item.Category == "LanguageTeacherFailureOccurrence")
+            .ToListAsync();
+        foreach (var occurrence in occurrences)
+            occurrence.OccurredUtc = oldOccurrenceUtc;
+        await db.SaveChangesAsync();
     }
 
     private static async Task SeedGovernedCriticEvidenceAsync(
@@ -596,19 +902,80 @@ public sealed class LegendConnectAutonomousLanguageProposalTests
         }
     }
 
+    private sealed class PreflightTeacher :
+        ILegendConnectLanguageTeacher
+    {
+        private int _proposeCalls;
+        private int _critiqueCalls;
+
+        public int ProposeCalls => _proposeCalls;
+        public int CritiqueCalls => _critiqueCalls;
+
+        public static PreflightTeacher MissingConfiguration() => new();
+
+        public LegendLanguageTeacherConfigurationPreflight Preflight(
+            string role) =>
+            new(
+                role,
+                new string('a', 64),
+                false,
+                LegendLanguageTeacherFailureClassification
+                    .ConfigurationMissing);
+
+        public Task<LegendLanguageTeacherProposalResult>
+            ProposeAsync(
+                LegendLanguageTeacherProposalRequest request,
+                CancellationToken cancellationToken = default)
+        {
+            Interlocked.Increment(ref _proposeCalls);
+            return Task.FromResult(
+                new LegendLanguageTeacherProposalResult(
+                    false,
+                    [],
+                    LegendLanguageTeacherFailureClassification
+                        .ConfigurationMissing));
+        }
+
+        public Task<LegendLanguageTeacherCritiqueResult>
+            CritiqueAsync(
+                LegendLanguageTeacherCritiqueRequest request,
+                CancellationToken cancellationToken = default)
+        {
+            Interlocked.Increment(ref _critiqueCalls);
+            return Task.FromResult(
+                new LegendLanguageTeacherCritiqueResult(
+                    false,
+                    false,
+                    null,
+                    [],
+                    LegendLanguageTeacherFailureClassification
+                        .ConfigurationMissing));
+        }
+    }
+
     private sealed class RecordingTeacher :
         ILegendConnectLanguageTeacher
     {
-        private readonly bool _teacherSucceeds;
+        private readonly int _failuresBeforeSuccess;
+        private readonly string _failureCode;
+        private readonly int _criticFailuresBeforeSuccess;
+        private readonly string _criticFailureCode;
         private readonly bool _criticApproves;
         private readonly int _familyCount;
 
         private RecordingTeacher(
-            bool teacherSucceeds,
+            int failuresBeforeSuccess,
+            string failureCode,
+            int criticFailuresBeforeSuccess,
+            string criticFailureCode,
             bool criticApproves,
             int familyCount)
         {
-            _teacherSucceeds = teacherSucceeds;
+            _failuresBeforeSuccess = failuresBeforeSuccess;
+            _failureCode = failureCode;
+            _criticFailuresBeforeSuccess =
+                criticFailuresBeforeSuccess;
+            _criticFailureCode = criticFailureCode;
             _criticApproves = criticApproves;
             _familyCount = familyCount;
         }
@@ -616,23 +983,60 @@ public sealed class LegendConnectAutonomousLanguageProposalTests
         public int ProposeCalls { get; private set; }
         public int CritiqueCalls { get; private set; }
 
+        public LegendLanguageTeacherConfigurationPreflight Preflight(
+            string role) =>
+            LegendLanguageTeacherConfigurationPreflight.Ready(
+                role,
+                "test-recording-teacher");
+
         public static RecordingTeacher ApprovedTwoFamilies() =>
             new(
-                teacherSucceeds: true,
+                failuresBeforeSuccess: 0,
+                failureCode: string.Empty,
+                criticFailuresBeforeSuccess: 0,
+                criticFailureCode: string.Empty,
                 criticApproves: true,
                 familyCount: 2);
 
         public static RecordingTeacher Rejected() =>
             new(
-                teacherSucceeds: true,
+                failuresBeforeSuccess: 0,
+                failureCode: string.Empty,
+                criticFailuresBeforeSuccess: 0,
+                criticFailureCode: string.Empty,
                 criticApproves: false,
                 familyCount: 1);
 
         public static RecordingTeacher Failing() =>
             new(
-                teacherSucceeds: false,
+                failuresBeforeSuccess: int.MaxValue,
+                failureCode:
+                    LegendLanguageTeacherFailureClassification.Provider,
+                criticFailuresBeforeSuccess: 0,
+                criticFailureCode: string.Empty,
                 criticApproves: false,
                 familyCount: 0);
+
+        public static RecordingTeacher RecoveringAfterTimeout() =>
+            new(
+                failuresBeforeSuccess: 1,
+                failureCode:
+                    LegendLanguageTeacherFailureClassification.Timeout,
+                criticFailuresBeforeSuccess: 0,
+                criticFailureCode: string.Empty,
+                criticApproves: true,
+                familyCount: 1);
+
+        public static RecordingTeacher CriticAuthenticationFailure() =>
+            new(
+                failuresBeforeSuccess: 0,
+                failureCode: string.Empty,
+                criticFailuresBeforeSuccess: int.MaxValue,
+                criticFailureCode:
+                    LegendLanguageTeacherFailureClassification
+                        .Authentication,
+                criticApproves: false,
+                familyCount: 1);
 
         public Task<LegendLanguageTeacherProposalResult>
             ProposeAsync(
@@ -641,14 +1045,14 @@ public sealed class LegendConnectAutonomousLanguageProposalTests
         {
             ProposeCalls++;
 
-            if (!_teacherSucceeds)
+            if (ProposeCalls <= _failuresBeforeSuccess)
             {
                 return Task.FromResult(
                     new LegendLanguageTeacherProposalResult(
                         false,
                         Array.Empty<
                             LegendLanguageTeacherFamilyProposal>(),
-                        "language_teacher_unavailable"));
+                        _failureCode));
             }
 
             var families =
@@ -697,6 +1101,17 @@ public sealed class LegendConnectAutonomousLanguageProposalTests
                 CancellationToken cancellationToken = default)
         {
             CritiqueCalls++;
+
+            if (CritiqueCalls <= _criticFailuresBeforeSuccess)
+            {
+                return Task.FromResult(
+                    new LegendLanguageTeacherCritiqueResult(
+                        false,
+                        false,
+                        null,
+                        [],
+                        _criticFailureCode));
+            }
 
             return Task.FromResult(
                 new LegendLanguageTeacherCritiqueResult(

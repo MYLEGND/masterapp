@@ -28,12 +28,57 @@ public sealed class LegendConnectLanguageTeacherTests
             await teacher.ProposeAsync(
                 ProposalRequest());
 
+        var preflight = teacher.Preflight(
+            LegendLanguageTeacherRole.Teacher);
+
         Assert.False(result.Succeeded);
         Assert.Empty(result.Families);
         Assert.Equal(
-            "language_teacher_unavailable",
+            "language_teacher_configuration_missing",
             result.ErrorCode);
+        Assert.False(preflight.IsReady);
+        Assert.Equal(
+            "language_teacher_configuration_missing",
+            preflight.FailureCode);
+        Assert.False(
+            string.IsNullOrWhiteSpace(
+                preflight.ConfigurationFingerprint));
         Assert.Equal(0, handler.RequestCount);
+    }
+
+    [Theory]
+    [InlineData(401, "language_teacher_authentication_failed")]
+    [InlineData(403, "language_teacher_authentication_failed")]
+    [InlineData(400, "language_teacher_schema_failed")]
+    [InlineData(422, "language_teacher_schema_failed")]
+    [InlineData(429, "language_teacher_quota_exceeded")]
+    [InlineData(408, "language_teacher_timeout")]
+    [InlineData(504, "language_teacher_timeout")]
+    public async Task ProviderHttpFailure_IsClassifiedByFailureBoundary(
+        int statusCode,
+        string expectedFailureCode)
+    {
+        var handler = new StubHttpMessageHandler();
+        handler.Enqueue(
+            new HttpResponseMessage(
+                (HttpStatusCode)statusCode));
+        var teacher = CreateTeacher(
+            handler,
+            new Dictionary<string, string?>
+            {
+                ["LegendConnect:LanguageTeacher:ApiKey"] =
+                    "test-key",
+                ["LegendConnect:LanguageTeacher:TeacherModel"] =
+                    "teacher-test-model"
+            });
+
+        var result = await teacher.ProposeAsync(
+            ProposalRequest());
+
+        Assert.False(result.Succeeded);
+        Assert.Empty(result.Families);
+        Assert.Equal(expectedFailureCode, result.ErrorCode);
+        Assert.Equal(1, handler.RequestCount);
     }
 
     [Fact]
@@ -352,7 +397,7 @@ public sealed class LegendConnectLanguageTeacherTests
         Assert.Empty(result.Families);
 
         Assert.Equal(
-            "language_teacher_invalid_response",
+            "language_teacher_parsing_failed",
             result.ErrorCode);
     }
 
