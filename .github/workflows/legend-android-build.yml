@@ -49,10 +49,43 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Compile, test, lint, and bundle debug app
+      - name: Restore protected Android upload key
+        shell: bash
+        env:
+          LEGEND_UPLOAD_KEYSTORE: ${{ secrets.LEGEND_ANDROID_UPLOAD_KEYSTORE_BASE64 }}
+        run: |
+          test -n "$LEGEND_UPLOAD_KEYSTORE"
+          printf '%s' "$LEGEND_UPLOAD_KEYSTORE" | base64 --decode > "$RUNNER_TEMP/legend-upload.jks"
+          chmod 600 "$RUNNER_TEMP/legend-upload.jks"
+
+      - name: Compile, test, lint, and bundle debug and signed release apps
         working-directory: Legend-Android
         shell: bash
-        run: ./gradlew --no-daemon --stacktrace :app:testDebugUnitTest :app:lintDebug :app:bundleDebug
+        env:
+          LEGEND_ANDROID_KEYSTORE_PATH: ${{ runner.temp }}/legend-upload.jks
+          LEGEND_ANDROID_KEYSTORE_PASSWORD: ${{ secrets.LEGEND_ANDROID_KEYSTORE_PASSWORD }}
+          LEGEND_ANDROID_KEY_ALIAS: ${{ secrets.LEGEND_ANDROID_KEY_ALIAS }}
+          LEGEND_ANDROID_KEY_PASSWORD: ${{ secrets.LEGEND_ANDROID_KEY_PASSWORD }}
+          LEGEND_API_BASE_URL: ${{ vars.LEGEND_API_BASE_URL }}
+          LEGEND_ENTRA_TENANT_ID: ${{ vars.LEGEND_ENTRA_TENANT_ID }}
+          LEGEND_ENTRA_CLIENT_ID: ${{ vars.LEGEND_ENTRA_CLIENT_ID }}
+          LEGEND_ENTRA_AUTHORITY: ${{ vars.LEGEND_ENTRA_AUTHORITY }}
+          LEGEND_ENTRA_SCOPE: ${{ vars.LEGEND_ENTRA_SCOPE }}
+          LEGEND_MSAL_REDIRECT_URI: ${{ vars.LEGEND_MSAL_REDIRECT_URI }}
+        run: ./gradlew --no-daemon --stacktrace :app:testDebugUnitTest :app:lintDebug :app:bundleDebug :app:bundleRelease
+
+      - name: Preserve signed release bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: legend-android-version-3-signed-aab
+          path: Legend-Android/app/build/outputs/bundle/release/app-release.aab
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Remove temporary upload key
+        if: always()
+        shell: bash
+        run: rm -f "$RUNNER_TEMP/legend-upload.jks"
 
       - name: Verify repository diff
         shell: bash
