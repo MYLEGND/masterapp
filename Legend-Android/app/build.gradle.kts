@@ -49,6 +49,13 @@ val sharedLegendAppIcon = rootProject.file(
 val legendBrandAssets = layout.buildDirectory.dir("generated/legend-brand/assets")
 val legendBrandRes = layout.buildDirectory.dir("generated/legend-brand/res")
 val productionMsalRedirectUri = legendValue("LEGEND_MSAL_REDIRECT_URI")
+val releaseSigningEnvironment = mapOf(
+    "keyStorePath" to providers.environmentVariable("LEGEND_ANDROID_KEYSTORE_PATH").orNull,
+    "keyStorePassword" to providers.environmentVariable("LEGEND_ANDROID_KEYSTORE_PASSWORD").orNull,
+    "keyAlias" to providers.environmentVariable("LEGEND_ANDROID_KEY_ALIAS").orNull,
+    "keyPassword" to providers.environmentVariable("LEGEND_ANDROID_KEY_PASSWORD").orNull,
+)
+val releaseSigningConfigured = releaseSigningEnvironment.values.all { !it.isNullOrBlank() }
 
 fun signingCertificateHash(keyStoreFile: File): String? = runCatching {
     val keyStore = KeyStore.getInstance("JKS")
@@ -151,6 +158,17 @@ android {
         manifestPlaceholders["msalSignatureHash"] = productionMsalSignatureHash
     }
 
+    signingConfigs {
+        if (releaseSigningConfigured) {
+            create("legendRelease") {
+                storeFile = file(requireNotNull(releaseSigningEnvironment["keyStorePath"]))
+                storePassword = requireNotNull(releaseSigningEnvironment["keyStorePassword"])
+                keyAlias = requireNotNull(releaseSigningEnvironment["keyAlias"])
+                keyPassword = requireNotNull(releaseSigningEnvironment["keyPassword"])
+            }
+        }
+    }
+
     buildTypes {
         debug {
             versionNameSuffix = "-debug"
@@ -159,6 +177,9 @@ android {
         release {
             isMinifyEnabled = true
             isShrinkResources = true
+            if (releaseSigningConfigured) {
+                signingConfig = signingConfigs.getByName("legendRelease")
+            }
             manifestPlaceholders["msalSignatureHash"] = productionMsalSignatureHash
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
