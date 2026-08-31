@@ -613,16 +613,16 @@ public sealed class LegendConnectGovernedReasoningExecutorTests
     }
 
     [Fact]
-    public void Executor_DiscriminatingEvidenceResolvesAnObservationalEquivalence()
+    public void Executor_CausalDiagnosticPreservesObservationalEquivalenceWhenPredictionsMatch()
     {
-        var sharedObservation = Rule(
-            "shared-alert-observational-equivalence",
-            "reasoning.epistemic.observational-equivalence.shared-alert",
+        var plan = CausalPlanRule("causal-equivalence-plan");
+        var equivalence = Rule(
+            "causal-observational-equivalence",
+            "reasoning.epistemic.observational-equivalence.causal-diagnostic",
             new Dictionary<string, string>
             {
-                ["observation"] = "$signal",
-                ["first_cause_prediction"] = "$signal",
-                ["second_cause_prediction"] = "$signal"
+                [LegendConnectGovernedReasoningExecutor.FirstPredictionDimension] = "$signal",
+                [LegendConnectGovernedReasoningExecutor.SecondPredictionDimension] = "$signal"
             },
             new Dictionary<string, string>
             {
@@ -632,60 +632,304 @@ public sealed class LegendConnectGovernedReasoningExecutorTests
                     LegendConnectGovernedReasoningExecutor.UndeterminedValue,
                 [LegendConnectGovernedReasoningExecutor.EvidenceRequirementDimension] =
                     LegendConnectGovernedReasoningExecutor.DiscriminatingEvidenceValue
-            },
-            independentEvidenceCount: 1,
-            evidenceStandard: 1);
-        var discriminator = Rule(
-            "governed-discriminating-check",
-            "reasoning.epistemic.discriminating-evidence.cause-selection",
-            new Dictionary<string, string>
-            {
-                ["observation"] = "shared_alert",
-                ["first_cause_prediction"] = "shared_alert",
-                ["second_cause_prediction"] = "shared_alert",
-                [LegendConnectGovernedReasoningExecutor.DiscriminatingEvidenceDimension] =
-                    "beta_only"
-            },
-            new Dictionary<string, string>
-            {
-                [LegendConnectGovernedReasoningExecutor.EpistemicStatusDimension] =
-                    LegendConnectGovernedReasoningExecutor.ResolvedByDiscriminatingEvidenceValue,
-                [LegendConnectGovernedReasoningExecutor.CauseSelectionDimension] = "cause_beta"
-            },
-            independentEvidenceCount: 3,
-            evidenceStandard: 2);
+            });
 
+        Assert.False(LegendConnectGovernedReasoningExecutor.IsExecutableOperatorIdentity(
+            "reasoning.epistemic.discriminating-evidence"));
+        Assert.True(LegendConnectGovernedReasoningExecutor.IsExecutableOperatorIdentity(
+            plan.OperatorIdentity));
         var execution = LegendConnectGovernedReasoningExecutor.Derive(
-            new Dictionary<string, string>
-            {
-                ["observation"] = "shared_alert",
-                ["first_cause_prediction"] = "shared_alert",
-                ["second_cause_prediction"] = "shared_alert",
-                [LegendConnectGovernedReasoningExecutor.DiscriminatingEvidenceDimension] =
-                    "beta_only"
-            },
-            [sharedObservation, discriminator],
+            CausalDiagnosticValues(
+                "hypothesis_alpha",
+                "hypothesis_beta",
+                "shared_outcome",
+                "shared_outcome",
+                "bounded_probe"),
+            [plan, equivalence],
             [DefaultSemanticFamilyId]);
 
-        Assert.Equal(2, execution.Conflicts.Count);
-        Assert.All(execution.Conflicts, item =>
-        {
-            Assert.Equal(
-                LegendGovernedReasoningConflictResolution.ResolvedByHigherStandard,
-                item.Resolution);
-            Assert.Equal("governed-discriminating-check", item.Selected!.TransitionSignature);
-        });
-        var conflict = Assert.Single(execution.Conflicts.Where(item =>
-            item.SemanticDimension == LegendConnectGovernedReasoningExecutor.CauseSelectionDimension));
+        var assessment = Assert.Single(execution.DerivedStates);
         Assert.Equal(
-            LegendGovernedReasoningConflictResolution.ResolvedByHigherStandard,
-            conflict.Resolution);
-        Assert.Equal("governed-discriminating-check", conflict.Selected!.TransitionSignature);
-        var resolution = Assert.Single(execution.DerivedStates);
-        Assert.Equal("cause_beta", resolution.Values["cause_selection"]);
+            LegendConnectGovernedReasoningExecutor.ObservationalEquivalenceValue,
+            assessment.Values[LegendConnectGovernedReasoningExecutor.EpistemicStatusDimension]);
+        Assert.Equal(
+            LegendConnectGovernedReasoningExecutor.UndeterminedValue,
+            assessment.Values[LegendConnectGovernedReasoningExecutor.CauseSelectionDimension]);
+        Assert.False(assessment.Values.ContainsKey(
+            LegendConnectGovernedReasoningExecutor.DiagnosticPlanStatusDimension));
+    }
+
+    [Fact]
+    public void Executor_CausalDiagnosticFailsClosedWhenOnePredictionIsMissing()
+    {
+        var values = CausalDiagnosticValues(
+            "hypothesis_alpha",
+            "hypothesis_beta",
+            "outcome_alpha",
+            "outcome_beta",
+            "bounded_probe");
+        values.Remove(LegendConnectGovernedReasoningExecutor.SecondPredictionDimension);
+        var execution = LegendConnectGovernedReasoningExecutor.Derive(
+            values,
+            [CausalPlanRule("missing-prediction-plan")],
+            [DefaultSemanticFamilyId]);
+
+        Assert.Empty(execution.DerivedStates);
+        Assert.Empty(execution.Conflicts);
+        Assert.False(execution.DerivedContradiction);
+    }
+
+    [Fact]
+    public void Executor_CausalDiagnosticRejectsPrematureCauseSelectionInThePlanContract()
+    {
+        var plan = CausalPlanRule("premature-selection-plan");
+        var malformedResult = plan.ResultFrame.ToDictionary(
+            item => item.Key,
+            item => item.Value,
+            StringComparer.OrdinalIgnoreCase);
+        malformedResult[LegendConnectGovernedReasoningExecutor.CauseSelectionDimension] = "$first";
+        var execution = LegendConnectGovernedReasoningExecutor.Derive(
+            CausalDiagnosticValues(
+                "hypothesis_alpha",
+                "hypothesis_beta",
+                "outcome_alpha",
+                "outcome_beta",
+                "bounded_probe"),
+            [plan with { ResultFrame = malformedResult }],
+            [DefaultSemanticFamilyId]);
+
+        Assert.Empty(execution.DerivedStates);
+        Assert.Empty(execution.Conflicts);
+    }
+
+    [Fact]
+    public void Executor_CausalDiagnosticKeepsHypothesesWhenEvidenceContradictsBothPredictions()
+    {
+        var rules = new[]
+        {
+            CausalPlanRule("contradictory-plan"),
+            CausalConclusionRule("contradictory-first", selectFirst: true),
+            CausalConclusionRule("contradictory-second", selectFirst: false),
+            CausalContradictoryEvidenceRule("contradictory-outcome")
+        };
+        var execution = LegendConnectGovernedReasoningExecutor.Derive(
+            CausalDiagnosticValues(
+                "hypothesis_alpha",
+                "hypothesis_beta",
+                "outcome_alpha",
+                "outcome_beta",
+                "bounded_probe",
+                observedEvidence: "outcome_neither"),
+            rules,
+            [DefaultSemanticFamilyId]);
+
+        Assert.False(execution.DerivedContradiction);
+        Assert.Empty(execution.Conflicts);
+        var contradiction = Assert.Single(execution.DerivedStates.Where(item =>
+            item.Values.GetValueOrDefault(
+                LegendConnectGovernedReasoningExecutor.DiagnosticConclusionStatusDimension) ==
+            LegendConnectGovernedReasoningExecutor.ContradictoryEvidenceValue));
+        Assert.Equal(
+            LegendConnectGovernedReasoningExecutor.UnresolvedContradictionValue,
+            contradiction.Values[LegendConnectGovernedReasoningExecutor.EpistemicStatusDimension]);
+        Assert.Equal(
+            LegendConnectGovernedReasoningExecutor.UndeterminedValue,
+            contradiction.Values[LegendConnectGovernedReasoningExecutor.CauseSelectionDimension]);
+        Assert.Equal(
+            LegendConnectGovernedReasoningExecutor.AttributionWithheldValue,
+            contradiction.Values[
+                LegendConnectGovernedReasoningExecutor.PrematureAttributionStatusDimension]);
+        Assert.Equal(
+            LegendConnectGovernedReasoningExecutor.ReassessHypothesesValue,
+            contradiction.Values[LegendConnectGovernedReasoningExecutor.EvidenceRequirementDimension]);
+        Assert.Equal(["contradictory-plan", "contradictory-outcome"], contradiction.TransitionPath);
+        Assert.Equal(2, contradiction.EvidenceLineage.Count);
+        Assert.DoesNotContain(execution.DerivedStates, item =>
+            item.Values.GetValueOrDefault(
+                LegendConnectGovernedReasoningExecutor.CauseSelectionDimension) is
+                "hypothesis_alpha" or "hypothesis_beta");
+    }
+
+    [Fact]
+    public void Executor_CausalDiagnosticPreservesUncertaintyWhenTheSelectedProbeIsUnavailable()
+    {
+        var values = CausalDiagnosticValues(
+            "hypothesis_alpha",
+            "hypothesis_beta",
+            "outcome_alpha",
+            "outcome_beta",
+            "bounded_probe");
+        values[LegendConnectGovernedReasoningExecutor.DiagnosticResourceDimension] =
+            "bounded_probe";
+        values[LegendConnectGovernedReasoningExecutor.DiagnosticResourceStatusDimension] =
+            LegendConnectGovernedReasoningExecutor.ResourceUnavailableValue;
+        var execution = LegendConnectGovernedReasoningExecutor.Derive(
+            values,
+            [
+                CausalPlanRule("resource-plan"),
+                CausalResourceLimitedRule("resource-unavailable")
+            ],
+            [DefaultSemanticFamilyId]);
+
+        var limited = Assert.Single(execution.DerivedStates.Where(item =>
+            item.Values.GetValueOrDefault(
+                LegendConnectGovernedReasoningExecutor.DiagnosticConclusionStatusDimension) ==
+            LegendConnectGovernedReasoningExecutor.ResourceLimitedValue));
+        Assert.Equal(
+            LegendConnectGovernedReasoningExecutor.CompetingHypothesesValue,
+            limited.Values[LegendConnectGovernedReasoningExecutor.HypothesisStatusDimension]);
+        Assert.Equal(
+            LegendConnectGovernedReasoningExecutor.UndeterminedValue,
+            limited.Values[LegendConnectGovernedReasoningExecutor.CauseSelectionDimension]);
+        Assert.Equal(
+            LegendConnectGovernedReasoningExecutor.AttributionWithheldValue,
+            limited.Values[LegendConnectGovernedReasoningExecutor.PrematureAttributionStatusDimension]);
+        Assert.Equal(["resource-plan", "resource-unavailable"], limited.TransitionPath);
+    }
+
+    [Fact]
+    public void Executor_CausalDiagnosticCarriesCompleteProofAcrossExplicitGovernedTransfer()
+    {
+        var sourceFamily = Guid.Parse("55555555-5555-5555-5555-555555555555");
+        var targetFamily = Guid.Parse("66666666-6666-6666-6666-666666666666");
+        var plan = CausalPlanRule(
+            "transfer-plan",
+            sourceSemanticFamilyIds: new HashSet<Guid> { sourceFamily },
+            resultSemanticFamilyIds: new HashSet<Guid> { targetFamily },
+            hasExplicitGovernedTransfer: true);
+        var first = CausalConclusionRule(
+            "transfer-first-conclusion",
+            selectFirst: true,
+            semanticFamilyId: targetFamily);
+        var second = CausalConclusionRule(
+            "transfer-second-conclusion",
+            selectFirst: false,
+            semanticFamilyId: targetFamily);
+        var execution = LegendConnectGovernedReasoningExecutor.Derive(
+            CausalDiagnosticValues(
+                "candidate_alpha",
+                "candidate_beta",
+                "signal_alpha",
+                "signal_beta",
+                "bounded_probe",
+                observedEvidence: "signal_beta"),
+            [plan, first, second],
+            [sourceFamily]);
+
+        var conclusion = Assert.Single(execution.DerivedStates.Where(item =>
+            item.Values.GetValueOrDefault(
+                LegendConnectGovernedReasoningExecutor.CauseSelectionDimension) ==
+            "candidate_beta"));
+        Assert.Equal(["transfer-plan", "transfer-second-conclusion"], conclusion.TransitionPath);
+        Assert.Equal([targetFamily], conclusion.SemanticFamilyIds.OrderBy(item => item));
+        Assert.Equal(3, conclusion.EvidenceCount);
+        Assert.Equal(2, conclusion.EvidenceStandard);
+        Assert.Equal(2, conclusion.EvidenceLineage.Count);
+        var planStep = conclusion.EvidenceLineage[0];
+        Assert.Equal("reasoning.causal-diagnostic.plan", planStep.OperatorIdentity);
+        Assert.Equal("candidate_alpha", planStep.Premises[
+            LegendConnectGovernedReasoningExecutor.FirstHypothesisDimension]);
+        Assert.Equal("signal_beta", planStep.Premises[
+            LegendConnectGovernedReasoningExecutor.SecondPredictionDimension]);
+        Assert.Equal("bounded_probe", planStep.Conclusions[
+            LegendConnectGovernedReasoningExecutor.SelectedDiscriminatingEvidenceDimension]);
+        Assert.True(planStep.HasExplicitGovernedTransfer);
+        Assert.Equal(plan.IndependentEvidenceIdentities, planStep.IndependentEvidenceIdentities);
+        var conclusionStep = conclusion.EvidenceLineage[1];
+        Assert.Equal("reasoning.causal-diagnostic.conclude", conclusionStep.OperatorIdentity);
+        Assert.Equal("signal_beta", conclusionStep.Premises[
+            LegendConnectGovernedReasoningExecutor.ObservedEvidenceDimension]);
+        Assert.Equal("candidate_beta", conclusionStep.Conclusions[
+            LegendConnectGovernedReasoningExecutor.CauseSelectionDimension]);
+        Assert.False(conclusionStep.HasExplicitGovernedTransfer);
+    }
+
+    [Fact]
+    public void Executor_CausalDiagnosticRejectsAnUnrelatedSemanticFamily()
+    {
+        var unrelatedFamily = Guid.Parse("77777777-7777-7777-7777-777777777777");
+        var execution = LegendConnectGovernedReasoningExecutor.Derive(
+            CausalDiagnosticValues(
+                "candidate_alpha",
+                "candidate_beta",
+                "signal_alpha",
+                "signal_beta",
+                "bounded_probe"),
+            [CausalPlanRule(
+                "unrelated-causal-plan",
+                sourceSemanticFamilyIds: new HashSet<Guid> { unrelatedFamily },
+                resultSemanticFamilyIds: new HashSet<Guid> { unrelatedFamily })],
+            [DefaultSemanticFamilyId]);
+
+        Assert.Empty(execution.DerivedStates);
+        Assert.Empty(execution.Conflicts);
+    }
+
+    [Theory]
+    [InlineData("candidate_alpha", "candidate_beta", "signal_left", "signal_right", "signal_right", "candidate_beta")]
+    [InlineData("explanation_one", "explanation_two", "outcome_one", "outcome_two", "outcome_one", "explanation_one")]
+    public void Executor_CausalDiagnosticAppliesHeldOutSemanticRolesWithoutDomainTerms(
+        string firstHypothesis,
+        string secondHypothesis,
+        string firstPrediction,
+        string secondPrediction,
+        string observedEvidence,
+        string expectedSelection)
+    {
+        var rules = new[]
+        {
+            CausalPlanRule("held-out-causal-plan"),
+            CausalConclusionRule("held-out-first-conclusion", selectFirst: true),
+            CausalConclusionRule("held-out-second-conclusion", selectFirst: false)
+        };
+        var execution = LegendConnectGovernedReasoningExecutor.Derive(
+            CausalDiagnosticValues(
+                firstHypothesis,
+                secondHypothesis,
+                firstPrediction,
+                secondPrediction,
+                "bounded_probe",
+                observedEvidence),
+            rules,
+            [DefaultSemanticFamilyId]);
+
+        var plan = Assert.Single(execution.DerivedStates.Where(item =>
+            item.Depth == 1 &&
+            item.Values.GetValueOrDefault(
+                LegendConnectGovernedReasoningExecutor.DiagnosticPlanStatusDimension) ==
+            LegendConnectGovernedReasoningExecutor.DiscriminatingEvidenceSelectedValue));
+        Assert.Equal(
+            LegendConnectGovernedReasoningExecutor.CompetingHypothesesValue,
+            plan.Values[LegendConnectGovernedReasoningExecutor.HypothesisStatusDimension]);
+        Assert.Equal(
+            LegendConnectGovernedReasoningExecutor.DifferingPredictionsValue,
+            plan.Values[LegendConnectGovernedReasoningExecutor.PredictionStatusDimension]);
+        Assert.Equal(
+            LegendConnectGovernedReasoningExecutor.AttributionWithheldValue,
+            plan.Values[LegendConnectGovernedReasoningExecutor.PrematureAttributionStatusDimension]);
+        Assert.Equal(
+            "bounded_probe",
+            plan.Values[
+                LegendConnectGovernedReasoningExecutor.SelectedDiscriminatingEvidenceDimension]);
+        Assert.False(plan.Values.ContainsKey(
+            LegendConnectGovernedReasoningExecutor.CauseSelectionDimension));
+
+        var resolution = Assert.Single(execution.DerivedStates.Where(item =>
+            item.Values.GetValueOrDefault(
+                LegendConnectGovernedReasoningExecutor.CauseSelectionDimension) ==
+            expectedSelection));
+        Assert.Equal(2, resolution.Depth);
+        Assert.Equal(2, resolution.TransitionPath.Count);
+        Assert.Equal(2, resolution.EvidenceLineage.Count);
         Assert.Equal(
             LegendConnectGovernedReasoningExecutor.ResolvedByDiscriminatingEvidenceValue,
-            resolution.Values[LegendConnectGovernedReasoningExecutor.EpistemicStatusDimension]);
+            resolution.Values[
+                LegendConnectGovernedReasoningExecutor.DiagnosticConclusionStatusDimension]);
+        Assert.Equal(
+            LegendConnectGovernedReasoningExecutor.AttributionSupportedValue,
+            resolution.Values[LegendConnectGovernedReasoningExecutor.CausalAttributionStatusDimension]);
+        Assert.DoesNotContain(resolution.Values, item =>
+            item.Key.Contains("probability", StringComparison.OrdinalIgnoreCase));
     }
 
     [Theory]
@@ -1134,6 +1378,201 @@ public sealed class LegendConnectGovernedReasoningExecutorTests
         Assert.Equal(0, plan.ReasoningEvidenceCount);
         Assert.Equal(3, plan.IndependentEvidenceCount);
     }
+
+    private static Dictionary<string, string> CausalDiagnosticValues(
+        string firstHypothesis,
+        string secondHypothesis,
+        string firstPrediction,
+        string secondPrediction,
+        string discriminatingEvidence,
+        string? observedEvidence = null)
+    {
+        var values = new Dictionary<string, string>
+        {
+            [LegendConnectGovernedReasoningExecutor.FirstHypothesisDimension] = firstHypothesis,
+            [LegendConnectGovernedReasoningExecutor.SecondHypothesisDimension] = secondHypothesis,
+            [LegendConnectGovernedReasoningExecutor.FirstPredictionDimension] = firstPrediction,
+            [LegendConnectGovernedReasoningExecutor.SecondPredictionDimension] = secondPrediction,
+            [LegendConnectGovernedReasoningExecutor.FirstPredictionHypothesisDimension] =
+                firstHypothesis,
+            [LegendConnectGovernedReasoningExecutor.SecondPredictionHypothesisDimension] =
+                secondHypothesis,
+            [LegendConnectGovernedReasoningExecutor.FirstPredictionEvidenceDimension] =
+                discriminatingEvidence,
+            [LegendConnectGovernedReasoningExecutor.SecondPredictionEvidenceDimension] =
+                discriminatingEvidence,
+            [LegendConnectGovernedReasoningExecutor.DiscriminatingEvidenceDimension] =
+                discriminatingEvidence
+        };
+        if (observedEvidence is not null)
+        {
+            values[LegendConnectGovernedReasoningExecutor.ObservedEvidenceSourceDimension] =
+                discriminatingEvidence;
+            values[LegendConnectGovernedReasoningExecutor.ObservedEvidenceDimension] =
+                observedEvidence;
+        }
+        return values;
+    }
+
+    private static LegendGovernedReasoningRule CausalPlanRule(
+        string signature,
+        IReadOnlySet<Guid>? sourceSemanticFamilyIds = null,
+        IReadOnlySet<Guid>? resultSemanticFamilyIds = null,
+        bool hasExplicitGovernedTransfer = false) =>
+        Rule(
+            signature,
+            "reasoning.causal-diagnostic.plan",
+            new Dictionary<string, string>
+            {
+                [LegendConnectGovernedReasoningExecutor.FirstHypothesisDimension] = "$first",
+                [LegendConnectGovernedReasoningExecutor.SecondHypothesisDimension] = "$second",
+                [LegendConnectGovernedReasoningExecutor.FirstPredictionDimension] = "$first_prediction",
+                [LegendConnectGovernedReasoningExecutor.SecondPredictionDimension] = "$second_prediction",
+                [LegendConnectGovernedReasoningExecutor.FirstPredictionHypothesisDimension] = "$first",
+                [LegendConnectGovernedReasoningExecutor.SecondPredictionHypothesisDimension] = "$second",
+                [LegendConnectGovernedReasoningExecutor.FirstPredictionEvidenceDimension] = "$evidence",
+                [LegendConnectGovernedReasoningExecutor.SecondPredictionEvidenceDimension] = "$evidence",
+                [LegendConnectGovernedReasoningExecutor.DiscriminatingEvidenceDimension] = "$evidence"
+            },
+            new Dictionary<string, string>
+            {
+                [LegendConnectGovernedReasoningExecutor.HypothesisStatusDimension] =
+                    LegendConnectGovernedReasoningExecutor.CompetingHypothesesValue,
+                [LegendConnectGovernedReasoningExecutor.PredictionStatusDimension] =
+                    LegendConnectGovernedReasoningExecutor.DifferingPredictionsValue,
+                [LegendConnectGovernedReasoningExecutor.DiagnosticPlanStatusDimension] =
+                    LegendConnectGovernedReasoningExecutor.DiscriminatingEvidenceSelectedValue,
+                [LegendConnectGovernedReasoningExecutor.PrematureAttributionStatusDimension] =
+                    LegendConnectGovernedReasoningExecutor.AttributionWithheldValue,
+                [LegendConnectGovernedReasoningExecutor.SelectedDiscriminatingEvidenceDimension] =
+                    "$evidence"
+            },
+            independentEvidenceCount: 3,
+            evidenceStandard: 2,
+            sourceSemanticFamilyIds: sourceSemanticFamilyIds,
+            resultSemanticFamilyIds: resultSemanticFamilyIds,
+            hasExplicitGovernedTransfer: hasExplicitGovernedTransfer);
+
+    private static LegendGovernedReasoningRule CausalConclusionRule(
+        string signature,
+        bool selectFirst,
+        Guid? semanticFamilyId = null)
+    {
+        var families = semanticFamilyId.HasValue
+            ? new HashSet<Guid> { semanticFamilyId.Value }
+            : null;
+        return Rule(
+            signature,
+            "reasoning.causal-diagnostic.conclude",
+            new Dictionary<string, string>
+            {
+                [LegendConnectGovernedReasoningExecutor.FirstHypothesisDimension] = "$first",
+                [LegendConnectGovernedReasoningExecutor.SecondHypothesisDimension] = "$second",
+                [LegendConnectGovernedReasoningExecutor.FirstPredictionDimension] = "$first_prediction",
+                [LegendConnectGovernedReasoningExecutor.SecondPredictionDimension] = "$second_prediction",
+                [LegendConnectGovernedReasoningExecutor.FirstPredictionHypothesisDimension] = "$first",
+                [LegendConnectGovernedReasoningExecutor.SecondPredictionHypothesisDimension] = "$second",
+                [LegendConnectGovernedReasoningExecutor.FirstPredictionEvidenceDimension] = "$evidence",
+                [LegendConnectGovernedReasoningExecutor.SecondPredictionEvidenceDimension] = "$evidence",
+                [LegendConnectGovernedReasoningExecutor.PredictionStatusDimension] =
+                    LegendConnectGovernedReasoningExecutor.DifferingPredictionsValue,
+                [LegendConnectGovernedReasoningExecutor.SelectedDiscriminatingEvidenceDimension] =
+                    "$evidence",
+                [LegendConnectGovernedReasoningExecutor.ObservedEvidenceSourceDimension] = "$evidence",
+                [LegendConnectGovernedReasoningExecutor.ObservedEvidenceDimension] = "$observed"
+            },
+            new Dictionary<string, string>
+            {
+                [LegendConnectGovernedReasoningExecutor.DiagnosticConclusionStatusDimension] =
+                    LegendConnectGovernedReasoningExecutor.ResolvedByDiscriminatingEvidenceValue,
+                [LegendConnectGovernedReasoningExecutor.CausalAttributionStatusDimension] =
+                    LegendConnectGovernedReasoningExecutor.AttributionSupportedValue,
+                [LegendConnectGovernedReasoningExecutor.CauseSelectionDimension] =
+                    selectFirst ? "$first" : "$second"
+            },
+            independentEvidenceCount: 4,
+            evidenceStandard: 2,
+            sourceSemanticFamilyIds: families,
+            resultSemanticFamilyIds: families);
+    }
+
+    private static LegendGovernedReasoningRule CausalContradictoryEvidenceRule(
+        string signature) =>
+        Rule(
+            signature,
+            "reasoning.causal-diagnostic.contradictory-evidence",
+            CausalObservedSourceFrame(),
+            new Dictionary<string, string>
+            {
+                [LegendConnectGovernedReasoningExecutor.DiagnosticConclusionStatusDimension] =
+                    LegendConnectGovernedReasoningExecutor.ContradictoryEvidenceValue,
+                [LegendConnectGovernedReasoningExecutor.EpistemicStatusDimension] =
+                    LegendConnectGovernedReasoningExecutor.UnresolvedContradictionValue,
+                [LegendConnectGovernedReasoningExecutor.HypothesisStatusDimension] =
+                    LegendConnectGovernedReasoningExecutor.CompetingHypothesesValue,
+                [LegendConnectGovernedReasoningExecutor.CauseSelectionDimension] =
+                    LegendConnectGovernedReasoningExecutor.UndeterminedValue,
+                [LegendConnectGovernedReasoningExecutor.PrematureAttributionStatusDimension] =
+                    LegendConnectGovernedReasoningExecutor.AttributionWithheldValue,
+                [LegendConnectGovernedReasoningExecutor.EvidenceRequirementDimension] =
+                    LegendConnectGovernedReasoningExecutor.ReassessHypothesesValue
+            });
+
+    private static LegendGovernedReasoningRule CausalResourceLimitedRule(
+        string signature) =>
+        Rule(
+            signature,
+            "reasoning.causal-diagnostic.resource-limited",
+            new Dictionary<string, string>
+            {
+                [LegendConnectGovernedReasoningExecutor.FirstHypothesisDimension] = "$first",
+                [LegendConnectGovernedReasoningExecutor.SecondHypothesisDimension] = "$second",
+                [LegendConnectGovernedReasoningExecutor.FirstPredictionDimension] = "$first_prediction",
+                [LegendConnectGovernedReasoningExecutor.SecondPredictionDimension] = "$second_prediction",
+                [LegendConnectGovernedReasoningExecutor.FirstPredictionHypothesisDimension] = "$first",
+                [LegendConnectGovernedReasoningExecutor.SecondPredictionHypothesisDimension] = "$second",
+                [LegendConnectGovernedReasoningExecutor.FirstPredictionEvidenceDimension] = "$evidence",
+                [LegendConnectGovernedReasoningExecutor.SecondPredictionEvidenceDimension] = "$evidence",
+                [LegendConnectGovernedReasoningExecutor.PredictionStatusDimension] =
+                    LegendConnectGovernedReasoningExecutor.DifferingPredictionsValue,
+                [LegendConnectGovernedReasoningExecutor.SelectedDiscriminatingEvidenceDimension] =
+                    "$evidence",
+                [LegendConnectGovernedReasoningExecutor.DiagnosticResourceDimension] = "$evidence",
+                [LegendConnectGovernedReasoningExecutor.DiagnosticResourceStatusDimension] =
+                    LegendConnectGovernedReasoningExecutor.ResourceUnavailableValue
+            },
+            new Dictionary<string, string>
+            {
+                [LegendConnectGovernedReasoningExecutor.DiagnosticConclusionStatusDimension] =
+                    LegendConnectGovernedReasoningExecutor.ResourceLimitedValue,
+                [LegendConnectGovernedReasoningExecutor.HypothesisStatusDimension] =
+                    LegendConnectGovernedReasoningExecutor.CompetingHypothesesValue,
+                [LegendConnectGovernedReasoningExecutor.CauseSelectionDimension] =
+                    LegendConnectGovernedReasoningExecutor.UndeterminedValue,
+                [LegendConnectGovernedReasoningExecutor.PrematureAttributionStatusDimension] =
+                    LegendConnectGovernedReasoningExecutor.AttributionWithheldValue,
+                [LegendConnectGovernedReasoningExecutor.EvidenceRequirementDimension] =
+                    LegendConnectGovernedReasoningExecutor.DiscriminatingEvidenceValue
+            });
+
+    private static IReadOnlyDictionary<string, string> CausalObservedSourceFrame() =>
+        new Dictionary<string, string>
+        {
+            [LegendConnectGovernedReasoningExecutor.FirstHypothesisDimension] = "$first",
+            [LegendConnectGovernedReasoningExecutor.SecondHypothesisDimension] = "$second",
+            [LegendConnectGovernedReasoningExecutor.FirstPredictionDimension] = "$first_prediction",
+            [LegendConnectGovernedReasoningExecutor.SecondPredictionDimension] = "$second_prediction",
+            [LegendConnectGovernedReasoningExecutor.FirstPredictionHypothesisDimension] = "$first",
+            [LegendConnectGovernedReasoningExecutor.SecondPredictionHypothesisDimension] = "$second",
+            [LegendConnectGovernedReasoningExecutor.FirstPredictionEvidenceDimension] = "$evidence",
+            [LegendConnectGovernedReasoningExecutor.SecondPredictionEvidenceDimension] = "$evidence",
+            [LegendConnectGovernedReasoningExecutor.PredictionStatusDimension] =
+                LegendConnectGovernedReasoningExecutor.DifferingPredictionsValue,
+            [LegendConnectGovernedReasoningExecutor.SelectedDiscriminatingEvidenceDimension] =
+                "$evidence",
+            [LegendConnectGovernedReasoningExecutor.ObservedEvidenceSourceDimension] = "$evidence",
+            [LegendConnectGovernedReasoningExecutor.ObservedEvidenceDimension] = "$observed"
+        };
 
     private static LegendGovernedReasoningRule Rule(
         string signature,

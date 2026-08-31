@@ -19,7 +19,10 @@ namespace Infrastructure.Messaging;
 ///   reasoning.deduction.conditional.* conditional premises -> consequence
 ///   reasoning.epistemic.observational-equivalence.* shared evidence -> no selection
 ///   reasoning.epistemic.insufficient-evidence.*     governed insufficiency -> no selection
-///   reasoning.epistemic.discriminating-evidence.*  governed discriminator -> conclusion
+///   reasoning.causal-diagnostic.plan.*              hypotheses -> differing predictions/test
+///   reasoning.causal-diagnostic.conclude.*          discriminating observation -> cause
+///   reasoning.causal-diagnostic.contradictory-evidence.* incompatible observation -> uncertainty
+///   reasoning.causal-diagnostic.resource-limited.*  unavailable discriminator -> uncertainty
 /// The suffix is opaque curriculum meaning, allowing new skill domains without
 /// adding code or a topic router.
 /// </summary>
@@ -45,6 +48,34 @@ internal static class LegendConnectGovernedReasoningExecutor
     internal const string DiscriminatingEvidenceDimension = "discriminating_evidence";
     internal const string ConflictDimensionDimension = "conflict_dimension";
     internal const string MultipleConflictDimensionsValue = "multiple";
+    internal const string FirstHypothesisDimension = "first_hypothesis";
+    internal const string SecondHypothesisDimension = "second_hypothesis";
+    internal const string FirstPredictionDimension = "first_prediction";
+    internal const string SecondPredictionDimension = "second_prediction";
+    internal const string FirstPredictionHypothesisDimension = "first_prediction_hypothesis";
+    internal const string SecondPredictionHypothesisDimension = "second_prediction_hypothesis";
+    internal const string FirstPredictionEvidenceDimension = "first_prediction_evidence";
+    internal const string SecondPredictionEvidenceDimension = "second_prediction_evidence";
+    internal const string HypothesisStatusDimension = "hypothesis_status";
+    internal const string CompetingHypothesesValue = "competing";
+    internal const string PredictionStatusDimension = "prediction_status";
+    internal const string DifferingPredictionsValue = "differing";
+    internal const string SelectedDiscriminatingEvidenceDimension = "selected_discriminating_evidence";
+    internal const string ObservedEvidenceSourceDimension = "observed_evidence_source";
+    internal const string ObservedEvidenceDimension = "observed_evidence";
+    internal const string DiagnosticPlanStatusDimension = "diagnostic_plan_status";
+    internal const string DiscriminatingEvidenceSelectedValue = "discriminating_evidence_selected";
+    internal const string DiagnosticConclusionStatusDimension = "diagnostic_conclusion_status";
+    internal const string ContradictoryEvidenceValue = "contradictory_evidence";
+    internal const string ResourceLimitedValue = "resource_limited";
+    internal const string DiagnosticResourceDimension = "diagnostic_resource";
+    internal const string DiagnosticResourceStatusDimension = "diagnostic_resource_status";
+    internal const string ResourceUnavailableValue = "unavailable";
+    internal const string PrematureAttributionStatusDimension = "premature_attribution_status";
+    internal const string AttributionWithheldValue = "withheld";
+    internal const string CausalAttributionStatusDimension = "causal_attribution_status";
+    internal const string AttributionSupportedValue = "supported_by_discriminating_evidence";
+    internal const string ReassessHypothesesValue = "reassess_hypotheses";
 
     internal static bool IsExecutableOperatorIdentity(string? identity) =>
         ResolveMode(identity) is not null;
@@ -92,7 +123,8 @@ internal static class LegendConnectGovernedReasoningExecutor
                     rule.ResultSemanticFamilyIds,
                     rule.FamilyConnections,
                     false,
-                    false));
+                    false,
+                    ReasoningMode.Forward));
             }
             else if (mode == ReasoningMode.Bidirectional)
             {
@@ -104,7 +136,8 @@ internal static class LegendConnectGovernedReasoningExecutor
                     rule.ResultSemanticFamilyIds,
                     rule.FamilyConnections,
                     false,
-                    false));
+                    false,
+                    ReasoningMode.Bidirectional));
                 directional.Add(new DirectionalRule(
                     rule,
                     rule.ResultFrame,
@@ -116,14 +149,16 @@ internal static class LegendConnectGovernedReasoningExecutor
                         item.SourceSemanticFamilyId,
                         item.HasExplicitGovernedTransfer)).ToArray(),
                     true,
-                    false));
+                    false,
+                    ReasoningMode.Bidirectional));
             }
-            else if (mode == ReasoningMode.Deduction || IsEpistemicMode(mode))
+            else if (mode == ReasoningMode.Deduction ||
+                     IsEpistemicMode(mode) ||
+                     IsCausalDiagnosticMode(mode))
             {
-                // Governed deductive and epistemic rules are implications,
-                // never equivalences. No reverse DirectionalRule is created,
-                // so a conclusion cannot manufacture its premises merely
-                // because its result frame is present.
+                // Governed deductive, epistemic, and causal-diagnostic rules
+                // are implications, never equivalences. No reverse rule is
+                // created, so a conclusion cannot manufacture its premises.
                 directional.Add(new DirectionalRule(
                     rule,
                     rule.SourceFrame,
@@ -132,7 +167,8 @@ internal static class LegendConnectGovernedReasoningExecutor
                     rule.ResultSemanticFamilyIds,
                     rule.FamilyConnections,
                     false,
-                    true));
+                    true,
+                    mode!.Value));
             }
         }
 
@@ -189,6 +225,7 @@ internal static class LegendConnectGovernedReasoningExecutor
                         rule.ResultFrame,
                         current.Values,
                         rule.IsProofCarrying,
+                        rule.Mode,
                         out var nextValues,
                         out var instantiatedConclusions,
                         out var applicationConflicts))
@@ -347,6 +384,11 @@ internal static class LegendConnectGovernedReasoningExecutor
 
         if (IsEpistemicMode(mode) && !IsGovernedEpistemicRule(rule, mode!.Value))
             return false;
+        if (IsCausalDiagnosticMode(mode) &&
+            !IsGovernedCausalDiagnosticRule(rule, mode!.Value))
+        {
+            return false;
+        }
 
         if (rule.FamilyConnections.Count == 0 ||
             rule.FamilyConnections.Distinct().Count() != rule.FamilyConnections.Count ||
@@ -399,22 +441,227 @@ internal static class LegendConnectGovernedReasoningExecutor
                        EvidenceRequirementDimension,
                        DiscriminatingEvidenceValue);
         }
-        if (mode == ReasoningMode.DiscriminatingEvidence)
-        {
-            return rule.SourceFrame.TryGetValue(
-                       DiscriminatingEvidenceDimension,
-                       out var discriminator) &&
-                   !string.IsNullOrWhiteSpace(discriminator) &&
-                   HasSemanticValue(
-                       rule.ResultFrame,
-                       EpistemicStatusDimension,
-                       ResolvedByDiscriminatingEvidenceValue) &&
-                   rule.ResultFrame.TryGetValue(CauseSelectionDimension, out var selected) &&
-                   !string.IsNullOrWhiteSpace(selected) &&
-                   !string.Equals(selected, UndeterminedValue, StringComparison.OrdinalIgnoreCase);
-        }
         return false;
     }
+
+    private static bool IsGovernedCausalDiagnosticRule(
+        LegendGovernedReasoningRule rule,
+        ReasoningMode mode)
+    {
+        if (!HasSemanticDimensions(
+                rule.SourceFrame,
+                FirstHypothesisDimension,
+                SecondHypothesisDimension,
+                FirstPredictionDimension,
+                SecondPredictionDimension,
+                FirstPredictionHypothesisDimension,
+                SecondPredictionHypothesisDimension,
+                FirstPredictionEvidenceDimension,
+                SecondPredictionEvidenceDimension) ||
+            !HasSemanticFlow(
+                rule.SourceFrame,
+                FirstHypothesisDimension,
+                rule.SourceFrame,
+                FirstPredictionHypothesisDimension) ||
+            !HasSemanticFlow(
+                rule.SourceFrame,
+                SecondHypothesisDimension,
+                rule.SourceFrame,
+                SecondPredictionHypothesisDimension))
+        {
+            return false;
+        }
+
+        if (mode == ReasoningMode.CausalDiagnosticPlan)
+        {
+            return HasSemanticDimensions(rule.SourceFrame, DiscriminatingEvidenceDimension) &&
+                   HasPredictionEvidenceFlow(
+                       rule.SourceFrame,
+                       DiscriminatingEvidenceDimension) &&
+                   HasSemanticValue(
+                       rule.ResultFrame,
+                       HypothesisStatusDimension,
+                       CompetingHypothesesValue) &&
+                   HasSemanticValue(
+                       rule.ResultFrame,
+                       PredictionStatusDimension,
+                       DifferingPredictionsValue) &&
+                   HasSemanticValue(
+                       rule.ResultFrame,
+                       DiagnosticPlanStatusDimension,
+                       DiscriminatingEvidenceSelectedValue) &&
+                   HasSemanticValue(
+                       rule.ResultFrame,
+                       PrematureAttributionStatusDimension,
+                       AttributionWithheldValue) &&
+                   HasSemanticFlow(
+                       rule.SourceFrame,
+                       DiscriminatingEvidenceDimension,
+                       rule.ResultFrame,
+                       SelectedDiscriminatingEvidenceDimension) &&
+                   !rule.ResultFrame.ContainsKey(CauseSelectionDimension);
+        }
+
+        if (mode == ReasoningMode.CausalDiagnosticConclusion)
+        {
+            return HasSemanticDimensions(
+                       rule.SourceFrame,
+                       SelectedDiscriminatingEvidenceDimension,
+                       ObservedEvidenceSourceDimension,
+                       ObservedEvidenceDimension) &&
+                   HasPredictionEvidenceFlow(
+                       rule.SourceFrame,
+                       SelectedDiscriminatingEvidenceDimension) &&
+                   HasSemanticValue(
+                       rule.SourceFrame,
+                       PredictionStatusDimension,
+                       DifferingPredictionsValue) &&
+                   HasSemanticFlow(
+                       rule.SourceFrame,
+                       SelectedDiscriminatingEvidenceDimension,
+                       rule.SourceFrame,
+                       ObservedEvidenceSourceDimension) &&
+                   HasSemanticValue(
+                       rule.ResultFrame,
+                       DiagnosticConclusionStatusDimension,
+                       ResolvedByDiscriminatingEvidenceValue) &&
+                   HasSemanticValue(
+                       rule.ResultFrame,
+                       CausalAttributionStatusDimension,
+                       AttributionSupportedValue) &&
+                   HasOneHypothesisSelectionFlow(rule);
+        }
+
+        if (mode == ReasoningMode.CausalDiagnosticContradictoryEvidence)
+        {
+            return HasSemanticDimensions(
+                       rule.SourceFrame,
+                       SelectedDiscriminatingEvidenceDimension,
+                       ObservedEvidenceSourceDimension,
+                       ObservedEvidenceDimension) &&
+                   HasPredictionEvidenceFlow(
+                       rule.SourceFrame,
+                       SelectedDiscriminatingEvidenceDimension) &&
+                   HasSemanticValue(
+                       rule.SourceFrame,
+                       PredictionStatusDimension,
+                       DifferingPredictionsValue) &&
+                   HasSemanticFlow(
+                       rule.SourceFrame,
+                       SelectedDiscriminatingEvidenceDimension,
+                       rule.SourceFrame,
+                       ObservedEvidenceSourceDimension) &&
+                   HasSemanticValue(
+                       rule.ResultFrame,
+                       DiagnosticConclusionStatusDimension,
+                       ContradictoryEvidenceValue) &&
+                   IsGovernedNonSelectionResult(
+                       rule.ResultFrame,
+                       ReassessHypothesesValue,
+                       includeUnresolvedContradiction: true);
+        }
+
+        if (mode == ReasoningMode.CausalDiagnosticResourceLimited)
+        {
+            return HasSemanticDimensions(
+                       rule.SourceFrame,
+                       SelectedDiscriminatingEvidenceDimension,
+                       DiagnosticResourceDimension) &&
+                   HasPredictionEvidenceFlow(
+                       rule.SourceFrame,
+                       SelectedDiscriminatingEvidenceDimension) &&
+                   HasSemanticValue(
+                       rule.SourceFrame,
+                       PredictionStatusDimension,
+                       DifferingPredictionsValue) &&
+                   HasSemanticValue(
+                       rule.SourceFrame,
+                       DiagnosticResourceStatusDimension,
+                       ResourceUnavailableValue) &&
+                   HasSemanticFlow(
+                       rule.SourceFrame,
+                       SelectedDiscriminatingEvidenceDimension,
+                       rule.SourceFrame,
+                       DiagnosticResourceDimension) &&
+                   HasSemanticValue(
+                       rule.ResultFrame,
+                       DiagnosticConclusionStatusDimension,
+                       ResourceLimitedValue) &&
+                   IsGovernedNonSelectionResult(
+                       rule.ResultFrame,
+                       DiscriminatingEvidenceValue,
+                       includeUnresolvedContradiction: false);
+        }
+
+        return false;
+    }
+
+    private static bool HasPredictionEvidenceFlow(
+        IReadOnlyDictionary<string, string> sourceFrame,
+        string evidenceDimension) =>
+        HasSemanticFlow(
+            sourceFrame,
+            evidenceDimension,
+            sourceFrame,
+            FirstPredictionEvidenceDimension) &&
+        HasSemanticFlow(
+            sourceFrame,
+            evidenceDimension,
+            sourceFrame,
+            SecondPredictionEvidenceDimension);
+
+    private static bool IsGovernedNonSelectionResult(
+        IReadOnlyDictionary<string, string> resultFrame,
+        string evidenceRequirement,
+        bool includeUnresolvedContradiction) =>
+        HasSemanticValue(
+            resultFrame,
+            HypothesisStatusDimension,
+            CompetingHypothesesValue) &&
+        HasSemanticValue(
+            resultFrame,
+            CauseSelectionDimension,
+            UndeterminedValue) &&
+        HasSemanticValue(
+            resultFrame,
+            PrematureAttributionStatusDimension,
+            AttributionWithheldValue) &&
+        HasSemanticValue(
+            resultFrame,
+            EvidenceRequirementDimension,
+            evidenceRequirement) &&
+        (!includeUnresolvedContradiction || HasSemanticValue(
+            resultFrame,
+            EpistemicStatusDimension,
+            UnresolvedContradictionValue));
+
+    private static bool HasOneHypothesisSelectionFlow(LegendGovernedReasoningRule rule) =>
+        HasSemanticFlow(
+            rule.SourceFrame,
+            FirstHypothesisDimension,
+            rule.ResultFrame,
+            CauseSelectionDimension) ^
+        HasSemanticFlow(
+            rule.SourceFrame,
+            SecondHypothesisDimension,
+            rule.ResultFrame,
+            CauseSelectionDimension);
+
+    private static bool HasSemanticDimensions(
+        IReadOnlyDictionary<string, string> frame,
+        params string[] dimensions) =>
+        dimensions.All(dimension => frame.TryGetValue(dimension, out var value) &&
+            !string.IsNullOrWhiteSpace(value));
+
+    private static bool HasSemanticFlow(
+        IReadOnlyDictionary<string, string> sourceFrame,
+        string sourceDimension,
+        IReadOnlyDictionary<string, string> resultFrame,
+        string resultDimension) =>
+        sourceFrame.TryGetValue(sourceDimension, out var sourceValue) &&
+        resultFrame.TryGetValue(resultDimension, out var resultValue) &&
+        !string.IsNullOrWhiteSpace(sourceValue) &&
+        string.Equals(sourceValue, resultValue, StringComparison.OrdinalIgnoreCase);
 
     private static bool HasSemanticValue(
         IReadOnlyDictionary<string, string> frame,
@@ -522,9 +769,9 @@ internal static class LegendConnectGovernedReasoningExecutor
             .ToArray();
         var comparison = existing.EvidenceStandard.CompareTo(proposed.EvidenceStandard);
         var lacksDiscriminatingEvidence =
-            (IsNonSelectingEpistemicOperator(existing.OperatorIdentity) &&
+            (IsNonDispositiveOperator(existing.OperatorIdentity) &&
              !IsDiscriminatingEvidenceOperator(proposed.OperatorIdentity)) ||
-            (IsNonSelectingEpistemicOperator(proposed.OperatorIdentity) &&
+            (IsNonDispositiveOperator(proposed.OperatorIdentity) &&
              !IsDiscriminatingEvidenceOperator(existing.OperatorIdentity));
         var resolution = lacksDiscriminatingEvidence
             ? LegendGovernedReasoningConflictResolution.UnresolvedWithoutDiscriminatingEvidence
@@ -566,12 +813,14 @@ internal static class LegendConnectGovernedReasoningExecutor
     private static string ConflictSideIdentity(LegendGovernedReasoningConflictSide side) =>
         side.TransitionSignature + "\u001e" + side.SemanticValue.Trim().ToLowerInvariant();
 
-    private static bool IsNonSelectingEpistemicOperator(string identity) =>
+    private static bool IsNonDispositiveOperator(string identity) =>
         ResolveMode(identity) is ReasoningMode.ObservationalEquivalence or
-            ReasoningMode.InsufficientEvidence;
+            ReasoningMode.InsufficientEvidence or
+            ReasoningMode.CausalDiagnosticContradictoryEvidence or
+            ReasoningMode.CausalDiagnosticResourceLimited;
 
     private static bool IsDiscriminatingEvidenceOperator(string identity) =>
-        ResolveMode(identity) == ReasoningMode.DiscriminatingEvidence;
+        ResolveMode(identity) == ReasoningMode.CausalDiagnosticConclusion;
 
     private static bool IsUnresolvedConflict(LegendGovernedReasoningConflict conflict) =>
         conflict.Resolution != LegendGovernedReasoningConflictResolution.ResolvedByHigherStandard;
@@ -681,6 +930,7 @@ internal static class LegendConnectGovernedReasoningExecutor
         IReadOnlyDictionary<string, string> resultFrame,
         IReadOnlyDictionary<string, string> currentValues,
         bool requireMonotonicConclusion,
+        ReasoningMode mode,
         out IReadOnlyDictionary<string, string> nextValues,
         out IReadOnlyDictionary<string, string> instantiatedConclusions,
         out IReadOnlyList<ReasoningApplicationConflict> conflicts)
@@ -713,6 +963,14 @@ internal static class LegendConnectGovernedReasoningExecutor
             conclusions[item.Key] = value;
         }
 
+        if (IsCausalDiagnosticMode(mode) &&
+            !IsValidCausalDiagnosticApplication(mode, currentValues, conclusions))
+        {
+            nextValues = currentValues;
+            instantiatedConclusions = conclusions;
+            return false;
+        }
+
         if (requireMonotonicConclusion)
         {
             conflicts = conclusions
@@ -741,6 +999,121 @@ internal static class LegendConnectGovernedReasoningExecutor
             CanonicalState(currentValues),
             CanonicalState(next),
             StringComparison.Ordinal);
+    }
+
+    private static bool IsValidCausalDiagnosticApplication(
+        ReasoningMode mode,
+        IReadOnlyDictionary<string, string> currentValues,
+        IReadOnlyDictionary<string, string> conclusions)
+    {
+        if (!TryGetSemanticValue(currentValues, FirstHypothesisDimension, out var firstHypothesis) ||
+            !TryGetSemanticValue(currentValues, SecondHypothesisDimension, out var secondHypothesis) ||
+            !TryGetSemanticValue(currentValues, FirstPredictionDimension, out var firstPrediction) ||
+            !TryGetSemanticValue(currentValues, SecondPredictionDimension, out var secondPrediction) ||
+            !HasMatchingCurrentValues(
+                currentValues,
+                FirstHypothesisDimension,
+                FirstPredictionHypothesisDimension) ||
+            !HasMatchingCurrentValues(
+                currentValues,
+                SecondHypothesisDimension,
+                SecondPredictionHypothesisDimension) ||
+            string.Equals(firstHypothesis, secondHypothesis, StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        var predictionsDiffer = !string.Equals(
+            firstPrediction,
+            secondPrediction,
+            StringComparison.OrdinalIgnoreCase);
+        if (!predictionsDiffer)
+            return false;
+
+        if (mode == ReasoningMode.CausalDiagnosticPlan)
+        {
+            return HasMatchingCurrentValues(
+                       currentValues,
+                       DiscriminatingEvidenceDimension,
+                       FirstPredictionEvidenceDimension) &&
+                   HasMatchingCurrentValues(
+                       currentValues,
+                       DiscriminatingEvidenceDimension,
+                       SecondPredictionEvidenceDimension);
+        }
+
+        if (!HasMatchingCurrentValues(
+                currentValues,
+                SelectedDiscriminatingEvidenceDimension,
+                FirstPredictionEvidenceDimension) ||
+            !HasMatchingCurrentValues(
+                currentValues,
+                SelectedDiscriminatingEvidenceDimension,
+                SecondPredictionEvidenceDimension))
+        {
+            return false;
+        }
+
+        if (mode == ReasoningMode.CausalDiagnosticResourceLimited)
+        {
+            return HasMatchingCurrentValues(
+                       currentValues,
+                       SelectedDiscriminatingEvidenceDimension,
+                       DiagnosticResourceDimension) &&
+                   HasSemanticValue(
+                       currentValues,
+                       DiagnosticResourceStatusDimension,
+                       ResourceUnavailableValue);
+        }
+
+        if (!HasMatchingCurrentValues(
+                currentValues,
+                SelectedDiscriminatingEvidenceDimension,
+                ObservedEvidenceSourceDimension) ||
+            !TryGetSemanticValue(currentValues, ObservedEvidenceDimension, out var observed))
+        {
+            return false;
+        }
+
+        var supportsFirst = string.Equals(
+            observed,
+            firstPrediction,
+            StringComparison.OrdinalIgnoreCase);
+        var supportsSecond = string.Equals(
+            observed,
+            secondPrediction,
+            StringComparison.OrdinalIgnoreCase);
+        if (mode == ReasoningMode.CausalDiagnosticContradictoryEvidence)
+            return !supportsFirst && !supportsSecond;
+        if (mode != ReasoningMode.CausalDiagnosticConclusion || supportsFirst == supportsSecond ||
+            !TryGetSemanticValue(conclusions, CauseSelectionDimension, out var selected))
+        {
+            return false;
+        }
+
+        return string.Equals(
+            selected,
+            supportsFirst ? firstHypothesis : secondHypothesis,
+            StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool HasMatchingCurrentValues(
+        IReadOnlyDictionary<string, string> values,
+        string firstDimension,
+        string secondDimension) =>
+        TryGetSemanticValue(values, firstDimension, out var first) &&
+        TryGetSemanticValue(values, secondDimension, out var second) &&
+        string.Equals(first, second, StringComparison.OrdinalIgnoreCase);
+
+    private static bool TryGetSemanticValue(
+        IReadOnlyDictionary<string, string> values,
+        string dimension,
+        out string value)
+    {
+        if (values.TryGetValue(dimension, out value!) && !string.IsNullOrWhiteSpace(value))
+            return true;
+        value = string.Empty;
+        return false;
     }
 
     private static bool ViolatesConstraint(
@@ -847,16 +1220,30 @@ internal static class LegendConnectGovernedReasoningExecutor
         if (value == "reasoning.epistemic.insufficient-evidence" ||
             value.StartsWith("reasoning.epistemic.insufficient-evidence.", StringComparison.Ordinal))
             return ReasoningMode.InsufficientEvidence;
-        if (value == "reasoning.epistemic.discriminating-evidence" ||
-            value.StartsWith("reasoning.epistemic.discriminating-evidence.", StringComparison.Ordinal))
-            return ReasoningMode.DiscriminatingEvidence;
+        if (value == "reasoning.causal-diagnostic.plan" ||
+            value.StartsWith("reasoning.causal-diagnostic.plan.", StringComparison.Ordinal))
+            return ReasoningMode.CausalDiagnosticPlan;
+        if (value == "reasoning.causal-diagnostic.conclude" ||
+            value.StartsWith("reasoning.causal-diagnostic.conclude.", StringComparison.Ordinal))
+            return ReasoningMode.CausalDiagnosticConclusion;
+        if (value == "reasoning.causal-diagnostic.contradictory-evidence" ||
+            value.StartsWith("reasoning.causal-diagnostic.contradictory-evidence.", StringComparison.Ordinal))
+            return ReasoningMode.CausalDiagnosticContradictoryEvidence;
+        if (value == "reasoning.causal-diagnostic.resource-limited" ||
+            value.StartsWith("reasoning.causal-diagnostic.resource-limited.", StringComparison.Ordinal))
+            return ReasoningMode.CausalDiagnosticResourceLimited;
         return null;
     }
 
     private static bool IsEpistemicMode(ReasoningMode? mode) =>
         mode is ReasoningMode.ObservationalEquivalence or
-            ReasoningMode.InsufficientEvidence or
-            ReasoningMode.DiscriminatingEvidence;
+            ReasoningMode.InsufficientEvidence;
+
+    private static bool IsCausalDiagnosticMode(ReasoningMode? mode) =>
+        mode is ReasoningMode.CausalDiagnosticPlan or
+            ReasoningMode.CausalDiagnosticConclusion or
+            ReasoningMode.CausalDiagnosticContradictoryEvidence or
+            ReasoningMode.CausalDiagnosticResourceLimited;
 
     private enum ReasoningMode
     {
@@ -866,7 +1253,10 @@ internal static class LegendConnectGovernedReasoningExecutor
         Deduction,
         ObservationalEquivalence,
         InsufficientEvidence,
-        DiscriminatingEvidence
+        CausalDiagnosticPlan,
+        CausalDiagnosticConclusion,
+        CausalDiagnosticContradictoryEvidence,
+        CausalDiagnosticResourceLimited
     }
 
     private sealed record DirectionalRule(
@@ -877,7 +1267,8 @@ internal static class LegendConnectGovernedReasoningExecutor
         IReadOnlySet<Guid> ResultSemanticFamilyIds,
         IReadOnlyList<LegendGovernedReasoningFamilyConnection> FamilyConnections,
         bool Reversed,
-        bool IsProofCarrying);
+        bool IsProofCarrying,
+        ReasoningMode Mode);
 
     private sealed record ReasoningApplicationConflict(
         string SemanticDimension,
