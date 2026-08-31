@@ -374,6 +374,10 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
                     item.Provenance ==
                         LegendConnectKnowledgeProvenance
                             .SystemValidatedMachine &&
+                    item.CriticApproved &&
+                    item.CanonicalValidationAttemptCount > 0 &&
+                    item.CanonicalValidatedUtc != null &&
+                    item.CanonicalValidationFailureCode == null &&
                     item.CurriculumAdmissionAttemptCount <
                         maximumAttempts &&
                     (
@@ -405,6 +409,10 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
                             item.Provenance ==
                                 LegendConnectKnowledgeProvenance
                                     .SystemValidatedMachine &&
+                            item.CriticApproved &&
+                            item.CanonicalValidationAttemptCount > 0 &&
+                            item.CanonicalValidatedUtc != null &&
+                            item.CanonicalValidationFailureCode == null &&
                             item.CurriculumAdmissionAttemptCount <
                                 maximumAttempts &&
                             (
@@ -442,6 +450,10 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
                     item.Provenance ==
                         LegendConnectKnowledgeProvenance
                             .SystemValidatedMachine &&
+                    item.CriticApproved &&
+                    item.CanonicalValidationAttemptCount > 0 &&
+                    item.CanonicalValidatedUtc != null &&
+                    item.CanonicalValidationFailureCode == null &&
                     item.CurriculumAdmissionAttemptCount <
                         maximumAttempts &&
                     (
@@ -493,9 +505,13 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
                 proposal.Provenance,
                 LegendConnectKnowledgeProvenance
                     .SystemValidatedMachine,
-                StringComparison.Ordinal))
+                StringComparison.Ordinal) ||
+            !proposal.CriticApproved ||
+            proposal.CanonicalValidationAttemptCount < 1 ||
+            proposal.CanonicalValidatedUtc is null ||
+            proposal.CanonicalValidationFailureCode is not null)
         {
-            return "machine_proposal_provenance_invalid";
+            return "machine_proposal_canonical_validation_invalid";
         }
 
         LegendLanguageTeacherFamilyProposal? machineFamily;
@@ -609,91 +625,21 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
                 return "machine_curriculum_example_invalid";
             }
 
-            var variations =
-                new Dictionary<string, string>(
-                    StringComparer.Ordinal);
-
-            foreach (var component in example.Components)
-            {
-                var dimension =
-                    NormalizeDimension(component.Dimension);
-
-                var value =
-                    NormalizeOptional(component.Value, 160);
-
-                var surface =
-                    LegendLanguageIdentity.NormalizeText(
-                        component.SurfaceForm);
-
-                if (dimension is null ||
-                    value is null ||
-                    string.IsNullOrWhiteSpace(surface) ||
-                    !variations.TryAdd(dimension, value))
-                {
-                    return "machine_curriculum_component_invalid";
-                }
-            }
-
-            // Recheck the existing canonical semantic authority immediately
-            // before persistence. Phase-4 validation cannot be silently
-            // inherited after the evidence graph changes.
+            // Phase 4 is the sole canonical validator. Phase 5 reuses only
+            // the curriculum authority's deterministic span normalization so
+            // a held-out surface can be persisted with the exact validated
+            // component coordinates. It does not impose the removed exact-
+            // preexistence gate or reinterpret semantic authority.
             var understanding =
-                await AnalyzeShadowSourceSemanticsAsync(
-                    sourceLanguage,
-                    sourceText,
-                    cancellationToken);
+                NormalizeMachineTeachingExampleSemantics(example);
+            if (understanding is null)
+                return "machine_curriculum_validated_spans_invalid";
 
-            if (!string.Equals(
-                    understanding.State,
-                    LegendShadowSourceUnderstanding
-                        .SupportedForShadowEvaluation,
-                    StringComparison.Ordinal))
-            {
-                return "machine_curriculum_semantics_no_longer_supported";
-            }
-
-            var proposed =
-                example.Components
-                    .Select(item =>
-                        (
-                            Dimension:
-                                item.Dimension.Trim()
-                                    .ToLowerInvariant(),
-                            Value:
-                                item.Value.Trim()
-                                    .ToLowerInvariant(),
-                            Surface:
-                                LegendLanguageIdentity
-                                    .NormalizeText(
-                                        item.SurfaceForm)
-                                    .ToLowerInvariant()))
-                    .OrderBy(item => item.Dimension)
-                    .ThenBy(item => item.Value)
-                    .ThenBy(item => item.Surface)
-                    .ToArray();
-
-            var established =
-                understanding.Components
-                    .Select(item =>
-                        (
-                            Dimension:
-                                item.Dimension.Trim()
-                                    .ToLowerInvariant(),
-                            Value:
-                                item.Value.Trim()
-                                    .ToLowerInvariant(),
-                            Surface:
-                                LegendLanguageIdentity
-                                    .NormalizeText(
-                                        item.SurfaceForm)
-                                    .ToLowerInvariant()))
-                    .OrderBy(item => item.Dimension)
-                    .ThenBy(item => item.Value)
-                    .ThenBy(item => item.Surface)
-                    .ToArray();
-
-            if (!proposed.SequenceEqual(established))
-                return "machine_curriculum_semantic_drift";
+            var variations = understanding.Components
+                .ToDictionary(
+                    item => item.Dimension,
+                    item => item.Value,
+                    StringComparer.Ordinal);
 
             prepared.Add(
                 (
@@ -3247,6 +3193,82 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
                     item.Result.Serialized))
                 .OrderBy(item => item, StringComparer.Ordinal)
                 .ToArray());
+    }
+
+    /// <summary>
+    /// Normalizes one proposed example through the curriculum authority's
+    /// existing token and semantic-identity rules. This proves only that the
+    /// declared components occupy unique, non-overlapping controlled spans;
+    /// it does not establish their meaning, validate a proposal, or authorize
+    /// admission. The canonical validator supplies those governed checks.
+    /// </summary>
+    internal static LegendShadowSourceUnderstanding?
+        NormalizeMachineTeachingExampleSemantics(
+            LegendLanguageTeacherExampleProposal example)
+    {
+        var sourceText = LegendLanguageIdentity.NormalizeText(
+            example.SourceText);
+        if (string.IsNullOrWhiteSpace(sourceText) ||
+            sourceText.Length > 10_000 ||
+            example.Components is null ||
+            example.Components.Count is < 1 or > 16)
+        {
+            return null;
+        }
+
+        var components =
+            new List<LegendShadowSourceSemanticComponent>(
+                example.Components.Count);
+        var semanticSignatures = new HashSet<string>(
+            StringComparer.Ordinal);
+        var occupiedTokens = new HashSet<int>();
+
+        foreach (var component in example.Components)
+        {
+            var dimension = NormalizeDimension(component.Dimension);
+            var value = NormalizeOptional(component.Value, 240);
+            var surface = NormalizeOptional(component.SurfaceForm, 500);
+            if (dimension is null ||
+                value is null ||
+                surface is null ||
+                !TryFindUniqueSurfaceSpan(
+                    sourceText,
+                    surface,
+                    out var startTokenIndex,
+                    out var tokenLength))
+            {
+                return null;
+            }
+
+            var semanticSignature = SemanticSignature(
+                dimension,
+                value);
+            if (!semanticSignatures.Add(semanticSignature) ||
+                Enumerable.Range(startTokenIndex, tokenLength)
+                    .Any(token => !occupiedTokens.Add(token)))
+            {
+                return null;
+            }
+
+            components.Add(
+                new LegendShadowSourceSemanticComponent(
+                    dimension,
+                    value,
+                    LegendLanguageIdentity.NormalizeText(surface),
+                    startTokenIndex,
+                    tokenLength,
+                    semanticSignature));
+        }
+
+        return new LegendShadowSourceUnderstanding(
+            LegendShadowSourceUnderstanding
+                .SupportedForShadowEvaluation,
+            false,
+            components
+                .OrderBy(item => item.StartTokenIndex)
+                .ThenBy(item => item.TokenLength)
+                .ToArray(),
+            ["machine_proposal_controlled_spans_normalized"]);
     }
 
     internal Task<LegendShadowSourceUnderstanding> AnalyzeSemanticTransitionSourceSemanticsAsync(

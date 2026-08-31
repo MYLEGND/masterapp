@@ -3404,145 +3404,20 @@ internal sealed class LegendConnectAutonomousLearningService
                 return true;
             }
 
-            foreach (var example in family.Examples)
+            var canonicalValidation =
+                await ValidateCanonicalMachineProposalAsync(
+                    candidate,
+                    proposal,
+                    family,
+                    cancellationToken);
+            if (!canonicalValidation.Succeeded)
             {
-                if (string.IsNullOrWhiteSpace(example.SourceText) ||
-                    example.Components is null ||
-                    example.Components.Count is < 1 or > 16)
-                {
-                    await CompleteCanonicalLanguageProposalAsync(
-                        proposal,
-                        "Rejected",
-                        "canonical_example_payload_invalid",
-                        cancellationToken);
-                    return true;
-                }
-
-                var understanding =
-                    await _curriculum!.AnalyzeShadowSourceSemanticsAsync(
-                        proposal.SourceLanguageCode,
-                        example.SourceText,
-                        cancellationToken);
-
-                if (string.Equals(
-                        understanding.State,
-                        LegendShadowSourceUnderstanding.Ambiguous,
-                        StringComparison.Ordinal))
-                {
-                    await CompleteCanonicalLanguageProposalAsync(
-                        proposal,
-                        "Rejected",
-                        "canonical_source_semantics_ambiguous",
-                        cancellationToken);
-                    return true;
-                }
-
-                if (!string.Equals(
-                        understanding.State,
-                        LegendShadowSourceUnderstanding
-                            .SupportedForShadowEvaluation,
-                        StringComparison.Ordinal))
-                {
-                    await CompleteCanonicalLanguageProposalAsync(
-                        proposal,
-                        "InsufficientEvidence",
-                        "canonical_source_semantics_insufficient",
-                        cancellationToken);
-                    return true;
-                }
-
-                var proposedComponents = example.Components
-                    .Select(item => CanonicalMachineComponentIdentity(
-                        item.Dimension,
-                        item.Value,
-                        item.SurfaceForm))
-                    .OrderBy(item => item, StringComparer.Ordinal)
-                    .ToArray();
-
-                var establishedComponents = understanding.Components
-                    .Select(item => CanonicalMachineComponentIdentity(
-                        item.Dimension,
-                        item.Value,
-                        item.SurfaceForm))
-                    .OrderBy(item => item, StringComparer.Ordinal)
-                    .ToArray();
-
-                if (proposedComponents.Length !=
-                        proposedComponents
-                            .Distinct(StringComparer.Ordinal)
-                            .Count() ||
-                    !proposedComponents.SequenceEqual(
-                        establishedComponents,
-                        StringComparer.Ordinal))
-                {
-                    await CompleteCanonicalLanguageProposalAsync(
-                        proposal,
-                        "Rejected",
-                        "canonical_semantic_component_mismatch",
-                        cancellationToken);
-                    return true;
-                }
-
-                // A null target remains a source-only machine proposal and is
-                // not allowed to invent a target. When a target is supplied,
-                // require the existing Founder-backed directional formulation
-                // authority to independently produce that exact target.
-                if (!string.IsNullOrWhiteSpace(example.TargetText))
-                {
-                    var formulation =
-                        await _curriculum.FormulateShadowTargetAsync(
-                            proposal.SourceLanguageCode,
-                            proposal.TargetLanguageCode,
-                            example.SourceText,
-                            cancellationToken);
-
-                    if (string.Equals(
-                            formulation.State,
-                            LegendShadowTargetFormulation.Ambiguous,
-                            StringComparison.Ordinal) ||
-                        string.Equals(
-                            formulation.State,
-                            LegendShadowTargetFormulation.Contradicted,
-                            StringComparison.Ordinal))
-                    {
-                        await CompleteCanonicalLanguageProposalAsync(
-                            proposal,
-                            "Rejected",
-                            "canonical_target_formulation_contradicted",
-                            cancellationToken);
-                        return true;
-                    }
-
-                    if (!string.Equals(
-                            formulation.State,
-                            LegendShadowTargetFormulation
-                                .SupportedForShadowEvaluation,
-                            StringComparison.Ordinal) ||
-                        string.IsNullOrWhiteSpace(formulation.Text))
-                    {
-                        await CompleteCanonicalLanguageProposalAsync(
-                            proposal,
-                            "InsufficientEvidence",
-                            "canonical_target_formulation_insufficient",
-                            cancellationToken);
-                        return true;
-                    }
-
-                    if (!string.Equals(
-                            LegendLanguageIdentity.NormalizeText(
-                                formulation.Text),
-                            LegendLanguageIdentity.NormalizeText(
-                                example.TargetText),
-                            StringComparison.OrdinalIgnoreCase))
-                    {
-                        await CompleteCanonicalLanguageProposalAsync(
-                            proposal,
-                            "Rejected",
-                            "canonical_target_text_mismatch",
-                            cancellationToken);
-                        return true;
-                    }
-                }
+                await CompleteCanonicalLanguageProposalAsync(
+                    proposal,
+                    canonicalValidation.State,
+                    canonicalValidation.FailureCode!,
+                    cancellationToken);
+                return true;
             }
 
             // Phase 4 admits only the proposal artifact into the governed
@@ -3566,7 +3441,7 @@ internal sealed class LegendConnectAutonomousLearningService
                 proposal.SourceLanguageCode,
                 proposal.PairKey,
                 null,
-                "The exact machine proposal and its original governed evidence lineage passed existing LEGEND semantic and directional validation gates. No curriculum or corpus knowledge was written.",
+                "The critic-approved machine proposal passed governed definition, constraint, contradiction, family, contrast, transition, and held-out validation. No curriculum or corpus knowledge was written.",
                 cancellationToken);
 
             return true;
@@ -3616,6 +3491,466 @@ internal sealed class LegendConnectAutonomousLearningService
 
             return true;
         }
+    }
+
+    private async Task<CanonicalMachineProposalValidation>
+        ValidateCanonicalMachineProposalAsync(
+            LegendCorpusCandidate candidate,
+            LegendLanguageTeacherProposal proposal,
+            LegendLanguageTeacherFamilyProposal family,
+            CancellationToken cancellationToken)
+    {
+        var proposedLineage = LegendConnectCurriculumService
+            .NormalizeMachineTeachingSemanticLineage(family);
+        if (proposedLineage is null)
+        {
+            return CanonicalMachineProposalValidation.Rejected(
+                "canonical_semantic_lineage_invalid");
+        }
+
+        LegendCurriculumFamily? governedFamily;
+        if (candidate.CurriculumFamilyId is Guid familyId)
+        {
+            governedFamily = await _db.Set<LegendCurriculumFamily>()
+                .AsNoTracking()
+                .SingleOrDefaultAsync(
+                    item => item.Id == familyId,
+                    cancellationToken);
+        }
+        else
+        {
+            var matches = await _db.Set<LegendCurriculumFamily>()
+                .AsNoTracking()
+                .Where(item =>
+                    item.FamilyKey == proposedLineage.FamilyKey)
+                .Take(2)
+                .ToListAsync(cancellationToken);
+            governedFamily = matches.Count == 1
+                ? matches[0]
+                : null;
+        }
+
+        var governedCategory = governedFamily is null ||
+            string.IsNullOrWhiteSpace(governedFamily.SemanticCategory)
+                ? governedFamily?.FamilyKey
+                : governedFamily.SemanticCategory.Trim();
+        if (governedFamily is null ||
+            !string.Equals(
+                governedFamily.Provenance,
+                LegendConnectKnowledgeProvenance.FounderApproved,
+                StringComparison.Ordinal) ||
+            !string.Equals(
+                governedFamily.FamilyKey,
+                proposedLineage.FamilyKey,
+                StringComparison.Ordinal) ||
+            !string.Equals(
+                governedCategory,
+                proposedLineage.SemanticCategory,
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return CanonicalMachineProposalValidation.Rejected(
+                "canonical_founder_family_lineage_unproven");
+        }
+
+        var governedExamples = await _db
+            .Set<LegendCurriculumExample>()
+            .AsNoTracking()
+            .Where(item =>
+                item.CurriculumFamilyId == governedFamily.Id &&
+                item.LanguageCode == proposal.SourceLanguageCode &&
+                item.SupersededUtc == null &&
+                item.Provenance ==
+                    LegendConnectKnowledgeProvenance.FounderApproved)
+            .Select(item => item.Id)
+            .ToListAsync(cancellationToken);
+        if (governedExamples.Count < 2)
+        {
+            return CanonicalMachineProposalValidation.Insufficient(
+                "canonical_founder_family_examples_insufficient");
+        }
+
+        var governedAnchors = await _db
+            .Set<LegendLanguageCompositionalAnchor>()
+            .AsNoTracking()
+            .Where(item =>
+                governedExamples.Contains(item.CurriculumExampleId) &&
+                item.CurriculumFamilyId == governedFamily.Id &&
+                item.LanguageCode == proposal.SourceLanguageCode &&
+                item.SupersededUtc == null &&
+                item.SemanticSignature != null &&
+                item.SemanticSignature != string.Empty &&
+                item.Provenance ==
+                    LegendConnectKnowledgeProvenance.FounderApproved)
+            .Select(item => new
+            {
+                item.CurriculumExampleId,
+                item.Dimension,
+                item.Value,
+                SemanticSignature = item.SemanticSignature!
+            })
+            .Distinct()
+            .ToListAsync(cancellationToken);
+        if (governedAnchors.Count == 0)
+        {
+            return CanonicalMachineProposalValidation.Insufficient(
+                "canonical_founder_definitions_insufficient");
+        }
+
+        var definitions = governedAnchors
+            .GroupBy(item => item.SemanticSignature, StringComparer.Ordinal)
+            .ToDictionary(
+                group => group.Key,
+                group => group
+                    .Select(item => CanonicalMachineDefinitionIdentity(
+                        item.Dimension,
+                        item.Value))
+                    .Distinct(StringComparer.Ordinal)
+                    .ToArray(),
+                StringComparer.Ordinal);
+        if (definitions.Values.Any(item => item.Length != 1))
+        {
+            return CanonicalMachineProposalValidation.Rejected(
+                "canonical_founder_definition_contradicted");
+        }
+
+        var governedProfiles = governedAnchors
+            .GroupBy(item => item.CurriculumExampleId)
+            .ToDictionary(
+                group => group.Key,
+                group => CanonicalMachineProfile(
+                    group.Select(item => item.SemanticSignature)));
+        var governedProfileSet = governedProfiles.Values
+            .ToHashSet(StringComparer.Ordinal);
+
+        var contrastRows = await _db
+            .Set<LegendLanguageStructuralEvidence>()
+            .AsNoTracking()
+            .Where(item =>
+                item.CurriculumFamilyId == governedFamily.Id &&
+                item.LanguageCode == proposal.SourceLanguageCode &&
+                item.PairKey == string.Empty &&
+                governedExamples.Contains(
+                    item.BaselineCurriculumExampleId) &&
+                governedExamples.Contains(
+                    item.ComparedCurriculumExampleId) &&
+                item.SupersededUtc == null &&
+                item.IsHumanVerifiedSupport &&
+                item.Provenance ==
+                    LegendConnectKnowledgeProvenance.FounderApproved)
+            .Select(item => new
+            {
+                item.BaselineCurriculumExampleId,
+                item.ComparedCurriculumExampleId,
+                item.ContributionState
+            })
+            .ToListAsync(cancellationToken);
+
+        var supportedContrasts = new HashSet<string>(
+            StringComparer.Ordinal);
+        var contradictedContrasts = new HashSet<string>(
+            StringComparer.Ordinal);
+        foreach (var contrast in contrastRows)
+        {
+            if (!governedProfiles.TryGetValue(
+                    contrast.BaselineCurriculumExampleId,
+                    out var baselineProfile) ||
+                !governedProfiles.TryGetValue(
+                    contrast.ComparedCurriculumExampleId,
+                    out var comparedProfile))
+            {
+                continue;
+            }
+
+            var contrastIdentity = CanonicalMachineContrastIdentity(
+                baselineProfile,
+                comparedProfile);
+            if (string.Equals(
+                    contrast.ContributionState,
+                    "Supported",
+                    StringComparison.Ordinal))
+            {
+                supportedContrasts.Add(contrastIdentity);
+            }
+            else if (string.Equals(
+                         contrast.ContributionState,
+                         "Contradictory",
+                         StringComparison.Ordinal))
+            {
+                contradictedContrasts.Add(contrastIdentity);
+            }
+        }
+
+        var proposedProfiles = proposedLineage.Examples
+            .Select(item => CanonicalMachineProfile(
+                item.PrimitiveSignatures))
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+        if (proposedProfiles.Length < 2)
+        {
+            return CanonicalMachineProposalValidation.Rejected(
+                "canonical_controlled_contrast_missing");
+        }
+        if (proposedProfiles.Any(
+                item => !governedProfileSet.Contains(item)))
+        {
+            return CanonicalMachineProposalValidation.Rejected(
+                "canonical_semantic_profile_outside_founder_family");
+        }
+
+        foreach (var profile in proposedProfiles)
+        {
+            var peerIdentities = proposedProfiles
+                .Where(item => !string.Equals(
+                    item,
+                    profile,
+                    StringComparison.Ordinal))
+                .Select(item => CanonicalMachineContrastIdentity(
+                    profile,
+                    item))
+                .ToArray();
+            if (peerIdentities.Any(
+                    contradictedContrasts.Contains))
+            {
+                return CanonicalMachineProposalValidation.Rejected(
+                    "canonical_controlled_contrast_contradicted");
+            }
+            if (!peerIdentities.Any(supportedContrasts.Contains))
+            {
+                return CanonicalMachineProposalValidation.Insufficient(
+                    "canonical_controlled_contrast_insufficient");
+            }
+        }
+
+        if (proposedLineage.TransitionSignatures.Count > 0)
+        {
+            var proposedTransitionSignatures =
+                proposedLineage.TransitionSignatures.ToArray();
+            var transitionStates = await _db
+                .Set<LegendSemanticTransitionEvidence>()
+                .AsNoTracking()
+                .Where(item =>
+                    governedExamples.Contains(
+                        item.SourceCurriculumExampleId) &&
+                    governedExamples.Contains(
+                        item.ResultCurriculumExampleId) &&
+                    item.SourceLanguageCode ==
+                        proposal.SourceLanguageCode &&
+                    item.ResultLanguageCode ==
+                        proposal.SourceLanguageCode &&
+                    proposedTransitionSignatures.Contains(
+                        item.TransitionSignature) &&
+                    item.SupersededUtc == null &&
+                    item.IsHumanVerifiedSupport &&
+                    item.Provenance ==
+                        LegendConnectKnowledgeProvenance.FounderApproved)
+                .Select(item => new
+                {
+                    item.TransitionSignature,
+                    item.ContributionState
+                })
+                .ToListAsync(cancellationToken);
+            if (transitionStates.Any(item => string.Equals(
+                    item.ContributionState,
+                    "Contradictory",
+                    StringComparison.Ordinal)))
+            {
+                return CanonicalMachineProposalValidation.Rejected(
+                    "canonical_semantic_transition_contradicted");
+            }
+
+            var supportedTransitions = transitionStates
+                .Where(item => string.Equals(
+                    item.ContributionState,
+                    "Supported",
+                    StringComparison.Ordinal))
+                .Select(item => item.TransitionSignature)
+                .ToHashSet(StringComparer.Ordinal);
+            if (proposedTransitionSignatures.Any(
+                    item => !supportedTransitions.Contains(item)))
+            {
+                return CanonicalMachineProposalValidation.Insufficient(
+                    "canonical_semantic_transition_unsupported");
+            }
+        }
+
+        var containsNovelBehavior = false;
+        foreach (var example in family.Examples)
+        {
+            var normalized = LegendConnectCurriculumService
+                .NormalizeMachineTeachingExampleSemantics(example);
+            if (normalized is null)
+            {
+                return CanonicalMachineProposalValidation.Rejected(
+                    "canonical_example_constraints_invalid");
+            }
+
+            var normalizedProfile = CanonicalMachineProfile(
+                normalized.Components.Select(item =>
+                    item.SemanticSignature));
+            if (!governedProfileSet.Contains(normalizedProfile) ||
+                normalized.Components.Any(component =>
+                    !definitions.TryGetValue(
+                        component.SemanticSignature,
+                        out var definition) ||
+                    definition.Length != 1 ||
+                    !string.Equals(
+                        definition[0],
+                        CanonicalMachineDefinitionIdentity(
+                            component.Dimension,
+                            component.Value),
+                        StringComparison.Ordinal)))
+            {
+                return CanonicalMachineProposalValidation.Rejected(
+                    "canonical_semantic_definition_unsupported");
+            }
+
+            var established = await _curriculum!
+                .AnalyzeShadowSourceSemanticsAsync(
+                    proposal.SourceLanguageCode,
+                    example.SourceText,
+                    cancellationToken);
+            if (string.Equals(
+                    established.State,
+                    LegendShadowSourceUnderstanding.Ambiguous,
+                    StringComparison.Ordinal))
+            {
+                return CanonicalMachineProposalValidation.Rejected(
+                    "canonical_source_semantics_ambiguous");
+            }
+            if (string.Equals(
+                    established.State,
+                    LegendShadowSourceUnderstanding
+                        .SupportedForShadowEvaluation,
+                    StringComparison.Ordinal))
+            {
+                var proposedComponents = normalized.Components
+                    .Select(item => CanonicalMachineComponentIdentity(
+                        item.Dimension,
+                        item.Value,
+                        item.SurfaceForm))
+                    .OrderBy(item => item, StringComparer.Ordinal)
+                    .ToArray();
+                var establishedComponents = established.Components
+                    .Select(item => CanonicalMachineComponentIdentity(
+                        item.Dimension,
+                        item.Value,
+                        item.SurfaceForm))
+                    .OrderBy(item => item, StringComparer.Ordinal)
+                    .ToArray();
+                if (!proposedComponents.SequenceEqual(
+                        establishedComponents,
+                        StringComparer.Ordinal))
+                {
+                    return CanonicalMachineProposalValidation.Rejected(
+                        "canonical_source_semantics_contradicted");
+                }
+            }
+            else
+            {
+                // The surface sentence itself is intentionally held out. Its
+                // semantic profile is authorized by independent Founder
+                // definitions and contrasts above, not by exact preexistence.
+                containsNovelBehavior = true;
+            }
+
+            if (!string.IsNullOrWhiteSpace(example.TargetText))
+            {
+                var normalizedTarget =
+                    LegendLanguageIdentity.NormalizeText(
+                        example.TargetText);
+                if (string.IsNullOrWhiteSpace(normalizedTarget) ||
+                    normalizedTarget.Length > 10_000)
+                {
+                    return CanonicalMachineProposalValidation.Rejected(
+                        "canonical_target_constraints_invalid");
+                }
+
+                var formulation = await _curriculum
+                    .FormulateShadowTargetAsync(
+                        proposal.SourceLanguageCode,
+                        proposal.TargetLanguageCode,
+                        example.SourceText,
+                        cancellationToken);
+                if (string.Equals(
+                        formulation.State,
+                        LegendShadowTargetFormulation.Ambiguous,
+                        StringComparison.Ordinal) ||
+                    string.Equals(
+                        formulation.State,
+                        LegendShadowTargetFormulation.Contradicted,
+                        StringComparison.Ordinal))
+                {
+                    return CanonicalMachineProposalValidation.Rejected(
+                        "canonical_target_formulation_contradicted");
+                }
+                if (string.Equals(
+                        formulation.State,
+                        LegendShadowTargetFormulation
+                            .SupportedForShadowEvaluation,
+                        StringComparison.Ordinal))
+                {
+                    if (string.IsNullOrWhiteSpace(formulation.Text) ||
+                        !string.Equals(
+                            LegendLanguageIdentity.NormalizeText(
+                                formulation.Text),
+                            normalizedTarget,
+                            StringComparison.OrdinalIgnoreCase))
+                    {
+                        return CanonicalMachineProposalValidation.Rejected(
+                            "canonical_target_text_contradicted");
+                    }
+                }
+                else
+                {
+                    containsNovelBehavior = true;
+                }
+            }
+        }
+
+        return containsNovelBehavior
+            ? CanonicalMachineProposalValidation.Accepted()
+            : CanonicalMachineProposalValidation.Rejected(
+                "canonical_proposal_already_known");
+    }
+
+    private static string CanonicalMachineDefinitionIdentity(
+        string dimension,
+        string value) =>
+        string.Join(
+            "|",
+            dimension.Trim().ToLowerInvariant(),
+            value.Trim().ToLowerInvariant());
+
+    private static string CanonicalMachineProfile(
+        IEnumerable<string> semanticSignatures) =>
+        string.Join(
+            "|",
+            semanticSignatures
+                .Distinct(StringComparer.Ordinal)
+                .OrderBy(item => item, StringComparer.Ordinal));
+
+    private static string CanonicalMachineContrastIdentity(
+        string firstProfile,
+        string secondProfile) =>
+        string.CompareOrdinal(firstProfile, secondProfile) <= 0
+            ? firstProfile + "\n↔\n" + secondProfile
+            : secondProfile + "\n↔\n" + firstProfile;
+
+    private sealed record CanonicalMachineProposalValidation(
+        bool Succeeded,
+        string State,
+        string? FailureCode)
+    {
+        internal static CanonicalMachineProposalValidation Accepted() =>
+            new(true, "SystemValidated", null);
+
+        internal static CanonicalMachineProposalValidation Rejected(
+            string failureCode) =>
+            new(false, "Rejected", failureCode);
+
+        internal static CanonicalMachineProposalValidation Insufficient(
+            string failureCode) =>
+            new(false, "InsufficientEvidence", failureCode);
     }
 
     private async Task<LegendLanguageTeacherProposal?>
