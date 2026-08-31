@@ -767,6 +767,95 @@ public sealed class LegendFounderAiModeIsolationTests
         Assert.Equal(1, handler.RequestCount);
     }
 
+    [Fact]
+    public async Task ProviderCatalogAcceptanceRequest_SerializesCompleteValidatedCatalogAndDisablesToolExecution()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var operations = new Mock<ILegendConnectOperations>(MockBehavior.Strict);
+        var handler = new FounderAiScenarioHandler(
+            ProviderAccepted("PROVIDER_CATALOG_ACCEPTED"));
+        var profiles = new AgentProfileAccessResolver(db);
+        var legend = new FounderLegendConnectService(
+            operations.Object,
+            profiles);
+        var service = new LegendFounderAiConversationService(
+            new FounderAiHttpClientFactory(handler),
+            new ConfigurationBuilder()
+                .AddInMemoryCollection(new Dictionary<string, string?>
+                {
+                    ["OpenAI:ApiKey"] = "test-only-key",
+                    ["OpenAI:LegendFounderAiModel"] = "gpt-5"
+                })
+                .Build(),
+            legend,
+            NullLogger<LegendFounderAiConversationService>.Instance,
+            new LegendFounderAiDiscourseStateService(
+                db,
+                profiles,
+                operations.Object));
+
+        var responseId =
+            await service.VerifyProviderToolCatalogAcceptanceAsync();
+
+        Assert.Equal("resp_provider_catalog_accepted", responseId);
+        var requestBody = Assert.Single(handler.RequestBodies);
+        using var requestDocument = JsonDocument.Parse(requestBody);
+        var request = requestDocument.RootElement;
+        Assert.False(request.GetProperty("store").GetBoolean());
+        Assert.Equal("none", request.GetProperty("tool_choice").GetString());
+        Assert.False(request.GetProperty("parallel_tool_calls").GetBoolean());
+
+        var expectedTools = new LegendFounderToolAuthority(legend, null).Tools;
+        using var expectedDocument = JsonDocument.Parse(
+            JsonSerializer.Serialize(expectedTools));
+        Assert.Equal(
+            expectedDocument.RootElement.GetRawText(),
+            request.GetProperty("tools").GetRawText());
+        Assert.Empty(operations.Invocations);
+    }
+
+    [Fact]
+    public async Task ProviderAcceptanceCanary_LiveProviderAcceptsCompleteZeroWriteCatalog()
+    {
+        if (!string.Equals(
+                Environment.GetEnvironmentVariable(
+                    "LEGEND_FOUNDER_TOOL_CATALOG_PROVIDER_CANARY"),
+                "true",
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        var configuration = new ConfigurationBuilder()
+            .AddEnvironmentVariables()
+            .Build();
+        Assert.False(string.IsNullOrWhiteSpace(configuration["OpenAI:ApiKey"]));
+
+        await using var db = ControllerTestHelpers.BuildDb();
+        var operations = new Mock<ILegendConnectOperations>(MockBehavior.Strict);
+        var profiles = new AgentProfileAccessResolver(db);
+        var legend = new FounderLegendConnectService(
+            operations.Object,
+            profiles);
+        using var factory = new LiveOpenAiHttpClientFactory();
+        var service = new LegendFounderAiConversationService(
+            factory,
+            configuration,
+            legend,
+            NullLogger<LegendFounderAiConversationService>.Instance,
+            new LegendFounderAiDiscourseStateService(
+                db,
+                profiles,
+                operations.Object));
+
+        var responseId =
+            await service.VerifyProviderToolCatalogAcceptanceAsync();
+
+        Assert.False(string.IsNullOrWhiteSpace(responseId));
+        Console.WriteLine($"ProviderAcceptanceResponseId={responseId}");
+        Assert.Empty(operations.Invocations);
+    }
+
     private static LegendFounderAiConversationService CreateService(
         Infrastructure.Data.MasterAppDbContext db,
         ILegendConnectOperations operations,
@@ -930,6 +1019,24 @@ public sealed class LegendFounderAiModeIsolationTests
             }
         });
 
+    private static HttpResponseMessage ProviderAccepted(string text) =>
+        ProviderResponse(new
+        {
+            id = "resp_provider_catalog_accepted",
+            status = "completed",
+            output = new[]
+            {
+                new
+                {
+                    type = "message",
+                    content = new[]
+                    {
+                        new { type = "output_text", text }
+                    }
+                }
+            }
+        });
+
     private static HttpResponseMessage ProviderResponse(
         object payload,
         HttpStatusCode status = HttpStatusCode.OK) =>
@@ -974,6 +1081,8 @@ public sealed class LegendFounderAiModeIsolationTests
 
         public int RequestCount { get; private set; }
 
+        public List<string> RequestBodies { get; } = [];
+
         protected override async Task<HttpResponseMessage> SendAsync(
             HttpRequestMessage request,
             CancellationToken cancellationToken)
@@ -981,6 +1090,10 @@ public sealed class LegendFounderAiModeIsolationTests
             RequestCount++;
             Assert.Equal(HttpMethod.Post, request.Method);
             Assert.Equal("/v1/responses", request.RequestUri!.AbsolutePath);
+            RequestBodies.Add(
+                request.Content is null
+                    ? string.Empty
+                    : await request.Content.ReadAsStringAsync(cancellationToken));
             if (_responses.Count == 0)
                 throw new InvalidOperationException("No OpenAI response was queued for this test.");
 
@@ -989,6 +1102,22 @@ public sealed class LegendFounderAiModeIsolationTests
 
             return _responses.Dequeue();
         }
+    }
+
+    private sealed class LiveOpenAiHttpClientFactory : IHttpClientFactory, IDisposable
+    {
+        private readonly HttpClient _client = new()
+        {
+            BaseAddress = new Uri("https://api.openai.com/")
+        };
+
+        public HttpClient CreateClient(string name)
+        {
+            Assert.Equal("OpenAI", name);
+            return _client;
+        }
+
+        public void Dispose() => _client.Dispose();
     }
 
     private sealed class FounderEnvironmentScope : IDisposable

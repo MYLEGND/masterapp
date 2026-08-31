@@ -18,6 +18,21 @@ internal sealed class LegendFounderToolAuthority
     private const int MaximumSemanticFrameDimensionLength = 80;
     private const int MaximumSemanticFrameValueLength = 160;
 
+    private static readonly string[] RequiredFunctionToolProperties =
+    [
+        "type",
+        "name",
+        "description",
+        "parameters",
+        "strict"
+    ];
+
+    private static readonly string[] RequiredWebSearchToolProperties =
+    [
+        "type",
+        "search_context_size"
+    ];
+
     private readonly FounderLegendConnectService _legend;
     private readonly IFounderSoftwareRemediationService? _softwareRemediation;
 
@@ -826,7 +841,7 @@ internal sealed class LegendFounderToolAuthority
 
     private static IReadOnlyList<object> BuildFounderTools()
     {
-        return
+        IReadOnlyList<object> tools =
         [
             new
             {
@@ -1532,7 +1547,520 @@ internal sealed class LegendFounderToolAuthority
                 strict = true
             }
         ];
+
+        var validationErrors =
+            ValidateSerializedToolCatalog(tools);
+        if (validationErrors.Count > 0)
+        {
+            throw new InvalidOperationException(
+                "The LEGEND Founder tool catalog violates the strict provider contract: " +
+                string.Join(" | ", validationErrors));
+        }
+
+        return tools;
     }
+
+    internal static IReadOnlyList<string> ValidateSerializedToolCatalog(
+        IReadOnlyList<object> tools)
+    {
+        ArgumentNullException.ThrowIfNull(tools);
+
+        using var document =
+            JsonSerializer.SerializeToDocument(
+                tools,
+                JsonOptions);
+        var errors = new List<string>();
+        var root = document.RootElement;
+        if (root.ValueKind != JsonValueKind.Array)
+        {
+            return ["$: the Founder tool catalog must serialize as an array."];
+        }
+
+        if (root.GetArrayLength() == 0)
+            errors.Add("$: the Founder tool catalog must not be empty.");
+
+        var functionNames = new HashSet<string>(StringComparer.Ordinal);
+        var index = 0;
+        foreach (var tool in root.EnumerateArray())
+        {
+            var path = $"$[{index}]";
+            index++;
+            if (tool.ValueKind != JsonValueKind.Object)
+            {
+                errors.Add($"{path}: a provider tool must be an object.");
+                continue;
+            }
+
+            if (!tool.TryGetProperty("type", out var typeElement) ||
+                typeElement.ValueKind != JsonValueKind.String ||
+                string.IsNullOrWhiteSpace(typeElement.GetString()))
+            {
+                errors.Add($"{path}.type: a nonblank provider tool type is required.");
+                continue;
+            }
+
+            var toolType = typeElement.GetString();
+            if (string.Equals(toolType, "web_search", StringComparison.Ordinal))
+            {
+                ValidateClosedToolObject(
+                    tool,
+                    path,
+                    RequiredWebSearchToolProperties,
+                    errors);
+                if (tool.TryGetProperty("search_context_size", out var searchContext) &&
+                    (searchContext.ValueKind != JsonValueKind.String ||
+                     searchContext.GetString() is not ("low" or "medium" or "high")))
+                {
+                    errors.Add(
+                        $"{path}.search_context_size: expected low, medium, or high.");
+                }
+
+                continue;
+            }
+
+            if (!string.Equals(toolType, "function", StringComparison.Ordinal))
+            {
+                errors.Add($"{path}.type: unsupported provider tool type '{toolType}'.");
+                continue;
+            }
+
+            ValidateClosedToolObject(
+                tool,
+                path,
+                RequiredFunctionToolProperties,
+                errors);
+
+            if (!tool.TryGetProperty("name", out var nameElement) ||
+                nameElement.ValueKind != JsonValueKind.String ||
+                string.IsNullOrWhiteSpace(nameElement.GetString()))
+            {
+                errors.Add($"{path}.name: a nonblank function name is required.");
+            }
+            else if (!functionNames.Add(nameElement.GetString()!))
+            {
+                errors.Add($"{path}.name: duplicate function name '{nameElement.GetString()}'.");
+            }
+
+            if (!tool.TryGetProperty("description", out var descriptionElement) ||
+                descriptionElement.ValueKind != JsonValueKind.String ||
+                string.IsNullOrWhiteSpace(descriptionElement.GetString()))
+            {
+                errors.Add($"{path}.description: a nonblank function description is required.");
+            }
+
+            if (!tool.TryGetProperty("strict", out var strictElement) ||
+                strictElement.ValueKind is not JsonValueKind.True)
+            {
+                errors.Add($"{path}.strict: every Founder function must be strict.");
+            }
+
+            if (!tool.TryGetProperty("parameters", out var parametersElement) ||
+                parametersElement.ValueKind != JsonValueKind.Object)
+            {
+                errors.Add($"{path}.parameters: a schema object is required.");
+                continue;
+            }
+
+            ValidateStrictSchema(
+                parametersElement,
+                $"{path}.parameters",
+                errors,
+                requireNonNullableObject: true);
+        }
+
+        return errors
+            .OrderBy(error => error, StringComparer.Ordinal)
+            .ToArray();
+    }
+
+    private static void ValidateClosedToolObject(
+        JsonElement tool,
+        string path,
+        IReadOnlyCollection<string> expectedProperties,
+        ICollection<string> errors)
+    {
+        var actualProperties = tool
+            .EnumerateObject()
+            .Select(property => property.Name)
+            .ToHashSet(StringComparer.Ordinal);
+        var expected = expectedProperties.ToHashSet(StringComparer.Ordinal);
+        if (actualProperties.SetEquals(expected))
+            return;
+
+        errors.Add(
+            $"{path}: provider tool properties must be exactly [{string.Join(", ", expected.OrderBy(value => value, StringComparer.Ordinal))}].");
+    }
+
+    private static void ValidateStrictSchema(
+        JsonElement schema,
+        string path,
+        ICollection<string> errors,
+        bool requireNonNullableObject = false)
+    {
+        if (schema.ValueKind != JsonValueKind.Object)
+        {
+            errors.Add($"{path}: a schema must be an object.");
+            return;
+        }
+
+        foreach (var keyword in schema.EnumerateObject())
+        {
+            if (!IsSupportedStrictSchemaKeyword(keyword.Name))
+            {
+                errors.Add(
+                    $"{path}.{keyword.Name}: keyword is not supported by the Founder provider schema contract.");
+            }
+        }
+
+        var types = ReadStrictSchemaTypes(schema, path, errors);
+        if (types.Count == 0)
+            return;
+
+        var nonNullTypes = types
+            .Where(type => !string.Equals(type, "null", StringComparison.Ordinal))
+            .ToArray();
+        if (requireNonNullableObject &&
+            (types.Count != 1 ||
+             nonNullTypes.Length != 1 ||
+             !string.Equals(nonNullTypes[0], "object", StringComparison.Ordinal)))
+        {
+            errors.Add($"{path}.type: strict function parameters must be a non-nullable object.");
+        }
+
+        var isObject = nonNullTypes.Contains("object", StringComparer.Ordinal);
+        var isArray = nonNullTypes.Contains("array", StringComparer.Ordinal);
+        var isString = nonNullTypes.Contains("string", StringComparer.Ordinal);
+        var isNumeric = nonNullTypes.Any(type => type is "number" or "integer");
+
+        ValidateKeywordApplicability(
+            schema,
+            path,
+            errors,
+            isObject,
+            isArray,
+            isString,
+            isNumeric);
+
+        if (isObject)
+            ValidateStrictObjectSchema(schema, path, errors);
+
+        if (isArray)
+            ValidateStrictArraySchema(schema, path, errors);
+
+        if (isString)
+        {
+            ValidateNonnegativeIntegerBounds(
+                schema,
+                path,
+                "minLength",
+                "maxLength",
+                errors);
+        }
+
+        if (isArray)
+        {
+            ValidateNonnegativeIntegerBounds(
+                schema,
+                path,
+                "minItems",
+                "maxItems",
+                errors);
+        }
+
+        if (isNumeric)
+            ValidateNumericBounds(schema, path, errors);
+
+        if (schema.TryGetProperty("description", out var description) &&
+            description.ValueKind != JsonValueKind.String)
+        {
+            errors.Add($"{path}.description: expected a string.");
+        }
+
+        if (schema.TryGetProperty("enum", out var enumElement))
+            ValidateEnum(enumElement, types, path, errors);
+    }
+
+    private static HashSet<string> ReadStrictSchemaTypes(
+        JsonElement schema,
+        string path,
+        ICollection<string> errors)
+    {
+        var types = new HashSet<string>(StringComparer.Ordinal);
+        if (!schema.TryGetProperty("type", out var typeElement))
+        {
+            errors.Add($"{path}.type: a schema type is required.");
+            return types;
+        }
+
+        if (typeElement.ValueKind == JsonValueKind.String)
+        {
+            AddSchemaType(typeElement, path, types, errors);
+            if (types.Contains("null"))
+                errors.Add($"{path}.type: null cannot be the only schema type.");
+            return types;
+        }
+
+        if (typeElement.ValueKind != JsonValueKind.Array)
+        {
+            errors.Add($"{path}.type: expected a supported type string or nullable type array.");
+            return types;
+        }
+
+        foreach (var item in typeElement.EnumerateArray())
+            AddSchemaType(item, path, types, errors);
+
+        if (typeElement.GetArrayLength() != 2 ||
+            types.Count != 2 ||
+            !types.Contains("null"))
+        {
+            errors.Add(
+                $"{path}.type: nullable schemas must contain exactly one supported non-null type and null.");
+        }
+
+        return types;
+    }
+
+    private static void AddSchemaType(
+        JsonElement typeElement,
+        string path,
+        ISet<string> types,
+        ICollection<string> errors)
+    {
+        if (typeElement.ValueKind != JsonValueKind.String ||
+            string.IsNullOrWhiteSpace(typeElement.GetString()))
+        {
+            errors.Add($"{path}.type: every type entry must be a nonblank string.");
+            return;
+        }
+
+        var type = typeElement.GetString()!;
+        if (!IsSupportedStrictSchemaType(type))
+        {
+            errors.Add($"{path}.type: unsupported schema type '{type}'.");
+            return;
+        }
+
+        if (!types.Add(type))
+            errors.Add($"{path}.type: duplicate schema type '{type}'.");
+    }
+
+    private static void ValidateKeywordApplicability(
+        JsonElement schema,
+        string path,
+        ICollection<string> errors,
+        bool isObject,
+        bool isArray,
+        bool isString,
+        bool isNumeric)
+    {
+        foreach (var property in schema.EnumerateObject())
+        {
+            var applicable = property.Name switch
+            {
+                "properties" or "required" or "additionalProperties" => isObject,
+                "items" or "minItems" or "maxItems" => isArray,
+                "minLength" or "maxLength" => isString,
+                "minimum" or "maximum" => isNumeric,
+                _ => true
+            };
+
+            if (!applicable)
+            {
+                errors.Add(
+                    $"{path}.{property.Name}: keyword does not apply to the declared schema type.");
+            }
+        }
+    }
+
+    private static void ValidateStrictObjectSchema(
+        JsonElement schema,
+        string path,
+        ICollection<string> errors)
+    {
+        if (!schema.TryGetProperty("properties", out var properties) ||
+            properties.ValueKind != JsonValueKind.Object)
+        {
+            errors.Add($"{path}.properties: every strict object requires a properties object.");
+            return;
+        }
+
+        if (!schema.TryGetProperty("additionalProperties", out var additionalProperties) ||
+            additionalProperties.ValueKind is not JsonValueKind.False)
+        {
+            errors.Add($"{path}.additionalProperties: every strict object must be closed with false.");
+        }
+
+        var propertyNames = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var property in properties.EnumerateObject())
+        {
+            if (string.IsNullOrWhiteSpace(property.Name))
+                errors.Add($"{path}.properties: blank property names are not supported.");
+            propertyNames.Add(property.Name);
+            ValidateStrictSchema(
+                property.Value,
+                $"{path}.properties.{property.Name}",
+                errors);
+        }
+
+        if (!schema.TryGetProperty("required", out var required) ||
+            required.ValueKind != JsonValueKind.Array)
+        {
+            errors.Add($"{path}.required: every strict object requires a required array.");
+            return;
+        }
+
+        var requiredNames = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var requiredName in required.EnumerateArray())
+        {
+            if (requiredName.ValueKind != JsonValueKind.String ||
+                string.IsNullOrWhiteSpace(requiredName.GetString()))
+            {
+                errors.Add($"{path}.required: entries must be nonblank strings.");
+                continue;
+            }
+
+            if (!requiredNames.Add(requiredName.GetString()!))
+            {
+                errors.Add(
+                    $"{path}.required: duplicate entry '{requiredName.GetString()}'.");
+            }
+        }
+
+        if (!requiredNames.SetEquals(propertyNames))
+        {
+            errors.Add(
+                $"{path}.required: required names must exactly match properties; properties=[{string.Join(", ", propertyNames.OrderBy(value => value, StringComparer.Ordinal))}], required=[{string.Join(", ", requiredNames.OrderBy(value => value, StringComparer.Ordinal))}].");
+        }
+    }
+
+    private static void ValidateStrictArraySchema(
+        JsonElement schema,
+        string path,
+        ICollection<string> errors)
+    {
+        if (!schema.TryGetProperty("items", out var items) ||
+            items.ValueKind != JsonValueKind.Object)
+        {
+            errors.Add($"{path}.items: every array requires one item schema object.");
+            return;
+        }
+
+        ValidateStrictSchema(
+            items,
+            $"{path}.items",
+            errors);
+    }
+
+    private static void ValidateNonnegativeIntegerBounds(
+        JsonElement schema,
+        string path,
+        string minimumName,
+        string maximumName,
+        ICollection<string> errors)
+    {
+        var hasMinimum = schema.TryGetProperty(minimumName, out var minimumElement);
+        var hasMaximum = schema.TryGetProperty(maximumName, out var maximumElement);
+        var minimum = 0;
+        var maximum = 0;
+        var minimumValid = !hasMinimum ||
+            minimumElement.TryGetInt32(out minimum) && minimum >= 0;
+        var maximumValid = !hasMaximum ||
+            maximumElement.TryGetInt32(out maximum) && maximum >= 0;
+
+        if (!minimumValid)
+            errors.Add($"{path}.{minimumName}: expected a nonnegative integer.");
+        if (!maximumValid)
+            errors.Add($"{path}.{maximumName}: expected a nonnegative integer.");
+        if (hasMinimum && hasMaximum && minimumValid && maximumValid && minimum > maximum)
+        {
+            errors.Add($"{path}: {minimumName} cannot exceed {maximumName}.");
+        }
+    }
+
+    private static void ValidateNumericBounds(
+        JsonElement schema,
+        string path,
+        ICollection<string> errors)
+    {
+        var hasMinimum = schema.TryGetProperty("minimum", out var minimumElement);
+        var hasMaximum = schema.TryGetProperty("maximum", out var maximumElement);
+        decimal minimum = 0;
+        decimal maximum = 0;
+        var minimumValid = !hasMinimum || minimumElement.TryGetDecimal(out minimum);
+        var maximumValid = !hasMaximum || maximumElement.TryGetDecimal(out maximum);
+
+        if (!minimumValid)
+            errors.Add($"{path}.minimum: expected a finite JSON number.");
+        if (!maximumValid)
+            errors.Add($"{path}.maximum: expected a finite JSON number.");
+        if (hasMinimum && hasMaximum && minimumValid && maximumValid && minimum > maximum)
+            errors.Add($"{path}: minimum cannot exceed maximum.");
+    }
+
+    private static void ValidateEnum(
+        JsonElement enumElement,
+        IReadOnlySet<string> types,
+        string path,
+        ICollection<string> errors)
+    {
+        if (enumElement.ValueKind != JsonValueKind.Array ||
+            enumElement.GetArrayLength() == 0)
+        {
+            errors.Add($"{path}.enum: expected a nonempty array.");
+            return;
+        }
+
+        var values = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var item in enumElement.EnumerateArray())
+        {
+            var itemType = item.ValueKind switch
+            {
+                JsonValueKind.String => "string",
+                JsonValueKind.Number => "number",
+                JsonValueKind.True or JsonValueKind.False => "boolean",
+                JsonValueKind.Null => "null",
+                _ => string.Empty
+            };
+            var numericCompatible =
+                string.Equals(itemType, "number", StringComparison.Ordinal) &&
+                types.Contains("integer") &&
+                item.TryGetInt64(out _);
+            if (string.IsNullOrEmpty(itemType) ||
+                (!types.Contains(itemType) && !numericCompatible))
+            {
+                errors.Add($"{path}.enum: value {item.GetRawText()} does not match the declared type.");
+            }
+
+            if (!values.Add(item.GetRawText()))
+                errors.Add($"{path}.enum: duplicate value {item.GetRawText()}.");
+        }
+    }
+
+    private static bool IsSupportedStrictSchemaKeyword(string keyword) =>
+        keyword is
+            "type" or
+            "description" or
+            "properties" or
+            "required" or
+            "additionalProperties" or
+            "items" or
+            "enum" or
+            "minLength" or
+            "maxLength" or
+            "minimum" or
+            "maximum" or
+            "minItems" or
+            "maxItems";
+
+    private static bool IsSupportedStrictSchemaType(string type) =>
+        type is
+            "string" or
+            "number" or
+            "integer" or
+            "boolean" or
+            "object" or
+            "array" or
+            "null";
 
     internal static int ResolveRetainedKnowledgeTake(string query)
     {

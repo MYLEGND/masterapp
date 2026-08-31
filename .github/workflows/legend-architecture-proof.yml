@@ -63,6 +63,7 @@ jobs:
           grep -q 'LegendConnectDiscourseReferenceBindingTests' legend-architecture-discovery.log
           grep -q 'LegendConnectModelEvaluationTests' legend-architecture-discovery.log
           grep -q 'LegendConnectModelTraining' legend-architecture-discovery.log
+          grep -q 'FounderToolCatalog_SerializedContractIsRecursivelyProviderValid' legend-architecture-discovery.log
 
       - name: Run complete regression suite
         run: dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-build --logger "trx;LogFileName=legend-complete-regression.trx"
@@ -77,7 +78,7 @@ jobs:
         run: dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-build --filter "FullyQualifiedName~LegendConnectModelEvaluationTests|FullyQualifiedName~LegendConnectModelTrainingTests|FullyQualifiedName~LegendConnectTrainingDatasetCompilerTests|FullyQualifiedName~LegendConnectModelTrainingLifecycleTests|FullyQualifiedName~LegendConnectModelPromotionTests|FullyQualifiedName~LegendConnectProductionNeuralRoutingTests" --logger "trx;LogFileName=legend-model-proof.trx"
 
       - name: Run Founder tool authority proof
-        run: dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-build --filter "FullyQualifiedName~FounderCapabilities_AreDiscoveredFromTheExecutableToolRegistry|FullyQualifiedName~ComprehensiveInspection_RequiresMultipleDistinctEvidenceAuthorities|FullyQualifiedName~RetainedKnowledgeTakeScalesButRemainsBounded" --logger "trx;LogFileName=legend-tool-authority-proof.trx"
+        run: dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-build --filter "FullyQualifiedName~FounderToolCatalog_SerializedContractIsRecursivelyProviderValid|FullyQualifiedName~FounderCapabilities_AreDiscoveredFromTheExecutableToolRegistry|FullyQualifiedName~ComprehensiveInspection_RequiresMultipleDistinctEvidenceAuthorities|FullyQualifiedName~RetainedKnowledgeTakeScalesButRemainsBounded" --logger "trx;LogFileName=legend-tool-authority-proof.trx"
 
       - name: Run architectural takeover gate proof
         run: dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-build --filter "FullyQualifiedName~IntelligenceEvaluation_BlocksTakeoverClaimUntilEveryDomainBeatsOneLockedBaseline|FullyQualifiedName~LegendBlindComparativeBenchmarkTests" --logger "trx;LogFileName=legend-takeover-gate-proof.trx"

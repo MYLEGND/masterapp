@@ -49,6 +49,8 @@ public sealed class LegendFounderAiConversationService
     private const int MaximumProviderCooldownSeconds = 300;
     private const int MaximumTransientProviderAttempts = 3;
     private const int MaximumDiscourseObservationSeconds = 2;
+    private const int ProviderToolCatalogAcceptanceSeconds = 30;
+    private const int ProviderToolCatalogAcceptanceOutputTokens = 64;
 
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly IConfiguration _configuration;
@@ -110,6 +112,61 @@ public sealed class LegendFounderAiConversationService
             NormalizeServiceTier(
                 configuration[
                     "OpenAI:LegendFounderAiServiceTier"]);
+    }
+
+    internal async Task<string> VerifyProviderToolCatalogAcceptanceAsync(
+        CancellationToken cancellationToken = default)
+    {
+        // This is the existing Responses executor with its normal complete
+        // registry. store=false and catalogAcceptanceOnly keep every tool
+        // visible to schema validation while making execution impossible.
+        var apiKey = OpenAiKeyResolver.Resolve(_configuration);
+        if (string.IsNullOrWhiteSpace(apiKey))
+        {
+            throw new InvalidOperationException(
+                "The bounded Founder tool-catalog provider canary requires an OpenAI API key.");
+        }
+
+        using var canaryBudget =
+            CancellationTokenSource.CreateLinkedTokenSource(
+                cancellationToken);
+        canaryBudget.CancelAfter(
+            TimeSpan.FromSeconds(
+                ProviderToolCatalogAcceptanceSeconds));
+
+        using var response =
+            await SendResponseAsync(
+                apiKey,
+                ResolveProviderModel(),
+                "This is a zero-write provider contract canary. Return exactly PROVIDER_CATALOG_ACCEPTED. Do not call a tool.",
+                [
+                    new Dictionary<string, object?>
+                    {
+                        ["role"] = "user",
+                        ["content"] =
+                            "Acknowledge this schema-acceptance request without calling any tool."
+                    }
+                ],
+                _toolAuthority.Tools,
+                allowTools: true,
+                requireToolCall: false,
+                providerBudget: TimeSpan.FromSeconds(
+                    ProviderToolCatalogAcceptanceSeconds),
+                reasoningEffort: "low",
+                maxOutputTokens: ProviderToolCatalogAcceptanceOutputTokens,
+                cancellationToken: canaryBudget.Token,
+                catalogAcceptanceOnly: true);
+
+        if (response is null ||
+            !response.RootElement.TryGetProperty("id", out var responseId) ||
+            responseId.ValueKind != JsonValueKind.String ||
+            string.IsNullOrWhiteSpace(responseId.GetString()))
+        {
+            throw new InvalidOperationException(
+                "The provider accepted no verifiable response for the complete Founder tool catalog.");
+        }
+
+        return responseId.GetString()!;
     }
 
     public async Task<LegendFounderAiChatResponse> ReplyAsync(
@@ -344,14 +401,7 @@ public sealed class LegendFounderAiConversationService
                 "provider_api_key_unavailable",
                 "The external reasoning provider is not configured for this deployment.");
 
-        var model =
-            _configuration["OpenAI:LegendFounderAiModel"]?.Trim();
-
-        if (string.IsNullOrWhiteSpace(model))
-            model = _configuration["OpenAI:Model"]?.Trim();
-
-        if (string.IsNullOrWhiteSpace(model))
-            model = "gpt-5";
+        var model = ResolveProviderModel();
 
         var requiresMandatoryGovernedInspection =
             RequiresGovernedInspection(
@@ -1033,8 +1083,16 @@ public sealed class LegendFounderAiConversationService
         TimeSpan providerBudget,
         string reasoningEffort,
         int maxOutputTokens,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool catalogAcceptanceOnly = false)
     {
+        if (catalogAcceptanceOnly && !allowTools)
+        {
+            throw new ArgumentException(
+                "A catalog acceptance request must include the Founder tools.",
+                nameof(allowTools));
+        }
+
         var payload = new
         {
             model,
@@ -1047,11 +1105,15 @@ public sealed class LegendFounderAiConversationService
                     : Array.Empty<object>(),
 
             tool_choice =
-                ResolveToolChoice(
-                    allowTools,
-                    requireToolCall),
+                catalogAcceptanceOnly
+                    ? "none"
+                    : ResolveToolChoice(
+                        allowTools,
+                        requireToolCall),
 
-            parallel_tool_calls = allowTools,
+            parallel_tool_calls =
+                allowTools &&
+                !catalogAcceptanceOnly,
             truncation = "auto",
 
             reasoning = new
@@ -1107,7 +1169,9 @@ public sealed class LegendFounderAiConversationService
                     "v1/responses")
                 {
                     Content =
-                        JsonContent.Create(payload)
+                        JsonContent.Create(
+                            payload,
+                            options: JsonOptions)
                 };
 
             request.Headers.TryAddWithoutValidation(
@@ -1260,6 +1324,19 @@ public sealed class LegendFounderAiConversationService
         var exponent = Math.Min(Math.Max(attempt - 1, 0), 6);
         var seconds = Math.Pow(2, exponent) + Random.Shared.NextDouble() * 0.5;
         return TimeSpan.FromSeconds(seconds);
+    }
+
+    private string ResolveProviderModel()
+    {
+        var model =
+            _configuration["OpenAI:LegendFounderAiModel"]?.Trim();
+
+        if (string.IsNullOrWhiteSpace(model))
+            model = _configuration["OpenAI:Model"]?.Trim();
+
+        return string.IsNullOrWhiteSpace(model)
+            ? "gpt-5"
+            : model;
     }
 
     private static TimeSpan? ReadLongestRateLimitReset(

@@ -522,6 +522,69 @@ public sealed class LegendFounderAiContractTests
     }
 
     [Fact]
+    public void FounderToolCatalog_SerializedContractIsRecursivelyProviderValid()
+    {
+        var buildTools = typeof(LegendFounderToolAuthority)
+            .GetMethod("BuildFounderTools", BindingFlags.NonPublic | BindingFlags.Static);
+
+        Assert.NotNull(buildTools);
+        var tools = Assert.IsAssignableFrom<IReadOnlyList<object>>(
+            buildTools!.Invoke(null, null));
+
+        var first = LegendFounderToolAuthority
+            .ValidateSerializedToolCatalog(tools);
+        var second = LegendFounderToolAuthority
+            .ValidateSerializedToolCatalog(tools);
+
+        Assert.Empty(first);
+        Assert.Equal(first.ToArray(), second.ToArray());
+    }
+
+    [Theory]
+    [InlineData(
+        "{\"type\":\"object\",\"properties\":{\"value\":{\"type\":\"string\"}},\"required\":[],\"additionalProperties\":false}",
+        "required names must exactly match properties")]
+    [InlineData(
+        "{\"type\":\"object\",\"properties\":{},\"required\":[],\"additionalProperties\":true}",
+        "every strict object must be closed with false")]
+    [InlineData(
+        "{\"type\":\"object\",\"properties\":{\"value\":{\"type\":[\"string\",\"integer\"]}},\"required\":[\"value\"],\"additionalProperties\":false}",
+        "nullable schemas must contain exactly one supported non-null type and null")]
+    [InlineData(
+        "{\"type\":\"object\",\"properties\":{\"values\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"properties\":{\"value\":{\"type\":\"string\"}},\"required\":[],\"additionalProperties\":false}}},\"required\":[\"values\"],\"additionalProperties\":false}",
+        "properties.values.items.required")]
+    [InlineData(
+        "{\"type\":\"object\",\"properties\":{},\"required\":[],\"additionalProperties\":false,\"minProperties\":1}",
+        "keyword is not supported by the Founder provider schema contract")]
+    [InlineData(
+        "{\"type\":\"object\",\"properties\":{\"values\":{\"type\":\"array\",\"minItems\":\"1\",\"items\":{\"type\":\"string\"}}},\"required\":[\"values\"],\"additionalProperties\":false}",
+        "expected a nonnegative integer")]
+    public void FounderToolCatalog_RecursiveValidatorRejectsMalformedStrictSchemas(
+        string parametersJson,
+        string expectedError)
+    {
+        using var parametersDocument = JsonDocument.Parse(parametersJson);
+        IReadOnlyList<object> tools =
+        [
+            new
+            {
+                type = "function",
+                name = "legend_contract_probe",
+                description = "Validate one deliberately malformed strict schema.",
+                parameters = parametersDocument.RootElement.Clone(),
+                strict = true
+            }
+        ];
+
+        var errors = LegendFounderToolAuthority
+            .ValidateSerializedToolCatalog(tools);
+
+        Assert.Contains(
+            errors,
+            error => error.Contains(expectedError, StringComparison.Ordinal));
+    }
+
+    [Fact]
     public void FounderToolSemanticFrameSchema_UsesClosedRequiredDimensionValueArray()
     {
         var buildTools = typeof(LegendFounderToolAuthority)
@@ -1022,6 +1085,9 @@ public sealed class LegendFounderAiContractTests
         Assert.Contains("needs: security", workflow, StringComparison.Ordinal);
         Assert.Contains("Test full suite including security regressions", workflow, StringComparison.Ordinal);
         Assert.Contains("dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj", workflow, StringComparison.Ordinal);
+        Assert.Contains("FounderToolCatalog_SerializedContractIsRecursivelyProviderValid", workflow, StringComparison.Ordinal);
+        Assert.Contains("ProviderAcceptanceCanary_LiveProviderAcceptsCompleteZeroWriteCatalog", workflow, StringComparison.Ordinal);
+        Assert.Contains("LEGEND_FOUNDER_TOOL_CATALOG_PROVIDER_CANARY", workflow, StringComparison.Ordinal);
         Assert.Contains("run: ./scripts/db.sh validate-artifacts", workflow, StringComparison.Ordinal);
         Assert.DoesNotContain("run: ./scripts/db.sh validate\n", workflow, StringComparison.Ordinal);
         Assert.Contains("Merge exact validated PR head", workflow, StringComparison.Ordinal);
