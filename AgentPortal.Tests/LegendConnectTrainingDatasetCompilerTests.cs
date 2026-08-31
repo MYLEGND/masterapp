@@ -73,6 +73,18 @@ public sealed class LegendConnectTrainingDatasetCompilerTests
             second.ValidationExampleCount);
 
         Assert.Equal(
+            first.Training
+                .Concat(first.HeldOut)
+                .Select(item =>
+                    $"{item.EvidenceIdentity}|{item.SplitGroupIdentity}")
+                .ToArray(),
+            second.Training
+                .Concat(second.HeldOut)
+                .Select(item =>
+                    $"{item.EvidenceIdentity}|{item.SplitGroupIdentity}")
+                .ToArray());
+
+        Assert.Equal(
             1,
             first.TrainingExampleCount +
             first.ValidationExampleCount);
@@ -347,6 +359,12 @@ public sealed class LegendConnectTrainingDatasetCompilerTests
 
         Assert.Equal(6, semantic.Length);
         Assert.Equal(3, reasoning.Length);
+        Assert.Single(all
+            .Select(item => item.SplitGroupIdentity)
+            .Distinct(StringComparer.Ordinal));
+        Assert.True(
+            all.All(item => manifest.Training.Contains(item)) ||
+            all.All(item => manifest.HeldOut.Contains(item)));
         Assert.All(semantic, item =>
         {
             Assert.Equal(
