@@ -125,6 +125,32 @@ internal sealed record LegendModelTaskRequest(
             "target_language_text_only",
             sourceLanguageCode,
             targetLanguageCode);
+
+    internal static LegendModelTaskRequest GovernedReasoningRealization(
+        string sourceLanguageCode,
+        string founderInput,
+        string authorizedSymbolicText,
+        int evidenceCount,
+        string evidenceStandard,
+        string articulationMode) =>
+        new(
+            LegendModelCapabilityKeys.GovernedReasoning,
+            "Propose one surface realization for the already authorized symbolic answer. " +
+            "Do not add, remove, choose, rank, or reinterpret facts or evidence. " +
+            "Do not resolve contradictions, call tools, approve learning, or claim authority. " +
+            "Preserve uncertainty, constraints, and provenance exactly. Return only candidate text; " +
+            "if no faithful alternative is possible, return the authorized symbolic answer exactly.",
+            JsonSerializer.Serialize(new
+            {
+                founder_input = founderInput,
+                authorized_symbolic_answer = authorizedSymbolicText,
+                symbolic_evidence_count = evidenceCount,
+                symbolic_evidence_standard = evidenceStandard,
+                symbolic_articulation_mode = articulationMode
+            }),
+            "governed_surface_candidate_text_only",
+            sourceLanguageCode,
+            sourceLanguageCode);
 }
 
 internal sealed record LegendCurrentProductionEvaluationResult(

@@ -4192,6 +4192,113 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
             : new(true, "response_meaning_plan_governed", selection.Plan);
     }
 
+    /// <summary>
+    /// Uses the existing governed meaning-graph authority to prove that an
+    /// optional model surface carries exactly the semantic identity already
+    /// authorized by symbolic realization. It admits no fuzzy similarity or
+    /// provider assertion and cannot authorize a new fact or transition.
+    /// </summary>
+    internal async Task<bool> IsGovernedEquivalentRealizationAsync(
+        string sourceLanguageCode,
+        string authorizedSymbolicText,
+        string candidateText,
+        CancellationToken cancellationToken = default)
+    {
+        var authorized =
+            LegendLanguageIdentity.NormalizeText(
+                authorizedSymbolicText ?? string.Empty);
+        var candidate =
+            LegendLanguageIdentity.NormalizeText(
+                candidateText ?? string.Empty);
+        if (string.IsNullOrWhiteSpace(authorized) ||
+            string.IsNullOrWhiteSpace(candidate))
+        {
+            return false;
+        }
+
+        if (!HasEquivalentPresentationShape(
+                authorizedSymbolicText,
+                candidateText))
+        {
+            return false;
+        }
+
+        if (string.Equals(
+                authorizedSymbolicText.Trim(),
+                candidateText.Trim(),
+                StringComparison.Ordinal))
+        {
+            return true;
+        }
+
+        var authorizedGraph =
+            await AnalyzeReusableMeaningGraphAsync(
+                sourceLanguageCode,
+                authorized,
+                cancellationToken);
+        var candidateGraph =
+            await AnalyzeReusableMeaningGraphAsync(
+                sourceLanguageCode,
+                candidate,
+                cancellationToken);
+
+        return authorizedGraph.IsComposed &&
+            candidateGraph.IsComposed &&
+            authorizedGraph.UnknownSurfaceComponents.Count == 0 &&
+            candidateGraph.UnknownSurfaceComponents.Count == 0 &&
+            string.Equals(
+                MeaningGraphIdentity(authorizedGraph),
+                MeaningGraphIdentity(candidateGraph),
+                StringComparison.Ordinal);
+    }
+
+    private static bool HasEquivalentPresentationShape(
+        string authorizedSymbolicText,
+        string candidateText)
+    {
+        static int SentenceCount(string text)
+        {
+            var count = 0;
+            var inBoundary = false;
+            foreach (var character in text)
+            {
+                var boundary = character is '.' or '!' or '?';
+                if (boundary && !inBoundary)
+                    count++;
+                inBoundary = boundary;
+            }
+
+            return count == 0 &&
+                !string.IsNullOrWhiteSpace(text)
+                    ? 1
+                    : count;
+        }
+
+        static string LineShape(string text) =>
+            string.Join('|', text
+                .Split(
+                    ['\r', '\n'],
+                    StringSplitOptions.RemoveEmptyEntries |
+                    StringSplitOptions.TrimEntries)
+                .Select(line =>
+                    line.StartsWith("- ", StringComparison.Ordinal) ||
+                    line.StartsWith("* ", StringComparison.Ordinal)
+                        ? "bullet"
+                        : line.Length >= 3 &&
+                          char.IsDigit(line[0]) &&
+                          line[1] is '.' or ')' &&
+                          char.IsWhiteSpace(line[2])
+                            ? "ordered"
+                            : "plain"));
+
+        return SentenceCount(authorizedSymbolicText) ==
+                SentenceCount(candidateText) &&
+            string.Equals(
+                LineShape(authorizedSymbolicText),
+                LineShape(candidateText),
+                StringComparison.Ordinal);
+    }
+
     internal async Task<LegendConnectContentBoundResponseMeaningPlanResult>
         TryBindResponseContentAsync(
             string sourceLanguageCode,

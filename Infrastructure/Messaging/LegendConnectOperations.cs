@@ -34,6 +34,7 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
     private readonly ILegendConnectTranslationIntelligence? _intelligence;
     private readonly ITranslationCapacityAuthority? _capacityAuthority;
     private readonly LegendConnectAutonomousLearningService? _autonomousLearning;
+    private readonly ILegendConnectActiveModelInference? _activeModelInference;
 
     public LegendConnectOperations(
         MasterAppDbContext db,
@@ -46,7 +47,8 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
         LegendConnectFounderTrainingIngestionAuthority? founderTrainingIngestion = null,
         ILegendConnectTranslationIntelligence? intelligence = null,
         ITranslationCapacityAuthority? capacityAuthority = null,
-        LegendConnectAutonomousLearningService? autonomousLearning = null)
+        LegendConnectAutonomousLearningService? autonomousLearning = null,
+        ILegendConnectActiveModelInference? activeModelInference = null)
     {
         _db = db;
         _registry = registry;
@@ -63,6 +65,7 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
         _intelligence = intelligence;
         _capacityAuthority = capacityAuthority;
         _autonomousLearning = autonomousLearning;
+        _activeModelInference = activeModelInference;
     }
 
     private LegendConnectCurriculumService Curriculum => _curriculum ??
@@ -417,7 +420,9 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
                 false,
                 "Unavailable",
                 "Unavailable",
-                composed.ReadOnlyContentRequest);
+                composed.ReadOnlyContentRequest,
+                ModelAssistance: DormantModelAssistance(
+                    "read_only_content_authorization_pending"));
         }
         if (string.Equals(composed.State, LegendSemanticTransitionInference.Supported, StringComparison.Ordinal) &&
             !string.IsNullOrWhiteSpace(composed.RealizedText))
@@ -432,7 +437,7 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
                 StringComparer.Ordinal)
                     ? "OriginalComposition"
                     : "CanonicalGovernedEndpoint";
-            return new LegendConnectNativeInferenceSnapshot(
+            var symbolic = new LegendConnectNativeInferenceSnapshot(
                 true,
                 0m,
                 composed.RealizedText,
@@ -448,6 +453,12 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
                 articulationMode,
                 null,
                 composed.ContentBindingProvenance);
+
+            return await TryApplyPromotedReasoningModelAsync(
+                input ?? string.Empty,
+                sourceLanguageCode,
+                symbolic,
+                cancellationToken);
         }
 
         // Existing explicit frame evidence remains governed by the same
@@ -488,6 +499,173 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
             reasonCode,
             CanEscalateFromUnavailableComposedSource(composed));
     }
+
+    private async Task<LegendConnectNativeInferenceSnapshot>
+        TryApplyPromotedReasoningModelAsync(
+            string founderInput,
+            string sourceLanguageCode,
+            LegendConnectNativeInferenceSnapshot symbolic,
+            CancellationToken cancellationToken)
+    {
+        if (!symbolic.Supported ||
+            string.IsNullOrWhiteSpace(symbolic.Answer))
+        {
+            return symbolic with
+            {
+                ModelAssistance = DormantModelAssistance(
+                    "symbolic_authority_not_supported")
+            };
+        }
+
+        if (symbolic.RequiresEscalation ||
+            symbolic.EvidenceCount <= 0 ||
+            symbolic.EvidenceStandard is not ("HigherStandard" or "BroadGoverned") ||
+            !string.Equals(
+                symbolic.ReasonCode,
+                "semantic_transition_governed_composed",
+                StringComparison.Ordinal))
+        {
+            return symbolic with
+            {
+                ModelAssistance = DormantModelAssistance(
+                    "active_reasoning_model_symbolic_evidence_not_authorized")
+            };
+        }
+
+        if (symbolic.ContentBindingProvenance is { Count: > 0 })
+        {
+            return symbolic with
+            {
+                ModelAssistance = DormantModelAssistance(
+                    "active_reasoning_model_read_only_content_not_authorized")
+            };
+        }
+
+        if (_activeModelInference is null)
+        {
+            return symbolic with
+            {
+                ModelAssistance = UnavailableModelAssistance(
+                    "active_reasoning_model_authority_unavailable")
+            };
+        }
+
+        var governedSourceLanguage =
+            await _registry.NormalizeEnabledTranslationLanguageAsync(
+                sourceLanguageCode,
+                cancellationToken);
+        if (governedSourceLanguage is null)
+        {
+            return symbolic with
+            {
+                ModelAssistance = DormantModelAssistance(
+                    "active_reasoning_model_source_language_not_governed")
+            };
+        }
+
+        var generated =
+            await _activeModelInference
+                .TryGenerateGovernedReasoningCandidateAsync(
+                    new LegendConnectGovernedReasoningCandidateRequest(
+                        governedSourceLanguage,
+                        founderInput,
+                        symbolic.Answer,
+                        symbolic.EvidenceCount,
+                        symbolic.EvidenceStandard,
+                        symbolic.ArticulationMode),
+                    cancellationToken);
+
+        if (!generated.Succeeded ||
+            string.IsNullOrWhiteSpace(generated.Text))
+        {
+            var unavailable = string.Equals(
+                generated.ErrorCode,
+                "active_reasoning_model_unavailable",
+                StringComparison.Ordinal);
+            var rejected = string.Equals(
+                generated.ErrorCode,
+                "active_reasoning_model_malformed_output",
+                StringComparison.Ordinal);
+            return symbolic with
+            {
+                ModelAssistance = new LegendConnectNativeModelAssistanceSnapshot(
+                    unavailable
+                        ? "Unavailable"
+                        : rejected
+                            ? "Rejected"
+                            : "Failed",
+                    generated.ErrorCode ??
+                        "active_reasoning_model_inference_failed",
+                    LegendConnectNativeModelAssistanceContracts
+                        .GovernedReasoningCapability,
+                    generated.ModelVersion,
+                    generated.ModelTrainingRunId,
+                    LegendConnectNativeModelAssistanceContracts
+                        .CandidateAttemptProvenance)
+            };
+        }
+
+        if (!await Curriculum.IsGovernedEquivalentRealizationAsync(
+                governedSourceLanguage,
+                symbolic.Answer,
+                generated.Text,
+                cancellationToken))
+        {
+            return symbolic with
+            {
+                ModelAssistance = new LegendConnectNativeModelAssistanceSnapshot(
+                    "Rejected",
+                    "active_reasoning_model_semantic_lineage_unproven",
+                    LegendConnectNativeModelAssistanceContracts
+                        .GovernedReasoningCapability,
+                    generated.ModelVersion,
+                    generated.ModelTrainingRunId,
+                    LegendConnectNativeModelAssistanceContracts
+                        .CandidateAttemptProvenance)
+            };
+        }
+
+        return symbolic with
+        {
+            Answer = generated.Text,
+            ArticulationMode = "EvaluatedPromotedModelRealization",
+            AuthoritySummary =
+                symbolic.AuthoritySummary +
+                " An evaluated and promoted LEGEND reasoning model proposed only the surface wording; the existing governed meaning-graph authority proved identical semantic lineage before serving, while symbolic evidence and contradiction decisions remained unchanged.",
+            ModelAssistance = new LegendConnectNativeModelAssistanceSnapshot(
+                "Applied",
+                "active_reasoning_model_candidate_governed",
+                LegendConnectNativeModelAssistanceContracts
+                    .GovernedReasoningCapability,
+                generated.ModelVersion,
+                generated.ModelTrainingRunId,
+                LegendConnectNativeModelAssistanceContracts.Provenance)
+        };
+    }
+
+    private static LegendConnectNativeModelAssistanceSnapshot
+        DormantModelAssistance(
+            string reasonCode) =>
+        new(
+            "Dormant",
+            reasonCode,
+            LegendConnectNativeModelAssistanceContracts
+                .GovernedReasoningCapability,
+            null,
+            null,
+            null);
+
+    private static LegendConnectNativeModelAssistanceSnapshot
+        UnavailableModelAssistance(
+            string reasonCode) =>
+        new(
+            "Unavailable",
+            reasonCode,
+            LegendConnectNativeModelAssistanceContracts
+                .GovernedReasoningCapability,
+            null,
+            null,
+            null);
 
     private static bool CanEscalateFromUnavailableComposedSource(
         LegendSemanticTransitionInference inference) =>
@@ -534,7 +712,9 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
         "LEGEND could not establish one independently supported, contradiction-free semantic transition and original compositional realization for this request.",
         requiresEscalation,
         "Unavailable",
-        "Unavailable");
+        "Unavailable",
+        ModelAssistance: DormantModelAssistance(
+            "symbolic_authority_not_supported"));
 
     /// <summary>
     /// Stage-2 observational composition through the one canonical curriculum

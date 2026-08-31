@@ -1046,6 +1046,27 @@ public static class LegendConnectReadOnlyContentBindingContracts
 }
 
 /// <summary>
+/// Read-only serving provenance for an optional evaluated and promoted model
+/// candidate.  The model is an articulation participant only: this receipt
+/// never represents canonical evidence, a contradiction decision, or a
+/// learning/promotion authority.
+/// </summary>
+public sealed record LegendConnectNativeModelAssistanceSnapshot(
+    string State,
+    string ReasonCode,
+    string CapabilityKey,
+    string? ModelVersion,
+    Guid? ModelTrainingRunId,
+    string? Provenance);
+
+public static class LegendConnectNativeModelAssistanceContracts
+{
+    public const string GovernedReasoningCapability = "governed.reasoning";
+    public const string CandidateAttemptProvenance = "EvaluatedPromotedModelCandidateAttempt";
+    public const string Provenance = "EvaluatedPromotedModelArticulation";
+}
+
+/// <summary>
 /// The governed result of one native LEGEND conversational inference attempt.
 /// A successful result is backed only by canonical, contradiction-free
 /// evidence; all other states explicitly require escalation.
@@ -1061,7 +1082,8 @@ public sealed record LegendConnectNativeInferenceSnapshot(
     string EvidenceStandard = "Unavailable",
     string ArticulationMode = "Unavailable",
     LegendConnectReadOnlyContentBindingRequest? ReadOnlyContentRequest = null,
-    IReadOnlyList<LegendConnectReadOnlyContentBindingReceipt>? ContentBindingProvenance = null);
+    IReadOnlyList<LegendConnectReadOnlyContentBindingReceipt>? ContentBindingProvenance = null,
+    LegendConnectNativeModelAssistanceSnapshot? ModelAssistance = null);
 
 /// <summary>
 /// The sole read/write authority for Legend Connect operations. Presentation

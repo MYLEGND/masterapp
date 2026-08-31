@@ -1,3 +1,4 @@
+using Domain.Entities;
 using Domain.Messaging;
 using Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
@@ -14,7 +15,16 @@ internal sealed record LegendConnectActiveModelInferenceResult(
     bool Succeeded,
     string? Text,
     string? ModelVersion,
-    string? ErrorCode);
+    string? ErrorCode,
+    Guid? ModelTrainingRunId = null);
+
+internal sealed record LegendConnectGovernedReasoningCandidateRequest(
+    string SourceLanguageCode,
+    string FounderInput,
+    string AuthorizedSymbolicText,
+    int EvidenceCount,
+    string EvidenceStandard,
+    string ArticulationMode);
 
 internal interface ILegendConnectActiveModelInference
 {
@@ -23,6 +33,11 @@ internal interface ILegendConnectActiveModelInference
         string targetLanguageCode,
         string text,
         CancellationToken cancellationToken = default);
+
+    Task<LegendConnectActiveModelInferenceResult>
+        TryGenerateGovernedReasoningCandidateAsync(
+            LegendConnectGovernedReasoningCandidateRequest request,
+            CancellationToken cancellationToken = default);
 }
 
 internal sealed class LegendConnectActiveModelInference
@@ -96,6 +111,94 @@ internal sealed class LegendConnectActiveModelInference
             result.Text,
             pair.ActiveModelVersion,
             null);
+    }
+
+    public async Task<LegendConnectActiveModelInferenceResult>
+        TryGenerateGovernedReasoningCandidateAsync(
+            LegendConnectGovernedReasoningCandidateRequest request,
+            CancellationToken cancellationToken = default)
+    {
+        var scopeKey =
+            $"capability:{LegendModelCapabilityKeys.GovernedReasoning}";
+        var promoted =
+            await _db.Set<LegendConnectModelTrainingRun>()
+                .AsNoTracking()
+                .Where(item =>
+                    item.ScopeKey == scopeKey &&
+                    item.State == "TrainingCompleted" &&
+                    item.EvaluationState == "Passed" &&
+                    item.PromotionState == "Promoted" &&
+                    item.TrainingProvider == "OpenAI" &&
+                    item.CompletedUtc != null &&
+                    item.PromotedUtc != null &&
+                    item.HeldOutScore != null &&
+                    item.RegressionScore != null &&
+                    item.FailureCode == null &&
+                    item.DatasetIdentity != "" &&
+                    item.ChallengerModelVersion != null &&
+                    item.ChallengerModelVersion != "")
+                .OrderByDescending(item => item.Generation)
+                .ThenByDescending(item => item.PromotedUtc)
+                .Select(item => new
+                {
+                    item.Id,
+                    item.ChallengerModelVersion
+                })
+                .FirstOrDefaultAsync(cancellationToken);
+
+        if (promoted is null)
+        {
+            return new(
+                false,
+                null,
+                null,
+                "active_reasoning_model_unavailable");
+        }
+
+        var result =
+            await _transport.GenerateAsync(
+                promoted.ChallengerModelVersion!,
+                LegendModelTaskRequest.GovernedReasoningRealization(
+                    request.SourceLanguageCode,
+                    request.FounderInput,
+                    request.AuthorizedSymbolicText,
+                    request.EvidenceCount,
+                    request.EvidenceStandard,
+                    request.ArticulationMode),
+                cancellationToken);
+
+        if (!result.Succeeded)
+        {
+            return new(
+                false,
+                null,
+                promoted.ChallengerModelVersion,
+                result.ErrorCode ??
+                    "active_reasoning_model_inference_failed",
+                promoted.Id);
+        }
+
+        var candidate = result.Text?.Trim();
+        if (string.IsNullOrWhiteSpace(candidate) ||
+            candidate.Length > 2000 ||
+            candidate.Any(character =>
+                char.IsControl(character) &&
+                character is not '\n' and not '\r' and not '\t'))
+        {
+            return new(
+                false,
+                null,
+                promoted.ChallengerModelVersion,
+                "active_reasoning_model_malformed_output",
+                promoted.Id);
+        }
+
+        return new(
+            true,
+            candidate,
+            promoted.ChallengerModelVersion,
+            null,
+            promoted.Id);
     }
 }
 

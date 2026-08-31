@@ -252,6 +252,8 @@ public sealed class LegendFounderAiModeIsolationTests
 
         Assert.True(response.Succeeded, Describe(response));
         Assert.Equal("native_response", response.Stage);
+        Assert.Equal("Unavailable", response.ModelAssistanceState);
+        Assert.Equal("active_reasoning_model_unavailable", response.ModelAssistanceReason);
         Assert.Equal(1, detector.DetectionCount);
         operations.Verify(operation => operation.TryInferConversationWithDiscourseAsync(
             prompt,
@@ -1586,7 +1588,14 @@ public sealed class LegendFounderAiModeIsolationTests
             "Governed language-specific evidence was selected.",
             false,
             "HigherStandard",
-            "OriginalComposition");
+            "OriginalComposition",
+            ModelAssistance: new LegendConnectNativeModelAssistanceSnapshot(
+                "Unavailable",
+                "active_reasoning_model_unavailable",
+                LegendConnectNativeModelAssistanceContracts.GovernedReasoningCapability,
+                null,
+                null,
+                null));
 
     private static LegendConnectReadOnlyContentBindingRequest ReadOnlyContentRequest() =>
         new(

@@ -383,7 +383,9 @@ public sealed class LegendFounderAiConversationService
                         "native_response",
                         $"Answered from {nativeInference.EvidenceCount} governed LEGEND evidence record(s). " +
                         $"EvidenceStandard={nativeInference.EvidenceStandard}; " +
-                        $"ArticulationMode={nativeInference.ArticulationMode}."),
+                        $"ArticulationMode={nativeInference.ArticulationMode}; " +
+                        $"ModelAssistance={nativeInference.ModelAssistance?.State ?? "Unavailable"}; " +
+                        $"ModelAssistanceReason={nativeInference.ModelAssistance?.ReasonCode ?? "model_assistance_receipt_unavailable"}."),
                     effectiveToken);
 
                 return new LegendFounderAiChatResponse(
@@ -392,7 +394,12 @@ public sealed class LegendFounderAiConversationService
                     nativeInference.Answer,
                     null,
                     ResponseAuthority: "LegendAi",
-                    Stage: "native_response");
+                    Stage: "native_response",
+                    ModelAssistanceState: nativeInference.ModelAssistance?.State,
+                    ModelAssistanceReason: nativeInference.ModelAssistance?.ReasonCode,
+                    ModelVersion: nativeInference.ModelAssistance?.ModelVersion,
+                    ModelTrainingRunId: nativeInference.ModelAssistance?.ModelTrainingRunId,
+                    ModelProvenance: nativeInference.ModelAssistance?.Provenance);
             }
         }
 
@@ -430,7 +437,12 @@ public sealed class LegendFounderAiConversationService
                 null,
                 ResponseAuthority: "SystemDiagnostic",
                 Stage: "native_only_blocked",
-                Reason: reason);
+                Reason: reason,
+                ModelAssistanceState: nativeInference?.ModelAssistance?.State,
+                ModelAssistanceReason: nativeInference?.ModelAssistance?.ReasonCode,
+                ModelVersion: nativeInference?.ModelAssistance?.ModelVersion,
+                ModelTrainingRunId: nativeInference?.ModelAssistance?.ModelTrainingRunId,
+                ModelProvenance: nativeInference?.ModelAssistance?.Provenance);
         }
 
         // V20.3: the native semantic authority distinguishes between
@@ -1649,7 +1661,12 @@ public sealed class LegendFounderAiConversationService
             null,
             ResponseAuthority: "SystemDiagnostic",
             Stage: "native_or_provider_unavailable",
-            Reason: providerCode);
+            Reason: providerCode,
+            ModelAssistanceState: nativeInference?.ModelAssistance?.State,
+            ModelAssistanceReason: nativeInference?.ModelAssistance?.ReasonCode,
+            ModelVersion: nativeInference?.ModelAssistance?.ModelVersion,
+            ModelTrainingRunId: nativeInference?.ModelAssistance?.ModelTrainingRunId,
+            ModelProvenance: nativeInference?.ModelAssistance?.Provenance);
     }
 
     private static bool IsTeacherMode(string mode) =>
@@ -3284,7 +3301,12 @@ public sealed record LegendFounderAiChatResponse(
     string? OperationId = null,
     IReadOnlyList<string>? CompletedWork = null,
     IReadOnlyList<string>? RemainingWork = null,
-    bool Resumable = false)
+    bool Resumable = false,
+    string? ModelAssistanceState = null,
+    string? ModelAssistanceReason = null,
+    string? ModelVersion = null,
+    Guid? ModelTrainingRunId = null,
+    string? ModelProvenance = null)
 {
     public static LegendFounderAiChatResponse Failure(
         string error,
