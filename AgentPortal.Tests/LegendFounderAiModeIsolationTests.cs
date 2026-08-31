@@ -827,8 +827,8 @@ public sealed class LegendFounderAiModeIsolationTests
           ],
           "semantic_transitions":[
             {
-              "source":{"dimensions":{"conversation_function":"wellbeing_inquiry"}},
-              "result":{"dimensions":{"conversation_response":"wellbeing_positive"}}
+              "source":{"dimensions":[{"dimension":"conversation_function","value":"wellbeing_inquiry"}]},
+              "result":{"dimensions":[{"dimension":"conversation_response","value":"wellbeing_positive"}]}
             }
           ]
         }

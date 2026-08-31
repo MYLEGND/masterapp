@@ -13,6 +13,11 @@ namespace AgentPortal.Services;
 /// </summary>
 internal sealed class LegendFounderToolAuthority
 {
+    private const int MinimumSemanticFrameDimensions = 1;
+    private const int MaximumSemanticFrameDimensions = 12;
+    private const int MaximumSemanticFrameDimensionLength = 80;
+    private const int MaximumSemanticFrameValueLength = 160;
+
     private readonly FounderLegendConnectService _legend;
     private readonly IFounderSoftwareRemediationService? _softwareRemediation;
 
@@ -1607,32 +1612,97 @@ internal sealed class LegendFounderToolAuthority
     {
         frame = null!;
         if (!root.TryGetProperty(propertyName, out var element) ||
-            element.ValueKind != JsonValueKind.Object ||
-            !element.TryGetProperty("dimensions", out var dimensionsElement) ||
-            dimensionsElement.ValueKind != JsonValueKind.Object)
+            element.ValueKind != JsonValueKind.Object)
         {
             return false;
         }
 
-        var dimensions = new Dictionary<string, string>(StringComparer.Ordinal);
-        foreach (var property in dimensionsElement.EnumerateObject())
+        var frameProperties = element.EnumerateObject().ToArray();
+        if (frameProperties.Length != 1 ||
+            !string.Equals(
+                frameProperties[0].Name,
+                "dimensions",
+                StringComparison.Ordinal) ||
+            frameProperties[0].Value.ValueKind != JsonValueKind.Array ||
+            frameProperties[0].Value.GetArrayLength() is
+                < MinimumSemanticFrameDimensions or
+                > MaximumSemanticFrameDimensions)
         {
-            var value = property.Value.ValueKind == JsonValueKind.String
-                ? property.Value.GetString()?.Trim()
-                : null;
-            if (string.IsNullOrWhiteSpace(property.Name) ||
+            return false;
+        }
+
+        var dimensionsElement = frameProperties[0].Value;
+        var dimensions = new Dictionary<string, string>(
+            StringComparer.OrdinalIgnoreCase);
+        foreach (var item in dimensionsElement.EnumerateArray())
+        {
+            if (item.ValueKind != JsonValueKind.Object)
+                return false;
+
+            var properties = item.EnumerateObject().ToArray();
+            if (properties.Length != 2)
+                return false;
+
+            string? dimension = null;
+            string? value = null;
+            foreach (var property in properties)
+            {
+                if (property.Value.ValueKind != JsonValueKind.String)
+                    return false;
+
+                if (string.Equals(
+                        property.Name,
+                        "dimension",
+                        StringComparison.Ordinal) &&
+                    dimension is null)
+                {
+                    dimension = property.Value.GetString()?.Trim();
+                    continue;
+                }
+
+                if (string.Equals(
+                        property.Name,
+                        "value",
+                        StringComparison.Ordinal) &&
+                    value is null)
+                {
+                    value = property.Value.GetString()?.Trim();
+                    continue;
+                }
+
+                return false;
+            }
+
+            if (string.IsNullOrWhiteSpace(dimension) ||
                 string.IsNullOrWhiteSpace(value) ||
-                !dimensions.TryAdd(property.Name.Trim(), value))
+                dimension.Length > MaximumSemanticFrameDimensionLength ||
+                value.Length > MaximumSemanticFrameValueLength ||
+                dimension.Any(character =>
+                    !(char.IsLetterOrDigit(character) ||
+                      character is '.' or '-' or '_')) ||
+                !IsValidSemanticFrameValue(value) ||
+                !dimensions.TryAdd(
+                    dimension,
+                    value))
             {
                 return false;
             }
         }
 
-        if (dimensions.Count is < 1 or > 12)
-            return false;
-
         frame = new LegendConnectSemanticFrameSubmission(dimensions);
         return true;
+    }
+
+    private static bool IsValidSemanticFrameValue(string value)
+    {
+        if (!value.StartsWith('$'))
+            return true;
+
+        return value.Length is >= 2 and <= 81 &&
+            char.IsLetter(value[1]) &&
+            value[2..].All(character =>
+                char.IsLetterOrDigit(character) ||
+                character is '_' or '-');
     }
 
     private static object SemanticFrameSchema() => new
@@ -1642,8 +1712,30 @@ internal sealed class LegendFounderToolAuthority
         {
             dimensions = new
             {
-                type = "object",
-                additionalProperties = new { type = "string", minLength = 1, maxLength = 160 }
+                type = "array",
+                minItems = MinimumSemanticFrameDimensions,
+                maxItems = MaximumSemanticFrameDimensions,
+                items = new
+                {
+                    type = "object",
+                    properties = new
+                    {
+                        dimension = new
+                        {
+                            type = "string",
+                            minLength = 1,
+                            maxLength = MaximumSemanticFrameDimensionLength
+                        },
+                        value = new
+                        {
+                            type = "string",
+                            minLength = 1,
+                            maxLength = MaximumSemanticFrameValueLength
+                        }
+                    },
+                    required = new[] { "dimension", "value" },
+                    additionalProperties = false
+                }
             }
         },
         required = new[] { "dimensions" },

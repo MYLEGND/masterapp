@@ -15,6 +15,7 @@ using AgentPortal.Security;
 using AgentPortal.Services;
 using Azure.Core;
 using Domain.Entities;
+using Domain.Messaging;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Configuration;
@@ -515,9 +516,92 @@ public sealed class LegendFounderAiContractTests
         var serialized = JsonSerializer.Serialize(tools);
 
         // OpenAI strict function schemas reject minProperties/maxProperties.
-        // Runtime parsing remains the canonical 1..12 dimension guard.
+        // The closed dimensions array and runtime parser share the 1..12 guard.
         Assert.DoesNotContain("\"minProperties\"", serialized, StringComparison.Ordinal);
         Assert.DoesNotContain("\"maxProperties\"", serialized, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void FounderToolSemanticFrameSchema_UsesClosedRequiredDimensionValueArray()
+    {
+        var buildTools = typeof(LegendFounderToolAuthority)
+            .GetMethod("BuildFounderTools", BindingFlags.NonPublic | BindingFlags.Static);
+
+        Assert.NotNull(buildTools);
+        var tools = Assert.IsAssignableFrom<IReadOnlyList<object>>(
+            buildTools!.Invoke(null, null));
+        using var document = JsonDocument.Parse(JsonSerializer.Serialize(tools));
+        var machineLearningTool = document.RootElement
+            .EnumerateArray()
+            .Single(tool =>
+                tool.TryGetProperty("name", out var name) &&
+                name.GetString() == "legend_submit_machine_learning_candidate");
+        var transition = machineLearningTool
+            .GetProperty("parameters")
+            .GetProperty("properties")
+            .GetProperty("semantic_transitions")
+            .GetProperty("items");
+
+        AssertClosedSemanticFrameSchema(
+            transition.GetProperty("properties").GetProperty("source"));
+        AssertClosedSemanticFrameSchema(
+            transition.GetProperty("properties").GetProperty("result"));
+    }
+
+    [Fact]
+    public void FounderToolSemanticFrameParser_ReadsClosedDimensionValueArray()
+    {
+        const string input =
+            """
+            {
+              "source": {
+                "dimensions": [
+                  { "dimension": " conversation_function ", "value": " wellbeing_inquiry " },
+                  { "dimension": "audience.level", "value": "$Audience" }
+                ]
+              }
+            }
+            """;
+
+        Assert.True(TryParseFounderSemanticFrame(input, out var frame));
+        Assert.Equal(2, frame.Dimensions.Count);
+        Assert.Equal("wellbeing_inquiry", frame.Dimensions["conversation_function"]);
+        Assert.Equal("$Audience", frame.Dimensions["audience.level"]);
+    }
+
+    [Fact]
+    public void FounderToolSemanticFrameParser_RejectsInvalidClosedArrayInputs()
+    {
+        var invalidFrames = new[]
+        {
+            """{"source":{"dimensions":[]}}""",
+            """{"source":{"dimensions":{"intent":"diagnose"}}}""",
+            """{"source":{"dimensions":[{"dimension":"intent","value":"diagnose"},{"dimension":" InTeNt ","value":"plan"}]}}""",
+            """{"source":{"dimensions":[{"dimension":" ","value":"diagnose"}]}}""",
+            """{"source":{"dimensions":[{"dimension":"intent","value":" "}]}}""",
+            """{"source":{"dimensions":[{"dimension":"intent value","value":"diagnose"}]}}""",
+            """{"source":{"dimensions":[{"dimension":"intent","value":"$1invalid"}]}}""",
+            """{"source":{"dimensions":[{"dimension":"intent","value":"$invalid value"}]}}""",
+            """{"source":{"dimensions":[{"dimension":1,"value":"diagnose"}]}}""",
+            """{"source":{"dimensions":[{"dimension":"intent","value":false}]}}""",
+            """{"source":{"dimensions":[{"dimension":"intent"}]}}""",
+            """{"source":{"dimensions":[{"value":"diagnose"}]}}""",
+            """{"source":{"dimensions":["intent"]}}""",
+            """{"source":{"dimensions":[{"dimension":"intent","value":"diagnose","extra":"rejected"}]}}""",
+            """{"source":{"dimensions":[{"dimension":"intent","dimension":"plan","value":"diagnose"}]}}""",
+            """{"source":{"dimensions":[{"dimension":"intent","value":"diagnose"}]},"extra":true}""",
+            SemanticFrameJson(
+                Enumerable.Range(0, 13)
+                    .Select(index => ($"dimension_{index}", "value"))),
+            SemanticFrameJson(new[] { (new string('d', 81), "value") }),
+            SemanticFrameJson(new[] { ("dimension", new string('v', 161)) })
+        };
+
+        Assert.All(
+            invalidFrames,
+            input => Assert.False(
+                TryParseFounderSemanticFrame(input, out _),
+                input));
     }
 
     [Fact]
@@ -1049,6 +1133,79 @@ public sealed class LegendFounderAiContractTests
 
         Assert.False(request.FounderCommandConfirmed);
     }
+
+    private static void AssertClosedSemanticFrameSchema(JsonElement frame)
+    {
+        Assert.Equal("object", frame.GetProperty("type").GetString());
+        Assert.False(frame.GetProperty("additionalProperties").GetBoolean());
+        Assert.Equal(
+            new[] { "dimensions" },
+            frame.GetProperty("required")
+                .EnumerateArray()
+                .Select(item => item.GetString()!)
+                .ToArray());
+
+        var frameProperties = frame.GetProperty("properties");
+        Assert.Equal(
+            new[] { "dimensions" },
+            frameProperties.EnumerateObject().Select(item => item.Name).ToArray());
+
+        var dimensions = frameProperties.GetProperty("dimensions");
+        Assert.Equal("array", dimensions.GetProperty("type").GetString());
+        Assert.Equal(1, dimensions.GetProperty("minItems").GetInt32());
+        Assert.Equal(12, dimensions.GetProperty("maxItems").GetInt32());
+        Assert.False(dimensions.TryGetProperty("additionalProperties", out _));
+
+        var item = dimensions.GetProperty("items");
+        Assert.Equal("object", item.GetProperty("type").GetString());
+        Assert.False(item.GetProperty("additionalProperties").GetBoolean());
+        Assert.Equal(
+            new[] { "dimension", "value" },
+            item.GetProperty("required")
+                .EnumerateArray()
+                .Select(required => required.GetString()!)
+                .ToArray());
+
+        var properties = item.GetProperty("properties");
+        Assert.Equal(
+            new[] { "dimension", "value" },
+            properties.EnumerateObject().Select(property => property.Name).ToArray());
+        Assert.Equal("string", properties.GetProperty("dimension").GetProperty("type").GetString());
+        Assert.Equal(1, properties.GetProperty("dimension").GetProperty("minLength").GetInt32());
+        Assert.Equal(80, properties.GetProperty("dimension").GetProperty("maxLength").GetInt32());
+        Assert.Equal("string", properties.GetProperty("value").GetProperty("type").GetString());
+        Assert.Equal(1, properties.GetProperty("value").GetProperty("minLength").GetInt32());
+        Assert.Equal(160, properties.GetProperty("value").GetProperty("maxLength").GetInt32());
+    }
+
+    private static bool TryParseFounderSemanticFrame(
+        string json,
+        out LegendConnectSemanticFrameSubmission frame)
+    {
+        var parse = typeof(LegendFounderToolAuthority)
+            .GetMethod("TryReadSemanticFrame", BindingFlags.NonPublic | BindingFlags.Static);
+
+        Assert.NotNull(parse);
+        using var document = JsonDocument.Parse(json);
+        object?[] arguments = [document.RootElement, "source", null];
+        var parsed = Assert.IsType<bool>(parse!.Invoke(null, arguments));
+        frame = arguments[2] as LegendConnectSemanticFrameSubmission ?? null!;
+        return parsed;
+    }
+
+    private static string SemanticFrameJson(
+        IEnumerable<(string Dimension, string Value)> dimensions) =>
+        JsonSerializer.Serialize(new
+        {
+            source = new
+            {
+                dimensions = dimensions.Select(item => new
+                {
+                    dimension = item.Dimension,
+                    value = item.Value
+                })
+            }
+        });
 
     private sealed class ThrowingHttpClientFactory : IHttpClientFactory
     {
