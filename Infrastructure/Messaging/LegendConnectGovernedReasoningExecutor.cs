@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 
 namespace Infrastructure.Messaging;
@@ -23,6 +24,10 @@ namespace Infrastructure.Messaging;
 ///   reasoning.causal-diagnostic.conclude.*          discriminating observation -> cause
 ///   reasoning.causal-diagnostic.contradictory-evidence.* incompatible observation -> uncertainty
 ///   reasoning.causal-diagnostic.resource-limited.*  unavailable discriminator -> uncertainty
+///   reasoning.constrained-planning.step.*           admissible action -> next plan cursor
+///   reasoning.constrained-planning.block.*          violated constraint -> blocked plan
+///   reasoning.constrained-planning.evidence-branch.* governed evidence -> branch cursor
+///   reasoning.constrained-planning.stop.*           observed stop condition -> stopped plan
 /// The suffix is opaque curriculum meaning, allowing new skill domains without
 /// adding code or a topic router.
 /// </summary>
@@ -33,6 +38,8 @@ internal static class LegendConnectGovernedReasoningExecutor
     internal const int MaximumRules = 4096;
     internal const int MaximumFrameDimensions = 12;
     internal const int MaximumRuleEvaluations = MaximumStates * MaximumRules;
+    internal const int MaximumPlanningMinutes = 1440;
+    internal const int MaximumPlanningResourceUnits = 1024;
     internal const string EpistemicStatusDimension = "epistemic_status";
     internal const string ObservationalEquivalenceValue = "observational_equivalence";
     internal const string InsufficientEvidenceValue = "insufficient_evidence";
@@ -76,6 +83,43 @@ internal static class LegendConnectGovernedReasoningExecutor
     internal const string CausalAttributionStatusDimension = "causal_attribution_status";
     internal const string AttributionSupportedValue = "supported_by_discriminating_evidence";
     internal const string ReassessHypothesesValue = "reassess_hypotheses";
+    internal const string PlanGoalDimension = "plan_goal";
+    internal const string CurrentPlanActionDimension = "current_plan_action";
+    internal const string CandidatePlanActionDimension = "candidate_plan_action";
+    internal const string ActionPrerequisiteDimension = "action_prerequisite";
+    internal const string CurrentActionOrderDimension = "current_action_order";
+    internal const string CandidateActionOrderDimension = "candidate_action_order";
+    internal const string ActionDurationMinutesDimension = "action_duration_minutes";
+    internal const string PlanTimeLimitMinutesDimension = "plan_time_limit_minutes";
+    internal const string PlanElapsedMinutesDimension = "plan_elapsed_minutes";
+    internal const string AvailableResourceUnitsDimension = "available_resource_units";
+    internal const string RequiredResourceUnitsDimension = "required_resource_units";
+    internal const string SafetyConstraintStatusDimension = "safety_constraint_status";
+    internal const string SafetySatisfiedValue = "satisfied";
+    internal const string SafetyViolatedValue = "violated";
+    internal const string ConstraintContradictionValue = "contradictory";
+    internal const string PlanStatusDimension = "plan_status";
+    internal const string PlanReadyValue = "ready";
+    internal const string PlanInProgressValue = "in_progress";
+    internal const string PlanCompletedValue = "completed";
+    internal const string PlanBlockedValue = "blocked";
+    internal const string PlanStoppedValue = "stopped";
+    internal const string PlanBlockReasonDimension = "plan_block_reason";
+    internal const string InsufficientResourceValue = "insufficient_resource";
+    internal const string UnsafeStepValue = "unsafe_step";
+    internal const string TimeLimitExceededValue = "time_limit_exceeded";
+    internal const string PrerequisiteOrderViolationValue = "prerequisite_order_violation";
+    internal const string ContradictoryConstraintsValue = "contradictory_constraints";
+    internal const string UnprovenCausalAssumptionValue = "unproven_causal_assumption";
+    internal const string StopConditionDimension = "stop_condition";
+    internal const string ObservedStopEvidenceDimension = "observed_stop_evidence";
+    internal const string PlanStopReasonDimension = "plan_stop_reason";
+    internal const string SelectedStopEvidenceDimension = "selected_stop_evidence";
+    internal const string RequiredBranchEvidenceDimension = "required_branch_evidence";
+    internal const string ObservedBranchEvidenceDimension = "observed_branch_evidence";
+    internal const string SelectedBranchEvidenceDimension = "selected_branch_evidence";
+    internal const string EvidenceBranchStatusDimension = "evidence_branch_status";
+    internal const string EvidenceBranchSelectedValue = "evidence_branch_selected";
 
     internal static bool IsExecutableOperatorIdentity(string? identity) =>
         ResolveMode(identity) is not null;
@@ -154,11 +198,13 @@ internal static class LegendConnectGovernedReasoningExecutor
             }
             else if (mode == ReasoningMode.Deduction ||
                      IsEpistemicMode(mode) ||
-                     IsCausalDiagnosticMode(mode))
+                     IsCausalDiagnosticMode(mode) ||
+                     IsConstrainedPlanningMode(mode))
             {
-                // Governed deductive, epistemic, and causal-diagnostic rules
-                // are implications, never equivalences. No reverse rule is
-                // created, so a conclusion cannot manufacture its premises.
+                // Governed deductive, epistemic, causal-diagnostic, and
+                // constrained-planning rules are implications, never
+                // equivalences. No reverse rule is created, so a conclusion
+                // cannot manufacture its premises.
                 directional.Add(new DirectionalRule(
                     rule,
                     rule.SourceFrame,
@@ -389,6 +435,11 @@ internal static class LegendConnectGovernedReasoningExecutor
         {
             return false;
         }
+        if (IsConstrainedPlanningMode(mode) &&
+            !IsGovernedConstrainedPlanningRule(rule, mode!.Value))
+        {
+            return false;
+        }
 
         if (rule.FamilyConnections.Count == 0 ||
             rule.FamilyConnections.Distinct().Count() != rule.FamilyConnections.Count ||
@@ -609,6 +660,198 @@ internal static class LegendConnectGovernedReasoningExecutor
             evidenceDimension,
             sourceFrame,
             SecondPredictionEvidenceDimension);
+
+    private static bool IsGovernedConstrainedPlanningRule(
+        LegendGovernedReasoningRule rule,
+        ReasoningMode mode)
+    {
+        if (rule.SourceFrame.ContainsKey(CauseSelectionDimension) ||
+            rule.ResultFrame.ContainsKey(CauseSelectionDimension))
+        {
+            return false;
+        }
+
+        if (mode is ReasoningMode.ConstrainedPlanningStep or
+            ReasoningMode.ConstrainedPlanningBlock)
+        {
+            if (!HasPlanningActionSource(rule.SourceFrame))
+                return false;
+        }
+
+        if (mode == ReasoningMode.ConstrainedPlanningStep)
+        {
+            var continues = HasSemanticValue(
+                rule.ResultFrame,
+                PlanStatusDimension,
+                PlanInProgressValue);
+            var completes = HasSemanticValue(
+                rule.ResultFrame,
+                PlanStatusDimension,
+                PlanCompletedValue);
+            if (continues == completes ||
+                !HasSemanticDimensions(rule.ResultFrame, PlanElapsedMinutesDimension) ||
+                !HasSemanticFlow(
+                    rule.SourceFrame,
+                    CandidatePlanActionDimension,
+                    rule.ResultFrame,
+                    CurrentPlanActionDimension) ||
+                !HasSemanticFlow(
+                    rule.SourceFrame,
+                    CandidateActionOrderDimension,
+                    rule.ResultFrame,
+                    CurrentActionOrderDimension))
+            {
+                return false;
+            }
+
+            return continues
+                ? HasNextPlanningCandidate(rule.ResultFrame)
+                : !ContainsAnyPlanningCandidateDimension(rule.ResultFrame);
+        }
+
+        if (mode == ReasoningMode.ConstrainedPlanningBlock)
+        {
+            return HasSemanticValue(
+                       rule.ResultFrame,
+                       PlanStatusDimension,
+                       PlanBlockedValue) &&
+                   rule.ResultFrame.TryGetValue(PlanBlockReasonDimension, out var reason) &&
+                   IsKnownPlanningBlockReason(reason) &&
+                   !rule.ResultFrame.ContainsKey(CurrentPlanActionDimension) &&
+                   !rule.ResultFrame.ContainsKey(CurrentActionOrderDimension) &&
+                   !rule.ResultFrame.ContainsKey(PlanElapsedMinutesDimension) &&
+                   !ContainsAnyPlanningCandidateDimension(rule.ResultFrame);
+        }
+
+        if (mode == ReasoningMode.ConstrainedPlanningEvidenceBranch)
+        {
+            return HasSemanticDimensions(
+                       rule.SourceFrame,
+                       PlanGoalDimension,
+                       PlanStatusDimension,
+                       CurrentPlanActionDimension,
+                       CandidatePlanActionDimension,
+                       ActionPrerequisiteDimension,
+                       CandidateActionOrderDimension,
+                       ActionDurationMinutesDimension,
+                       RequiredResourceUnitsDimension,
+                       SafetyConstraintStatusDimension,
+                       RequiredBranchEvidenceDimension,
+                       ObservedBranchEvidenceDimension) &&
+                   HasSemanticFlow(
+                       rule.SourceFrame,
+                       RequiredBranchEvidenceDimension,
+                       rule.SourceFrame,
+                       ObservedBranchEvidenceDimension) &&
+                   HasSemanticFlow(
+                       rule.SourceFrame,
+                       CurrentPlanActionDimension,
+                       rule.SourceFrame,
+                       ActionPrerequisiteDimension) &&
+                   HasSemanticFlow(
+                       rule.SourceFrame,
+                       CurrentPlanActionDimension,
+                       rule.ResultFrame,
+                       CurrentPlanActionDimension) &&
+                   HasNextPlanningCandidate(rule.ResultFrame) &&
+                   HasSemanticValue(
+                       rule.ResultFrame,
+                       EvidenceBranchStatusDimension,
+                       EvidenceBranchSelectedValue) &&
+                   !rule.ResultFrame.ContainsKey(PlanStatusDimension) &&
+                   !rule.ResultFrame.ContainsKey(CurrentActionOrderDimension) &&
+                   !rule.ResultFrame.ContainsKey(PlanElapsedMinutesDimension) &&
+                   HasSemanticFlow(
+                       rule.SourceFrame,
+                       ObservedBranchEvidenceDimension,
+                       rule.ResultFrame,
+                       SelectedBranchEvidenceDimension);
+        }
+
+        if (mode == ReasoningMode.ConstrainedPlanningStop)
+        {
+            return HasSemanticDimensions(
+                       rule.SourceFrame,
+                       PlanGoalDimension,
+                       PlanStatusDimension,
+                       CurrentPlanActionDimension,
+                       StopConditionDimension,
+                       ObservedStopEvidenceDimension) &&
+                   HasSemanticFlow(
+                       rule.SourceFrame,
+                       StopConditionDimension,
+                       rule.SourceFrame,
+                       ObservedStopEvidenceDimension) &&
+                   HasSemanticValue(
+                       rule.ResultFrame,
+                       PlanStatusDimension,
+                       PlanStoppedValue) &&
+                   HasSemanticFlow(
+                       rule.SourceFrame,
+                       StopConditionDimension,
+                       rule.ResultFrame,
+                       PlanStopReasonDimension) &&
+                   HasSemanticFlow(
+                       rule.SourceFrame,
+                       ObservedStopEvidenceDimension,
+                       rule.ResultFrame,
+                       SelectedStopEvidenceDimension) &&
+                   !rule.ResultFrame.ContainsKey(CurrentPlanActionDimension) &&
+                   !rule.ResultFrame.ContainsKey(CurrentActionOrderDimension) &&
+                   !rule.ResultFrame.ContainsKey(PlanElapsedMinutesDimension) &&
+                   !ContainsAnyPlanningCandidateDimension(rule.ResultFrame);
+        }
+
+        return false;
+    }
+
+    private static bool HasPlanningActionSource(IReadOnlyDictionary<string, string> sourceFrame) =>
+        HasSemanticDimensions(
+            sourceFrame,
+            PlanGoalDimension,
+            CandidatePlanActionDimension,
+            ActionPrerequisiteDimension,
+            CurrentActionOrderDimension,
+            CandidateActionOrderDimension,
+            ActionDurationMinutesDimension,
+            PlanTimeLimitMinutesDimension,
+            PlanElapsedMinutesDimension,
+            AvailableResourceUnitsDimension,
+            RequiredResourceUnitsDimension,
+            SafetyConstraintStatusDimension,
+            PlanStatusDimension);
+
+    private static bool HasNextPlanningCandidate(IReadOnlyDictionary<string, string> frame) =>
+        HasSemanticDimensions(
+            frame,
+            CandidatePlanActionDimension,
+            ActionPrerequisiteDimension,
+            CandidateActionOrderDimension,
+            ActionDurationMinutesDimension,
+            RequiredResourceUnitsDimension,
+            SafetyConstraintStatusDimension) &&
+        HasSemanticFlow(
+            frame,
+            CurrentPlanActionDimension,
+            frame,
+            ActionPrerequisiteDimension);
+
+    private static bool ContainsAnyPlanningCandidateDimension(
+        IReadOnlyDictionary<string, string> frame) =>
+        frame.ContainsKey(CandidatePlanActionDimension) ||
+        frame.ContainsKey(ActionPrerequisiteDimension) ||
+        frame.ContainsKey(CandidateActionOrderDimension) ||
+        frame.ContainsKey(ActionDurationMinutesDimension) ||
+        frame.ContainsKey(RequiredResourceUnitsDimension) ||
+        frame.ContainsKey(SafetyConstraintStatusDimension);
+
+    private static bool IsKnownPlanningBlockReason(string value) =>
+        value is InsufficientResourceValue or
+            UnsafeStepValue or
+            TimeLimitExceededValue or
+            PrerequisiteOrderViolationValue or
+            ContradictoryConstraintsValue or
+            UnprovenCausalAssumptionValue;
 
     private static bool IsGovernedNonSelectionResult(
         IReadOnlyDictionary<string, string> resultFrame,
@@ -971,11 +1214,25 @@ internal static class LegendConnectGovernedReasoningExecutor
             return false;
         }
 
+        if (IsConstrainedPlanningMode(mode) &&
+            !IsValidConstrainedPlanningApplication(mode, currentValues, conclusions))
+        {
+            nextValues = currentValues;
+            instantiatedConclusions = conclusions;
+            return false;
+        }
+
         if (requireMonotonicConclusion)
         {
+            // Planning is the sole bounded state-machine exception to the
+            // executor's monotonic conclusion rule. The planning guard above
+            // has already proved that each permitted replacement consumes
+            // the current cursor, advances exactly one order, and preserves
+            // all other governed facts and proof lineage.
             conflicts = conclusions
                 .Where(item => currentValues.TryGetValue(item.Key, out var existing) &&
-                    !string.Equals(existing, item.Value, StringComparison.OrdinalIgnoreCase))
+                    !string.Equals(existing, item.Value, StringComparison.OrdinalIgnoreCase) &&
+                    !CanReplaceConstrainedPlanningState(mode, item.Key))
                 .OrderBy(item => item.Key, StringComparer.OrdinalIgnoreCase)
                 .Select(item => new ReasoningApplicationConflict(
                     item.Key,
@@ -1116,6 +1373,391 @@ internal static class LegendConnectGovernedReasoningExecutor
         return false;
     }
 
+    private static bool IsValidConstrainedPlanningApplication(
+        ReasoningMode mode,
+        IReadOnlyDictionary<string, string> currentValues,
+        IReadOnlyDictionary<string, string> conclusions)
+    {
+        if (mode == ReasoningMode.ConstrainedPlanningStop)
+            return IsValidPlanningStop(currentValues, conclusions);
+
+        if (!IsActivePlan(currentValues) || HasSatisfiedStopCondition(currentValues))
+            return false;
+
+        if (mode == ReasoningMode.ConstrainedPlanningEvidenceBranch)
+            return IsValidPlanningEvidenceBranch(currentValues, conclusions);
+
+        if (!TryReadPlanningCandidate(currentValues, out var candidate))
+            return false;
+
+        var blockReason = DeterminePlanningBlockReason(currentValues, candidate);
+        if (mode == ReasoningMode.ConstrainedPlanningBlock)
+        {
+            return blockReason is not null &&
+                   HasSemanticValue(conclusions, PlanStatusDimension, PlanBlockedValue) &&
+                   HasSemanticValue(conclusions, PlanBlockReasonDimension, blockReason);
+        }
+
+        if (mode != ReasoningMode.ConstrainedPlanningStep || blockReason is not null ||
+            !TryGetSemanticValue(
+                conclusions,
+                CurrentPlanActionDimension,
+                out var selectedAction) ||
+            !string.Equals(
+                selectedAction,
+                candidate.CandidateAction,
+                StringComparison.OrdinalIgnoreCase) ||
+            !TryGetBoundedPlanningInteger(
+                conclusions,
+                CurrentActionOrderDimension,
+                0,
+                MaximumDepth,
+                out var selectedOrder) ||
+            selectedOrder != candidate.CandidateOrder ||
+            !TryGetBoundedPlanningInteger(
+                conclusions,
+                PlanElapsedMinutesDimension,
+                0,
+                MaximumPlanningMinutes,
+                out var resultingElapsed) ||
+            resultingElapsed != candidate.ElapsedMinutes + candidate.DurationMinutes)
+        {
+            return false;
+        }
+
+        if (HasSemanticValue(conclusions, PlanStatusDimension, PlanCompletedValue))
+            return true;
+        if (!HasSemanticValue(conclusions, PlanStatusDimension, PlanInProgressValue))
+            return false;
+
+        return TryGetSemanticValue(
+                   conclusions,
+                   CandidatePlanActionDimension,
+                   out var nextAction) &&
+               !string.Equals(
+                   nextAction,
+                   candidate.CandidateAction,
+                   StringComparison.OrdinalIgnoreCase) &&
+               HasSemanticValue(
+                   conclusions,
+                   ActionPrerequisiteDimension,
+                   candidate.CandidateAction) &&
+               TryGetBoundedPlanningInteger(
+                   conclusions,
+                   CandidateActionOrderDimension,
+                   1,
+                   MaximumDepth,
+                   out var nextOrder) &&
+               nextOrder == candidate.CandidateOrder + 1 &&
+               TryGetBoundedPlanningInteger(
+                   conclusions,
+                   ActionDurationMinutesDimension,
+                   1,
+                   MaximumPlanningMinutes,
+                   out _) &&
+               TryGetBoundedPlanningInteger(
+                   conclusions,
+                   RequiredResourceUnitsDimension,
+                   1,
+                   MaximumPlanningResourceUnits,
+                   out _) &&
+               TryGetSemanticValue(
+                   conclusions,
+                   SafetyConstraintStatusDimension,
+                   out var nextSafety) &&
+               IsKnownSafetyConstraintStatus(nextSafety);
+    }
+
+    private static bool IsValidPlanningEvidenceBranch(
+        IReadOnlyDictionary<string, string> currentValues,
+        IReadOnlyDictionary<string, string> conclusions)
+    {
+        if (HasUnsupportedCausalAssumption(currentValues) ||
+            !TryGetSemanticValue(
+                currentValues,
+                CurrentPlanActionDimension,
+                out var currentAction) ||
+            !TryGetSemanticValue(
+                currentValues,
+                CandidatePlanActionDimension,
+                out var pendingBranch) ||
+            !TryGetSemanticValue(
+                currentValues,
+                RequiredBranchEvidenceDimension,
+                out var requiredEvidence) ||
+            !TryGetSemanticValue(
+                currentValues,
+                ObservedBranchEvidenceDimension,
+                out var observedEvidence) ||
+            !string.Equals(requiredEvidence, observedEvidence, StringComparison.OrdinalIgnoreCase) ||
+            !HasSemanticValue(conclusions, CurrentPlanActionDimension, currentAction) ||
+            !TryGetSemanticValue(
+                conclusions,
+                CandidatePlanActionDimension,
+                out var selectedBranch) ||
+            string.Equals(selectedBranch, pendingBranch, StringComparison.OrdinalIgnoreCase) ||
+            !HasSemanticValue(conclusions, ActionPrerequisiteDimension, currentAction) ||
+            !TryGetBoundedPlanningInteger(
+                currentValues,
+                CurrentActionOrderDimension,
+                0,
+                MaximumDepth - 1,
+                out var currentOrder) ||
+            !TryGetBoundedPlanningInteger(
+                conclusions,
+                CandidateActionOrderDimension,
+                1,
+                MaximumDepth,
+                out var branchOrder) ||
+            branchOrder != currentOrder + 1 ||
+            !TryGetBoundedPlanningInteger(
+                conclusions,
+                ActionDurationMinutesDimension,
+                1,
+                MaximumPlanningMinutes,
+                out _) ||
+            !TryGetBoundedPlanningInteger(
+                conclusions,
+                RequiredResourceUnitsDimension,
+                1,
+                MaximumPlanningResourceUnits,
+                out _) ||
+            !TryGetSemanticValue(
+                conclusions,
+                SafetyConstraintStatusDimension,
+                out var safetyStatus) ||
+            !IsKnownSafetyConstraintStatus(safetyStatus))
+        {
+            return false;
+        }
+
+        return HasSemanticValue(
+                   conclusions,
+                   SelectedBranchEvidenceDimension,
+                   observedEvidence) &&
+               HasSemanticValue(
+                   conclusions,
+                   EvidenceBranchStatusDimension,
+                   EvidenceBranchSelectedValue);
+    }
+
+    private static bool IsValidPlanningStop(
+        IReadOnlyDictionary<string, string> currentValues,
+        IReadOnlyDictionary<string, string> conclusions)
+    {
+        if (!IsActivePlan(currentValues) ||
+            !TryGetSemanticValue(
+                currentValues,
+                StopConditionDimension,
+                out var stopCondition) ||
+            !TryGetSemanticValue(
+                currentValues,
+                ObservedStopEvidenceDimension,
+                out var observedStopEvidence) ||
+            !string.Equals(
+                stopCondition,
+                observedStopEvidence,
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        return HasSemanticValue(conclusions, PlanStatusDimension, PlanStoppedValue) &&
+               HasSemanticValue(conclusions, PlanStopReasonDimension, stopCondition) &&
+               HasSemanticValue(
+                   conclusions,
+                   SelectedStopEvidenceDimension,
+                   observedStopEvidence);
+    }
+
+    private static bool TryReadPlanningCandidate(
+        IReadOnlyDictionary<string, string> values,
+        out PlanningCandidateState candidate)
+    {
+        candidate = default!;
+        if (!TryGetSemanticValue(values, CurrentPlanActionDimension, out var currentAction) ||
+            !TryGetSemanticValue(values, CandidatePlanActionDimension, out var candidateAction) ||
+            !TryGetSemanticValue(values, ActionPrerequisiteDimension, out var prerequisite) ||
+            !TryGetBoundedPlanningInteger(
+                values,
+                CurrentActionOrderDimension,
+                0,
+                MaximumDepth,
+                out var currentOrder) ||
+            !TryGetBoundedPlanningInteger(
+                values,
+                CandidateActionOrderDimension,
+                0,
+                MaximumDepth,
+                out var candidateOrder) ||
+            !TryGetBoundedPlanningInteger(
+                values,
+                ActionDurationMinutesDimension,
+                1,
+                MaximumPlanningMinutes,
+                out var durationMinutes) ||
+            !TryGetBoundedPlanningInteger(
+                values,
+                PlanTimeLimitMinutesDimension,
+                1,
+                MaximumPlanningMinutes,
+                out var timeLimitMinutes) ||
+            !TryGetBoundedPlanningInteger(
+                values,
+                PlanElapsedMinutesDimension,
+                0,
+                MaximumPlanningMinutes,
+                out var elapsedMinutes) ||
+            !TryGetBoundedPlanningInteger(
+                values,
+                AvailableResourceUnitsDimension,
+                0,
+                MaximumPlanningResourceUnits,
+                out var availableResources) ||
+            !TryGetBoundedPlanningInteger(
+                values,
+                RequiredResourceUnitsDimension,
+                1,
+                MaximumPlanningResourceUnits,
+                out var requiredResources) ||
+            !TryGetSemanticValue(
+                values,
+                SafetyConstraintStatusDimension,
+                out var safetyStatus) ||
+            !IsKnownSafetyConstraintStatus(safetyStatus))
+        {
+            return false;
+        }
+
+        candidate = new PlanningCandidateState(
+            currentAction,
+            candidateAction,
+            prerequisite,
+            currentOrder,
+            candidateOrder,
+            durationMinutes,
+            timeLimitMinutes,
+            elapsedMinutes,
+            availableResources,
+            requiredResources,
+            safetyStatus);
+        return true;
+    }
+
+    private static string? DeterminePlanningBlockReason(
+        IReadOnlyDictionary<string, string> values,
+        PlanningCandidateState candidate)
+    {
+        if (HasUnsupportedCausalAssumption(values))
+            return UnprovenCausalAssumptionValue;
+        if (string.Equals(
+                candidate.SafetyStatus,
+                ConstraintContradictionValue,
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return ContradictoryConstraintsValue;
+        }
+        if (!string.Equals(
+                candidate.Prerequisite,
+                candidate.CurrentAction,
+                StringComparison.OrdinalIgnoreCase) ||
+            candidate.CandidateOrder != candidate.CurrentOrder + 1)
+        {
+            return PrerequisiteOrderViolationValue;
+        }
+        if (string.Equals(
+                candidate.SafetyStatus,
+                SafetyViolatedValue,
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return UnsafeStepValue;
+        }
+        if (candidate.RequiredResources > candidate.AvailableResources)
+            return InsufficientResourceValue;
+        if (candidate.ElapsedMinutes + candidate.DurationMinutes > candidate.TimeLimitMinutes)
+            return TimeLimitExceededValue;
+        return null;
+    }
+
+    private static bool HasUnsupportedCausalAssumption(
+        IReadOnlyDictionary<string, string> values)
+    {
+        if (!TryGetSemanticValue(values, CauseSelectionDimension, out var cause) ||
+            string.Equals(cause, UndeterminedValue, StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        return !HasSemanticValue(
+            values,
+            CausalAttributionStatusDimension,
+            AttributionSupportedValue);
+    }
+
+    private static bool IsActivePlan(IReadOnlyDictionary<string, string> values) =>
+        HasSemanticValue(values, PlanStatusDimension, PlanReadyValue) ||
+        HasSemanticValue(values, PlanStatusDimension, PlanInProgressValue);
+
+    private static bool HasSatisfiedStopCondition(IReadOnlyDictionary<string, string> values) =>
+        TryGetSemanticValue(values, StopConditionDimension, out var stopCondition) &&
+        TryGetSemanticValue(values, ObservedStopEvidenceDimension, out var observed) &&
+        string.Equals(stopCondition, observed, StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsKnownSafetyConstraintStatus(string value) =>
+        value is SafetySatisfiedValue or SafetyViolatedValue or ConstraintContradictionValue;
+
+    private static bool TryGetBoundedPlanningInteger(
+        IReadOnlyDictionary<string, string> values,
+        string dimension,
+        int minimum,
+        int maximum,
+        out int result)
+    {
+        result = 0;
+        return TryGetSemanticValue(values, dimension, out var value) &&
+               int.TryParse(
+                   value,
+                   NumberStyles.None,
+                   CultureInfo.InvariantCulture,
+                   out result) &&
+               result >= minimum &&
+               result <= maximum;
+    }
+
+    private static bool CanReplaceConstrainedPlanningState(
+        ReasoningMode mode,
+        string dimension)
+    {
+        if (mode == ReasoningMode.ConstrainedPlanningStep)
+        {
+            return dimension is CurrentPlanActionDimension or
+                CurrentActionOrderDimension or
+                PlanElapsedMinutesDimension or
+                PlanStatusDimension or
+                CandidatePlanActionDimension or
+                ActionPrerequisiteDimension or
+                CandidateActionOrderDimension or
+                ActionDurationMinutesDimension or
+                RequiredResourceUnitsDimension or
+                SafetyConstraintStatusDimension;
+        }
+        if (mode == ReasoningMode.ConstrainedPlanningBlock ||
+            mode == ReasoningMode.ConstrainedPlanningStop)
+        {
+            return dimension == PlanStatusDimension;
+        }
+        if (mode == ReasoningMode.ConstrainedPlanningEvidenceBranch)
+        {
+            return dimension is CandidatePlanActionDimension or
+                ActionPrerequisiteDimension or
+                CandidateActionOrderDimension or
+                ActionDurationMinutesDimension or
+                RequiredResourceUnitsDimension or
+                SafetyConstraintStatusDimension;
+        }
+        return false;
+    }
+
     private static bool ViolatesConstraint(
         IReadOnlyDictionary<string, string> values,
         IReadOnlyList<LegendGovernedReasoningRule> constraints)
@@ -1232,6 +1874,18 @@ internal static class LegendConnectGovernedReasoningExecutor
         if (value == "reasoning.causal-diagnostic.resource-limited" ||
             value.StartsWith("reasoning.causal-diagnostic.resource-limited.", StringComparison.Ordinal))
             return ReasoningMode.CausalDiagnosticResourceLimited;
+        if (value == "reasoning.constrained-planning.step" ||
+            value.StartsWith("reasoning.constrained-planning.step.", StringComparison.Ordinal))
+            return ReasoningMode.ConstrainedPlanningStep;
+        if (value == "reasoning.constrained-planning.block" ||
+            value.StartsWith("reasoning.constrained-planning.block.", StringComparison.Ordinal))
+            return ReasoningMode.ConstrainedPlanningBlock;
+        if (value == "reasoning.constrained-planning.evidence-branch" ||
+            value.StartsWith("reasoning.constrained-planning.evidence-branch.", StringComparison.Ordinal))
+            return ReasoningMode.ConstrainedPlanningEvidenceBranch;
+        if (value == "reasoning.constrained-planning.stop" ||
+            value.StartsWith("reasoning.constrained-planning.stop.", StringComparison.Ordinal))
+            return ReasoningMode.ConstrainedPlanningStop;
         return null;
     }
 
@@ -1245,6 +1899,12 @@ internal static class LegendConnectGovernedReasoningExecutor
             ReasoningMode.CausalDiagnosticContradictoryEvidence or
             ReasoningMode.CausalDiagnosticResourceLimited;
 
+    private static bool IsConstrainedPlanningMode(ReasoningMode? mode) =>
+        mode is ReasoningMode.ConstrainedPlanningStep or
+            ReasoningMode.ConstrainedPlanningBlock or
+            ReasoningMode.ConstrainedPlanningEvidenceBranch or
+            ReasoningMode.ConstrainedPlanningStop;
+
     private enum ReasoningMode
     {
         Forward,
@@ -1256,7 +1916,11 @@ internal static class LegendConnectGovernedReasoningExecutor
         CausalDiagnosticPlan,
         CausalDiagnosticConclusion,
         CausalDiagnosticContradictoryEvidence,
-        CausalDiagnosticResourceLimited
+        CausalDiagnosticResourceLimited,
+        ConstrainedPlanningStep,
+        ConstrainedPlanningBlock,
+        ConstrainedPlanningEvidenceBranch,
+        ConstrainedPlanningStop
     }
 
     private sealed record DirectionalRule(
@@ -1281,6 +1945,19 @@ internal static class LegendConnectGovernedReasoningExecutor
         LegendGovernedReasoningProof Current,
         LegendGovernedReasoningProofStep ProposedStep,
         IReadOnlySet<Guid> ProposedFamilies);
+
+    private sealed record PlanningCandidateState(
+        string CurrentAction,
+        string CandidateAction,
+        string Prerequisite,
+        int CurrentOrder,
+        int CandidateOrder,
+        int DurationMinutes,
+        int TimeLimitMinutes,
+        int ElapsedMinutes,
+        int AvailableResources,
+        int RequiredResources,
+        string SafetyStatus);
 }
 
 internal sealed record LegendGovernedReasoningFamilyConnection(

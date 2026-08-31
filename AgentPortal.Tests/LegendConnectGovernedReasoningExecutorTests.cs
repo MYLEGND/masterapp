@@ -932,6 +932,382 @@ public sealed class LegendConnectGovernedReasoningExecutorTests
             item.Key.Contains("probability", StringComparison.OrdinalIgnoreCase));
     }
 
+    [Fact]
+    public void Executor_ConstrainedPlanningBuildsOneEngineerThirtyMinutePlanWithoutAssumingCause()
+    {
+        var execution = LegendConnectGovernedReasoningExecutor.Derive(
+            PlanningValues(
+                goal: "restore_observable_service",
+                candidateAction: "establish_baseline",
+                durationMinutes: 5,
+                timeLimitMinutes: 30,
+                availableResources: 1,
+                requiredResources: 1),
+            [
+                PlanningStepRule(
+                    "thirty-minute-step-one",
+                    resultingElapsedMinutes: 5,
+                    nextAction: "compare_predictions",
+                    nextOrder: 2,
+                    nextDurationMinutes: 10),
+                PlanningStepRule(
+                    "thirty-minute-step-two",
+                    resultingElapsedMinutes: 15,
+                    nextAction: "run_discriminator",
+                    nextOrder: 3,
+                    nextDurationMinutes: 15),
+                PlanningStepRule(
+                    "thirty-minute-step-three",
+                    resultingElapsedMinutes: 30)
+            ],
+            [DefaultSemanticFamilyId]);
+
+        Assert.False(execution.DerivedContradiction);
+        Assert.Empty(execution.Conflicts);
+        var completed = Assert.Single(execution.DerivedStates.Where(item =>
+            item.Values.GetValueOrDefault(
+                LegendConnectGovernedReasoningExecutor.PlanStatusDimension) ==
+            LegendConnectGovernedReasoningExecutor.PlanCompletedValue));
+        Assert.Equal("run_discriminator", completed.Values[
+            LegendConnectGovernedReasoningExecutor.CurrentPlanActionDimension]);
+        Assert.Equal("3", completed.Values[
+            LegendConnectGovernedReasoningExecutor.CurrentActionOrderDimension]);
+        Assert.Equal("30", completed.Values[
+            LegendConnectGovernedReasoningExecutor.PlanElapsedMinutesDimension]);
+        Assert.Equal(
+            LegendConnectGovernedReasoningExecutor.UndeterminedValue,
+            completed.Values[LegendConnectGovernedReasoningExecutor.CauseSelectionDimension]);
+        Assert.Equal(
+            ["thirty-minute-step-one", "thirty-minute-step-two", "thirty-minute-step-three"],
+            completed.TransitionPath);
+        Assert.Equal(3, completed.EvidenceLineage.Count);
+        Assert.All(completed.EvidenceLineage, step => Assert.Equal(
+            "reasoning.constrained-planning.step",
+            step.OperatorIdentity));
+        var firstStep = completed.EvidenceLineage[0];
+        Assert.Equal("restore_observable_service", firstStep.Premises[
+            LegendConnectGovernedReasoningExecutor.PlanGoalDimension]);
+        Assert.Equal("5", firstStep.Premises[
+            LegendConnectGovernedReasoningExecutor.ActionDurationMinutesDimension]);
+        Assert.Equal("30", firstStep.Premises[
+            LegendConnectGovernedReasoningExecutor.PlanTimeLimitMinutesDimension]);
+        Assert.Equal("1", firstStep.Premises[
+            LegendConnectGovernedReasoningExecutor.AvailableResourceUnitsDimension]);
+        Assert.Equal("1", firstStep.Premises[
+            LegendConnectGovernedReasoningExecutor.RequiredResourceUnitsDimension]);
+        Assert.Equal(
+            LegendConnectGovernedReasoningExecutor.SafetySatisfiedValue,
+            firstStep.Premises[
+                LegendConnectGovernedReasoningExecutor.SafetyConstraintStatusDimension]);
+
+        var overrun = LegendConnectGovernedReasoningExecutor.Derive(
+            PlanningValues(
+                goal: "restore_observable_service",
+                candidateAction: "overrun_action",
+                durationMinutes: 31,
+                timeLimitMinutes: 30,
+                availableResources: 1,
+                requiredResources: 1),
+            [
+                PlanningStepRule("overrun-step-must-not-run", 31),
+                PlanningBlockRule(
+                    "time-limit-block",
+                    LegendConnectGovernedReasoningExecutor.TimeLimitExceededValue)
+            ],
+            [DefaultSemanticFamilyId]);
+        var timeBlocked = Assert.Single(overrun.DerivedStates);
+        Assert.Equal(
+            LegendConnectGovernedReasoningExecutor.TimeLimitExceededValue,
+            timeBlocked.Values[LegendConnectGovernedReasoningExecutor.PlanBlockReasonDimension]);
+    }
+
+    [Fact]
+    public void Executor_ConstrainedPlanningBlocksAnInsufficientResourcePlanBeforeActing()
+    {
+        var execution = LegendConnectGovernedReasoningExecutor.Derive(
+            PlanningValues(
+                goal: "produce_bounded_assessment",
+                candidateAction: "collect_independent_evidence",
+                durationMinutes: 10,
+                timeLimitMinutes: 30,
+                availableResources: 1,
+                requiredResources: 2),
+            [
+                PlanningStepRule("resource-step-must-not-run", 10),
+                PlanningBlockRule(
+                    "resource-plan-blocked",
+                    LegendConnectGovernedReasoningExecutor.InsufficientResourceValue)
+            ],
+            [DefaultSemanticFamilyId]);
+
+        var blocked = Assert.Single(execution.DerivedStates);
+        Assert.Equal(
+            LegendConnectGovernedReasoningExecutor.PlanBlockedValue,
+            blocked.Values[LegendConnectGovernedReasoningExecutor.PlanStatusDimension]);
+        Assert.Equal(
+            LegendConnectGovernedReasoningExecutor.InsufficientResourceValue,
+            blocked.Values[LegendConnectGovernedReasoningExecutor.PlanBlockReasonDimension]);
+        Assert.Equal("plan_start", blocked.Values[
+            LegendConnectGovernedReasoningExecutor.CurrentPlanActionDimension]);
+        Assert.Equal(["resource-plan-blocked"], blocked.TransitionPath);
+    }
+
+    [Fact]
+    public void Executor_ConstrainedPlanningBlocksAnUnsafeStepBeforeActing()
+    {
+        var execution = LegendConnectGovernedReasoningExecutor.Derive(
+            PlanningValues(
+                goal: "obtain_safe_evidence",
+                candidateAction: "candidate_action",
+                durationMinutes: 5,
+                timeLimitMinutes: 30,
+                availableResources: 1,
+                requiredResources: 1,
+                safetyStatus: LegendConnectGovernedReasoningExecutor.SafetyViolatedValue),
+            [
+                PlanningStepRule("unsafe-step-must-not-run", 5),
+                PlanningBlockRule(
+                    "unsafe-plan-blocked",
+                    LegendConnectGovernedReasoningExecutor.UnsafeStepValue)
+            ],
+            [DefaultSemanticFamilyId]);
+
+        var blocked = Assert.Single(execution.DerivedStates);
+        Assert.Equal(
+            LegendConnectGovernedReasoningExecutor.UnsafeStepValue,
+            blocked.Values[LegendConnectGovernedReasoningExecutor.PlanBlockReasonDimension]);
+        Assert.DoesNotContain("unsafe-step-must-not-run", blocked.TransitionPath);
+    }
+
+    [Fact]
+    public void Executor_ConstrainedPlanningEnforcesPrerequisiteOrderAcrossProofSteps()
+    {
+        var execution = LegendConnectGovernedReasoningExecutor.Derive(
+            PlanningValues(
+                goal: "complete_ordered_assessment",
+                candidateAction: "first_action",
+                durationMinutes: 4,
+                timeLimitMinutes: 20,
+                availableResources: 1,
+                requiredResources: 1),
+            [
+                PlanningStepRule(
+                    "ordered-first",
+                    resultingElapsedMinutes: 4,
+                    nextAction: "second_action",
+                    nextOrder: 2,
+                    nextDurationMinutes: 5),
+                PlanningStepRule("ordered-second", resultingElapsedMinutes: 9)
+            ],
+            [DefaultSemanticFamilyId]);
+
+        Assert.DoesNotContain(execution.DerivedStates, item =>
+            item.Depth == 1 &&
+            item.Values.GetValueOrDefault(
+                LegendConnectGovernedReasoningExecutor.CurrentPlanActionDimension) ==
+            "second_action");
+        var completed = Assert.Single(execution.DerivedStates.Where(item =>
+            item.Values.GetValueOrDefault(
+                LegendConnectGovernedReasoningExecutor.PlanStatusDimension) ==
+            LegendConnectGovernedReasoningExecutor.PlanCompletedValue));
+        Assert.Equal(["ordered-first", "ordered-second"], completed.TransitionPath);
+        Assert.Equal("first_action", completed.EvidenceLineage[1].Premises[
+            LegendConnectGovernedReasoningExecutor.ActionPrerequisiteDimension]);
+        Assert.Equal("second_action", completed.EvidenceLineage[1].Conclusions[
+            LegendConnectGovernedReasoningExecutor.CurrentPlanActionDimension]);
+
+        var invalidValues = PlanningValues(
+            goal: "complete_ordered_assessment",
+            candidateAction: "second_action",
+            durationMinutes: 5,
+            timeLimitMinutes: 20,
+            availableResources: 1,
+            requiredResources: 1);
+        invalidValues[LegendConnectGovernedReasoningExecutor.ActionPrerequisiteDimension] =
+            "missing_first_action";
+        var invalid = LegendConnectGovernedReasoningExecutor.Derive(
+            invalidValues,
+            [
+                PlanningStepRule("invalid-prerequisite-step", 5),
+                PlanningBlockRule(
+                    "invalid-prerequisite-block",
+                    LegendConnectGovernedReasoningExecutor.PrerequisiteOrderViolationValue)
+            ],
+            [DefaultSemanticFamilyId]);
+        var blocked = Assert.Single(invalid.DerivedStates);
+        Assert.Equal(
+            LegendConnectGovernedReasoningExecutor.PrerequisiteOrderViolationValue,
+            blocked.Values[LegendConnectGovernedReasoningExecutor.PlanBlockReasonDimension]);
+    }
+
+    [Fact]
+    public void Executor_ConstrainedPlanningStopsEarlyWhenGovernedStopEvidenceIsObserved()
+    {
+        var values = PlanningValues(
+            goal: "bound_the_investigation",
+            candidateAction: "next_action",
+            durationMinutes: 10,
+            timeLimitMinutes: 30,
+            availableResources: 1,
+            requiredResources: 1);
+        values[LegendConnectGovernedReasoningExecutor.StopConditionDimension] = "goal_reached";
+        values[LegendConnectGovernedReasoningExecutor.ObservedStopEvidenceDimension] = "goal_reached";
+        var execution = LegendConnectGovernedReasoningExecutor.Derive(
+            values,
+            [
+                PlanningStepRule("post-stop-step-must-not-run", 10),
+                PlanningStopRule("governed-early-stop")
+            ],
+            [DefaultSemanticFamilyId]);
+
+        var stopped = Assert.Single(execution.DerivedStates);
+        Assert.Equal(
+            LegendConnectGovernedReasoningExecutor.PlanStoppedValue,
+            stopped.Values[LegendConnectGovernedReasoningExecutor.PlanStatusDimension]);
+        Assert.Equal("goal_reached", stopped.Values[
+            LegendConnectGovernedReasoningExecutor.PlanStopReasonDimension]);
+        Assert.Equal("goal_reached", stopped.Values[
+            LegendConnectGovernedReasoningExecutor.SelectedStopEvidenceDimension]);
+        Assert.Equal(["governed-early-stop"], stopped.TransitionPath);
+    }
+
+    [Fact]
+    public void Executor_ConstrainedPlanningFailsClosedOnContradictoryConstraints()
+    {
+        var execution = LegendConnectGovernedReasoningExecutor.Derive(
+            PlanningValues(
+                goal: "produce_consistent_plan",
+                candidateAction: "candidate_action",
+                durationMinutes: 5,
+                timeLimitMinutes: 30,
+                availableResources: 1,
+                requiredResources: 1,
+                safetyStatus: LegendConnectGovernedReasoningExecutor.ConstraintContradictionValue),
+            [
+                PlanningStepRule("contradicted-step-must-not-run", 5),
+                PlanningBlockRule(
+                    "contradictory-plan-blocked",
+                    LegendConnectGovernedReasoningExecutor.ContradictoryConstraintsValue)
+            ],
+            [DefaultSemanticFamilyId]);
+
+        var blocked = Assert.Single(execution.DerivedStates);
+        Assert.Equal(
+            LegendConnectGovernedReasoningExecutor.ContradictoryConstraintsValue,
+            blocked.Values[LegendConnectGovernedReasoningExecutor.PlanBlockReasonDimension]);
+        Assert.Equal(["contradictory-plan-blocked"], blocked.TransitionPath);
+    }
+
+    [Fact]
+    public void Executor_ConstrainedPlanningSelectsAnEvidenceDependentBranchBeforeActing()
+    {
+        var values = PlanningValues(
+            goal: "follow_governed_evidence",
+            candidateAction: "await_branch_evidence",
+            durationMinutes: 1,
+            timeLimitMinutes: 20,
+            availableResources: 1,
+            requiredResources: 1);
+        values[LegendConnectGovernedReasoningExecutor.RequiredBranchEvidenceDimension] =
+            "branch_evidence_alpha";
+        values[LegendConnectGovernedReasoningExecutor.ObservedBranchEvidenceDimension] =
+            "branch_evidence_alpha";
+        var execution = LegendConnectGovernedReasoningExecutor.Derive(
+            values,
+            [
+                PlanningEvidenceBranchRule(
+                    "evidence-selects-branch",
+                    selectedAction: "evidence_conditioned_action",
+                    selectedOrder: 1,
+                    selectedDurationMinutes: 7),
+                PlanningStepRule("execute-evidence-branch", resultingElapsedMinutes: 7)
+            ],
+            [DefaultSemanticFamilyId]);
+
+        var completed = Assert.Single(execution.DerivedStates.Where(item =>
+            item.Values.GetValueOrDefault(
+                LegendConnectGovernedReasoningExecutor.PlanStatusDimension) ==
+            LegendConnectGovernedReasoningExecutor.PlanCompletedValue));
+        Assert.Equal(
+            "evidence_conditioned_action",
+            completed.Values[LegendConnectGovernedReasoningExecutor.CurrentPlanActionDimension]);
+        Assert.Equal(
+            ["evidence-selects-branch", "execute-evidence-branch"],
+            completed.TransitionPath);
+        Assert.Equal("branch_evidence_alpha", completed.EvidenceLineage[0].Conclusions[
+            LegendConnectGovernedReasoningExecutor.SelectedBranchEvidenceDimension]);
+
+        var unmatchedValues = new Dictionary<string, string>(values)
+        {
+            [LegendConnectGovernedReasoningExecutor.ObservedBranchEvidenceDimension] =
+                "branch_evidence_beta"
+        };
+        var unmatched = LegendConnectGovernedReasoningExecutor.Derive(
+            unmatchedValues,
+            [PlanningEvidenceBranchRule(
+                "unmatched-evidence-branch",
+                selectedAction: "must_not_be_selected",
+                selectedOrder: 1,
+                selectedDurationMinutes: 7)],
+            [DefaultSemanticFamilyId]);
+        Assert.Empty(unmatched.DerivedStates);
+    }
+
+    [Fact]
+    public void Executor_ConstrainedPlanningBlocksAnUnsupportedCausalAssumption()
+    {
+        var values = PlanningValues(
+            goal: "test_before_attribution",
+            candidateAction: "collect_discriminating_evidence",
+            durationMinutes: 5,
+            timeLimitMinutes: 30,
+            availableResources: 1,
+            requiredResources: 1);
+        values[LegendConnectGovernedReasoningExecutor.CauseSelectionDimension] = "suspected_cause";
+        var execution = LegendConnectGovernedReasoningExecutor.Derive(
+            values,
+            [
+                PlanningStepRule("unsupported-cause-step-must-not-run", 5),
+                PlanningBlockRule(
+                    "unsupported-cause-plan-blocked",
+                    LegendConnectGovernedReasoningExecutor.UnprovenCausalAssumptionValue)
+            ],
+            [DefaultSemanticFamilyId]);
+
+        var blocked = Assert.Single(execution.DerivedStates);
+        Assert.Equal(
+            LegendConnectGovernedReasoningExecutor.UnprovenCausalAssumptionValue,
+            blocked.Values[LegendConnectGovernedReasoningExecutor.PlanBlockReasonDimension]);
+    }
+
+    [Theory]
+    [InlineData("preserve_specimen_integrity", "inspect_seal_state")]
+    [InlineData("verify_archive_provenance", "compare_chain_records")]
+    public void Executor_ConstrainedPlanningAppliesHeldOutDomainRolesWithoutTopicLogic(
+        string goal,
+        string action)
+    {
+        var execution = LegendConnectGovernedReasoningExecutor.Derive(
+            PlanningValues(
+                goal,
+                action,
+                durationMinutes: 12,
+                timeLimitMinutes: 30,
+                availableResources: 1,
+                requiredResources: 1),
+            [PlanningStepRule("held-out-planning-step", 12)],
+            [DefaultSemanticFamilyId]);
+
+        var completed = Assert.Single(execution.DerivedStates);
+        Assert.Equal(goal, completed.Values[
+            LegendConnectGovernedReasoningExecutor.PlanGoalDimension]);
+        Assert.Equal(action, completed.Values[
+            LegendConnectGovernedReasoningExecutor.CurrentPlanActionDimension]);
+        Assert.Equal("12", completed.Values[
+            LegendConnectGovernedReasoningExecutor.PlanElapsedMinutesDimension]);
+        Assert.Equal("reasoning.constrained-planning.step", completed.EvidenceLineage[0].OperatorIdentity);
+    }
+
     [Theory]
     [InlineData("latency_spike", "handoff_delay", "capacity_shortage")]
     [InlineData("renewal_drop", "message_mismatch", "timing_mismatch")]
@@ -1378,6 +1754,175 @@ public sealed class LegendConnectGovernedReasoningExecutorTests
         Assert.Equal(0, plan.ReasoningEvidenceCount);
         Assert.Equal(3, plan.IndependentEvidenceCount);
     }
+
+    private static Dictionary<string, string> PlanningValues(
+        string goal,
+        string candidateAction,
+        int durationMinutes,
+        int timeLimitMinutes,
+        int availableResources,
+        int requiredResources,
+        string safetyStatus = LegendConnectGovernedReasoningExecutor.SafetySatisfiedValue)
+    {
+        return new Dictionary<string, string>
+        {
+            [LegendConnectGovernedReasoningExecutor.PlanGoalDimension] = goal,
+            [LegendConnectGovernedReasoningExecutor.CurrentPlanActionDimension] = "plan_start",
+            [LegendConnectGovernedReasoningExecutor.CandidatePlanActionDimension] = candidateAction,
+            [LegendConnectGovernedReasoningExecutor.ActionPrerequisiteDimension] = "plan_start",
+            [LegendConnectGovernedReasoningExecutor.CurrentActionOrderDimension] = "0",
+            [LegendConnectGovernedReasoningExecutor.CandidateActionOrderDimension] = "1",
+            [LegendConnectGovernedReasoningExecutor.ActionDurationMinutesDimension] =
+                durationMinutes.ToString(),
+            [LegendConnectGovernedReasoningExecutor.PlanTimeLimitMinutesDimension] =
+                timeLimitMinutes.ToString(),
+            [LegendConnectGovernedReasoningExecutor.PlanElapsedMinutesDimension] = "0",
+            [LegendConnectGovernedReasoningExecutor.AvailableResourceUnitsDimension] =
+                availableResources.ToString(),
+            [LegendConnectGovernedReasoningExecutor.RequiredResourceUnitsDimension] =
+                requiredResources.ToString(),
+            [LegendConnectGovernedReasoningExecutor.SafetyConstraintStatusDimension] = safetyStatus,
+            [LegendConnectGovernedReasoningExecutor.PlanStatusDimension] =
+                LegendConnectGovernedReasoningExecutor.PlanReadyValue,
+            [LegendConnectGovernedReasoningExecutor.CauseSelectionDimension] =
+                LegendConnectGovernedReasoningExecutor.UndeterminedValue
+        };
+    }
+
+    private static LegendGovernedReasoningRule PlanningStepRule(
+        string signature,
+        int resultingElapsedMinutes,
+        string? nextAction = null,
+        int nextOrder = 0,
+        int nextDurationMinutes = 0,
+        int nextRequiredResources = 1,
+        string nextSafetyStatus = LegendConnectGovernedReasoningExecutor.SafetySatisfiedValue)
+    {
+        var result = new Dictionary<string, string>
+        {
+            [LegendConnectGovernedReasoningExecutor.CurrentPlanActionDimension] = "$candidate",
+            [LegendConnectGovernedReasoningExecutor.CurrentActionOrderDimension] = "$candidate_order",
+            [LegendConnectGovernedReasoningExecutor.PlanElapsedMinutesDimension] =
+                resultingElapsedMinutes.ToString(),
+            [LegendConnectGovernedReasoningExecutor.PlanStatusDimension] = nextAction is null
+                ? LegendConnectGovernedReasoningExecutor.PlanCompletedValue
+                : LegendConnectGovernedReasoningExecutor.PlanInProgressValue
+        };
+        if (nextAction is not null)
+        {
+            result[LegendConnectGovernedReasoningExecutor.CandidatePlanActionDimension] = nextAction;
+            result[LegendConnectGovernedReasoningExecutor.ActionPrerequisiteDimension] = "$candidate";
+            result[LegendConnectGovernedReasoningExecutor.CandidateActionOrderDimension] =
+                nextOrder.ToString();
+            result[LegendConnectGovernedReasoningExecutor.ActionDurationMinutesDimension] =
+                nextDurationMinutes.ToString();
+            result[LegendConnectGovernedReasoningExecutor.RequiredResourceUnitsDimension] =
+                nextRequiredResources.ToString();
+            result[LegendConnectGovernedReasoningExecutor.SafetyConstraintStatusDimension] =
+                nextSafetyStatus;
+        }
+
+        return Rule(
+            signature,
+            "reasoning.constrained-planning.step",
+            PlanningActionSourceFrame(),
+            result,
+            independentEvidenceCount: 3,
+            evidenceStandard: 2);
+    }
+
+    private static LegendGovernedReasoningRule PlanningBlockRule(
+        string signature,
+        string reason) =>
+        Rule(
+            signature,
+            "reasoning.constrained-planning.block",
+            PlanningActionSourceFrame(),
+            new Dictionary<string, string>
+            {
+                [LegendConnectGovernedReasoningExecutor.PlanStatusDimension] =
+                    LegendConnectGovernedReasoningExecutor.PlanBlockedValue,
+                [LegendConnectGovernedReasoningExecutor.PlanBlockReasonDimension] = reason
+            });
+
+    private static LegendGovernedReasoningRule PlanningEvidenceBranchRule(
+        string signature,
+        string selectedAction,
+        int selectedOrder,
+        int selectedDurationMinutes) =>
+        Rule(
+            signature,
+            "reasoning.constrained-planning.evidence-branch",
+            new Dictionary<string, string>
+            {
+                [LegendConnectGovernedReasoningExecutor.PlanGoalDimension] = "$goal",
+                [LegendConnectGovernedReasoningExecutor.PlanStatusDimension] = "$status",
+                [LegendConnectGovernedReasoningExecutor.CurrentPlanActionDimension] = "$current",
+                [LegendConnectGovernedReasoningExecutor.CandidatePlanActionDimension] = "$pending",
+                [LegendConnectGovernedReasoningExecutor.ActionPrerequisiteDimension] = "$current",
+                [LegendConnectGovernedReasoningExecutor.CandidateActionOrderDimension] = "$pending_order",
+                [LegendConnectGovernedReasoningExecutor.ActionDurationMinutesDimension] = "$pending_duration",
+                [LegendConnectGovernedReasoningExecutor.RequiredResourceUnitsDimension] = "$pending_resource",
+                [LegendConnectGovernedReasoningExecutor.SafetyConstraintStatusDimension] = "$pending_safety",
+                [LegendConnectGovernedReasoningExecutor.RequiredBranchEvidenceDimension] =
+                    "$branch_evidence",
+                [LegendConnectGovernedReasoningExecutor.ObservedBranchEvidenceDimension] =
+                    "$branch_evidence"
+            },
+            new Dictionary<string, string>
+            {
+                [LegendConnectGovernedReasoningExecutor.CurrentPlanActionDimension] = "$current",
+                [LegendConnectGovernedReasoningExecutor.CandidatePlanActionDimension] = selectedAction,
+                [LegendConnectGovernedReasoningExecutor.ActionPrerequisiteDimension] = "$current",
+                [LegendConnectGovernedReasoningExecutor.CandidateActionOrderDimension] =
+                    selectedOrder.ToString(),
+                [LegendConnectGovernedReasoningExecutor.ActionDurationMinutesDimension] =
+                    selectedDurationMinutes.ToString(),
+                [LegendConnectGovernedReasoningExecutor.RequiredResourceUnitsDimension] = "1",
+                [LegendConnectGovernedReasoningExecutor.SafetyConstraintStatusDimension] =
+                    LegendConnectGovernedReasoningExecutor.SafetySatisfiedValue,
+                [LegendConnectGovernedReasoningExecutor.EvidenceBranchStatusDimension] =
+                    LegendConnectGovernedReasoningExecutor.EvidenceBranchSelectedValue,
+                [LegendConnectGovernedReasoningExecutor.SelectedBranchEvidenceDimension] =
+                    "$branch_evidence"
+            });
+
+    private static LegendGovernedReasoningRule PlanningStopRule(string signature) =>
+        Rule(
+            signature,
+            "reasoning.constrained-planning.stop",
+            new Dictionary<string, string>
+            {
+                [LegendConnectGovernedReasoningExecutor.PlanGoalDimension] = "$goal",
+                [LegendConnectGovernedReasoningExecutor.PlanStatusDimension] = "$status",
+                [LegendConnectGovernedReasoningExecutor.CurrentPlanActionDimension] = "$current",
+                [LegendConnectGovernedReasoningExecutor.StopConditionDimension] = "$stop",
+                [LegendConnectGovernedReasoningExecutor.ObservedStopEvidenceDimension] = "$stop"
+            },
+            new Dictionary<string, string>
+            {
+                [LegendConnectGovernedReasoningExecutor.PlanStatusDimension] =
+                    LegendConnectGovernedReasoningExecutor.PlanStoppedValue,
+                [LegendConnectGovernedReasoningExecutor.PlanStopReasonDimension] = "$stop",
+                [LegendConnectGovernedReasoningExecutor.SelectedStopEvidenceDimension] = "$stop"
+            });
+
+    private static IReadOnlyDictionary<string, string> PlanningActionSourceFrame() =>
+        new Dictionary<string, string>
+        {
+            [LegendConnectGovernedReasoningExecutor.PlanGoalDimension] = "$goal",
+            [LegendConnectGovernedReasoningExecutor.CandidatePlanActionDimension] = "$candidate",
+            [LegendConnectGovernedReasoningExecutor.ActionPrerequisiteDimension] = "$prerequisite",
+            [LegendConnectGovernedReasoningExecutor.CurrentActionOrderDimension] = "$current_order",
+            [LegendConnectGovernedReasoningExecutor.CandidateActionOrderDimension] = "$candidate_order",
+            [LegendConnectGovernedReasoningExecutor.ActionDurationMinutesDimension] = "$duration",
+            [LegendConnectGovernedReasoningExecutor.PlanTimeLimitMinutesDimension] = "$time_limit",
+            [LegendConnectGovernedReasoningExecutor.PlanElapsedMinutesDimension] = "$elapsed",
+            [LegendConnectGovernedReasoningExecutor.AvailableResourceUnitsDimension] = "$available",
+            [LegendConnectGovernedReasoningExecutor.RequiredResourceUnitsDimension] = "$required",
+            [LegendConnectGovernedReasoningExecutor.SafetyConstraintStatusDimension] = "$safety",
+            [LegendConnectGovernedReasoningExecutor.PlanStatusDimension] = "$status"
+        };
 
     private static Dictionary<string, string> CausalDiagnosticValues(
         string firstHypothesis,
