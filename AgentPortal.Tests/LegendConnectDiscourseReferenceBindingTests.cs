@@ -17,12 +17,248 @@ using Xunit;
 namespace AgentPortal.Tests;
 
 /// <summary>
-/// Stage-3 SQL proof that cross-turn reference binding is derived from mature,
-/// Founder-declared semantic rules and persisted graph identities only.  The
-/// test intentionally recreates its DbContext for every observed turn.
+/// Proof that cross-turn reference binding is derived from mature,
+/// Founder-declared semantic rules and persisted graph identities only. The
+/// SQL-gated durability proof intentionally recreates its DbContext for every
+/// observed turn.
 /// </summary>
 public sealed class LegendConnectDiscourseReferenceBindingTests
 {
+    [Fact]
+    public async Task UniquePronounsAndThat_CompleteTheCurrentMeaningGraphBeforeSelection()
+    {
+        await using var fixture = await CreateInMemoryFixtureAsync();
+
+        var pronounConversation = Guid.NewGuid();
+        await fixture.ObserveAsync(fixture.FirstActor, pronounConversation, "user", "Alpha explanation.");
+        await fixture.ObserveAsync(fixture.FirstActor, pronounConversation, "user", "Explain it.");
+        var pronounPlan = await fixture.PlanAsync(
+            fixture.FirstActor,
+            pronounConversation,
+            "Explain it.");
+        Assert.True(pronounPlan.Supported, pronounPlan.ReasonCode);
+        AssertCompletedReference(pronounPlan, "alpha");
+
+        var demonstrativeConversation = Guid.NewGuid();
+        await fixture.ObserveAsync(fixture.FirstActor, demonstrativeConversation, "user", "Beta explanation.");
+        await fixture.ObserveAsync(
+            fixture.FirstActor,
+            demonstrativeConversation,
+            "user",
+            "Tell me more about that.");
+        var demonstrativePlan = await fixture.PlanAsync(
+            fixture.FirstActor,
+            demonstrativeConversation,
+            "Tell me more about that.");
+        Assert.True(demonstrativePlan.Supported, demonstrativePlan.ReasonCode);
+        AssertCompletedReference(demonstrativePlan, "beta");
+    }
+
+    [Fact]
+    public async Task ThoseTwoExplanations_ResolveOneGovernedPairIdentity()
+    {
+        await using var fixture = await CreateInMemoryFixtureAsync();
+        var conversationId = Guid.NewGuid();
+
+        await fixture.ObserveAsync(
+            fixture.FirstActor,
+            conversationId,
+            "user",
+            "Alpha and beta explanations.");
+        await fixture.ObserveAsync(
+            fixture.FirstActor,
+            conversationId,
+            "user",
+            "Contrast those two explanations.");
+        var planned = await fixture.PlanAsync(
+            fixture.FirstActor,
+            conversationId,
+            "Contrast those two explanations.");
+
+        Assert.True(planned.Supported, planned.ReasonCode);
+        AssertCompletedReference(planned, "alpha_beta", "explanation_pair");
+    }
+
+    [Fact]
+    public async Task AmbiguousUniqueReference_FailsClosedBeforeTransitionSelection()
+    {
+        await using var fixture = await CreateInMemoryFixtureAsync();
+        var conversationId = Guid.NewGuid();
+        await fixture.ObserveAsync(fixture.FirstActor, conversationId, "user", "Alpha explanation.");
+        await fixture.ObserveAsync(fixture.FirstActor, conversationId, "user", "Beta explanation.");
+        await fixture.ObserveAsync(fixture.FirstActor, conversationId, "user", "Explain it.");
+
+        var binding = Assert.Single(await fixture.LatestBindingsAsync(
+            fixture.FirstActor,
+            conversationId));
+        Assert.Equal("unresolved", binding.ResolutionState);
+        Assert.Equal("reference_candidate_ambiguous", binding.ReasonCode);
+
+        var planned = await fixture.PlanAsync(
+            fixture.FirstActor,
+            conversationId,
+            "Explain it.");
+        Assert.False(planned.Supported);
+        Assert.Equal("discourse_reference_unresolved", planned.ReasonCode);
+        Assert.Null(planned.Plan);
+    }
+
+    [Fact]
+    public async Task OrdinalReference_UsesTheMostRecentGovernedEntitySet()
+    {
+        await using var fixture = await CreateInMemoryFixtureAsync();
+        var conversationId = Guid.NewGuid();
+        await fixture.ObserveAsync(
+            fixture.FirstActor,
+            conversationId,
+            "user",
+            "Alpha and beta explanations.");
+        await fixture.ObserveAsync(
+            fixture.FirstActor,
+            conversationId,
+            "user",
+            "Compare the second one.");
+
+        var planned = await fixture.PlanAsync(
+            fixture.FirstActor,
+            conversationId,
+            "Compare the second one.");
+
+        Assert.True(planned.Supported, planned.ReasonCode);
+        AssertCompletedReference(planned, "beta");
+    }
+
+    [Fact]
+    public async Task RoleRestrictedReference_UsesOnlyTheGovernedAllowedSourceRole()
+    {
+        await using var fixture = await CreateInMemoryFixtureAsync();
+        var conversationId = Guid.NewGuid();
+        await fixture.ObserveAsync(fixture.FirstActor, conversationId, "user", "Alpha explanation.");
+        await fixture.ObserveAsync(fixture.FirstActor, conversationId, "assistant", "Beta explanation.");
+        await fixture.ObserveAsync(fixture.FirstActor, conversationId, "user", "Review her proposal.");
+
+        var planned = await fixture.PlanAsync(
+            fixture.FirstActor,
+            conversationId,
+            "Review her proposal.");
+
+        Assert.True(planned.Supported, planned.ReasonCode);
+        AssertCompletedReference(planned, "beta");
+        var binding = Assert.Single(planned.Plan!.ResolvedDiscourseBindings);
+        var sourceTurn = Assert.Single((await fixture.StateAsync(
+                fixture.FirstActor,
+                conversationId)).Turns
+            .Where(item => item.SequenceNumber == binding.EntityTurnSequence));
+        Assert.Equal("assistant", sourceTurn.Role);
+    }
+
+    [Fact]
+    public async Task RecentReference_SelectsOnlyTheUniqueMostRecentGovernedEntity()
+    {
+        await using var fixture = await CreateInMemoryFixtureAsync();
+        var conversationId = Guid.NewGuid();
+        await fixture.ObserveAsync(fixture.FirstActor, conversationId, "user", "Alpha explanation.");
+        await fixture.ObserveAsync(fixture.FirstActor, conversationId, "user", "Beta explanation.");
+        await fixture.ObserveAsync(
+            fixture.FirstActor,
+            conversationId,
+            "user",
+            "Revisit the latest explanation.");
+
+        var planned = await fixture.PlanAsync(
+            fixture.FirstActor,
+            conversationId,
+            "Revisit the latest explanation.");
+
+        Assert.True(planned.Supported, planned.ReasonCode);
+        AssertCompletedReference(planned, "beta");
+    }
+
+    [Fact]
+    public async Task GovernedCorrection_ReplacesTheActiveResolvedSemanticIdentity()
+    {
+        await using var fixture = await CreateInMemoryFixtureAsync();
+        var conversationId = Guid.NewGuid();
+        await fixture.ObserveAsync(
+            fixture.FirstActor,
+            conversationId,
+            "user",
+            "Alpha and beta explanations.");
+        await fixture.ObserveAsync(
+            fixture.FirstActor,
+            conversationId,
+            "user",
+            "Compare the second one.");
+        await fixture.ObserveAsync(
+            fixture.FirstActor,
+            conversationId,
+            "user",
+            "No use the first one.");
+
+        var planned = await fixture.PlanAsync(
+            fixture.FirstActor,
+            conversationId,
+            "No use the first one.");
+        Assert.True(planned.Supported, planned.ReasonCode);
+        AssertCompletedReference(planned, "alpha");
+        Assert.True(Assert.Single(planned.Plan!.ResolvedDiscourseBindings).ReplacesActiveBinding);
+
+        var active = Assert.Single(await fixture.ActiveBindingsAsync(
+            fixture.FirstActor,
+            conversationId));
+        Assert.Equal("alpha", active.EntitySemanticValue);
+        Assert.True(active.ReplacesActiveBinding);
+
+        await fixture.ObserveAsync(
+            fixture.FirstActor,
+            conversationId,
+            "user",
+            "Explain it.");
+        AssertCompletedReference(
+            await fixture.PlanAsync(
+                fixture.FirstActor,
+                conversationId,
+                "Explain it."),
+            "alpha");
+    }
+
+    [Fact]
+    public async Task ReferenceBinding_IsIsolatedAcrossFounderActors()
+    {
+        await using var fixture = await CreateInMemoryFixtureAsync();
+        var conversationId = Guid.NewGuid();
+        await fixture.ObserveAsync(fixture.FirstActor, conversationId, "user", "Alpha explanation.");
+        await fixture.ObserveAsync(fixture.SecondActor, conversationId, "user", "Beta explanation.");
+        await fixture.ObserveAsync(fixture.FirstActor, conversationId, "user", "Explain it.");
+        await fixture.ObserveAsync(fixture.SecondActor, conversationId, "user", "Explain it.");
+
+        AssertCompletedReference(
+            await fixture.PlanAsync(fixture.FirstActor, conversationId, "Explain it."),
+            "alpha");
+        AssertCompletedReference(
+            await fixture.PlanAsync(fixture.SecondActor, conversationId, "Explain it."),
+            "beta");
+    }
+
+    [Fact]
+    public async Task ReferenceBinding_IsIsolatedAcrossConversations()
+    {
+        await using var fixture = await CreateInMemoryFixtureAsync();
+        var firstConversation = Guid.NewGuid();
+        var secondConversation = Guid.NewGuid();
+        await fixture.ObserveAsync(fixture.FirstActor, firstConversation, "user", "Alpha explanation.");
+        await fixture.ObserveAsync(fixture.FirstActor, secondConversation, "user", "Beta explanation.");
+        await fixture.ObserveAsync(fixture.FirstActor, firstConversation, "user", "Explain it.");
+        await fixture.ObserveAsync(fixture.FirstActor, secondConversation, "user", "Explain it.");
+
+        AssertCompletedReference(
+            await fixture.PlanAsync(fixture.FirstActor, firstConversation, "Explain it."),
+            "alpha");
+        AssertCompletedReference(
+            await fixture.PlanAsync(fixture.FirstActor, secondConversation, "Explain it."),
+            "beta");
+    }
+
     [Fact]
     public async Task GovernedReferenceBinding_UsesOnlyScopedPersistedSemanticIdentities()
     {
@@ -350,6 +586,274 @@ public sealed class LegendConnectDiscourseReferenceBindingTests
         }
     }
 
+    private static void AssertCompletedReference(
+        LegendConnectResponseMeaningPlanResult planned,
+        string expectedValue,
+        string expectedDimension = "explanation")
+    {
+        Assert.True(planned.Supported, planned.ReasonCode);
+        var plan = Assert.IsType<LegendConnectResponseMeaningPlanSnapshot>(planned.Plan);
+        var binding = Assert.Single(plan.ResolvedDiscourseBindings);
+        Assert.Equal("bound", binding.ResolutionState);
+        Assert.Equal(expectedDimension, binding.EntitySemanticDimension);
+        Assert.Equal(expectedValue, binding.EntitySemanticValue);
+        Assert.False(string.IsNullOrWhiteSpace(binding.SelectorSemanticSignature));
+        Assert.False(string.IsNullOrWhiteSpace(binding.ReferenceRuleSignature));
+        Assert.NotNull(plan.BoundSemanticVariables);
+        Assert.Equal(expectedValue, plan.BoundSemanticVariables!["$subject"]);
+        Assert.False(string.IsNullOrWhiteSpace(plan.SourceMeaningGraphIdentity));
+    }
+
+    private static async Task<InMemoryReferenceFixture> CreateInMemoryFixtureAsync()
+    {
+        var db = ControllerTestHelpers.BuildDb();
+        var firstActor = Guid.NewGuid().ToString("D");
+        var secondActor = Guid.NewGuid().ToString("D");
+        db.AgentProfiles.AddRange(
+            Profile(firstActor, "early-first"),
+            Profile(secondActor, "early-second"));
+        await db.SaveChangesAsync();
+
+        var curriculum = CreateCurriculum(db);
+        for (var family = 1; family <= 3; family++)
+        {
+            var submitted = await curriculum.SubmitFounderEnglishBatchAsync(
+                EarlyBindingReferenceFamily(family));
+            Assert.True(submitted.Succeeded, submitted.Message);
+        }
+
+        var operations = CreateOperations(db);
+        return new InMemoryReferenceFixture(
+            db,
+            operations,
+            new LegendFounderAiDiscourseStateService(
+                db,
+                new AgentProfileAccessResolver(db),
+                operations),
+            firstActor,
+            secondActor);
+    }
+
+    private static LegendConnectCurriculumBatchSubmission EarlyBindingReferenceFamily(int family)
+    {
+        var examples = new List<LegendConnectCurriculumExampleSubmission>
+        {
+            ExplanationEntityExample(family, "alpha", "Alpha"),
+            ExplanationEntityExample(family, "beta", "Beta"),
+            ExplanationPairExample(family),
+            ReferenceRequestExample(
+                family,
+                "pronoun",
+                "Explain it.",
+                "explain_reference",
+                "Explain",
+                "it",
+                "pronoun_it",
+                "explanation",
+                "unique",
+                null,
+                ["user", "assistant"],
+                false),
+            ReferenceRequestExample(
+                family,
+                "demonstrative",
+                "Tell me more about that.",
+                "detail_reference",
+                "Tell me more about",
+                "that",
+                "demonstrative_that",
+                "explanation",
+                "unique",
+                null,
+                ["user", "assistant"],
+                false),
+            ReferenceRequestExample(
+                family,
+                "ordinal",
+                "Compare the second one.",
+                "ordinal_reference",
+                "Compare",
+                "second",
+                "ordinal_two",
+                "explanation",
+                "ordinal",
+                2,
+                ["user", "assistant"],
+                false),
+            ReferenceRequestExample(
+                family,
+                "role",
+                "Review her proposal.",
+                "role_reference",
+                "Review",
+                "her",
+                "assistant_role_pronoun",
+                "explanation",
+                "unique",
+                null,
+                ["assistant"],
+                false),
+            ReferenceRequestExample(
+                family,
+                "recent",
+                "Revisit the latest explanation.",
+                "recent_reference",
+                "Revisit",
+                "latest",
+                "recent_explanation",
+                "explanation",
+                "recent",
+                null,
+                ["user", "assistant"],
+                false),
+            ReferenceRequestExample(
+                family,
+                "correction",
+                "No use the first one.",
+                "correction_reference",
+                "No use",
+                "first",
+                "ordinal_one_correction",
+                "explanation",
+                "ordinal",
+                1,
+                ["user", "assistant"],
+                true),
+            ReferenceRequestExample(
+                family,
+                "plural",
+                "Contrast those two explanations.",
+                "plural_reference",
+                "Contrast",
+                "those two explanations",
+                "two_explanations",
+                "explanation_pair",
+                "unique",
+                null,
+                ["user", "assistant"],
+                false)
+        };
+
+        var functions = new[]
+        {
+            (Source: "explain_reference", Result: "explanation_response", Dimension: "explanation"),
+            (Source: "detail_reference", Result: "detail_response", Dimension: "explanation"),
+            (Source: "ordinal_reference", Result: "ordinal_response", Dimension: "explanation"),
+            (Source: "role_reference", Result: "role_response", Dimension: "explanation"),
+            (Source: "recent_reference", Result: "recent_response", Dimension: "explanation"),
+            (Source: "correction_reference", Result: "correction_response", Dimension: "explanation"),
+            (Source: "plural_reference", Result: "plural_response", Dimension: "explanation_pair")
+        };
+        examples.AddRange(functions.Select(item =>
+            new LegendConnectCurriculumExampleSubmission(
+                $"Founder {item.Result} evidence {family}.",
+                new Dictionary<string, string>
+                {
+                    ["conversation_function"] = item.Result
+                })));
+
+        return new LegendConnectCurriculumBatchSubmission(
+            $"discourse.reference.early-binding.{family}",
+            "Founder-governed early discourse completion evidence",
+            examples,
+            functions.Select(item => new LegendConnectSemanticTransitionSubmission(
+                new LegendConnectSemanticFrameSubmission(new Dictionary<string, string>
+                {
+                    ["conversation_function"] = item.Source,
+                    [item.Dimension] = "$subject"
+                }),
+                new LegendConnectSemanticFrameSubmission(new Dictionary<string, string>
+                {
+                    ["conversation_function"] = item.Result
+                }))).ToArray());
+    }
+
+    private static LegendConnectCurriculumExampleSubmission ExplanationEntityExample(
+        int family,
+        string value,
+        string surface) =>
+        new(
+            $"Founder explanation {value} evidence {family}: {surface} explanation.",
+            new Dictionary<string, string>
+            {
+                ["conversation_function"] = "establish_explanation",
+                ["explanation"] = value
+            },
+            new LegendConnectMeaningGraphSubmission(
+            [
+                new LegendConnectMeaningNodeSubmission(
+                    "entity", "explanation", value, surface),
+                new LegendConnectMeaningNodeSubmission(
+                    "kind", "entity_kind", "explanation", "explanation")
+            ],
+            [new LegendConnectMeaningRelationSubmission(
+                "entity", "has-kind", "kind")]));
+
+    private static LegendConnectCurriculumExampleSubmission ExplanationPairExample(int family) =>
+        new(
+            $"Founder explanation pair evidence {family}: Alpha and beta explanations.",
+            new Dictionary<string, string>
+            {
+                ["conversation_function"] = "establish_explanation_pair",
+                ["explanation_pair"] = "alpha_beta"
+            },
+            new LegendConnectMeaningGraphSubmission(
+            [
+                new LegendConnectMeaningNodeSubmission(
+                    "first", "explanation", "alpha", "Alpha"),
+                new LegendConnectMeaningNodeSubmission(
+                    "second", "explanation", "beta", "beta"),
+                new LegendConnectMeaningNodeSubmission(
+                    "pair", "explanation_pair", "alpha_beta", "Alpha and beta explanations")
+            ],
+            [
+                new LegendConnectMeaningRelationSubmission(
+                    "first", "contrasted-with", "second"),
+                new LegendConnectMeaningRelationSubmission(
+                    "pair", "contains", "first"),
+                new LegendConnectMeaningRelationSubmission(
+                    "pair", "contains", "second")
+            ]));
+
+    private static LegendConnectCurriculumExampleSubmission ReferenceRequestExample(
+        int family,
+        string key,
+        string sentence,
+        string function,
+        string functionSurface,
+        string selectorSurface,
+        string selectorValue,
+        string entityDimension,
+        string resolutionMode,
+        int? selectionRank,
+        IReadOnlyList<string> allowedRoles,
+        bool replacesActiveBinding) =>
+        new(
+            $"Founder {key} reference evidence {family}: {sentence}",
+            new Dictionary<string, string>
+            {
+                ["conversation_function"] = function,
+                [entityDimension] = entityDimension == "explanation_pair"
+                    ? "training_explanation_pair"
+                    : "training_explanation"
+            },
+            new LegendConnectMeaningGraphSubmission(
+            [
+                new LegendConnectMeaningNodeSubmission(
+                    "function", "conversation_function", function, functionSurface),
+                new LegendConnectMeaningNodeSubmission(
+                    "selector", "reference_selector", selectorValue, selectorSurface)
+            ],
+            [new LegendConnectMeaningRelationSubmission(
+                "function", "references", "selector")],
+            [new LegendConnectDiscourseReferenceSubmission(
+                "selector",
+                entityDimension,
+                resolutionMode,
+                selectionRank,
+                allowedRoles,
+                replacesActiveBinding)]));
+
     private static AgentProfile Profile(string actor, string prefix) => new()
     {
         Id = Guid.NewGuid(),
@@ -565,5 +1069,71 @@ public sealed class LegendConnectDiscourseReferenceBindingTests
         public Task<bool> IsFounderManagerAsync(MessagingActor actor, CancellationToken cancellationToken = default) => Task.FromResult(true);
         public Task<bool> IsCanonicalFounderManagerAsync(MessagingActor actor, CancellationToken cancellationToken = default) => Task.FromResult(true);
         public Task<string?> GetPreferredLanguageAsync(MessagingActor actor, CancellationToken cancellationToken = default) => Task.FromResult<string?>(null);
+    }
+
+    private sealed class InMemoryReferenceFixture : IAsyncDisposable
+    {
+        internal InMemoryReferenceFixture(
+            MasterAppDbContext db,
+            LegendConnectOperations operations,
+            LegendFounderAiDiscourseStateService discourse,
+            string firstActor,
+            string secondActor)
+        {
+            Db = db;
+            Operations = operations;
+            Discourse = discourse;
+            FirstActor = firstActor;
+            SecondActor = secondActor;
+        }
+
+        private MasterAppDbContext Db { get; }
+        private LegendConnectOperations Operations { get; }
+        private LegendFounderAiDiscourseStateService Discourse { get; }
+        internal string FirstActor { get; }
+        internal string SecondActor { get; }
+
+        internal async Task ObserveAsync(
+            string actor,
+            Guid conversationId,
+            string role,
+            string surface)
+        {
+            var graph = await Operations.AnalyzeReusableMeaningGraphAsync(surface);
+            Assert.NotEmpty(graph.Nodes);
+            await Discourse.RecordObservationAsync(
+                ControllerTestHelpers.BuildUser(actor),
+                conversationId.ToString(),
+                role,
+                graph);
+        }
+
+        internal async Task<LegendConnectDiscourseStateSnapshot> StateAsync(
+            string actor,
+            Guid conversationId) =>
+            Assert.IsType<LegendConnectDiscourseStateSnapshot>(
+                await Discourse.GetStateAsync(
+                    ControllerTestHelpers.BuildUser(actor),
+                    conversationId.ToString()));
+
+        internal async Task<LegendConnectResponseMeaningPlanResult> PlanAsync(
+            string actor,
+            Guid conversationId,
+            string surface) =>
+            await Operations.TryPlanConversationAsync(
+                surface,
+                await StateAsync(actor, conversationId));
+
+        internal Task<IReadOnlyList<LegendFounderAiDiscourseReferenceBinding>> LatestBindingsAsync(
+            string actor,
+            Guid conversationId) =>
+            Discourse.GetLatestBindingsAsync(actor, conversationId);
+
+        internal Task<IReadOnlyList<LegendFounderAiDiscourseReferenceBinding>> ActiveBindingsAsync(
+            string actor,
+            Guid conversationId) =>
+            Discourse.GetActiveBindingsAsync(actor, conversationId);
+
+        public ValueTask DisposeAsync() => Db.DisposeAsync();
     }
 }

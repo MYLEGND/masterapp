@@ -996,7 +996,7 @@ public sealed class FounderLegendConnectService
                 }
                 if (!TryParseDiscourseReference(referenceSuffix, out var reference, out var referenceError))
                 {
-                    error = referenceError ?? $"Line {index + 1}: use @reference selector_node | entity_dimension=controlled_dimension | resolution=ordinal|unique.";
+                    error = referenceError ?? $"Line {index + 1}: use @reference selector_node | entity_dimension=controlled_dimension | resolution=ordinal|unique|recent.";
                     return false;
                 }
                 if (meaningReferences.Any(item =>
@@ -1415,7 +1415,7 @@ public sealed class FounderLegendConnectService
         var parts = input.Split('|', StringSplitOptions.TrimEntries);
         if (parts.Length is < 3 or > 6 || !IsSemanticDimensionName(parts[0]))
         {
-            error = "A discourse reference must use selector_node | entity_dimension=controlled_dimension | resolution=ordinal|unique [| rank=positive_integer] [| roles=user,assistant] [| replace_active=true].";
+            error = "A discourse reference must use selector_node | entity_dimension=controlled_dimension | resolution=ordinal|unique|recent [| rank=positive_integer] [| roles=user,assistant] [| replace_active=true].";
             return false;
         }
 
@@ -1439,7 +1439,7 @@ public sealed class FounderLegendConnectService
                 continue;
             }
             if (string.Equals(option[0], "resolution", StringComparison.OrdinalIgnoreCase) &&
-                resolution is null && option[1] is "ordinal" or "unique")
+                resolution is null && option[1] is "ordinal" or "unique" or "recent")
             {
                 resolution = option[1];
                 continue;
@@ -1478,9 +1478,9 @@ public sealed class FounderLegendConnectService
 
         if (entityDimension is null || resolution is null ||
             (resolution == "ordinal" && rank is null) ||
-            (resolution == "unique" && rank is not null))
+            (resolution is "unique" or "recent" && rank is not null))
         {
-            error = "An ordinal discourse reference requires rank=positive_integer; a unique discourse reference must not declare rank.";
+            error = "An ordinal discourse reference requires rank=positive_integer; unique and recent discourse references must not declare rank.";
             return false;
         }
 

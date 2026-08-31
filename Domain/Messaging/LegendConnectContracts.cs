@@ -827,7 +827,8 @@ public sealed record LegendConnectDiscourseReferenceRuleSnapshot(
     int? SelectionRank,
     IReadOnlyList<string> AllowedSourceRoles,
     bool ReplacesActiveBinding,
-    int IndependentSupportCount);
+    int IndependentSupportCount,
+    string RuleSignature);
 
 /// <summary>
 /// A bounded, conversation-scoped projection of persisted governed meaning.
@@ -851,7 +852,9 @@ public sealed record LegendConnectDiscourseReferenceBindingSnapshot(
     string? EntitySemanticValue,
     int? EntityTurnSequence,
     int? EntityNodeIndex,
-    bool ReplacesActiveBinding);
+    bool ReplacesActiveBinding,
+    string SelectorSemanticSignature,
+    string? ReferenceRuleSignature);
 
 public sealed record LegendConnectDiscourseStateSnapshot(
     IReadOnlyList<LegendConnectDiscourseTurnStateSnapshot> Turns);
