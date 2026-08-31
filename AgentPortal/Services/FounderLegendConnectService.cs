@@ -301,7 +301,7 @@ public sealed class FounderLegendConnectService
             sourceLanguageCode);
     }
 
-    public async Task<LegendConnectMachineTeachingSubmissionResult>
+    internal async Task<LegendConnectMachineTeachingSubmissionResult>
         QueueMachineTeachingProposalAsync(
             ClaimsPrincipal user,
             LegendConnectMachineTeachingSubmission submission,

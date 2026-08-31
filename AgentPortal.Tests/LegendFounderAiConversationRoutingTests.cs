@@ -164,43 +164,17 @@ public sealed class LegendFounderAiConversationRoutingTests
         Assert.Contains("LEGEND_NATIVE_GAP_CONTEXT", context);
         Assert.Contains("meaning_graph_component_unknown", context);
         Assert.Contains("legend_search_retained_knowledge", context);
-        Assert.Contains("legend_submit_machine_learning_candidate", context);
-        Assert.Contains("MachineProposed", context);
-        Assert.Contains("independent critic", context);
-        Assert.Contains("submit exactly one bounded MachineProposed proposal", context, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("lower-ranked non-serving proposal", context, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("explicit instruction and request-level confirmation", context);
+        Assert.DoesNotContain("automatically", context, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("instead of inventing", context, StringComparison.OrdinalIgnoreCase);
     }
 
-    [Theory]
-    [InlineData("legend_submit_machine_learning_candidate", "legend", false, true, true)]
-    [InlineData("legend_submit_machine_learning_candidate", "legend", true, false, false)]
-    [InlineData("legend_submit_machine_learning_candidate", "teacher", false, true, false)]
-    [InlineData("legend_submit_founder_curriculum", "legend", false, true, false)]
-    public void AutomaticProposalAuthority_IsLimitedToOneRealNativeGap(
-        string toolName,
-        string mode,
-        bool supported,
-        bool requiresEscalation,
-        bool expected)
+    [Fact]
+    public void NativeGapHasNoAutomaticLearningAuthorizationPath()
     {
         var method = typeof(LegendFounderAiConversationService)
             .GetMethod("CanAutomaticallyRetainNativeGapProposal", BindingFlags.NonPublic | BindingFlags.Static);
-        Assert.NotNull(method);
-        var snapshot = new LegendConnectNativeInferenceSnapshot(
-            supported,
-            supported ? 1m : 0m,
-            supported ? "answer" : null,
-            supported ? "supported" : "meaning_graph_component_unknown",
-            0,
-            "diagnostic",
-            requiresEscalation);
-
-        Assert.Equal(
-            expected,
-            Assert.IsType<bool>(method!.Invoke(
-                null,
-                new object?[] { toolName, mode, snapshot })));
+        Assert.Null(method);
     }
 
     [Fact]

@@ -752,7 +752,28 @@ public sealed record LegendConnectMachineTeachingSubmissionResult(
     string? ErrorCode,
     string Message,
     Guid? CorpusCandidateId,
-    Guid? ProposalId);
+    Guid? ProposalId,
+    bool ProposalAlreadyExisted = false);
+
+/// <summary>
+/// The only success receipt exposed after a confirmed conversational
+/// MachineProposed mutation. It proves durable candidate/proposal identity
+/// while explicitly denying canonical or runtime-serving authority.
+/// </summary>
+public sealed record LegendConnectMachineTeachingMutationReceipt(
+    bool Succeeded,
+    Guid CandidateId,
+    Guid ProposalId,
+    string DurableState,
+    string Provenance,
+    string AuthorizationCorrelation,
+    string ServingStatus,
+    string CanonicalStatus)
+{
+    public const string RequiredProvenance = "MachineProposed";
+    public const string RequiredServingStatus = "NonServing";
+    public const string RequiredCanonicalStatus = "NonCanonical";
+}
 
 /// <summary>
 /// One bounded retrieval result projected from existing LEGEND evidence.

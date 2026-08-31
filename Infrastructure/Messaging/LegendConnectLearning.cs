@@ -2639,7 +2639,8 @@ internal sealed class LegendConnectAutonomousLearningService
                 null,
                 "The exact conversational teaching artifact is already retained in LEGEND.",
                 candidate.Id,
-                existing.Id);
+                existing.Id,
+                ProposalAlreadyExisted: true);
         }
 
         var state =
@@ -2741,7 +2742,8 @@ internal sealed class LegendConnectAutonomousLearningService
                 null,
                 "Concurrent conversational teaching converged on the existing deterministic LEGEND proposal.",
                 candidate.Id,
-                concurrent.Id);
+                concurrent.Id,
+                ProposalAlreadyExisted: true);
         }
 
         await RecordAsync(

@@ -38,6 +38,9 @@ internal sealed class LegendFounderToolAuthority
 
     private readonly FounderLegendConnectService _legend;
     private readonly IFounderSoftwareRemediationService? _softwareRemediation;
+    private readonly HashSet<string> _consumedMutationAuthorizations =
+        new(StringComparer.Ordinal);
+    private readonly object _mutationAuthorizationLock = new();
 
     private static readonly JsonSerializerOptions JsonOptions =
         new(JsonSerializerDefaults.Web)
@@ -156,6 +159,16 @@ internal sealed class LegendFounderToolAuthority
         string mode,
         CancellationToken cancellationToken)
     {
+        if (!IsReadOnlyFounderTool(call.Name))
+        {
+            var authorizationFailure = await TryConsumeMutationAuthorizationAsync(
+                founder,
+                call.MutationAuthorization,
+                cancellationToken);
+            if (authorizationFailure is not null)
+                return authorizationFailure;
+        }
+
         switch (call.Name)
         {
             case "legend_capabilities":
@@ -600,8 +613,38 @@ internal sealed class LegendFounderToolAuthority
                                 semanticTransitions),
                             cancellationToken);
 
+                if (!result.Succeeded)
+                    return SerializeUnbounded(result);
+                if (result.ProposalAlreadyExisted)
+                {
+                    return MutationFailure(
+                        "machine_learning_mutation_replay",
+                        "The exact MachineProposed mutation already exists and was not accepted as a new authorized success receipt.");
+                }
+                if (result.CorpusCandidateId is not { } candidateId ||
+                    candidateId == Guid.Empty ||
+                    result.ProposalId is not { } proposalId ||
+                    proposalId == Guid.Empty ||
+                    candidateId == proposalId ||
+                    string.IsNullOrWhiteSpace(result.State) ||
+                    result.State is not ("AwaitingCritic" or "InsufficientEvidence") ||
+                    call.MutationAuthorization is null)
+                {
+                    return MutationFailure(
+                        "machine_learning_mutation_receipt_incomplete",
+                        "The governed learning authority did not return the complete durable identity required for a success receipt.");
+                }
+
                 return SerializeUnbounded(
-                    result);
+                    new LegendConnectMachineTeachingMutationReceipt(
+                        true,
+                        candidateId,
+                        proposalId,
+                        result.State,
+                        LegendConnectMachineTeachingMutationReceipt.RequiredProvenance,
+                        call.MutationAuthorization.CorrelationId,
+                        LegendConnectMachineTeachingMutationReceipt.RequiredServingStatus,
+                        LegendConnectMachineTeachingMutationReceipt.RequiredCanonicalStatus));
             }
 
             case "legend_submit_founder_seed":
@@ -853,6 +896,48 @@ internal sealed class LegendFounderToolAuthority
                 return """{"error":"unknown_founder_tool"}""";
         }
     }
+
+    private async Task<string?> TryConsumeMutationAuthorizationAsync(
+        ClaimsPrincipal founder,
+        FounderAiMutationAuthorization? authorization,
+        CancellationToken cancellationToken)
+    {
+        if (authorization is null)
+        {
+            return MutationFailure(
+                "founder_command_confirmation_required",
+                "This durable LEGEND mutation was not executed. The authenticated Founder must explicitly confirm the action for this request.");
+        }
+        if (!Guid.TryParseExact(authorization.CorrelationId, "N", out _))
+        {
+            return MutationFailure(
+                "founder_mutation_authorization_invalid",
+                "The Founder mutation authorization correlation was malformed.");
+        }
+
+        await _legend.EnsureFounderAuthorizedAsync(founder, cancellationToken);
+
+        lock (_mutationAuthorizationLock)
+        {
+            if (!_consumedMutationAuthorizations.Add(authorization.CorrelationId))
+            {
+                return MutationFailure(
+                    "founder_mutation_authorization_replayed",
+                    "The one-request Founder mutation authorization was already consumed.");
+            }
+        }
+        return null;
+    }
+
+    private static string MutationFailure(string error, string detail) =>
+        JsonSerializer.Serialize(
+            new
+            {
+                succeeded = false,
+                error,
+                detail
+            },
+            JsonOptions);
 
     private static bool TryResolveFounderFunctionParameters(
         string name,
@@ -2731,4 +2816,8 @@ internal sealed class LegendFounderToolAuthority
 internal sealed record FounderAiToolCall(
     string CallId,
     string Name,
-    string Arguments);
+    string Arguments,
+    FounderAiMutationAuthorization? MutationAuthorization = null);
+
+internal sealed record FounderAiMutationAuthorization(
+    string CorrelationId);

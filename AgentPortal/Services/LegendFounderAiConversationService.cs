@@ -580,13 +580,11 @@ public sealed class LegendFounderAiConversationService
                 IsTeacherMode(mode) &&
                 RequestsFounderLearningMutation(conversation);
 
-            var automaticNativeGapLearningWindow =
-                nativeInference is
-                {
-                    Supported: false,
-                    RequiresEscalation: true
-                } &&
-                string.Equals(mode, "legend", StringComparison.Ordinal);
+            var mutationAuthorization =
+                request.FounderCommandConfirmed
+                    ? new FounderAiMutationAuthorization(
+                        Guid.NewGuid().ToString("N"))
+                    : null;
 
             var learningMutationCompleted = false;
             string? learningMutationReceipt = null;
@@ -627,8 +625,6 @@ public sealed class LegendFounderAiConversationService
                     (
                         !governedInspectionCompleted ||
                         (confirmedLearningMutationRequired &&
-                         !learningMutationCompleted) ||
-                        (automaticNativeGapLearningWindow &&
                          !learningMutationCompleted)
                     ) &&
                     round < maximumToolRounds - 1 &&
@@ -794,8 +790,7 @@ public sealed class LegendFounderAiConversationService
                             mode,
                             AppendLearningReceipt(
                                 accumulatedProviderAnswer,
-                                learningMutationReceipt,
-                                automaticNativeGapLearningWindow),
+                                learningMutationReceipt),
                             null,
                             ResponseAuthority: "OpenAITeacher",
                             Stage: "provider_response");
@@ -885,8 +880,7 @@ public sealed class LegendFounderAiConversationService
                         mode,
                         AppendLearningReceipt(
                             accumulatedProviderAnswer,
-                            learningMutationReceipt,
-                            automaticNativeGapLearningWindow),
+                            learningMutationReceipt),
                         null,
                         ResponseAuthority: "OpenAITeacher",
                         Stage: "provider_response");
@@ -932,11 +926,7 @@ public sealed class LegendFounderAiConversationService
                             founder,
                             call,
                             mode,
-                            request.FounderCommandConfirmed,
-                            CanAutomaticallyRetainNativeGapProposal(
-                                call.Name,
-                                mode,
-                                nativeInference),
+                            mutationAuthorization,
                             ResolveReadOnlyToolBudget(remaining),
                             toolOutputBudget,
                             effectiveToken);
@@ -957,9 +947,12 @@ public sealed class LegendFounderAiConversationService
                     }
                     else if (IsLearningMutationTool(call.Name))
                     {
-                        learningMutationReceipt = toolOutput;
                         learningMutationCompleted =
-                            IsSuccessfulLearningMutationOutput(toolOutput);
+                            TryReadLearningMutationReceipt(
+                                call.Name,
+                                toolOutput,
+                                mutationAuthorization?.CorrelationId,
+                                out learningMutationReceipt);
                     }
 
                     await ReportProgressAsync(
@@ -1839,8 +1832,7 @@ public sealed class LegendFounderAiConversationService
         ClaimsPrincipal founder,
         FounderAiToolCall call,
         string mode,
-        bool founderCommandConfirmed,
-        bool automaticNativeGapProposalAllowed,
+        FounderAiMutationAuthorization? mutationAuthorization,
         TimeSpan readOnlyBudget,
         int outputBudgetCharacters,
         CancellationToken cancellationToken)
@@ -1848,17 +1840,14 @@ public sealed class LegendFounderAiConversationService
         if (!_toolAuthority.IsReadOnly(
                 call.Name))
         {
-            if (!founderCommandConfirmed &&
-                !automaticNativeGapProposalAllowed)
-            {
-                return """{"error":"founder_command_confirmation_required","detail":"This durable LEGEND mutation was not executed. The authenticated Founder must explicitly confirm the action for this request."}""";
-            }
-
             try
             {
                 var mutationOutput = await _toolAuthority.ExecuteAsync(
                     founder,
-                    call,
+                    call with
+                    {
+                        MutationAuthorization = mutationAuthorization
+                    },
                     mode,
                     cancellationToken);
                 return BoundSerializedOutput(mutationOutput, outputBudgetCharacters);
@@ -1956,24 +1945,6 @@ public sealed class LegendFounderAiConversationService
         }
     }
 
-    private static bool CanAutomaticallyRetainNativeGapProposal(
-        string toolName,
-        string mode,
-        LegendConnectNativeInferenceSnapshot? nativeInference) =>
-        string.Equals(
-            toolName,
-            "legend_submit_machine_learning_candidate",
-            StringComparison.Ordinal) &&
-        string.Equals(
-            mode,
-            "legend",
-            StringComparison.Ordinal) &&
-        nativeInference is
-        {
-            Supported: false,
-            RequiresEscalation: true
-        };
-
     private static string BuildReadOnlyToolFailureOutput(
         string tool,
         Exception exception)
@@ -2047,21 +2018,149 @@ public sealed class LegendFounderAiConversationService
         }
     }
 
-    private static bool IsSuccessfulLearningMutationOutput(string output)
+    private static bool TryReadLearningMutationReceipt(
+        string toolName,
+        string output,
+        string? authorizationCorrelation,
+        out string? normalizedReceipt)
     {
-        if (!IsSuccessfulFounderToolOutput(output))
+        normalizedReceipt = null;
+        if (string.IsNullOrWhiteSpace(output))
             return false;
 
         try
         {
-            using var document = JsonDocument.Parse(output);
-            return document.RootElement.ValueKind != JsonValueKind.Object ||
-                   !document.RootElement.TryGetProperty("succeeded", out var succeeded) ||
-                   succeeded.ValueKind != JsonValueKind.False;
+            switch (toolName)
+            {
+                case "legend_submit_machine_learning_candidate":
+                    if (!TryReadMachineTeachingMutationReceipt(
+                            output,
+                            authorizationCorrelation,
+                            out var machineReceipt))
+                    {
+                        return false;
+                    }
+                    normalizedReceipt = JsonSerializer.Serialize(
+                        machineReceipt,
+                        JsonOptions);
+                    return true;
+
+                case "legend_submit_founder_seed":
+                {
+                    var seed = JsonSerializer.Deserialize<LegendConnectKnowledgeSubmissionResult>(
+                        output,
+                        JsonOptions);
+                    if (seed is not { Succeeded: true } ||
+                        seed.SourceTextUnitId is not { } sourceTextUnitId ||
+                        sourceTextUnitId == Guid.Empty)
+                    {
+                        return false;
+                    }
+                    normalizedReceipt = output.Trim();
+                    return true;
+                }
+
+                case "legend_submit_founder_curriculum":
+                {
+                    var curriculum = JsonSerializer.Deserialize<LegendConnectCurriculumSubmissionResult>(
+                        output,
+                        JsonOptions);
+                    if (curriculum is not { Succeeded: true } ||
+                        curriculum.CurriculumFamilyId is not { } curriculumFamilyId ||
+                        curriculumFamilyId == Guid.Empty)
+                    {
+                        return false;
+                    }
+                    normalizedReceipt = output.Trim();
+                    return true;
+                }
+
+                default:
+                    return false;
+            }
         }
         catch (JsonException)
         {
+            return false;
+        }
+    }
+
+    internal static bool TryReadMachineTeachingMutationReceipt(
+        string output,
+        string? authorizationCorrelation,
+        out LegendConnectMachineTeachingMutationReceipt? receipt)
+    {
+        receipt = null;
+        if (string.IsNullOrWhiteSpace(output) ||
+            string.IsNullOrWhiteSpace(authorizationCorrelation))
+        {
+            return false;
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(output);
+            var root = document.RootElement;
+            if (root.ValueKind != JsonValueKind.Object)
+                return false;
+            var requiredProperties = new HashSet<string>(StringComparer.Ordinal)
+            {
+                "succeeded",
+                "candidateId",
+                "proposalId",
+                "durableState",
+                "provenance",
+                "authorizationCorrelation",
+                "servingStatus",
+                "canonicalStatus"
+            };
+            var properties = root.EnumerateObject().ToArray();
+            if (properties.Length != requiredProperties.Count ||
+                properties.Select(property => property.Name)
+                    .Distinct(StringComparer.Ordinal).Count() != requiredProperties.Count ||
+                !properties.Select(property => property.Name)
+                    .ToHashSet(StringComparer.Ordinal)
+                    .SetEquals(requiredProperties))
+            {
+                return false;
+            }
+
+            var parsed = JsonSerializer.Deserialize<LegendConnectMachineTeachingMutationReceipt>(
+                output,
+                JsonOptions);
+            if (parsed is null ||
+                !parsed.Succeeded ||
+                parsed.CandidateId == Guid.Empty ||
+                parsed.ProposalId == Guid.Empty ||
+                parsed.CandidateId == parsed.ProposalId ||
+                parsed.DurableState is not ("AwaitingCritic" or "InsufficientEvidence") ||
+                !string.Equals(
+                    parsed.Provenance,
+                    LegendConnectMachineTeachingMutationReceipt.RequiredProvenance,
+                    StringComparison.Ordinal) ||
+                !string.Equals(
+                    parsed.AuthorizationCorrelation,
+                    authorizationCorrelation,
+                    StringComparison.Ordinal) ||
+                !Guid.TryParseExact(parsed.AuthorizationCorrelation, "N", out _) ||
+                !string.Equals(
+                    parsed.ServingStatus,
+                    LegendConnectMachineTeachingMutationReceipt.RequiredServingStatus,
+                    StringComparison.Ordinal) ||
+                !string.Equals(
+                    parsed.CanonicalStatus,
+                    LegendConnectMachineTeachingMutationReceipt.RequiredCanonicalStatus,
+                    StringComparison.Ordinal))
+            {
+                return false;
+            }
+
+            receipt = parsed;
             return true;
+        }
+        catch (JsonException)
+        {
+            return false;
         }
     }
 
@@ -2073,8 +2172,7 @@ public sealed class LegendFounderAiConversationService
 
     private static string AppendLearningReceipt(
         string answer,
-        string? receipt,
-        bool automaticNativeGapLearningWindow)
+        string? receipt)
     {
         if (!string.IsNullOrWhiteSpace(receipt))
         {
@@ -2083,11 +2181,7 @@ public sealed class LegendFounderAiConversationService
                    receipt.Trim();
         }
 
-        return automaticNativeGapLearningWindow
-            ? answer.TrimEnd() +
-              "\n\nLEGEND_GOVERNED_LEARNING_RECEIPT\n" +
-              "{\"retained\":false,\"state\":\"NoSupportedProposal\",\"detail\":\"OpenAI answered this escalation but did not submit a supported reusable learning candidate.\"}"
-            : answer;
+        return answer;
     }
 
     private static string MergeProviderAnswerSegment(
@@ -2157,7 +2251,7 @@ CRITICAL GOVERNANCE:
 - Never use external web search as a substitute for governed LEGEND tools when the question concerns current LEGEND database state, retained evidence, training state, readiness, provider consumption or internal system facts.
 - You also have narrowly scoped Founder-authorized orchestration tools that delegate only to LEGEND's existing canonical Founder ingestion, curriculum, and runtime-policy authorities.
 - Every Founder-authoritative mutation requires an explicit Founder instruction and request-level Founder confirmation. A missing confirmation is a hard execution boundary, not an invitation to infer consent.
-- The sole lower-authority exception is one bounded MachineProposed family produced during a genuine Legend® Ai native-gap escalation. That proposal is automatically retained with machine provenance, remains non-serving, and must pass the existing independent critic, validator, curriculum, evaluation and promotion authorities. This exception never applies in direct OpenAI Teacher mode or to FounderApproved evidence, runtime policy, software or release actions.
+- Native-gap escalation never grants learning consent. A MachineProposed submission requires the same explicit Founder instruction and request-level confirmation as every other durable learning mutation.
 - Founder-authoritative mutation tools must never be called merely because you think they would be useful. Use Founder seed/curriculum/runtime mutation only when the Founder explicitly instructs you to teach, add, submit, retain, train, activate, or continue learning and has confirmed that request.
 - Role separation is absolute: Legend® Ai mode attempts governed native LEGEND inference first; OpenAI Teacher mode is direct Founder-to-OpenAI conversation and does not invoke native LEGEND inference as a responder. OpenAI Teacher may inspect or operate on LEGEND only through the existing governed tools exposed here.
 - When the Founder explicitly directs a training, curriculum, seed, or runtime action that maps to an exposed existing LEGEND mutation tool, execute that tool rather than merely describing what could be done. Never invent a mutation surface that does not exist.
@@ -2229,9 +2323,9 @@ Never pretend that OpenAI conversational reasoning itself is canonical LEGEND kn
 
 Before external recall, use LEGEND's retained evidence when it is relevant. Treat unresolved machine/provider observations as evidence to reason about, never as truth.
 
-Outside a native-gap escalation, submit a bounded MachineProposed family through legend_submit_machine_learning_candidate only when the Founder explicitly directs and confirms the submission. During a genuine LEGEND_NATIVE_GAP_CONTEXT escalation, automatically submit at most one supported, bounded family before the final answer so the same reusable capability enters the existing governed lifecycle without creating a second memory system. A conversational candidate must declare at least one language-neutral semantic_transitions source/result frame over its controlled example components; examples without a governed transition cannot close a native conversation gap and must not be reported as reusable learning.
+Submit a bounded MachineProposed family through legend_submit_machine_learning_candidate only when the Founder explicitly directs and confirms the exact submission. Native failure, escalation, provider reasoning, or the presence of LEGEND_NATIVE_GAP_CONTEXT never supplies that consent. A conversational candidate must declare at least one language-neutral semantic_transitions source/result frame over its controlled example components; examples without a governed transition cannot close a native conversation gap and must not be reported as reusable learning.
 
-When LEGEND_NATIVE_GAP_CONTEXT is supplied, the provider is acting as a diagnostic teacher because native LEGEND failed and explicitly allowed escalation. Inspect retained LEGEND evidence first. If governed evidence supports a reusable semantic distinction and a source-to-result semantic transition that would close the native gap, automatically submit exactly one bounded family through legend_submit_machine_learning_candidate before the final answer. It remains MachineProposed and cannot serve until the existing critic, validator and canonical curriculum authorities approve it as lower-ranked SystemValidatedMachine evidence. If evidence is insufficient, state the exact missing distinction and do not fabricate a proposal.
+When LEGEND_NATIVE_GAP_CONTEXT is supplied, the provider is acting as a diagnostic teacher because native LEGEND failed and explicitly allowed escalation. Inspect retained LEGEND evidence first. Identify a reusable distinction when the evidence supports one, but do not submit it unless the Founder separately and explicitly instructed and confirmed that mutation in this request. If evidence is insufficient, state the exact missing distinction and do not fabricate a proposal.
 Never retain the one-off generated reply as a canned answer. Retain reusable meaning, semantic components, controlled contrasts, discourse behavior, and realization evidence that explain how the class of utterance should be understood and composed.
 If retained evidence is insufficient or contradictory, do not fabricate curriculum. State the exact missing evidence/contrast so the Founder and existing autonomous learning authorities can resolve it.
 
@@ -2286,7 +2380,7 @@ DIAGNOSTIC TEACHER REQUIREMENTS:
 - This turn reached OpenAI because native LEGEND could not produce one governed answer and explicitly permitted escalation.
 - Diagnose the missing linguistic/semantic capability against retained LEGEND evidence before relying on general OpenAI recall.
 - Use legend_search_retained_knowledge when a narrower query can distinguish an unknown component, ambiguous composition, missing transition, contradiction, realization gap, discourse gap, or production-eligibility gap.
-- If governed evidence supports a reusable controlled semantic family that would reduce recurrence, submit exactly one bounded MachineProposed proposal through legend_submit_machine_learning_candidate before the final answer. Native-gap retention is authorized automatically only for this lower-ranked non-serving proposal.
+- If governed evidence supports a reusable controlled semantic family that would reduce recurrence, describe that candidate and the evidence it would require. Do not submit it unless this request contains the Founder's explicit instruction and request-level confirmation.
 - Preserve reusable semantics and controlled contrasts, not a generated response template.
 - If a valid proposal cannot be supported, state precisely what governed evidence is missing instead of inventing it.
 - MachineProposed retention is not canonical approval. The existing independent critic, validator, curriculum admission, evaluator, training, and promotion authorities remain mandatory.

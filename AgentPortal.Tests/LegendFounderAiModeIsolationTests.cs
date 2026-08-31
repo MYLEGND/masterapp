@@ -621,10 +621,8 @@ public sealed class LegendFounderAiModeIsolationTests
     }
 
     [Fact]
-    public async Task NativeGap_AutomaticallyRetainsOneMachineProposalWithoutFounderApproval()
+    public async Task NativeGap_DoesNotSubmitMachineProposalWithoutFounderConfirmation()
     {
-        var candidateId = Guid.Parse("11111111-1111-1111-1111-111111111111");
-        var proposalId = Guid.Parse("22222222-2222-2222-2222-222222222222");
         using var founderEnvironment = new FounderEnvironmentScope();
         await using var db = ControllerTestHelpers.BuildDb();
         var founder = await AddFounderProfileAsync(db);
@@ -644,17 +642,9 @@ public sealed class LegendFounderAiModeIsolationTests
                 It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<string?>(),
                 It.IsAny<int>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new LegendConnectRetainedKnowledgeSearchSnapshot("gap", 0, []));
-        operations
-            .Setup(operation => operation.SubmitMachineTeachingProposalAsync(
-                It.IsAny<LegendConnectMachineTeachingSubmission>(),
-                It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new LegendConnectMachineTeachingSubmissionResult(
-                true, false, "AwaitingCritic", null,
-                "Retained as MachineProposed.", candidateId, proposalId));
-
         var handler = new FounderAiScenarioHandler(
             ProviderTool("legend_submit_machine_learning_candidate", MachineProposalArguments()),
-            ProviderText("I answered the request and retained one non-serving proposal for independent review."));
+            ProviderText("I answered the request without making a durable learning mutation."));
         var service = CreateService(db, operations.Object, handler);
 
         var response = await service.ReplyAsync(
@@ -663,13 +653,10 @@ public sealed class LegendFounderAiModeIsolationTests
 
         Assert.True(response.Succeeded, Describe(response));
         Assert.Equal("OpenAITeacher", response.ResponseAuthority);
-        Assert.Contains("LEGEND_GOVERNED_LEARNING_RECEIPT", response.Message);
-        Assert.Contains(candidateId.ToString(), response.Message);
-        Assert.Contains(proposalId.ToString(), response.Message);
-        Assert.Contains("AwaitingCritic", response.Message);
+        Assert.DoesNotContain("LEGEND_GOVERNED_LEARNING_RECEIPT", response.Message);
         operations.Verify(operation => operation.SubmitMachineTeachingProposalAsync(
             It.IsAny<LegendConnectMachineTeachingSubmission>(),
-            It.IsAny<CancellationToken>()), Times.Once);
+            It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
@@ -722,6 +709,21 @@ public sealed class LegendFounderAiModeIsolationTests
         Assert.Contains(candidateId.ToString(), response.Message);
         Assert.Contains(proposalId.ToString(), response.Message);
         Assert.Contains("AwaitingCritic", response.Message);
+        Assert.Contains("MachineProposed", response.Message);
+        Assert.Contains("NonServing", response.Message);
+        Assert.Contains("NonCanonical", response.Message);
+        var responseMessage = Assert.IsType<string>(response.Message);
+        var serializedReceipt = responseMessage[
+            (responseMessage.IndexOf(
+                "LEGEND_GOVERNED_LEARNING_RECEIPT",
+                StringComparison.Ordinal) +
+             "LEGEND_GOVERNED_LEARNING_RECEIPT".Length)..].Trim();
+        var receipt = Assert.IsType<LegendConnectMachineTeachingMutationReceipt>(
+            JsonSerializer.Deserialize<LegendConnectMachineTeachingMutationReceipt>(
+                serializedReceipt,
+                new JsonSerializerOptions(JsonSerializerDefaults.Web)));
+        Assert.True(receipt.Succeeded);
+        Assert.True(Guid.TryParseExact(receipt.AuthorizationCorrelation, "N", out _));
         operations.Verify(operation => operation.SearchRetainedKnowledgeAsync(
             "reusable distinction",
             null,
@@ -732,6 +734,273 @@ public sealed class LegendFounderAiModeIsolationTests
             It.IsAny<LegendConnectMachineTeachingSubmission>(),
             It.IsAny<CancellationToken>()), Times.Once);
         Assert.Equal(0, NativeInferenceCalls(operations));
+    }
+
+    [Fact]
+    public async Task MachineProposalMutation_RejectsReplayedAuthorizationCorrelation()
+    {
+        var candidateId = Guid.Parse("55555555-5555-5555-5555-555555555555");
+        var proposalId = Guid.Parse("66666666-6666-6666-6666-666666666666");
+        using var founderEnvironment = new FounderEnvironmentScope();
+        await using var db = ControllerTestHelpers.BuildDb();
+        var founder = await AddFounderProfileAsync(db);
+        var operations = new Mock<ILegendConnectOperations>(MockBehavior.Strict);
+        operations
+            .Setup(operation => operation.SubmitMachineTeachingProposalAsync(
+                It.IsAny<LegendConnectMachineTeachingSubmission>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new LegendConnectMachineTeachingSubmissionResult(
+                true, false, "AwaitingCritic", null,
+                "Retained as MachineProposed.", candidateId, proposalId));
+        var authority = new LegendFounderToolAuthority(
+            new FounderLegendConnectService(
+                operations.Object,
+                new AgentProfileAccessResolver(db)),
+            null);
+        var correlation = Guid.NewGuid().ToString("N");
+        var call = new FounderAiToolCall(
+            "machine-proposal-call",
+            "legend_submit_machine_learning_candidate",
+            MachineProposalArguments(),
+            new FounderAiMutationAuthorization(correlation));
+
+        var first = await authority.ExecuteAsync(
+            founder,
+            call,
+            "teacher",
+            CancellationToken.None);
+        var replay = await authority.ExecuteAsync(
+            founder,
+            call,
+            "teacher",
+            CancellationToken.None);
+
+        Assert.True(LegendFounderAiConversationService.TryReadMachineTeachingMutationReceipt(
+            first,
+            correlation,
+            out var receipt));
+        Assert.NotNull(receipt);
+        Assert.Contains("founder_mutation_authorization_replayed", replay);
+        operations.Verify(operation => operation.SubmitMachineTeachingProposalAsync(
+            It.IsAny<LegendConnectMachineTeachingSubmission>(),
+            It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task MachineProposalMutation_RejectsExistingDurableProposalAsReplay()
+    {
+        using var founderEnvironment = new FounderEnvironmentScope();
+        await using var db = ControllerTestHelpers.BuildDb();
+        var founder = await AddFounderProfileAsync(db);
+        var operations = new Mock<ILegendConnectOperations>(MockBehavior.Strict);
+        operations
+            .Setup(operation => operation.SubmitMachineTeachingProposalAsync(
+                It.IsAny<LegendConnectMachineTeachingSubmission>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new LegendConnectMachineTeachingSubmissionResult(
+                true,
+                true,
+                "AwaitingCritic",
+                null,
+                "The exact proposal already exists.",
+                Guid.NewGuid(),
+                Guid.NewGuid(),
+                ProposalAlreadyExisted: true));
+        var authority = new LegendFounderToolAuthority(
+            new FounderLegendConnectService(
+                operations.Object,
+                new AgentProfileAccessResolver(db)),
+            null);
+        var correlation = Guid.NewGuid().ToString("N");
+
+        var output = await authority.ExecuteAsync(
+            founder,
+            new FounderAiToolCall(
+                "existing-machine-proposal",
+                "legend_submit_machine_learning_candidate",
+                MachineProposalArguments(),
+                new FounderAiMutationAuthorization(correlation)),
+            "teacher",
+            CancellationToken.None);
+
+        Assert.Contains("machine_learning_mutation_replay", output);
+        Assert.False(LegendFounderAiConversationService.TryReadMachineTeachingMutationReceipt(
+            output,
+            correlation,
+            out var receipt));
+        Assert.Null(receipt);
+        operations.Verify(operation => operation.SubmitMachineTeachingProposalAsync(
+            It.IsAny<LegendConnectMachineTeachingSubmission>(),
+            It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task MachineProposalMutation_RequiresAuthenticatedFounderAuthorization()
+    {
+        using var founderEnvironment = new FounderEnvironmentScope();
+        await using var db = ControllerTestHelpers.BuildDb();
+        var operations = new Mock<ILegendConnectOperations>(MockBehavior.Strict);
+        var authority = new LegendFounderToolAuthority(
+            new FounderLegendConnectService(
+                operations.Object,
+                new AgentProfileAccessResolver(db)),
+            null);
+        var unconfirmed = new FounderAiToolCall(
+            "unconfirmed-machine-proposal",
+            "legend_submit_machine_learning_candidate",
+            MachineProposalArguments());
+
+        var unconfirmedOutput = await authority.ExecuteAsync(
+            ControllerTestHelpers.BuildUser(),
+            unconfirmed,
+            "teacher",
+            CancellationToken.None);
+        Assert.Contains("founder_command_confirmation_required", unconfirmedOutput);
+
+        var malformedAuthorization = unconfirmed with
+        {
+            MutationAuthorization = new FounderAiMutationAuthorization(
+                "not-an-authorization-correlation")
+        };
+        var malformedAuthorizationOutput = await authority.ExecuteAsync(
+            ControllerTestHelpers.BuildUser(),
+            malformedAuthorization,
+            "teacher",
+            CancellationToken.None);
+        Assert.Contains(
+            "founder_mutation_authorization_invalid",
+            malformedAuthorizationOutput);
+
+        var unauthorized = unconfirmed with
+        {
+            MutationAuthorization = new FounderAiMutationAuthorization(
+                Guid.NewGuid().ToString("N"))
+        };
+        await Assert.ThrowsAsync<ForbidResultException>(() => authority.ExecuteAsync(
+            ControllerTestHelpers.BuildUser("not-the-founder"),
+            unauthorized,
+            "teacher",
+            CancellationToken.None));
+        Assert.Empty(operations.Invocations);
+    }
+
+    [Fact]
+    public void MachineProposalReceipt_RejectsMalformedAndMissingIdentity()
+    {
+        var correlation = Guid.NewGuid().ToString("N");
+
+        Assert.False(LegendFounderAiConversationService.TryReadMachineTeachingMutationReceipt(
+            "not-json",
+            correlation,
+            out var malformed));
+        Assert.Null(malformed);
+
+        var completeReceipt = new
+        {
+            succeeded = true,
+            candidateId = Guid.NewGuid(),
+            proposalId = Guid.NewGuid(),
+            durableState = "AwaitingCritic",
+            provenance = "MachineProposed",
+            authorizationCorrelation = correlation,
+            servingStatus = "NonServing",
+            canonicalStatus = "NonCanonical"
+        };
+        var missingCandidateId = JsonSerializer.Serialize(new
+        {
+            completeReceipt.succeeded,
+            completeReceipt.proposalId,
+            completeReceipt.durableState,
+            completeReceipt.provenance,
+            completeReceipt.authorizationCorrelation,
+            completeReceipt.servingStatus,
+            completeReceipt.canonicalStatus
+        });
+        Assert.False(LegendFounderAiConversationService.TryReadMachineTeachingMutationReceipt(
+            missingCandidateId,
+            correlation,
+            out var missingIdentity));
+        Assert.Null(missingIdentity);
+
+        var missingProposalId = JsonSerializer.Serialize(new
+        {
+            completeReceipt.succeeded,
+            completeReceipt.candidateId,
+            completeReceipt.durableState,
+            completeReceipt.provenance,
+            completeReceipt.authorizationCorrelation,
+            completeReceipt.servingStatus,
+            completeReceipt.canonicalStatus
+        });
+        Assert.False(LegendFounderAiConversationService.TryReadMachineTeachingMutationReceipt(
+            missingProposalId,
+            correlation,
+            out missingIdentity));
+        Assert.Null(missingIdentity);
+    }
+
+    [Fact]
+    public void MachineProposalReceipt_RejectsFalseSuccessAndReplayedCorrelation()
+    {
+        var correlation = Guid.NewGuid().ToString("N");
+        var receipt = new LegendConnectMachineTeachingMutationReceipt(
+            false,
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            "AwaitingCritic",
+            LegendConnectMachineTeachingMutationReceipt.RequiredProvenance,
+            correlation,
+            LegendConnectMachineTeachingMutationReceipt.RequiredServingStatus,
+            LegendConnectMachineTeachingMutationReceipt.RequiredCanonicalStatus);
+        var output = JsonSerializer.Serialize(
+            receipt,
+            new JsonSerializerOptions(JsonSerializerDefaults.Web));
+
+        Assert.False(LegendFounderAiConversationService.TryReadMachineTeachingMutationReceipt(
+            output,
+            correlation,
+            out var falseSuccess));
+        Assert.Null(falseSuccess);
+
+        output = JsonSerializer.Serialize(
+            receipt with { Succeeded = true },
+            new JsonSerializerOptions(JsonSerializerDefaults.Web));
+        Assert.False(LegendFounderAiConversationService.TryReadMachineTeachingMutationReceipt(
+            output,
+            Guid.NewGuid().ToString("N"),
+            out var replayed));
+        Assert.Null(replayed);
+    }
+
+    [Fact]
+    public async Task ConfirmedMachineProposal_ProviderFailureCreatesNoMutationReceipt()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var operations = new Mock<ILegendConnectOperations>(MockBehavior.Strict);
+        var rejected = ProviderResponse(new
+        {
+            error = new { message = "controlled teaching rejection" }
+        }, HttpStatusCode.BadRequest);
+        rejected.Headers.TryAddWithoutValidation("x-request-id", "teaching-provider-failure");
+        var service = CreateService(
+            db,
+            operations.Object,
+            new FounderAiScenarioHandler(rejected));
+
+        var response = await service.ReplyAsync(
+            ControllerTestHelpers.BuildUser(),
+            Request(
+                "teacher",
+                "Train LEGEND on this exact reusable distinction.",
+                founderCommandConfirmed: true));
+
+        Assert.False(response.Succeeded);
+        Assert.Equal("provider_http_400", response.Reason);
+        Assert.Equal("teaching-provider-failure", response.Reference);
+        Assert.DoesNotContain(
+            "LEGEND_GOVERNED_LEARNING_RECEIPT",
+            response.Message ?? string.Empty);
+        Assert.Empty(operations.Invocations);
     }
 
     [Fact]
@@ -1346,7 +1615,7 @@ public sealed class LegendFounderAiModeIsolationTests
         {
           "source_language":"en",
           "target_language":"es",
-          "family_key":"automatic-native-gap-distinction",
+          "family_key":"confirmed-machine-distinction",
           "semantic_category":"conversation_semantics",
           "rationale":"Retain one reusable distinction with machine provenance.",
           "confidence":0.7,

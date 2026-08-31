@@ -115,7 +115,16 @@ public sealed class LegendFounderAiContractTests
             type.GetMethod(
                 nameof(
                     FounderLegendConnectService
-                        .QueueMachineTeachingProposalAsync)));
+                        .QueueMachineTeachingProposalAsync),
+                BindingFlags.Instance |
+                BindingFlags.NonPublic));
+        Assert.Null(
+            type.GetMethod(
+                nameof(
+                    FounderLegendConnectService
+                        .QueueMachineTeachingProposalAsync),
+                BindingFlags.Instance |
+                BindingFlags.Public));
     }
 
     [Fact]
