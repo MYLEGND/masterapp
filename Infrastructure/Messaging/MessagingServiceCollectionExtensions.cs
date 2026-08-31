@@ -60,7 +60,7 @@ public static class MessagingServiceCollectionExtensions
                 provider.GetRequiredService<Infrastructure.Data.MasterAppDbContext>(),
                 provider.GetRequiredService<LegendConnectTrainingDatasetCompiler>(),
                 provider.GetRequiredService<ILegendConnectModelEvaluationBackend>(),
-                provider.GetRequiredService<ILegendConnectCurrentProductionBaseline>(),
+                provider.GetRequiredService<ILegendConnectActiveModelInference>(),
                 provider.GetRequiredService<IConfiguration>()));
         services.AddScoped<ILegendConnectModelEvaluationBackend, OpenAiLegendConnectModelEvaluationBackend>();
         services.AddScoped<ILegendConnectActiveModelInference, LegendConnectActiveModelInference>();
@@ -69,7 +69,6 @@ public static class MessagingServiceCollectionExtensions
                 provider.GetRequiredService<Infrastructure.Data.MasterAppDbContext>(),
                 provider.GetRequiredService<LegendConnectTrainingDatasetCompiler>(),
                 provider.GetRequiredService<IConfiguration>()));
-        services.AddScoped<ILegendConnectCurrentProductionBaseline, LegendConnectCurrentProductionBaseline>();
         services.AddScoped<ILegendConnectLanguageTeacher, OpenAiLegendConnectLanguageTeacher>();
         services.AddScoped<ILegendConnectOperations, LegendConnectOperations>();
         services.AddHttpClient("LegendModelTraining", client =>

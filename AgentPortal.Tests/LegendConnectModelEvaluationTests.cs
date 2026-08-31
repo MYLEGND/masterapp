@@ -11,6 +11,9 @@ namespace AgentPortal.Tests;
 
 public sealed class LegendConnectModelEvaluationTests
 {
+    private const string DatasetSha =
+        "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789";
+
     [Fact]
     public async Task PerfectHeldOutChallenger_PassesWithoutPromotion()
     {
@@ -39,12 +42,10 @@ public sealed class LegendConnectModelEvaluationTests
                 db,
                 new FakeEvaluationBackend
                 {
-                    ChallengerText =
-                        "Mwen konprann.",
                     Judgement =
                         Perfect()
                 },
-                new FakeBaseline
+                new FakeServingAuthority
                 {
                     Text =
                         "Mwen konprann."
@@ -100,8 +101,6 @@ public sealed class LegendConnectModelEvaluationTests
                 db,
                 new FakeEvaluationBackend
                 {
-                    ChallengerText =
-                        "Wrong meaning.",
                     Judgement =
                         new(
                             true,
@@ -120,10 +119,10 @@ public sealed class LegendConnectModelEvaluationTests
                                 "protected_meaning_regression"
                             ])
                 },
-                new FakeBaseline
+                new FakeServingAuthority
                 {
                     Text =
-                        "Mwen konprann."
+                        "Wrong meaning."
                 });
 
         await service.EvaluateManifestAsync(
@@ -165,7 +164,7 @@ public sealed class LegendConnectModelEvaluationTests
 
         var manifest =
             new LegendConnectTrainingDatasetManifest(
-                "dataset",
+                DatasetSha,
                 13,
                 "Global",
                 [
@@ -191,15 +190,13 @@ public sealed class LegendConnectModelEvaluationTests
                 db,
                 new FakeEvaluationBackend
                 {
-                    ChallengerText =
-                        leaked,
                     Judgement =
                         Perfect()
                 },
-                new FakeBaseline
+                new FakeServingAuthority
                 {
                     Text =
-                        "Expected held-out target."
+                        leaked
                 });
 
         await service.EvaluateManifestAsync(
@@ -220,7 +217,7 @@ public sealed class LegendConnectModelEvaluationTests
     }
 
     [Fact]
-    public async Task ChallengerWorseThanProductionBaseline_IsRejected()
+    public async Task ExecutedRuntimeWorseThanGovernedReference_IsRejected()
     {
         await using var db =
             ControllerTestHelpers.BuildDb();
@@ -250,15 +247,13 @@ public sealed class LegendConnectModelEvaluationTests
                 db,
                 new FakeEvaluationBackend
                 {
-                    ChallengerText =
-                        "Almost correct.",
                     Judgement =
                         judgement
                 },
-                new FakeBaseline
+                new FakeServingAuthority
                 {
                     Text =
-                        "Mwen konprann."
+                        "Almost correct."
                 });
 
         await service.EvaluateManifestAsync(
@@ -277,14 +272,15 @@ public sealed class LegendConnectModelEvaluationTests
     }
 
     [Fact]
-    public async Task CapabilityWithoutRegisteredEvaluator_IsRejectedBeforeModelOrBaselineExecution()
+    public async Task CapabilityWithoutRegisteredEvaluator_IsRejectedBeforeRuntimeExecution()
     {
         await using var db = ControllerTestHelpers.BuildDb();
         var run = Run();
         db.Add(run);
         await db.SaveChangesAsync();
-        var backend = new FakeEvaluationBackend { ChallengerText = "must-not-run" };
-        var service = Service(db, backend, new FakeBaseline { Text = "must-not-run" });
+        var backend = new FakeEvaluationBackend();
+        var serving = new FakeServingAuthority { Text = "must-not-run" };
+        var service = Service(db, backend, serving);
         var heldOut = HeldOut("Resolved governed state") with
         {
             CapabilityKey = "governed.unregistered",
@@ -295,7 +291,7 @@ public sealed class LegendConnectModelEvaluationTests
         await service.EvaluateManifestAsync(
             run,
             new LegendConnectTrainingDatasetManifest(
-                "dataset",
+                DatasetSha,
                 13,
                 "Global",
                 [],
@@ -303,7 +299,7 @@ public sealed class LegendConnectModelEvaluationTests
 
         Assert.Equal("Rejected", run.EvaluationState);
         Assert.Equal("model_evaluation_capability_evaluator_unavailable", run.FailureCode);
-        Assert.Equal(0, backend.GenerateCalls);
+        Assert.Equal(0, serving.EvaluationCalls);
     }
 
     [Fact]
@@ -324,19 +320,18 @@ public sealed class LegendConnectModelEvaluationTests
             db,
             new FakeEvaluationBackend
             {
-                ChallengerText = "Resolved governed state",
                 Judgement = Perfect() with
                 {
                     TranslationAccuracy = 0m,
                     MorphologyPreservation = 0m
                 }
             },
-            new FakeBaseline { Text = "Resolved governed state" });
+            new FakeServingAuthority { Text = "Resolved governed state" });
 
         await service.EvaluateManifestAsync(
             run,
             new LegendConnectTrainingDatasetManifest(
-                "dataset",
+                DatasetSha,
                 13,
                 "Global",
                 [],
@@ -349,6 +344,278 @@ public sealed class LegendConnectModelEvaluationTests
     }
 
     [Fact]
+    public async Task LockedCase_JudgesExecutedRuntimeTextAgainstGovernedTargetAndRecordsProof()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var run = Run();
+        db.Add(run);
+        await db.SaveChangesAsync();
+        var backend = new FakeEvaluationBackend();
+        var service = Service(
+            db,
+            backend,
+            new FakeServingAuthority
+            {
+                Text = "text-returned-by-serving-runtime"
+            });
+
+        await service.EvaluateManifestAsync(
+            run,
+            Manifest("stored-governed-target"));
+
+        Assert.NotNull(backend.LastRequest);
+        Assert.Equal(
+            "text-returned-by-serving-runtime",
+            backend.LastRequest!.ChallengerText);
+        Assert.Equal(
+            "stored-governed-target",
+            backend.LastRequest.GovernedReferenceText);
+        Assert.Equal("Passed", run.EvaluationState);
+        var proof = db.Set<LegendConnectOperationalEvent>()
+            .Where(item => item.Category == "ModelServingEvaluationProof")
+            .OrderBy(item => item.Status)
+            .ToArray();
+        Assert.Equal(4, proof.Length);
+        Assert.Contains(proof, item =>
+            item.Summary!.Contains(
+                "prompt_set=legend-held-out-v1",
+                StringComparison.Ordinal) &&
+            item.Summary.Contains(
+                "response_authority=LegendConnectActiveModelInference",
+                StringComparison.Ordinal));
+        Assert.Contains(proof, item =>
+            item.Summary!.Contains(
+                "model_version=ft:test:challenger",
+                StringComparison.Ordinal));
+        Assert.Contains(proof, item =>
+            item.Summary!.Contains(
+                "proof_lineage=",
+                StringComparison.Ordinal));
+        Assert.Contains(proof, item =>
+            item.Summary!.Contains(
+                "cost_micro=1",
+                StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task RuntimeReceiptForDifferentModel_CannotPassCandidate()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var run = Run();
+        db.Add(run);
+        await db.SaveChangesAsync();
+        var backend = new FakeEvaluationBackend();
+        var service = Service(
+            db,
+            backend,
+            new FakeServingAuthority
+            {
+                Text = "Mwen konprann.",
+                ModelVersionOverride =
+                    "ft:test:different-model"
+            });
+
+        await service.EvaluateManifestAsync(
+            run,
+            Manifest("Mwen konprann."));
+
+        Assert.Equal("Rejected", run.EvaluationState);
+        Assert.Equal(
+            "model_evaluation_runtime_model_mismatch",
+            run.FailureCode);
+        Assert.Null(backend.LastRequest);
+        Assert.Equal("NotEvaluated", run.PromotionState);
+    }
+
+    [Fact]
+    public async Task ServingProviderFailure_RecordsFailureAndNeverJudgesTarget()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var run = Run();
+        db.Add(run);
+        await db.SaveChangesAsync();
+        var backend = new FakeEvaluationBackend();
+        var service = Service(
+            db,
+            backend,
+            new FakeServingAuthority
+            {
+                ErrorCode = "model_inference_provider_failed",
+                Retryable = true
+            });
+
+        await service.EvaluateManifestAsync(
+            run,
+            Manifest("Mwen konprann."));
+
+        Assert.Equal("PendingRetry", run.EvaluationState);
+        Assert.Equal(
+            "model_inference_provider_failed",
+            run.FailureCode);
+        Assert.Null(backend.LastRequest);
+        Assert.Contains(
+            db.Set<LegendConnectOperationalEvent>(),
+            item =>
+                item.Category == "ModelServingEvaluationProof" &&
+                item.ErrorCode ==
+                    "model_inference_provider_failed");
+    }
+
+    [Fact]
+    public async Task SharedTrainingAndHeldOutLineage_IsRejectedBeforeRuntimeExecution()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var run = Run();
+        db.Add(run);
+        await db.SaveChangesAsync();
+        var serving = new FakeServingAuthority
+        {
+            Text = "must-not-run"
+        };
+        var heldOut = HeldOut("Mwen konprann.") with
+        {
+            SplitGroupIdentity = "shared-governed-lineage"
+        };
+        var training = heldOut with
+        {
+            EvidenceIdentity = "training-case",
+            SourceText = "Different surface.",
+            TargetText = "Different target.",
+            SourceTextHash = "different-source",
+            TargetTextHash = "different-target"
+        };
+
+        await Service(
+                db,
+                new FakeEvaluationBackend(),
+                serving)
+            .EvaluateManifestAsync(
+                run,
+                new LegendConnectTrainingDatasetManifest(
+                    DatasetSha,
+                    13,
+                    "Global",
+                    [training],
+                    [heldOut]));
+
+        Assert.Equal("Rejected", run.EvaluationState);
+        Assert.Equal(
+            "model_evaluation_held_out_contaminated",
+            run.FailureCode);
+        Assert.Equal(0, serving.EvaluationCalls);
+    }
+
+    [Fact]
+    public async Task IncompleteHeldOutCase_IsRejectedBeforeRuntimeExecution()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var run = Run();
+        db.Add(run);
+        await db.SaveChangesAsync();
+        var serving = new FakeServingAuthority
+        {
+            Text = "must-not-run"
+        };
+
+        await Service(
+                db,
+                new FakeEvaluationBackend(),
+                serving)
+            .EvaluateManifestAsync(
+                run,
+                new LegendConnectTrainingDatasetManifest(
+                    DatasetSha,
+                    13,
+                    "Global",
+                    [],
+                    [HeldOut(string.Empty)]));
+
+        Assert.Equal("Rejected", run.EvaluationState);
+        Assert.Equal(
+            "model_evaluation_incomplete_case",
+            run.FailureCode);
+        Assert.Equal(0, serving.EvaluationCalls);
+    }
+
+    [Fact]
+    public async Task LockedServingProof_IsReproducibleForExactCaseAndConfiguration()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var run = Run();
+        db.Add(run);
+        await db.SaveChangesAsync();
+        var transport = new FakeTransport(
+            new LegendModelEvaluationGenerationResult(
+                true,
+                "Mwen konprann.",
+                CostMicrounits: 7));
+        var serving = new LegendConnectActiveModelInference(
+            db,
+            transport);
+        var request = new LegendConnectLockedServingEvaluationRequest(
+            run.Id,
+            run.ChallengerModelVersion!,
+            run.DatasetIdentity,
+            run.DatasetEvaluatorVersion,
+            "legend-held-out-v1",
+            "0123456789abcdef0123456789abcdef01234567",
+            LegendConnectServingEvaluationContracts.SuccessCriteria,
+            HeldOut("Mwen konprann."));
+
+        var first = await serving.EvaluateLockedCaseAsync(request);
+        var second = await serving.EvaluateLockedCaseAsync(request);
+
+        Assert.True(first.Succeeded, first.ErrorCode);
+        Assert.True(second.Succeeded, second.ErrorCode);
+        Assert.Equal(
+            first.ConfigurationIdentity,
+            second.ConfigurationIdentity);
+        Assert.Equal(
+            first.ProofLineageIdentity,
+            second.ProofLineageIdentity);
+        Assert.Equal(run.Id, first.ModelTrainingRunId);
+        Assert.Equal(
+            run.ChallengerModelVersion,
+            first.ModelVersion);
+        Assert.Equal(2, transport.CallCount);
+    }
+
+    [Fact]
+    public async Task InactiveModelRun_CannotProduceLockedServingProof()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var run = Run();
+        run.State = "Failed";
+        db.Add(run);
+        await db.SaveChangesAsync();
+        var transport = new FakeTransport(
+            new LegendModelEvaluationGenerationResult(
+                true,
+                "must-not-run",
+                CostMicrounits: 1));
+        var serving = new LegendConnectActiveModelInference(
+            db,
+            transport);
+
+        var result = await serving.EvaluateLockedCaseAsync(
+            new LegendConnectLockedServingEvaluationRequest(
+                run.Id,
+                run.ChallengerModelVersion!,
+                run.DatasetIdentity,
+                run.DatasetEvaluatorVersion,
+                "legend-held-out-v1",
+                "0123456789abcdef0123456789abcdef01234567",
+                LegendConnectServingEvaluationContracts.SuccessCriteria,
+                HeldOut("Mwen konprann.")));
+
+        Assert.False(result.Succeeded);
+        Assert.Equal(
+            "model_evaluation_inactive_model",
+            result.ErrorCode);
+        Assert.Equal(0, transport.CallCount);
+    }
+
+    [Fact]
     public void CapabilityPolicyRegistry_IsFailClosedAndSingleAuthority()
     {
         Assert.True(
@@ -356,14 +623,12 @@ public sealed class LegendConnectModelEvaluationTests
                 LegendModelCapabilityKeys.Translation,
                 out var translation));
         Assert.True(translation.RequiresTranslationAccuracy);
-        Assert.False(translation.UsesGovernedReferenceBaseline);
 
         Assert.True(
             LegendModelCapabilityEvaluationPolicies.TryResolve(
                 LegendModelCapabilityKeys.SemanticTransition,
                 out var semantic));
         Assert.False(semantic.RequiresTranslationAccuracy);
-        Assert.True(semantic.UsesGovernedReferenceBaseline);
 
         Assert.False(
             LegendModelCapabilityEvaluationPolicies.TryResolve(
@@ -403,7 +668,7 @@ public sealed class LegendConnectModelEvaluationTests
     private static LegendConnectModelEvaluationService Service(
         Infrastructure.Data.MasterAppDbContext db,
         ILegendConnectModelEvaluationBackend backend,
-        ILegendConnectCurrentProductionBaseline baseline)
+        ILegendConnectActiveModelInference serving)
     {
         var configuration =
             new ConfigurationBuilder()
@@ -421,7 +686,11 @@ public sealed class LegendConnectModelEvaluationTests
                         ["LegendConnect:ModelEvaluation:MaximumExamples"] =
                             "128",
                         ["LegendConnect:ModelEvaluation:MaximumAttempts"] =
-                            "4"
+                            "4",
+                        ["LegendConnect:ModelEvaluation:PromptSetVersion"] =
+                            "legend-held-out-v1",
+                        ["LegendConnect:ModelEvaluation:CodeSha"] =
+                            "0123456789abcdef0123456789abcdef01234567"
                     })
                 .Build();
 
@@ -430,7 +699,7 @@ public sealed class LegendConnectModelEvaluationTests
             new LegendConnectTrainingDatasetCompiler(
                 db),
             backend,
-            baseline,
+            serving,
             configuration);
     }
 
@@ -441,7 +710,7 @@ public sealed class LegendConnectModelEvaluationTests
             RunKey = "phase8-run",
             ScopeKey = "Global",
             Generation = 1,
-            DatasetIdentity = "dataset",
+            DatasetIdentity = DatasetSha,
             DatasetEvaluatorVersion = 13,
             TrainingProvider = "OpenAI",
             BaseModel = "base",
@@ -457,7 +726,7 @@ public sealed class LegendConnectModelEvaluationTests
     private static LegendConnectTrainingDatasetManifest Manifest(
         string challengerReference) =>
         new(
-            "dataset",
+            DatasetSha,
             13,
             "Global",
             [],
@@ -501,46 +770,110 @@ public sealed class LegendConnectModelEvaluationTests
     private sealed class FakeEvaluationBackend
         : ILegendConnectModelEvaluationBackend
     {
-        public int GenerateCalls { get; private set; }
-
-        public string ChallengerText { get; init; } =
-            string.Empty;
-
         public LegendModelEvaluationJudgement Judgement { get; init; } =
             Perfect();
 
-        public Task<LegendModelEvaluationGenerationResult> GenerateAsync(
-            string model,
-            LegendConnectTrainingDatasetExample example,
-            CancellationToken cancellationToken = default)
-        {
-            GenerateCalls++;
-            return Task.FromResult(
-                new LegendModelEvaluationGenerationResult(
-                    true,
-                    ChallengerText));
-        }
+        public LegendModelEvaluationJudgeRequest? LastRequest { get; private set; }
 
         public Task<LegendModelEvaluationJudgement> JudgeAsync(
             LegendModelEvaluationJudgeRequest request,
-            CancellationToken cancellationToken = default) =>
-            Task.FromResult(
+            CancellationToken cancellationToken = default)
+        {
+            LastRequest = request;
+            return Task.FromResult(
                 Judgement);
+        }
     }
 
-    private sealed class FakeBaseline
-        : ILegendConnectCurrentProductionBaseline
+    private sealed class FakeServingAuthority
+        : ILegendConnectActiveModelInference
     {
         public string Text { get; init; } =
             string.Empty;
 
-        public Task<LegendCurrentProductionEvaluationResult> GenerateAsync(
-            LegendConnectTrainingDatasetExample example,
+        public string? ModelVersionOverride { get; init; }
+
+        public string? ErrorCode { get; init; }
+
+        public bool Retryable { get; init; }
+
+        public int EvaluationCalls { get; private set; }
+
+        public Task<LegendConnectLockedServingEvaluationResult>
+            EvaluateLockedCaseAsync(
+                LegendConnectLockedServingEvaluationRequest request,
+                CancellationToken cancellationToken = default)
+        {
+            EvaluationCalls++;
+            return Task.FromResult(
+                new LegendConnectLockedServingEvaluationResult(
+                    ErrorCode is null,
+                    ErrorCode is null
+                        ? Text
+                        : null,
+                    ModelVersionOverride ??
+                        request.ExpectedModelVersion,
+                    request.ModelTrainingRunId,
+                    LegendConnectServingEvaluationContracts.RuntimeMode,
+                    LegendConnectServingEvaluationContracts.ResponseAuthority,
+                    request.PromptSetVersion,
+                    request.CodeSha,
+                    LegendConnectServingEvaluationContracts.InferenceSettings,
+                    request.Example.EvidenceIdentity,
+                    "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789",
+                    "123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0",
+                    request.SuccessCriteria,
+                    10,
+                    1,
+                    ErrorCode,
+                    Retryable));
+        }
+
+        public Task<LegendConnectActiveModelInferenceResult> TryTranslateAsync(
+            string sourceLanguageCode,
+            string targetLanguageCode,
+            string text,
             CancellationToken cancellationToken = default) =>
             Task.FromResult(
-                new LegendCurrentProductionEvaluationResult(
-                    true,
-                    Text,
-                    "CurrentProduction"));
+                new LegendConnectActiveModelInferenceResult(
+                    false,
+                    null,
+                    null,
+                    "not_used"));
+
+        public Task<LegendConnectActiveModelInferenceResult>
+            TryGenerateGovernedReasoningCandidateAsync(
+                LegendConnectGovernedReasoningCandidateRequest request,
+                CancellationToken cancellationToken = default) =>
+            Task.FromResult(
+                new LegendConnectActiveModelInferenceResult(
+                    false,
+                    null,
+                    null,
+                    "not_used"));
+    }
+
+    private sealed class FakeTransport
+        : ILegendConnectModelInferenceTransport
+    {
+        private readonly LegendModelEvaluationGenerationResult _result;
+
+        public FakeTransport(
+            LegendModelEvaluationGenerationResult result)
+        {
+            _result = result;
+        }
+
+        public int CallCount { get; private set; }
+
+        public Task<LegendModelEvaluationGenerationResult> GenerateAsync(
+            string model,
+            LegendModelTaskRequest task,
+            CancellationToken cancellationToken = default)
+        {
+            CallCount++;
+            return Task.FromResult(
+                _result);
+        }
     }
 }

@@ -320,15 +320,28 @@ public sealed class LegendIntelligenceEvaluationService : ILegendIntelligenceEva
             observations.Select(item => item.IndependentSourceIdentity).Distinct(StringComparer.Ordinal).LongCount(), measuredUtc, observations);
 
         var modelRun = await _db.LegendConnectModelTrainingRuns.AsNoTracking()
-            .Where(item => item.EvaluationState == "Passed" && item.HeldOutScore != null && item.RegressionScore != null)
+            .Where(item => item.EvaluationState == "Passed" &&
+                           item.HeldOutScore != null &&
+                           item.RegressionScore != null &&
+                           item.FailureDetail != null &&
+                           item.FailureDetail.Contains(
+                               "runtime_mode=LockedHeldOutEvaluation") &&
+                           item.FailureDetail.Contains(
+                               "response_authority=LegendConnectActiveModelInference"))
             .OrderByDescending(item => item.CompletedUtc).ThenByDescending(item => item.UpdatedUtc)
             .FirstOrDefaultAsync(cancellationToken);
-        if (modelRun is not null)
+        if (modelRun is not null &&
+            LegendConnectModelRuntimeProofSummary.IsValid(
+                modelRun.FailureDetail))
         {
             projected.Add(Project("held_out", modelRun.HeldOutScore!.Value * 100m, modelRun.UpdatedUtc,
                 $"model-run:{modelRun.Id:N}:held-out:{modelRun.HeldOutScore:0.000000}"));
             projected.Add(Project("transfer", modelRun.RegressionScore!.Value * 100m, modelRun.UpdatedUtc,
                 $"model-run:{modelRun.Id:N}:regression:{modelRun.RegressionScore:0.000000}"));
+        }
+        else
+        {
+            modelRun = null;
         }
 
         var demands = await _db.LegendTranslationPairDemands.AsNoTracking().ToListAsync(cancellationToken);

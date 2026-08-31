@@ -3,6 +3,10 @@ using Domain.Messaging;
 using Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using System.Diagnostics;
+using System.Security.Cryptography;
+using System.Text;
+using System.Text.Json;
 
 namespace Infrastructure.Messaging;
 
@@ -16,7 +20,58 @@ internal sealed record LegendConnectActiveModelInferenceResult(
     string? Text,
     string? ModelVersion,
     string? ErrorCode,
-    Guid? ModelTrainingRunId = null);
+    Guid? ModelTrainingRunId = null,
+    long? CostMicrounits = null,
+    bool Retryable = false);
+
+internal static class LegendConnectServingEvaluationContracts
+{
+    internal const string RuntimeMode =
+        "LockedHeldOutEvaluation";
+
+    internal const string ResponseAuthority =
+        "LegendConnectActiveModelInference";
+
+    internal const string InferenceSettings =
+        "responses-v1,store=false,max_output_tokens=1200";
+
+    internal const string SuccessCriteria =
+        "governed-reference-policy-v1";
+}
+
+internal sealed record LegendConnectLockedServingEvaluationRequest(
+    Guid ModelTrainingRunId,
+    string ExpectedModelVersion,
+    string DatasetIdentity,
+    int DatasetEvaluatorVersion,
+    string PromptSetVersion,
+    string CodeSha,
+    string SuccessCriteria,
+    LegendConnectTrainingDatasetExample Example);
+
+/// <summary>
+/// Immutable proof that one locked held-out case ran through the same model
+/// authority used by production translation and governed-reasoning serving.
+/// The receipt is evaluation evidence only and grants no promotion authority.
+/// </summary>
+internal sealed record LegendConnectLockedServingEvaluationResult(
+    bool Succeeded,
+    string? Text,
+    string? ModelVersion,
+    Guid? ModelTrainingRunId,
+    string RuntimeMode,
+    string ResponseAuthority,
+    string PromptSetVersion,
+    string CodeSha,
+    string InferenceSettings,
+    string EvidenceIdentity,
+    string ConfigurationIdentity,
+    string ProofLineageIdentity,
+    string SuccessCriteria,
+    long LatencyMicroseconds,
+    long? CostMicrounits,
+    string? ErrorCode = null,
+    bool Retryable = false);
 
 internal sealed record LegendConnectGovernedReasoningCandidateRequest(
     string SourceLanguageCode,
@@ -37,6 +92,11 @@ internal interface ILegendConnectActiveModelInference
     Task<LegendConnectActiveModelInferenceResult>
         TryGenerateGovernedReasoningCandidateAsync(
             LegendConnectGovernedReasoningCandidateRequest request,
+            CancellationToken cancellationToken = default);
+
+    Task<LegendConnectLockedServingEvaluationResult>
+        EvaluateLockedCaseAsync(
+            LegendConnectLockedServingEvaluationRequest request,
             CancellationToken cancellationToken = default);
 }
 
@@ -85,6 +145,48 @@ internal sealed class LegendConnectActiveModelInference
                 "active_model_unavailable");
         }
 
+        var activeRun =
+            await (
+                from lineage in _db.Set<LegendConnectModelPromotionPair>()
+                    .AsNoTracking()
+                join run in _db.Set<LegendConnectModelTrainingRun>()
+                        .AsNoTracking()
+                    on lineage.ModelTrainingRunId equals run.Id
+                where lineage.PairKey == pairKey &&
+                      lineage.RolledBackUtc == null &&
+                      lineage.PromotedModelVersion ==
+                          pair.ActiveModelVersion &&
+                      run.ChallengerModelVersion ==
+                          pair.ActiveModelVersion &&
+                      run.State == "TrainingCompleted" &&
+                      run.EvaluationState == "Passed" &&
+                      run.PromotionState == "Promoted" &&
+                      run.FailureDetail != null &&
+                      run.FailureDetail.Contains(
+                          "runtime_mode=LockedHeldOutEvaluation") &&
+                      run.FailureDetail.Contains(
+                          "response_authority=LegendConnectActiveModelInference")
+                orderby run.Generation descending,
+                    run.PromotedUtc descending
+                select new
+                {
+                    run.Id,
+                    run.FailureDetail
+                })
+            .FirstOrDefaultAsync(
+                cancellationToken);
+
+        if (activeRun is null ||
+            !LegendConnectModelRuntimeProofSummary.IsValid(
+                activeRun.FailureDetail))
+        {
+            return new(
+                false,
+                null,
+                null,
+                "active_model_runtime_proof_unavailable");
+        }
+
         var result =
             await _transport.GenerateAsync(
                 pair.ActiveModelVersion,
@@ -103,14 +205,22 @@ internal sealed class LegendConnectActiveModelInference
                 null,
                 pair.ActiveModelVersion,
                 result.ErrorCode ??
-                    "active_model_inference_failed");
+                    "active_model_inference_failed",
+                activeRun.Id,
+                CostMicrounits:
+                    result.CostMicrounits,
+                Retryable:
+                    result.Retryable);
         }
 
         return new(
             true,
             result.Text,
             pair.ActiveModelVersion,
-            null);
+            null,
+            activeRun.Id,
+            CostMicrounits:
+                result.CostMicrounits);
     }
 
     public async Task<LegendConnectActiveModelInferenceResult>
@@ -134,6 +244,11 @@ internal sealed class LegendConnectActiveModelInference
                     item.HeldOutScore != null &&
                     item.RegressionScore != null &&
                     item.FailureCode == null &&
+                    item.FailureDetail != null &&
+                    item.FailureDetail.Contains(
+                        "runtime_mode=LockedHeldOutEvaluation") &&
+                    item.FailureDetail.Contains(
+                        "response_authority=LegendConnectActiveModelInference") &&
                     item.DatasetIdentity != "" &&
                     item.ChallengerModelVersion != null &&
                     item.ChallengerModelVersion != "")
@@ -142,11 +257,14 @@ internal sealed class LegendConnectActiveModelInference
                 .Select(item => new
                 {
                     item.Id,
-                    item.ChallengerModelVersion
+                    item.ChallengerModelVersion,
+                    item.FailureDetail
                 })
                 .FirstOrDefaultAsync(cancellationToken);
 
-        if (promoted is null)
+        if (promoted is null ||
+            !LegendConnectModelRuntimeProofSummary.IsValid(
+                promoted.FailureDetail))
         {
             return new(
                 false,
@@ -175,7 +293,9 @@ internal sealed class LegendConnectActiveModelInference
                 promoted.ChallengerModelVersion,
                 result.ErrorCode ??
                     "active_reasoning_model_inference_failed",
-                promoted.Id);
+                promoted.Id,
+                result.CostMicrounits,
+                result.Retryable);
         }
 
         var candidate = result.Text?.Trim();
@@ -190,7 +310,8 @@ internal sealed class LegendConnectActiveModelInference
                 null,
                 promoted.ChallengerModelVersion,
                 "active_reasoning_model_malformed_output",
-                promoted.Id);
+                promoted.Id,
+                result.CostMicrounits);
         }
 
         return new(
@@ -198,8 +319,251 @@ internal sealed class LegendConnectActiveModelInference
             candidate,
             promoted.ChallengerModelVersion,
             null,
-            promoted.Id);
+            promoted.Id,
+            result.CostMicrounits);
     }
+
+    public async Task<LegendConnectLockedServingEvaluationResult>
+        EvaluateLockedCaseAsync(
+            LegendConnectLockedServingEvaluationRequest request,
+            CancellationToken cancellationToken = default)
+    {
+        var task =
+            request.Example.ToTaskRequest();
+        var configurationIdentity =
+            StableHash(
+                "legend-serving-configuration-v1",
+                request.ExpectedModelVersion,
+                request.PromptSetVersion,
+                request.CodeSha,
+                request.SuccessCriteria,
+                LegendConnectServingEvaluationContracts
+                    .InferenceSettings,
+                task.CapabilityKey,
+                task.Instructions,
+                task.Input,
+                task.OutputContract,
+                task.SourceLanguageCode ?? string.Empty,
+                task.TargetLanguageCode ?? string.Empty);
+        var proofLineageIdentity =
+            StableHash(
+                "legend-locked-serving-proof-v1",
+                request.ModelTrainingRunId.ToString("N"),
+                request.ExpectedModelVersion,
+                request.DatasetIdentity,
+                request.DatasetEvaluatorVersion.ToString(
+                    System.Globalization.CultureInfo.InvariantCulture),
+                request.PromptSetVersion,
+                request.CodeSha,
+                request.SuccessCriteria,
+                request.Example.EvidenceIdentity,
+                request.Example.SplitGroupIdentity,
+                request.Example.SourceTextHash,
+                request.Example.TargetTextHash,
+                configurationIdentity);
+
+        if (request.ModelTrainingRunId == Guid.Empty ||
+            string.IsNullOrWhiteSpace(
+                request.ExpectedModelVersion) ||
+            !IsLowerHex(
+                request.DatasetIdentity,
+                64) ||
+            request.DatasetEvaluatorVersion <= 0 ||
+            request.PromptSetVersion.Length is <= 0 or > 120 ||
+            request.SuccessCriteria.Length is <= 0 or > 240 ||
+            !IsLowerHex(
+                request.CodeSha,
+                40))
+        {
+            return Failure(
+                request,
+                configurationIdentity,
+                proofLineageIdentity,
+                "model_evaluation_runtime_configuration_invalid");
+        }
+
+        var run =
+            await _db.Set<LegendConnectModelTrainingRun>()
+                .AsNoTracking()
+                .SingleOrDefaultAsync(
+                    item =>
+                        item.Id ==
+                        request.ModelTrainingRunId,
+                    cancellationToken);
+
+        if (run is null ||
+            run.State != "TrainingCompleted" ||
+            run.TrainingProvider != "OpenAI" ||
+            string.IsNullOrWhiteSpace(
+                run.ChallengerModelVersion) ||
+            !string.Equals(
+                run.ChallengerModelVersion,
+                request.ExpectedModelVersion,
+                StringComparison.Ordinal) ||
+            !string.Equals(
+                run.DatasetIdentity,
+                request.DatasetIdentity,
+                StringComparison.Ordinal) ||
+            run.DatasetEvaluatorVersion !=
+                request.DatasetEvaluatorVersion ||
+            !ScopeAdmits(
+                run.ScopeKey,
+                request.Example))
+        {
+            return Failure(
+                request,
+                configurationIdentity,
+                proofLineageIdentity,
+                "model_evaluation_inactive_model");
+        }
+
+        var started =
+            Stopwatch.GetTimestamp();
+        var generated =
+            await _transport.GenerateAsync(
+                run.ChallengerModelVersion,
+                task,
+                cancellationToken);
+        var latencyMicroseconds =
+            ElapsedMicroseconds(
+                started);
+
+        if (!generated.Succeeded ||
+            string.IsNullOrWhiteSpace(
+                generated.Text))
+        {
+            return Failure(
+                request,
+                configurationIdentity,
+                proofLineageIdentity,
+                generated.ErrorCode ??
+                    "model_evaluation_runtime_failed",
+                latencyMicroseconds,
+                generated.CostMicrounits,
+                generated.Retryable,
+                run.ChallengerModelVersion,
+                run.Id);
+        }
+
+        if (generated.CostMicrounits is null or < 0)
+        {
+            return Failure(
+                request,
+                configurationIdentity,
+                proofLineageIdentity,
+                "model_evaluation_runtime_cost_unavailable",
+                latencyMicroseconds,
+                generated.CostMicrounits,
+                modelVersion:
+                    run.ChallengerModelVersion,
+                modelTrainingRunId:
+                    run.Id);
+        }
+
+        return new(
+            true,
+            generated.Text,
+            run.ChallengerModelVersion,
+            run.Id,
+            LegendConnectServingEvaluationContracts
+                .RuntimeMode,
+            LegendConnectServingEvaluationContracts
+                .ResponseAuthority,
+            request.PromptSetVersion,
+            request.CodeSha,
+            LegendConnectServingEvaluationContracts
+                .InferenceSettings,
+            request.Example.EvidenceIdentity,
+            configurationIdentity,
+            proofLineageIdentity,
+            request.SuccessCriteria,
+            latencyMicroseconds,
+            generated.CostMicrounits);
+    }
+
+    private static LegendConnectLockedServingEvaluationResult Failure(
+        LegendConnectLockedServingEvaluationRequest request,
+        string configurationIdentity,
+        string proofLineageIdentity,
+        string errorCode,
+        long latencyMicroseconds = 0,
+        long? costMicrounits = null,
+        bool retryable = false,
+        string? modelVersion = null,
+        Guid? modelTrainingRunId = null) =>
+        new(
+            false,
+            null,
+            modelVersion,
+            modelTrainingRunId,
+            LegendConnectServingEvaluationContracts
+                .RuntimeMode,
+            LegendConnectServingEvaluationContracts
+                .ResponseAuthority,
+            request.PromptSetVersion,
+            request.CodeSha,
+            LegendConnectServingEvaluationContracts
+                .InferenceSettings,
+            request.Example.EvidenceIdentity,
+            configurationIdentity,
+            proofLineageIdentity,
+            request.SuccessCriteria,
+            latencyMicroseconds,
+            costMicrounits,
+            errorCode,
+            retryable);
+
+    private static bool ScopeAdmits(
+        string scopeKey,
+        LegendConnectTrainingDatasetExample example) =>
+        string.Equals(
+            scopeKey,
+            "Global",
+            StringComparison.Ordinal) ||
+        string.Equals(
+            scopeKey,
+            example.PairKey,
+            StringComparison.Ordinal) ||
+        string.Equals(
+            scopeKey,
+            $"capability:{example.CapabilityKey}",
+            StringComparison.Ordinal);
+
+    private static long ElapsedMicroseconds(
+        long startedTimestamp)
+    {
+        var elapsed =
+            Stopwatch.GetElapsedTime(
+                startedTimestamp);
+        var microseconds =
+            decimal.Round(
+                (decimal)elapsed.TotalMilliseconds *
+                1000m,
+                0,
+                MidpointRounding.AwayFromZero);
+        return microseconds > long.MaxValue
+            ? long.MaxValue
+            : Math.Max(
+                0,
+                (long)microseconds);
+    }
+
+    private static string StableHash(
+        params string[] values) =>
+        Convert.ToHexString(
+                SHA256.HashData(
+                    Encoding.UTF8.GetBytes(
+                        JsonSerializer.Serialize(
+                            values))))
+            .ToLowerInvariant();
+
+    private static bool IsLowerHex(
+        string value,
+        int length) =>
+        value.Length == length &&
+        value.All(character =>
+            character is >= '0' and <= '9' or
+            >= 'a' and <= 'f');
 }
 
 internal sealed class LegendConnectTranslationRouter : IAccountScopedTranslationService

@@ -15,6 +15,9 @@ namespace AgentPortal.Tests;
 
 public sealed class LegendConnectNativeReasoningModelServingTests
 {
+    private const string RuntimeProof =
+        "evaluated=1;reference=1.000000;blocking=0;protected=0;leakage=0;prompt_set=test-v1;code_sha=0123456789abcdef0123456789abcdef01234567;runtime_mode=LockedHeldOutEvaluation;response_authority=LegendConnectActiveModelInference;settings=responses-v1,store=false,max_output_tokens=1200;criteria=governed-reference-policy-v1,held_out>=0.950000,regression>=1.000000,protected>=0.980000,blocking=0,leakage=0,runtime_model=exact;proof_set=abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789;latency_us=1;cost_micro=1";
+
     private const string RequestText = "Give the governed model answer.";
     private const string SymbolicAnswer = "Founder governed model answer.";
 
@@ -312,6 +315,7 @@ public sealed class LegendConnectNativeReasoningModelServingTests
             ValidationExampleCount = 4,
             HeldOutScore = 1m,
             RegressionScore = 1m,
+            FailureDetail = RuntimeProof,
             CompletedUtc = now.AddMinutes(-1),
             PromotedUtc = now,
             UpdatedUtc = now
