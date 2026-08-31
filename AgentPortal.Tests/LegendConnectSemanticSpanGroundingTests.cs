@@ -709,6 +709,179 @@ public sealed class LegendConnectSemanticSpanGroundingTests
     }
 
     [Fact]
+    public async Task GovernedControlledSurfaceVariations_ReusePrimitiveFamilyRelationAndTransitionIdentity()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var fixture = CreateFixture(db);
+
+        for (var family = 1; family <= 3; family++)
+        {
+            var submitted = await fixture.Curriculum.SubmitFounderEnglishBatchAsync(
+                CompetingHypothesesTestDesignFamily(family));
+            Assert.True(submitted.Succeeded, submitted.Message);
+        }
+
+        var governedFamilyIds = await db.LegendCurriculumFamilies
+            .Where(item => item.FamilyKey.StartsWith("reasoning.competing-hypotheses.test-design."))
+            .Select(item => item.Id)
+            .ToArrayAsync();
+        Assert.Equal(3, governedFamilyIds.Length);
+
+        var nodeLineage = await db.LegendLanguageMeaningNodeEvidence
+            .Where(item => governedFamilyIds.Contains(item.CurriculumFamilyId) &&
+                item.SupersededUtc == null)
+            .Select(item => new { item.SemanticSignature, item.CurriculumFamilyId })
+            .Distinct()
+            .ToArrayAsync();
+        Assert.Equal(2, nodeLineage.Select(item => item.SemanticSignature).Distinct().Count());
+        Assert.All(
+            nodeLineage.GroupBy(item => item.SemanticSignature),
+            group => Assert.Equal(3, group.Select(item => item.CurriculumFamilyId).Distinct().Count()));
+
+        var relationLineage = await (
+            from evidence in db.LegendLanguageMeaningRelationEvidence
+            join relation in db.LegendLanguageMeaningRelations
+                on evidence.MeaningRelationId equals relation.Id
+            where governedFamilyIds.Contains(evidence.CurriculumFamilyId) &&
+                evidence.SupersededUtc == null
+            select new { relation.RelationSignature, evidence.CurriculumFamilyId }
+        ).Distinct().ToArrayAsync();
+        Assert.Single(relationLineage.Select(item => item.RelationSignature).Distinct());
+        Assert.Equal(3, relationLineage.Select(item => item.CurriculumFamilyId).Distinct().Count());
+
+        var transitionLineage = await (
+            from evidence in db.LegendSemanticTransitionEvidence
+            join source in db.LegendCurriculumExamples
+                on evidence.SourceCurriculumExampleId equals source.Id
+            where governedFamilyIds.Contains(source.CurriculumFamilyId) &&
+                evidence.SupersededUtc == null
+            select new { evidence.TransitionSignature, source.CurriculumFamilyId }
+        ).Distinct().ToArrayAsync();
+        Assert.Single(transitionLineage.Select(item => item.TransitionSignature).Distinct());
+        Assert.Equal(3, transitionLineage.Select(item => item.CurriculumFamilyId).Distinct().Count());
+
+        var canonical = await fixture.Operations.TryPlanConversationAsync(
+            "Keep both hypotheses; design a test.",
+            new LegendConnectDiscourseStateSnapshot([]));
+        Assert.True(canonical.Supported, canonical.ReasonCode);
+        var canonicalPlan = Assert.IsType<LegendConnectResponseMeaningPlanSnapshot>(canonical.Plan);
+
+        var heldOutParaphrases = new[]
+        {
+            "Keep both hypotheses; plan an experiment.",
+            "Retain the competing explanations; devise a discriminating check.",
+            "Preserve both theories; construct a separating trial.",
+            "Maintain both candidate causes; create an evidence-producing test.",
+            "Hold both possibilities; design a test."
+        };
+        foreach (var paraphrase in heldOutParaphrases)
+        {
+            var graph = await fixture.Operations.AnalyzeReusableMeaningGraphAsync(paraphrase);
+            Assert.True(graph.IsComposed, graph.ReasonCode);
+            Assert.Equal(2, graph.Nodes.Count);
+            Assert.Single(graph.Relations);
+            Assert.Equal(
+                new[] { "design_discriminating_test", "retain_competing_hypotheses" },
+                graph.Nodes.Select(item => item.SemanticValue).OrderBy(item => item).ToArray());
+
+            var planned = await fixture.Operations.TryPlanConversationAsync(
+                paraphrase,
+                new LegendConnectDiscourseStateSnapshot([]));
+            Assert.True(planned.Supported, planned.ReasonCode);
+            var plan = Assert.IsType<LegendConnectResponseMeaningPlanSnapshot>(planned.Plan);
+            Assert.Equal(canonicalPlan.SourceMeaningGraphIdentity, plan.SourceMeaningGraphIdentity);
+            Assert.Equal(canonicalPlan.TransitionSignature, plan.TransitionSignature);
+            Assert.Equal(canonicalPlan.ResultSemanticFrameSignature, plan.ResultSemanticFrameSignature);
+            Assert.Equal(canonicalPlan.PlanIdentity, plan.PlanIdentity);
+            Assert.Equal("test_design_guidance", plan.ResultDimensions["conversation_function"]);
+            Assert.Equal("HigherStandard", plan.EvidenceStandard);
+        }
+    }
+
+    [Fact]
+    public async Task ControlledSurfaceVariations_DoNotUseSubstringOrNearNeighborMatching()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var fixture = CreateFixture(db);
+        for (var family = 1; family <= 3; family++)
+        {
+            Assert.True((await fixture.Curriculum.SubmitFounderEnglishBatchAsync(
+                CompetingHypothesesTestDesignFamily(family))).Succeeded);
+        }
+
+        var graph = await fixture.Operations.AnalyzeReusableMeaningGraphAsync(
+            "Keep both hypotheseses; design a tester.");
+
+        Assert.False(graph.IsComposed);
+        Assert.Equal("meaning_graph_component_unknown", graph.ReasonCode);
+        Assert.Empty(graph.Nodes);
+        Assert.Empty(graph.Relations);
+    }
+
+    [Fact]
+    public async Task ControlledSurfaceVariations_PreserveContrastiveMeaningAndRelationBoundaries()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var fixture = CreateFixture(db);
+        for (var family = 1; family <= 3; family++)
+        {
+            Assert.True((await fixture.Curriculum.SubmitFounderEnglishBatchAsync(
+                CompetingHypothesesTestDesignFamily(family))).Succeeded);
+            Assert.True((await fixture.Curriculum.SubmitFounderEnglishBatchAsync(
+                PrematureHypothesisSelectionFamily(family))).Succeeded);
+        }
+
+        var retained = await fixture.Operations.TryPlanConversationAsync(
+            "Keep both hypotheses; plan an experiment.",
+            new LegendConnectDiscourseStateSnapshot([]));
+        var contrast = await fixture.Operations.TryPlanConversationAsync(
+            "Choose one hypothesis before you design a test.",
+            new LegendConnectDiscourseStateSnapshot([]));
+
+        Assert.True(retained.Supported, retained.ReasonCode);
+        Assert.True(contrast.Supported, contrast.ReasonCode);
+        var retainedPlan = Assert.IsType<LegendConnectResponseMeaningPlanSnapshot>(retained.Plan);
+        var contrastPlan = Assert.IsType<LegendConnectResponseMeaningPlanSnapshot>(contrast.Plan);
+        Assert.NotEqual(retainedPlan.SourceMeaningGraphIdentity, contrastPlan.SourceMeaningGraphIdentity);
+        Assert.NotEqual(retainedPlan.TransitionSignature, contrastPlan.TransitionSignature);
+        Assert.NotEqual(retainedPlan.ResultSemanticFrameSignature, contrastPlan.ResultSemanticFrameSignature);
+        Assert.Equal("test_design_guidance", retainedPlan.ResultDimensions["conversation_function"]);
+        Assert.Equal("premature_selection_warning", contrastPlan.ResultDimensions["conversation_function"]);
+    }
+
+    [Fact]
+    public async Task ControlledSurfaceVariations_DoNotComposeAcrossUnrelatedFamilies()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var fixture = CreateFixture(db);
+        for (var family = 1; family <= 3; family++)
+        {
+            Assert.True((await fixture.Curriculum.SubmitFounderEnglishBatchAsync(
+                CompetingHypothesesTestDesignFamily(family))).Succeeded);
+        }
+        Assert.True((await fixture.Curriculum.SubmitFounderEnglishBatchAsync(
+            UnrelatedDispatchSurfaceFamily())).Succeeded);
+
+        // Both spans resolve to mature primitives, and the primitive pair has
+        // a mature global relation. The dispatch surface itself has no
+        // Founder-governed relation in any family shared by both spans.
+        var graph = await fixture.Operations.AnalyzeReusableMeaningGraphAsync(
+            "Keep both hypotheses; route a dispatch.");
+
+        Assert.False(graph.IsComposed);
+        Assert.Equal("meaning_graph_relation_unproven", graph.ReasonCode);
+        Assert.Equal(2, graph.Nodes.Count);
+        Assert.Empty(graph.Relations);
+
+        var planned = await fixture.Operations.TryPlanConversationAsync(
+            "Keep both hypotheses; route a dispatch.",
+            new LegendConnectDiscourseStateSnapshot([]));
+        Assert.False(planned.Supported);
+        Assert.Equal("meaning_graph_relation_unproven", planned.ReasonCode);
+        Assert.Null(planned.Plan);
+    }
+
+    [Fact]
     public async Task BroadProjection_FailsClosedWhenNoExactEndpointCanResolveConflictingResults()
     {
         await using var db = ControllerTestHelpers.BuildDb();
@@ -2258,6 +2431,141 @@ public sealed class LegendConnectSemanticSpanGroundingTests
                 new LegendConnectCurriculumExampleSubmission(
                     $"Founder dense graph control {family}.",
                     new Dictionary<string, string> { ["control"] = $"dense-{family}" })
+            ]);
+
+    private static LegendConnectCurriculumBatchSubmission
+        CompetingHypothesesTestDesignFamily(int family)
+    {
+        var controlledSurfaces = new[]
+        {
+            (Text: "Keep both hypotheses; design a test.",
+                Posture: "Keep both hypotheses", Action: "design a test"),
+            (Text: "Retain the competing explanations; plan an experiment.",
+                Posture: "Retain the competing explanations", Action: "plan an experiment"),
+            (Text: "Preserve both theories; devise a discriminating check.",
+                Posture: "Preserve both theories", Action: "devise a discriminating check"),
+            (Text: "Maintain both candidate causes; construct a separating trial.",
+                Posture: "Maintain both candidate causes", Action: "construct a separating trial"),
+            (Text: "Hold both possibilities; create an evidence-producing test.",
+                Posture: "Hold both possibilities", Action: "create an evidence-producing test")
+        };
+        var examples = controlledSurfaces
+            .Select(item => new LegendConnectCurriculumExampleSubmission(
+                item.Text,
+                new Dictionary<string, string>
+                {
+                    ["decision_posture"] = "retain_competing_hypotheses",
+                    ["reasoning_action"] = "design_discriminating_test"
+                },
+                new LegendConnectMeaningGraphSubmission(
+                [
+                    new LegendConnectMeaningNodeSubmission(
+                        "posture",
+                        "decision_posture",
+                        "retain_competing_hypotheses",
+                        item.Posture),
+                    new LegendConnectMeaningNodeSubmission(
+                        "action",
+                        "reasoning_action",
+                        "design_discriminating_test",
+                        item.Action)
+                ],
+                [new LegendConnectMeaningRelationSubmission(
+                    "posture", "resolved-by", "action")])))
+            .Append(new LegendConnectCurriculumExampleSubmission(
+                $"Founder test-design guidance {family}.",
+                new Dictionary<string, string>
+                {
+                    ["conversation_function"] = "test_design_guidance"
+                }))
+            .ToArray();
+
+        return new LegendConnectCurriculumBatchSubmission(
+            $"reasoning.competing-hypotheses.test-design.{family}",
+            "Controlled surfaces for retaining competing causes and designing a discriminating test",
+            examples,
+            [new LegendConnectSemanticTransitionSubmission(
+                new LegendConnectSemanticFrameSubmission(new Dictionary<string, string>
+                {
+                    ["decision_posture"] = "retain_competing_hypotheses",
+                    ["reasoning_action"] = "design_discriminating_test"
+                }),
+                new LegendConnectSemanticFrameSubmission(new Dictionary<string, string>
+                {
+                    ["conversation_function"] = "test_design_guidance"
+                }))]);
+    }
+
+    private static LegendConnectCurriculumBatchSubmission
+        PrematureHypothesisSelectionFamily(int family) =>
+        new(
+            $"reasoning.competing-hypotheses.contrast.{family}",
+            "Contrastive evidence for selecting one cause before gathering discriminating evidence",
+            [
+                new LegendConnectCurriculumExampleSubmission(
+                    "Choose one hypothesis before you design a test.",
+                    new Dictionary<string, string>
+                    {
+                        ["decision_posture"] = "select_single_hypothesis",
+                        ["reasoning_action"] = "design_discriminating_test"
+                    },
+                    new LegendConnectMeaningGraphSubmission(
+                    [
+                        new LegendConnectMeaningNodeSubmission(
+                            "posture",
+                            "decision_posture",
+                            "select_single_hypothesis",
+                            "Choose one hypothesis"),
+                        new LegendConnectMeaningNodeSubmission(
+                            "action",
+                            "reasoning_action",
+                            "design_discriminating_test",
+                            "design a test")
+                    ],
+                    [new LegendConnectMeaningRelationSubmission(
+                        "posture", "precedes", "action")])),
+                new LegendConnectCurriculumExampleSubmission(
+                    $"Founder premature-selection warning {family}.",
+                    new Dictionary<string, string>
+                    {
+                        ["conversation_function"] = "premature_selection_warning"
+                    })
+            ],
+            [new LegendConnectSemanticTransitionSubmission(
+                new LegendConnectSemanticFrameSubmission(new Dictionary<string, string>
+                {
+                    ["decision_posture"] = "select_single_hypothesis",
+                    ["reasoning_action"] = "design_discriminating_test"
+                }),
+                new LegendConnectSemanticFrameSubmission(new Dictionary<string, string>
+                {
+                    ["conversation_function"] = "premature_selection_warning"
+                }))]);
+
+    private static LegendConnectCurriculumBatchSubmission UnrelatedDispatchSurfaceFamily() =>
+        new(
+            "operations.dispatch.unrelated-controlled-surface",
+            "Unrelated operational surface without a governed hypothesis relation",
+            [
+                new LegendConnectCurriculumExampleSubmission(
+                    "Route a dispatch.",
+                    new Dictionary<string, string>
+                    {
+                        ["reasoning_action"] = "design_discriminating_test"
+                    },
+                    new LegendConnectMeaningGraphSubmission(
+                        [new LegendConnectMeaningNodeSubmission(
+                            "action",
+                            "reasoning_action",
+                            "design_discriminating_test",
+                            "Route a dispatch")],
+                        [])),
+                new LegendConnectCurriculumExampleSubmission(
+                    "Dispatch routing control evidence.",
+                    new Dictionary<string, string>
+                    {
+                        ["control"] = "dispatch_routing"
+                    })
             ]);
 
     private static LegendConnectCurriculumBatchSubmission ProjectionIdentitySourceFamily(

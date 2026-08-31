@@ -3547,7 +3547,10 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
                 on new { node.LanguageCode, node.SemanticSignature }
                 equals new { primitive.LanguageCode, primitive.SemanticSignature }
             where node.LanguageCode == languageCode && node.SupersededUtc == null &&
+                node.Provenance == LegendConnectKnowledgeProvenance.FounderApproved &&
                 anchor.SupersededUtc == null && unit.IsTrainingEligible &&
+                anchor.Provenance == LegendConnectKnowledgeProvenance.FounderApproved &&
+                unit.Provenance == LegendConnectKnowledgeProvenance.FounderApproved &&
                 anchor.ComponentStartTokenIndex != null && anchor.ComponentLength > 0 &&
                 lexeme.LanguageCode == languageCode &&
                 inputLexemeHashes.Contains(lexeme.NormalizedHash) &&
@@ -3561,6 +3564,7 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
                 node.SemanticSignature,
                 node.SemanticDimension,
                 node.SemanticValue,
+                node.CurriculumFamilyId,
                 primitive.IndependentSourceCount,
                 primitive.HumanVerifiedSupportCount,
                 primitive.MaturityState,
@@ -3604,7 +3608,9 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
             })
             .ToList();
 
+        var inputTokenValues = tokens.Select(item => item.NormalizedText).ToArray();
         var nodes = new List<LegendConnectUtteranceMeaningNode>();
+        var nodeFamilyIds = new List<HashSet<Guid>>();
         foreach (var candidate in candidates)
         {
             if (candidate.StartTokenIndex is not int start || candidate.TokenLength is not int length || length <= 0)
@@ -3613,10 +3619,8 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
             if (start < 0 || start + length > sourceTokens.Count)
                 continue;
             var surface = sourceTokens.Skip(start).Take(length).Select(item => item.NormalizedText).ToArray();
-            for (var inputStart = 0; inputStart <= tokens.Count - surface.Length; inputStart++)
+            foreach (var inputStart in FindTokenSequenceOccurrences(inputTokenValues, surface))
             {
-                if (!surface.SequenceEqual(tokens.Skip(inputStart).Take(surface.Length).Select(item => item.NormalizedText), StringComparer.Ordinal))
-                    continue;
                 var node = new LegendConnectUtteranceMeaningNode(
                     candidate.SemanticSignature,
                     candidate.SemanticDimension,
@@ -3624,10 +3628,21 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
                     inputStart,
                     surface.Length,
                     candidate.IndependentSupportCount);
-                if (!nodes.Any(existing => existing.SemanticSignature == node.SemanticSignature &&
-                    existing.StartTokenIndex == node.StartTokenIndex && existing.TokenLength == node.TokenLength))
+                var existingNodeIndex = nodes.FindIndex(existing =>
+                    existing.SemanticSignature == node.SemanticSignature &&
+                    existing.StartTokenIndex == node.StartTokenIndex &&
+                    existing.TokenLength == node.TokenLength);
+                if (existingNodeIndex < 0)
                 {
                     nodes.Add(node);
+                    nodeFamilyIds.Add([candidate.CurriculumFamilyId]);
+                }
+                else
+                {
+                    // The primitive identity is language-neutral and surface-
+                    // independent, but the authorization to compose this
+                    // particular observed surface remains family-scoped.
+                    nodeFamilyIds[existingNodeIndex].Add(candidate.CurriculumFamilyId);
                 }
             }
         }
@@ -3636,14 +3651,49 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
         if (nodes.Count > 1)
         {
             var signatures = nodes.Select(item => item.SemanticSignature).Distinct(StringComparer.Ordinal).ToArray();
-            var learnedRelations = await _db.Set<LegendLanguageMeaningRelation>().AsNoTracking()
-                .Where(item => item.LanguageCode == languageCode && item.SupersededUtc == null &&
-                    item.Provenance == LegendConnectKnowledgeProvenance.FounderApproved &&
-                    item.MaturityState != "Contradicted" && item.ContradictionCount == 0 &&
-                    item.IndependentSourceCount >= 1 && item.HumanVerifiedSupportCount >= 1 &&
-                    signatures.Contains(item.SourceSemanticSignature) &&
-                    signatures.Contains(item.TargetSemanticSignature))
-                .ToListAsync(cancellationToken);
+            // A global relation aggregate establishes the reusable semantic
+            // identity and evidence standard; it does not authorize surfaces
+            // observed in unrelated families to be joined. Retain the exact
+            // Founder graph evidence family so controlled variants can share
+            // one primitive/relation while cross-family collisions fail closed.
+            var learnedRelations = await (
+                from evidence in _db.Set<LegendLanguageMeaningRelationEvidence>().AsNoTracking()
+                join relation in _db.Set<LegendLanguageMeaningRelation>().AsNoTracking()
+                    on evidence.MeaningRelationId equals relation.Id
+                join source in _db.Set<LegendLanguageMeaningNodeEvidence>().AsNoTracking()
+                    on evidence.SourceMeaningNodeId equals source.Id
+                join target in _db.Set<LegendLanguageMeaningNodeEvidence>().AsNoTracking()
+                    on evidence.TargetMeaningNodeId equals target.Id
+                where evidence.SupersededUtc == null &&
+                    evidence.ContributionState == "Supported" &&
+                    evidence.IsHumanVerifiedSupport &&
+                    evidence.Provenance == LegendConnectKnowledgeProvenance.FounderApproved &&
+                    source.SupersededUtc == null && target.SupersededUtc == null &&
+                    source.LanguageCode == languageCode && target.LanguageCode == languageCode &&
+                    source.Provenance == LegendConnectKnowledgeProvenance.FounderApproved &&
+                    target.Provenance == LegendConnectKnowledgeProvenance.FounderApproved &&
+                    source.CurriculumFamilyId == evidence.CurriculumFamilyId &&
+                    target.CurriculumFamilyId == evidence.CurriculumFamilyId &&
+                    source.CurriculumExampleId == evidence.CurriculumExampleId &&
+                    target.CurriculumExampleId == evidence.CurriculumExampleId &&
+                    source.SemanticSignature == relation.SourceSemanticSignature &&
+                    target.SemanticSignature == relation.TargetSemanticSignature &&
+                    relation.LanguageCode == languageCode && relation.SupersededUtc == null &&
+                    relation.Provenance == LegendConnectKnowledgeProvenance.FounderApproved &&
+                    relation.MaturityState != "Contradicted" && relation.ContradictionCount == 0 &&
+                    relation.IndependentSourceCount >= 1 && relation.HumanVerifiedSupportCount >= 1 &&
+                    signatures.Contains(relation.SourceSemanticSignature) &&
+                    signatures.Contains(relation.TargetSemanticSignature)
+                select new ReusableMeaningRelationCandidate(
+                    relation.RelationSignature,
+                    relation.RelationKind,
+                    relation.SourceSemanticSignature,
+                    relation.TargetSemanticSignature,
+                    relation.IndependentSourceCount,
+                    relation.HumanVerifiedSupportCount,
+                    relation.MaturityState,
+                    evidence.CurriculumFamilyId)
+            ).Distinct().ToListAsync(cancellationToken);
             learnedRelations = learnedRelations
                 .GroupBy(item => new
                 {
@@ -3669,16 +3719,20 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
                 {
                     if (sourceIndex == targetIndex ||
                         nodes[sourceIndex].SemanticSignature != relation.SourceSemanticSignature ||
-                        nodes[targetIndex].SemanticSignature != relation.TargetSemanticSignature)
+                        nodes[targetIndex].SemanticSignature != relation.TargetSemanticSignature ||
+                        !nodeFamilyIds[sourceIndex].Contains(relation.CurriculumFamilyId) ||
+                        !nodeFamilyIds[targetIndex].Contains(relation.CurriculumFamilyId))
                     {
                         continue;
                     }
-                    relations.Add(new LegendConnectUtteranceMeaningRelation(
+                    var composedRelation = new LegendConnectUtteranceMeaningRelation(
                         relation.RelationSignature,
                         relation.RelationKind,
                         sourceIndex,
                         targetIndex,
-                        relation.IndependentSourceCount));
+                        relation.IndependentSourceCount);
+                    if (!relations.Contains(composedRelation))
+                        relations.Add(composedRelation);
                 }
             }
         }
@@ -3796,12 +3850,23 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
         string SemanticSignature,
         string SemanticDimension,
         string SemanticValue,
+        Guid CurriculumFamilyId,
         int IndependentSupportCount,
         int HumanVerifiedSupportCount,
         string MaturityState,
         string Text,
         int? StartTokenIndex,
         int? TokenLength);
+
+    private sealed record ReusableMeaningRelationCandidate(
+        string RelationSignature,
+        string RelationKind,
+        string SourceSemanticSignature,
+        string TargetSemanticSignature,
+        int IndependentSourceCount,
+        int HumanVerifiedSupportCount,
+        string MaturityState,
+        Guid CurriculumFamilyId);
 
     private static int MeaningEvidenceStandard(
         int independentSourceCount,
