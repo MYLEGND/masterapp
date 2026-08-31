@@ -1,0 +1,59 @@
+name: Validate Legend Android
+
+on:
+  push:
+    branches:
+      - fix/android-build-integrity-20260831
+  pull_request:
+    branches:
+      - production
+    paths:
+      - 'Legend-Android/**'
+      - 'Legend-Design/**'
+      - 'Legend-ios/Legend/Resources/Assets.xcassets/**'
+      - '.github/workflows/legend-android-build.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: legend-android-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout exact Android candidate
+        uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
+          lfs: true
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install required Android SDK
+        shell: bash
+        run: sdkmanager 'platforms;android-37' 'build-tools;36.0.0'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Compile, test, lint, and bundle debug app
+        working-directory: Legend-Android
+        shell: bash
+        run: ./gradlew --no-daemon --stacktrace :app:testDebugUnitTest :app:lintDebug :app:bundleDebug
+
+      - name: Verify repository diff
+        shell: bash
+        run: git diff --check
