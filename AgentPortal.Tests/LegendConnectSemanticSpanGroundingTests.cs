@@ -370,7 +370,199 @@ public sealed class LegendConnectSemanticSpanGroundingTests
     }
 
     [Fact]
-    public async Task GovernedExecutableProjection_FailsClosedWhenOmittedMetadataCouldChangeTheResult()
+    public async Task ExactEndpoint_PrecedesConflictingBroadProjectedResultFrames()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var fixture = CreateFixture(db);
+
+        for (var family = 1; family <= 3; family++)
+        {
+            var exact = await fixture.Curriculum.SubmitFounderEnglishBatchAsync(
+                SelectorOrderingFamily(
+                    "exact",
+                    family,
+                    "Diagnose the handoff.",
+                    "exact_endpoint",
+                    "handoff_diagnostic_response"));
+            Assert.True(exact.Succeeded, exact.Message);
+
+            var projected = await fixture.Curriculum.SubmitFounderEnglishBatchAsync(
+                SelectorOrderingFamily(
+                    "projected",
+                    family,
+                    $"Projected capacity evidence {family}.",
+                    "capacity_projection",
+                    "capacity_diagnostic_response"));
+            Assert.True(projected.Succeeded, projected.Message);
+        }
+
+        var planned = await fixture.Operations.TryPlanConversationAsync(
+            "Diagnose the handoff.",
+            new LegendConnectDiscourseStateSnapshot([]));
+
+        Assert.True(planned.Supported, planned.ReasonCode);
+        var plan = Assert.IsType<LegendConnectResponseMeaningPlanSnapshot>(planned.Plan);
+        Assert.Equal(
+            "handoff_diagnostic_response",
+            plan.ResultDimensions["conversation_function"]);
+        Assert.Equal("HigherStandard", plan.EvidenceStandard);
+        Assert.Equal(3, plan.IndependentEvidenceCount);
+    }
+
+    [Fact]
+    public async Task ExactEndpoint_ContradictionStopsBeforeProjectedSupport()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var fixture = CreateFixture(db);
+
+        for (var family = 1; family <= 3; family++)
+        {
+            var exact = await fixture.Curriculum.SubmitFounderEnglishBatchAsync(
+                SelectorOrderingFamily(
+                    "contradicted-exact",
+                    family,
+                    "Diagnose the handoff.",
+                    "exact_endpoint",
+                    "exact_handoff_response"));
+            Assert.True(exact.Succeeded, exact.Message);
+
+            var projected = await fixture.Curriculum.SubmitFounderEnglishBatchAsync(
+                SelectorOrderingFamily(
+                    "contradiction-projection",
+                    family,
+                    $"Projected support evidence {family}.",
+                    "projected_support",
+                    "projected_handoff_response"));
+            Assert.True(projected.Succeeded, projected.Message);
+        }
+
+        var contradictedEvidence = await db.LegendSemanticTransitionEvidence
+            .Where(item =>
+                item.SupersededUtc == null &&
+                item.ResultSemanticFrame.Contains("exact_handoff_response"))
+            .OrderBy(item => item.Id)
+            .FirstAsync();
+        contradictedEvidence.ContributionState = "Contradictory";
+        await db.SaveChangesAsync();
+
+        var planned = await fixture.Operations.TryPlanConversationAsync(
+            "Diagnose the handoff.",
+            new LegendConnectDiscourseStateSnapshot([]));
+
+        Assert.False(planned.Supported);
+        Assert.Equal(
+            "exact_source_semantic_transition_contradicted",
+            planned.ReasonCode);
+        Assert.Null(planned.Plan);
+    }
+
+    [Fact]
+    public async Task ExactEndpoint_MultipleGovernedResultsRemainAmbiguous()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var fixture = CreateFixture(db);
+
+        for (var family = 1; family <= 3; family++)
+        {
+            var first = await fixture.Curriculum.SubmitFounderEnglishBatchAsync(
+                SelectorOrderingFamily(
+                    "multiple-first",
+                    family,
+                    "Diagnose the handoff.",
+                    "first_exact_route",
+                    "first_handoff_response"));
+            Assert.True(first.Succeeded, first.Message);
+
+            var second = await fixture.Curriculum.SubmitFounderEnglishBatchAsync(
+                SelectorOrderingFamily(
+                    "multiple-second",
+                    family,
+                    "Diagnose the handoff.",
+                    "second_exact_route",
+                    "second_handoff_response"));
+            Assert.True(second.Succeeded, second.Message);
+        }
+
+        var planned = await fixture.Operations.TryPlanConversationAsync(
+            "Diagnose the handoff.",
+            new LegendConnectDiscourseStateSnapshot([]));
+
+        Assert.False(planned.Supported);
+        Assert.Equal(
+            "ambiguous_exact_source_semantic_transition",
+            planned.ReasonCode);
+        Assert.Null(planned.Plan);
+    }
+
+    [Fact]
+    public async Task ExactEndpoint_PrefersHigherStandardOverBroadGovernedEvidence()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var fixture = CreateFixture(db);
+
+        var broad = await fixture.Curriculum.SubmitFounderEnglishBatchAsync(
+            SelectorOrderingFamily(
+                "broad",
+                1,
+                "Diagnose the handoff.",
+                "broad_route",
+                "broad_handoff_response"));
+        Assert.True(broad.Succeeded, broad.Message);
+
+        for (var family = 1; family <= 3; family++)
+        {
+            var higher = await fixture.Curriculum.SubmitFounderEnglishBatchAsync(
+                SelectorOrderingFamily(
+                    "higher",
+                    family,
+                    "Diagnose the handoff.",
+                    "higher_route",
+                    "higher_handoff_response"));
+            Assert.True(higher.Succeeded, higher.Message);
+        }
+
+        var planned = await fixture.Operations.TryPlanConversationAsync(
+            "Diagnose the handoff.",
+            new LegendConnectDiscourseStateSnapshot([]));
+
+        Assert.True(planned.Supported, planned.ReasonCode);
+        var plan = Assert.IsType<LegendConnectResponseMeaningPlanSnapshot>(planned.Plan);
+        Assert.Equal(
+            "higher_handoff_response",
+            plan.ResultDimensions["conversation_function"]);
+        Assert.Equal("HigherStandard", plan.EvidenceStandard);
+        Assert.Equal(3, plan.IndependentEvidenceCount);
+    }
+
+    [Fact]
+    public async Task ExactEndpointOrdering_DoesNotSupportAnUnseenPrompt()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var fixture = CreateFixture(db);
+
+        for (var family = 1; family <= 3; family++)
+        {
+            var exact = await fixture.Curriculum.SubmitFounderEnglishBatchAsync(
+                SelectorOrderingFamily(
+                    "unseen-guard",
+                    family,
+                    "Diagnose the handoff.",
+                    "exact_endpoint",
+                    "handoff_diagnostic_response"));
+            Assert.True(exact.Succeeded, exact.Message);
+        }
+
+        var planned = await fixture.Operations.TryPlanConversationAsync(
+            "Uncatalogued zephyr request.",
+            new LegendConnectDiscourseStateSnapshot([]));
+
+        Assert.False(planned.Supported);
+        Assert.Equal("meaning_graph_component_unknown", planned.ReasonCode);
+        Assert.Null(planned.Plan);
+    }
+
+    [Fact]
+    public async Task BroadProjection_FailsClosedWhenNoExactEndpointCanResolveConflictingResults()
     {
         await using var db = ControllerTestHelpers.BuildDb();
         var fixture = CreateFixture(db);
@@ -1606,6 +1798,54 @@ public sealed class LegendConnectSemanticSpanGroundingTests
                     ["conversation_function"] = "conversation_acknowledgement"
                 }))]);
     }
+
+    private static LegendConnectCurriculumBatchSubmission SelectorOrderingFamily(
+        string group,
+        int family,
+        string sourceText,
+        string route,
+        string resultFunction) =>
+        new(
+            $"response.plan.selector-ordering.{group}.{family}",
+            "Exact endpoint ordering over governed projection evidence",
+            [
+                new LegendConnectCurriculumExampleSubmission(
+                    sourceText,
+                    new Dictionary<string, string>
+                    {
+                        ["task"] = "handoff_diagnosis",
+                        ["route"] = route
+                    },
+                    new LegendConnectMeaningGraphSubmission(
+                    [
+                        new LegendConnectMeaningNodeSubmission(
+                            "task",
+                            "task",
+                            "handoff_diagnosis",
+                            sourceText.TrimEnd('.'))
+                    ],
+                    [])),
+                new LegendConnectCurriculumExampleSubmission(
+                    $"Founder selector result {group} {family}.",
+                    new Dictionary<string, string>
+                    {
+                        ["conversation_function"] = resultFunction
+                    })
+            ],
+            [
+                new LegendConnectSemanticTransitionSubmission(
+                    new LegendConnectSemanticFrameSubmission(
+                        new Dictionary<string, string>
+                        {
+                            ["task"] = "handoff_diagnosis",
+                            ["route"] = route
+                        }),
+                    new LegendConnectSemanticFrameSubmission(
+                        new Dictionary<string, string>
+                        {
+                            ["conversation_function"] = resultFunction
+                        }))
+            ]);
 
     private static LegendConnectCurriculumBatchSubmission RichResponsePlanFamily(
         int family,

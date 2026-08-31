@@ -4038,6 +4038,23 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
         {
             if (HasContradictedSemanticTransition(responseObservations, values)) return SemanticTransitionSelection.Contradicted("semantic_transition_contradicted");
 
+            // The exact active curriculum endpoint is the strongest source-
+            // frame projection when a dense knowledge graph contains a
+            // different connected subgraph alongside that endpoint's governed
+            // meaning. Resolve it before broad projection can manufacture an
+            // ambiguity from other source families. Result selection still
+            // runs through the same transition evidence, contradiction,
+            // evidence-standard, variable-binding, and ambiguity gates. This
+            // is not stored-answer retrieval and cannot make an unseen
+            // paraphrase appear supported.
+            var exactEndpoint = await SelectCurrentExactSourceEndpointAsync(
+                language,
+                input,
+                responseObservations,
+                cancellationToken);
+            if (exactEndpoint is not null)
+                return exactEndpoint;
+
             // Founder curricula may carry controlled descriptive dimensions
             // which are not independently surfaced by the present-turn
             // meaning graph.  They remain canonical evidence, but they must
@@ -4092,21 +4109,6 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
                     false,
                     false);
             }
-
-            // The exact active curriculum endpoint is the strongest source-
-            // frame projection when a dense knowledge graph contains a
-            // different connected subgraph alongside that endpoint's governed
-            // meaning. Resolve only its source frame here; result selection
-            // still runs through the same transition evidence, contradiction,
-            // evidence-standard, and ambiguity gates. This is not stored-answer
-            // retrieval and cannot make an unseen paraphrase appear supported.
-            var exactEndpoint = await SelectCurrentExactSourceEndpointAsync(
-                language,
-                input,
-                responseObservations,
-                cancellationToken);
-            if (exactEndpoint is not null)
-                return exactEndpoint;
 
             var failureReason = "semantic_transition_not_supported";
             var partialCandidates = BuildGovernedSemanticTransitionCandidates(
