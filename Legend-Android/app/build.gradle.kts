@@ -138,12 +138,12 @@ val bundleLegendLauncherArtwork by tasks.registering(Sync::class) {
 
 android {
     namespace = legendApplicationId
-    compileSdk = 36
+    compileSdk = 37
 
     defaultConfig {
         applicationId = legendApplicationId
         minSdk = 26
-        targetSdk = 36
+        targetSdk = 37
         versionCode = 3
         versionName = "1.0.0"
 
