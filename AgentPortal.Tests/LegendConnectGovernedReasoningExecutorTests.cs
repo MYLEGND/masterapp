@@ -368,6 +368,448 @@ public sealed class LegendConnectGovernedReasoningExecutorTests
     }
 
     [Fact]
+    public void Executor_ObservationalEquivalenceRetainsBothCausesAndRequestsDiscriminatingEvidence()
+    {
+        var rule = Rule(
+            "shared-observation-equivalence",
+            "reasoning.epistemic.observational-equivalence.competing-causes",
+            new Dictionary<string, string>
+            {
+                ["observation"] = "$signal",
+                ["first_cause_prediction"] = "$signal",
+                ["second_cause_prediction"] = "$signal"
+            },
+            new Dictionary<string, string>
+            {
+                [LegendConnectGovernedReasoningExecutor.EpistemicStatusDimension] =
+                    LegendConnectGovernedReasoningExecutor.ObservationalEquivalenceValue,
+                [LegendConnectGovernedReasoningExecutor.CauseSelectionDimension] =
+                    LegendConnectGovernedReasoningExecutor.UndeterminedValue,
+                [LegendConnectGovernedReasoningExecutor.EvidenceRequirementDimension] =
+                    LegendConnectGovernedReasoningExecutor.DiscriminatingEvidenceValue
+            });
+
+        Assert.True(LegendConnectGovernedReasoningExecutor.IsExecutableOperatorIdentity(
+            rule.OperatorIdentity));
+        Assert.False(LegendConnectGovernedReasoningExecutor.IsExecutableOperatorIdentity(
+            "reasoning.epistemic"));
+        var execution = LegendConnectGovernedReasoningExecutor.Derive(
+            new Dictionary<string, string>
+            {
+                ["observation"] = "latency_spike",
+                ["first_cause_prediction"] = "latency_spike",
+                ["second_cause_prediction"] = "latency_spike"
+            },
+            [rule],
+            [DefaultSemanticFamilyId]);
+
+        Assert.False(execution.DerivedContradiction);
+        Assert.Empty(execution.Conflicts);
+        var assessment = Assert.Single(execution.DerivedStates);
+        Assert.Equal(LegendConnectGovernedReasoningExecutor.ObservationalEquivalenceValue, assessment.Values[
+            LegendConnectGovernedReasoningExecutor.EpistemicStatusDimension]);
+        Assert.Equal(
+            LegendConnectGovernedReasoningExecutor.UndeterminedValue,
+            assessment.Values[LegendConnectGovernedReasoningExecutor.CauseSelectionDimension]);
+        Assert.Equal(
+            LegendConnectGovernedReasoningExecutor.DiscriminatingEvidenceValue,
+            assessment.Values[LegendConnectGovernedReasoningExecutor.EvidenceRequirementDimension]);
+        Assert.DoesNotContain(assessment.Values, item =>
+            item.Key.Contains("probability", StringComparison.OrdinalIgnoreCase));
+
+        var illicitSelection = rule with
+        {
+            ResultFrame = new Dictionary<string, string>
+            {
+                [LegendConnectGovernedReasoningExecutor.EpistemicStatusDimension] =
+                    LegendConnectGovernedReasoningExecutor.ObservationalEquivalenceValue,
+                [LegendConnectGovernedReasoningExecutor.CauseSelectionDimension] = "first_cause",
+                [LegendConnectGovernedReasoningExecutor.EvidenceRequirementDimension] =
+                    LegendConnectGovernedReasoningExecutor.DiscriminatingEvidenceValue
+            }
+        };
+        var rejected = LegendConnectGovernedReasoningExecutor.Derive(
+            new Dictionary<string, string>
+            {
+                ["observation"] = "latency_spike",
+                ["first_cause_prediction"] = "latency_spike",
+                ["second_cause_prediction"] = "latency_spike"
+            },
+            [illicitSelection],
+            [DefaultSemanticFamilyId]);
+        Assert.Empty(rejected.DerivedStates);
+
+        var broadEquivalence = rule with
+        {
+            IndependentEvidenceCount = 1,
+            EvidenceStandard = 1,
+            IndependentEvidenceIdentities = ["shared-observation-broad-evidence"]
+        };
+        var higherButNonDiscriminatingSelection = Rule(
+            "higher-shared-observation-selection",
+            "reasoning.deduction.conditional.shared-observation-selection",
+            new Dictionary<string, string>
+            {
+                ["observation"] = "$signal",
+                ["first_cause_prediction"] = "$signal",
+                ["second_cause_prediction"] = "$signal"
+            },
+            new Dictionary<string, string>
+            {
+                [LegendConnectGovernedReasoningExecutor.CauseSelectionDimension] = "first_cause"
+            },
+            evidenceStandard: 2);
+        var nonDispositive = LegendConnectGovernedReasoningExecutor.Derive(
+            new Dictionary<string, string>
+            {
+                ["observation"] = "latency_spike",
+                ["first_cause_prediction"] = "latency_spike",
+                ["second_cause_prediction"] = "latency_spike"
+            },
+            [broadEquivalence, higherButNonDiscriminatingSelection],
+            [DefaultSemanticFamilyId]);
+
+        var nonDispositiveConflict = Assert.Single(nonDispositive.Conflicts);
+        Assert.Equal(
+            LegendGovernedReasoningConflictResolution.UnresolvedWithoutDiscriminatingEvidence,
+            nonDispositiveConflict.Resolution);
+        Assert.Null(nonDispositiveConflict.Selected);
+        Assert.True(nonDispositiveConflict.RequiresDiscriminatingEvidence);
+        var nonDispositiveAssessment = Assert.Single(nonDispositive.DerivedStates);
+        Assert.Equal(
+            LegendConnectGovernedReasoningExecutor.UndeterminedValue,
+            nonDispositiveAssessment.Values[
+                LegendConnectGovernedReasoningExecutor.CauseSelectionDimension]);
+        Assert.Equal(
+            LegendConnectGovernedReasoningExecutor.NonDispositiveAuthorityValue,
+            nonDispositiveAssessment.Values[
+                LegendConnectGovernedReasoningExecutor.EvidenceAuthorityDimension]);
+    }
+
+    [Fact]
+    public void Executor_InsufficientEvidenceDoesNotSelectAnUnsupportedCause()
+    {
+        var rule = Rule(
+            "insufficient-cause-evidence",
+            "reasoning.epistemic.insufficient-evidence.cause-selection",
+            new Dictionary<string, string>
+            {
+                ["candidate_cause"] = "$cause",
+                ["evidence_support"] = "insufficient"
+            },
+            new Dictionary<string, string>
+            {
+                [LegendConnectGovernedReasoningExecutor.EpistemicStatusDimension] =
+                    LegendConnectGovernedReasoningExecutor.InsufficientEvidenceValue,
+                [LegendConnectGovernedReasoningExecutor.CauseSelectionDimension] =
+                    LegendConnectGovernedReasoningExecutor.UndeterminedValue,
+                [LegendConnectGovernedReasoningExecutor.EvidenceRequirementDimension] =
+                    LegendConnectGovernedReasoningExecutor.DiscriminatingEvidenceValue
+            });
+
+        var execution = LegendConnectGovernedReasoningExecutor.Derive(
+            new Dictionary<string, string>
+            {
+                ["candidate_cause"] = "capacity_shortage",
+                ["evidence_support"] = "insufficient"
+            },
+            [rule],
+            [DefaultSemanticFamilyId]);
+
+        var assessment = Assert.Single(execution.DerivedStates);
+        Assert.Equal(LegendConnectGovernedReasoningExecutor.InsufficientEvidenceValue, assessment.Values[
+            LegendConnectGovernedReasoningExecutor.EpistemicStatusDimension]);
+        Assert.Equal(
+            LegendConnectGovernedReasoningExecutor.UndeterminedValue,
+            assessment.Values[LegendConnectGovernedReasoningExecutor.CauseSelectionDimension]);
+        Assert.NotEqual(
+            assessment.Values["candidate_cause"],
+            assessment.Values[LegendConnectGovernedReasoningExecutor.CauseSelectionDimension]);
+    }
+
+    [Fact]
+    public void Executor_EqualAuthorityConflictProducesOneUnresolvedContradictionState()
+    {
+        var first = Rule(
+            "equal-cause-alpha",
+            "reasoning.deduction.conditional.cause-alpha",
+            new Dictionary<string, string> { ["observation"] = "shared_alert" },
+            new Dictionary<string, string> { ["cause_selection"] = "cause_alpha" },
+            evidenceStandard: 2);
+        var second = Rule(
+            "equal-cause-beta",
+            "reasoning.deduction.conditional.cause-beta",
+            new Dictionary<string, string> { ["observation"] = "shared_alert" },
+            new Dictionary<string, string> { ["cause_selection"] = "cause_beta" },
+            evidenceStandard: 2);
+
+        var execution = LegendConnectGovernedReasoningExecutor.Derive(
+            new Dictionary<string, string> { ["observation"] = "shared_alert" },
+            [first, second],
+            [DefaultSemanticFamilyId]);
+
+        Assert.False(execution.DerivedContradiction);
+        var conflict = Assert.Single(execution.Conflicts);
+        Assert.Equal("cause_selection", conflict.SemanticDimension);
+        Assert.Equal(
+            LegendGovernedReasoningConflictResolution.UnresolvedEqualAuthority,
+            conflict.Resolution);
+        Assert.Null(conflict.Selected);
+        Assert.True(conflict.RequiresDiscriminatingEvidence);
+        Assert.Equal(2, conflict.First.EvidenceStandard);
+        Assert.Equal(2, conflict.Second.EvidenceStandard);
+        var unresolved = Assert.Single(execution.DerivedStates);
+        Assert.Equal(
+            LegendConnectGovernedReasoningExecutor.UndeterminedValue,
+            unresolved.Values[LegendConnectGovernedReasoningExecutor.CauseSelectionDimension]);
+        Assert.Equal(
+            LegendConnectGovernedReasoningExecutor.UnresolvedContradictionValue,
+            unresolved.Values[LegendConnectGovernedReasoningExecutor.EpistemicStatusDimension]);
+        Assert.Equal(
+            LegendConnectGovernedReasoningExecutor.EqualAuthorityValue,
+            unresolved.Values[LegendConnectGovernedReasoningExecutor.EvidenceAuthorityDimension]);
+        Assert.Equal(
+            LegendConnectGovernedReasoningExecutor.DiscriminatingEvidenceValue,
+            unresolved.Values[LegendConnectGovernedReasoningExecutor.EvidenceRequirementDimension]);
+    }
+
+    [Fact]
+    public void Executor_HigherStandardConflictRejectsTheLowerAuthorityConclusion()
+    {
+        var lower = Rule(
+            "broad-governed-finding",
+            "reasoning.deduction.conditional.broad-finding",
+            new Dictionary<string, string> { ["governed_record"] = "case_17" },
+            new Dictionary<string, string> { ["finding"] = "finding_alpha" },
+            independentEvidenceCount: 1,
+            evidenceStandard: 1);
+        var higher = Rule(
+            "higher-governed-finding",
+            "reasoning.deduction.conditional.higher-finding",
+            new Dictionary<string, string> { ["governed_record"] = "case_17" },
+            new Dictionary<string, string> { ["finding"] = "finding_beta" },
+            independentEvidenceCount: 3,
+            evidenceStandard: 2);
+
+        var execution = LegendConnectGovernedReasoningExecutor.Derive(
+            new Dictionary<string, string> { ["governed_record"] = "case_17" },
+            [lower, higher],
+            [DefaultSemanticFamilyId]);
+
+        var conflict = Assert.Single(execution.Conflicts);
+        Assert.Equal(
+            LegendGovernedReasoningConflictResolution.ResolvedByHigherStandard,
+            conflict.Resolution);
+        Assert.False(conflict.RequiresDiscriminatingEvidence);
+        Assert.NotNull(conflict.Selected);
+        Assert.Equal("finding", conflict.SemanticDimension);
+        Assert.Equal("higher-governed-finding", conflict.Selected!.TransitionSignature);
+        Assert.Equal(2, conflict.Selected.EvidenceStandard);
+        var conclusion = Assert.Single(execution.DerivedStates);
+        Assert.Equal("finding_beta", conclusion.Values["finding"]);
+        Assert.Equal(["higher-governed-finding"], conclusion.TransitionPath);
+        Assert.DoesNotContain(execution.DerivedStates, item =>
+            item.Values.GetValueOrDefault("finding") == "finding_alpha");
+    }
+
+    [Fact]
+    public void Executor_DiscriminatingEvidenceResolvesAnObservationalEquivalence()
+    {
+        var sharedObservation = Rule(
+            "shared-alert-observational-equivalence",
+            "reasoning.epistemic.observational-equivalence.shared-alert",
+            new Dictionary<string, string>
+            {
+                ["observation"] = "$signal",
+                ["first_cause_prediction"] = "$signal",
+                ["second_cause_prediction"] = "$signal"
+            },
+            new Dictionary<string, string>
+            {
+                [LegendConnectGovernedReasoningExecutor.EpistemicStatusDimension] =
+                    LegendConnectGovernedReasoningExecutor.ObservationalEquivalenceValue,
+                [LegendConnectGovernedReasoningExecutor.CauseSelectionDimension] =
+                    LegendConnectGovernedReasoningExecutor.UndeterminedValue,
+                [LegendConnectGovernedReasoningExecutor.EvidenceRequirementDimension] =
+                    LegendConnectGovernedReasoningExecutor.DiscriminatingEvidenceValue
+            },
+            independentEvidenceCount: 1,
+            evidenceStandard: 1);
+        var discriminator = Rule(
+            "governed-discriminating-check",
+            "reasoning.epistemic.discriminating-evidence.cause-selection",
+            new Dictionary<string, string>
+            {
+                ["observation"] = "shared_alert",
+                ["first_cause_prediction"] = "shared_alert",
+                ["second_cause_prediction"] = "shared_alert",
+                [LegendConnectGovernedReasoningExecutor.DiscriminatingEvidenceDimension] =
+                    "beta_only"
+            },
+            new Dictionary<string, string>
+            {
+                [LegendConnectGovernedReasoningExecutor.EpistemicStatusDimension] =
+                    LegendConnectGovernedReasoningExecutor.ResolvedByDiscriminatingEvidenceValue,
+                [LegendConnectGovernedReasoningExecutor.CauseSelectionDimension] = "cause_beta"
+            },
+            independentEvidenceCount: 3,
+            evidenceStandard: 2);
+
+        var execution = LegendConnectGovernedReasoningExecutor.Derive(
+            new Dictionary<string, string>
+            {
+                ["observation"] = "shared_alert",
+                ["first_cause_prediction"] = "shared_alert",
+                ["second_cause_prediction"] = "shared_alert",
+                [LegendConnectGovernedReasoningExecutor.DiscriminatingEvidenceDimension] =
+                    "beta_only"
+            },
+            [sharedObservation, discriminator],
+            [DefaultSemanticFamilyId]);
+
+        Assert.Equal(2, execution.Conflicts.Count);
+        Assert.All(execution.Conflicts, item =>
+        {
+            Assert.Equal(
+                LegendGovernedReasoningConflictResolution.ResolvedByHigherStandard,
+                item.Resolution);
+            Assert.Equal("governed-discriminating-check", item.Selected!.TransitionSignature);
+        });
+        var conflict = Assert.Single(execution.Conflicts.Where(item =>
+            item.SemanticDimension == LegendConnectGovernedReasoningExecutor.CauseSelectionDimension));
+        Assert.Equal(
+            LegendGovernedReasoningConflictResolution.ResolvedByHigherStandard,
+            conflict.Resolution);
+        Assert.Equal("governed-discriminating-check", conflict.Selected!.TransitionSignature);
+        var resolution = Assert.Single(execution.DerivedStates);
+        Assert.Equal("cause_beta", resolution.Values["cause_selection"]);
+        Assert.Equal(
+            LegendConnectGovernedReasoningExecutor.ResolvedByDiscriminatingEvidenceValue,
+            resolution.Values[LegendConnectGovernedReasoningExecutor.EpistemicStatusDimension]);
+    }
+
+    [Theory]
+    [InlineData("latency_spike", "handoff_delay", "capacity_shortage")]
+    [InlineData("renewal_drop", "message_mismatch", "timing_mismatch")]
+    public void Executor_ObservationalEquivalenceBindsHeldOutGovernedSemanticValues(
+        string observation,
+        string firstCause,
+        string secondCause)
+    {
+        var rule = Rule(
+            "held-out-observational-equivalence",
+            "reasoning.epistemic.observational-equivalence.held-out",
+            new Dictionary<string, string>
+            {
+                ["observation"] = "$observation",
+                ["first_candidate_cause"] = "$first",
+                ["second_candidate_cause"] = "$second",
+                ["first_cause_prediction"] = "$observation",
+                ["second_cause_prediction"] = "$observation"
+            },
+            new Dictionary<string, string>
+            {
+                [LegendConnectGovernedReasoningExecutor.EpistemicStatusDimension] =
+                    LegendConnectGovernedReasoningExecutor.ObservationalEquivalenceValue,
+                [LegendConnectGovernedReasoningExecutor.CauseSelectionDimension] =
+                    LegendConnectGovernedReasoningExecutor.UndeterminedValue,
+                [LegendConnectGovernedReasoningExecutor.EvidenceRequirementDimension] =
+                    LegendConnectGovernedReasoningExecutor.DiscriminatingEvidenceValue
+            });
+
+        var execution = LegendConnectGovernedReasoningExecutor.Derive(
+            new Dictionary<string, string>
+            {
+                ["observation"] = observation,
+                ["first_candidate_cause"] = firstCause,
+                ["second_candidate_cause"] = secondCause,
+                ["first_cause_prediction"] = observation,
+                ["second_cause_prediction"] = observation
+            },
+            [rule],
+            [DefaultSemanticFamilyId]);
+
+        var assessment = Assert.Single(execution.DerivedStates);
+        Assert.Equal(
+            LegendConnectGovernedReasoningExecutor.UndeterminedValue,
+            assessment.Values[LegendConnectGovernedReasoningExecutor.CauseSelectionDimension]);
+        Assert.Equal(observation, assessment.Values["observation"]);
+        Assert.Equal(firstCause, assessment.Values["first_candidate_cause"]);
+        Assert.Equal(secondCause, assessment.Values["second_candidate_cause"]);
+    }
+
+    [Fact]
+    public async Task NativeSelector_ArticulatesGovernedUncertaintyThroughTheExistingRealizer()
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        var options = new DbContextOptionsBuilder<MasterAppDbContext>()
+            .UseSqlite(connection)
+            .Options;
+        await using var db = new MasterAppDbContext(options);
+        await db.Database.EnsureCreatedAsync();
+
+        var configuration = Configuration();
+        var registry = new LegendLanguageRegistry(db, configuration);
+        var corpus = new LegendConnectCorpusService(
+            db,
+            registry,
+            NullLogger<LegendConnectCorpusService>.Instance);
+        var curriculum = new LegendConnectCurriculumService(db, registry, corpus);
+        var operations = new LegendConnectOperations(
+            db,
+            registry,
+            corpus,
+            configuration,
+            curriculum: curriculum);
+
+        var storedResponses = new[]
+        {
+            "Both causes fit the signal; retain both and request a discriminating check.",
+            "Each cause predicts the signal; keep both and gather separating evidence.",
+            "The observation cannot choose a cause; preserve both and design a discriminating test."
+        };
+        for (var support = 1; support <= 3; support++)
+        {
+            var submitted = await curriculum.SubmitFounderEnglishBatchAsync(
+                EpistemicSurfaceFamily(support, storedResponses[support - 1]));
+            Assert.True(submitted.Succeeded, submitted.Message);
+            await curriculum.PersistFounderCrossExampleSemanticRelationAsync(
+                new LegendConnectCrossExampleSemanticRelationshipSubmission(
+                    $"epistemic-observation-{support}",
+                    "reasoning.epistemic.observational-equivalence.competing-causes",
+                    $"epistemic-assessment-{support}"),
+                LegendConnectLanguageIntelligenceEvaluatorVersion.Current);
+        }
+
+        var planned = await operations.TryPlanConversationAsync(
+            "Signal matches alpha and beta.",
+            new LegendConnectDiscourseStateSnapshot([]));
+
+        Assert.True(planned.Supported, planned.ReasonCode);
+        var plan = Assert.IsType<LegendConnectResponseMeaningPlanSnapshot>(planned.Plan);
+        Assert.Equal("epistemic_answer", plan.ResultDimensions["conversation_function"]);
+        Assert.Equal("retain_competing_causes", plan.ResultDimensions["decision_posture"]);
+        Assert.Equal(
+            "request_discriminating_evidence",
+            plan.ResultDimensions["reasoning_action"]);
+        Assert.NotNull(plan.ReasoningTransitionPath);
+        Assert.Single(plan.ReasoningTransitionPath!);
+
+        var native = await operations.TryInferConversationWithDiscourseAsync(
+            "Signal matches alpha and beta.",
+            [],
+            new LegendConnectDiscourseStateSnapshot([]));
+        Assert.True(native.Supported, native.ReasonCode + "; " + native.AuthoritySummary);
+        Assert.False(native.RequiresEscalation);
+        Assert.NotNull(native.Answer);
+        Assert.DoesNotContain(storedResponses, response => string.Equals(
+            LegendLanguageIdentity.NormalizeText(response),
+            LegendLanguageIdentity.NormalizeText(native.Answer!),
+            StringComparison.Ordinal));
+    }
+
+    [Fact]
     public void Executor_DeductionDoesNotApplyRuleFromUnrelatedSemanticFamily()
     {
         var unrelatedFamily = Guid.Parse("22222222-2222-2222-2222-222222222222");
@@ -817,6 +1259,107 @@ public sealed class LegendConnectGovernedReasoningExecutorTests
                     new Dictionary<string, string>
                     {
                         ["conversation_function"] = "deductive_answer"
+                    }))]);
+
+    private static LegendConnectCurriculumBatchSubmission EpistemicSurfaceFamily(
+        int support,
+        string response) =>
+        new(
+            $"reasoning.epistemic.surface.{support}",
+            "Governed observational equivalence and discriminating-evidence response",
+            [
+                new LegendConnectCurriculumExampleSubmission(
+                    "Signal matches alpha and beta.",
+                    new Dictionary<string, string>
+                    {
+                        ["observation"] = "shared_signal",
+                        ["first_cause_prediction"] = "shared_signal",
+                        ["second_cause_prediction"] = "shared_signal"
+                    },
+                    new LegendConnectMeaningGraphSubmission(
+                        [
+                            new LegendConnectMeaningNodeSubmission(
+                                "observation", "observation", "shared_signal", "Signal"),
+                            new LegendConnectMeaningNodeSubmission(
+                                "first", "first_cause_prediction", "shared_signal", "alpha"),
+                            new LegendConnectMeaningNodeSubmission(
+                                "second", "second_cause_prediction", "shared_signal", "beta")
+                        ],
+                        [
+                            new LegendConnectMeaningRelationSubmission(
+                                "first", "predicts", "observation"),
+                            new LegendConnectMeaningRelationSubmission(
+                                "second", "predicts", "observation")
+                        ]),
+                    $"epistemic-observation-{support}"),
+                new LegendConnectCurriculumExampleSubmission(
+                    $"Equivalence leaves selection undetermined and requires assessment {support}.",
+                    new Dictionary<string, string>
+                    {
+                        [LegendConnectGovernedReasoningExecutor.EpistemicStatusDimension] =
+                            LegendConnectGovernedReasoningExecutor.ObservationalEquivalenceValue,
+                        [LegendConnectGovernedReasoningExecutor.CauseSelectionDimension] =
+                            LegendConnectGovernedReasoningExecutor.UndeterminedValue,
+                        [LegendConnectGovernedReasoningExecutor.EvidenceRequirementDimension] =
+                            LegendConnectGovernedReasoningExecutor.DiscriminatingEvidenceValue
+                    },
+                    new LegendConnectMeaningGraphSubmission(
+                        [
+                            new LegendConnectMeaningNodeSubmission(
+                                "status",
+                                LegendConnectGovernedReasoningExecutor.EpistemicStatusDimension,
+                                LegendConnectGovernedReasoningExecutor.ObservationalEquivalenceValue,
+                                "equivalence"),
+                            new LegendConnectMeaningNodeSubmission(
+                                "selection",
+                                LegendConnectGovernedReasoningExecutor.CauseSelectionDimension,
+                                LegendConnectGovernedReasoningExecutor.UndeterminedValue,
+                                "undetermined"),
+                            new LegendConnectMeaningNodeSubmission(
+                                "evidence",
+                                LegendConnectGovernedReasoningExecutor.EvidenceRequirementDimension,
+                                LegendConnectGovernedReasoningExecutor.DiscriminatingEvidenceValue,
+                                "assessment")
+                        ],
+                        [
+                            new LegendConnectMeaningRelationSubmission(
+                                "status", "requires", "evidence"),
+                            new LegendConnectMeaningRelationSubmission(
+                                "status", "leaves", "selection")
+                        ]),
+                    SemanticExampleKey: $"epistemic-assessment-{support}"),
+                new LegendConnectCurriculumExampleSubmission(
+                    response,
+                    new Dictionary<string, string>
+                    {
+                        ["conversation_function"] = "epistemic_answer",
+                        ["decision_posture"] = "retain_competing_causes",
+                        ["reasoning_action"] = "request_discriminating_evidence"
+                    }),
+                new LegendConnectCurriculumExampleSubmission(
+                    $"Epistemic surface control {support}.",
+                    new Dictionary<string, string>
+                    {
+                        ["control"] = $"epistemic-surface-{support}"
+                    })
+            ],
+            [new LegendConnectSemanticTransitionSubmission(
+                new LegendConnectSemanticFrameSubmission(
+                    new Dictionary<string, string>
+                    {
+                        [LegendConnectGovernedReasoningExecutor.EpistemicStatusDimension] =
+                            LegendConnectGovernedReasoningExecutor.ObservationalEquivalenceValue,
+                        [LegendConnectGovernedReasoningExecutor.CauseSelectionDimension] =
+                            LegendConnectGovernedReasoningExecutor.UndeterminedValue,
+                        [LegendConnectGovernedReasoningExecutor.EvidenceRequirementDimension] =
+                            LegendConnectGovernedReasoningExecutor.DiscriminatingEvidenceValue
+                    }),
+                new LegendConnectSemanticFrameSubmission(
+                    new Dictionary<string, string>
+                    {
+                        ["conversation_function"] = "epistemic_answer",
+                        ["decision_posture"] = "retain_competing_causes",
+                        ["reasoning_action"] = "request_discriminating_evidence"
                     }))]);
 
     private static LegendConnectCurriculumBatchSubmission ResponseFamily(

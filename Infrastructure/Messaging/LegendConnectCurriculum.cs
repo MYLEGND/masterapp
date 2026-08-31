@@ -5254,6 +5254,14 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
             initialValues,
             rules,
             currentSemanticFamilyIds);
+        // Competing proof conclusions are resolved exactly once by the
+        // governed executor. A uniquely higher evidence standard excludes
+        // the weaker dispositive conclusion; equal authority or missing
+        // discriminating evidence yields a proof-carrying unresolved
+        // epistemic state that can be articulated only through an eligible
+        // response transition below. The response contradiction check remains
+        // limited to contradicted curriculum evidence and does not re-decide
+        // those proof conflicts.
         if (execution.InitialContradiction)
             return GovernedReasonedResponseSelection.Contradicted("governed_reasoning_constraint_contradicted");
         if (execution.DerivedContradiction)
