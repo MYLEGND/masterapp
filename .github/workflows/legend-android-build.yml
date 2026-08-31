@@ -72,13 +72,21 @@ jobs:
           LEGEND_ENTRA_AUTHORITY: ${{ vars.LEGEND_ENTRA_AUTHORITY }}
           LEGEND_ENTRA_SCOPE: ${{ vars.LEGEND_ENTRA_SCOPE }}
           LEGEND_MSAL_REDIRECT_URI: ${{ vars.LEGEND_MSAL_REDIRECT_URI }}
-        run: ./gradlew --no-daemon --stacktrace :app:testDebugUnitTest :app:lintDebug :app:bundleDebug :app:bundleRelease
+        run: ./gradlew --no-daemon --stacktrace :app:testDebugUnitTest :app:lintDebug :app:bundleDebug :app:bundleRelease :app:assembleRelease
 
       - name: Preserve signed release bundle
         uses: actions/upload-artifact@v4
         with:
           name: legend-android-version-3-signed-aab
           path: Legend-Android/app/build/outputs/bundle/release/app-release.aab
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Preserve signed release APK for direct phone testing
+        uses: actions/upload-artifact@v4
+        with:
+          name: legend-android-version-3-signed-apk
+          path: Legend-Android/app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error
           retention-days: 7
 
