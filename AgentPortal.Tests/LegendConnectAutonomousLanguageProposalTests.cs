@@ -32,45 +32,7 @@ public sealed class LegendConnectAutonomousLanguageProposalTests
             "Please confirm the meeting.",
             proposalState: "Pending");
 
-        var candidateSource = Unit(
-            "en",
-            candidate.SourceText,
-            "FounderApproved");
-
-        var trustedSource = Unit(
-            "en",
-            "I need your help.",
-            "FounderApproved");
-
-        var trustedTarget = Unit(
-            "ht",
-            "Mwen bezwen èd ou.",
-            "FounderApproved");
-
-        var trustedAlignment = new LegendTranslationAlignment
-        {
-            Id = Guid.NewGuid(),
-            PairKey = "en:ht",
-            SourceTextUnitId = trustedSource.Id,
-            TargetTextUnitId = trustedTarget.Id,
-            Provider = "FounderApproved",
-            Provenance = "FounderApproved",
-            Confidence = 1m,
-            QualityState = "Verified",
-            HumanVerified = true,
-            ObservationCount = 1,
-            CreatedUtc = DateTime.UtcNow,
-            UpdatedUtc = DateTime.UtcNow
-        };
-
-        db.AddRange(
-            candidateSource,
-            trustedSource,
-            trustedTarget,
-            trustedAlignment,
-            candidate);
-
-        await db.SaveChangesAsync();
+        await SeedGovernedCriticEvidenceAsync(db, candidate);
 
         var before = await CanonicalCountsAsync(db);
 
@@ -140,9 +102,7 @@ public sealed class LegendConnectAutonomousLanguageProposalTests
 
         Assert.DoesNotContain(
             await db.LegendTranslationAlignments.ToListAsync(),
-            item =>
-                item.QualityState == "SystemValidated" &&
-                item.CreatedUtc > trustedAlignment.CreatedUtc);
+            item => item.QualityState == "SystemValidated");
 
         // Retry/idempotency proof: terminal proposal state cannot fan out
         // another logical proposal.
@@ -173,43 +133,7 @@ public sealed class LegendConnectAutonomousLanguageProposalTests
             "Please review the request.",
             proposalState: "Pending");
 
-        var candidateSource = Unit(
-            "en",
-            candidate.SourceText,
-            "FounderApproved");
-
-        var trustedSource = Unit(
-            "en",
-            "Please help me.",
-            "FounderApproved");
-
-        var trustedTarget = Unit(
-            "ht",
-            "Tanpri ede m.",
-            "FounderApproved");
-
-        db.AddRange(
-            candidateSource,
-            trustedSource,
-            trustedTarget,
-            new LegendTranslationAlignment
-            {
-                Id = Guid.NewGuid(),
-                PairKey = "en:ht",
-                SourceTextUnitId = trustedSource.Id,
-                TargetTextUnitId = trustedTarget.Id,
-                Provider = "FounderApproved",
-                Provenance = "FounderApproved",
-                QualityState = "Verified",
-                Confidence = 1m,
-                HumanVerified = true,
-                ObservationCount = 1,
-                CreatedUtc = DateTime.UtcNow,
-                UpdatedUtc = DateTime.UtcNow
-            },
-            candidate);
-
-        await db.SaveChangesAsync();
+        await SeedGovernedCriticEvidenceAsync(db, candidate);
 
         var before = await CanonicalCountsAsync(db);
         var teacher = RecordingTeacher.Rejected();
@@ -300,7 +224,7 @@ public sealed class LegendConnectAutonomousLanguageProposalTests
             persisted.TeacherProposalProcessingState);
 
         Assert.Equal(
-            "language_teacher_insufficient_governed_evidence",
+            "language_teacher_semantic_family_lineage_unproven",
             persisted.TeacherProposalFailureCode);
     }
 
@@ -320,43 +244,7 @@ public sealed class LegendConnectAutonomousLanguageProposalTests
             "Retry this governed proposal.",
             proposalState: "Pending");
 
-        var candidateSource = Unit(
-            "en",
-            candidate.SourceText,
-            "FounderApproved");
-
-        var trustedSource = Unit(
-            "en",
-            "A trusted source.",
-            "FounderApproved");
-
-        var trustedTarget = Unit(
-            "ht",
-            "Yon sous ki verifye.",
-            "FounderApproved");
-
-        db.AddRange(
-            candidateSource,
-            trustedSource,
-            trustedTarget,
-            new LegendTranslationAlignment
-            {
-                Id = Guid.NewGuid(),
-                PairKey = "en:ht",
-                SourceTextUnitId = trustedSource.Id,
-                TargetTextUnitId = trustedTarget.Id,
-                Provider = "FounderApproved",
-                Provenance = "FounderApproved",
-                QualityState = "Verified",
-                Confidence = 1m,
-                HumanVerified = true,
-                ObservationCount = 1,
-                CreatedUtc = DateTime.UtcNow,
-                UpdatedUtc = DateTime.UtcNow
-            },
-            candidate);
-
-        await db.SaveChangesAsync();
+        await SeedGovernedCriticEvidenceAsync(db, candidate);
 
         var teacher = RecordingTeacher.Failing();
         var provider = new NoopTranslationProvider();
@@ -420,6 +308,161 @@ public sealed class LegendConnectAutonomousLanguageProposalTests
 
         Assert.Equal(3, teacher.ProposeCalls);
     }
+
+    private static async Task SeedGovernedCriticEvidenceAsync(
+        MasterAppDbContext db,
+        LegendCorpusCandidate candidate)
+    {
+        var family = new LegendCurriculumFamily
+        {
+            Id = Guid.NewGuid(),
+            FamilyKey = "machine.conversation",
+            SemanticCategory = "Conversation",
+            Provenance = LegendConnectKnowledgeProvenance.FounderApproved
+        };
+        var sourceOne = Unit(
+            "en",
+            candidate.SourceText,
+            "FounderApproved");
+        var sourceTwo = Unit(
+            "en",
+            "A controlled request contrast.",
+            "FounderApproved");
+        var targetOne = Unit(
+            "ht",
+            "Yon deklarasyon kontwole.",
+            "FounderApproved");
+        var targetTwo = Unit(
+            "ht",
+            "Yon demann kontwole.",
+            "FounderApproved");
+        var sourceExampleOne = Example(family, sourceOne, null);
+        var sourceExampleTwo = Example(family, sourceTwo, null);
+        var targetExampleOne = Example(
+            family,
+            targetOne,
+            sourceExampleOne.Id);
+        var targetExampleTwo = Example(
+            family,
+            targetTwo,
+            sourceExampleTwo.Id);
+        var statementSignature = SemanticSignature("intent", "statement");
+        var requestSignature = SemanticSignature("intent", "request");
+        var pattern = new LegendLanguageStructuralPattern
+        {
+            Id = Guid.NewGuid(),
+            PropositionSignature = "statement-request-contrast",
+            CurriculumFamilyId = family.Id,
+            PairKey = string.Empty,
+            LanguageCode = "en",
+            VariationDimension = "intent",
+            MaturityState = "Supported",
+            SupportCount = 1,
+            IndependentSourceCount = 1,
+            HumanVerifiedSupportCount = 1,
+            Provenance = LegendConnectKnowledgeProvenance.FounderApproved
+        };
+
+        candidate.CurriculumFamilyId = family.Id;
+        candidate.SourceCurriculumExampleId = sourceExampleOne.Id;
+
+        db.AddRange(
+            family,
+            sourceOne,
+            sourceTwo,
+            targetOne,
+            targetTwo,
+            sourceExampleOne,
+            sourceExampleTwo,
+            targetExampleOne,
+            targetExampleTwo,
+            Anchor(sourceExampleOne, statementSignature),
+            Anchor(targetExampleOne, statementSignature),
+            Anchor(sourceExampleTwo, requestSignature),
+            Anchor(targetExampleTwo, requestSignature),
+            pattern,
+            new LegendLanguageStructuralEvidence
+            {
+                Id = Guid.NewGuid(),
+                StructuralPatternId = pattern.Id,
+                CurriculumFamilyId = family.Id,
+                PairKey = string.Empty,
+                LanguageCode = "en",
+                VariationDimension = "intent",
+                BaselineCurriculumExampleId = sourceExampleOne.Id,
+                ComparedCurriculumExampleId = sourceExampleTwo.Id,
+                BaselineVariationValue = "statement",
+                ComparedVariationValue = "request",
+                EvidenceSignature = Guid.NewGuid().ToString("N"),
+                IndependentSourceIdentity = "family:" + family.Id.ToString("N"),
+                ContributionState = "Supported",
+                IsHumanVerifiedSupport = true,
+                Provenance = LegendConnectKnowledgeProvenance.FounderApproved
+            },
+            TrustedAlignment(sourceOne, targetOne),
+            TrustedAlignment(sourceTwo, targetTwo),
+            candidate);
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+    }
+
+    private static LegendCurriculumExample Example(
+        LegendCurriculumFamily family,
+        LegendLanguageTextUnit unit,
+        Guid? derivedFrom) =>
+        new()
+        {
+            Id = Guid.NewGuid(),
+            CurriculumFamilyId = family.Id,
+            TextUnitId = unit.Id,
+            LanguageCode = unit.LanguageCode,
+            DerivedFromCurriculumExampleId = derivedFrom,
+            Provenance = LegendConnectKnowledgeProvenance.FounderApproved
+        };
+
+    private static LegendLanguageCompositionalAnchor Anchor(
+        LegendCurriculumExample example,
+        string semanticSignature) =>
+        new()
+        {
+            Id = Guid.NewGuid(),
+            LanguageCode = example.LanguageCode,
+            PairKey = example.DerivedFromCurriculumExampleId is null
+                ? string.Empty
+                : "en:ht",
+            TextUnitId = example.TextUnitId,
+            CurriculumFamilyId = example.CurriculumFamilyId,
+            CurriculumExampleId = example.Id,
+            Dimension = "intent",
+            Value = semanticSignature,
+            SemanticSignature = semanticSignature,
+            AnchorSignature = Guid.NewGuid().ToString("N"),
+            Provenance = LegendConnectKnowledgeProvenance.FounderApproved
+        };
+
+    private static LegendTranslationAlignment TrustedAlignment(
+        LegendLanguageTextUnit source,
+        LegendLanguageTextUnit target) =>
+        new()
+        {
+            Id = Guid.NewGuid(),
+            PairKey = "en:ht",
+            SourceTextUnitId = source.Id,
+            TargetTextUnitId = target.Id,
+            Provider = "FounderApproved",
+            Provenance = LegendConnectKnowledgeProvenance.FounderApproved,
+            QualityState = "Verified",
+            Confidence = 1m,
+            HumanVerified = true,
+            ObservationCount = 1
+        };
+
+    private static string SemanticSignature(
+        string dimension,
+        string value) =>
+        LegendLanguageIdentity.TextHash(
+            $"semantic|{dimension.Trim().ToLowerInvariant()}|" +
+            value.Trim().ToLowerInvariant());
 
     private static LegendConnectAutonomousLearningService Service(
         MasterAppDbContext db,
@@ -613,9 +656,9 @@ public sealed class LegendConnectAutonomousLanguageProposalTests
                     .Select(
                         index =>
                             new LegendLanguageTeacherFamilyProposal(
-                                $"machine.conversation.{index}",
+                                "machine.conversation",
                                 "Conversation",
-                                "Machine candidate requiring canonical validation.",
+                                $"Machine candidate {index} requiring canonical validation.",
                                 0.90m,
                                 new[]
                                 {
@@ -636,7 +679,7 @@ public sealed class LegendConnectAutonomousLanguageProposalTests
                                         {
                                             new LegendLanguageTeacherSemanticComponent(
                                                 "intent",
-                                                "statement",
+                                                "request",
                                                 "Controlled")
                                         })
                                 }))

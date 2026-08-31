@@ -120,6 +120,21 @@ internal sealed record LegendShadowSourceUnderstanding(
 }
 
 /// <summary>
+/// Canonical, read-only semantic identities for one bounded MachineProposed
+/// family. The curriculum authority owns normalization; learning consumers may
+/// use these identities for evidence selection but cannot persist or promote
+/// them through this contract.
+/// </summary>
+internal sealed record LegendMachineTeachingExampleSemanticLineage(
+    IReadOnlyList<string> PrimitiveSignatures);
+
+internal sealed record LegendMachineTeachingSemanticLineage(
+    string FamilyKey,
+    string SemanticCategory,
+    IReadOnlyList<LegendMachineTeachingExampleSemanticLineage> Examples,
+    IReadOnlyList<string> TransitionSignatures);
+
+/// <summary>
 /// The single read-only result of governed semantic-transition evaluation.
 /// It carries no model result, provider output, or response lookup identity.
 /// </summary>
@@ -3144,6 +3159,95 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
     internal static bool HasValidMachineTeachingSemanticTransitions(
         IReadOnlyList<LegendConnectSemanticTransitionSubmission>? transitions) =>
         NormalizeSemanticTransitions(transitions) is { Count: > 0 };
+
+    /// <summary>
+    /// Reuses the curriculum authority's canonical family, primitive, and
+    /// transition normalization for critic evidence selection. This returns
+    /// identities only and cannot admit curriculum or create evidence.
+    /// </summary>
+    internal static LegendMachineTeachingSemanticLineage?
+        NormalizeMachineTeachingSemanticLineage(
+            LegendLanguageTeacherFamilyProposal family)
+    {
+        var familyKey = NormalizeFamilyKey(family.FamilyKey);
+        var semanticCategory = NormalizeOptional(
+            family.SemanticCategory,
+            120);
+        var transitions = NormalizeSemanticTransitions(
+            family.SemanticTransitions);
+        if (familyKey is null ||
+            semanticCategory is null ||
+            transitions is null ||
+            family.Examples is null ||
+            family.Examples.Count is < 2 or > 8)
+        {
+            return null;
+        }
+
+        var examples =
+            new List<LegendMachineTeachingExampleSemanticLineage>(
+                family.Examples.Count);
+        var exampleIdentities =
+            new HashSet<string>(StringComparer.Ordinal);
+        foreach (var example in family.Examples)
+        {
+            var source = LegendLanguageIdentity.NormalizeText(
+                example.SourceText);
+            var target = string.IsNullOrWhiteSpace(example.TargetText)
+                ? null
+                : LegendLanguageIdentity.NormalizeText(example.TargetText);
+            if (string.IsNullOrWhiteSpace(source) ||
+                example.Components is null ||
+                example.Components.Count is < 1 or > 16)
+            {
+                return null;
+            }
+
+            var primitiveSignatures = new HashSet<string>(
+                StringComparer.Ordinal);
+            foreach (var component in example.Components)
+            {
+                var dimension = NormalizeDimension(component.Dimension);
+                var value = NormalizeOptional(component.Value, 240);
+                var surface = NormalizeOptional(component.SurfaceForm, 500);
+                if (dimension is null ||
+                    value is null ||
+                    surface is null ||
+                    !primitiveSignatures.Add(
+                        SemanticSignature(dimension, value)))
+                {
+                    return null;
+                }
+            }
+
+            var sourceHash = LegendLanguageIdentity.TextHash(source);
+            var targetHash = target is null
+                ? null
+                : LegendLanguageIdentity.TextHash(target);
+            if (!exampleIdentities.Add(
+                    sourceHash + "|" + (targetHash ?? string.Empty)))
+            {
+                return null;
+            }
+
+            examples.Add(
+                new LegendMachineTeachingExampleSemanticLineage(
+                    primitiveSignatures
+                        .OrderBy(item => item, StringComparer.Ordinal)
+                        .ToArray()));
+        }
+
+        return new LegendMachineTeachingSemanticLineage(
+            familyKey,
+            semanticCategory,
+            examples,
+            transitions
+                .Select(item => FrameSignature(
+                    item.Source.Serialized + "\n→\n" +
+                    item.Result.Serialized))
+                .OrderBy(item => item, StringComparer.Ordinal)
+                .ToArray());
+    }
 
     internal Task<LegendShadowSourceUnderstanding> AnalyzeSemanticTransitionSourceSemanticsAsync(
         string sourceLanguageCode,

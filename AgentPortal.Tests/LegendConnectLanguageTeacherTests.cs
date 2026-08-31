@@ -203,6 +203,12 @@ public sealed class LegendConnectLanguageTeacherTests
         Assert.Equal(
             "reusable_semantic",
             input.RootElement.GetProperty("category_identity").GetString());
+        Assert.Equal(
+            "generated.request.assistance",
+            input.RootElement.GetProperty("semantic_family_key").GetString());
+        Assert.Equal(
+            "Requesting assistance",
+            input.RootElement.GetProperty("semantic_category").GetString());
     }
 
     [Fact]
@@ -306,6 +312,12 @@ public sealed class LegendConnectLanguageTeacherTests
         Assert.Equal(
             "reusable_semantic",
             input.RootElement.GetProperty("category_identity").GetString());
+        Assert.Equal(
+            "generated.request.assistance",
+            input.RootElement.GetProperty("semantic_family_key").GetString());
+        Assert.Equal(
+            "Requesting assistance",
+            input.RootElement.GetProperty("semantic_category").GetString());
     }
 
     [Fact]
@@ -379,7 +391,9 @@ public sealed class LegendConnectLanguageTeacherTests
                     "ProviderDerived",
                     "SystemValidated")
             ],
-            2);
+            2,
+            SemanticFamilyKey: "generated.request.assistance",
+            SemanticCategory: "Requesting assistance");
 
     private static HttpResponseMessage StructuredResponse(
         object value) =>

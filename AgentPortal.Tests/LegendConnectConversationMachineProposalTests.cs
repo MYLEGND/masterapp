@@ -380,17 +380,146 @@ public sealed class LegendConnectConversationMachineProposalTests
     private static async Task SeedTrustedTranslationEvidenceAsync(
         MasterAppDbContext db)
     {
-        var source = Unit("en", "Good morning.");
-        var target = Unit("ht", "Bonjou.");
+        var family = new LegendCurriculumFamily
+        {
+            Id = Guid.NewGuid(),
+            FamilyKey = "conversation.translation.greeting",
+            SemanticCategory = "conversation_semantics",
+            Provenance = LegendConnectKnowledgeProvenance.FounderApproved
+        };
+        var sourceGreeting = Unit("en", "Hello.");
+        var sourceWelcome = Unit("en", "Welcome.");
+        var targetGreeting = Unit("ht", "Bonjou.");
+        var targetWelcome = Unit("ht", "Byenveni.");
+        var sourceGreetingExample = CurriculumExample(
+            family,
+            sourceGreeting,
+            null);
+        var sourceWelcomeExample = CurriculumExample(
+            family,
+            sourceWelcome,
+            null);
+        var targetGreetingExample = CurriculumExample(
+            family,
+            targetGreeting,
+            sourceGreetingExample.Id);
+        var targetWelcomeExample = CurriculumExample(
+            family,
+            targetWelcome,
+            sourceWelcomeExample.Id);
+        var greetingSignature = SemanticSignature(
+            "conversation_function",
+            "greeting");
+        var welcomeSignature = SemanticSignature(
+            "conversation_response",
+            "welcome");
+        var normalizedLineage = Assert.IsType<LegendMachineTeachingSemanticLineage>(
+            LegendConnectCurriculumService
+                .NormalizeMachineTeachingSemanticLineage(
+                    new LegendLanguageTeacherFamilyProposal(
+                        "conversation.translation.greeting",
+                        "conversation_semantics",
+                        "Retain a controlled translation distinction for independent review.",
+                        0.9m,
+                        [
+                            new LegendLanguageTeacherExampleProposal(
+                                "Hello.",
+                                "Bonjou.",
+                                [new LegendLanguageTeacherSemanticComponent(
+                                    "conversation_function",
+                                    "greeting",
+                                    "Hello")]),
+                            new LegendLanguageTeacherExampleProposal(
+                                "Welcome.",
+                                "Byenveni.",
+                                [new LegendLanguageTeacherSemanticComponent(
+                                    "conversation_response",
+                                    "welcome",
+                                    "Welcome")])
+                        ],
+                        TranslationSubmission().SemanticTransitions)));
+        var pattern = new LegendLanguageStructuralPattern
+        {
+            Id = Guid.NewGuid(),
+            PropositionSignature = "greeting-welcome-contrast",
+            CurriculumFamilyId = family.Id,
+            PairKey = string.Empty,
+            LanguageCode = "en",
+            VariationDimension = "conversation_function",
+            MaturityState = "Supported",
+            SupportCount = 1,
+            IndependentSourceCount = 1,
+            HumanVerifiedSupportCount = 1,
+            Provenance = LegendConnectKnowledgeProvenance.FounderApproved
+        };
         db.AddRange(
-            source,
-            target,
+            family,
+            sourceGreeting,
+            sourceWelcome,
+            targetGreeting,
+            targetWelcome,
+            sourceGreetingExample,
+            sourceWelcomeExample,
+            targetGreetingExample,
+            targetWelcomeExample,
+            Anchor(sourceGreetingExample, greetingSignature),
+            Anchor(targetGreetingExample, greetingSignature),
+            Anchor(sourceWelcomeExample, welcomeSignature),
+            Anchor(targetWelcomeExample, welcomeSignature),
+            pattern,
+            new LegendLanguageStructuralEvidence
+            {
+                Id = Guid.NewGuid(),
+                StructuralPatternId = pattern.Id,
+                CurriculumFamilyId = family.Id,
+                PairKey = string.Empty,
+                LanguageCode = "en",
+                VariationDimension = "conversation_function",
+                BaselineCurriculumExampleId = sourceGreetingExample.Id,
+                ComparedCurriculumExampleId = sourceWelcomeExample.Id,
+                BaselineVariationValue = "greeting",
+                ComparedVariationValue = "welcome",
+                EvidenceSignature = Guid.NewGuid().ToString("N"),
+                IndependentSourceIdentity = "family:" + family.Id.ToString("N"),
+                ContributionState = "Supported",
+                IsHumanVerifiedSupport = true,
+                Provenance = LegendConnectKnowledgeProvenance.FounderApproved
+            },
+            new LegendSemanticTransitionEvidence
+            {
+                Id = Guid.NewGuid(),
+                TransitionSignature = Assert.Single(
+                    normalizedLineage.TransitionSignatures),
+                SourceLanguageCode = "en",
+                ResultLanguageCode = "en",
+                SourceCurriculumExampleId = sourceGreetingExample.Id,
+                ResultCurriculumExampleId = sourceWelcomeExample.Id,
+                IndependentSourceIdentity = "family:" + family.Id.ToString("N"),
+                ContributionState = "Supported",
+                IsHumanVerifiedSupport = true,
+                Provenance = LegendConnectKnowledgeProvenance.FounderApproved
+            },
             new LegendTranslationAlignment
             {
                 Id = Guid.NewGuid(),
                 PairKey = "en:ht",
-                SourceTextUnitId = source.Id,
-                TargetTextUnitId = target.Id,
+                SourceTextUnitId = sourceGreeting.Id,
+                TargetTextUnitId = targetGreeting.Id,
+                Provider = "FounderApproved",
+                Provenance = "FounderApproved",
+                Confidence = 1m,
+                QualityState = "Verified",
+                HumanVerified = true,
+                ObservationCount = 1,
+                CreatedUtc = DateTime.UtcNow,
+                UpdatedUtc = DateTime.UtcNow
+            },
+            new LegendTranslationAlignment
+            {
+                Id = Guid.NewGuid(),
+                PairKey = "en:ht",
+                SourceTextUnitId = sourceWelcome.Id,
+                TargetTextUnitId = targetWelcome.Id,
                 Provider = "FounderApproved",
                 Provenance = "FounderApproved",
                 Confidence = 1m,
@@ -403,6 +532,47 @@ public sealed class LegendConnectConversationMachineProposalTests
         await db.SaveChangesAsync();
         db.ChangeTracker.Clear();
     }
+
+    private static LegendCurriculumExample CurriculumExample(
+        LegendCurriculumFamily family,
+        LegendLanguageTextUnit unit,
+        Guid? derivedFrom) =>
+        new()
+        {
+            Id = Guid.NewGuid(),
+            CurriculumFamilyId = family.Id,
+            TextUnitId = unit.Id,
+            LanguageCode = unit.LanguageCode,
+            DerivedFromCurriculumExampleId = derivedFrom,
+            Provenance = LegendConnectKnowledgeProvenance.FounderApproved
+        };
+
+    private static LegendLanguageCompositionalAnchor Anchor(
+        LegendCurriculumExample example,
+        string semanticSignature) =>
+        new()
+        {
+            Id = Guid.NewGuid(),
+            LanguageCode = example.LanguageCode,
+            PairKey = example.DerivedFromCurriculumExampleId is null
+                ? string.Empty
+                : "en:ht",
+            TextUnitId = example.TextUnitId,
+            CurriculumFamilyId = example.CurriculumFamilyId,
+            CurriculumExampleId = example.Id,
+            Dimension = "semantic_component",
+            Value = semanticSignature,
+            SemanticSignature = semanticSignature,
+            AnchorSignature = Guid.NewGuid().ToString("N"),
+            Provenance = LegendConnectKnowledgeProvenance.FounderApproved
+        };
+
+    private static string SemanticSignature(
+        string dimension,
+        string value) =>
+        LegendLanguageIdentity.TextHash(
+            $"semantic|{dimension.Trim().ToLowerInvariant()}|" +
+            value.Trim().ToLowerInvariant());
 
     private static LegendLanguageTextUnit Unit(
         string languageCode,

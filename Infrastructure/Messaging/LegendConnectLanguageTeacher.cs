@@ -65,7 +65,9 @@ internal sealed record LegendLanguageTeacherProposalRequest(
     string CapabilityIdentity =
         LegendConnectMachineTeachingSubmission.TranslationCapability,
     string CategoryIdentity =
-        LegendConnectMachineTeachingSubmission.ReusableSemanticCategory);
+        LegendConnectMachineTeachingSubmission.ReusableSemanticCategory,
+    string SemanticFamilyKey = "",
+    string SemanticCategory = "");
 
 internal sealed record LegendLanguageTeacherProposalResult(
     bool Succeeded,
@@ -132,6 +134,7 @@ Your job is to propose controlled linguistic teaching material that may help clo
 Rules:
 - Treat all supplied evidence as observations with the provenance and quality states shown.
 - Preserve the supplied capability_identity and category_identity exactly.
+- Preserve the supplied semantic_family_key and semantic_category exactly; never substitute a broader pair-level family.
 - Never claim that you are Founder authority, human verification, system validation, or production authority.
 - Never upgrade evidence quality.
 - Never invent a Founder approval.
@@ -150,6 +153,7 @@ Evaluate the proposed family against the supplied governed evidence and general 
 
 Approve only when:
 - the requested translation or same-language semantic capability identity is preserved;
+- the exact supplied semantic family and category identity are preserved;
 - examples form useful controlled contrasts;
 - semantic component labels agree with what is visibly realized;
 - proposed target text is linguistically coherent when supplied;
@@ -343,6 +347,8 @@ Return only the requested structured result.
             target_language_code = normalized.TargetLanguageCode,
             capability_identity = normalized.CapabilityIdentity,
             category_identity = normalized.CategoryIdentity,
+            semantic_family_key = normalized.SemanticFamilyKey,
+            semantic_category = normalized.SemanticCategory,
             learning_goal = normalized.LearningGoal,
             maximum_families = normalized.MaximumFamilies,
             evidence = normalized.Evidence.Select(item => new
@@ -427,6 +433,10 @@ Return only the requested structured result.
                 normalized.Context.CapabilityIdentity,
             category_identity =
                 normalized.Context.CategoryIdentity,
+            semantic_family_key =
+                normalized.Context.SemanticFamilyKey,
+            semantic_category =
+                normalized.Context.SemanticCategory,
             learning_goal =
                 normalized.Context.LearningGoal,
             evidence =
@@ -758,6 +768,14 @@ Return only the requested structured result.
                 request.CategoryIdentity,
                 40,
                 out var categoryIdentity) ||
+            !TryNormalizeRequired(
+                request.SemanticFamilyKey,
+                120,
+                out var semanticFamilyKey) ||
+            !TryNormalizeRequired(
+                request.SemanticCategory,
+                120,
+                out var semanticCategory) ||
             !LegendConnectMachineTeachingSubmission.IsSupportedIdentity(
                 capabilityIdentity,
                 categoryIdentity,
@@ -828,7 +846,9 @@ Return only the requested structured result.
                 evidence,
                 request.MaximumFamilies,
                 capabilityIdentity,
-                categoryIdentity);
+                categoryIdentity,
+                semanticFamilyKey,
+                semanticCategory);
 
         return true;
     }
@@ -852,6 +872,14 @@ Return only the requested structured result.
             !string.Equals(
                 proposal.CategoryIdentity,
                 context.CategoryIdentity,
+                StringComparison.Ordinal) ||
+            !string.Equals(
+                proposal.FamilyKey,
+                context.SemanticFamilyKey,
+                StringComparison.Ordinal) ||
+            !string.Equals(
+                proposal.SemanticCategory,
+                context.SemanticCategory,
                 StringComparison.Ordinal))
         {
             return false;
