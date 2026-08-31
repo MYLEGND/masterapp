@@ -17,6 +17,9 @@ internal sealed class LegendFounderToolAuthority
     private const int MaximumSemanticFrameDimensions = 12;
     private const int MaximumSemanticFrameDimensionLength = 80;
     private const int MaximumSemanticFrameValueLength = 160;
+    private const int MaximumNativeReadArgumentsCharacters = 4096;
+    private const int MaximumNativeReadOutputCharacters = 1_000_000;
+    private const int MaximumNativeReadQueryCharacters = 500;
 
     private static readonly string[] RequiredFunctionToolProperties =
     [
@@ -61,9 +64,26 @@ internal sealed class LegendFounderToolAuthority
     internal bool IsGovernedEvidence(string name) =>
         IsGovernedEvidenceTool(name);
 
+    internal bool IsNativeContentBindingRead(string name) =>
+        IsNativeContentBindingReadTool(name);
+
     private static bool IsGovernedEvidenceTool(string name) =>
         IsReadOnlyFounderTool(name) &&
         !string.Equals(name, "legend_capabilities", StringComparison.Ordinal);
+
+    // This is a classification inside the one executable registry, not a
+    // second registry. Native binding is restricted to bounded LEGEND data
+    // reads and deliberately excludes repository/remediation, Azure/provider,
+    // web-search, mutation, and capability-discovery tools.
+    private static bool IsNativeContentBindingReadTool(string name) =>
+        name is
+            "legend_language_knowledge" or
+            "legend_pair_health" or
+            "legend_translation_quality" or
+            "legend_target_realizations" or
+            "legend_search_retained_knowledge" or
+            "legend_metric_detail" or
+            "legend_language_state";
 
     private static bool IsReadOnlyFounderTool(
         string name) =>
@@ -84,6 +104,50 @@ internal sealed class LegendFounderToolAuthority
             "legend_search_retained_knowledge" or
             "legend_metric_detail" or
             "legend_language_state";
+
+    /// <summary>
+    /// Binds one scalar through the same Founder authorization and tool
+    /// executor used by provider calls. The selected semantic frame supplies
+    /// every input; native reasoning cannot choose a tool or inspect the full
+    /// output payload.
+    /// </summary>
+    internal async Task<LegendConnectReadOnlyContentBindingResult>
+        BindReadOnlyResultAsync(
+            ClaimsPrincipal founder,
+            LegendConnectReadOnlyContentBindingRequest request,
+            CancellationToken cancellationToken)
+    {
+        if (!TryResolveFounderFunctionParameters(
+                request.ToolName,
+                out var parameterSchema))
+            return new(false, "read_only_content_binding_tool_unavailable", null);
+        if (!IsReadOnlyFounderTool(request.ToolName))
+            return new(false, "read_only_content_binding_tool_not_read_only", null);
+        if (!IsNativeContentBindingReadTool(request.ToolName))
+            return new(false, "read_only_content_binding_tool_not_permitted", null);
+        if (!TryValidateNativeReadArguments(
+                request,
+                parameterSchema,
+                out var argumentsReason))
+            return new(false, argumentsReason, null);
+
+        var output = await ExecuteAsync(
+            founder,
+            new FounderAiToolCall(
+                request.RequestIdentity,
+                request.ToolName,
+                request.ArgumentsJson),
+            "legend",
+            cancellationToken);
+        return TryCreateReadOnlyContentBindingReceipt(
+            request,
+            output,
+            DateTime.UtcNow,
+            out var receipt,
+            out var receiptReason)
+                ? new(true, "read_only_content_binding_receipt_governed", receipt)
+                : new(false, receiptReason, null);
+    }
 
 
     internal async Task<string> ExecuteAsync(
@@ -789,6 +853,384 @@ internal sealed class LegendFounderToolAuthority
                 return """{"error":"unknown_founder_tool"}""";
         }
     }
+
+    private static bool TryResolveFounderFunctionParameters(
+        string name,
+        out JsonElement parameters)
+    {
+        parameters = default;
+        foreach (var tool in BuildFounderTools())
+        {
+            using var document = JsonSerializer.SerializeToDocument(tool, JsonOptions);
+            var root = document.RootElement;
+            if (root.TryGetProperty("type", out var type) &&
+                string.Equals(type.GetString(), "function", StringComparison.Ordinal) &&
+                root.TryGetProperty("name", out var declaredName) &&
+                string.Equals(declaredName.GetString(), name, StringComparison.Ordinal) &&
+                root.TryGetProperty("parameters", out var declaredParameters) &&
+                declaredParameters.ValueKind == JsonValueKind.Object)
+            {
+                parameters = declaredParameters.Clone();
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static bool TryValidateNativeReadArguments(
+        LegendConnectReadOnlyContentBindingRequest request,
+        JsonElement parameterSchema,
+        out string reasonCode)
+    {
+        reasonCode = "read_only_content_binding_arguments_governed";
+        if (string.IsNullOrWhiteSpace(request.ArgumentsJson) ||
+            request.ArgumentsJson.Length > MaximumNativeReadArgumentsCharacters)
+        {
+            reasonCode = "read_only_content_binding_arguments_invalid";
+            return false;
+        }
+
+        try
+        {
+            using var arguments = JsonDocument.Parse(request.ArgumentsJson);
+            var root = arguments.RootElement;
+            if (!IsStrictSchemaInstance(parameterSchema, root))
+            {
+                reasonCode = "read_only_content_binding_arguments_invalid";
+                return false;
+            }
+
+            // The exact catalog remains the contract authority. These are
+            // narrower native-serving bounds on values that are intentionally
+            // broader for Founder/provider inspection.
+            var valid = request.ToolName switch
+            {
+                "legend_language_knowledge" =>
+                    IsBoundedLanguage(ReadRequiredString(root, "language")),
+                "legend_search_retained_knowledge" =>
+                    IsBoundedString(
+                        ReadRequiredString(root, "query"),
+                        1,
+                        MaximumNativeReadQueryCharacters) &&
+                    IsOptionalBoundedLanguage(root, "source_language") &&
+                    IsOptionalBoundedLanguage(root, "target_language"),
+                "legend_language_state" =>
+                    IsBoundedLanguage(ReadRequiredString(root, "language")),
+                _ => true
+            };
+            if (!valid)
+                reasonCode = "read_only_content_binding_arguments_invalid";
+            return valid;
+        }
+        catch (JsonException)
+        {
+            reasonCode = "read_only_content_binding_arguments_invalid";
+            return false;
+        }
+    }
+
+    private static bool IsStrictSchemaInstance(
+        JsonElement schema,
+        JsonElement instance)
+    {
+        if (!schema.TryGetProperty("type", out var declaredTypes) ||
+            !MatchesDeclaredSchemaType(declaredTypes, instance))
+        {
+            return false;
+        }
+        if (instance.ValueKind == JsonValueKind.Null)
+            return true;
+
+        if (schema.TryGetProperty("enum", out var declaredEnum) &&
+            !declaredEnum.EnumerateArray().Any(item =>
+                string.Equals(
+                    item.GetRawText(),
+                    instance.GetRawText(),
+                    StringComparison.Ordinal)))
+        {
+            return false;
+        }
+
+        return instance.ValueKind switch
+        {
+            JsonValueKind.Object =>
+                IsStrictObjectSchemaInstance(schema, instance),
+            JsonValueKind.Array =>
+                IsStrictArraySchemaInstance(schema, instance),
+            JsonValueKind.String =>
+                IsStrictStringSchemaInstance(schema, instance.GetString() ?? string.Empty),
+            JsonValueKind.Number =>
+                IsStrictNumberSchemaInstance(schema, instance),
+            JsonValueKind.True or JsonValueKind.False => true,
+            _ => false
+        };
+    }
+
+    private static bool MatchesDeclaredSchemaType(
+        JsonElement declaredTypes,
+        JsonElement instance)
+    {
+        var instanceType = instance.ValueKind switch
+        {
+            JsonValueKind.Object => "object",
+            JsonValueKind.Array => "array",
+            JsonValueKind.String => "string",
+            JsonValueKind.Number => "number",
+            JsonValueKind.True or JsonValueKind.False => "boolean",
+            JsonValueKind.Null => "null",
+            _ => string.Empty
+        };
+        if (string.IsNullOrEmpty(instanceType))
+            return false;
+
+        bool Matches(JsonElement declaredType)
+        {
+            if (declaredType.ValueKind != JsonValueKind.String)
+                return false;
+            var value = declaredType.GetString();
+            if (string.Equals(value, instanceType, StringComparison.Ordinal))
+                return true;
+            return string.Equals(value, "integer", StringComparison.Ordinal) &&
+                instance.ValueKind == JsonValueKind.Number &&
+                instance.TryGetInt64(out _);
+        }
+
+        return declaredTypes.ValueKind == JsonValueKind.String
+            ? Matches(declaredTypes)
+            : declaredTypes.ValueKind == JsonValueKind.Array &&
+              declaredTypes.EnumerateArray().Any(Matches);
+    }
+
+    private static bool IsStrictObjectSchemaInstance(
+        JsonElement schema,
+        JsonElement instance)
+    {
+        if (HasDuplicateProperties(instance) ||
+            !schema.TryGetProperty("properties", out var properties) ||
+            properties.ValueKind != JsonValueKind.Object)
+        {
+            return false;
+        }
+
+        var actualNames = instance.EnumerateObject()
+            .Select(property => property.Name)
+            .ToHashSet(StringComparer.Ordinal);
+        var declaredNames = properties.EnumerateObject()
+            .Select(property => property.Name)
+            .ToHashSet(StringComparer.Ordinal);
+        if (!actualNames.SetEquals(declaredNames))
+            return false;
+
+        foreach (var property in properties.EnumerateObject())
+        {
+            if (!instance.TryGetProperty(property.Name, out var value) ||
+                !IsStrictSchemaInstance(property.Value, value))
+            {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static bool IsStrictArraySchemaInstance(
+        JsonElement schema,
+        JsonElement instance)
+    {
+        var length = instance.GetArrayLength();
+        if (schema.TryGetProperty("minItems", out var minimum) &&
+            (!minimum.TryGetInt32(out var minimumValue) || length < minimumValue))
+        {
+            return false;
+        }
+        if (schema.TryGetProperty("maxItems", out var maximum) &&
+            (!maximum.TryGetInt32(out var maximumValue) || length > maximumValue))
+        {
+            return false;
+        }
+        return schema.TryGetProperty("items", out var items) &&
+            items.ValueKind == JsonValueKind.Object &&
+            instance.EnumerateArray().All(item => IsStrictSchemaInstance(items, item));
+    }
+
+    private static bool IsStrictStringSchemaInstance(
+        JsonElement schema,
+        string instance)
+    {
+        if (instance.Any(char.IsControl))
+            return false;
+        if (schema.TryGetProperty("minLength", out var minimum) &&
+            (!minimum.TryGetInt32(out var minimumValue) || instance.Length < minimumValue))
+        {
+            return false;
+        }
+        if (schema.TryGetProperty("maxLength", out var maximum) &&
+            (!maximum.TryGetInt32(out var maximumValue) || instance.Length > maximumValue))
+        {
+            return false;
+        }
+        return true;
+    }
+
+    private static bool IsStrictNumberSchemaInstance(
+        JsonElement schema,
+        JsonElement instance)
+    {
+        if (!instance.TryGetDecimal(out var value))
+            return false;
+        if (schema.TryGetProperty("minimum", out var minimum) &&
+            (!minimum.TryGetDecimal(out var minimumValue) || value < minimumValue))
+        {
+            return false;
+        }
+        if (schema.TryGetProperty("maximum", out var maximum) &&
+            (!maximum.TryGetDecimal(out var maximumValue) || value > maximumValue))
+        {
+            return false;
+        }
+        return true;
+    }
+
+    internal static bool TryCreateReadOnlyContentBindingReceipt(
+        LegendConnectReadOnlyContentBindingRequest request,
+        string output,
+        DateTime executedUtc,
+        out LegendConnectReadOnlyContentBindingReceipt? receipt,
+        out string reasonCode)
+    {
+        receipt = null;
+        reasonCode = "read_only_content_binding_output_malformed";
+        if (executedUtc.Kind != DateTimeKind.Utc ||
+            string.IsNullOrWhiteSpace(output) ||
+            output.Length > MaximumNativeReadOutputCharacters)
+        {
+            return false;
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(output);
+            var root = document.RootElement;
+            if (root.ValueKind != JsonValueKind.Object ||
+                HasDuplicateProperties(root) ||
+                root.TryGetProperty("error", out _))
+            {
+                reasonCode = root.ValueKind == JsonValueKind.Object &&
+                    root.TryGetProperty("error", out _)
+                        ? "read_only_content_binding_tool_error"
+                        : reasonCode;
+                return false;
+            }
+            if (!TrySelectPropertyPath(root, request.ValuePath, out var value) ||
+                !TryReadBoundedScalar(value, out var scalar))
+            {
+                return false;
+            }
+
+            var observedUtc = executedUtc;
+            if (!string.IsNullOrWhiteSpace(request.ObservedUtcPath))
+            {
+                if (!TrySelectPropertyPath(root, request.ObservedUtcPath, out var observed) ||
+                    observed.ValueKind != JsonValueKind.String ||
+                    !DateTime.TryParse(
+                        observed.GetString(),
+                        System.Globalization.CultureInfo.InvariantCulture,
+                        System.Globalization.DateTimeStyles.AssumeUniversal |
+                        System.Globalization.DateTimeStyles.AdjustToUniversal,
+                        out observedUtc))
+                {
+                    return false;
+                }
+                if (executedUtc - observedUtc >
+                    TimeSpan.FromSeconds(request.MaximumAgeSeconds))
+                {
+                    reasonCode = "read_only_content_binding_stale";
+                    return false;
+                }
+            }
+
+            receipt = new LegendConnectReadOnlyContentBindingReceipt(
+                request.RequestIdentity,
+                request.TransitionSignature,
+                request.ResultSemanticFrameSignature,
+                request.ToolName,
+                LegendLanguageIdentity.TextHash(request.ArgumentsJson),
+                request.ValuePath,
+                request.SemanticVariable,
+                request.ResultDimension,
+                scalar,
+                LegendLanguageIdentity.TextHash(output),
+                observedUtc,
+                executedUtc,
+                LegendConnectReadOnlyContentBindingContracts.Provenance,
+                IsReadOnly: true,
+                ZeroWrite: true);
+            reasonCode = "read_only_content_binding_receipt_governed";
+            return true;
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
+    }
+
+    private static bool TrySelectPropertyPath(
+        JsonElement root,
+        string path,
+        out JsonElement value)
+    {
+        value = root;
+        foreach (var segment in path.Split('.', StringSplitOptions.None))
+        {
+            if (value.ValueKind != JsonValueKind.Object ||
+                HasDuplicateProperties(value) ||
+                !value.TryGetProperty(segment, out var next))
+            {
+                return false;
+            }
+            value = next;
+        }
+        return true;
+    }
+
+    private static bool TryReadBoundedScalar(JsonElement value, out string scalar)
+    {
+        scalar = value.ValueKind switch
+        {
+            JsonValueKind.String =>
+                LegendLanguageIdentity.NormalizeText(value.GetString() ?? string.Empty),
+            JsonValueKind.Number => value.GetRawText(),
+            JsonValueKind.True => "true",
+            JsonValueKind.False => "false",
+            _ => string.Empty
+        };
+        return !string.IsNullOrWhiteSpace(scalar) &&
+            scalar.Length <= LegendConnectReadOnlyContentBindingContracts.MaximumScalarCharacters &&
+            !scalar.Any(char.IsControl);
+    }
+
+    private static bool HasDuplicateProperties(JsonElement root) =>
+        root.EnumerateObject()
+            .GroupBy(item => item.Name, StringComparer.Ordinal)
+            .Any(group => group.Count() > 1);
+
+    private static bool IsBoundedLanguage(string? value) =>
+        IsBoundedString(value, 2, 40) &&
+        LegendLanguageIdentity.TryNormalize(value, out _);
+
+    private static bool IsOptionalBoundedLanguage(JsonElement root, string propertyName) =>
+        !root.TryGetProperty(propertyName, out var property) ||
+        property.ValueKind == JsonValueKind.Null ||
+        (property.ValueKind == JsonValueKind.String &&
+         IsBoundedLanguage(property.GetString()?.Trim()));
+
+    private static bool IsBoundedString(
+        string? value,
+        int minimumLength,
+        int maximumLength) =>
+        value is not null &&
+        value.Length >= minimumLength &&
+        value.Length <= maximumLength &&
+        !value.Any(char.IsControl);
 
     private static IReadOnlyList<object> DescribeFounderCapabilities()
     {

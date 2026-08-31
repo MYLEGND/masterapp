@@ -127,12 +127,15 @@ internal sealed record LegendSemanticTransitionInference(
     string State,
     string? RealizedText,
     int EvidenceCount,
-    IReadOnlyList<string> Reasons)
+    IReadOnlyList<string> Reasons,
+    LegendConnectReadOnlyContentBindingRequest? ReadOnlyContentRequest = null,
+    IReadOnlyList<LegendConnectReadOnlyContentBindingReceipt>? ContentBindingProvenance = null)
 {
     internal const string Supported = "Supported";
     internal const string InsufficientEvidence = "InsufficientEvidence";
     internal const string Ambiguous = "Ambiguous";
     internal const string Contradicted = "Contradicted";
+    internal const string ReadOnlyContentRequired = "ReadOnlyContentRequired";
 }
 
 /// <summary>
@@ -196,6 +199,18 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
     private const string ProseStructureValue = "prose";
     private const string SingleSentenceStructureValue = "single_sentence";
     private const string SentenceSequenceStructureValue = "sentence_sequence";
+    private const string ContentBindingAuthorityDimension = "content_binding_authority";
+    private const string ContentBindingAccessDimension = "content_binding_access";
+    private const string ContentBindingToolDimension = "content_binding_tool";
+    private const string ContentBindingArgumentsDimension = "content_binding_arguments";
+    private const string ContentBindingValuePathDimension = "content_binding_value_path";
+    private const string ContentBindingObservedUtcPathDimension =
+        "content_binding_observed_utc_path";
+    private const string ContentBindingMaximumAgeSecondsDimension =
+        "content_binding_max_age_seconds";
+    private const string FounderToolContentBindingAuthorityValue =
+        "legend_founder_tool_authority";
+    private const string ReadOnlyContentBindingAccessValue = "read_only";
     private const int MaximumExamplesPerBatch = 100;
     // This value participates in the durable relationship identity. It is
     // advanced only when the canonical grouping meaning changes, allowing the
@@ -3911,7 +3926,8 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
         string input,
         IReadOnlyList<LegendConnectConversationContextItem> context,
         LegendConnectDiscourseStateSnapshot? discourseState,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        LegendConnectReadOnlyContentBindingReceipt? readOnlyContentReceipt = null)
     {
         var completion = await AnalyzeDiscourseCompletedMeaningGraphAsync(
             sourceLanguageCode,
@@ -3941,7 +3957,18 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
         var content = await ResolveGovernedResponseContentAsync(
             selection.SourceLanguageCode,
             selection.Selected,
-            cancellationToken);
+            cancellationToken,
+            readOnlyContentReceipt);
+        if (content.ReadOnlyContentRequest is not null)
+        {
+            return new LegendSemanticTransitionInference(
+                LegendSemanticTransitionInference.ReadOnlyContentRequired,
+                null,
+                selection.Selected.IndependentEvidenceCount +
+                selection.Selected.ReasoningEvidenceCount,
+                ["read_only_content_binding_required"],
+                content.ReadOnlyContentRequest);
+        }
         if (content.IsRequired && !content.Succeeded)
         {
             return SemanticTransitionInsufficient(content.ReasonCode);
@@ -3961,6 +3988,7 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
             selection.SourceLanguageCode,
             SourceComponentsFromMeaningGraph(input, graph),
             content.ContentVariableBindings,
+            content.ContentVariableSurfaces,
             requireOriginalRealization: true,
             cancellationToken: cancellationToken);
         if (realization.Reason is not null)
@@ -3981,10 +4009,17 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
                     ? "higher_standard_semantic_transition"
                     : "broad_governed_semantic_transition",
                 "governed_content_binding",
+                content.ReadOnlyContentReceipts.Count > 0
+                    ? "founder_authorized_read_only_content_binding"
+                    : content.IsRequired
+                        ? "retained_governed_content_binding"
+                        : "response_content_binding_not_required",
                 realization.IsOriginal
                     ? "original_compositional_anchor_realization"
                     : "canonical_governed_endpoint_articulation"
-            ]);
+            ],
+            null,
+            content.ReadOnlyContentReceipts);
     }
 
     internal async Task<LegendConnectResponseMeaningPlanResult> TryPlanResponseMeaningAsync(
@@ -4015,7 +4050,8 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
         var content = await ResolveGovernedResponseContentAsync(
             selection.SourceLanguageCode,
             selection.Selected,
-            cancellationToken);
+            cancellationToken,
+            readOnlyContentReceipt: null);
         if (!content.Succeeded)
             return new(false, content.ReasonCode, null);
 
@@ -5724,20 +5760,64 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
     /// <summary>
     /// Binds only result variables which the selected transition intentionally
     /// leaves unspecified.  The transition remains the authority for response
-    /// shape; this reads the existing Founder meaning-node/relation evidence
-    /// for substance.  It does not search retained text or select a response
-    /// sentence.
+    /// shape. Substance comes either from existing Founder meaning relations
+    /// or from one exact proof-carrying read-only receipt explicitly declared
+    /// by that frame. It does not search retained text, select a response
+    /// sentence, or execute a tool.
     /// </summary>
     private async Task<GovernedContentResolution> ResolveGovernedResponseContentAsync(
         string languageCode,
         SemanticTransitionCandidate candidate,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        LegendConnectReadOnlyContentBindingReceipt? readOnlyContentReceipt)
     {
         var unbound = candidate.ResultFrame.Dimensions
             .Where(item => IsSemanticVariable(item.Value) && !candidate.Bindings.ContainsKey(item.Value))
             .GroupBy(item => item.Value, StringComparer.Ordinal)
             .ToDictionary(group => group.Key, group => group.Select(item => item.Key)
                 .OrderBy(item => item, StringComparer.Ordinal).ToArray(), StringComparer.Ordinal);
+        if (!TryResolveReadOnlyContentBindingRequest(
+                candidate,
+                unbound,
+                out var readOnlyContentRequest,
+                out var readOnlyDeclarationReason))
+        {
+            return GovernedContentResolution.Failure(readOnlyDeclarationReason);
+        }
+        if (readOnlyContentRequest is not null)
+        {
+            if (readOnlyContentReceipt is null)
+                return GovernedContentResolution.ReadOnlyRequired(readOnlyContentRequest);
+
+            if (!TryValidateReadOnlyContentBindingReceipt(
+                    readOnlyContentRequest,
+                    readOnlyContentReceipt,
+                    out var receiptReason))
+            {
+                return GovernedContentResolution.Failure(receiptReason);
+            }
+
+            var mergedReadBindings = new Dictionary<string, string>(
+                candidate.Bindings,
+                StringComparer.Ordinal)
+            {
+                [readOnlyContentRequest.SemanticVariable] =
+                    readOnlyContentReceipt.SemanticValue
+            };
+            return GovernedContentResolution.ReadOnlySuccess(
+                mergedReadBindings,
+                new Dictionary<string, string>(StringComparer.Ordinal)
+                {
+                    [readOnlyContentRequest.SemanticVariable] =
+                        readOnlyContentReceipt.SemanticValue
+                },
+                new Dictionary<string, string>(StringComparer.Ordinal)
+                {
+                    [readOnlyContentRequest.SemanticVariable] =
+                        readOnlyContentReceipt.SemanticValue
+                },
+                readOnlyContentReceipt);
+        }
         if (unbound.Count == 0)
         {
             return GovernedContentResolution.NotRequired(candidate.Bindings);
@@ -5905,6 +5985,211 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
             selectedFacts.OrderBy(item => item.FactIdentity, StringComparer.Ordinal).ToArray());
     }
 
+    private static bool TryResolveReadOnlyContentBindingRequest(
+        SemanticTransitionCandidate candidate,
+        IReadOnlyDictionary<string, string[]> unbound,
+        out LegendConnectReadOnlyContentBindingRequest? request,
+        out string reasonCode)
+    {
+        request = null;
+        reasonCode = "read_only_content_binding_declared";
+        var dimensions = candidate.ResultFrame.Dimensions;
+        var declaredControlDimensions = dimensions.Keys
+            .Where(item => item.StartsWith("content_binding_", StringComparison.Ordinal))
+            .ToArray();
+        if (declaredControlDimensions.Length == 0)
+            return true;
+        if (declaredControlDimensions.Any(item =>
+                !IsReadOnlyContentBindingControlDimension(item)))
+        {
+            reasonCode = "read_only_content_binding_declaration_malformed";
+            return false;
+        }
+
+        var requiredControls = new[]
+        {
+            ContentBindingAuthorityDimension,
+            ContentBindingAccessDimension,
+            ContentBindingToolDimension,
+            ContentBindingArgumentsDimension,
+            ContentBindingValuePathDimension,
+            ContentBindingMaximumAgeSecondsDimension
+        };
+        if (requiredControls.Any(item => !dimensions.ContainsKey(item)) ||
+            dimensions.Where(item => IsReadOnlyContentBindingControlDimension(item.Key))
+                .Any(item => IsSemanticVariable(item.Value)) ||
+            unbound.Count != 1 ||
+            unbound.Single().Value.Length != 1 ||
+            IsReadOnlyContentBindingControlDimension(unbound.Single().Value[0]))
+        {
+            reasonCode = "read_only_content_binding_declaration_malformed";
+            return false;
+        }
+
+        var authority = dimensions[ContentBindingAuthorityDimension];
+        var access = dimensions[ContentBindingAccessDimension];
+        if (!string.Equals(
+                authority,
+                FounderToolContentBindingAuthorityValue,
+                StringComparison.Ordinal) ||
+            !string.Equals(
+                access,
+                ReadOnlyContentBindingAccessValue,
+                StringComparison.Ordinal))
+        {
+            reasonCode = "read_only_content_binding_not_authorized";
+            return false;
+        }
+
+        var toolName = dimensions[ContentBindingToolDimension].Trim();
+        var argumentsJson = dimensions[ContentBindingArgumentsDimension].Trim();
+        var valuePath = dimensions[ContentBindingValuePathDimension].Trim();
+        var observedUtcPath = dimensions.TryGetValue(
+            ContentBindingObservedUtcPathDimension,
+            out var declaredObservedUtcPath)
+                ? declaredObservedUtcPath.Trim()
+                : null;
+        if (NormalizeDimension(toolName) != toolName ||
+            !IsBoundedJsonPropertyPath(valuePath) ||
+            (observedUtcPath is not null &&
+             !IsBoundedJsonPropertyPath(observedUtcPath)))
+        {
+            reasonCode = "read_only_content_binding_declaration_malformed";
+            return false;
+        }
+
+        try
+        {
+            using var arguments = JsonDocument.Parse(argumentsJson);
+            if (arguments.RootElement.ValueKind != JsonValueKind.Object)
+            {
+                reasonCode = "read_only_content_binding_declaration_malformed";
+                return false;
+            }
+            argumentsJson = arguments.RootElement.GetRawText();
+        }
+        catch (JsonException)
+        {
+            reasonCode = "read_only_content_binding_declaration_malformed";
+            return false;
+        }
+
+        if (!int.TryParse(
+                dimensions[ContentBindingMaximumAgeSecondsDimension],
+                NumberStyles.None,
+                CultureInfo.InvariantCulture,
+                out var maximumAgeSeconds) ||
+            maximumAgeSeconds < 1 ||
+            maximumAgeSeconds >
+                LegendConnectReadOnlyContentBindingContracts.MaximumAgeSeconds)
+        {
+            reasonCode = "read_only_content_binding_declaration_malformed";
+            return false;
+        }
+
+        var binding = unbound.Single();
+        var requestIdentity = LegendLanguageIdentity.TextHash(string.Join("|",
+            "read-only-content-binding|v1",
+            candidate.TransitionSignature,
+            candidate.ResultFrame.Signature,
+            toolName,
+            LegendLanguageIdentity.TextHash(argumentsJson),
+            valuePath,
+            observedUtcPath ?? string.Empty,
+            maximumAgeSeconds.ToString(CultureInfo.InvariantCulture),
+            binding.Key,
+            binding.Value[0]));
+        request = new LegendConnectReadOnlyContentBindingRequest(
+            requestIdentity,
+            candidate.TransitionSignature,
+            candidate.ResultFrame.Signature,
+            toolName,
+            argumentsJson,
+            valuePath,
+            observedUtcPath,
+            maximumAgeSeconds,
+            binding.Key,
+            binding.Value[0]);
+        return true;
+    }
+
+    private static bool TryValidateReadOnlyContentBindingReceipt(
+        LegendConnectReadOnlyContentBindingRequest request,
+        LegendConnectReadOnlyContentBindingReceipt receipt,
+        out string reasonCode)
+    {
+        reasonCode = "read_only_content_binding_receipt_governed";
+        if (!string.Equals(receipt.RequestIdentity, request.RequestIdentity, StringComparison.Ordinal) ||
+            !string.Equals(receipt.TransitionSignature, request.TransitionSignature, StringComparison.Ordinal) ||
+            !string.Equals(
+                receipt.ResultSemanticFrameSignature,
+                request.ResultSemanticFrameSignature,
+                StringComparison.Ordinal) ||
+            !string.Equals(receipt.ToolName, request.ToolName, StringComparison.Ordinal) ||
+            !string.Equals(
+                receipt.ArgumentsHash,
+                LegendLanguageIdentity.TextHash(request.ArgumentsJson),
+                StringComparison.Ordinal) ||
+            !string.Equals(receipt.ValuePath, request.ValuePath, StringComparison.Ordinal) ||
+            !string.Equals(receipt.SemanticVariable, request.SemanticVariable, StringComparison.Ordinal) ||
+            !string.Equals(receipt.ResultDimension, request.ResultDimension, StringComparison.Ordinal) ||
+            !string.Equals(
+                receipt.Provenance,
+                LegendConnectReadOnlyContentBindingContracts.Provenance,
+                StringComparison.Ordinal) ||
+            !receipt.IsReadOnly ||
+            !receipt.ZeroWrite ||
+            string.IsNullOrWhiteSpace(receipt.OutputHash) ||
+            !IsBoundedReadOnlyScalar(receipt.SemanticValue) ||
+            receipt.ExecutedUtc.Kind != DateTimeKind.Utc ||
+            receipt.ObservedUtc.Kind != DateTimeKind.Utc)
+        {
+            reasonCode = "read_only_content_binding_receipt_malformed";
+            return false;
+        }
+
+        var utcNow = DateTime.UtcNow;
+        var maximumAge = TimeSpan.FromSeconds(request.MaximumAgeSeconds);
+        if (receipt.ExecutedUtc > utcNow.AddSeconds(5) ||
+            receipt.ObservedUtc > utcNow.AddSeconds(5))
+        {
+            reasonCode = "read_only_content_binding_receipt_malformed";
+            return false;
+        }
+        if (utcNow - receipt.ExecutedUtc > maximumAge ||
+            utcNow - receipt.ObservedUtc > maximumAge)
+        {
+            reasonCode = "read_only_content_binding_stale";
+            return false;
+        }
+        return true;
+    }
+
+    private static bool IsReadOnlyContentBindingControlDimension(string dimension) =>
+        dimension is ContentBindingAuthorityDimension or
+            ContentBindingAccessDimension or
+            ContentBindingToolDimension or
+            ContentBindingArgumentsDimension or
+            ContentBindingValuePathDimension or
+            ContentBindingObservedUtcPathDimension or
+            ContentBindingMaximumAgeSecondsDimension;
+
+    private static bool IsBoundedJsonPropertyPath(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value) || value.Length > 200)
+            return false;
+        var segments = value.Split('.', StringSplitOptions.None);
+        return segments.Length is >= 1 and <= 8 && segments.All(segment =>
+            segment.Length is >= 1 and <= 80 &&
+            segment.All(character => char.IsLetterOrDigit(character) ||
+                character is '_' or '-'));
+    }
+
+    private static bool IsBoundedReadOnlyScalar(string value) =>
+        !string.IsNullOrWhiteSpace(value) &&
+        value.Length <= LegendConnectReadOnlyContentBindingContracts.MaximumScalarCharacters &&
+        !value.Any(char.IsControl);
+
     private static IReadOnlyList<LegendShadowSourceSemanticComponent> SourceComponentsFromMeaningGraph(
         string input,
         LegendConnectUtteranceMeaningGraphSnapshot graph)
@@ -5931,6 +6216,7 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
         string languageCode,
         IReadOnlyList<LegendShadowSourceSemanticComponent> sourceComponents,
         IReadOnlyDictionary<string, string>? contentVariableBindings,
+        IReadOnlyDictionary<string, string>? contentVariableSurfaces,
         bool requireOriginalRealization,
         CancellationToken cancellationToken)
     {
@@ -6305,6 +6591,7 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
                 .ToArray(),
             variationMaps,
             anchorsByExample,
+            contentVariableSurfaces,
             requireOriginalRealization);
         if (boundRealization.Reason is null &&
             !string.IsNullOrWhiteSpace(boundRealization.Text) &&
@@ -7160,6 +7447,7 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
         IReadOnlyList<SemanticResultExample> layoutExamples,
         IReadOnlyDictionary<Guid, IReadOnlyDictionary<string, string>> variationMaps,
         IReadOnlyDictionary<Guid, List<SemanticAnchor>> anchorsByExample,
+        IReadOnlyDictionary<string, string>? contentVariableSurfaces,
         bool requireOriginalRealization)
     {
         var dynamicDimensions = candidate.ResultFrame.Dimensions
@@ -7232,6 +7520,12 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
 
             var contentBound = contentVariableBindings is not null &&
                 contentVariableBindings.ContainsKey(dynamicDimension.Value);
+            var authoritativeContentSurface = contentVariableSurfaces is not null &&
+                contentVariableSurfaces.TryGetValue(
+                    dynamicDimension.Value,
+                    out var declaredContentSurface)
+                    ? LegendLanguageIdentity.NormalizeText(declaredContentSurface)
+                    : null;
             var sourceSurfaces = sourceComponents
                 .Where(item =>
                     string.Equals(item.Dimension, dynamicDimension.Key, StringComparison.OrdinalIgnoreCase) &&
@@ -7257,11 +7551,13 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
             // one unambiguous surface for this exact semantic value.  This is
             // the same bounded realization authority used for Stage-6 content
             // values; it is never a transcript lookup or a free-text fallback.
-            var surfaces = contentBound
-                ? layoutSurfaces
-                : sourceSurfaces.Length == 1
-                    ? sourceSurfaces
-                    : layoutSurfaces;
+            var surfaces = contentBound && !string.IsNullOrWhiteSpace(authoritativeContentSurface)
+                ? [authoritativeContentSurface!]
+                : contentBound
+                    ? layoutSurfaces
+                    : sourceSurfaces.Length == 1
+                        ? sourceSurfaces
+                        : layoutSurfaces;
             if (surfaces.Length != 1)
                 return SemanticTransitionRealization.Insufficient(
                     contentBound
@@ -12787,31 +13083,57 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
         string ReasonCode,
         IReadOnlyDictionary<string, string> MergedBindings,
         IReadOnlyDictionary<string, string> ContentVariableBindings,
+        IReadOnlyDictionary<string, string> ContentVariableSurfaces,
         IReadOnlyList<LegendConnectGovernedContentFactSnapshot> Facts,
         int EvidenceCount,
-        int EvidenceStandard)
+        int EvidenceStandard,
+        LegendConnectReadOnlyContentBindingRequest? ReadOnlyContentRequest,
+        IReadOnlyList<LegendConnectReadOnlyContentBindingReceipt> ReadOnlyContentReceipts)
     {
         internal static GovernedContentResolution NotRequired(
             IReadOnlyDictionary<string, string> bindings) =>
             new(false, true, "response_content_not_required", bindings,
+                new Dictionary<string, string>(StringComparer.Ordinal),
                 new Dictionary<string, string>(StringComparer.Ordinal), [], 0,
-                HigherGovernedEvidenceStandard);
+                HigherGovernedEvidenceStandard, null, []);
 
         internal static GovernedContentResolution Failure(string reasonCode) =>
             new(true, false, reasonCode,
                 new Dictionary<string, string>(StringComparer.Ordinal),
+                new Dictionary<string, string>(StringComparer.Ordinal),
                 new Dictionary<string, string>(StringComparer.Ordinal), [], 0,
-                BroadGovernedEvidenceStandard);
+                BroadGovernedEvidenceStandard, null, []);
+
+        internal static GovernedContentResolution ReadOnlyRequired(
+            LegendConnectReadOnlyContentBindingRequest request) =>
+            new(true, false, "read_only_content_binding_required",
+                new Dictionary<string, string>(StringComparer.Ordinal),
+                new Dictionary<string, string>(StringComparer.Ordinal),
+                new Dictionary<string, string>(StringComparer.Ordinal), [], 0,
+                BroadGovernedEvidenceStandard, request, []);
+
+        internal static GovernedContentResolution ReadOnlySuccess(
+            IReadOnlyDictionary<string, string> mergedBindings,
+            IReadOnlyDictionary<string, string> contentBindings,
+            IReadOnlyDictionary<string, string> contentSurfaces,
+            LegendConnectReadOnlyContentBindingReceipt receipt) =>
+            new(true, true, "read_only_content_bound_governed", mergedBindings,
+                contentBindings, contentSurfaces, [], 1,
+                HigherGovernedEvidenceStandard, null, [receipt]);
 
         internal static GovernedContentResolution Success(
             IReadOnlyDictionary<string, string> mergedBindings,
             IReadOnlyDictionary<string, string> contentBindings,
             IReadOnlyList<LegendConnectGovernedContentFactSnapshot> facts) =>
             new(true, true, "response_content_bound_governed", mergedBindings,
-                contentBindings, facts, facts.Sum(item => item.IndependentSourceCount),
+                contentBindings,
+                new Dictionary<string, string>(StringComparer.Ordinal),
+                facts, facts.Sum(item => item.IndependentSourceCount),
                 facts.All(item => item.IsProductionEligible)
                     ? HigherGovernedEvidenceStandard
-                    : BroadGovernedEvidenceStandard);
+                    : BroadGovernedEvidenceStandard,
+                null,
+                []);
     }
 
     /// <summary>

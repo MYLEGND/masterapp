@@ -349,20 +349,75 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
                     submission,
                     cancellationToken);
 
-    public async Task<LegendConnectNativeInferenceSnapshot>
+    public Task<LegendConnectNativeInferenceSnapshot>
         TryInferConversationWithDiscourseAsync(
             string input,
             IReadOnlyList<LegendConnectConversationContextItem> context,
             LegendConnectDiscourseStateSnapshot? discourseState,
             CancellationToken cancellationToken = default,
-            string sourceLanguageCode = "en")
+            string sourceLanguageCode = "en") =>
+        TryInferConversationCoreAsync(
+            input,
+            context,
+            discourseState,
+            readOnlyContentReceipt: null,
+            cancellationToken: cancellationToken,
+            sourceLanguageCode: sourceLanguageCode);
+
+    public Task<LegendConnectNativeInferenceSnapshot>
+        TryInferConversationWithReadOnlyContentAsync(
+            string input,
+            IReadOnlyList<LegendConnectConversationContextItem> context,
+            LegendConnectDiscourseStateSnapshot? discourseState,
+            LegendConnectReadOnlyContentBindingReceipt receipt,
+            CancellationToken cancellationToken = default,
+            string sourceLanguageCode = "en") =>
+        TryInferConversationCoreAsync(
+            input,
+            context,
+            discourseState,
+            receipt,
+            cancellationToken,
+            sourceLanguageCode);
+
+    private async Task<LegendConnectNativeInferenceSnapshot>
+        TryInferConversationCoreAsync(
+            string input,
+            IReadOnlyList<LegendConnectConversationContextItem> context,
+            LegendConnectDiscourseStateSnapshot? discourseState,
+            LegendConnectReadOnlyContentBindingReceipt? readOnlyContentReceipt,
+            CancellationToken cancellationToken,
+            string sourceLanguageCode)
     {
         cancellationToken.ThrowIfCancellationRequested();
         if (string.IsNullOrWhiteSpace(LegendLanguageIdentity.NormalizeText(input ?? string.Empty)))
             return NativeInferenceUnsupported("invalid_input");
 
         var composed = await Curriculum.TryInferComposedSemanticTransitionAsync(
-            sourceLanguageCode, input ?? string.Empty, context, discourseState, cancellationToken);
+            sourceLanguageCode,
+            input ?? string.Empty,
+            context,
+            discourseState,
+            cancellationToken,
+            readOnlyContentReceipt);
+        if (string.Equals(
+                composed.State,
+                LegendSemanticTransitionInference.ReadOnlyContentRequired,
+                StringComparison.Ordinal) &&
+            composed.ReadOnlyContentRequest is not null)
+        {
+            return new LegendConnectNativeInferenceSnapshot(
+                false,
+                0m,
+                null,
+                "read_only_content_binding_required",
+                composed.EvidenceCount,
+                "LEGEND selected a governed result frame that explicitly requires one Founder-authorized read-only content binding.",
+                false,
+                "Unavailable",
+                "Unavailable",
+                composed.ReadOnlyContentRequest);
+        }
         if (string.Equals(composed.State, LegendSemanticTransitionInference.Supported, StringComparison.Ordinal) &&
             !string.IsNullOrWhiteSpace(composed.RealizedText))
         {
@@ -382,12 +437,16 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
                 composed.RealizedText,
                 "semantic_transition_governed_composed",
                 composed.EvidenceCount,
-                articulationMode == "OriginalComposition"
-                    ? $"LEGEND composed governed meaning, selected {evidenceStandard} evidence, and articulated original wording from governed semantic anchors."
-                    : $"LEGEND composed governed meaning, selected {evidenceStandard} evidence, and articulated the canonical endpoint authorized by that same transition.",
+                composed.ContentBindingProvenance is { Count: > 0 }
+                    ? $"LEGEND composed governed meaning, selected {evidenceStandard} evidence, bound current content through the Founder-authorized read-only tool authority, and preserved its receipt provenance during {articulationMode}."
+                    : articulationMode == "OriginalComposition"
+                        ? $"LEGEND composed governed meaning, selected {evidenceStandard} evidence, and articulated original wording from governed semantic anchors."
+                        : $"LEGEND composed governed meaning, selected {evidenceStandard} evidence, and articulated the canonical endpoint authorized by that same transition.",
                 false,
                 evidenceStandard,
-                articulationMode);
+                articulationMode,
+                null,
+                composed.ContentBindingProvenance);
         }
 
         // Existing explicit frame evidence remains governed by the same

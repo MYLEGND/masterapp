@@ -302,6 +302,38 @@ public sealed class LegendFounderAiConversationService
                     discourseState,
                     sourceLanguageCode,
                     effectiveToken);
+                if (nativeInference.ReadOnlyContentRequest is { } readRequest)
+                {
+                    var binding = await _toolAuthority.BindReadOnlyResultAsync(
+                        founder,
+                        readRequest,
+                        effectiveToken);
+                    if (!binding.Succeeded || binding.Receipt is null)
+                    {
+                        nativeInference = new LegendConnectNativeInferenceSnapshot(
+                            false,
+                            0m,
+                            null,
+                            binding.ReasonCode,
+                            nativeInference.EvidenceCount,
+                            "The selected governed result frame required a Founder-authorized read-only value, but the existing Founder tool authority did not return an admissible zero-write receipt.",
+                            false,
+                            "Unavailable",
+                            "Unavailable");
+                    }
+                    else
+                    {
+                        nativeInference = await _legend
+                            .TryInferConversationWithReadOnlyContentAsync(
+                                founder,
+                                conversation[^1].Content ?? string.Empty,
+                                context,
+                                discourseState,
+                                sourceLanguageCode,
+                                binding.Receipt,
+                                effectiveToken);
+                    }
+                }
             }
             catch (OperationCanceledException)
                 when (cancellationToken.IsCancellationRequested)
@@ -315,12 +347,12 @@ public sealed class LegendFounderAiConversationService
             catch (Exception exception)
             {
                 // Native inference is strictly fail-closed. A read failure
-                // cannot manufacture an answer or suppress the existing
-                // external escalation path.
+                // cannot manufacture an answer, and any fail-closed boundary
+                // already returned by the native authority remains in force.
                 nativeFailureDetail = exception.ToString();
                 _logger.LogWarning(
                     exception,
-                    "LEGEND native conversational inference was unavailable; escalating without a native answer.");
+                    "LEGEND native conversational inference was unavailable; preserving its governed escalation boundary.");
             }
             finally
             {

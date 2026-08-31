@@ -246,6 +246,31 @@ public sealed class FounderLegendConnectService
     }
 
     /// <summary>
+    /// Founder-gated completion of the same native inference after the
+    /// existing Founder tool authority produced one proof-carrying read-only
+    /// receipt. The operations facade revalidates the selected result frame.
+    /// </summary>
+    internal async Task<LegendConnectNativeInferenceSnapshot>
+        TryInferConversationWithReadOnlyContentAsync(
+            ClaimsPrincipal user,
+            string input,
+            IReadOnlyList<LegendConnectConversationContextItem> context,
+            LegendConnectDiscourseStateSnapshot? discourseState,
+            string sourceLanguageCode,
+            LegendConnectReadOnlyContentBindingReceipt receipt,
+            CancellationToken cancellationToken = default)
+    {
+        _ = await ResolveFounderActorAsync(user, cancellationToken);
+        return await _operations.TryInferConversationWithReadOnlyContentAsync(
+            input,
+            context,
+            discourseState,
+            receipt,
+            cancellationToken,
+            sourceLanguageCode);
+    }
+
+    /// <summary>
     /// Defense-in-depth authorization for Founder conversation work that must
     /// happen before a provider-backed language-identification read. This is
     /// the same account reconciliation authority used by every Founder LEGEND

@@ -112,6 +112,115 @@ public sealed class LegendConnectSemanticSpanGroundingTests
     }
 
     [Fact]
+    public async Task NativeConversation_BindsExplicitReadOnlyResultThroughProofCarryingReceipt()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var fixture = CreateFixture(db);
+        const string requestText = "What is the current open issue count?";
+
+        for (var support = 1; support <= 3; support++)
+        {
+            var submitted = await fixture.Curriculum.SubmitFounderEnglishBatchAsync(
+                ReadOnlyContentBindingFamily(support));
+            Assert.True(submitted.Succeeded, submitted.Message);
+        }
+
+        var pending = await fixture.Operations.TryInferConversationWithDiscourseAsync(
+            requestText,
+            [],
+            new LegendConnectDiscourseStateSnapshot([]));
+        var readRequest = Assert.IsType<LegendConnectReadOnlyContentBindingRequest>(
+            pending.ReadOnlyContentRequest);
+        Assert.False(pending.Supported);
+        Assert.False(pending.RequiresEscalation);
+        Assert.Equal("read_only_content_binding_required", pending.ReasonCode);
+        Assert.Equal("legend_translation_quality", readRequest.ToolName);
+        Assert.Equal("needsReviewCount", readRequest.ValuePath);
+
+        var executedUtc = DateTime.UtcNow;
+        var receipt = new LegendConnectReadOnlyContentBindingReceipt(
+            readRequest.RequestIdentity,
+            readRequest.TransitionSignature,
+            readRequest.ResultSemanticFrameSignature,
+            readRequest.ToolName,
+            LegendLanguageIdentity.TextHash(readRequest.ArgumentsJson),
+            readRequest.ValuePath,
+            readRequest.SemanticVariable,
+            readRequest.ResultDimension,
+            "4458",
+            LegendLanguageIdentity.TextHash("{\"needsReviewCount\":4458}"),
+            executedUtc,
+            executedUtc,
+            LegendConnectReadOnlyContentBindingContracts.Provenance,
+            IsReadOnly: true,
+            ZeroWrite: true);
+
+        var completed = await fixture.Operations.TryInferConversationWithReadOnlyContentAsync(
+            requestText,
+            [],
+            new LegendConnectDiscourseStateSnapshot([]),
+            receipt);
+
+        Assert.True(completed.Supported, completed.ReasonCode);
+        Assert.Equal("Open issues 4458.", completed.Answer);
+        var provenance = Assert.Single(completed.ContentBindingProvenance!);
+        Assert.Equal(LegendConnectReadOnlyContentBindingContracts.Provenance, provenance.Provenance);
+        Assert.Equal(readRequest.RequestIdentity, provenance.RequestIdentity);
+        Assert.True(provenance.IsReadOnly);
+        Assert.True(provenance.ZeroWrite);
+    }
+
+    [Fact]
+    public async Task NativeConversation_RejectsAStaleReadOnlyContentReceipt()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var fixture = CreateFixture(db);
+        const string requestText = "What is the current open issue count?";
+
+        for (var support = 1; support <= 3; support++)
+        {
+            var submitted = await fixture.Curriculum.SubmitFounderEnglishBatchAsync(
+                ReadOnlyContentBindingFamily(support));
+            Assert.True(submitted.Succeeded, submitted.Message);
+        }
+
+        var pending = await fixture.Operations.TryInferConversationWithDiscourseAsync(
+            requestText,
+            [],
+            new LegendConnectDiscourseStateSnapshot([]));
+        var readRequest = Assert.IsType<LegendConnectReadOnlyContentBindingRequest>(
+            pending.ReadOnlyContentRequest);
+        var staleUtc = DateTime.UtcNow.AddMinutes(-10);
+        var staleReceipt = new LegendConnectReadOnlyContentBindingReceipt(
+            readRequest.RequestIdentity,
+            readRequest.TransitionSignature,
+            readRequest.ResultSemanticFrameSignature,
+            readRequest.ToolName,
+            LegendLanguageIdentity.TextHash(readRequest.ArgumentsJson),
+            readRequest.ValuePath,
+            readRequest.SemanticVariable,
+            readRequest.ResultDimension,
+            "4458",
+            "stale-output-hash",
+            staleUtc,
+            staleUtc,
+            LegendConnectReadOnlyContentBindingContracts.Provenance,
+            IsReadOnly: true,
+            ZeroWrite: true);
+
+        var completed = await fixture.Operations.TryInferConversationWithReadOnlyContentAsync(
+            requestText,
+            [],
+            new LegendConnectDiscourseStateSnapshot([]),
+            staleReceipt);
+
+        Assert.False(completed.Supported);
+        Assert.Equal("read_only_content_binding_stale", completed.ReasonCode);
+        Assert.False(completed.RequiresEscalation);
+        Assert.Null(completed.Answer);
+    }
+
+    [Fact]
     public async Task NativeRealization_EnforcesExactGovernedSentenceCount()
     {
         await using var db = ControllerTestHelpers.BuildDb();
@@ -3214,6 +3323,87 @@ public sealed class LegendConnectSemanticSpanGroundingTests
                             ["conversation_function"] = resultFunction
                         }))
             ]);
+
+    private static LegendConnectCurriculumBatchSubmission ReadOnlyContentBindingFamily(
+        int support)
+    {
+        var countSurface = support switch
+        {
+            1 => "two",
+            2 => "four",
+            _ => "six"
+        };
+        var countValue = (support * 2).ToString(
+            System.Globalization.CultureInfo.InvariantCulture);
+        var resultVariations = new Dictionary<string, string>
+        {
+            ["response_kind"] = "current_issue_count",
+            ["current_issue_count"] = countValue,
+            ["content_binding_authority"] = "legend_founder_tool_authority",
+            ["content_binding_access"] = "read_only",
+            ["content_binding_tool"] = "legend_translation_quality",
+            ["content_binding_arguments"] = "{}",
+            ["content_binding_value_path"] = "needsReviewCount",
+            ["content_binding_max_age_seconds"] = "60"
+        };
+        var resultFrame = new Dictionary<string, string>(resultVariations)
+        {
+            ["current_issue_count"] = "$IssueCount"
+        };
+
+        return new LegendConnectCurriculumBatchSubmission(
+            $"response.read-only-content.{support}",
+            "Founder-governed read-only operational content binding",
+            [
+                new LegendConnectCurriculumExampleSubmission(
+                    $"Founder current issue request {support}: What is the current open issue count?",
+                    new Dictionary<string, string>
+                    {
+                        ["request_surface"] = "What is the current open issue count?",
+                        ["conversation_function"] = "current_issue_count_request"
+                    },
+                    new LegendConnectMeaningGraphSubmission(
+                    [
+                        new LegendConnectMeaningNodeSubmission(
+                            "function",
+                            "conversation_function",
+                            "current_issue_count_request",
+                            "What is the current open issue count")
+                    ],
+                    [])),
+                new LegendConnectCurriculumExampleSubmission(
+                    $"Open issues {countSurface}.",
+                    resultVariations,
+                    new LegendConnectMeaningGraphSubmission(
+                    [
+                        new LegendConnectMeaningNodeSubmission(
+                            "label",
+                            "response_kind",
+                            "current_issue_count",
+                            "Open issues"),
+                        new LegendConnectMeaningNodeSubmission(
+                            "count",
+                            "current_issue_count",
+                            countValue,
+                            countSurface)
+                    ],
+                    [new LegendConnectMeaningRelationSubmission(
+                        "label", "reports", "count")]))
+            ],
+            [
+                new LegendConnectSemanticTransitionSubmission(
+                    new LegendConnectSemanticFrameSubmission(
+                        new Dictionary<string, string>
+                        {
+                            ["conversation_function"] = "current_issue_count_request"
+                        }),
+                    new LegendConnectSemanticFrameSubmission(resultFrame))
+            ],
+            support == 1
+                ? [new LegendConnectSemanticSpanGroundingSubmission(
+                    "conversation_function", "request_surface")]
+                : []);
+    }
 
     private static LegendConnectCurriculumBatchSubmission PresentationConstraintFamily(
         string profile,

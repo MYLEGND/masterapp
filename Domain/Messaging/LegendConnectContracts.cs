@@ -936,6 +936,57 @@ public sealed record LegendConnectContentBoundResponseMeaningPlanResult(
     LegendConnectContentBoundResponseMeaningPlanSnapshot? Plan);
 
 /// <summary>
+/// A governed result frame's bounded request for one current, read-only value.
+/// It is not a general tool call: the selected transition fixes the tool,
+/// arguments, value path, variable, result dimension, and freshness bound.
+/// </summary>
+public sealed record LegendConnectReadOnlyContentBindingRequest(
+    string RequestIdentity,
+    string TransitionSignature,
+    string ResultSemanticFrameSignature,
+    string ToolName,
+    string ArgumentsJson,
+    string ValuePath,
+    string? ObservedUtcPath,
+    int MaximumAgeSeconds,
+    string SemanticVariable,
+    string ResultDimension);
+
+/// <summary>
+/// Proof returned by the existing Founder tool authority after one authorized,
+/// zero-write read. Only a bounded scalar is carried into native realization;
+/// the complete tool payload remains outside the reasoning executor.
+/// </summary>
+public sealed record LegendConnectReadOnlyContentBindingReceipt(
+    string RequestIdentity,
+    string TransitionSignature,
+    string ResultSemanticFrameSignature,
+    string ToolName,
+    string ArgumentsHash,
+    string ValuePath,
+    string SemanticVariable,
+    string ResultDimension,
+    string SemanticValue,
+    string OutputHash,
+    DateTime ObservedUtc,
+    DateTime ExecutedUtc,
+    string Provenance,
+    bool IsReadOnly,
+    bool ZeroWrite);
+
+public sealed record LegendConnectReadOnlyContentBindingResult(
+    bool Succeeded,
+    string ReasonCode,
+    LegendConnectReadOnlyContentBindingReceipt? Receipt);
+
+public static class LegendConnectReadOnlyContentBindingContracts
+{
+    public const string Provenance = "FounderAuthorizedReadOnlyOperational";
+    public const int MaximumScalarCharacters = 160;
+    public const int MaximumAgeSeconds = 300;
+}
+
+/// <summary>
 /// The governed result of one native LEGEND conversational inference attempt.
 /// A successful result is backed only by canonical, contradiction-free
 /// evidence; all other states explicitly require escalation.
@@ -949,7 +1000,9 @@ public sealed record LegendConnectNativeInferenceSnapshot(
     string AuthoritySummary,
     bool RequiresEscalation,
     string EvidenceStandard = "Unavailable",
-    string ArticulationMode = "Unavailable");
+    string ArticulationMode = "Unavailable",
+    LegendConnectReadOnlyContentBindingRequest? ReadOnlyContentRequest = null,
+    IReadOnlyList<LegendConnectReadOnlyContentBindingReceipt>? ContentBindingProvenance = null);
 
 /// <summary>
 /// The sole read/write authority for Legend Connect operations. Presentation
@@ -1036,6 +1089,21 @@ public interface ILegendConnectOperations
         LegendConnectDiscourseStateSnapshot? discourseState,
         CancellationToken cancellationToken = default,
         string sourceLanguageCode = "en");
+
+    /// <summary>
+    /// Completes the same native inference path with one proof-carrying receipt
+    /// from the existing Founder read-only tool authority. The curriculum
+    /// authority reselects and validates the exact declared frame; this is not
+    /// a second inference or tool execution path.
+    /// </summary>
+    Task<LegendConnectNativeInferenceSnapshot>
+        TryInferConversationWithReadOnlyContentAsync(
+            string input,
+            IReadOnlyList<LegendConnectConversationContextItem> context,
+            LegendConnectDiscourseStateSnapshot? discourseState,
+            LegendConnectReadOnlyContentBindingReceipt receipt,
+            CancellationToken cancellationToken = default,
+            string sourceLanguageCode = "en");
 
     Task<LegendConnectResponseMeaningPlanResult> TryPlanConversationAsync(
         string input,

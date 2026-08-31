@@ -432,6 +432,195 @@ public sealed class LegendFounderAiModeIsolationTests
     }
 
     [Fact]
+    public async Task NativeReadOnlyContentBinding_UsesFounderToolAuthorityAndProducesZeroWriteProvenance()
+    {
+        using var founderEnvironment = new FounderEnvironmentScope();
+        await using var db = ControllerTestHelpers.BuildDb();
+        var founder = await AddFounderProfileAsync(db);
+        var operations = new Mock<ILegendConnectOperations>(MockBehavior.Strict);
+        var readRequest = ReadOnlyContentRequest();
+        operations
+            .Setup(operation => operation.TryInferConversationWithDiscourseAsync(
+                "What is the current open issue count?",
+                It.IsAny<IReadOnlyList<LegendConnectConversationContextItem>>(),
+                It.IsAny<LegendConnectDiscourseStateSnapshot?>(),
+                It.IsAny<CancellationToken>(),
+                "en"))
+            .ReturnsAsync(new LegendConnectNativeInferenceSnapshot(
+                false,
+                0m,
+                null,
+                "read_only_content_binding_required",
+                3,
+                "One governed read is required.",
+                false,
+                ReadOnlyContentRequest: readRequest));
+        operations
+            .Setup(operation => operation.GetTranslationQualityAsync(
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new LegendConnectTranslationQualitySnapshot(
+                4_458,
+                2_999,
+                300,
+                12,
+                8_796,
+                []));
+        LegendConnectReadOnlyContentBindingReceipt? observedReceipt = null;
+        operations
+            .Setup(operation => operation.TryInferConversationWithReadOnlyContentAsync(
+                "What is the current open issue count?",
+                It.IsAny<IReadOnlyList<LegendConnectConversationContextItem>>(),
+                It.IsAny<LegendConnectDiscourseStateSnapshot?>(),
+                It.IsAny<LegendConnectReadOnlyContentBindingReceipt>(),
+                It.IsAny<CancellationToken>(),
+                "en"))
+            .Callback((string _input,
+                IReadOnlyList<LegendConnectConversationContextItem> _context,
+                LegendConnectDiscourseStateSnapshot? _discourseState,
+                LegendConnectReadOnlyContentBindingReceipt receipt,
+                CancellationToken _cancellationToken,
+                string _language) => observedReceipt = receipt)
+            .ReturnsAsync(() => new LegendConnectNativeInferenceSnapshot(
+                true,
+                1m,
+                "Open issues 4,458.",
+                "semantic_transition_governed_composed",
+                4,
+                "Founder-authorized read-only content was bound with provenance.",
+                false,
+                "HigherStandard",
+                "OriginalComposition",
+                ContentBindingProvenance: observedReceipt is null ? null : [observedReceipt]));
+        var handler = new FounderAiScenarioHandler();
+        var service = CreateService(db, operations.Object, handler);
+
+        var response = await service.ReplyAsync(
+            founder,
+            Request(
+                "legend",
+                "What is the current open issue count?",
+                nativeOnly: true));
+
+        Assert.True(response.Succeeded, Describe(response));
+        Assert.Equal("native_response", response.Stage);
+        Assert.Equal("LegendAi", response.ResponseAuthority);
+        Assert.Equal("Open issues 4,458.", response.Message);
+        Assert.Equal(0, handler.RequestCount);
+        var receipt = Assert.IsType<LegendConnectReadOnlyContentBindingReceipt>(observedReceipt);
+        Assert.Equal("4458", receipt.SemanticValue);
+        Assert.Equal(LegendConnectReadOnlyContentBindingContracts.Provenance, receipt.Provenance);
+        Assert.True(receipt.IsReadOnly);
+        Assert.True(receipt.ZeroWrite);
+        var permittedReads = new HashSet<string>(StringComparer.Ordinal)
+        {
+            nameof(ILegendConnectOperations.AnalyzeReusableMeaningGraphAsync),
+            nameof(ILegendConnectOperations.TryInferConversationWithDiscourseAsync),
+            nameof(ILegendConnectOperations.GetTranslationQualityAsync),
+            nameof(ILegendConnectOperations.TryInferConversationWithReadOnlyContentAsync)
+        };
+        Assert.All(operations.Invocations, invocation =>
+            Assert.True(
+                permittedReads.Contains(invocation.Method.Name),
+                $"Unexpected non-read operation: {invocation.Method.Name}"));
+    }
+
+    [Fact]
+    public async Task NativeReadOnlyContentBinding_DoesNotExecuteBeforeFounderAuthorization()
+    {
+        using var founderEnvironment = new FounderEnvironmentScope();
+        await using var db = ControllerTestHelpers.BuildDb();
+        var operations = new Mock<ILegendConnectOperations>(MockBehavior.Strict);
+        var legend = new FounderLegendConnectService(
+            operations.Object,
+            new AgentProfileAccessResolver(db));
+        var authority = new LegendFounderToolAuthority(legend, null);
+
+        await Assert.ThrowsAsync<ForbidResultException>(() =>
+            authority.BindReadOnlyResultAsync(
+                ControllerTestHelpers.BuildUser("not-the-founder"),
+                ReadOnlyContentRequest(),
+                CancellationToken.None));
+
+        Assert.Empty(operations.Invocations);
+    }
+
+    [Fact]
+    public async Task NativeReadOnlyContentBinding_RejectsUnavailableAndNonPermittedTools()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var operations = new Mock<ILegendConnectOperations>(MockBehavior.Strict);
+        var authority = new LegendFounderToolAuthority(
+            new FounderLegendConnectService(
+                operations.Object,
+                new AgentProfileAccessResolver(db)),
+            null);
+
+        Assert.True(authority.IsNativeContentBindingRead("legend_translation_quality"));
+        Assert.False(authority.IsNativeContentBindingRead("legend_submit_founder_curriculum"));
+        Assert.False(authority.IsNativeContentBindingRead("legend_inspect_repository"));
+        Assert.False(authority.IsNativeContentBindingRead("legend_provider_capacity"));
+
+        var unavailable = await authority.BindReadOnlyResultAsync(
+            ControllerTestHelpers.BuildUser(),
+            ReadOnlyContentRequest() with { ToolName = "legend_unknown_read" },
+            CancellationToken.None);
+        var mutation = await authority.BindReadOnlyResultAsync(
+            ControllerTestHelpers.BuildUser(),
+            ReadOnlyContentRequest() with { ToolName = "legend_submit_founder_curriculum" },
+            CancellationToken.None);
+        var repository = await authority.BindReadOnlyResultAsync(
+            ControllerTestHelpers.BuildUser(),
+            ReadOnlyContentRequest() with { ToolName = "legend_inspect_repository" },
+            CancellationToken.None);
+        var malformedArguments = await authority.BindReadOnlyResultAsync(
+            ControllerTestHelpers.BuildUser(),
+            ReadOnlyContentRequest() with { ArgumentsJson = "{\"extra\":true}" },
+            CancellationToken.None);
+
+        Assert.Equal("read_only_content_binding_tool_unavailable", unavailable.ReasonCode);
+        Assert.Equal("read_only_content_binding_tool_not_read_only", mutation.ReasonCode);
+        Assert.Equal("read_only_content_binding_tool_not_permitted", repository.ReasonCode);
+        Assert.Equal(
+            "read_only_content_binding_arguments_invalid",
+            malformedArguments.ReasonCode);
+        Assert.Empty(operations.Invocations);
+    }
+
+    [Fact]
+    public void NativeReadOnlyContentBinding_RejectsMalformedAndStaleToolOutput()
+    {
+        var request = ReadOnlyContentRequest();
+        var now = DateTime.UtcNow;
+
+        Assert.False(LegendFounderToolAuthority.TryCreateReadOnlyContentBindingReceipt(
+            request,
+            "{\"needsReviewCount\":{\"unexpected\":4458}}",
+            now,
+            out var malformed,
+            out var malformedReason));
+        Assert.Null(malformed);
+        Assert.Equal("read_only_content_binding_output_malformed", malformedReason);
+
+        var freshnessRequest = request with
+        {
+            ObservedUtcPath = "refreshedUtc",
+            MaximumAgeSeconds = 30
+        };
+        Assert.False(LegendFounderToolAuthority.TryCreateReadOnlyContentBindingReceipt(
+            freshnessRequest,
+            JsonSerializer.Serialize(new
+            {
+                needsReviewCount = 4458,
+                refreshedUtc = now.AddMinutes(-5)
+            }),
+            now,
+            out var stale,
+            out var staleReason));
+        Assert.Null(stale);
+        Assert.Equal("read_only_content_binding_stale", staleReason);
+    }
+
+    [Fact]
     public async Task NativeGap_AutomaticallyRetainsOneMachineProposalWithoutFounderApproval()
     {
         var candidateId = Guid.Parse("11111111-1111-1111-1111-111111111111");
@@ -1123,6 +1312,19 @@ public sealed class LegendFounderAiModeIsolationTests
             false,
             "HigherStandard",
             "OriginalComposition");
+
+    private static LegendConnectReadOnlyContentBindingRequest ReadOnlyContentRequest() =>
+        new(
+            "read-request-identity",
+            "governed-transition-signature",
+            "governed-result-frame-signature",
+            "legend_translation_quality",
+            "{}",
+            "needsReviewCount",
+            null,
+            60,
+            "$issuecount",
+            "current_issue_count");
 
     private static LegendFounderAiChatRequest Request(
         string? mode,
