@@ -122,6 +122,8 @@ public sealed class LegendFounderAiConversationRoutingTests
         Assert.Contains("must execute the matching existing governed training tool", instructions);
         Assert.Contains("legend_submit_founder_curriculum", instructions);
         Assert.Contains("legend_submit_machine_learning_candidate", instructions);
+        Assert.Contains("same_language_semantic", instructions);
+        Assert.Contains("reusable_semantic", instructions);
         Assert.DoesNotContain("may autonomously retain", instructions, StringComparison.OrdinalIgnoreCase);
     }
 

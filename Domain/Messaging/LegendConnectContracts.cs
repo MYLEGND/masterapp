@@ -43,6 +43,10 @@ public interface ILegendLanguageRegistry
         string? language,
         CancellationToken cancellationToken = default);
 
+    Task<LegendLanguageDefinitionSnapshot?> GetEnabledLearningLanguageAsync(
+        string? language,
+        CancellationToken cancellationToken = default);
+
     Task<IReadOnlyList<LegendLanguageDefinitionSnapshot>> ListEnabledTranslationLanguagesAsync(
         CancellationToken cancellationToken = default);
 
@@ -743,7 +747,41 @@ public sealed record LegendConnectMachineTeachingSubmission(
     string Rationale,
     decimal Confidence,
     IReadOnlyList<LegendConnectMachineTeachingExampleSubmission> Examples,
-    IReadOnlyList<LegendConnectSemanticTransitionSubmission>? SemanticTransitions = null);
+    IReadOnlyList<LegendConnectSemanticTransitionSubmission>? SemanticTransitions = null,
+    string CapabilityIdentity = TranslationCapability,
+    string CategoryIdentity = ReusableSemanticCategory)
+{
+    public const string TranslationCapability = "translation";
+    public const string SameLanguageSemanticCapability =
+        "same_language_semantic";
+    public const string ReusableSemanticCategory =
+        "reusable_semantic";
+
+    public static bool IsSupportedIdentity(
+        string? capabilityIdentity,
+        string? categoryIdentity,
+        bool sameLanguage) =>
+        string.Equals(
+            categoryIdentity,
+            ReusableSemanticCategory,
+            StringComparison.Ordinal) &&
+        (
+            sameLanguage
+                ? string.Equals(
+                    capabilityIdentity,
+                    SameLanguageSemanticCapability,
+                    StringComparison.Ordinal)
+                : string.Equals(
+                    capabilityIdentity,
+                    TranslationCapability,
+                    StringComparison.Ordinal)
+        );
+
+    public static string CandidateCategoryIdentity(
+        string capabilityIdentity,
+        string categoryIdentity) =>
+        capabilityIdentity + ":" + categoryIdentity;
+}
 
 public sealed record LegendConnectMachineTeachingSubmissionResult(
     bool Succeeded,

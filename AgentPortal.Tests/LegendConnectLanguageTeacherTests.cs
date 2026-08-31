@@ -138,6 +138,8 @@ public sealed class LegendConnectLanguageTeacherTests
 
         Assert.Equal(2, family.Examples.Count);
         Assert.Equal(0.94m, family.Confidence);
+        Assert.Equal("translation", family.CapabilityIdentity);
+        Assert.Equal("reusable_semantic", family.CategoryIdentity);
 
         Assert.Equal(1, handler.RequestCount);
         Assert.Equal(
@@ -193,6 +195,14 @@ public sealed class LegendConnectLanguageTeacherTests
             format
                 .GetProperty("name")
                 .GetString());
+        using var input = JsonDocument.Parse(
+            body.RootElement.GetProperty("input").GetString()!);
+        Assert.Equal(
+            "translation",
+            input.RootElement.GetProperty("capability_identity").GetString());
+        Assert.Equal(
+            "reusable_semantic",
+            input.RootElement.GetProperty("category_identity").GetString());
     }
 
     [Fact]
@@ -288,6 +298,14 @@ public sealed class LegendConnectLanguageTeacherTests
                 .GetProperty("format")
                 .GetProperty("name")
                 .GetString());
+        using var input = JsonDocument.Parse(
+            body.RootElement.GetProperty("input").GetString()!);
+        Assert.Equal(
+            "translation",
+            input.RootElement.GetProperty("capability_identity").GetString());
+        Assert.Equal(
+            "reusable_semantic",
+            input.RootElement.GetProperty("category_identity").GetString());
     }
 
     [Fact]

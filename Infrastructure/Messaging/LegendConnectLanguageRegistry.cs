@@ -29,7 +29,28 @@ internal sealed class LegendLanguageRegistry : ILegendLanguageRegistry
 
     public async Task<LegendLanguageDefinitionSnapshot?> GetLanguageAsync(
         string? language,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default) =>
+        await ResolveEnabledLanguageAsync(
+            language,
+            requireTranslation: true,
+            requireLearning: false,
+            cancellationToken);
+
+    public async Task<LegendLanguageDefinitionSnapshot?>
+        GetEnabledLearningLanguageAsync(
+            string? language,
+            CancellationToken cancellationToken = default) =>
+        await ResolveEnabledLanguageAsync(
+            language,
+            requireTranslation: false,
+            requireLearning: true,
+            cancellationToken);
+
+    private async Task<LegendLanguageDefinitionSnapshot?> ResolveEnabledLanguageAsync(
+        string? language,
+        bool requireTranslation,
+        bool requireLearning,
+        CancellationToken cancellationToken)
     {
         var candidate = language?.Trim();
         if (string.IsNullOrWhiteSpace(candidate))
@@ -40,7 +61,10 @@ internal sealed class LegendLanguageRegistry : ILegendLanguageRegistry
         var baseCode = hasNormalizedCode ? LegendLanguageIdentity.BaseCode(normalized) : string.Empty;
         var definition = await _db.Set<LegendLanguageDefinition>()
             .AsNoTracking()
-            .Where(item => item.IsEnabled && item.IsTranslationEnabled)
+            .Where(item =>
+                item.IsEnabled &&
+                (!requireTranslation || item.IsTranslationEnabled) &&
+                (!requireLearning || item.IsLearningEnabled))
             .Where(item =>
                 item.CanonicalName == candidate ||
                 item.NativeName == candidate ||

@@ -98,7 +98,9 @@ public sealed class LegendConnectSystemValidatedMachineCurriculumTests
             TargetLanguageCode = "es",
             SourceText = "Hello.",
             SourceTextHash = LegendLanguageIdentity.TextHash("Hello."),
-            Category = "Conversation",
+            Category = LegendConnectMachineTeachingSubmission.CandidateCategoryIdentity(
+                LegendConnectMachineTeachingSubmission.TranslationCapability,
+                LegendConnectMachineTeachingSubmission.ReusableSemanticCategory),
             Provenance = "MachineConversation",
             IsApproved = false,
             Priority = 0,

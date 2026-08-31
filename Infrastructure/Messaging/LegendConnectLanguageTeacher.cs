@@ -50,14 +50,22 @@ internal sealed record LegendLanguageTeacherFamilyProposal(
     string Rationale,
     decimal Confidence,
     IReadOnlyList<LegendLanguageTeacherExampleProposal> Examples,
-    IReadOnlyList<LegendConnectSemanticTransitionSubmission>? SemanticTransitions = null);
+    IReadOnlyList<LegendConnectSemanticTransitionSubmission>? SemanticTransitions = null,
+    string CapabilityIdentity =
+        LegendConnectMachineTeachingSubmission.TranslationCapability,
+    string CategoryIdentity =
+        LegendConnectMachineTeachingSubmission.ReusableSemanticCategory);
 
 internal sealed record LegendLanguageTeacherProposalRequest(
     string SourceLanguageCode,
     string TargetLanguageCode,
     string LearningGoal,
     IReadOnlyList<LegendLanguageTeacherEvidence> Evidence,
-    int MaximumFamilies = 2);
+    int MaximumFamilies = 2,
+    string CapabilityIdentity =
+        LegendConnectMachineTeachingSubmission.TranslationCapability,
+    string CategoryIdentity =
+        LegendConnectMachineTeachingSubmission.ReusableSemanticCategory);
 
 internal sealed record LegendLanguageTeacherProposalResult(
     bool Succeeded,
@@ -123,12 +131,13 @@ Your job is to propose controlled linguistic teaching material that may help clo
 
 Rules:
 - Treat all supplied evidence as observations with the provenance and quality states shown.
+- Preserve the supplied capability_identity and category_identity exactly.
 - Never claim that you are Founder authority, human verification, system validation, or production authority.
 - Never upgrade evidence quality.
 - Never invent a Founder approval.
 - Produce controlled contrasts rather than isolated canned sentences.
 - Keep semantic components explicit and tied to material visibly realized in each source example.
-- Preserve the requested source-to-target language direction.
+- Preserve the requested capability: translation uses a distinct source-to-target direction, while same_language_semantic keeps one governed language identity and no translation target text.
 - If a target realization is not supportable with high confidence, use null rather than inventing one.
 - Do not include private facts or personally identifying information.
 - Return only the requested structured result.
@@ -140,7 +149,7 @@ You are the independent adversarial critic for a non-authoritative LEGEND langua
 Evaluate the proposed family against the supplied governed evidence and general linguistic coherence.
 
 Approve only when:
-- the requested language direction is preserved;
+- the requested translation or same-language semantic capability identity is preserved;
 - examples form useful controlled contrasts;
 - semantic component labels agree with what is visibly realized;
 - proposed target text is linguistically coherent when supplied;
@@ -332,6 +341,8 @@ Return only the requested structured result.
         {
             source_language_code = normalized.SourceLanguageCode,
             target_language_code = normalized.TargetLanguageCode,
+            capability_identity = normalized.CapabilityIdentity,
+            category_identity = normalized.CategoryIdentity,
             learning_goal = normalized.LearningGoal,
             maximum_families = normalized.MaximumFamilies,
             evidence = normalized.Evidence.Select(item => new
@@ -412,6 +423,10 @@ Return only the requested structured result.
                 normalized.Context.SourceLanguageCode,
             target_language_code =
                 normalized.Context.TargetLanguageCode,
+            capability_identity =
+                normalized.Context.CapabilityIdentity,
+            category_identity =
+                normalized.Context.CategoryIdentity,
             learning_goal =
                 normalized.Context.LearningGoal,
             evidence =
@@ -426,6 +441,10 @@ Return only the requested structured result.
             proposal = new
             {
                 family_key = normalized.Proposal.FamilyKey,
+                capability_identity =
+                    normalized.Proposal.CapabilityIdentity,
+                category_identity =
+                    normalized.Proposal.CategoryIdentity,
                 semantic_category =
                     normalized.Proposal.SemanticCategory,
                 rationale = normalized.Proposal.Rationale,
@@ -732,6 +751,21 @@ Return only the requested structured result.
                 35,
                 out var targetLanguage) ||
             !TryNormalizeRequired(
+                request.CapabilityIdentity,
+                40,
+                out var capabilityIdentity) ||
+            !TryNormalizeRequired(
+                request.CategoryIdentity,
+                40,
+                out var categoryIdentity) ||
+            !LegendConnectMachineTeachingSubmission.IsSupportedIdentity(
+                capabilityIdentity,
+                categoryIdentity,
+                string.Equals(
+                    sourceLanguage,
+                    targetLanguage,
+                    StringComparison.OrdinalIgnoreCase)) ||
+            !TryNormalizeRequired(
                 request.LearningGoal,
                 500,
                 out var learningGoal) ||
@@ -792,7 +826,9 @@ Return only the requested structured result.
                 targetLanguage,
                 learningGoal,
                 evidence,
-                request.MaximumFamilies);
+                request.MaximumFamilies,
+                capabilityIdentity,
+                categoryIdentity);
 
         return true;
     }
@@ -808,7 +844,15 @@ Return only the requested structured result.
                 out var context) ||
             !TryNormalizeFamilyProposal(
                 request.Proposal,
-                out var proposal))
+                out var proposal) ||
+            !string.Equals(
+                proposal.CapabilityIdentity,
+                context.CapabilityIdentity,
+                StringComparison.Ordinal) ||
+            !string.Equals(
+                proposal.CategoryIdentity,
+                context.CategoryIdentity,
+                StringComparison.Ordinal))
         {
             return false;
         }
@@ -835,6 +879,26 @@ Return only the requested structured result.
                 proposal.SemanticCategory,
                 120,
                 out var semanticCategory) ||
+            !TryNormalizeRequired(
+                proposal.CapabilityIdentity,
+                40,
+                out var capabilityIdentity) ||
+            !TryNormalizeRequired(
+                proposal.CategoryIdentity,
+                40,
+                out var categoryIdentity) ||
+            !string.Equals(
+                categoryIdentity,
+                LegendConnectMachineTeachingSubmission.ReusableSemanticCategory,
+                StringComparison.Ordinal) ||
+            (!string.Equals(
+                 capabilityIdentity,
+                 LegendConnectMachineTeachingSubmission.TranslationCapability,
+                 StringComparison.Ordinal) &&
+             !string.Equals(
+                 capabilityIdentity,
+                 LegendConnectMachineTeachingSubmission.SameLanguageSemanticCapability,
+                 StringComparison.Ordinal)) ||
             !TryNormalizeRequired(
                 proposal.Rationale,
                 1000,
@@ -864,6 +928,11 @@ Return only the requested structured result.
                     example.TargetText,
                     MaximumTextLength,
                     out var targetText) ||
+                (string.Equals(
+                     capabilityIdentity,
+                     LegendConnectMachineTeachingSubmission.SameLanguageSemanticCapability,
+                     StringComparison.Ordinal) &&
+                 targetText is not null) ||
                 example.Components is null ||
                 example.Components.Count is < 1
                     or > MaximumComponentsPerExample)
@@ -919,7 +988,10 @@ Return only the requested structured result.
                 semanticCategory,
                 rationale,
                 proposal.Confidence,
-                examples);
+                examples,
+                proposal.SemanticTransitions,
+                capabilityIdentity,
+                categoryIdentity);
 
         return true;
     }

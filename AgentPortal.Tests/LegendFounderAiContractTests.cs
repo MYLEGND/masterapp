@@ -678,6 +678,46 @@ public sealed class LegendFounderAiContractTests
     }
 
     [Fact]
+    public void FounderMachineTeachingSchema_RequiresClosedCapabilityAndCategoryIdentities()
+    {
+        var buildTools = typeof(LegendFounderToolAuthority)
+            .GetMethod("BuildFounderTools", BindingFlags.NonPublic | BindingFlags.Static);
+
+        Assert.NotNull(buildTools);
+        var tools = Assert.IsAssignableFrom<IReadOnlyList<object>>(
+            buildTools!.Invoke(null, null));
+        using var document = JsonDocument.Parse(JsonSerializer.Serialize(tools));
+        var parameters = document.RootElement
+            .EnumerateArray()
+            .Single(tool =>
+                tool.TryGetProperty("name", out var name) &&
+                name.GetString() == "legend_submit_machine_learning_candidate")
+            .GetProperty("parameters");
+        var properties = parameters.GetProperty("properties");
+        var required = parameters.GetProperty("required")
+            .EnumerateArray()
+            .Select(item => item.GetString())
+            .ToHashSet(StringComparer.Ordinal);
+
+        Assert.Contains("capability_identity", required);
+        Assert.Contains("category_identity", required);
+        Assert.Equal(
+            new[] { "translation", "same_language_semantic" },
+            properties.GetProperty("capability_identity")
+                .GetProperty("enum")
+                .EnumerateArray()
+                .Select(item => item.GetString()!)
+                .ToArray());
+        Assert.Equal(
+            new[] { "reusable_semantic" },
+            properties.GetProperty("category_identity")
+                .GetProperty("enum")
+                .EnumerateArray()
+                .Select(item => item.GetString()!)
+                .ToArray());
+    }
+
+    [Fact]
     public void FounderToolSemanticFrameParser_ReadsClosedDimensionValueArray()
     {
         const string input =

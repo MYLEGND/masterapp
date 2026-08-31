@@ -2335,21 +2335,100 @@ internal sealed class LegendConnectAutonomousLearningService
                 "The existing independent language critic is unavailable.");
         }
 
-        var pair =
-            await _registry.GetOrCreateEnabledPairAsync(
-                submission.SourceLanguageCode,
-                submission.TargetLanguageCode,
-                cancellationToken);
-
-        if (pair is null ||
-            string.Equals(
-                pair.SourceLanguageCode,
-                pair.TargetLanguageCode,
-                StringComparison.OrdinalIgnoreCase))
+        if (_curriculum is null)
         {
             return MachineTeachingFailure(
-                "language_pair_unavailable",
-                "Machine teaching requires an enabled directional LEGEND pair.");
+                "curriculum_authority_unavailable",
+                "Machine teaching requires the existing LEGEND curriculum and semantic-transition authority.");
+        }
+
+        var capabilityIdentity =
+            NormalizeMachineTeachingField(
+                submission.CapabilityIdentity,
+                40);
+        var categoryIdentity =
+            NormalizeMachineTeachingField(
+                submission.CategoryIdentity,
+                40);
+        if (!string.Equals(
+                categoryIdentity,
+                LegendConnectMachineTeachingSubmission.ReusableSemanticCategory,
+                StringComparison.Ordinal))
+        {
+            return MachineTeachingFailure(
+                "machine_teaching_category_not_reusable",
+                "Machine teaching accepts only explicitly classified reusable semantic knowledge, never personal or transient facts.");
+        }
+        if (!string.Equals(
+                capabilityIdentity,
+                LegendConnectMachineTeachingSubmission.TranslationCapability,
+                StringComparison.Ordinal) &&
+            !string.Equals(
+                capabilityIdentity,
+                LegendConnectMachineTeachingSubmission.SameLanguageSemanticCapability,
+                StringComparison.Ordinal))
+        {
+            return MachineTeachingFailure(
+                "machine_teaching_capability_invalid",
+                "Machine teaching requires one explicit supported capability identity.");
+        }
+        if (!LegendConnectCurriculumService
+                .HasValidMachineTeachingSemanticTransitions(
+                    submission.SemanticTransitions))
+        {
+            return MachineTeachingFailure(
+                "machine_teaching_semantic_transition_invalid",
+                "Machine teaching requires one bounded, structurally valid governed semantic transition.");
+        }
+
+        var sourceLanguage =
+            await _registry.GetEnabledLearningLanguageAsync(
+                submission.SourceLanguageCode,
+                cancellationToken);
+        var targetLanguage =
+            await _registry.GetEnabledLearningLanguageAsync(
+                submission.TargetLanguageCode,
+                cancellationToken);
+        if (sourceLanguage is null ||
+            targetLanguage is null ||
+            !sourceLanguage.IsLearningEnabled ||
+            !targetLanguage.IsLearningEnabled)
+        {
+            return MachineTeachingFailure(
+                "machine_teaching_language_unavailable",
+                "Machine teaching requires enabled governed learning-language identities.");
+        }
+
+        var sameLanguage = string.Equals(
+            sourceLanguage.Code,
+            targetLanguage.Code,
+            StringComparison.OrdinalIgnoreCase);
+        if (!LegendConnectMachineTeachingSubmission.IsSupportedIdentity(
+                capabilityIdentity,
+                categoryIdentity,
+                sameLanguage))
+        {
+            return MachineTeachingFailure(
+                "machine_teaching_capability_language_mismatch",
+                "Translation requires distinct languages and same-language semantic teaching requires one shared language identity.");
+        }
+
+        var pairKey = LegendLanguageIdentity.PairKey(
+            sourceLanguage.Code,
+            targetLanguage.Code);
+        if (!sameLanguage)
+        {
+            var pair = await _registry.GetOrCreateEnabledPairAsync(
+                sourceLanguage.Code,
+                targetLanguage.Code,
+                cancellationToken);
+            if (pair is null)
+            {
+                return MachineTeachingFailure(
+                    "language_pair_unavailable",
+                    "Translation teaching requires an enabled directional LEGEND pair.");
+            }
+            pairKey = pair.PairKey;
         }
 
         var familyKey =
@@ -2403,6 +2482,7 @@ internal sealed class LegendConnectAutonomousLearningService
                         2_000);
 
             if (source is null ||
+                (sameLanguage && target is not null) ||
                 !sourceIdentities.Add(
                     LegendLanguageIdentity.TextHash(
                         source)) ||
@@ -2411,7 +2491,9 @@ internal sealed class LegendConnectAutonomousLearningService
             {
                 return MachineTeachingFailure(
                     "machine_teaching_invalid_example",
-                    "Machine teaching examples must be distinct, bounded and component-anchored.");
+                    sameLanguage && target is not null
+                        ? "Same-language semantic teaching uses controlled source examples and cannot masquerade as a same-language translation target."
+                        : "Machine teaching examples must be distinct, bounded and component-anchored.");
             }
 
             var components =
@@ -2487,7 +2569,23 @@ internal sealed class LegendConnectAutonomousLearningService
                     0m,
                     1m),
                 examples,
-                submission.SemanticTransitions);
+                submission.SemanticTransitions,
+                capabilityIdentity,
+                categoryIdentity);
+
+        var sameLanguageRequest = sameLanguage
+            ? await BuildGovernedSameLanguageMachineProposalRequestAsync(
+                sourceLanguage.Code,
+                targetLanguage.Code,
+                family,
+                cancellationToken)
+            : null;
+        if (sameLanguage && sameLanguageRequest is null)
+        {
+            return MachineTeachingFailure(
+                "machine_teaching_same_language_evidence_unproven",
+                "Same-language semantic teaching requires controlled examples already resolved by the existing governed meaning authority.");
+        }
 
         var payload =
             JsonSerializer.Serialize(family);
@@ -2497,7 +2595,7 @@ internal sealed class LegendConnectAutonomousLearningService
             LegendLanguageIdentity.TextHash(
                 string.Join(
                     "|",
-                    pair.PairKey,
+                    pairKey,
                     payload));
 
         var candidate =
@@ -2523,19 +2621,19 @@ internal sealed class LegendConnectAutonomousLearningService
                     IdempotencyKey =
                         candidateKey,
                     SourceLanguageCode =
-                        pair.SourceLanguageCode,
+                        sourceLanguage.Code,
                     TargetLanguageCode =
-                        pair.TargetLanguageCode,
+                        targetLanguage.Code,
                     SourceText =
                         sourceText,
                     SourceTextHash =
                         LegendLanguageIdentity.TextHash(
                             sourceText),
                     Category =
-                        semanticCategory[
-                            ..Math.Min(
-                                semanticCategory.Length,
-                                80)],
+                        LegendConnectMachineTeachingSubmission
+                            .CandidateCategoryIdentity(
+                                capabilityIdentity,
+                                categoryIdentity),
                     Provenance =
                         MachineConversationProvenance,
 
@@ -2585,6 +2683,20 @@ internal sealed class LegendConnectAutonomousLearningService
             !string.Equals(
                 candidate.ProcessingState,
                 "ConversationProposal",
+                StringComparison.Ordinal) ||
+            !string.Equals(
+                candidate.SourceLanguageCode,
+                sourceLanguage.Code,
+                StringComparison.OrdinalIgnoreCase) ||
+            !string.Equals(
+                candidate.TargetLanguageCode,
+                targetLanguage.Code,
+                StringComparison.OrdinalIgnoreCase) ||
+            !string.Equals(
+                candidate.Category,
+                LegendConnectMachineTeachingSubmission.CandidateCategoryIdentity(
+                    capabilityIdentity,
+                    categoryIdentity),
                 StringComparison.Ordinal))
         {
             return MachineTeachingFailure(
@@ -2592,10 +2704,11 @@ internal sealed class LegendConnectAutonomousLearningService
                 "The deterministic candidate identity belongs to incompatible existing work.");
         }
 
-        var request =
+        var request = sameLanguageRequest ??
             await BuildLanguageProposalRequestAsync(
                 candidate,
-                cancellationToken);
+                cancellationToken,
+                family);
 
         var evidenceIdentityHash =
             request is null
@@ -2660,11 +2773,11 @@ internal sealed class LegendConnectAutonomousLearningService
                 ProposalIdentity =
                     proposalIdentity,
                 PairKey =
-                    pair.PairKey,
+                    pairKey,
                 SourceLanguageCode =
-                    pair.SourceLanguageCode,
+                    sourceLanguage.Code,
                 TargetLanguageCode =
-                    pair.TargetLanguageCode,
+                    targetLanguage.Code,
                 EvidenceIdentityHash =
                     evidenceIdentityHash,
                 FamilyKey =
@@ -2750,8 +2863,8 @@ internal sealed class LegendConnectAutonomousLearningService
             "ConversationMachineProposal",
             "Info",
             state,
-            pair.SourceLanguageCode,
-            pair.PairKey,
+            sourceLanguage.Code,
+            pairKey,
             request is null
                 ? "conversation_machine_evidence_insufficient"
                 : null,
@@ -3228,6 +3341,30 @@ internal sealed class LegendConnectAutonomousLearningService
                     proposal,
                     "Rejected",
                     "canonical_conversation_transition_missing",
+                    cancellationToken);
+                return true;
+            }
+
+            var sameLanguage = string.Equals(
+                proposal.SourceLanguageCode,
+                proposal.TargetLanguageCode,
+                StringComparison.OrdinalIgnoreCase);
+            if (!LegendConnectMachineTeachingSubmission.IsSupportedIdentity(
+                    family.CapabilityIdentity,
+                    family.CategoryIdentity,
+                    sameLanguage) ||
+                (IsConversationMachineCandidate(candidate) &&
+                 !string.Equals(
+                     candidate.Category,
+                     LegendConnectMachineTeachingSubmission.CandidateCategoryIdentity(
+                         family.CapabilityIdentity,
+                         family.CategoryIdentity),
+                     StringComparison.Ordinal)))
+            {
+                await CompleteCanonicalLanguageProposalAsync(
+                    proposal,
+                    "Rejected",
+                    "canonical_capability_identity_mismatch",
                     cancellationToken);
                 return true;
             }
@@ -3926,9 +4063,108 @@ internal sealed class LegendConnectAutonomousLearningService
     }
 
     private async Task<LegendLanguageTeacherProposalRequest?>
+        BuildGovernedSameLanguageMachineProposalRequestAsync(
+            string sourceLanguageCode,
+            string targetLanguageCode,
+            LegendLanguageTeacherFamilyProposal family,
+            CancellationToken cancellationToken)
+    {
+        if (_curriculum is null ||
+            !string.Equals(
+                sourceLanguageCode,
+                targetLanguageCode,
+                StringComparison.OrdinalIgnoreCase) ||
+            !LegendConnectMachineTeachingSubmission.IsSupportedIdentity(
+                family.CapabilityIdentity,
+                family.CategoryIdentity,
+                sameLanguage: true) ||
+            family.Examples is null ||
+            family.Examples.Count is < 2 or > 8)
+        {
+            return null;
+        }
+
+        var semanticEvidence =
+            new List<LegendLanguageTeacherEvidence>(
+                family.Examples.Count);
+        foreach (var example in family.Examples)
+        {
+            if (!string.IsNullOrWhiteSpace(example.TargetText) ||
+                example.Components is null ||
+                example.Components.Count is < 1 or > 16)
+            {
+                return null;
+            }
+
+            var understanding =
+                await _curriculum.AnalyzeShadowSourceSemanticsAsync(
+                    sourceLanguageCode,
+                    example.SourceText,
+                    cancellationToken);
+            if (!string.Equals(
+                    understanding.State,
+                    LegendShadowSourceUnderstanding.SupportedForShadowEvaluation,
+                    StringComparison.Ordinal))
+            {
+                return null;
+            }
+
+            var proposedComponents = example.Components
+                .Select(item => CanonicalMachineComponentIdentity(
+                    item.Dimension,
+                    item.Value,
+                    item.SurfaceForm))
+                .OrderBy(item => item, StringComparer.Ordinal)
+                .ToArray();
+            var governedComponents = understanding.Components
+                .Select(item => CanonicalMachineComponentIdentity(
+                    item.Dimension,
+                    item.Value,
+                    item.SurfaceForm))
+                .OrderBy(item => item, StringComparer.Ordinal)
+                .ToArray();
+            if (!proposedComponents.SequenceEqual(
+                    governedComponents,
+                    StringComparer.Ordinal))
+            {
+                return null;
+            }
+
+            var evidenceIdentity =
+                "semantic:" + LegendLanguageIdentity.TextHash(
+                    string.Join(
+                        "|",
+                        sourceLanguageCode,
+                        LegendLanguageIdentity.NormalizeText(example.SourceText),
+                        string.Join(",", understanding.Components
+                            .Select(item => item.SemanticSignature)
+                            .OrderBy(item => item, StringComparer.Ordinal))));
+            semanticEvidence.Add(
+                new LegendLanguageTeacherEvidence(
+                    evidenceIdentity,
+                    LegendLanguageIdentity.NormalizeText(example.SourceText),
+                    null,
+                    LegendConnectKnowledgeProvenance.FounderApproved,
+                    "GovernedSemanticPrimitive"));
+        }
+
+        return semanticEvidence.Count == family.Examples.Count
+            ? new LegendLanguageTeacherProposalRequest(
+                sourceLanguageCode,
+                targetLanguageCode,
+                family.SemanticCategory,
+                semanticEvidence,
+                MaximumFamilies: 1,
+                CapabilityIdentity: family.CapabilityIdentity,
+                CategoryIdentity: family.CategoryIdentity)
+            : null;
+    }
+
+    private async Task<LegendLanguageTeacherProposalRequest?>
         BuildLanguageProposalRequestAsync(
             LegendCorpusCandidate candidate,
-            CancellationToken cancellationToken)
+            CancellationToken cancellationToken,
+            LegendLanguageTeacherFamilyProposal? submittedConversationFamily = null)
     {
         var pairKey = LegendLanguageIdentity.PairKey(
             candidate.SourceLanguageCode,
@@ -3937,6 +4173,54 @@ internal sealed class LegendConnectAutonomousLearningService
         var isConversationMachineCandidate =
             IsConversationMachineCandidate(
                 candidate);
+
+        LegendLanguageTeacherFamilyProposal? conversationFamily =
+            submittedConversationFamily;
+        if (isConversationMachineCandidate && conversationFamily is null)
+        {
+            var payload = await _db.Set<LegendLanguageTeacherProposal>()
+                .AsNoTracking()
+                .Where(item =>
+                    item.CorpusCandidateId == candidate.Id &&
+                    item.Provenance == "MachineProposed")
+                .OrderByDescending(item => item.CreatedUtc)
+                .Select(item => item.ProposalPayloadJson)
+                .FirstOrDefaultAsync(cancellationToken);
+            if (string.IsNullOrWhiteSpace(payload))
+                return null;
+            try
+            {
+                conversationFamily =
+                    JsonSerializer.Deserialize<LegendLanguageTeacherFamilyProposal>(
+                        payload);
+            }
+            catch (JsonException)
+            {
+                return null;
+            }
+        }
+
+        var sameLanguage = string.Equals(
+            candidate.SourceLanguageCode,
+            candidate.TargetLanguageCode,
+            StringComparison.OrdinalIgnoreCase);
+        if (isConversationMachineCandidate &&
+            (conversationFamily is null ||
+             conversationFamily.Examples is null ||
+             conversationFamily.Examples.Count is < 2 or > 8 ||
+             !LegendConnectMachineTeachingSubmission.IsSupportedIdentity(
+                 conversationFamily.CapabilityIdentity,
+                 conversationFamily.CategoryIdentity,
+                 sameLanguage) ||
+             !string.Equals(
+                 candidate.Category,
+                 LegendConnectMachineTeachingSubmission.CandidateCategoryIdentity(
+                     conversationFamily.CapabilityIdentity,
+                     conversationFamily.CategoryIdentity),
+                 StringComparison.Ordinal)))
+        {
+            return null;
+        }
 
         LegendLanguageTextUnit? source = null;
 
@@ -3980,6 +4264,15 @@ internal sealed class LegendConnectAutonomousLearningService
             {
                 return null;
             }
+        }
+
+        if (isConversationMachineCandidate && sameLanguage)
+        {
+            return await BuildGovernedSameLanguageMachineProposalRequestAsync(
+                candidate.SourceLanguageCode,
+                candidate.TargetLanguageCode,
+                conversationFamily!,
+                cancellationToken);
         }
 
         // Teacher evidence is intentionally stronger than ordinary translation
@@ -4101,7 +4394,7 @@ internal sealed class LegendConnectAutonomousLearningService
         }
 
         var learningGoal = family is null
-            ? candidate.Category
+            ? conversationFamily?.SemanticCategory ?? candidate.Category
             : string.IsNullOrWhiteSpace(family.SemanticCategory)
                 ? family.FamilyKey
                 : $"{family.FamilyKey} | {family.SemanticCategory}";
@@ -4115,7 +4408,13 @@ internal sealed class LegendConnectAutonomousLearningService
             candidate.TargetLanguageCode,
             learningGoal,
             evidence,
-            MaximumFamilies: 2);
+            MaximumFamilies: 2,
+            CapabilityIdentity:
+                conversationFamily?.CapabilityIdentity ??
+                LegendConnectMachineTeachingSubmission.TranslationCapability,
+            CategoryIdentity:
+                conversationFamily?.CategoryIdentity ??
+                LegendConnectMachineTeachingSubmission.ReusableSemanticCategory);
     }
 
     private async Task<LegendCorpusCandidate?>

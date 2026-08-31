@@ -519,6 +519,27 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
             string.Equals(machineCandidate.ProcessingState, "ConversationProposal", StringComparison.Ordinal);
         if (isConversationMachineProposal && semanticTransitions.Count == 0)
             return "machine_conversation_semantic_transition_required";
+        var sameLanguage = string.Equals(
+            proposal.SourceLanguageCode,
+            proposal.TargetLanguageCode,
+            StringComparison.OrdinalIgnoreCase);
+        if (!LegendConnectMachineTeachingSubmission.IsSupportedIdentity(
+                machineFamily.CapabilityIdentity,
+                machineFamily.CategoryIdentity,
+                sameLanguage))
+        {
+            return "machine_curriculum_capability_identity_invalid";
+        }
+        if (isConversationMachineProposal &&
+            !string.Equals(
+                machineCandidate!.Category,
+                LegendConnectMachineTeachingSubmission.CandidateCategoryIdentity(
+                    machineFamily.CapabilityIdentity,
+                    machineFamily.CategoryIdentity),
+                StringComparison.Ordinal))
+        {
+            return "machine_curriculum_capability_lineage_mismatch";
+        }
 
         var familyKey =
             NormalizeFamilyKey(machineFamily.FamilyKey);
@@ -3113,6 +3134,16 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
             text,
             semanticTransitionSourceOnly: false,
             cancellationToken);
+
+    /// <summary>
+    /// Reuses the curriculum authority's canonical semantic-frame
+    /// normalization at the MachineProposed mutation boundary. This is a
+    /// structural admission check only; independent canonical validation
+    /// repeats the check against then-current governed evidence.
+    /// </summary>
+    internal static bool HasValidMachineTeachingSemanticTransitions(
+        IReadOnlyList<LegendConnectSemanticTransitionSubmission>? transitions) =>
+        NormalizeSemanticTransitions(transitions) is { Count: > 0 };
 
     internal Task<LegendShadowSourceUnderstanding> AnalyzeSemanticTransitionSourceSemanticsAsync(
         string sourceLanguageCode,

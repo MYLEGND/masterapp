@@ -473,6 +473,16 @@ internal sealed class LegendFounderToolAuthority
                         arguments.RootElement,
                         "target_language");
 
+                var capabilityIdentity =
+                    ReadRequiredString(
+                        arguments.RootElement,
+                        "capability_identity");
+
+                var categoryIdentity =
+                    ReadRequiredString(
+                        arguments.RootElement,
+                        "category_identity");
+
                 var familyKey =
                     ReadRequiredString(
                         arguments.RootElement,
@@ -492,6 +502,10 @@ internal sealed class LegendFounderToolAuthority
                         sourceLanguage) ||
                     string.IsNullOrWhiteSpace(
                         targetLanguage) ||
+                    string.IsNullOrWhiteSpace(
+                        capabilityIdentity) ||
+                    string.IsNullOrWhiteSpace(
+                        categoryIdentity) ||
                     string.IsNullOrWhiteSpace(
                         familyKey) ||
                     string.IsNullOrWhiteSpace(
@@ -610,7 +624,9 @@ internal sealed class LegendFounderToolAuthority
                                 rationale,
                                 confidence,
                                 examples,
-                                semanticTransitions),
+                                semanticTransitions,
+                                capabilityIdentity,
+                                categoryIdentity),
                             cancellationToken);
 
                 if (!result.Succeeded)
@@ -1605,7 +1621,7 @@ internal sealed class LegendFounderToolAuthority
                 type = "function",
                 name = "legend_submit_machine_learning_candidate",
                 description =
-                    "Retain reusable machine-derived LANGUAGE teaching from the current conversation in LEGEND's existing MachineProposed lifecycle. Conversational learning must include explicit language-neutral semantic_transitions connecting controlled source and result frames. This tool does NOT approve, validate, train or promote the material. The existing independent critic and canonical validator remain authoritative. Use only for reusable linguistic knowledge with controlled contrasts; never use it for personal facts, private messages, transient platform facts or unsupported speculation.",
+                    "Retain reusable machine-derived LANGUAGE teaching from the current conversation in LEGEND's existing MachineProposed lifecycle. Declare translation for distinct-language teaching or same_language_semantic for governed semantic teaching within one language, and classify it as reusable_semantic. Conversational learning must include explicit language-neutral semantic_transitions connecting controlled source and result frames. This tool does NOT approve, validate, train, serve or promote the material. The existing independent critic and canonical validator remain authoritative. Never use it for personal facts, private messages, transient platform facts or unsupported speculation.",
                 parameters = new
                 {
                     type = "object",
@@ -1622,6 +1638,23 @@ internal sealed class LegendFounderToolAuthority
                             type = "string",
                             minLength = 2,
                             maxLength = 32
+                        },
+                        capability_identity = new
+                        {
+                            type = "string",
+                            @enum = new[]
+                            {
+                                LegendConnectMachineTeachingSubmission.TranslationCapability,
+                                LegendConnectMachineTeachingSubmission.SameLanguageSemanticCapability
+                            }
+                        },
+                        category_identity = new
+                        {
+                            type = "string",
+                            @enum = new[]
+                            {
+                                LegendConnectMachineTeachingSubmission.ReusableSemanticCategory
+                            }
                         },
                         family_key = new
                         {
@@ -1742,6 +1775,8 @@ internal sealed class LegendFounderToolAuthority
                     {
                         "source_language",
                         "target_language",
+                        "capability_identity",
+                        "category_identity",
                         "family_key",
                         "semantic_category",
                         "rationale",

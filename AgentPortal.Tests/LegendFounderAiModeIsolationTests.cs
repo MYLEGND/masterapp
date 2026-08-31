@@ -691,7 +691,7 @@ public sealed class LegendFounderAiModeIsolationTests
                 "{\"query\":\"reusable distinction\"}"),
             ProviderTool(
                 "legend_submit_machine_learning_candidate",
-                MachineProposalArguments()),
+                SameLanguageMachineProposalArguments()),
             ProviderText("The exact teaching family entered the governed critic lifecycle."));
         var service = CreateService(db, operations.Object, handler);
 
@@ -731,7 +731,13 @@ public sealed class LegendFounderAiModeIsolationTests
             It.IsAny<int>(),
             It.IsAny<CancellationToken>()), Times.Once);
         operations.Verify(operation => operation.SubmitMachineTeachingProposalAsync(
-            It.IsAny<LegendConnectMachineTeachingSubmission>(),
+            It.Is<LegendConnectMachineTeachingSubmission>(submission =>
+                submission.SourceLanguageCode == "en" &&
+                submission.TargetLanguageCode == "en" &&
+                submission.CapabilityIdentity ==
+                    LegendConnectMachineTeachingSubmission.SameLanguageSemanticCapability &&
+                submission.CategoryIdentity ==
+                    LegendConnectMachineTeachingSubmission.ReusableSemanticCategory),
             It.IsAny<CancellationToken>()), Times.Once);
         Assert.Equal(0, NativeInferenceCalls(operations));
     }
@@ -835,7 +841,7 @@ public sealed class LegendFounderAiModeIsolationTests
     }
 
     [Fact]
-    public async Task MachineProposalMutation_RequiresAuthenticatedFounderAuthorization()
+    public async Task SameLanguageMachineProposal_RequiresAuthenticatedFounderAuthorization()
     {
         using var founderEnvironment = new FounderEnvironmentScope();
         await using var db = ControllerTestHelpers.BuildDb();
@@ -848,7 +854,7 @@ public sealed class LegendFounderAiModeIsolationTests
         var unconfirmed = new FounderAiToolCall(
             "unconfirmed-machine-proposal",
             "legend_submit_machine_learning_candidate",
-            MachineProposalArguments());
+            SameLanguageMachineProposalArguments());
 
         var unconfirmedOutput = await authority.ExecuteAsync(
             ControllerTestHelpers.BuildUser(),
@@ -1615,6 +1621,8 @@ public sealed class LegendFounderAiModeIsolationTests
         {
           "source_language":"en",
           "target_language":"es",
+          "capability_identity":"translation",
+          "category_identity":"reusable_semantic",
           "family_key":"confirmed-machine-distinction",
           "semantic_category":"conversation_semantics",
           "rationale":"Retain one reusable distinction with machine provenance.",
@@ -1639,6 +1647,25 @@ public sealed class LegendFounderAiModeIsolationTests
           ]
         }
         """;
+
+    private static string SameLanguageMachineProposalArguments() =>
+        MachineProposalArguments()
+            .Replace(
+                "\"target_language\":\"es\"",
+                "\"target_language\":\"en\"",
+                StringComparison.Ordinal)
+            .Replace(
+                "\"capability_identity\":\"translation\"",
+                "\"capability_identity\":\"same_language_semantic\"",
+                StringComparison.Ordinal)
+            .Replace(
+                "\"target_text\":\"¿Cómo estás?\"",
+                "\"target_text\":null",
+                StringComparison.Ordinal)
+            .Replace(
+                "\"target_text\":\"Estoy bien.\"",
+                "\"target_text\":null",
+                StringComparison.Ordinal);
 
     private static async Task<System.Security.Claims.ClaimsPrincipal> AddFounderProfileAsync(
         Infrastructure.Data.MasterAppDbContext db)
