@@ -72,7 +72,7 @@ jobs:
           LEGEND_ENTRA_AUTHORITY: ${{ vars.LEGEND_ENTRA_AUTHORITY }}
           LEGEND_ENTRA_SCOPE: ${{ vars.LEGEND_ENTRA_SCOPE }}
           LEGEND_MSAL_REDIRECT_URI: ${{ vars.LEGEND_MSAL_REDIRECT_URI }}
-        run: ./gradlew --no-daemon --stacktrace :app:testDebugUnitTest :app:lintDebug :app:bundleDebug :app:bundleRelease :app:assembleRelease
+        run: ./gradlew --no-daemon --stacktrace :app:testDebugUnitTest :app:lintDebug :app:bundleDebug :app:bundleRelease
 
       - name: Preserve signed release bundle
         uses: actions/upload-artifact@v4
@@ -81,6 +81,22 @@ jobs:
           path: Legend-Android/app/build/outputs/bundle/release/app-release.aab
           if-no-files-found: error
           retention-days: 7
+
+      - name: Build signed release APK for direct phone testing
+        working-directory: Legend-Android
+        shell: bash
+        env:
+          LEGEND_ANDROID_KEYSTORE_PATH: ${{ runner.temp }}/legend-upload.jks
+          LEGEND_ANDROID_KEYSTORE_PASSWORD: ${{ secrets.LEGEND_ANDROID_KEYSTORE_PASSWORD }}
+          LEGEND_ANDROID_KEY_ALIAS: ${{ secrets.LEGEND_ANDROID_KEY_ALIAS }}
+          LEGEND_ANDROID_KEY_PASSWORD: ${{ secrets.LEGEND_ANDROID_KEY_PASSWORD }}
+          LEGEND_API_BASE_URL: ${{ vars.LEGEND_API_BASE_URL }}
+          LEGEND_ENTRA_TENANT_ID: ${{ vars.LEGEND_ENTRA_TENANT_ID }}
+          LEGEND_ENTRA_CLIENT_ID: ${{ vars.LEGEND_ENTRA_CLIENT_ID }}
+          LEGEND_ENTRA_AUTHORITY: ${{ vars.LEGEND_ENTRA_AUTHORITY }}
+          LEGEND_ENTRA_SCOPE: ${{ vars.LEGEND_ENTRA_SCOPE }}
+          LEGEND_MSAL_REDIRECT_URI: msauth://com.mylegnd.legend.registered/1KzlY0ggK9S0X6DTJ6W85iwXKy8%3D
+        run: ./gradlew --no-daemon --stacktrace :app:clean :app:assembleRelease
 
       - name: Preserve signed release APK for direct phone testing
         uses: actions/upload-artifact@v4
