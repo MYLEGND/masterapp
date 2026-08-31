@@ -335,7 +335,9 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
                 NullLogger<
                     LegendFounderAiConversationService>.Instance,
                 new LegendFounderAiDiscourseStateService(
-                    db, discourseProfiles, operations));
+                    db, discourseProfiles, operations),
+                registry,
+                ControllerTestHelpers.BuildTranslationService());
 
         var fallbackFragments = new[]
         {
@@ -694,7 +696,9 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
             configuration,
             founderLegend,
             NullLogger<LegendFounderAiConversationService>.Instance,
-            new LegendFounderAiDiscourseStateService(db, profiles, operations));
+            new LegendFounderAiDiscourseStateService(db, profiles, operations),
+            registry,
+            ControllerTestHelpers.BuildTranslationService());
 
         var corpusCounts = new
         {
@@ -842,7 +846,8 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
                 founder,
                 prompt,
                 Array.Empty<LegendConnectConversationContextItem>(),
-                discourseState: null);
+                discourseState: null,
+                sourceLanguageCode: "en");
             var reply = await chat.ReplyAsync(
                 founder,
                 new LegendFounderAiChatRequest
@@ -947,7 +952,8 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
             founder,
             governedReasoning!.Text,
             Array.Empty<LegendConnectConversationContextItem>(),
-            discourseState: null);
+            discourseState: null,
+            sourceLanguageCode: "en");
         var governedReply = await chat.ReplyAsync(
             founder,
             new LegendFounderAiChatRequest
@@ -1262,7 +1268,9 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
                 configuration,
                 founderLegend,
                 NullLogger<LegendFounderAiConversationService>.Instance,
-                new LegendFounderAiDiscourseStateService(shadow, profiles, operations));
+                new LegendFounderAiDiscourseStateService(shadow, profiles, operations),
+                registry,
+                ControllerTestHelpers.BuildTranslationService());
             var nativePasses = 0;
             foreach (var request in promptMatrix)
             {
@@ -1274,7 +1282,8 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
                     founder,
                     request.Text,
                     Array.Empty<LegendConnectConversationContextItem>(),
-                    discourseState: null);
+                    discourseState: null,
+                    sourceLanguageCode: "en");
                 var response = await chat.ReplyAsync(founder, new LegendFounderAiChatRequest
                 {
                     Mode = "legend",
@@ -1492,7 +1501,9 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
                 configuration,
                 founderLegend,
                 NullLogger<LegendFounderAiConversationService>.Instance,
-                new LegendFounderAiDiscourseStateService(db, profiles, operations));
+                new LegendFounderAiDiscourseStateService(db, profiles, operations),
+                registry,
+                ControllerTestHelpers.BuildTranslationService());
 
             _output.WriteLine("============================================================");
             _output.WriteLine("LEGEND® PRODUCTION-DATA-DERIVED v16 REPLAY TRANSCRIPT");
@@ -1504,7 +1515,8 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
                     founder,
                     prompt,
                     Array.Empty<LegendConnectConversationContextItem>(),
-                    new LegendConnectDiscourseStateSnapshot([]));
+                    new LegendConnectDiscourseStateSnapshot([]),
+                    "en");
                 var reply = await chat.ReplyAsync(
                     founder,
                     new LegendFounderAiChatRequest
@@ -1929,7 +1941,8 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
                     item.Role ?? string.Empty,
                     item.Content ?? string.Empty))
                 .ToArray(),
-            discourseState: null);
+            discourseState: null,
+            sourceLanguageCode: "en");
         nativeClock.Stop();
 
         _output.WriteLine($"REQUEST: {request}");
@@ -1985,7 +1998,9 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
             founderLegend,
             NullLogger<LegendFounderAiConversationService>.Instance,
             new LegendFounderAiDiscourseStateService(
-                db, new AgentProfileAccessResolver(db), operations));
+                db, new AgentProfileAccessResolver(db), operations),
+            registry,
+            ControllerTestHelpers.BuildTranslationService());
         var replyClock = Stopwatch.StartNew();
         var reply = await service.ReplyAsync(
             founder,
@@ -2723,6 +2738,8 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
                     });
                     services.AddSingleton(configuration);
                     services.AddSingleton(factory);
+                    services.AddSingleton<ITranslationService>(
+                        ControllerTestHelpers.BuildTranslationService());
                     services.AddScoped<ILegendLanguageRegistry, LegendLanguageRegistry>();
                     services.AddScoped<LegendConnectCorpusService>();
                     services.AddScoped<LegendConnectCurriculumService>();
@@ -3254,7 +3271,8 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
                 founder,
                 candidate.Text,
                 Array.Empty<LegendConnectConversationContextItem>(),
-                discourseState: null);
+                discourseState: null,
+                sourceLanguageCode: "en");
             if (!native.Supported || native.EvidenceStandard != "BroadGoverned")
                 continue;
             broadGovernedPrompt = new(

@@ -691,7 +691,9 @@ public sealed class LegendConnectMeaningGraphTests
                 configuration,
                 founderLegend,
                 NullLogger<LegendFounderAiConversationService>.Instance,
-                new LegendFounderAiDiscourseStateService(db, profiles, operations));
+                new LegendFounderAiDiscourseStateService(db, profiles, operations),
+                registry,
+                ControllerTestHelpers.BuildTranslationService());
             var conversationId = Guid.NewGuid();
             const string unseenInput = "A private ungoverned surface request";
 

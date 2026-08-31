@@ -233,8 +233,8 @@ public sealed class FounderLegendConnectService
             string input,
             IReadOnlyList<LegendConnectConversationContextItem> context,
             LegendConnectDiscourseStateSnapshot? discourseState,
-            CancellationToken cancellationToken = default,
-            string sourceLanguageCode = "en")
+            string sourceLanguageCode,
+            CancellationToken cancellationToken = default)
     {
         _ = await ResolveFounderActorAsync(user, cancellationToken);
         return await _operations.TryInferConversationWithDiscourseAsync(
@@ -246,6 +246,19 @@ public sealed class FounderLegendConnectService
     }
 
     /// <summary>
+    /// Defense-in-depth authorization for Founder conversation work that must
+    /// happen before a provider-backed language-identification read. This is
+    /// the same account reconciliation authority used by every Founder LEGEND
+    /// operation; it introduces no language or conversation policy.
+    /// </summary>
+    internal async Task EnsureFounderAuthorizedAsync(
+        ClaimsPrincipal user,
+        CancellationToken cancellationToken = default) =>
+        _ = await ResolveFounderActorAsync(
+            user,
+            cancellationToken);
+
+    /// <summary>
     /// Founder-gated read-through to the canonical observational meaning
     /// analysis. It does not serve, write curriculum, or bypass inference.
     /// </summary>
@@ -253,8 +266,8 @@ public sealed class FounderLegendConnectService
         AnalyzeReusableMeaningGraphAsync(
             ClaimsPrincipal user,
             string input,
-            CancellationToken cancellationToken = default,
-            string sourceLanguageCode = "en")
+            string sourceLanguageCode,
+            CancellationToken cancellationToken = default)
     {
         _ = await ResolveFounderActorAsync(user, cancellationToken);
         return await _operations.AnalyzeReusableMeaningGraphAsync(

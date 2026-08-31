@@ -10,6 +10,7 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using AgentPortal.Controllers;
+using AgentPortal.Mobile;
 using AgentPortal.Models;
 using AgentPortal.Security;
 using AgentPortal.Services;
@@ -43,6 +44,15 @@ public sealed class LegendFounderAiContractTests
 
         Assert.NotNull(cache);
         Assert.True(cache!.NoStore);
+    }
+
+    [Fact]
+    public void MobileController_RetainsAuthenticatedFounderOnlyBoundary()
+    {
+        var type = typeof(MobileFounderAiController);
+
+        Assert.NotNull(type.GetCustomAttribute<AuthorizeAttribute>());
+        Assert.NotNull(type.GetCustomAttribute<FounderOnlyAttribute>());
     }
 
     [Fact]
@@ -180,6 +190,7 @@ public sealed class LegendFounderAiContractTests
         Assert.Contains("result.stage", script, StringComparison.Ordinal);
         Assert.Contains("result.reason", script, StringComparison.Ordinal);
         Assert.Contains("nativeOnly:", script, StringComparison.Ordinal);
+        Assert.Contains("sourceLanguageCode: null", script, StringComparison.Ordinal);
         Assert.Contains("result.responseAuthority ||", script, StringComparison.Ordinal);
         Assert.Contains("'Legend® Ai'", script, StringComparison.Ordinal);
         Assert.Contains("'OpenAI'", script, StringComparison.Ordinal);
@@ -187,6 +198,52 @@ public sealed class LegendFounderAiContractTests
         Assert.DoesNotContain("OpenAI Teacher · ${stage || 'provider response'}", script, StringComparison.Ordinal);
         Assert.Contains("OpenAI escalation is blocked for this clean conversation", script, StringComparison.Ordinal);
         Assert.DoesNotContain("progressUrlFor(modalElement.dataset.chatUrl, operationId)", script, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void FounderSourceLanguageContract_IsExplicitAndHasNoEnglishDefault()
+    {
+        var request = new LegendFounderAiChatRequest();
+        var json = JsonSerializer.Serialize(request);
+
+        Assert.Null(request.SourceLanguageCode);
+        using var document = JsonDocument.Parse(json);
+        Assert.Equal(
+            JsonValueKind.Null,
+            document.RootElement
+                .GetProperty("sourceLanguageCode")
+                .ValueKind);
+    }
+
+    [Fact]
+    public void FounderSourceLanguageWireContract_IsAlignedAcrossWebIosAndAndroid()
+    {
+        var web = File.ReadAllText(
+            Path.Combine(AppContext.BaseDirectory, "legend-founder-ai.js"));
+        var ios = File.ReadAllText(
+            Path.Combine(AppContext.BaseDirectory, "LegendApplicationShell.swift"));
+        var androidContracts = File.ReadAllText(
+            Path.Combine(AppContext.BaseDirectory, "LegendMobileContracts.kt"));
+        var androidViewModel = File.ReadAllText(
+            Path.Combine(AppContext.BaseDirectory, "LegendFeatureViewModels.kt"));
+
+        Assert.Contains("sourceLanguageCode: null", web, StringComparison.Ordinal);
+        Assert.Contains("let sourceLanguageCode: String?", ios, StringComparison.Ordinal);
+        Assert.Contains("sourceLanguageCode: String? = nil", ios, StringComparison.Ordinal);
+        Assert.Contains("sourceLanguageCode: sourceLanguageCode", ios, StringComparison.Ordinal);
+        Assert.Contains("let reason: String?", ios, StringComparison.Ordinal);
+
+        Assert.Contains(
+            "@SerialName(\"sourceLanguageCode\") val sourceLanguageCode: String? = null",
+            androidContracts,
+            StringComparison.Ordinal);
+        Assert.Contains("val reason: String? = null", androidContracts, StringComparison.Ordinal);
+        Assert.Contains("sourceLanguageCode: String? = null", androidViewModel, StringComparison.Ordinal);
+        Assert.Contains("sourceLanguageCode = sourceLanguageCode", androidViewModel, StringComparison.Ordinal);
+
+        Assert.DoesNotContain("sourceLanguageCode: 'en'", web, StringComparison.Ordinal);
+        Assert.DoesNotContain("sourceLanguageCode: \"en\"", ios, StringComparison.Ordinal);
+        Assert.DoesNotContain("sourceLanguageCode: String = \"en\"", androidContracts, StringComparison.Ordinal);
     }
 
     [Fact]

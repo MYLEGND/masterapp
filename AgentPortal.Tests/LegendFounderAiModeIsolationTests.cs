@@ -10,6 +10,7 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using AgentPortal.Controllers;
+using AgentPortal.Security;
 using AgentPortal.Services;
 using Domain.Entities;
 using Domain.Messaging;
@@ -207,6 +208,227 @@ public sealed class LegendFounderAiModeIsolationTests
             It.IsAny<int>(),
             It.IsAny<CancellationToken>()), Times.Once);
         Assert.Equal(0, NativeInferenceCalls(operations));
+    }
+
+    [Theory]
+    [InlineData("Hello, can you help me?", "en", "en")]
+    [InlineData("Bonjour, pouvez-vous m’aider?", "fr-FR", "fr")]
+    [InlineData("Bonjou, èske ou ka ede m?", "ht", "ht")]
+    public async Task MissingSourceLanguage_UsesGovernedIdentificationBeforeNativeMeaning(
+        string prompt,
+        string detectedLanguage,
+        string expectedLanguage)
+    {
+        using var founderEnvironment = new FounderEnvironmentScope();
+        await using var db = ControllerTestHelpers.BuildDb();
+        var founder = await AddFounderProfileAsync(db);
+        var operations = new Mock<ILegendConnectOperations>(MockBehavior.Strict);
+        operations
+            .Setup(operation => operation.TryInferConversationWithDiscourseAsync(
+                prompt,
+                It.IsAny<IReadOnlyList<LegendConnectConversationContextItem>>(),
+                It.IsAny<LegendConnectDiscourseStateSnapshot?>(),
+                It.IsAny<CancellationToken>(),
+                expectedLanguage))
+            .ReturnsAsync(NativeLanguageAnswer(expectedLanguage));
+        var detector = new FounderAiLanguageDetector(
+            new TranslationDetectionResult(
+                true,
+                detectedLanguage,
+                Confidence: 1m));
+        var service = CreateService(
+            db,
+            operations.Object,
+            new FounderAiScenarioHandler(),
+            detector);
+
+        var response = await service.ReplyAsync(
+            founder,
+            Request(
+                "legend",
+                prompt,
+                nativeOnly: true,
+                sourceLanguageCode: null));
+
+        Assert.True(response.Succeeded, Describe(response));
+        Assert.Equal("native_response", response.Stage);
+        Assert.Equal(1, detector.DetectionCount);
+        operations.Verify(operation => operation.TryInferConversationWithDiscourseAsync(
+            prompt,
+            It.IsAny<IReadOnlyList<LegendConnectConversationContextItem>>(),
+            It.IsAny<LegendConnectDiscourseStateSnapshot?>(),
+            It.IsAny<CancellationToken>(),
+            expectedLanguage), Times.Once);
+    }
+
+    [Fact]
+    public async Task DeclaredSourceLanguage_IsNormalizedByRegistryWithoutDetection()
+    {
+        using var founderEnvironment = new FounderEnvironmentScope();
+        await using var db = ControllerTestHelpers.BuildDb();
+        var founder = await AddFounderProfileAsync(db);
+        var operations = new Mock<ILegendConnectOperations>(MockBehavior.Strict);
+        operations
+            .Setup(operation => operation.TryInferConversationWithDiscourseAsync(
+                "Expliquez cette distinction.",
+                It.IsAny<IReadOnlyList<LegendConnectConversationContextItem>>(),
+                It.IsAny<LegendConnectDiscourseStateSnapshot?>(),
+                It.IsAny<CancellationToken>(),
+                "fr"))
+            .ReturnsAsync(NativeLanguageAnswer("fr"));
+        var detector = new FounderAiLanguageDetector(
+            new TranslationDetectionResult(false, null, "must_not_detect"));
+        var service = CreateService(
+            db,
+            operations.Object,
+            new FounderAiScenarioHandler(),
+            detector);
+
+        var response = await service.ReplyAsync(
+            founder,
+            Request(
+                "legend",
+                "Expliquez cette distinction.",
+                nativeOnly: true,
+                sourceLanguageCode: " fr_fr "));
+
+        Assert.True(response.Succeeded, Describe(response));
+        Assert.Equal(0, detector.DetectionCount);
+        operations.Verify(operation => operation.TryInferConversationWithDiscourseAsync(
+            "Expliquez cette distinction.",
+            It.IsAny<IReadOnlyList<LegendConnectConversationContextItem>>(),
+            It.IsAny<LegendConnectDiscourseStateSnapshot?>(),
+            It.IsAny<CancellationToken>(),
+            "fr"), Times.Once);
+    }
+
+    [Theory]
+    [InlineData("translation_language_ambiguous", "source_language_ambiguous", 422)]
+    [InlineData("translation_language_unsupported", "source_language_unsupported", 422)]
+    [InlineData("translation_provider_failed", "source_language_identification_unavailable", 503)]
+    public async Task MissingSourceLanguage_FailureFailsClosedWithExactDiagnostic(
+        string detectorError,
+        string expectedReason,
+        int expectedStatus)
+    {
+        using var founderEnvironment = new FounderEnvironmentScope();
+        await using var db = ControllerTestHelpers.BuildDb();
+        var founder = await AddFounderProfileAsync(db);
+        var operations = new Mock<ILegendConnectOperations>(MockBehavior.Strict);
+        var detector = new FounderAiLanguageDetector(
+            new TranslationDetectionResult(false, null, detectorError));
+        var service = CreateService(
+            db,
+            operations.Object,
+            new FounderAiScenarioHandler(),
+            detector);
+
+        var response = await service.ReplyAsync(
+            founder,
+            Request(
+                "legend",
+                "Ambiguous language sample",
+                nativeOnly: true,
+                sourceLanguageCode: null));
+
+        Assert.False(response.Succeeded);
+        Assert.Equal("language_identification", response.FailureKind);
+        Assert.Equal("source_language_identification", response.Stage);
+        Assert.Equal(expectedReason, response.Reason);
+        Assert.Equal(expectedStatus, StatusFor(response));
+        Assert.Contains(
+            $"SourceLanguageFailure={expectedReason}",
+            response.Error,
+            StringComparison.Ordinal);
+        Assert.Empty(operations.Invocations);
+    }
+
+    [Fact]
+    public async Task DetectedButRegistryUnsupportedLanguage_FailsClosedBeforeMeaningGraph()
+    {
+        using var founderEnvironment = new FounderEnvironmentScope();
+        await using var db = ControllerTestHelpers.BuildDb();
+        var founder = await AddFounderProfileAsync(db);
+        var operations = new Mock<ILegendConnectOperations>(MockBehavior.Strict);
+        var detector = new FounderAiLanguageDetector(
+            new TranslationDetectionResult(true, "it", Confidence: 1m));
+        var service = CreateService(
+            db,
+            operations.Object,
+            new FounderAiScenarioHandler(),
+            detector);
+
+        var response = await service.ReplyAsync(
+            founder,
+            Request(
+                "legend",
+                "Ciao, puoi aiutarmi?",
+                nativeOnly: true,
+                sourceLanguageCode: null));
+
+        Assert.False(response.Succeeded);
+        Assert.Equal("source_language_unsupported", response.Reason);
+        Assert.Equal(1, detector.DetectionCount);
+        Assert.Empty(operations.Invocations);
+    }
+
+    [Theory]
+    [InlineData("en<script>", "source_language_code_invalid")]
+    [InlineData("x-spoofed", "source_language_unsupported")]
+    public async Task SpoofedDeclaredSourceLanguage_FailsClosedBeforeDetectionOrMeaningGraph(
+        string declaredCode,
+        string expectedReason)
+    {
+        using var founderEnvironment = new FounderEnvironmentScope();
+        await using var db = ControllerTestHelpers.BuildDb();
+        var founder = await AddFounderProfileAsync(db);
+        var operations = new Mock<ILegendConnectOperations>(MockBehavior.Strict);
+        var detector = new FounderAiLanguageDetector(
+            new TranslationDetectionResult(true, "en", Confidence: 1m));
+        var service = CreateService(
+            db,
+            operations.Object,
+            new FounderAiScenarioHandler(),
+            detector);
+
+        var response = await service.ReplyAsync(
+            founder,
+            Request(
+                "legend",
+                "Bonjour",
+                nativeOnly: true,
+                sourceLanguageCode: declaredCode));
+
+        Assert.False(response.Succeeded);
+        Assert.Equal(expectedReason, response.Reason);
+        Assert.Equal(0, detector.DetectionCount);
+        Assert.Empty(operations.Invocations);
+    }
+
+    [Fact]
+    public async Task SourceLanguageIdentification_DoesNotRunBeforeFounderAuthorization()
+    {
+        using var founderEnvironment = new FounderEnvironmentScope();
+        await using var db = ControllerTestHelpers.BuildDb();
+        var operations = new Mock<ILegendConnectOperations>(MockBehavior.Strict);
+        var detector = new FounderAiLanguageDetector(
+            new TranslationDetectionResult(true, "en", Confidence: 1m));
+        var service = CreateService(
+            db,
+            operations.Object,
+            new FounderAiScenarioHandler(),
+            detector);
+
+        await Assert.ThrowsAsync<ForbidResultException>(() => service.ReplyAsync(
+            ControllerTestHelpers.BuildUser("not-the-founder"),
+            Request(
+                "legend",
+                "Hello",
+                nativeOnly: true,
+                sourceLanguageCode: null)));
+
+        Assert.Equal(0, detector.DetectionCount);
+        Assert.Empty(operations.Invocations);
     }
 
     [Fact]
@@ -792,7 +1014,11 @@ public sealed class LegendFounderAiModeIsolationTests
             new LegendFounderAiDiscourseStateService(
                 db,
                 profiles,
-                operations.Object));
+                operations.Object),
+            new LegendLanguageRegistry(
+                db,
+                new ConfigurationBuilder().Build()),
+            ControllerTestHelpers.BuildTranslationService());
 
         var responseId =
             await service.VerifyProviderToolCatalogAcceptanceAsync();
@@ -846,7 +1072,9 @@ public sealed class LegendFounderAiModeIsolationTests
             new LegendFounderAiDiscourseStateService(
                 db,
                 profiles,
-                operations.Object));
+                operations.Object),
+            new LegendLanguageRegistry(db, configuration),
+            ControllerTestHelpers.BuildTranslationService());
 
         var responseId =
             await service.VerifyProviderToolCatalogAcceptanceAsync();
@@ -859,7 +1087,8 @@ public sealed class LegendFounderAiModeIsolationTests
     private static LegendFounderAiConversationService CreateService(
         Infrastructure.Data.MasterAppDbContext db,
         ILegendConnectOperations operations,
-        FounderAiScenarioHandler handler) =>
+        FounderAiScenarioHandler handler,
+        ITranslationService? translation = null) =>
         new(
             new FounderAiHttpClientFactory(handler),
             new ConfigurationBuilder()
@@ -876,13 +1105,30 @@ public sealed class LegendFounderAiModeIsolationTests
             new LegendFounderAiDiscourseStateService(
                 db,
                 new AgentProfileAccessResolver(db),
-                operations));
+                operations),
+            new LegendLanguageRegistry(
+                db,
+                new ConfigurationBuilder().Build()),
+            translation ?? ControllerTestHelpers.BuildTranslationService());
+
+    private static LegendConnectNativeInferenceSnapshot NativeLanguageAnswer(
+        string languageCode) =>
+        new(
+            true,
+            1m,
+            $"Governed {languageCode} answer.",
+            "semantic_transition_governed_composed",
+            1,
+            "Governed language-specific evidence was selected.",
+            false,
+            "HigherStandard",
+            "OriginalComposition");
 
     private static LegendFounderAiChatRequest Request(
         string? mode,
         string prompt,
         bool nativeOnly = false,
-        string sourceLanguageCode = "en",
+        string? sourceLanguageCode = "en",
         bool founderCommandConfirmed = false) =>
         new()
         {
@@ -1132,5 +1378,27 @@ public sealed class LegendFounderAiModeIsolationTests
 
         public void Dispose() =>
             Environment.SetEnvironmentVariable("FOUNDER_OID", _previousFounderOid);
+    }
+
+    private sealed class FounderAiLanguageDetector(
+        TranslationDetectionResult result) : ITranslationService
+    {
+        public int DetectionCount { get; private set; }
+
+        public Task<TranslationDetectionResult> DetectLanguageAsync(
+            string text,
+            CancellationToken cancellationToken = default)
+        {
+            DetectionCount++;
+            return Task.FromResult(result);
+        }
+
+        public Task<TranslationProviderResult> TranslateAsync(
+            string text,
+            string targetLanguage,
+            string? sourceLanguage = null,
+            CancellationToken cancellationToken = default) =>
+            throw new InvalidOperationException(
+                "Founder AI language identification must not translate text.");
     }
 }

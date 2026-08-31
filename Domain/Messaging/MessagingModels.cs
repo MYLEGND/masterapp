@@ -55,7 +55,8 @@ public interface ITranslationService
 public sealed record TranslationDetectionResult(
     bool Succeeded,
     string? Language,
-    string? ErrorCode = null);
+    string? ErrorCode = null,
+    decimal? Confidence = null);
 
 public sealed record TranslationProviderResult(
     bool Succeeded,

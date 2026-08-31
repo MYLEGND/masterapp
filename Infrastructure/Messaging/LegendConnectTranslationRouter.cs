@@ -153,7 +153,10 @@ internal sealed class LegendConnectTranslationRouter : IAccountScopedTranslation
         var language = await _languages.NormalizeEnabledTranslationLanguageAsync(result.Language, cancellationToken);
         return language is null
             ? new TranslationDetectionResult(false, null, "translation_language_unsupported")
-            : new TranslationDetectionResult(true, language);
+            : new TranslationDetectionResult(
+                true,
+                language,
+                Confidence: result.Confidence);
     }
 
     public async Task<TranslationProviderResult> TranslateAsync(

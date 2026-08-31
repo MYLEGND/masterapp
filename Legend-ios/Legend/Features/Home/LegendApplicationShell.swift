@@ -10294,6 +10294,7 @@ private struct LegendFounderAiAccessResponse: Decodable {
 private struct LegendFounderAiChatRequest: Encodable {
     let mode: String
     let nativeOnly: Bool
+    let sourceLanguageCode: String?
     let messages: [LegendFounderAiChatMessage]
     let conversationId: String
 }
@@ -10308,6 +10309,7 @@ private struct LegendFounderAiChatResponse: Decodable {
     let reference: String?
     let responseAuthority: String?
     let stage: String?
+    let reason: String?
 }
 
 private struct LegendFounderAiProgressEnvelope: Decodable {
@@ -10382,7 +10384,8 @@ final class LegendFounderAiStore: ObservableObject {
     func send(
         _ rawText: String,
         mode: String = "legend",
-        nativeOnly: Bool = false
+        nativeOnly: Bool = false,
+        sourceLanguageCode: String? = nil
     ) async {
         guard isAvailable,
               !isSending,
@@ -10442,6 +10445,11 @@ final class LegendFounderAiStore: ObservableObject {
                                     : "legend",
                             nativeOnly:
                                 mode != "teacher" && nativeOnly,
+                            // This value is carried only when an upstream
+                            // governed UI selection knows it. The free-form
+                            // composer passes nil so the server identifies the
+                            // actual prompt before meaning analysis.
+                            sourceLanguageCode: sourceLanguageCode,
                             messages: messages,
                             conversationId: conversationID.uuidString),
                     accessToken: token,
@@ -10559,6 +10567,14 @@ final class LegendFounderAiStore: ObservableObject {
         {
             parts.append(
                 "Type: \(kind)")
+        }
+
+        if let reason =
+            response.reason,
+           !reason.isEmpty
+        {
+            parts.append(
+                "Reason: \(reason)")
         }
 
         if let status =

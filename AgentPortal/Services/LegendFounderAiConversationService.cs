@@ -56,6 +56,8 @@ public sealed class LegendFounderAiConversationService
     private readonly IConfiguration _configuration;
     private readonly FounderLegendConnectService _legend;
     private readonly LegendFounderAiDiscourseStateService _discourse;
+    private readonly ILegendLanguageRegistry _languages;
+    private readonly ITranslationService _translation;
     private readonly LegendFounderToolAuthority _toolAuthority;
     private readonly ILogger<LegendFounderAiConversationService> _logger;
     private readonly int _timeoutSeconds;
@@ -75,12 +77,16 @@ public sealed class LegendFounderAiConversationService
         FounderLegendConnectService legend,
         ILogger<LegendFounderAiConversationService> logger,
         LegendFounderAiDiscourseStateService discourse,
+        ILegendLanguageRegistry languages,
+        ITranslationService translation,
         IFounderSoftwareRemediationService? softwareRemediation = null)
     {
         _httpClientFactory = httpClientFactory;
         _configuration = configuration;
         _legend = legend;
         _discourse = discourse ?? throw new ArgumentNullException(nameof(discourse));
+        _languages = languages ?? throw new ArgumentNullException(nameof(languages));
+        _translation = translation ?? throw new ArgumentNullException(nameof(translation));
         _toolAuthority =
             new LegendFounderToolAuthority(
                 legend,
@@ -239,6 +245,28 @@ public sealed class LegendFounderAiConversationService
 
         if (ShouldAttemptNativeInference(mode))
         {
+            // Language identification can contact the existing governed
+            // translation router. Preserve the Founder boundary before that
+            // provider-backed read and before any meaning-graph analysis.
+            await _legend.EnsureFounderAuthorizedAsync(
+                founder,
+                effectiveToken);
+
+            var sourceLanguage = await ResolveSourceLanguageAsync(
+                request.SourceLanguageCode,
+                conversation[^1].Content ?? string.Empty,
+                effectiveToken);
+            if (!sourceLanguage.Succeeded)
+            {
+                return LegendFounderAiChatResponse.ModeFailure(
+                    mode,
+                    $"Legend® Ai could not identify a governed source language. SourceLanguageFailure={sourceLanguage.Reason}.",
+                    "language_identification",
+                    "source_language_identification",
+                    sourceLanguage.Reason);
+            }
+
+            var sourceLanguageCode = sourceLanguage.LanguageCode!;
             var nativeStarted = Stopwatch.GetTimestamp();
             await ReportProgressAsync(
                 progress,
@@ -256,7 +284,7 @@ public sealed class LegendFounderAiConversationService
                     conversation[^1].Content ?? string.Empty,
                     effectiveToken,
                     cancellationToken,
-                    request.SourceLanguageCode);
+                    sourceLanguageCode);
                 var context = conversation
                     .Take(conversation.Count - 1)
                     .Select(message => new LegendConnectConversationContextItem(
@@ -272,8 +300,8 @@ public sealed class LegendFounderAiConversationService
                     conversation[^1].Content ?? string.Empty,
                     context,
                     discourseState,
-                    effectiveToken,
-                    request.SourceLanguageCode);
+                    sourceLanguageCode,
+                    effectiveToken);
             }
             catch (OperationCanceledException)
                 when (cancellationToken.IsCancellationRequested)
@@ -316,7 +344,7 @@ public sealed class LegendFounderAiConversationService
                     nativeInference.Answer,
                     effectiveToken,
                     cancellationToken,
-                    request.SourceLanguageCode);
+                    sourceLanguageCode);
                 await ReportProgressAsync(
                     progress,
                     new LegendFounderAiProgressEvent(
@@ -1045,8 +1073,8 @@ public sealed class LegendFounderAiConversationService
             var meaning = await _legend.AnalyzeReusableMeaningGraphAsync(
                 founder,
                 surface,
-                observationBudget.Token,
-                sourceLanguageCode);
+                sourceLanguageCode,
+                observationBudget.Token);
             await _discourse.RecordObservationAsync(
                 founder,
                 conversationId,
@@ -1070,6 +1098,85 @@ public sealed class LegendFounderAiConversationService
             // governed native reply into a provider fallback.
             _logger.LogWarning(exception, "LEGEND discourse observation persistence failed.");
         }
+    }
+
+    private async Task<FounderAiSourceLanguageResolution> ResolveSourceLanguageAsync(
+        string? declaredLanguageCode,
+        string sourceText,
+        CancellationToken cancellationToken)
+    {
+        if (!string.IsNullOrWhiteSpace(declaredLanguageCode))
+        {
+            if (!LegendLanguageIdentity.TryNormalize(
+                    declaredLanguageCode,
+                    out var normalizedCode))
+            {
+                return FounderAiSourceLanguageResolution.Failure(
+                    "source_language_code_invalid");
+            }
+
+            var enabledLanguage =
+                await _languages.NormalizeEnabledTranslationLanguageAsync(
+                    normalizedCode,
+                    cancellationToken);
+            return enabledLanguage is null
+                ? FounderAiSourceLanguageResolution.Failure(
+                    "source_language_unsupported")
+                : FounderAiSourceLanguageResolution.Success(
+                    enabledLanguage);
+        }
+
+        TranslationDetectionResult detected;
+        try
+        {
+            detected = await _translation.DetectLanguageAsync(
+                sourceText,
+                cancellationToken);
+        }
+        catch (OperationCanceledException)
+            when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception exception)
+        {
+            _logger.LogWarning(
+                exception,
+                "LEGEND Founder AI source-language identification was unavailable.");
+            return FounderAiSourceLanguageResolution.Failure(
+                "source_language_identification_unavailable");
+        }
+
+        if (!detected.Succeeded)
+        {
+            return FounderAiSourceLanguageResolution.Failure(
+                detected.ErrorCode switch
+                {
+                    "translation_language_ambiguous" =>
+                        "source_language_ambiguous",
+                    "translation_language_unsupported" =>
+                        "source_language_unsupported",
+                    _ => "source_language_identification_unavailable"
+                });
+        }
+
+        if (!LegendLanguageIdentity.TryNormalize(
+                detected.Language,
+                out var detectedCode))
+        {
+            return FounderAiSourceLanguageResolution.Failure(
+                "source_language_ambiguous");
+        }
+
+        var enabledDetectedLanguage =
+            await _languages.NormalizeEnabledTranslationLanguageAsync(
+                detectedCode,
+                cancellationToken);
+        return enabledDetectedLanguage is null
+            ? FounderAiSourceLanguageResolution.Failure(
+                "source_language_unsupported")
+            : FounderAiSourceLanguageResolution.Success(
+                enabledDetectedLanguage);
     }
 
     private async Task<JsonDocument?> SendResponseAsync(
@@ -2970,6 +3077,20 @@ Never upgrade an unresolved, rejected or contradicted record merely because it a
         public string FailureKind { get; }
     }
 
+    private sealed record FounderAiSourceLanguageResolution(
+        bool Succeeded,
+        string? LanguageCode,
+        string Reason)
+    {
+        internal static FounderAiSourceLanguageResolution Success(
+            string languageCode) =>
+            new(true, languageCode, string.Empty);
+
+        internal static FounderAiSourceLanguageResolution Failure(
+            string reason) =>
+            new(false, null, reason);
+    }
+
 }
 
 public sealed record LegendFounderAiProgressEvent(
@@ -2987,11 +3108,12 @@ public sealed class LegendFounderAiChatRequest
     public string? Mode { get; init; }
 
     /// <summary>
-    /// Governed language partition used by native meaning, discourse, plan,
-    /// and realization authorities. Existing clients default to English;
-    /// unsupported or disabled language identities fail closed.
+    /// Explicit governed language identity supplied only when the caller
+    /// actually knows it. When absent, the conversation service uses the
+    /// existing governed identification and registry authorities before any
+    /// meaning-graph analysis. No language is inferred from a client default.
     /// </summary>
-    public string SourceLanguageCode { get; init; } = "en";
+    public string? SourceLanguageCode { get; init; }
 
     /// <summary>
     /// Founder-selected hard boundary for direct LEGEND testing. When true in

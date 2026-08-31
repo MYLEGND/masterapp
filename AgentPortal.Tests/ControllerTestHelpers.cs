@@ -50,6 +50,21 @@ internal static class ControllerTestHelpers
         return new MasterAppDbContext(options);
     }
 
+    public static ITranslationService BuildTranslationService(
+        string detectedLanguage = "en")
+    {
+        var translation = new Mock<ITranslationService>(MockBehavior.Strict);
+        translation
+            .Setup(service => service.DetectLanguageAsync(
+                It.IsAny<string>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new TranslationDetectionResult(
+                true,
+                detectedLanguage,
+                Confidence: 1m));
+        return translation.Object;
+    }
+
     public static IHouseholdMembershipService BuildHouseholdMembershipService(MasterAppDbContext db)
     {
         return new HouseholdMembershipService(

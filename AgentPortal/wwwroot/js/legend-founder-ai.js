@@ -1296,6 +1296,11 @@
                                 mode: conversation.mode,
                                 nativeOnly:
                                     conversation.nativeOnly === true,
+                                // The web composer has no authoritative
+                                // language selection. Null requires the
+                                // server-owned governed identifier to resolve
+                                // the prompt instead of inventing English.
+                                sourceLanguageCode: null,
                                 conversationId: conversation.id,
                                 founderCommandConfirmed:
                                     founderCommandConfirmed?.checked === true,

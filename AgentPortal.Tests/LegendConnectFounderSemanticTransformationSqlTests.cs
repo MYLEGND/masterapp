@@ -198,7 +198,9 @@ public sealed class LegendConnectFounderSemanticTransformationSqlTests
                 configuration,
                 founderLegend,
                 NullLogger<LegendFounderAiConversationService>.Instance,
-                new LegendFounderAiDiscourseStateService(proof, profiles, services.Operations));
+                new LegendFounderAiDiscourseStateService(proof, profiles, services.Operations),
+                new LegendLanguageRegistry(proof, configuration),
+                ControllerTestHelpers.BuildTranslationService());
             var conversationId = Guid.NewGuid();
             var reply = await chat.ReplyAsync(
                 founder,
@@ -495,7 +497,9 @@ public sealed class LegendConnectFounderSemanticTransformationSqlTests
                     configuration,
                     new FounderLegendConnectService(services.Operations, profiles),
                     NullLogger<LegendFounderAiConversationService>.Instance,
-                    discourse);
+                    discourse,
+                    new LegendLanguageRegistry(proof, configuration),
+                    ControllerTestHelpers.BuildTranslationService());
 
                 var graphBeforeReply = await services.Operations.AnalyzeReusableMeaningGraphAsync(prompt.User);
                 Assert.True(graphBeforeReply.IsComposed, graphBeforeReply.ReasonCode);
@@ -838,7 +842,9 @@ public sealed class LegendConnectFounderSemanticTransformationSqlTests
                     configuration,
                     new FounderLegendConnectService(services.Operations, profiles),
                     NullLogger<LegendFounderAiConversationService>.Instance,
-                    new LegendFounderAiDiscourseStateService(proof, profiles, services.Operations));
+                    new LegendFounderAiDiscourseStateService(proof, profiles, services.Operations),
+                    new LegendLanguageRegistry(proof, configuration),
+                    ControllerTestHelpers.BuildTranslationService());
                 var reply = await chat.ReplyAsync(
                     founder,
                     new LegendFounderAiChatRequest
@@ -1352,7 +1358,9 @@ public sealed class LegendConnectFounderSemanticTransformationSqlTests
                 configuration,
                 new FounderLegendConnectService(proofServices.Operations, profiles),
                 NullLogger<LegendFounderAiConversationService>.Instance,
-                discourse);
+                discourse,
+                new LegendLanguageRegistry(proof, configuration),
+                ControllerTestHelpers.BuildTranslationService());
             var conversationId = Guid.NewGuid().ToString();
             var establishingRequest = "Between " + leftSurface + " and " + rightSurface +
                 ", which one is cheaper today?";

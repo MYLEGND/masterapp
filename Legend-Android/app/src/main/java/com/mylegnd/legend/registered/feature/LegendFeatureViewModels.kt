@@ -67,7 +67,12 @@ class FounderAiViewModel(
         }
     }
 
-    fun send(rawText: String, mode: String, nativeOnly: Boolean) {
+    fun send(
+        rawText: String,
+        mode: String,
+        nativeOnly: Boolean,
+        sourceLanguageCode: String? = null,
+    ) {
         val text = rawText.trim()
         if (text.isBlank() || _state.value.isSending || mode !in setOf("legend", "teacher")) return
         if ((_state.value.availability as? LoadState.Data)?.value != true) return
@@ -99,6 +104,10 @@ class FounderAiViewModel(
                     chatRequest = FounderAiChatRequest(
                         mode = mode,
                         nativeOnly = mode == "legend" && nativeOnly,
+                        // Free-form input has no client-owned detector. Carry
+                        // a code only when a governed upstream selection knows
+                        // it; otherwise the server must identify the prompt.
+                        sourceLanguageCode = sourceLanguageCode,
                         messages = submitted.map { FounderAiChatMessage(it.role, it.content) },
                         conversationId = conversationId,
                     ),
@@ -157,6 +166,7 @@ class FounderAiViewModel(
     private fun FounderAiChatResponse.safeFailure(): String = buildList {
         error?.trim()?.takeIf(String::isNotBlank)?.let(::add)
         if (failureKind?.isNotBlank() == true) add("Stage: ${stage ?: failureKind}.")
+        reason?.trim()?.takeIf(String::isNotBlank)?.let { add("Reason: $it.") }
         reference?.trim()?.takeIf(String::isNotBlank)?.let { add("Reference: $it.") }
     }.ifEmpty { listOf("The Founder AI request did not produce a response.") }.joinToString(" ")
 }
