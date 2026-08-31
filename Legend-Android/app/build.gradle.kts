@@ -24,7 +24,9 @@ val legendProperties = Properties().apply {
         configuration.inputStream().use(::load)
     }
 }
-fun legendValue(name: String): String = legendProperties.getProperty(name)?.trim().orEmpty()
+fun legendValue(name: String): String = legendProperties.getProperty(name)?.trim().orEmpty().ifBlank {
+    providers.environmentVariable(name).orNull?.trim().orEmpty()
+}
 
 val legendApplicationId = "com.mylegnd.legend.registered"
 val legendDebugRuntimeRoot = layout.buildDirectory.dir("generated/legend-runtime/debug")
