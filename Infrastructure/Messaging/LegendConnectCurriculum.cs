@@ -4263,6 +4263,7 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
                 var reasoned = await TrySelectGovernedReasonedResponseAsync(
                     language,
                     values,
+                    projectionScope.SemanticFamilyIds,
                     discourseState,
                     observations,
                     responseObservations,
@@ -5154,6 +5155,7 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
     private async Task<GovernedReasonedResponseSelection> TrySelectGovernedReasonedResponseAsync(
         string language,
         IReadOnlyDictionary<string, string> currentValues,
+        IReadOnlySet<Guid> currentSemanticFamilyIds,
         LegendConnectDiscourseStateSnapshot? discourseState,
         IReadOnlyList<SemanticTransitionObservation> allObservations,
         IReadOnlyList<SemanticTransitionObservation> responseObservations,
@@ -5166,8 +5168,11 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
                          LegendConnectGovernedReasoningExecutor.IsExecutableOperatorIdentity(operation))
                      .GroupBy(item => item.TransitionSignature, StringComparer.Ordinal))
         {
+            var governedGroup = group
+                .Where(HasGovernedSemanticFamilyConnection)
+                .ToArray();
             if (!TryGetGovernedSemanticTransitionFrames(
-                    group,
+                    governedGroup,
                     out var independentEvidenceCount,
                     out var sourceFrame,
                     out var resultFrame,
@@ -5175,13 +5180,63 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
             {
                 continue;
             }
+            var lineage = BuildSemanticTransitionLineage(
+                governedGroup,
+                evidenceStandard);
+            if (lineage.SourceCurriculumFamilyIds.Count == 0 ||
+                lineage.ResultCurriculumFamilyIds.Count == 0)
+            {
+                continue;
+            }
+            var independentEvidenceIdentities = governedGroup
+                .Where(item =>
+                    string.Equals(item.ContributionState, "Supported", StringComparison.Ordinal) &&
+                    (evidenceStandard == HigherGovernedEvidenceStandard
+                        ? item.IsHumanVerifiedSupport && string.Equals(
+                            item.Provenance,
+                            LegendConnectKnowledgeProvenance.FounderApproved,
+                            StringComparison.Ordinal)
+                        : (item.IsHumanVerifiedSupport && string.Equals(
+                               item.Provenance,
+                               LegendConnectKnowledgeProvenance.FounderApproved,
+                               StringComparison.Ordinal)) ||
+                          (!item.IsHumanVerifiedSupport && string.Equals(
+                               item.Provenance,
+                               LegendConnectKnowledgeProvenance.SystemValidatedMachine,
+                               StringComparison.Ordinal))))
+                .Select(item => item.IndependentSourceIdentity)
+                .Distinct(StringComparer.Ordinal)
+                .OrderBy(item => item, StringComparer.Ordinal)
+                .ToArray();
+            var familyConnections = governedGroup
+                .Where(item =>
+                    string.Equals(item.ContributionState, "Supported", StringComparison.Ordinal) &&
+                    (item.SourceCurriculumFamilyId == item.ResultCurriculumFamilyId ||
+                     (evidenceStandard == HigherGovernedEvidenceStandard &&
+                      item.HasExplicitGovernedTransferRelationship &&
+                      string.Equals(
+                          item.FounderTransferContributionState,
+                          "Supported",
+                          StringComparison.Ordinal))))
+                .Select(item => new LegendGovernedReasoningFamilyConnection(
+                    item.SourceCurriculumFamilyId,
+                    item.ResultCurriculumFamilyId,
+                    item.SourceCurriculumFamilyId != item.ResultCurriculumFamilyId))
+                .Distinct()
+                .OrderBy(item => item.SourceSemanticFamilyId)
+                .ThenBy(item => item.ResultSemanticFamilyId)
+                .ToArray();
             rules.Add(new LegendGovernedReasoningRule(
                 group.Key,
                 reasoningOperators[group.Key],
                 sourceFrame.Dimensions,
                 resultFrame.Dimensions,
                 independentEvidenceCount,
-                evidenceStandard));
+                evidenceStandard,
+                lineage.SourceCurriculumFamilyIds,
+                lineage.ResultCurriculumFamilyIds,
+                independentEvidenceIdentities,
+                familyConnections));
         }
         if (rules.Count == 0)
             return GovernedReasonedResponseSelection.None;
@@ -5195,9 +5250,14 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
                 initialValues[binding.Key] = binding.Value;
         }
 
-        var execution = LegendConnectGovernedReasoningExecutor.Derive(initialValues, rules);
+        var execution = LegendConnectGovernedReasoningExecutor.Derive(
+            initialValues,
+            rules,
+            currentSemanticFamilyIds);
         if (execution.InitialContradiction)
             return GovernedReasonedResponseSelection.Contradicted("governed_reasoning_constraint_contradicted");
+        if (execution.DerivedContradiction)
+            return GovernedReasonedResponseSelection.Contradicted("governed_reasoning_deductive_contradiction");
         if (execution.BudgetExceeded)
             return GovernedReasonedResponseSelection.Failure("governed_reasoning_budget_exceeded");
         if (execution.DerivedStates.Count == 0)

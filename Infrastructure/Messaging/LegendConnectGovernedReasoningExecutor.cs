@@ -15,6 +15,8 @@ namespace Infrastructure.Messaging;
 ///   reasoning.forward.*       source -> result
 ///   reasoning.bidirectional.* source <-> result
 ///   reasoning.constraint.*    source and result may not coexist
+///   reasoning.deduction.universal.*   universal fact rule -> consequence
+///   reasoning.deduction.conditional.* conditional premises -> consequence
 /// The suffix is opaque curriculum meaning, allowing new skill domains without
 /// adding code or a topic router.
 /// </summary>
@@ -23,6 +25,7 @@ internal static class LegendConnectGovernedReasoningExecutor
     internal const int MaximumDepth = 12;
     internal const int MaximumStates = 512;
     internal const int MaximumRules = 4096;
+    internal const int MaximumFrameDimensions = 12;
     internal const int MaximumRuleEvaluations = MaximumStates * MaximumRules;
 
     internal static bool IsExecutableOperatorIdentity(string? identity) =>
@@ -30,15 +33,16 @@ internal static class LegendConnectGovernedReasoningExecutor
 
     internal static LegendGovernedReasoningExecution Derive(
         IReadOnlyDictionary<string, string> initialValues,
-        IReadOnlyList<LegendGovernedReasoningRule> rules)
+        IReadOnlyList<LegendGovernedReasoningRule> rules,
+        IReadOnlySet<Guid> initialSemanticFamilyIds)
     {
         if (initialValues.Count == 0 || rules.Count == 0)
             return LegendGovernedReasoningExecution.Empty;
         if (rules.Count > MaximumRules)
-            return new(false, true, []);
+            return new(false, false, true, []);
 
         var normalizedRules = rules
-            .Where(rule => ResolveMode(rule.OperatorIdentity) is not null)
+            .Where(IsGovernedExecutableRule)
             // Enumeration order is deterministic for reproducibility. Proof
             // authority is decided independently by IsStrongerProof so a
             // later multi-hop HigherStandard proof can replace an earlier
@@ -54,7 +58,7 @@ internal static class LegendConnectGovernedReasoningExecutor
             .Where(rule => ResolveMode(rule.OperatorIdentity) == ReasoningMode.Constraint)
             .ToArray();
         if (ViolatesConstraint(initialValues, constraints))
-            return new(true, false, []);
+            return new(true, false, false, []);
 
         var directional = new List<DirectionalRule>();
         foreach (var rule in normalizedRules)
@@ -62,20 +66,68 @@ internal static class LegendConnectGovernedReasoningExecutor
             var mode = ResolveMode(rule.OperatorIdentity);
             if (mode == ReasoningMode.Forward)
             {
-                directional.Add(new DirectionalRule(rule, rule.SourceFrame, rule.ResultFrame, false));
+                directional.Add(new DirectionalRule(
+                    rule,
+                    rule.SourceFrame,
+                    rule.ResultFrame,
+                    rule.SourceSemanticFamilyIds,
+                    rule.ResultSemanticFamilyIds,
+                    rule.FamilyConnections,
+                    false,
+                    false));
             }
             else if (mode == ReasoningMode.Bidirectional)
             {
-                directional.Add(new DirectionalRule(rule, rule.SourceFrame, rule.ResultFrame, false));
-                directional.Add(new DirectionalRule(rule, rule.ResultFrame, rule.SourceFrame, true));
+                directional.Add(new DirectionalRule(
+                    rule,
+                    rule.SourceFrame,
+                    rule.ResultFrame,
+                    rule.SourceSemanticFamilyIds,
+                    rule.ResultSemanticFamilyIds,
+                    rule.FamilyConnections,
+                    false,
+                    false));
+                directional.Add(new DirectionalRule(
+                    rule,
+                    rule.ResultFrame,
+                    rule.SourceFrame,
+                    rule.ResultSemanticFamilyIds,
+                    rule.SourceSemanticFamilyIds,
+                    rule.FamilyConnections.Select(item => new LegendGovernedReasoningFamilyConnection(
+                        item.ResultSemanticFamilyId,
+                        item.SourceSemanticFamilyId,
+                        item.HasExplicitGovernedTransfer)).ToArray(),
+                    true,
+                    false));
+            }
+            else if (mode == ReasoningMode.Deduction)
+            {
+                // A governed universal or conditional rule is implication,
+                // never equivalence. No reverse DirectionalRule is created,
+                // so affirming the consequent cannot become an executable
+                // converse merely because its result frame is present.
+                directional.Add(new DirectionalRule(
+                    rule,
+                    rule.SourceFrame,
+                    rule.ResultFrame,
+                    rule.SourceSemanticFamilyIds,
+                    rule.ResultSemanticFamilyIds,
+                    rule.FamilyConnections,
+                    false,
+                    true));
             }
         }
 
         var initial = Copy(initialValues);
-        var initialIdentity = CanonicalState(initial);
+        var initialFamilies = initialSemanticFamilyIds
+            .OrderBy(item => item)
+            .ToHashSet();
+        var initialIdentity = CanonicalProofState(initial, initialFamilies);
         var initialProof = new LegendGovernedReasoningProof(
             initial,
             [],
+            [],
+            initialFamilies,
             0,
             int.MaxValue,
             int.MaxValue);
@@ -90,7 +142,9 @@ internal static class LegendConnectGovernedReasoningExecutor
         while (queue.Count > 0)
         {
             var current = queue.Dequeue();
-            var currentIdentity = CanonicalState(current.Values);
+            var currentIdentity = CanonicalProofState(
+                current.Values,
+                current.SemanticFamilyIds);
             if (!bestProofs.TryGetValue(currentIdentity, out var authoritative) ||
                 !ReferenceEquals(authoritative, current))
             {
@@ -103,16 +157,55 @@ internal static class LegendConnectGovernedReasoningExecutor
             {
                 ruleEvaluations++;
                 if (ruleEvaluations > MaximumRuleEvaluations)
-                    return new(false, true, []);
-                if (!TryApply(rule.SourceFrame, rule.ResultFrame, current.Values, out var nextValues))
+                    return new(false, false, true, []);
+                var connectedResultFamilies = ResolveConnectedResultFamilies(
+                    current.SemanticFamilyIds,
+                    rule.FamilyConnections);
+                if (rule.IsDeductive && connectedResultFamilies.Count == 0)
+                {
                     continue;
+                }
+                if (!TryApply(
+                        rule.SourceFrame,
+                        rule.ResultFrame,
+                        current.Values,
+                        rule.IsDeductive,
+                        out var nextValues,
+                        out var deductiveContradiction))
+                {
+                    if (deductiveContradiction)
+                        return new(false, true, false, []);
+                    continue;
+                }
                 if (ViolatesConstraint(nextValues, constraints))
                     continue;
 
-                var identity = CanonicalState(nextValues);
+                var nextFamilies = rule.IsDeductive
+                    ? connectedResultFamilies
+                    : rule.ResultSemanticFamilyIds.OrderBy(item => item).ToHashSet();
+                var identity = CanonicalProofState(nextValues, nextFamilies);
                 var transitionIdentity = rule.Rule.TransitionSignature +
                     (rule.Reversed ? ":reverse" : string.Empty);
                 var path = current.TransitionPath.Append(transitionIdentity).ToArray();
+                var evidenceLineage = current.EvidenceLineage.Append(
+                    new LegendGovernedReasoningProofStep(
+                        rule.Rule.TransitionSignature,
+                        rule.Rule.OperatorIdentity,
+                        ProjectFrameValues(rule.SourceFrame, current.Values),
+                        ProjectFrameValues(rule.ResultFrame, nextValues),
+                        rule.Rule.IndependentEvidenceIdentities,
+                        rule.IsDeductive
+                            ? rule.FamilyConnections
+                                .Where(item => current.SemanticFamilyIds.Contains(
+                                    item.SourceSemanticFamilyId))
+                                .Select(item => item.SourceSemanticFamilyId)
+                                .ToHashSet()
+                            : rule.SourceSemanticFamilyIds,
+                        nextFamilies,
+                        rule.FamilyConnections.Any(item =>
+                            current.SemanticFamilyIds.Contains(item.SourceSemanticFamilyId) &&
+                            item.HasExplicitGovernedTransfer),
+                        rule.Reversed)).ToArray();
                 var evidence = current.Depth == 0
                     ? rule.Rule.IndependentEvidenceCount
                     : Math.Min(current.EvidenceCount, rule.Rule.IndependentEvidenceCount);
@@ -122,6 +215,8 @@ internal static class LegendConnectGovernedReasoningExecutor
                 var proof = new LegendGovernedReasoningProof(
                     nextValues,
                     path,
+                    evidenceLineage,
+                    nextFamilies,
                     current.Depth + 1,
                     evidence,
                     evidenceStandard);
@@ -131,7 +226,7 @@ internal static class LegendConnectGovernedReasoningExecutor
                     continue;
                 }
                 if (!bestProofs.ContainsKey(identity) && bestProofs.Count >= MaximumStates)
-                    return new(false, true, []);
+                    return new(false, false, true, []);
 
                 bestProofs[identity] = proof;
                 queue.Enqueue(proof);
@@ -143,8 +238,58 @@ internal static class LegendConnectGovernedReasoningExecutor
             .OrderBy(item => item.Key, StringComparer.Ordinal)
             .Select(item => item.Value)
             .ToArray();
-        return new(false, false, derived);
+        return new(false, false, false, derived);
     }
+
+    private static bool IsGovernedExecutableRule(LegendGovernedReasoningRule rule)
+    {
+        var mode = ResolveMode(rule.OperatorIdentity);
+        if (mode is null || string.IsNullOrWhiteSpace(rule.TransitionSignature) ||
+            rule.SourceFrame.Count is < 1 or > MaximumFrameDimensions ||
+            rule.ResultFrame.Count is < 1 or > MaximumFrameDimensions ||
+            rule.SourceFrame.Any(item => string.IsNullOrWhiteSpace(item.Key) ||
+                string.IsNullOrWhiteSpace(item.Value)) ||
+            rule.ResultFrame.Any(item => string.IsNullOrWhiteSpace(item.Key) ||
+                string.IsNullOrWhiteSpace(item.Value)) ||
+            rule.SourceSemanticFamilyIds.Count == 0 ||
+            rule.ResultSemanticFamilyIds.Count == 0 ||
+            rule.IndependentEvidenceCount <= 0)
+        {
+            return false;
+        }
+
+        var evidenceIdentities = rule.IndependentEvidenceIdentities
+            .Where(item => !string.IsNullOrWhiteSpace(item))
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+        if (evidenceIdentities.Length != rule.IndependentEvidenceCount)
+            return false;
+
+        if (rule.FamilyConnections.Count == 0 ||
+            rule.FamilyConnections.Distinct().Count() != rule.FamilyConnections.Count ||
+            rule.FamilyConnections.Any(item =>
+                !rule.SourceSemanticFamilyIds.Contains(item.SourceSemanticFamilyId) ||
+                !rule.ResultSemanticFamilyIds.Contains(item.ResultSemanticFamilyId) ||
+                (item.SourceSemanticFamilyId != item.ResultSemanticFamilyId &&
+                 !item.HasExplicitGovernedTransfer)))
+        {
+            return false;
+        }
+
+        return rule.SourceSemanticFamilyIds.SetEquals(
+                   rule.FamilyConnections.Select(item => item.SourceSemanticFamilyId)) &&
+               rule.ResultSemanticFamilyIds.SetEquals(
+                   rule.FamilyConnections.Select(item => item.ResultSemanticFamilyId));
+    }
+
+    private static HashSet<Guid> ResolveConnectedResultFamilies(
+        IReadOnlySet<Guid> currentSemanticFamilyIds,
+        IReadOnlyList<LegendGovernedReasoningFamilyConnection> connections) =>
+        connections
+            .Where(item => currentSemanticFamilyIds.Contains(item.SourceSemanticFamilyId))
+            .Select(item => item.ResultSemanticFamilyId)
+            .OrderBy(item => item)
+            .ToHashSet();
 
     private static bool IsStrongerProof(
         LegendGovernedReasoningProof candidate,
@@ -164,6 +309,16 @@ internal static class LegendConnectGovernedReasoningExecutor
 
         return ComparePath(candidate.TransitionPath, existing.TransitionPath) < 0;
     }
+
+    private static IReadOnlyDictionary<string, string> ProjectFrameValues(
+        IReadOnlyDictionary<string, string> frame,
+        IReadOnlyDictionary<string, string> values) =>
+        frame.Keys
+            .OrderBy(item => item, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(
+                key => key,
+                key => values[key],
+                StringComparer.OrdinalIgnoreCase);
 
     private static int ComparePath(
         IReadOnlyList<string> left,
@@ -186,8 +341,11 @@ internal static class LegendConnectGovernedReasoningExecutor
         IReadOnlyDictionary<string, string> sourceFrame,
         IReadOnlyDictionary<string, string> resultFrame,
         IReadOnlyDictionary<string, string> currentValues,
-        out IReadOnlyDictionary<string, string> nextValues)
+        bool requireMonotonicConclusion,
+        out IReadOnlyDictionary<string, string> nextValues,
+        out bool contradiction)
     {
+        contradiction = false;
         if (!TryBindFrame(sourceFrame, currentValues, null, out var bindings))
         {
             nextValues = currentValues;
@@ -209,6 +367,14 @@ internal static class LegendConnectGovernedReasoningExecutor
             else
             {
                 value = item.Value;
+            }
+            if (requireMonotonicConclusion &&
+                next.TryGetValue(item.Key, out var existing) &&
+                !string.Equals(existing, value, StringComparison.OrdinalIgnoreCase))
+            {
+                contradiction = true;
+                nextValues = currentValues;
+                return false;
             }
             next[item.Key] = value;
         }
@@ -290,6 +456,13 @@ internal static class LegendConnectGovernedReasoningExecutor
             .ThenBy(item => item.Value, StringComparer.OrdinalIgnoreCase)
             .Select(item => item.Key.Trim().ToLowerInvariant() + "=" + item.Value.Trim().ToLowerInvariant()));
 
+    private static string CanonicalProofState(
+        IReadOnlyDictionary<string, string> values,
+        IReadOnlySet<Guid> semanticFamilyIds) =>
+        CanonicalState(values) + "\u001e" + string.Join(
+            "\u001f",
+            semanticFamilyIds.OrderBy(item => item).Select(item => item.ToString("N")));
+
     private static bool IsVariable(string value) =>
         value.Length > 1 && value[0] == '$';
 
@@ -304,6 +477,13 @@ internal static class LegendConnectGovernedReasoningExecutor
             return ReasoningMode.Bidirectional;
         if (value == "reasoning.constraint" || value.StartsWith("reasoning.constraint.", StringComparison.Ordinal))
             return ReasoningMode.Constraint;
+        if (value == "reasoning.deduction.universal" ||
+            value.StartsWith("reasoning.deduction.universal.", StringComparison.Ordinal) ||
+            value == "reasoning.deduction.conditional" ||
+            value.StartsWith("reasoning.deduction.conditional.", StringComparison.Ordinal))
+        {
+            return ReasoningMode.Deduction;
+        }
         return null;
     }
 
@@ -311,15 +491,25 @@ internal static class LegendConnectGovernedReasoningExecutor
     {
         Forward,
         Bidirectional,
-        Constraint
+        Constraint,
+        Deduction
     }
 
     private sealed record DirectionalRule(
         LegendGovernedReasoningRule Rule,
         IReadOnlyDictionary<string, string> SourceFrame,
         IReadOnlyDictionary<string, string> ResultFrame,
-        bool Reversed);
+        IReadOnlySet<Guid> SourceSemanticFamilyIds,
+        IReadOnlySet<Guid> ResultSemanticFamilyIds,
+        IReadOnlyList<LegendGovernedReasoningFamilyConnection> FamilyConnections,
+        bool Reversed,
+        bool IsDeductive);
 }
+
+internal sealed record LegendGovernedReasoningFamilyConnection(
+    Guid SourceSemanticFamilyId,
+    Guid ResultSemanticFamilyId,
+    bool HasExplicitGovernedTransfer);
 
 internal sealed record LegendGovernedReasoningRule(
     string TransitionSignature,
@@ -327,19 +517,37 @@ internal sealed record LegendGovernedReasoningRule(
     IReadOnlyDictionary<string, string> SourceFrame,
     IReadOnlyDictionary<string, string> ResultFrame,
     int IndependentEvidenceCount,
-    int EvidenceStandard = 2);
+    int EvidenceStandard,
+    IReadOnlySet<Guid> SourceSemanticFamilyIds,
+    IReadOnlySet<Guid> ResultSemanticFamilyIds,
+    IReadOnlyList<string> IndependentEvidenceIdentities,
+    IReadOnlyList<LegendGovernedReasoningFamilyConnection> FamilyConnections);
+
+internal sealed record LegendGovernedReasoningProofStep(
+    string TransitionSignature,
+    string OperatorIdentity,
+    IReadOnlyDictionary<string, string> Premises,
+    IReadOnlyDictionary<string, string> Conclusions,
+    IReadOnlyList<string> IndependentEvidenceIdentities,
+    IReadOnlySet<Guid> SourceSemanticFamilyIds,
+    IReadOnlySet<Guid> ResultSemanticFamilyIds,
+    bool HasExplicitGovernedTransfer,
+    bool Reversed);
 
 internal sealed record LegendGovernedReasoningProof(
     IReadOnlyDictionary<string, string> Values,
     IReadOnlyList<string> TransitionPath,
+    IReadOnlyList<LegendGovernedReasoningProofStep> EvidenceLineage,
+    IReadOnlySet<Guid> SemanticFamilyIds,
     int Depth,
     int EvidenceCount,
     int EvidenceStandard);
 
 internal sealed record LegendGovernedReasoningExecution(
     bool InitialContradiction,
+    bool DerivedContradiction,
     bool BudgetExceeded,
     IReadOnlyList<LegendGovernedReasoningProof> DerivedStates)
 {
-    internal static readonly LegendGovernedReasoningExecution Empty = new(false, false, []);
+    internal static readonly LegendGovernedReasoningExecution Empty = new(false, false, false, []);
 }
