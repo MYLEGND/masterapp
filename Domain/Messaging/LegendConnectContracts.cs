@@ -1057,7 +1057,8 @@ public sealed record LegendConnectNativeModelAssistanceSnapshot(
     string CapabilityKey,
     string? ModelVersion,
     Guid? ModelTrainingRunId,
-    string? Provenance);
+    string? Provenance,
+    long? CostMicrounits = null);
 
 public static class LegendConnectNativeModelAssistanceContracts
 {

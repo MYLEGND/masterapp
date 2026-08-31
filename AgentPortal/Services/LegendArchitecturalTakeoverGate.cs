@@ -12,7 +12,7 @@ namespace AgentPortal.Services;
 internal static class LegendArchitecturalTakeoverGate
 {
     internal const string EvaluatorAuthorityPrefix =
-        "legend-locked-blind-comparative-evaluator-v1:";
+        "legend-locked-blind-comparative-evaluator-v2:";
 
     internal const string SuiteReferencePrefix = "blind-suite:";
 
@@ -29,7 +29,13 @@ internal static class LegendArchitecturalTakeoverGate
             ["assignment_blinding_integrity"] = new(100m, true),
             ["independent_judge_agreement"] = new(80m, true),
             ["latency_efficiency"] = new(50m, false),
-            ["cost_efficiency"] = new(50m, false)
+            ["cost_efficiency"] = new(50m, false),
+            ["native_execution"] = new(100m, true),
+            ["transfer"] = new(100m, true),
+            ["calibration"] = new(100m, true),
+            ["runtime_provenance_integrity"] = new(100m, true),
+            ["baseline_drift_integrity"] = new(100m, true),
+            ["contamination_integrity"] = new(100m, true)
         };
 
     internal static LegendArchitecturalTakeoverReadinessSnapshot Evaluate(

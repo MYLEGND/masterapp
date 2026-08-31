@@ -601,7 +601,8 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
                     generated.ModelVersion,
                     generated.ModelTrainingRunId,
                     LegendConnectNativeModelAssistanceContracts
-                        .CandidateAttemptProvenance)
+                        .CandidateAttemptProvenance,
+                    generated.CostMicrounits)
             };
         }
 
@@ -621,7 +622,8 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
                     generated.ModelVersion,
                     generated.ModelTrainingRunId,
                     LegendConnectNativeModelAssistanceContracts
-                        .CandidateAttemptProvenance)
+                        .CandidateAttemptProvenance,
+                    generated.CostMicrounits)
             };
         }
 
@@ -639,7 +641,8 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
                     .GovernedReasoningCapability,
                 generated.ModelVersion,
                 generated.ModelTrainingRunId,
-                LegendConnectNativeModelAssistanceContracts.Provenance)
+                LegendConnectNativeModelAssistanceContracts.Provenance,
+                generated.CostMicrounits)
         };
     }
 

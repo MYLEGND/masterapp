@@ -19,15 +19,17 @@ public sealed class LegendBlindComparativeBenchmarkTests
         new(2026, 8, 29, 0, 0, 0, DateTimeKind.Utc);
 
     [Fact]
-    public void CaseLevelBlindResults_MustPassStatisticalGateAcrossEveryDomain()
+    public void SyntheticCaseLevelWinners_AggregateButCannotBecomeTakeoverEvidence()
     {
         var evaluation =
             LegendBlindComparativeBenchmarkEvaluator.Evaluate(
                 Report(legendWinsPerDomain: 60));
 
         Assert.True(evaluation.Valid);
+        Assert.False(evaluation.TakeoverEligible);
         Assert.NotNull(evaluation.SuiteIdentity);
         Assert.Empty(evaluation.Blockers);
+        Assert.NotEmpty(evaluation.TakeoverBlockers);
         Assert.All(evaluation.Metrics.Values, metrics =>
         {
             Assert.Equal(100m, metrics["sample_size"]);
@@ -44,16 +46,7 @@ public sealed class LegendBlindComparativeBenchmarkTests
                 Guid.NewGuid(),
                 Baseline,
                 MeasuredUtc);
-        var readiness =
-            LegendArchitecturalTakeoverGate.Evaluate(
-                LegendIntelligenceEvaluationDomainCatalog.All,
-                signals);
-
-        Assert.True(readiness.Proven);
-        Assert.Equal("PROVEN", readiness.State);
-        Assert.Equal(
-            LegendIntelligenceEvaluationDomainCatalog.All.Count,
-            readiness.DomainWins);
+        Assert.Empty(signals);
     }
 
     [Fact]

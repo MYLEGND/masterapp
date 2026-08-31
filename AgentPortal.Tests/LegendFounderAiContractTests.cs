@@ -913,7 +913,7 @@ public sealed class LegendFounderAiContractTests
     }
 
     [Fact]
-    public async Task IntelligenceEvaluation_ProjectsOnlyCanonicalGovernedEvidenceWithoutDuplicates()
+    public async Task IntelligenceEvaluation_DoesNotRelabelRegressionOrTrafficAsDirectCaseMeasurements()
     {
         await using var db = ControllerTestHelpers.BuildDb();
         var now = DateTime.UtcNow;
@@ -985,13 +985,16 @@ public sealed class LegendFounderAiContractTests
         var service = new LegendIntelligenceEvaluationService(db);
         var measured = await service.CreateEvidenceSnapshotAsync("founder-1", CancellationToken.None);
         var language = measured.Domains.Single(domain => domain.Key == "language_linguistic");
-        Assert.Equal(100m, language.EvidenceScore);
+        Assert.Null(language.EvidenceScore);
         Assert.Equal(1, language.ProductionEligibleEvidenceCount);
-        Assert.Equal(9, language.EvidenceVolume);
+        Assert.Equal(6, language.EvidenceVolume);
+        Assert.Contains("transfer", language.OpenKnowledgeGaps);
+        Assert.Contains("native_execution", language.OpenKnowledgeGaps);
+        Assert.Contains("calibration", language.OpenKnowledgeGaps);
 
         var repeated = await service.CreateEvidenceSnapshotAsync("founder-1", CancellationToken.None);
         Assert.Equal(measured.EvaluatedUtc, repeated.EvaluatedUtc);
-        Assert.Equal(9, await db.LegendIntelligenceEvaluationSignals.CountAsync());
+        Assert.Equal(6, await db.LegendIntelligenceEvaluationSignals.CountAsync());
         Assert.Equal(1, await db.LegendIntelligenceEvaluationSnapshots.CountAsync());
     }
 
@@ -1030,14 +1033,14 @@ public sealed class LegendFounderAiContractTests
     }
 
     [Fact]
-    public async Task IntelligenceEvaluation_BlocksTakeoverClaimUntilEveryDomainBeatsOneLockedBaseline()
+    public async Task SyntheticPreLabeledComparativeSignals_CannotClaimTakeoverAuthority()
     {
         await using var db = ControllerTestHelpers.BuildDb();
         var service = new LegendIntelligenceEvaluationService(db);
         _ = await service.CreateEvidenceSnapshotAsync("founder-1", CancellationToken.None);
         var contract = await db.LegendIntelligenceEvaluationContracts.SingleAsync();
         const string authority =
-            LegendArchitecturalTakeoverGate.EvaluatorAuthorityPrefix + "gpt-5.6-sol@locked-2026-08-28";
+            "legend-locked-blind-comparative-evaluator-v1:gpt-5.6-sol@locked-2026-08-28";
         var metrics = new Dictionary<string, decimal>
         {
             ["sample_size"] = 200m,
@@ -1072,24 +1075,10 @@ public sealed class LegendFounderAiContractTests
         await db.SaveChangesAsync();
 
         var proven = await service.CreateEvidenceSnapshotAsync("founder-1", CancellationToken.None);
-        Assert.True(proven.TakeoverReadiness.Proven);
-        Assert.Equal("PROVEN", proven.TakeoverReadiness.State);
-        Assert.Equal(LegendIntelligenceEvaluationDomainCatalog.All.Count,
-            proven.TakeoverReadiness.DomainWins);
-        Assert.Equal("gpt-5.6-sol@locked-2026-08-28",
-            proven.TakeoverReadiness.BaselineIdentity);
-
-        var regression = await db.LegendIntelligenceEvaluationSignals.SingleAsync(item =>
-            item.DomainKey == "software_systems" && item.MetricKey == "non_inferiority_rate");
-        regression.Value = 99m;
-        regression.MeasuredUtc = regression.MeasuredUtc.AddSeconds(1);
-        await db.SaveChangesAsync();
-
-        var blocked = await service.CreateEvidenceSnapshotAsync("founder-1", CancellationToken.None);
-        Assert.False(blocked.TakeoverReadiness.Proven);
-        Assert.Equal(11, blocked.TakeoverReadiness.DomainWins);
-        Assert.Contains(blocked.TakeoverReadiness.Blockers, item =>
-            item.Contains("software_systems: non_inferiority_rate", StringComparison.Ordinal));
+        Assert.False(proven.TakeoverReadiness.Proven);
+        Assert.Equal("BLOCKED", proven.TakeoverReadiness.State);
+        Assert.Equal(0, proven.TakeoverReadiness.DomainWins);
+        Assert.Null(proven.TakeoverReadiness.BaselineIdentity);
     }
 
     [Fact]

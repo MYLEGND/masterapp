@@ -250,6 +250,127 @@ public sealed class LegendIntelligenceEvaluationService : ILegendIntelligenceEva
     }
 
     /// <summary>
+    /// The sole blind-benchmark ingestion boundary. It re-runs the existing
+    /// statistical authority and persists only runtime-proven reports. Raw or
+    /// synthetic pre-labeled winners can be aggregated in tests, but cannot
+    /// enter the evidence contract through this method.
+    /// </summary>
+    internal async Task<bool> IngestBlindBenchmarkAsync(
+        LegendBlindBenchmarkReport report,
+        object runtimeReceipt,
+        CancellationToken cancellationToken = default)
+    {
+        var evaluation =
+            LegendBlindComparativeBenchmarkEvaluator.EvaluateRuntime(
+                report,
+                runtimeReceipt);
+        if (!evaluation.Valid ||
+            !evaluation.TakeoverEligible ||
+            string.IsNullOrWhiteSpace(
+                evaluation.SuiteIdentity) ||
+            string.IsNullOrWhiteSpace(
+                evaluation.ProvenanceIdentity))
+        {
+            return false;
+        }
+
+        var contract =
+            await GetOrCreateContractAsync(
+                cancellationToken);
+        var signals =
+            evaluation.BuildSignals(
+                contract.Id,
+                report.BaselineIdentity,
+                report.MeasuredUtc);
+        if (signals.Count == 0)
+            return false;
+
+        var comparative =
+            await _db.LegendIntelligenceEvaluationSignals
+                .Where(item =>
+                    item.ContractId == contract.Id &&
+                    item.EvidenceAuthority.StartsWith(
+                        LegendArchitecturalTakeoverGate
+                            .EvaluatorAuthorityPrefix))
+                .ToListAsync(cancellationToken);
+        var currentReferences =
+            signals.Select(item =>
+                    item.EvidenceReference)
+                .ToHashSet(StringComparer.Ordinal);
+        foreach (var stale in comparative.Where(item =>
+                     item.State == "Current" &&
+                     !currentReferences.Contains(
+                         item.EvidenceReference)))
+        {
+            stale.State = "Superseded";
+        }
+
+        foreach (var signal in signals)
+        {
+            var existing =
+                comparative.SingleOrDefault(item =>
+                    string.Equals(
+                        item.EvidenceAuthority,
+                        signal.EvidenceAuthority,
+                        StringComparison.Ordinal) &&
+                    string.Equals(
+                        item.EvidenceReference,
+                        signal.EvidenceReference,
+                        StringComparison.Ordinal));
+            if (existing is not null)
+            {
+                existing.State = "Current";
+                continue;
+            }
+
+            _db.LegendIntelligenceEvaluationSignals.Add(
+                signal);
+        }
+
+        var suiteRecorded =
+            await _db.LegendConnectOperationalEvents
+                .AnyAsync(item =>
+                    item.Category ==
+                        "BlindComparativeBenchmark" &&
+                    item.Status == "SuiteConfiguration" &&
+                    item.CorrelationId ==
+                        evaluation.ProvenanceIdentity,
+                    cancellationToken);
+        if (!suiteRecorded)
+        {
+            RecordBlindBenchmarkSuite(
+                report,
+                evaluation.SuiteIdentity,
+                evaluation.ProvenanceIdentity);
+        }
+
+        var retainedOutcomeRows =
+            await _db.LegendConnectOperationalEvents
+                .Where(item =>
+                    item.Category ==
+                        "BlindComparativeBenchmark" &&
+                    item.CorrelationId != null)
+                .Select(item => item.CorrelationId!)
+                .ToListAsync(cancellationToken);
+        var retainedOutcomes =
+            retainedOutcomeRows.ToHashSet(
+                StringComparer.Ordinal);
+        foreach (var benchmarkCase in report.Cases.Where(item =>
+                     !retainedOutcomes.Contains(
+                         item.OutcomeIdentity)))
+        {
+            RecordBlindBenchmarkCase(
+                report,
+                evaluation.SuiteIdentity,
+                benchmarkCase);
+        }
+
+        await _db.SaveChangesAsync(
+            cancellationToken);
+        return true;
+    }
+
+    /// <summary>
     /// Projects already-governed evidence into the existing evaluation
     /// contract. It creates no curriculum, model result, or runtime outcome;
     /// absent authorities remain absent metrics and therefore fail closed.
@@ -336,34 +457,6 @@ public sealed class LegendIntelligenceEvaluationService : ILegendIntelligenceEva
         {
             projected.Add(Project("held_out", modelRun.HeldOutScore!.Value * 100m, modelRun.UpdatedUtc,
                 $"model-run:{modelRun.Id:N}:held-out:{modelRun.HeldOutScore:0.000000}"));
-            projected.Add(Project("transfer", modelRun.RegressionScore!.Value * 100m, modelRun.UpdatedUtc,
-                $"model-run:{modelRun.Id:N}:regression:{modelRun.RegressionScore:0.000000}"));
-        }
-        else
-        {
-            modelRun = null;
-        }
-
-        var demands = await _db.LegendTranslationPairDemands.AsNoTracking().ToListAsync(cancellationToken);
-        var requests = demands.Sum(item => item.TranslationRequestCount);
-        decimal? nativeExecution = null;
-        if (requests > 0)
-        {
-            var internalServes = demands.Sum(item => item.TranslationMemoryHitCount +
-                item.StructuralInternalServeCount + item.ContextualInternalServeCount + item.NeuralModelServeCount);
-            nativeExecution = Percent(internalServes, requests);
-            var demandMaterial = string.Join("|", demands.OrderBy(item => item.PairKey, StringComparer.Ordinal)
-                .Select(item => $"{item.PairKey}:{item.TranslationRequestCount}:{item.TranslationMemoryHitCount}:{item.StructuralInternalServeCount}:{item.ContextualInternalServeCount}:{item.NeuralModelServeCount}:{item.LastRequestedUtc:O}"));
-            projected.Add(Project("native_execution", nativeExecution.Value,
-                demands.Max(item => item.LastRequestedUtc), "translation-demand:" + Hash(demandMaterial)));
-        }
-
-        if (modelRun?.HeldOutScore is not null && nativeExecution is not null)
-        {
-            var heldOut = Math.Clamp(modelRun.HeldOutScore.Value * 100m, 0m, 100m);
-            projected.Add(Project("calibration", 100m - Math.Abs(heldOut - nativeExecution.Value),
-                new[] { modelRun.UpdatedUtc, demands.Max(item => item.LastRequestedUtc) }.Max(),
-                $"held-out-native-agreement:{modelRun.Id:N}:{Hash(string.Join('|', demands.Select(item => item.Id).OrderBy(item => item)))}"));
         }
 
         await UpsertProjectedSignalsAsync(contract.Id, projected, cancellationToken);
@@ -411,6 +504,197 @@ public sealed class LegendIntelligenceEvaluationService : ILegendIntelligenceEva
                 item.IndependentSourceIdentity,
                 item.ContributionState,
                 item.IsHumanVerifiedSupport)));
+
+    private void RecordBlindBenchmarkCase(
+        LegendBlindBenchmarkReport report,
+        string suiteIdentity,
+        LegendBlindBenchmarkCaseResult benchmarkCase)
+    {
+        var judges =
+            string.Join(
+                ',',
+                benchmarkCase.JudgeIdentities ??
+                Array.Empty<string>());
+        var common =
+            new
+            {
+                Category =
+                    "BlindComparativeBenchmark",
+                Severity =
+                    "Info",
+                CorrelationId =
+                    Bounded(
+                        benchmarkCase.OutcomeIdentity,
+                        128),
+                OccurredUtc =
+                    report.MeasuredUtc
+            };
+
+        _db.LegendConnectOperationalEvents.AddRange(
+            new LegendConnectOperationalEvent
+            {
+                Category = common.Category,
+                Severity = common.Severity,
+                Status = "LockedRuntime",
+                CorrelationId = common.CorrelationId,
+                Summary = Bounded(
+                    $"suite={suiteIdentity};case={benchmarkCase.CaseIdentity};domain={benchmarkCase.DomainKey};candidate={benchmarkCase.CandidateModelVersion};baseline={benchmarkCase.BaselineModelVersion};prompt_set={benchmarkCase.PromptSetVersion};deployed_sha={benchmarkCase.DeployedSha}",
+                    500),
+                IsResolved = true,
+                OccurredUtc = common.OccurredUtc
+            },
+            new LegendConnectOperationalEvent
+            {
+                Category = common.Category,
+                Severity = common.Severity,
+                Status = "ExactSettings",
+                CorrelationId = common.CorrelationId,
+                Summary = Bounded(
+                    $"candidate_settings={benchmarkCase.CandidateSettings};baseline_settings={benchmarkCase.BaselineSettings};judges={judges};judge_settings={report.JudgeSettings};adjudicator={report.AdjudicatorIdentity}",
+                    500),
+                IsResolved = true,
+                OccurredUtc = common.OccurredUtc
+            },
+            new LegendConnectOperationalEvent
+            {
+                Category = common.Category,
+                Severity = common.Severity,
+                Status = "BlindOutcome",
+                CorrelationId = common.CorrelationId,
+                Summary = Bounded(
+                    $"slot={benchmarkCase.LegendAnswerSlot};assignment={benchmarkCase.AssignmentIdentity};winner={benchmarkCase.Winner};agreement={benchmarkCase.AgreedJudgeVotes}/{benchmarkCase.TotalJudgeVotes};adjudication={benchmarkCase.Adjudication};native={benchmarkCase.NativeCompleted};transfer_case={benchmarkCase.TransferCase};transfer={benchmarkCase.TransferPassed};calibration={benchmarkCase.CalibrationPassed}",
+                    500),
+                IsResolved = true,
+                OccurredUtc = common.OccurredUtc
+            },
+            new LegendConnectOperationalEvent
+            {
+                Category = common.Category,
+                Severity = common.Severity,
+                Status = "JudgeExecution",
+                CorrelationId = common.CorrelationId,
+                Summary = Bounded(
+                    $"judge_latency_us={benchmarkCase.JudgeLatencyMicroseconds};judge_cost_micro={benchmarkCase.JudgeCostMicrounits};adjudication_latency_us={benchmarkCase.AdjudicationLatencyMicroseconds};adjudication_cost_micro={benchmarkCase.AdjudicationCostMicrounits};agreement={benchmarkCase.AgreedJudgeVotes}/{benchmarkCase.TotalJudgeVotes};adjudication={benchmarkCase.Adjudication}",
+                    500),
+                IsResolved = true,
+                OccurredUtc = common.OccurredUtc
+            },
+            new LegendConnectOperationalEvent
+            {
+                Category = common.Category,
+                Severity = common.Severity,
+                Status = "ExecutionProof",
+                CorrelationId = common.CorrelationId,
+                Summary = Bounded(
+                    $"legend_proof={benchmarkCase.LegendOutputProof};baseline_proof={benchmarkCase.BaselineOutputProof};provenance={benchmarkCase.RuntimeProvenanceVerified};contamination_checked={benchmarkCase.ContaminationChecked};prompt_held_out={benchmarkCase.PromptHeldOut};legend_latency_us={benchmarkCase.LegendLatencyMicroseconds};baseline_latency_us={benchmarkCase.BaselineLatencyMicroseconds};legend_cost_micro={benchmarkCase.LegendCostMicrounits};baseline_cost_micro={benchmarkCase.BaselineCostMicrounits}",
+                    500),
+                IsResolved = true,
+                OccurredUtc = common.OccurredUtc
+            });
+
+        foreach (var outcome in benchmarkCase.JudgeOutcomes ??
+                     Array.Empty<LegendBlindBenchmarkJudgeOutcome>())
+        {
+            _db.LegendConnectOperationalEvents.Add(
+                new LegendConnectOperationalEvent
+                {
+                    Category = common.Category,
+                    Severity = common.Severity,
+                    Status = outcome.IsAdjudication
+                        ? "AdjudicatorVote"
+                        : "JudgeVote",
+                    CorrelationId = common.CorrelationId,
+                    Summary = Bounded(
+                        $"judge={outcome.JudgeIdentity};winner={outcome.Winner};proof={outcome.ProvenanceIdentity};latency_us={outcome.LatencyMicroseconds};cost_micro={outcome.CostMicrounits}",
+                        500),
+                    IsResolved = true,
+                    OccurredUtc = common.OccurredUtc
+                });
+        }
+    }
+
+    private void RecordBlindBenchmarkSuite(
+        LegendBlindBenchmarkReport report,
+        string suiteIdentity,
+        string provenanceIdentity)
+    {
+        var occurredUtc =
+            report.MeasuredUtc;
+        _db.LegendConnectOperationalEvents.AddRange(
+            new LegendConnectOperationalEvent
+            {
+                Category = "BlindComparativeBenchmark",
+                Severity = "Info",
+                Status = "SuiteConfiguration",
+                CorrelationId = provenanceIdentity,
+                Summary = Bounded(
+                    $"suite={suiteIdentity};manifest={report.ManifestIdentity};prompt_set={report.PromptSetVersion};deployed_sha={report.DeployedSha};cost_schedule={report.CostScheduleVersion};candidate_runtime={report.CandidateRuntimeIdentity};candidate_settings={report.CandidateSettings}",
+                    500),
+                IsResolved = true,
+                OccurredUtc = occurredUtc
+            },
+            new LegendConnectOperationalEvent
+            {
+                Category = "BlindComparativeBenchmark",
+                Severity = "Info",
+                Status = "BaselineConfiguration",
+                CorrelationId = provenanceIdentity,
+                Summary = Bounded(
+                    $"baseline_identity={report.BaselineIdentity};baseline_model={report.BaselineModelVersion};baseline_settings={report.BaselineSettings}",
+                    500),
+                IsResolved = true,
+                OccurredUtc = occurredUtc
+            },
+            new LegendConnectOperationalEvent
+            {
+                Category = "BlindComparativeBenchmark",
+                Severity = "Info",
+                Status = "ContaminationConfiguration",
+                CorrelationId = provenanceIdentity,
+                Summary = Bounded(
+                    $"contamination_authority={report.ContaminationAuthority};contamination_proof={report.ContaminationProofIdentity};manifest={report.ManifestIdentity};provenance={provenanceIdentity}",
+                    500),
+                IsResolved = true,
+                OccurredUtc = occurredUtc
+            },
+            new LegendConnectOperationalEvent
+            {
+                Category = "BlindComparativeBenchmark",
+                Severity = "Info",
+                Status = "AdjudicatorConfiguration",
+                CorrelationId = provenanceIdentity,
+                Summary = Bounded(
+                    $"adjudicator={report.AdjudicatorIdentity};judge_settings={report.JudgeSettings}",
+                    500),
+                IsResolved = true,
+                OccurredUtc = occurredUtc
+            });
+
+        foreach (var judge in report.JudgeIdentities ??
+                     Array.Empty<string>())
+        {
+            _db.LegendConnectOperationalEvents.Add(
+                new LegendConnectOperationalEvent
+                {
+                    Category = "BlindComparativeBenchmark",
+                    Severity = "Info",
+                    Status = "JudgeConfiguration",
+                    CorrelationId = provenanceIdentity,
+                    Summary = Bounded(
+                        $"judge={judge};judge_settings={report.JudgeSettings}",
+                        500),
+                    IsResolved = true,
+                    OccurredUtc = occurredUtc
+                });
+        }
+    }
+
+    private static string Bounded(
+        string value,
+        int maximum) =>
+        value[..Math.Min(
+            value.Length,
+            maximum)];
 
     private static void AddRatio(List<ProjectedSignal> target, string metric, long numerator, long denominator,
         DateTime? measuredUtc, IReadOnlyCollection<CanonicalTransitionObservation> evidence)
