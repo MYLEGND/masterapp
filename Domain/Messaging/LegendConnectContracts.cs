@@ -1129,6 +1129,11 @@ public interface ILegendConnectOperations
         LegendConnectMachineTeachingSubmission submission,
         CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Searches retained governed evidence and admitted knowledge.
+    /// MachineProposed candidate and proposal artifacts remain noncanonical
+    /// lifecycle records and are never projected through this contract.
+    /// </summary>
     Task<LegendConnectRetainedKnowledgeSearchSnapshot> SearchRetainedKnowledgeAsync(
         string query,
         string? sourceLanguageCode = null,

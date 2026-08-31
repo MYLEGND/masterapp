@@ -277,6 +277,10 @@ public sealed class LegendTranslationLearningEvent
 /// </summary>
 public sealed class LegendCorpusCandidate
 {
+    /// <summary>
+    /// The durable, opaque correlation identity for this candidate's complete
+    /// machine-learning lifecycle. It contains no corpus or actor content.
+    /// </summary>
     public Guid Id { get; set; } = Guid.NewGuid();
     public string IdempotencyKey { get; set; } = string.Empty;
     public string SourceLanguageCode { get; set; } = string.Empty;
@@ -334,6 +338,12 @@ public sealed class LegendCorpusCandidate
 public sealed class LegendLanguageTeacherProposal
 {
     public Guid Id { get; set; } = Guid.NewGuid();
+
+    /// <summary>
+    /// Carries the originating candidate's durable correlation identity through
+    /// critic, canonical validation, and curriculum admission. Those stages
+    /// update this proposal rather than allocating another lifecycle identity.
+    /// </summary>
     public Guid CorpusCandidateId { get; set; }
 
     /// <summary>

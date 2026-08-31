@@ -181,6 +181,7 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
             "evidence" => await GetAnchorPageAsync(language, normalizedSearch, pageCursor, cancellationToken),
             "relationships" => await GetRelationshipPageAsync(language, normalizedSearch, pageCursor, cancellationToken),
             "learning" => await GetLearningPageAsync(language, normalizedSearch, pageCursor, cancellationToken),
+            "machine-learning-lifecycle" => await GetMachineLearningLifecyclePageAsync(language, normalizedSearch, pageCursor, cancellationToken),
             "models" => await GetModelPageAsync(language, normalizedSearch, pageCursor, cancellationToken),
             "health" => await GetHealthPageAsync(language, normalizedSearch, pageCursor, cancellationToken),
             "retained-knowledge" => await GetRetainedKnowledgePageAsync(language, normalizedSearch, pageCursor, cancellationToken),
@@ -739,16 +740,11 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
                             cancellationToken)
                 ).ToHashSet();
 
-        var proposals =
-            await _db.Set<LegendLanguageTeacherProposal>()
-                .AsNoTracking()
-                .Where(item =>
-                    (sourceLanguage == null || item.SourceLanguageCode == sourceLanguage) &&
-                    (targetLanguage == null || item.TargetLanguageCode == targetLanguage))
-                .OrderByDescending(item =>
-                    item.UpdatedUtc)
-                .ToListAsync(cancellationToken);
-
+        // MachineProposed artifacts are intentionally absent from retained
+        // knowledge search. Their actual noncanonical lifecycle is visible only
+        // through the bounded Founder lifecycle projection below; admitted
+        // knowledge enters this search through its canonical text, alignment,
+        // and curriculum authorities rather than through proposal payloads.
         var activeModels =
             await _db.Set<LegendLanguagePair>()
                 .AsNoTracking()
@@ -891,82 +887,6 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
                         contradicted,
                         null,
                         row.Alignment.UpdatedUtc)
-                ));
-        }
-
-        foreach (var proposal in proposals)
-        {
-            if (sourceLanguage is not null &&
-                !string.Equals(
-                    proposal.SourceLanguageCode,
-                    sourceLanguage,
-                    StringComparison.OrdinalIgnoreCase))
-            {
-                continue;
-            }
-
-            if (targetLanguage is not null &&
-                !string.Equals(
-                    proposal.TargetLanguageCode,
-                    targetLanguage,
-                    StringComparison.OrdinalIgnoreCase))
-            {
-                continue;
-            }
-
-            var match =
-                RetainedKnowledgeMatch(
-                    proposal.FamilyKey +
-                    "\n" +
-                    proposal.SemanticCategory +
-                    "\n" +
-                    proposal.Rationale +
-                    "\n" +
-                    proposal.ProposalPayloadJson,
-                    terms);
-
-            if (match == 0)
-            {
-                continue;
-            }
-
-            var validated =
-                proposal.Provenance ==
-                    LegendConnectKnowledgeProvenance.SystemValidatedMachine ||
-                proposal.ValidationState is
-                    "SystemValidated" or
-                    "CurriculumAdmitted";
-
-            var rejected =
-                proposal.ValidationState.Contains(
-                    "Rejected",
-                    StringComparison.OrdinalIgnoreCase) ||
-                proposal.ValidationState ==
-                    "Failed";
-
-            scored.Add(
-                (
-                    match,
-                    new LegendConnectRetainedKnowledgeItemSnapshot(
-                        "MachineProposal",
-                        proposal.ValidationState,
-                        validated
-                            ? 85
-                            : rejected
-                                ? 10
-                                : 40,
-                        proposal.Provenance,
-                        proposal.SourceLanguageCode,
-                        proposal.PairKey,
-                        BoundRetainedKnowledge(
-                            proposal.ProposalPayloadJson,
-                            6_000),
-                        proposal.Rationale,
-                        proposal.Confidence,
-                        validated,
-                        rejected,
-                        null,
-                        proposal.UpdatedUtc)
                 ));
         }
 
@@ -4240,7 +4160,138 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
             item => item.Id, item => item.CreatedUtc,
             item => new[] { item.PairKey, item.Provenance, item.EligibilityState, item.ProcessingState, item.AttemptCount.ToString(CultureInfo.InvariantCulture), item.FailureCode ?? "—", item.CreatedUtc.ToString("u", CultureInfo.InvariantCulture) },
             new[] { "Pair", "Provenance", "Eligibility", "State", "Attempts", "Failure", "Queued" },
-            "No learning events match this language and filter.");
+            "No translation events match this language and filter.");
+    }
+
+    /// <summary>
+    /// Read-only Founder projection of the existing MachineProposed lifecycle.
+    /// The candidate primary key is the durable correlation identity: the
+    /// proposal foreign key carries it through critic, validator, and admission,
+    /// whose state and audit fields remain authoritative. No proposal state is
+    /// inferred back into storage and no private candidate or proposal content
+    /// is selected.
+    /// </summary>
+    private async Task<LegendConnectFounderSectionPageSnapshot>
+        GetMachineLearningLifecyclePageAsync(
+            string language,
+            string? search,
+            FounderSectionCursor? cursor,
+            CancellationToken cancellationToken)
+    {
+        var searchedId = Guid.TryParse(search, out var parsedId)
+            ? parsedId
+            : (Guid?)null;
+        var hasSearchedId = searchedId.HasValue;
+        var searchedGuid = searchedId ?? Guid.Empty;
+        var query =
+            from candidate in _db.Set<LegendCorpusCandidate>().AsNoTracking()
+            join proposal in _db.Set<LegendLanguageTeacherProposal>().AsNoTracking()
+                on candidate.Id equals proposal.CorpusCandidateId into proposals
+            from proposal in proposals.DefaultIfEmpty()
+            where (candidate.SourceLanguageCode == language ||
+                    candidate.TargetLanguageCode == language) &&
+                (candidate.TeacherProposalProcessingState != "NotStarted" ||
+                    proposal != null)
+            select new MachineLearningLifecycleSource(
+                candidate.Id,
+                candidate.SourceLanguageCode,
+                candidate.TargetLanguageCode,
+                candidate.Provenance,
+                candidate.TeacherProposalProcessingState,
+                candidate.TeacherProposalAttemptCount,
+                candidate.TeacherProposalFailureCode,
+                candidate.CreatedUtc,
+                candidate.TeacherProposalProcessedUtc,
+                proposal == null ? null : proposal.Id,
+                proposal == null ? null : proposal.PairKey,
+                proposal == null ? null : proposal.FamilyKey,
+                proposal == null ? null : proposal.Provenance,
+                proposal == null ? null : proposal.ValidationState,
+                proposal != null && proposal.CriticApproved,
+                proposal == null ? null : proposal.CriticConfidence,
+                proposal == null ? null : proposal.CriticReasonCodesJson,
+                proposal == null ? 0 : proposal.CanonicalValidationAttemptCount,
+                proposal == null ? null : proposal.CanonicalValidatedUtc,
+                proposal == null ? null : proposal.CanonicalValidationFailureCode,
+                proposal == null ? 0 : proposal.CurriculumAdmissionAttemptCount,
+                proposal == null ? null : proposal.CurriculumAdmittedUtc,
+                proposal == null ? null : proposal.CurriculumAdmissionFailureCode,
+                proposal == null ? null : proposal.CreatedUtc,
+                proposal == null ? null : proposal.UpdatedUtc,
+                proposal == null
+                    ? candidate.TeacherProposalProcessedUtc ?? candidate.ProcessedUtc ?? candidate.CreatedUtc
+                    : proposal.UpdatedUtc,
+                proposal == null ? candidate.Id : proposal.Id);
+
+        if (search is not null)
+        {
+            query = query.Where(item =>
+                (hasSearchedId &&
+                    (item.CorrelationId == searchedGuid ||
+                        item.ProposalId == searchedGuid)) ||
+                item.SourceLanguageCode.ToLower().Contains(search) ||
+                item.TargetLanguageCode.ToLower().Contains(search) ||
+                item.CandidateProvenance.ToLower().Contains(search) ||
+                item.CandidateState.ToLower().Contains(search) ||
+                (item.PairKey ?? string.Empty).ToLower().Contains(search) ||
+                (item.ProposalProvenance ?? string.Empty).ToLower().Contains(search) ||
+                (item.ActualProposalState ?? string.Empty).ToLower().Contains(search) ||
+                (item.CandidateFailureCode ?? string.Empty).ToLower().Contains(search) ||
+                (item.ValidatorFailureCode ?? string.Empty).ToLower().Contains(search) ||
+                (item.AdmissionFailureCode ?? string.Empty).ToLower().Contains(search));
+        }
+
+        if (cursor is { } after)
+        {
+            query = query.Where(item => item.SortUpdatedUtc < after.UpdatedUtc ||
+                (item.SortUpdatedUtc == after.UpdatedUtc &&
+                    item.SortId.CompareTo(after.Id) < 0));
+        }
+
+        var values = await query
+            .OrderByDescending(item => item.SortUpdatedUtc)
+            .ThenByDescending(item => item.SortId)
+            .Take(FounderSectionPageSize + 1)
+            .ToListAsync(cancellationToken);
+        var page = values.Take(FounderSectionPageSize).ToList();
+        var admittedFamilyKeys = page
+            .Where(IsCompletedLifecycleAdmission)
+            .Select(item => item.FamilyKey!)
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+        IReadOnlyList<AdmittedLifecycleFamilySource> admittedFamilies =
+            admittedFamilyKeys.Length == 0
+            ? []
+            : await _db.Set<LegendCurriculumFamily>()
+                .AsNoTracking()
+                .Where(item => admittedFamilyKeys.Contains(item.FamilyKey))
+                .Select(item => new AdmittedLifecycleFamilySource(
+                    item.FamilyKey,
+                    item.Id))
+                .ToListAsync(cancellationToken);
+        var admittedFamilyIds = admittedFamilies.ToDictionary(
+            item => item.FamilyKey,
+            item => item.Id,
+            StringComparer.Ordinal);
+        var hasMore = values.Count > FounderSectionPageSize;
+        var nextCursor = hasMore && page.Count > 0
+            ? FormatFounderSectionCursor(
+                page[^1].SortUpdatedUtc,
+                page[^1].SortId)
+            : null;
+
+        return new LegendConnectFounderSectionPageSnapshot(
+            "machine-learning-lifecycle",
+            language,
+            search,
+            FounderSectionPageSize,
+            nextCursor,
+            MachineLearningLifecycleColumns,
+            page.Select(item =>
+                MapMachineLearningLifecycleRow(item, admittedFamilyIds)).ToList(),
+            page.Count == 0
+                ? "No MachineProposed lifecycle records match this language and filter."
+                : null);
     }
 
     private async Task<LegendConnectFounderSectionPageSnapshot> GetModelPageAsync(
@@ -4425,6 +4476,252 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
         Convert.ToBase64String(Encoding.UTF8.GetBytes($"{updatedUtc.Ticks}:{id:N}"));
 
     private sealed record FounderSectionCursor(DateTime UpdatedUtc, Guid Id);
+
+    private static readonly string[] MachineLearningLifecycleColumns =
+    [
+        "Lifecycle / candidate ID",
+        "Proposal ID",
+        "Pair",
+        "Candidate provenance",
+        "Proposal provenance",
+        "Actual state",
+        "Candidate attempts",
+        "Candidate failure",
+        "Critic result",
+        "Critic confidence",
+        "Critic reasons",
+        "Validator attempts",
+        "Validator result",
+        "Validator failure",
+        "Admission attempts",
+        "Admission result",
+        "Admission failure",
+        "Admission identity",
+        "Candidate created",
+        "Candidate processed",
+        "Proposal created",
+        "Proposal updated",
+        "Validator completed",
+        "Admission completed"
+    ];
+
+    private static IReadOnlyList<string> MapMachineLearningLifecycleRow(
+        MachineLearningLifecycleSource item,
+        IReadOnlyDictionary<string, Guid> admittedFamilyIds)
+    {
+        var validatorResult = MachineLearningValidatorResult(item);
+        var admissionResult = MachineLearningAdmissionResult(item, validatorResult);
+        var admissionIdentity = IsCompletedLifecycleAdmission(item) &&
+            admittedFamilyIds.TryGetValue(item.FamilyKey!, out var familyId)
+                ? familyId.ToString("D")
+                : "—";
+
+        return
+        [
+            item.CorrelationId.ToString("D"),
+            item.ProposalId?.ToString("D") ?? "—",
+            SanitizeLifecycleMetadata(
+                item.PairKey ??
+                    $"{item.SourceLanguageCode}:{item.TargetLanguageCode}",
+                "unavailable_pair"),
+            SanitizeLifecycleMetadata(
+                item.CandidateProvenance,
+                "unavailable_provenance"),
+            SanitizeLifecycleMetadata(
+                item.ProposalProvenance,
+                "—"),
+            SanitizeLifecycleMetadata(
+                item.ActualProposalState ?? item.CandidateState,
+                "unavailable_state"),
+            item.CandidateAttemptCount.ToString(CultureInfo.InvariantCulture),
+            SanitizeLifecycleFailure(item.CandidateFailureCode),
+            MachineLearningCriticResult(item),
+            item.CriticConfidence?.ToString("0.0000", CultureInfo.InvariantCulture) ?? "—",
+            SanitizeLifecycleCriticReasons(item.CriticReasonCodesJson),
+            item.ValidatorAttemptCount.ToString(CultureInfo.InvariantCulture),
+            validatorResult,
+            SanitizeLifecycleFailure(item.ValidatorFailureCode),
+            item.AdmissionAttemptCount.ToString(CultureInfo.InvariantCulture),
+            admissionResult,
+            SanitizeLifecycleFailure(item.AdmissionFailureCode),
+            admissionIdentity,
+            FormatLifecycleTimestamp(item.CandidateCreatedUtc),
+            FormatLifecycleTimestamp(item.CandidateProcessedUtc),
+            FormatLifecycleTimestamp(item.ProposalCreatedUtc),
+            FormatLifecycleTimestamp(item.ProposalUpdatedUtc),
+            FormatLifecycleTimestamp(item.ValidatorCompletedUtc),
+            FormatLifecycleTimestamp(item.AdmissionCompletedUtc)
+        ];
+    }
+
+    private static bool IsCompletedLifecycleAdmission(
+        MachineLearningLifecycleSource item) =>
+        item.ProposalId.HasValue &&
+        item.AdmissionCompletedUtc.HasValue &&
+        item.AdmissionFailureCode is null &&
+        string.Equals(
+            item.ActualProposalState,
+            "CurriculumAdmitted",
+            StringComparison.Ordinal) &&
+        !string.IsNullOrWhiteSpace(item.FamilyKey);
+
+    private static string MachineLearningCriticResult(
+        MachineLearningLifecycleSource item)
+    {
+        if (!item.ProposalId.HasValue)
+            return "Not created";
+        if (string.Equals(
+                item.ActualProposalState,
+                "AwaitingCritic",
+                StringComparison.Ordinal) &&
+            item.CriticConfidence is null)
+        {
+            return "Pending";
+        }
+
+        return item.CriticApproved ? "Approved" : "Rejected";
+    }
+
+    private static string MachineLearningValidatorResult(
+        MachineLearningLifecycleSource item)
+    {
+        if (!item.ProposalId.HasValue || !item.CriticApproved)
+            return "Not started";
+        if (!item.ValidatorCompletedUtc.HasValue)
+            return item.ValidatorAttemptCount == 0 ? "Pending" : "Processing";
+        if (item.ValidatorFailureCode is not null)
+        {
+            return SanitizeLifecycleMetadata(
+                item.ActualProposalState,
+                "Failed");
+        }
+
+        return string.Equals(
+                item.ProposalProvenance,
+                LegendConnectKnowledgeProvenance.SystemValidatedMachine,
+                StringComparison.Ordinal)
+            ? "SystemValidated"
+            : SanitizeLifecycleMetadata(
+                item.ActualProposalState,
+                "Completed");
+    }
+
+    private static string MachineLearningAdmissionResult(
+        MachineLearningLifecycleSource item,
+        string validatorResult)
+    {
+        if (!string.Equals(
+                validatorResult,
+                "SystemValidated",
+                StringComparison.Ordinal))
+        {
+            return "Not started";
+        }
+        if (!item.AdmissionCompletedUtc.HasValue)
+            return item.AdmissionAttemptCount == 0 ? "Pending" : "Processing";
+
+        return SanitizeLifecycleMetadata(
+            item.ActualProposalState,
+            "Completed");
+    }
+
+    private static string SanitizeLifecycleCriticReasons(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json))
+            return "—";
+
+        try
+        {
+            using var document = JsonDocument.Parse(json);
+            if (document.RootElement.ValueKind != JsonValueKind.Array)
+                return "withheld_invalid_critic_result";
+            var values = document.RootElement
+                .EnumerateArray()
+                .Take(17)
+                .ToArray();
+            if (values.Length > 16 ||
+                values.Any(item => item.ValueKind != JsonValueKind.String))
+            {
+                return "withheld_invalid_critic_result";
+            }
+
+            var reasons = values
+                .Select(item => item.GetString())
+                .Where(item => !string.IsNullOrWhiteSpace(item))
+                .Select(item => SanitizeLifecycleMetadata(
+                    item,
+                    "withheld_invalid_critic_result"))
+                .Distinct(StringComparer.Ordinal)
+                .ToArray();
+            return reasons.Length == 0
+                ? "—"
+                : string.Join(", ", reasons);
+        }
+        catch (JsonException)
+        {
+            return "withheld_invalid_critic_result";
+        }
+    }
+
+    private static string SanitizeLifecycleMetadata(
+        string? value,
+        string emptyOrInvalid)
+    {
+        var normalized = value?.Trim();
+        if (string.IsNullOrWhiteSpace(normalized) ||
+            normalized.Length > 160 ||
+            normalized.Any(character =>
+                !char.IsAsciiLetterOrDigit(character) &&
+                character is not '_' and not '-' and not '.' and not ':' and not '/'))
+        {
+            return emptyOrInvalid;
+        }
+
+        return normalized;
+    }
+
+    private static string SanitizeLifecycleFailure(string? value) =>
+        string.IsNullOrWhiteSpace(value)
+            ? "—"
+            : SanitizeLifecycleMetadata(
+                value,
+                "withheld_invalid_diagnostic");
+
+    private static string FormatLifecycleTimestamp(DateTime? value) =>
+        value?.ToString("u", CultureInfo.InvariantCulture) ?? "—";
+
+    private sealed record MachineLearningLifecycleSource(
+        Guid CorrelationId,
+        string SourceLanguageCode,
+        string TargetLanguageCode,
+        string CandidateProvenance,
+        string CandidateState,
+        int CandidateAttemptCount,
+        string? CandidateFailureCode,
+        DateTime CandidateCreatedUtc,
+        DateTime? CandidateProcessedUtc,
+        Guid? ProposalId,
+        string? PairKey,
+        string? FamilyKey,
+        string? ProposalProvenance,
+        string? ActualProposalState,
+        bool CriticApproved,
+        decimal? CriticConfidence,
+        string? CriticReasonCodesJson,
+        int ValidatorAttemptCount,
+        DateTime? ValidatorCompletedUtc,
+        string? ValidatorFailureCode,
+        int AdmissionAttemptCount,
+        DateTime? AdmissionCompletedUtc,
+        string? AdmissionFailureCode,
+        DateTime? ProposalCreatedUtc,
+        DateTime? ProposalUpdatedUtc,
+        DateTime SortUpdatedUtc,
+        Guid SortId);
+
+    private sealed record AdmittedLifecycleFamilySource(
+        string FamilyKey,
+        Guid Id);
 
     private async Task<LegendConnectOperationalState> LoadStateAsync(
         CancellationToken cancellationToken,
