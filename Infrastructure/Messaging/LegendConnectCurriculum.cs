@@ -3995,6 +3995,7 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
         if (language is null) return SemanticTransitionSelection.Insufficient("invalid_source_language");
         IReadOnlyDictionary<string, string> values;
         IReadOnlyList<LegendShadowSourceSemanticComponent> sourceComponents;
+        IReadOnlyList<string> sourceSemanticSignatures;
         if (requireComposedGraph)
         {
             var graph = composedGraph ?? await AnalyzeReusableMeaningGraphAsync(language, input, cancellationToken);
@@ -4007,6 +4008,7 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
             // not from a second lexical interpretation. Surface analysis has
             // already been admitted by AnalyzeReusableMeaningGraphAsync.
             sourceComponents = [];
+            sourceSemanticSignatures = ActiveMeaningGraphSemanticSignatures(graph);
         }
         else
         {
@@ -4016,6 +4018,10 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
             if (!TryToUnambiguousSemanticValues(understanding.Components, out values))
                 return SemanticTransitionSelection.Ambiguous("ambiguous_source_semantic_dimension", language, understanding.Components);
             sourceComponents = understanding.Components;
+            sourceSemanticSignatures = understanding.Components
+                .Select(item => item.SemanticSignature)
+                .Distinct(StringComparer.Ordinal)
+                .ToArray();
         }
         var observations = await LoadActiveSemanticTransitionObservationsAsync(language, null, cancellationToken);
         if (observations.Count == 0)
@@ -4055,26 +4061,37 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
             if (exactEndpoint is not null)
                 return exactEndpoint;
 
+            // Projection is authorized by the canonical family or complete
+            // meaning-graph evidence that grounded this utterance. Shared
+            // dimensions alone never establish a connection to every active
+            // transition family.
+            var projectionScope = await ResolveCanonicalSemanticProjectionScopeAsync(
+                language,
+                sourceSemanticSignatures,
+                cancellationToken);
+
             // Founder curricula may carry controlled descriptive dimensions
             // which are not independently surfaced by the present-turn
             // meaning graph.  They remain canonical evidence, but they must
             // not make an otherwise unique governed response unreachable.
             //
-            // This is a projection over the complete active transition
-            // authority, not an override or a phrase-specific fallback.  A
+            // This is a projection over all active transition evidence within
+            // the canonical semantic family or an explicitly governed graph
+            // transfer, not an override or a phrase-specific fallback. A
             // static dimension may be omitted only when at least one other
             // source dimension matched this turn and every compatible,
             // independently production-eligible transition selects the same
             // result frame. Higher-standard evidence is mandatory whenever it
             // is present; broad governed evidence remains usable only when no
             // higher-standard compatible candidate exists. Observed conflicts,
-            // semantic variables, genuine
-            // result ambiguity, and contradictory evidence remain fail-closed.
+            // semantic variables, genuine result ambiguity, and contradictory
+            // evidence remain fail-closed.
             var projectedCandidates = BuildGovernedSemanticTransitionCandidates(
                     responseObservations,
                     values,
                     allowMissingVariables: false,
-                    allowMissingStaticDimensions: true)
+                    allowMissingStaticDimensions: true,
+                    projectionScope: projectionScope)
                 .Where(item => item.DirectSourceMatchCount > 0)
                 .ToList();
             projectedCandidates = PreferHighestStandardCandidates(projectedCandidates);
@@ -4083,7 +4100,8 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
                 if (HasContradictedSemanticTransition(
                         responseObservations,
                         values,
-                        allowMissingStaticDimensions: true))
+                        allowMissingStaticDimensions: true,
+                        projectionScope: projectionScope))
                 {
                     return SemanticTransitionSelection.Contradicted(
                         "semantic_transition_projected_contradicted");
@@ -4324,6 +4342,78 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
                 .ThenBy(item => item.RelationKind, StringComparer.Ordinal)
                 .Select(item => item.RelationSignature + ":" + item.RelationKind))));
 
+    private static IReadOnlyList<string> ActiveMeaningGraphSemanticSignatures(
+        LegendConnectUtteranceMeaningGraphSnapshot graph)
+    {
+        if (graph.Nodes.Count == 1 && graph.Relations.Count == 0)
+            return [graph.Nodes[0].SemanticSignature];
+
+        return graph.Relations
+            .SelectMany(item => new[] { item.SourceNodeIndex, item.TargetNodeIndex })
+            .Where(index => index >= 0 && index < graph.Nodes.Count)
+            .Select(index => graph.Nodes[index].SemanticSignature)
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+    }
+
+    private async Task<CanonicalSemanticProjectionScope> ResolveCanonicalSemanticProjectionScopeAsync(
+        string sourceLanguage,
+        IReadOnlyList<string> sourceSemanticSignatures,
+        CancellationToken cancellationToken)
+    {
+        var signatures = sourceSemanticSignatures
+            .Where(item => !string.IsNullOrWhiteSpace(item))
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+        if (signatures.Length == 0)
+            return CanonicalSemanticProjectionScope.Empty;
+
+        var rows = await (
+            from node in _db.Set<LegendLanguageMeaningNodeEvidence>().AsNoTracking()
+            join example in _db.Set<LegendCurriculumExample>().AsNoTracking()
+                on node.CurriculumExampleId equals example.Id
+            join family in _db.Set<LegendCurriculumFamily>().AsNoTracking()
+                on example.CurriculumFamilyId equals family.Id
+            join unit in _db.Set<LegendLanguageTextUnit>().AsNoTracking()
+                on example.TextUnitId equals unit.Id
+            where node.LanguageCode == sourceLanguage &&
+                signatures.Contains(node.SemanticSignature) &&
+                node.SupersededUtc == null &&
+                node.Provenance == LegendConnectKnowledgeProvenance.FounderApproved &&
+                example.SupersededUtc == null &&
+                example.LanguageCode == sourceLanguage &&
+                example.Provenance == LegendConnectKnowledgeProvenance.FounderApproved &&
+                family.Provenance == LegendConnectKnowledgeProvenance.FounderApproved &&
+                unit.IsTrainingEligible &&
+                unit.Provenance == LegendConnectKnowledgeProvenance.FounderApproved
+            select new
+            {
+                example.CurriculumFamilyId,
+                CurriculumExampleId = example.Id,
+                node.SemanticSignature
+            }
+        ).Distinct().ToListAsync(cancellationToken);
+
+        var familyIds = rows
+            .GroupBy(item => item.CurriculumFamilyId)
+            .Where(group => group
+                .Select(item => item.SemanticSignature)
+                .Distinct(StringComparer.Ordinal)
+                .Count() == signatures.Length)
+            .Select(group => group.Key)
+            .ToHashSet();
+        var meaningGraphExampleIds = rows
+            .GroupBy(item => item.CurriculumExampleId)
+            .Where(group => group
+                .Select(item => item.SemanticSignature)
+                .Distinct(StringComparer.Ordinal)
+                .Count() == signatures.Length)
+            .Select(group => group.Key)
+            .ToHashSet();
+
+        return new(familyIds, meaningGraphExampleIds);
+    }
+
     private static IReadOnlyList<GroundedContextFrame> ResolveGroundedContextFramesFromDiscourseState(
         LegendConnectDiscourseStateSnapshot state,
         IReadOnlyList<SemanticTransitionObservation> observations)
@@ -4356,6 +4446,9 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
                 on source.TextUnitId equals sourceUnit.Id
             join resultUnit in _db.Set<LegendLanguageTextUnit>().AsNoTracking()
                 on result.TextUnitId equals resultUnit.Id
+            join relationEvidence in _db.Set<LegendFounderSemanticExampleRelationEvidence>().AsNoTracking()
+                on evidence.FounderSemanticExampleRelationEvidenceId equals (Guid?)relationEvidence.Id into relationEvidenceRows
+            from relationEvidence in relationEvidenceRows.DefaultIfEmpty()
             where evidence.SupersededUtc == null &&
                 evidence.SourceLanguageCode == sourceLanguage &&
                 evidence.ResultLanguageCode == sourceLanguage &&
@@ -4388,7 +4481,20 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
                 evidence.IsHumanVerifiedSupport,
                 evidence.Provenance,
                 evidence.SourceCurriculumExampleId,
-                evidence.ResultCurriculumExampleId)
+                evidence.ResultCurriculumExampleId,
+                source.CurriculumFamilyId,
+                result.CurriculumFamilyId,
+                relationEvidence != null &&
+                relationEvidence.SupersededUtc == null &&
+                relationEvidence.SourceCurriculumFamilyId == source.CurriculumFamilyId &&
+                relationEvidence.SourceCurriculumExampleId == source.Id &&
+                relationEvidence.ResultCurriculumFamilyId == result.CurriculumFamilyId &&
+                relationEvidence.ResultCurriculumExampleId == result.Id &&
+                relationEvidence.LanguageCode == sourceLanguage &&
+                relationEvidence.IsHumanVerifiedSupport &&
+                relationEvidence.Provenance == LegendConnectKnowledgeProvenance.FounderApproved &&
+                relationEvidence.RelationshipSemanticSignature == evidence.FounderRelationshipSemanticSignature,
+                relationEvidence == null ? null : relationEvidence.ContributionState)
         ).ToListAsync(cancellationToken);
     }
 
@@ -4425,17 +4531,46 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
             IReadOnlyList<SemanticTransitionObservation> observations,
             IReadOnlyDictionary<string, string> inputValues,
             bool allowMissingVariables,
-            bool allowMissingStaticDimensions = false)
+            bool allowMissingStaticDimensions = false,
+            CanonicalSemanticProjectionScope? projectionScope = null)
     {
         var candidates = new List<SemanticTransitionCandidate>();
-        foreach (var group in observations.GroupBy(item => item.TransitionSignature, StringComparer.Ordinal))
+        foreach (var groupedObservations in observations.GroupBy(
+                     item => item.TransitionSignature,
+                     StringComparer.Ordinal))
         {
+            // A same-family transition is governed by its canonical family.
+            // A cross-family observation participates only when it retains
+            // the active Founder relation that created that graph transfer.
+            // Unrelated families cannot manufacture support merely by sharing
+            // dimensions or a result-frame signature.
+            var group = groupedObservations
+                .Where(HasGovernedSemanticFamilyConnection)
+                .ToList();
             if (!TryGetGovernedSemanticTransitionFrames(
                     group,
                     out var independentEvidenceCount,
                     out var sourceFrame,
                     out var resultFrame,
                     out var evidenceStandard))
+            {
+                continue;
+            }
+
+            var onlyCrossFamilyEvidence = group.Count > 0 && group.All(item =>
+                item.SourceCurriculumFamilyId != item.ResultCurriculumFamilyId);
+            if (onlyCrossFamilyEvidence &&
+                (evidenceStandard != HigherGovernedEvidenceStandard ||
+                 group.Any(item => !string.Equals(
+                     item.FounderTransferContributionState,
+                     "Supported",
+                     StringComparison.Ordinal))))
+            {
+                continue;
+            }
+
+            if (projectionScope is not null &&
+                !IsAuthorizedCanonicalProjection(group, evidenceStandard, projectionScope))
             {
                 continue;
             }
@@ -4463,6 +4598,35 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
                 evidenceStandard));
         }
         return candidates;
+    }
+
+    private static bool HasGovernedSemanticFamilyConnection(SemanticTransitionObservation observation) =>
+        observation.SourceCurriculumFamilyId == observation.ResultCurriculumFamilyId ||
+        observation.HasExplicitGovernedTransferRelationship;
+
+    private static bool IsAuthorizedCanonicalProjection(
+        IReadOnlyList<SemanticTransitionObservation> observations,
+        int evidenceStandard,
+        CanonicalSemanticProjectionScope projectionScope)
+    {
+        var scoped = observations.Where(item =>
+            projectionScope.MeaningGraphExampleIds.Contains(item.SourceExampleId) ||
+            projectionScope.SemanticFamilyIds.Contains(item.SourceCurriculumFamilyId));
+        foreach (var observation in scoped)
+        {
+            if (observation.SourceCurriculumFamilyId == observation.ResultCurriculumFamilyId)
+                return true;
+            if (evidenceStandard == HigherGovernedEvidenceStandard &&
+                observation.HasExplicitGovernedTransferRelationship &&
+                string.Equals(
+                    observation.FounderTransferContributionState,
+                    "Supported",
+                    StringComparison.Ordinal))
+            {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static List<SemanticTransitionCandidate> PreferHighestStandardCandidates(
@@ -4583,10 +4747,16 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
     private static bool HasContradictedSemanticTransition(
         IReadOnlyList<SemanticTransitionObservation> observations,
         IReadOnlyDictionary<string, string> inputValues,
-        bool allowMissingStaticDimensions = false)
+        bool allowMissingStaticDimensions = false,
+        CanonicalSemanticProjectionScope? projectionScope = null)
     {
         foreach (var group in observations
-                     .Where(item => string.Equals(item.ContributionState, "Contradictory", StringComparison.Ordinal))
+                     .Where(item =>
+                         string.Equals(item.ContributionState, "Contradictory", StringComparison.Ordinal) &&
+                         HasGovernedSemanticFamilyConnection(item) &&
+                         (projectionScope is null ||
+                          projectionScope.MeaningGraphExampleIds.Contains(item.SourceExampleId) ||
+                          projectionScope.SemanticFamilyIds.Contains(item.SourceCurriculumFamilyId)))
                      .GroupBy(item => item.TransitionSignature, StringComparer.Ordinal))
         {
             if (!TryReadSemanticFrame(group.First().SourceFrame, out var sourceFrame))
@@ -11778,7 +11948,20 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
         bool IsHumanVerifiedSupport,
         string Provenance,
         Guid SourceExampleId,
-        Guid ResultExampleId);
+        Guid ResultExampleId,
+        Guid SourceCurriculumFamilyId,
+        Guid ResultCurriculumFamilyId,
+        bool HasExplicitGovernedTransferRelationship,
+        string? FounderTransferContributionState);
+
+    private sealed record CanonicalSemanticProjectionScope(
+        IReadOnlySet<Guid> SemanticFamilyIds,
+        IReadOnlySet<Guid> MeaningGraphExampleIds)
+    {
+        internal static readonly CanonicalSemanticProjectionScope Empty = new(
+            new HashSet<Guid>(),
+            new HashSet<Guid>());
+    }
 
     private sealed record FounderSemanticExampleProjection(
         Guid Id,

@@ -587,6 +587,177 @@ public sealed class LegendConnectSemanticSpanGroundingTests
         Assert.Null(planned.Plan);
     }
 
+    [Theory]
+    [InlineData("handoff", "failure", "dispatch")]
+    [InlineData("handoff", "failure", "inventory")]
+    [InlineData("handoff", "failure", "scheduling")]
+    [InlineData("capacity", "shortage", "dispatch")]
+    [InlineData("capacity", "shortage", "inventory")]
+    [InlineData("capacity", "shortage", "scheduling")]
+    public async Task BroadProjection_DoesNotCrossCanonicalSemanticFamiliesOnSharedDimensions(
+        string subject,
+        string descriptor,
+        string unrelatedFamily)
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var fixture = CreateFixture(db);
+
+        var source = await fixture.Curriculum.SubmitFounderEnglishBatchAsync(
+            ProjectionIdentitySourceFamily(subject, descriptor));
+        Assert.True(source.Succeeded, source.Message);
+        for (var support = 1; support <= 3; support++)
+        {
+            var contaminant = await fixture.Curriculum.SubmitFounderEnglishBatchAsync(
+                ProjectionCollisionFamily(subject, unrelatedFamily, support));
+            Assert.True(contaminant.Succeeded, contaminant.Message);
+        }
+
+        var graph = await fixture.Operations.AnalyzeReusableMeaningGraphAsync(
+            $"{subject} {descriptor}");
+        Assert.True(graph.IsComposed, graph.ReasonCode);
+        Assert.Contains(graph.Nodes, item =>
+            item.SemanticDimension == "diagnostic_subject" &&
+            item.SemanticValue == subject);
+        Assert.Contains(graph.Nodes, item =>
+            item.SemanticDimension == "diagnostic_family" &&
+            item.SemanticValue == $"{subject}_{descriptor}");
+
+        var planned = await fixture.Operations.TryPlanConversationAsync(
+            $"{subject} {descriptor}",
+            new LegendConnectDiscourseStateSnapshot([]));
+
+        Assert.False(planned.Supported);
+        Assert.Equal("semantic_transition_not_supported", planned.ReasonCode);
+        Assert.Null(planned.Plan);
+    }
+
+    [Fact]
+    public async Task BroadProjection_AllowsAValidSameFamilyTransition()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var fixture = CreateFixture(db);
+
+        var submitted = await fixture.Curriculum.SubmitFounderEnglishBatchAsync(
+            SameFamilyProjectionFamily());
+        Assert.True(submitted.Succeeded, submitted.Message);
+
+        var planned = await fixture.Operations.TryPlanConversationAsync(
+            "handoff failure",
+            new LegendConnectDiscourseStateSnapshot([]));
+
+        Assert.True(planned.Supported, planned.ReasonCode);
+        var plan = Assert.IsType<LegendConnectResponseMeaningPlanSnapshot>(planned.Plan);
+        Assert.Equal("handoff_same_family_response", plan.ResultDimensions["conversation_function"]);
+        Assert.Equal("BroadGoverned", plan.EvidenceStandard);
+    }
+
+    [Fact]
+    public async Task BroadProjection_RejectsACrossFamilyTransitionWithoutAnExplicitGovernedTransfer()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var fixture = CreateFixture(db);
+
+        var submitted = await fixture.Curriculum.SubmitFounderEnglishBatchAsync(
+            SameFamilyProjectionFamily());
+        Assert.True(submitted.Succeeded, submitted.Message);
+
+        var unrelatedFamily = new LegendCurriculumFamily
+        {
+            FamilyKey = "projection.unrelated-result-family",
+            SemanticCategory = "Unrelated result family",
+            Provenance = LegendConnectKnowledgeProvenance.FounderApproved
+        };
+        db.LegendCurriculumFamilies.Add(unrelatedFamily);
+        var resultExample = await (
+            from example in db.LegendCurriculumExamples
+            join variation in db.LegendCurriculumExampleVariations
+                on example.Id equals variation.CurriculumExampleId
+            where variation.Dimension == "conversation_function" &&
+                variation.Value == "handoff_same_family_response"
+            select example
+        ).SingleAsync();
+        resultExample.CurriculumFamilyId = unrelatedFamily.Id;
+        await db.SaveChangesAsync();
+
+        var planned = await fixture.Operations.TryPlanConversationAsync(
+            "handoff failure",
+            new LegendConnectDiscourseStateSnapshot([]));
+
+        Assert.False(planned.Supported);
+        Assert.Equal("semantic_transition_not_supported", planned.ReasonCode);
+        Assert.Null(planned.Plan);
+    }
+
+    [Fact]
+    public async Task BroadProjection_AllowsOnlyAProductionEligibleExplicitGovernedFamilyTransfer()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var fixture = CreateFixture(db);
+
+        for (var support = 1; support <= 3; support++)
+        {
+            var source = await fixture.Curriculum.SubmitFounderEnglishBatchAsync(
+                ExplicitTransferSourceFamily(support));
+            Assert.True(source.Succeeded, source.Message);
+            var result = await fixture.Curriculum.SubmitFounderEnglishBatchAsync(
+                ExplicitTransferResultFamily(support));
+            Assert.True(result.Succeeded, result.Message);
+            await fixture.Curriculum.PersistFounderCrossExampleSemanticRelationAsync(
+                new LegendConnectCrossExampleSemanticRelationshipSubmission(
+                    $"governed-transfer-source-{support}",
+                    "transfer.governed.diagnostic",
+                    $"governed-transfer-result-{support}"),
+                LegendConnectLanguageIntelligenceEvaluatorVersion.Current);
+        }
+
+        var planned = await fixture.Operations.TryPlanConversationAsync(
+            "handoff",
+            new LegendConnectDiscourseStateSnapshot([]));
+
+        Assert.True(planned.Supported, planned.ReasonCode);
+        var plan = Assert.IsType<LegendConnectResponseMeaningPlanSnapshot>(planned.Plan);
+        Assert.Equal("governed_transfer_response", plan.ResultDimensions["decision_posture"]);
+        Assert.Equal("HigherStandard", plan.EvidenceStandard);
+        Assert.Equal(3, plan.IndependentEvidenceCount);
+        var explicitTransfers = await db.LegendSemanticTransitionEvidence
+            .Where(item => item.FounderSemanticExampleRelationEvidenceId != null)
+            .ToArrayAsync();
+        Assert.Equal(3, explicitTransfers.Length);
+        Assert.All(explicitTransfers, item =>
+            Assert.NotNull(item.FounderSemanticExampleRelationEvidenceId));
+    }
+
+    [Fact]
+    public async Task BroadProjection_RejectsAnExplicitFamilyTransferBelowProductionEligibility()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var fixture = CreateFixture(db);
+
+        for (var support = 1; support <= 2; support++)
+        {
+            var source = await fixture.Curriculum.SubmitFounderEnglishBatchAsync(
+                ExplicitTransferSourceFamily(support));
+            Assert.True(source.Succeeded, source.Message);
+            var result = await fixture.Curriculum.SubmitFounderEnglishBatchAsync(
+                ExplicitTransferResultFamily(support));
+            Assert.True(result.Succeeded, result.Message);
+            await fixture.Curriculum.PersistFounderCrossExampleSemanticRelationAsync(
+                new LegendConnectCrossExampleSemanticRelationshipSubmission(
+                    $"governed-transfer-source-{support}",
+                    "transfer.governed.diagnostic",
+                    $"governed-transfer-result-{support}"),
+                LegendConnectLanguageIntelligenceEvaluatorVersion.Current);
+        }
+
+        var planned = await fixture.Operations.TryPlanConversationAsync(
+            "handoff",
+            new LegendConnectDiscourseStateSnapshot([]));
+
+        Assert.False(planned.Supported);
+        Assert.Equal("semantic_transition_not_supported", planned.ReasonCode);
+        Assert.Null(planned.Plan);
+    }
+
     [Fact]
     public async Task ResponseMeaningPlan_IsTextFreeAndUsesTheExistingGovernedTransitionAuthority()
     {
@@ -1744,6 +1915,175 @@ public sealed class LegendConnectSemanticSpanGroundingTests
                 new LegendConnectCurriculumExampleSubmission(
                     $"Founder dense graph control {family}.",
                     new Dictionary<string, string> { ["control"] = $"dense-{family}" })
+            ]);
+
+    private static LegendConnectCurriculumBatchSubmission ProjectionIdentitySourceFamily(
+        string subject,
+        string descriptor) =>
+        new(
+            $"projection.identity.{subject}.{descriptor}",
+            "Canonical diagnostic family identity for projected selection",
+            [
+                new LegendConnectCurriculumExampleSubmission(
+                    $"Canonical {subject} {descriptor} source.",
+                    new Dictionary<string, string>
+                    {
+                        ["diagnostic_subject"] = subject,
+                        ["diagnostic_family"] = $"{subject}_{descriptor}"
+                    },
+                    new LegendConnectMeaningGraphSubmission(
+                    [
+                        new LegendConnectMeaningNodeSubmission(
+                            "subject", "diagnostic_subject", subject, subject),
+                        new LegendConnectMeaningNodeSubmission(
+                            "family", "diagnostic_family", $"{subject}_{descriptor}", descriptor)
+                    ],
+                    [new LegendConnectMeaningRelationSubmission(
+                        "subject", "qualified-by", "family")])),
+                new LegendConnectCurriculumExampleSubmission(
+                    $"Canonical {subject} {descriptor} control.",
+                    new Dictionary<string, string>
+                    {
+                        ["control"] = $"{subject}-{descriptor}"
+                    })
+            ]);
+
+    private static LegendConnectCurriculumBatchSubmission ProjectionCollisionFamily(
+        string subject,
+        string unrelatedFamily,
+        int support) =>
+        new(
+            $"projection.collision.{subject}.{unrelatedFamily}.{support}",
+            "Unrelated diagnostic family with a colliding controlled dimension",
+            [
+                new LegendConnectCurriculumExampleSubmission(
+                    $"Governed {unrelatedFamily} evidence {support}: relay.",
+                    new Dictionary<string, string>
+                    {
+                        ["diagnostic_subject"] = subject,
+                        ["diagnostic_route"] = unrelatedFamily
+                    },
+                    new LegendConnectMeaningGraphSubmission(
+                    [
+                        new LegendConnectMeaningNodeSubmission(
+                            "subject", "diagnostic_subject", subject, "relay")
+                    ],
+                    [])),
+                new LegendConnectCurriculumExampleSubmission(
+                    $"Governed {unrelatedFamily} response evidence {support}.",
+                    new Dictionary<string, string>
+                    {
+                        ["conversation_function"] = $"{unrelatedFamily}_response"
+                    })
+            ],
+            [new LegendConnectSemanticTransitionSubmission(
+                new LegendConnectSemanticFrameSubmission(new Dictionary<string, string>
+                {
+                    ["diagnostic_subject"] = subject,
+                    ["diagnostic_route"] = unrelatedFamily
+                }),
+                new LegendConnectSemanticFrameSubmission(new Dictionary<string, string>
+                {
+                    ["conversation_function"] = $"{unrelatedFamily}_response"
+                }))]);
+
+    private static LegendConnectCurriculumBatchSubmission SameFamilyProjectionFamily() =>
+        new(
+            "projection.same-family.handoff",
+            "Same-family projected diagnostic transition",
+            [
+                new LegendConnectCurriculumExampleSubmission(
+                    "Canonical handoff failure source.",
+                    new Dictionary<string, string>
+                    {
+                        ["diagnostic_subject"] = "handoff",
+                        ["diagnostic_family"] = "handoff_failure",
+                        ["diagnostic_route"] = "same_family"
+                    },
+                    new LegendConnectMeaningGraphSubmission(
+                    [
+                        new LegendConnectMeaningNodeSubmission(
+                            "subject", "diagnostic_subject", "handoff", "handoff"),
+                        new LegendConnectMeaningNodeSubmission(
+                            "family", "diagnostic_family", "handoff_failure", "failure")
+                    ],
+                    [new LegendConnectMeaningRelationSubmission(
+                        "subject", "qualified-by", "family")])),
+                new LegendConnectCurriculumExampleSubmission(
+                    "Use the governed handoff response.",
+                    new Dictionary<string, string>
+                    {
+                        ["conversation_function"] = "handoff_same_family_response"
+                    })
+            ],
+            [new LegendConnectSemanticTransitionSubmission(
+                new LegendConnectSemanticFrameSubmission(new Dictionary<string, string>
+                {
+                    ["diagnostic_subject"] = "handoff",
+                    ["diagnostic_family"] = "handoff_failure",
+                    ["diagnostic_route"] = "same_family"
+                }),
+                new LegendConnectSemanticFrameSubmission(new Dictionary<string, string>
+                {
+                    ["conversation_function"] = "handoff_same_family_response"
+                }))]);
+
+    private static LegendConnectCurriculumBatchSubmission ExplicitTransferSourceFamily(int support) =>
+        new(
+            $"projection.explicit-transfer.source.{support}",
+            "Canonical source family for an explicit governed transfer",
+            [
+                new LegendConnectCurriculumExampleSubmission(
+                    $"Governed transfer evidence {support}: handoff scope.",
+                    new Dictionary<string, string>
+                    {
+                        ["diagnostic_subject"] = "handoff",
+                        ["transfer_scope"] = "bounded"
+                    },
+                    new LegendConnectMeaningGraphSubmission(
+                    [
+                        new LegendConnectMeaningNodeSubmission(
+                            "subject", "diagnostic_subject", "handoff", "handoff"),
+                        new LegendConnectMeaningNodeSubmission(
+                            "scope", "transfer_scope", "bounded", "scope")
+                    ],
+                    []),
+                    $"governed-transfer-source-{support}"),
+                new LegendConnectCurriculumExampleSubmission(
+                    $"Governed transfer source control {support}.",
+                    new Dictionary<string, string>
+                    {
+                        ["control"] = $"transfer-source-{support}"
+                    })
+            ]);
+
+    private static LegendConnectCurriculumBatchSubmission ExplicitTransferResultFamily(int support) =>
+        new(
+            $"projection.explicit-transfer.result.{support}",
+            "Canonical result family for an explicit governed transfer",
+            [
+                new LegendConnectCurriculumExampleSubmission(
+                    $"Governed transfer response {support}.",
+                    new Dictionary<string, string>
+                    {
+                        ["decision_posture"] = "governed_transfer_response"
+                    },
+                    new LegendConnectMeaningGraphSubmission(
+                    [
+                        new LegendConnectMeaningNodeSubmission(
+                            "response",
+                            "decision_posture",
+                            "governed_transfer_response",
+                            $"Governed transfer response {support}")
+                    ],
+                    []),
+                    $"governed-transfer-result-{support}"),
+                new LegendConnectCurriculumExampleSubmission(
+                    $"Governed transfer result control {support}.",
+                    new Dictionary<string, string>
+                    {
+                        ["control"] = $"transfer-result-{support}"
+                    })
             ]);
 
     private static LegendConnectCurriculumBatchSubmission
