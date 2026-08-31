@@ -7,6 +7,7 @@ using Microsoft.EntityFrameworkCore.Query;
 using Microsoft.EntityFrameworkCore.Storage;
 using System.Data;
 using System.Data.SqlTypes;
+using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -174,6 +175,27 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
     // These are selection ranks, not alternate stores or serving paths.
     private const int BroadGovernedEvidenceStandard = 1;
     private const int HigherGovernedEvidenceStandard = 2;
+    private const int MaximumGovernedResponseSentences = 8;
+    private const int MaximumConciseResponseComponents = 24;
+    private const int MinimumDetailedResponseComponents = 25;
+    private const string ResponseAudienceDimension = "response_audience";
+    private const string ResponseExpertiseDimension = "response_expertise";
+    private const string ResponseToneDimension = "response_tone";
+    private const string ResponseLengthDimension = "response_length";
+    private const string ResponseSentenceCountDimension = "response_sentence_count";
+    private const string ResponseStructureDimension = "response_structure";
+    private const string ChildAudienceValue = "child";
+    private const string AdultAudienceValue = "adult";
+    private const string NoviceExpertiseValue = "novice";
+    private const string GeneralExpertiseValue = "general";
+    private const string ExpertExpertiseValue = "expert";
+    private const string EmpatheticToneValue = "empathetic";
+    private const string NeutralToneValue = "neutral";
+    private const string ConciseLengthValue = "concise";
+    private const string DetailedLengthValue = "detailed";
+    private const string ProseStructureValue = "prose";
+    private const string SingleSentenceStructureValue = "single_sentence";
+    private const string SentenceSequenceStructureValue = "sentence_sequence";
     private const int MaximumExamplesPerBatch = 100;
     // This value participates in the durable relationship identity. It is
     // advanced only when the canonical grouping meaning changes, allowing the
@@ -4031,6 +4053,19 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
         {
             return new(selection.SourceLanguageCode, graph, null, null, selection.ReasonCode);
         }
+        if (!TryResolveGovernedPresentationConstraints(
+                dimensions,
+                out var presentationConstraints,
+                out var presentationReason,
+                out _))
+        {
+            return new(
+                selection.SourceLanguageCode,
+                graph,
+                null,
+                null,
+                presentationReason);
+        }
         var activeBindings = ActiveDiscourseBindings(discourseState);
         var resolvedBindings = discourseState?.Turns.LastOrDefault()?.Bindings
             .Where(item => item.ResolutionState == "bound")
@@ -4061,7 +4096,8 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
             selected.ReasoningEvidenceCount,
             selected.EvidenceStandard == HigherGovernedEvidenceStandard
                 ? "HigherStandard"
-                : "BroadGoverned"),
+                : "BroadGoverned",
+            presentationConstraints),
             "response_meaning_plan_governed");
     }
 
@@ -5912,8 +5948,33 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
             }
             candidate = candidate with { Bindings = mergedBindings };
         }
-        if (!TryInstantiateFrame(candidate.ResultFrame, candidate.Bindings, out var resultValues))
+        if (!TryInstantiateResponsePlanFrame(
+                candidate.ResultFrame,
+                candidate.Bindings,
+                out var resultValues,
+                out var unboundResultVariables))
+        {
             return SemanticTransitionRealization.Insufficient("result_semantic_variable_unbound_frame");
+        }
+        if (unboundResultVariables.Values.Any(item =>
+                !IsPresentationConstraintDimension(item)))
+        {
+            return SemanticTransitionRealization.Insufficient("result_semantic_variable_unbound_frame");
+        }
+        // Semantic selection and content binding are complete before this
+        // point. Presentation metadata can now narrow eligible governed
+        // surfaces, but it cannot alter the instantiated result frame,
+        // bindings, evidence standard, reasoning path, or provenance.
+        if (!TryResolveGovernedPresentationConstraints(
+                resultValues,
+                out var presentationConstraints,
+                out var presentationReason,
+                out var presentationConflict))
+        {
+            return presentationConflict
+                ? SemanticTransitionRealization.Ambiguous(presentationReason)
+                : SemanticTransitionRealization.Insufficient(presentationReason);
+        }
 
         var lineageResultFamilyIds = candidate.Lineage.ResultCurriculumFamilyIds.ToArray();
         var lineageResultExampleIds = candidate.Lineage.ResultCurriculumExampleIds.ToArray();
@@ -5973,6 +6034,8 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
             {
                 if (!candidate.Bindings.TryGetValue(dimension.Value, out var boundValue))
                     return SemanticTransitionRealization.Insufficient("result_semantic_variable_unbound");
+                var requireExactLayoutValue =
+                    IsPresentationConstraintDimension(dimensionName);
                 scopedQuery = scopedQuery.Where(item =>
                     _db.Set<LegendCurriculumExampleVariation>().Any(variation =>
                         variation.CurriculumExampleId == item.Example.Id &&
@@ -5980,7 +6043,9 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
                 layoutQuery = layoutQuery.Where(item =>
                     _db.Set<LegendCurriculumExampleVariation>().Any(variation =>
                         variation.CurriculumExampleId == item.Example.Id &&
-                        variation.Dimension == dimensionName));
+                        variation.Dimension == dimensionName &&
+                        (!requireExactLayoutValue ||
+                         variation.Value == boundValue)));
                 continue;
             }
 
@@ -6035,10 +6100,20 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
         // Founder-approved result endpoints. The family-lineage layout set
         // below is evidence for bound-variable composition only; it must never
         // introduce a same-frame example from outside the selected transition.
-        var scopedExamples = scopedDatabaseExamples
+        var semanticScopedExamples = scopedDatabaseExamples
             .Where(item => variationMaps.TryGetValue(item.Id, out var values) &&
                 MatchesInstantiatedSemanticFrame(candidate.ResultFrame, values, candidate.Bindings))
             .ToList();
+        var scopedExamples = semanticScopedExamples
+            .Where(item => MatchesGovernedPresentationSurface(item.Text, presentationConstraints))
+            .ToList();
+        if (presentationConstraints is not null &&
+            semanticScopedExamples.Count > 0 &&
+            scopedExamples.Count == 0)
+        {
+            return SemanticTransitionRealization.Insufficient(
+                "result_presentation_constraints_unmet");
+        }
 
         // The legacy non-discourse evaluator remains available for historical
         // regression diagnostics. Production conversation uses the composed
@@ -6080,13 +6155,16 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
         var frameDimensions = candidate.ResultFrame.Dimensions.Keys
             .Where(item => !IsStructuralRelationFrameDimension(item))
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
-        var hasResultVariables = candidate.ResultFrame.Dimensions.Values.Any(IsSemanticVariable);
+        var hasResultVariables = candidate.ResultFrame.Dimensions.Any(item =>
+            !IsPresentationConstraintDimension(item.Key) && IsSemanticVariable(item.Value));
         // Static responses use only the selected transition's exact endpoints.
         // Bound-variable responses may use same-frame layouts only inside the
         // selected transition's governed result-family lineage.
-        var layoutExamples = hasResultVariables
-            ? examples
-            : scopedDatabaseExamples;
+        var layoutExamples = (hasResultVariables
+                ? examples
+                : scopedDatabaseExamples)
+            .Where(item => MatchesGovernedPresentationSurface(item.Text, presentationConstraints))
+            .ToList();
         var layouts = new List<SemanticRealizationLayout>();
         foreach (var example in layoutExamples.Where(item =>
                      variationMaps.TryGetValue(item.Id, out var values) &&
@@ -6144,7 +6222,10 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
                 if (!await IsActiveCurriculumSentenceAsync(
                         languageCode,
                         crossArticulatedText,
-                        cancellationToken))
+                        cancellationToken) &&
+                    MatchesGovernedPresentationSurface(
+                        crossArticulatedText,
+                        presentationConstraints))
                 {
                     return new SemanticTransitionRealization(
                         crossArticulatedText,
@@ -6171,6 +6252,8 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
                     continue;
                 }
                 if (await IsActiveCurriculumSentenceAsync(languageCode, text, cancellationToken))
+                    continue;
+                if (!MatchesGovernedPresentationSurface(text, presentationConstraints))
                     continue;
                 return new SemanticTransitionRealization(
                     text,
@@ -6215,10 +6298,23 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
             candidate,
             sourceComponents,
             contentVariableBindings,
-            layoutDatabaseExamples,
+            layoutDatabaseExamples
+                .Where(item => MatchesGovernedPresentationSurface(
+                    item.Text,
+                    presentationConstraints))
+                .ToArray(),
             variationMaps,
             anchorsByExample,
             requireOriginalRealization);
+        if (boundRealization.Reason is null &&
+            !string.IsNullOrWhiteSpace(boundRealization.Text) &&
+            !MatchesGovernedPresentationSurface(
+                boundRealization.Text,
+                presentationConstraints))
+        {
+            return SemanticTransitionRealization.Insufficient(
+                "result_presentation_constraints_unmet");
+        }
         if (requireOriginalRealization &&
             boundRealization.Reason is null &&
             !string.IsNullOrWhiteSpace(boundRealization.Text) &&
@@ -6550,6 +6646,176 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
         unboundResultVariables = unbound;
         return true;
     }
+
+    /// <summary>
+    /// Resolves presentation metadata once for both the text-free response
+    /// plan and the downstream realizer. These values can filter governed
+    /// surface evidence only; none is a semantic-content binding.
+    /// </summary>
+    private static bool TryResolveGovernedPresentationConstraints(
+        IReadOnlyDictionary<string, string> dimensions,
+        out LegendConnectResponsePresentationConstraintsSnapshot? constraints,
+        out string reasonCode,
+        out bool isConflict)
+    {
+        constraints = null;
+        reasonCode = "response_presentation_constraints_governed";
+        isConflict = false;
+
+        var audience = PresentationConstraintValue(dimensions, ResponseAudienceDimension);
+        var expertise = PresentationConstraintValue(dimensions, ResponseExpertiseDimension);
+        var tone = PresentationConstraintValue(dimensions, ResponseToneDimension);
+        var length = PresentationConstraintValue(dimensions, ResponseLengthDimension);
+        var sentenceCountValue = PresentationConstraintValue(
+            dimensions,
+            ResponseSentenceCountDimension);
+        var structure = PresentationConstraintValue(dimensions, ResponseStructureDimension);
+        if (audience is null && expertise is null && tone is null && length is null &&
+            sentenceCountValue is null && structure is null)
+        {
+            return true;
+        }
+
+        var values = new[] { audience, expertise, tone, length, sentenceCountValue, structure };
+        if (values.Where(item => item is not null).Any(item => IsSemanticVariable(item!)))
+        {
+            reasonCode = "response_presentation_constraint_unbound";
+            return false;
+        }
+        if ((audience is not null &&
+             audience is not (ChildAudienceValue or AdultAudienceValue)) ||
+            (expertise is not null &&
+             expertise is not (NoviceExpertiseValue or GeneralExpertiseValue or ExpertExpertiseValue)) ||
+            (tone is not null && tone is not (EmpatheticToneValue or NeutralToneValue)) ||
+            (length is not null && length is not (ConciseLengthValue or DetailedLengthValue)) ||
+            (structure is not null &&
+             structure is not (ProseStructureValue or
+                 SingleSentenceStructureValue or
+                 SentenceSequenceStructureValue)))
+        {
+            reasonCode = "response_presentation_constraint_unsupported";
+            return false;
+        }
+
+        int? sentenceCount = null;
+        if (sentenceCountValue is not null)
+        {
+            if (!int.TryParse(
+                    sentenceCountValue,
+                    NumberStyles.None,
+                    CultureInfo.InvariantCulture,
+                    out var parsedSentenceCount) ||
+                parsedSentenceCount is < 1 or > MaximumGovernedResponseSentences)
+            {
+                reasonCode = "response_presentation_constraint_unsupported";
+                return false;
+            }
+            sentenceCount = parsedSentenceCount;
+        }
+
+        if ((structure == SingleSentenceStructureValue &&
+             sentenceCount.HasValue && sentenceCount.Value != 1) ||
+            (structure == SentenceSequenceStructureValue &&
+             sentenceCount.HasValue && sentenceCount.Value < 2))
+        {
+            reasonCode = "conflicting_response_presentation_constraints";
+            isConflict = true;
+            return false;
+        }
+
+        constraints = new LegendConnectResponsePresentationConstraintsSnapshot(
+            audience,
+            expertise,
+            tone,
+            length,
+            sentenceCount,
+            structure);
+        return true;
+    }
+
+    private static string? PresentationConstraintValue(
+        IReadOnlyDictionary<string, string> dimensions,
+        string dimension) =>
+        dimensions.TryGetValue(dimension, out var value) && !string.IsNullOrWhiteSpace(value)
+            ? value.Trim().ToLowerInvariant()
+            : null;
+
+    private static bool IsPresentationConstraintDimension(string dimension) =>
+        dimension is ResponseAudienceDimension or
+            ResponseExpertiseDimension or
+            ResponseToneDimension or
+            ResponseLengthDimension or
+            ResponseSentenceCountDimension or
+            ResponseStructureDimension;
+
+    /// <summary>
+    /// Verifies measurable surface constraints without rewriting the selected
+    /// text. Audience, expertise, and tone remain governed by exact variation
+    /// evidence in the lineage-scoped query; they are never guessed from words.
+    /// </summary>
+    private static bool MatchesGovernedPresentationSurface(
+        string text,
+        LegendConnectResponsePresentationConstraintsSnapshot? constraints)
+    {
+        if (constraints is null)
+            return true;
+        var sentenceCount = CountSurfaceSentences(text);
+        if (constraints.SentenceCount is { } exactSentenceCount &&
+            sentenceCount != exactSentenceCount)
+        {
+            return false;
+        }
+        if ((constraints.Structure == SingleSentenceStructureValue && sentenceCount != 1) ||
+            (constraints.Structure == SentenceSequenceStructureValue && sentenceCount < 2))
+        {
+            return false;
+        }
+
+        var componentCount = SurfaceComponents(text).Count;
+        if ((constraints.Length == ConciseLengthValue &&
+             componentCount > MaximumConciseResponseComponents) ||
+            (constraints.Length == DetailedLengthValue &&
+             componentCount < MinimumDetailedResponseComponents))
+        {
+            return false;
+        }
+        return true;
+    }
+
+    private static int CountSurfaceSentences(string text)
+    {
+        var normalized = LegendLanguageIdentity.NormalizeText(text);
+        if (string.IsNullOrWhiteSpace(normalized))
+            return 0;
+
+        var count = 0;
+        var terminalRun = false;
+        for (var index = 0; index < normalized.Length; index++)
+        {
+            if (!IsSentenceTerminal(normalized[index]))
+            {
+                terminalRun = false;
+                continue;
+            }
+            if (terminalRun)
+                continue;
+
+            var next = index + 1;
+            while (next < normalized.Length &&
+                   (IsSentenceTerminal(normalized[next]) ||
+                    normalized[next] is '"' or '\'' or '\u2019' or '\u201d' or ')' or ']' or '}'))
+            {
+                next++;
+            }
+            if (next == normalized.Length || char.IsWhiteSpace(normalized[next]))
+                count++;
+            terminalRun = true;
+        }
+        return count == 0 ? 1 : count;
+    }
+
+    private static bool IsSentenceTerminal(char value) =>
+        value is '.' or '!' or '?' or '\u3002' or '\uff01' or '\uff1f';
 
     private static bool MatchesInstantiatedSemanticFrame(
         NormalizedSemanticFrame frame,
@@ -6897,7 +7163,9 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
         bool requireOriginalRealization)
     {
         var dynamicDimensions = candidate.ResultFrame.Dimensions
-            .Where(item => IsSemanticVariable(item.Value))
+            .Where(item =>
+                !IsPresentationConstraintDimension(item.Key) &&
+                IsSemanticVariable(item.Value))
             .ToDictionary(item => item.Key, item => item.Value, StringComparer.OrdinalIgnoreCase);
         if (dynamicDimensions.Count == 0)
             return SemanticTransitionRealization.Insufficient("result_semantic_frame_unrealized");

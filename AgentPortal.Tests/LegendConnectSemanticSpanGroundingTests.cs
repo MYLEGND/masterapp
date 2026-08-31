@@ -112,6 +112,383 @@ public sealed class LegendConnectSemanticSpanGroundingTests
     }
 
     [Fact]
+    public async Task NativeRealization_EnforcesExactGovernedSentenceCount()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var fixture = CreateFixture(db);
+        const string request = "Explain the competing explanations in exactly three sentences.";
+        const string response =
+            "Both explanations remain possible after the shared observation. " +
+            "Compare the different predictions under one controlled test. " +
+            "Then collect independent evidence before selecting either explanation.";
+
+        for (var support = 1; support <= 3; support++)
+        {
+            var submitted = await fixture.Curriculum.SubmitFounderEnglishBatchAsync(
+                PresentationConstraintFamily(
+                    "exact-three",
+                    support,
+                    request,
+                    response,
+                    "adult",
+                    "general",
+                    "neutral",
+                    "concise",
+                    3,
+                    "sentence_sequence"));
+            Assert.True(submitted.Succeeded, submitted.Message);
+        }
+
+        var planned = await fixture.Operations.TryPlanConversationAsync(
+            request,
+            new LegendConnectDiscourseStateSnapshot([]));
+        var plan = Assert.IsType<LegendConnectResponseMeaningPlanSnapshot>(planned.Plan);
+        Assert.True(planned.Supported, planned.ReasonCode);
+        Assert.Equal(3, plan.PresentationConstraints?.SentenceCount);
+        Assert.Equal("sentence_sequence", plan.PresentationConstraints?.Structure);
+
+        var native = await fixture.Operations.TryInferConversationWithDiscourseAsync(
+            request,
+            [],
+            new LegendConnectDiscourseStateSnapshot([]));
+
+        Assert.True(native.Supported, native.ReasonCode);
+        Assert.Equal(response, native.Answer);
+        Assert.Equal(3, native.Answer!.Count(item => item == '.'));
+
+        const string unmetRequest = "Apply an unproven three-sentence presentation.";
+        for (var support = 1; support <= 3; support++)
+        {
+            var submitted = await fixture.Curriculum.SubmitFounderEnglishBatchAsync(
+                PresentationConstraintFamily(
+                    "exact-three-unmet",
+                    support,
+                    unmetRequest,
+                    "Both explanations remain possible. More evidence is required.",
+                    "adult",
+                    "general",
+                    "neutral",
+                    "concise",
+                    3,
+                    "sentence_sequence"));
+            Assert.True(submitted.Succeeded, submitted.Message);
+        }
+
+        var unmet = await fixture.Operations.TryInferConversationWithDiscourseAsync(
+            unmetRequest,
+            [],
+            new LegendConnectDiscourseStateSnapshot([]));
+        Assert.False(unmet.Supported);
+        Assert.Equal("result_presentation_constraints_unmet", unmet.ReasonCode);
+    }
+
+    [Fact]
+    public async Task NativeRealization_SelectsGovernedAudienceAndExpertisePresentation()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var fixture = CreateFixture(db);
+        (string Audience, string Expertise, string Request, string Response)[] cases =
+        [
+            (
+                "child",
+                "novice",
+                "Explain this for a child.",
+                "Both ideas fit the clue, so we need another test."),
+            (
+                "adult",
+                "general",
+                "Explain this for an adult.",
+                "The observation fits both explanations. Gather evidence that separates them."),
+            (
+                "adult",
+                "expert",
+                "Explain this for an expert.",
+                "The observation is non-dispositive because both hypotheses entail it. Use a discriminating test before attribution.")
+        ];
+
+        foreach (var item in cases)
+        {
+            var sentenceCount = item.Response.Count(character => character == '.');
+            for (var support = 1; support <= 3; support++)
+            {
+                var submitted = await fixture.Curriculum.SubmitFounderEnglishBatchAsync(
+                    PresentationConstraintFamily(
+                        $"{item.Audience}-{item.Expertise}",
+                        support,
+                        item.Request,
+                        item.Response,
+                        item.Audience,
+                        item.Expertise,
+                        "neutral",
+                        "concise",
+                        sentenceCount,
+                        sentenceCount == 1 ? "single_sentence" : "sentence_sequence"));
+                Assert.True(submitted.Succeeded, submitted.Message);
+            }
+        }
+
+        foreach (var item in cases)
+        {
+            var planned = await fixture.Operations.TryPlanConversationAsync(
+                item.Request,
+                new LegendConnectDiscourseStateSnapshot([]));
+            var plan = Assert.IsType<LegendConnectResponseMeaningPlanSnapshot>(planned.Plan);
+            Assert.True(planned.Supported, planned.ReasonCode);
+            Assert.Equal(item.Audience, plan.PresentationConstraints?.Audience);
+            Assert.Equal(item.Expertise, plan.PresentationConstraints?.Expertise);
+
+            var native = await fixture.Operations.TryInferConversationWithDiscourseAsync(
+                item.Request,
+                [],
+                new LegendConnectDiscourseStateSnapshot([]));
+            Assert.True(native.Supported, native.ReasonCode);
+            Assert.Equal(item.Response, native.Answer);
+        }
+    }
+
+    [Fact]
+    public async Task NativeRealization_EnforcesGovernedResponseLength()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var fixture = CreateFixture(db);
+        (string Length, string Request, string Response)[] cases =
+        [
+            (
+                "concise",
+                "Give a concise explanation.",
+                "Both explanations remain possible, so gather discriminating evidence."),
+            (
+                "detailed",
+                "Give a detailed explanation.",
+                "The shared observation supports both explanations and does not justify selecting either one. Compare their different predictions with a controlled test, collect independent evidence, and stop only when the evidence uniquely supports one explanation.")
+        ];
+
+        foreach (var item in cases)
+        {
+            var sentenceCount = item.Response.Count(character => character == '.');
+            for (var support = 1; support <= 3; support++)
+            {
+                var submitted = await fixture.Curriculum.SubmitFounderEnglishBatchAsync(
+                    PresentationConstraintFamily(
+                        item.Length,
+                        support,
+                        item.Request,
+                        item.Response,
+                        "adult",
+                        "general",
+                        "neutral",
+                        item.Length,
+                        sentenceCount,
+                        sentenceCount == 1 ? "single_sentence" : "sentence_sequence"));
+                Assert.True(submitted.Succeeded, submitted.Message);
+            }
+        }
+
+        foreach (var item in cases)
+        {
+            var planned = await fixture.Operations.TryPlanConversationAsync(
+                item.Request,
+                new LegendConnectDiscourseStateSnapshot([]));
+            var plan = Assert.IsType<LegendConnectResponseMeaningPlanSnapshot>(planned.Plan);
+            Assert.True(planned.Supported, planned.ReasonCode);
+            Assert.Equal(item.Length, plan.PresentationConstraints?.Length);
+
+            var native = await fixture.Operations.TryInferConversationWithDiscourseAsync(
+                item.Request,
+                [],
+                new LegendConnectDiscourseStateSnapshot([]));
+            Assert.True(native.Supported, native.ReasonCode);
+            Assert.Equal(item.Response, native.Answer);
+            Assert.Equal(
+                item.Length == "concise",
+                item.Response.Split(' ', StringSplitOptions.RemoveEmptyEntries).Length <= 24);
+        }
+    }
+
+    [Fact]
+    public async Task NativeRealization_SelectsGovernedTone()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var fixture = CreateFixture(db);
+        (string Tone, string Request, string Response)[] cases =
+        [
+            (
+                "empathetic",
+                "Explain this empathetically.",
+                "I know this uncertainty is frustrating. Both explanations remain possible, so more evidence is required."),
+            (
+                "neutral",
+                "Explain this neutrally.",
+                "Both explanations remain possible. More evidence is required.")
+        ];
+
+        foreach (var item in cases)
+        {
+            for (var support = 1; support <= 3; support++)
+            {
+                var submitted = await fixture.Curriculum.SubmitFounderEnglishBatchAsync(
+                    PresentationConstraintFamily(
+                        item.Tone,
+                        support,
+                        item.Request,
+                        item.Response,
+                        "adult",
+                        "general",
+                        item.Tone,
+                        "concise",
+                        2,
+                        "sentence_sequence"));
+                Assert.True(submitted.Succeeded, submitted.Message);
+            }
+        }
+
+        foreach (var item in cases)
+        {
+            var planned = await fixture.Operations.TryPlanConversationAsync(
+                item.Request,
+                new LegendConnectDiscourseStateSnapshot([]));
+            var plan = Assert.IsType<LegendConnectResponseMeaningPlanSnapshot>(planned.Plan);
+            Assert.True(planned.Supported, planned.ReasonCode);
+            Assert.Equal(item.Tone, plan.PresentationConstraints?.Tone);
+
+            var native = await fixture.Operations.TryInferConversationWithDiscourseAsync(
+                item.Request,
+                [],
+                new LegendConnectDiscourseStateSnapshot([]));
+            Assert.True(native.Supported, native.ReasonCode);
+            Assert.Equal(item.Response, native.Answer);
+        }
+    }
+
+    [Fact]
+    public async Task ResponseMeaningPlan_RejectsConflictingPresentationConstraints()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var fixture = CreateFixture(db);
+        const string request = "Give a contradictory presentation instruction.";
+
+        for (var support = 1; support <= 3; support++)
+        {
+            var submitted = await fixture.Curriculum.SubmitFounderEnglishBatchAsync(
+                PresentationConstraintFamily(
+                    "conflict",
+                    support,
+                    request,
+                    "Both explanations remain possible. Compare their predictions. Gather independent evidence.",
+                    "adult",
+                    "general",
+                    "neutral",
+                    "concise",
+                    3,
+                    "single_sentence"));
+            Assert.True(submitted.Succeeded, submitted.Message);
+        }
+
+        var planned = await fixture.Operations.TryPlanConversationAsync(
+            request,
+            new LegendConnectDiscourseStateSnapshot([]));
+
+        Assert.False(planned.Supported);
+        Assert.Equal("conflicting_response_presentation_constraints", planned.ReasonCode);
+        Assert.Null(planned.Plan);
+
+        var native = await fixture.Operations.TryInferConversationWithDiscourseAsync(
+            request,
+            [],
+            new LegendConnectDiscourseStateSnapshot([]));
+        Assert.False(native.Supported);
+        Assert.Equal("conflicting_response_presentation_constraints", native.ReasonCode);
+    }
+
+    [Fact]
+    public async Task PresentationConstraints_PreserveEvidenceUncertaintyAndProvenance()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var fixture = CreateFixture(db);
+        const string empatheticRequest = "Preserve the evidence in an empathetic explanation.";
+        const string neutralRequest = "Preserve the evidence in a neutral explanation.";
+
+        for (var support = 1; support <= 3; support++)
+        {
+            var empathetic = await fixture.Curriculum.SubmitFounderEnglishBatchAsync(
+                PresentationConstraintFamily(
+                    "evidence-empathetic",
+                    support,
+                    empatheticRequest,
+                    "I understand the uncertainty is difficult. Both explanations remain possible, so discriminating evidence is still required.",
+                    "adult",
+                    "general",
+                    "empathetic",
+                    "concise",
+                    2,
+                    "sentence_sequence"));
+            Assert.True(empathetic.Succeeded, empathetic.Message);
+            var neutral = await fixture.Curriculum.SubmitFounderEnglishBatchAsync(
+                PresentationConstraintFamily(
+                    "evidence-neutral",
+                    support,
+                    neutralRequest,
+                    "Both explanations remain possible. Discriminating evidence is still required.",
+                    "adult",
+                    "general",
+                    "neutral",
+                    "concise",
+                    2,
+                    "sentence_sequence"));
+            Assert.True(neutral.Succeeded, neutral.Message);
+        }
+
+        var empatheticPlanResult = await fixture.Operations.TryPlanConversationAsync(
+            empatheticRequest,
+            new LegendConnectDiscourseStateSnapshot([]));
+        var neutralPlanResult = await fixture.Operations.TryPlanConversationAsync(
+            neutralRequest,
+            new LegendConnectDiscourseStateSnapshot([]));
+        var empatheticPlan = Assert.IsType<LegendConnectResponseMeaningPlanSnapshot>(
+            empatheticPlanResult.Plan);
+        var neutralPlan = Assert.IsType<LegendConnectResponseMeaningPlanSnapshot>(
+            neutralPlanResult.Plan);
+
+        Assert.Equal(
+            LegendConnectGovernedReasoningExecutor.ObservationalEquivalenceValue,
+            empatheticPlan.ResultDimensions[LegendConnectGovernedReasoningExecutor.EpistemicStatusDimension]);
+        Assert.Equal(
+            LegendConnectGovernedReasoningExecutor.UndeterminedValue,
+            empatheticPlan.ResultDimensions[LegendConnectGovernedReasoningExecutor.CauseSelectionDimension]);
+        Assert.Equal(
+            LegendConnectGovernedReasoningExecutor.DiscriminatingEvidenceValue,
+            empatheticPlan.ResultDimensions[LegendConnectGovernedReasoningExecutor.EvidenceRequirementDimension]);
+        Assert.Equal(
+            empatheticPlan.ResultDimensions
+                .Where(item => !item.Key.StartsWith("response_", StringComparison.Ordinal))
+                .OrderBy(item => item.Key),
+            neutralPlan.ResultDimensions
+                .Where(item => !item.Key.StartsWith("response_", StringComparison.Ordinal))
+                .OrderBy(item => item.Key));
+        Assert.Equal(empatheticPlan.IndependentEvidenceCount, neutralPlan.IndependentEvidenceCount);
+        Assert.Equal(empatheticPlan.EvidenceStandard, neutralPlan.EvidenceStandard);
+
+        var empatheticNative = await fixture.Operations.TryInferConversationWithDiscourseAsync(
+            empatheticRequest,
+            [],
+            new LegendConnectDiscourseStateSnapshot([]));
+        var neutralNative = await fixture.Operations.TryInferConversationWithDiscourseAsync(
+            neutralRequest,
+            [],
+            new LegendConnectDiscourseStateSnapshot([]));
+
+        Assert.True(empatheticNative.Supported, empatheticNative.ReasonCode);
+        Assert.True(neutralNative.Supported, neutralNative.ReasonCode);
+        Assert.Equal(empatheticNative.EvidenceCount, neutralNative.EvidenceCount);
+        Assert.Equal(empatheticNative.EvidenceStandard, neutralNative.EvidenceStandard);
+        Assert.Equal(empatheticNative.AuthoritySummary, neutralNative.AuthoritySummary);
+        Assert.Contains("Both explanations remain possible", empatheticNative.Answer);
+        Assert.Contains("Both explanations remain possible", neutralNative.Answer);
+        Assert.Contains("evidence", empatheticNative.Answer!, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("evidence", neutralNative.Answer!, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task NativeRealization_ComposesOriginalSurface_AndNeverReturnsStoredResultSentence()
     {
         await using var db = ControllerTestHelpers.BuildDb();
@@ -2837,6 +3214,88 @@ public sealed class LegendConnectSemanticSpanGroundingTests
                             ["conversation_function"] = resultFunction
                         }))
             ]);
+
+    private static LegendConnectCurriculumBatchSubmission PresentationConstraintFamily(
+        string profile,
+        int support,
+        string requestText,
+        string responseText,
+        string? audience,
+        string? expertise,
+        string? tone,
+        string? length,
+        int? sentenceCount,
+        string? structure)
+    {
+        var requestFunction = "presentation_request_" + profile.Replace('-', '_');
+        var resultDimensions = new Dictionary<string, string>
+        {
+            ["conversation_function"] = "presentation_response",
+            [LegendConnectGovernedReasoningExecutor.EpistemicStatusDimension] =
+                LegendConnectGovernedReasoningExecutor.ObservationalEquivalenceValue,
+            [LegendConnectGovernedReasoningExecutor.CauseSelectionDimension] =
+                LegendConnectGovernedReasoningExecutor.UndeterminedValue,
+            [LegendConnectGovernedReasoningExecutor.EvidenceRequirementDimension] =
+                LegendConnectGovernedReasoningExecutor.DiscriminatingEvidenceValue
+        };
+        AddOptionalResultDimension(resultDimensions, "response_audience", audience);
+        AddOptionalResultDimension(resultDimensions, "response_expertise", expertise);
+        AddOptionalResultDimension(resultDimensions, "response_tone", tone);
+        AddOptionalResultDimension(resultDimensions, "response_length", length);
+        AddOptionalResultDimension(
+            resultDimensions,
+            "response_sentence_count",
+            sentenceCount?.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        AddOptionalResultDimension(resultDimensions, "response_structure", structure);
+
+        return new LegendConnectCurriculumBatchSubmission(
+            $"response.presentation.{profile}.{support}",
+            "Founder-governed response presentation constraints",
+            [
+                new LegendConnectCurriculumExampleSubmission(
+                    $"Founder presentation evidence {support}: {requestText}",
+                    new Dictionary<string, string>
+                    {
+                        ["request_surface"] = requestText,
+                        ["conversation_function"] = requestFunction
+                    },
+                    new LegendConnectMeaningGraphSubmission(
+                    [
+                        new LegendConnectMeaningNodeSubmission(
+                            "function",
+                            "conversation_function",
+                            requestFunction,
+                            requestText.TrimEnd('.'))
+                    ],
+                    [])),
+                new LegendConnectCurriculumExampleSubmission(
+                    responseText,
+                    new Dictionary<string, string>(resultDimensions))
+            ],
+            [
+                new LegendConnectSemanticTransitionSubmission(
+                    new LegendConnectSemanticFrameSubmission(
+                        new Dictionary<string, string>
+                        {
+                            ["conversation_function"] = requestFunction
+                        }),
+                    new LegendConnectSemanticFrameSubmission(
+                        new Dictionary<string, string>(resultDimensions)))
+            ],
+            support == 1
+                ? [new LegendConnectSemanticSpanGroundingSubmission(
+                    "conversation_function", "request_surface")]
+                : []);
+    }
+
+    private static void AddOptionalResultDimension(
+        IDictionary<string, string> dimensions,
+        string dimension,
+        string? value)
+    {
+        if (!string.IsNullOrWhiteSpace(value))
+            dimensions[dimension] = value;
+    }
 
     private static LegendConnectCurriculumBatchSubmission RichResponsePlanFamily(
         int family,

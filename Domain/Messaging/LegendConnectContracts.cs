@@ -877,7 +877,21 @@ public sealed record LegendConnectResponseMeaningPlanSnapshot(
     IReadOnlyDictionary<string, string>? UnboundResultVariables = null,
     IReadOnlyList<string>? ReasoningTransitionPath = null,
     int ReasoningEvidenceCount = 0,
-    string EvidenceStandard = "Unavailable");
+    string EvidenceStandard = "Unavailable",
+    LegendConnectResponsePresentationConstraintsSnapshot? PresentationConstraints = null);
+
+/// <summary>
+/// Text-free, governed presentation metadata carried by the response meaning
+/// plan. It can constrain only realization selection after semantic content
+/// and evidence are proven; it never authorizes a fact or surface string.
+/// </summary>
+public sealed record LegendConnectResponsePresentationConstraintsSnapshot(
+    string? Audience,
+    string? Expertise,
+    string? Tone,
+    string? Length,
+    int? SentenceCount,
+    string? Structure);
 
 public sealed record LegendConnectResponseMeaningPlanResult(
     bool Supported,
