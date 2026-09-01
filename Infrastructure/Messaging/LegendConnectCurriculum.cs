@@ -4152,17 +4152,17 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
     /// exhausting it while retaining the bound for genuinely dense,
     /// potentially ambiguous semantic evidence.
     /// </summary>
-    private async Task<IndexedSemanticTextUnitRetrieval>
-        LoadIndexedSemanticTextUnitIdsAsync(
+    private async Task<IndexedSemanticAnchorRetrieval>
+        LoadIndexedSemanticAnchorIdsAsync(
             string language,
             IReadOnlyCollection<string> inputLexemeHashes,
             CancellationToken cancellationToken,
             bool requireReusableMeaningEvidence = false)
     {
         if (inputLexemeHashes.Count == 0)
-            return IndexedSemanticTextUnitRetrieval.Empty;
+            return IndexedSemanticAnchorRetrieval.Empty;
 
-        var rows = await (
+        var candidateQuery =
             from lexeme in _db.Set<LegendLanguageLexeme>().AsNoTracking()
             join occurrence in _db.Set<LegendLanguageLexicalOccurrence>().AsNoTracking()
                 on lexeme.Id equals occurrence.LexemeId
@@ -4181,6 +4181,13 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
                 anchor.Provenance == LegendConnectKnowledgeProvenance.FounderApproved &&
                 anchor.ComponentStartTokenIndex != null &&
                 anchor.ComponentLength > 0 &&
+                anchor.ComponentLength <= inputLexemeHashes.Count &&
+                _db.Set<LegendLanguageLexicalOccurrence>().Count(spanOccurrence =>
+                    spanOccurrence.TextUnitId == anchor.TextUnitId &&
+                    spanOccurrence.SupersededUtc == null &&
+                    spanOccurrence.TokenIndex >= anchor.ComponentStartTokenIndex &&
+                    spanOccurrence.TokenIndex < anchor.ComponentStartTokenIndex + anchor.ComponentLength) ==
+                    anchor.ComponentLength &&
                 occurrence.TokenIndex >= anchor.ComponentStartTokenIndex &&
                 occurrence.TokenIndex < anchor.ComponentStartTokenIndex + anchor.ComponentLength &&
                 (!requireReusableMeaningEvidence ||
@@ -4197,23 +4204,63 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
                          primitive.MaturityState != "Contradicted" &&
                          primitive.ContradictionCount == 0 &&
                          primitive.IndependentSourceCount >= 1 &&
-                         primitive.HumanVerifiedSupportCount >= 1)))
-            group lexeme by occurrence.TextUnitId into candidate
+                         primitive.HumanVerifiedSupportCount >= 1))) &&
+                // A matching common token is only an index entry point.  The
+                // complete governed anchor span must be lexically compatible
+                // with this request before it is allowed to consume the fixed
+                // retrieval budget. Exact order and contiguity remain the
+                // downstream meaning authority's responsibility.
+                !_db.Set<LegendLanguageLexicalOccurrence>().Any(spanOccurrence =>
+                    spanOccurrence.TextUnitId == anchor.TextUnitId &&
+                    spanOccurrence.SupersededUtc == null &&
+                    spanOccurrence.TokenIndex >= anchor.ComponentStartTokenIndex &&
+                    spanOccurrence.TokenIndex < anchor.ComponentStartTokenIndex + anchor.ComponentLength &&
+                    !_db.Set<LegendLanguageLexeme>().Any(spanLexeme =>
+                        spanLexeme.Id == spanOccurrence.LexemeId &&
+                        spanLexeme.LanguageCode == language &&
+                        inputLexemeHashes.Contains(spanLexeme.NormalizedHash)))
+            group lexeme by anchor.Id into candidate
             orderby candidate.Select(item => item.NormalizedHash).Distinct().Count() descending,
                 candidate.Key
-            select candidate.Key
-        )
+            select candidate.Key;
+
+        // The request collection intentionally retains duplicates. Apply one
+        // constant, translatable correlated count per request lexeme so a
+        // governed span cannot consume more occurrences of a token than the
+        // request actually contains.
+        foreach (var requestLexeme in inputLexemeHashes
+                     .GroupBy(item => item, StringComparer.Ordinal)
+                     .Select(group => new { Hash = group.Key, Count = group.Count() }))
+        {
+            var requestHash = requestLexeme.Hash;
+            var requestCount = requestLexeme.Count;
+            candidateQuery = candidateQuery.Where(anchorId =>
+                (from countedAnchor in _db.Set<LegendLanguageCompositionalAnchor>()
+                 join countedOccurrence in _db.Set<LegendLanguageLexicalOccurrence>()
+                     on countedAnchor.TextUnitId equals countedOccurrence.TextUnitId
+                 join countedLexeme in _db.Set<LegendLanguageLexeme>()
+                     on countedOccurrence.LexemeId equals countedLexeme.Id
+                 where countedAnchor.Id == anchorId &&
+                     countedOccurrence.SupersededUtc == null &&
+                     countedOccurrence.TokenIndex >= countedAnchor.ComponentStartTokenIndex &&
+                     countedOccurrence.TokenIndex < countedAnchor.ComponentStartTokenIndex + countedAnchor.ComponentLength &&
+                     countedLexeme.LanguageCode == language &&
+                     countedLexeme.NormalizedHash == requestHash
+                 select countedOccurrence.Id).Count() <= requestCount);
+        }
+
+        var rows = await candidateQuery
             .Take(MaximumIndexedSemanticTextUnits + 1)
             .ToArrayAsync(cancellationToken);
 
         return rows.Length > MaximumIndexedSemanticTextUnits
-            ? IndexedSemanticTextUnitRetrieval.Bounded
+            ? IndexedSemanticAnchorRetrieval.Bounded
             : new(rows, false);
     }
 
     /// <summary>
-    /// Resolves an exact active Founder text unit through the existing unique
-    /// (language, normalized-hash) index before expanding lexical occurrences.
+    /// Resolves active Founder anchors for an exact text unit through the
+    /// existing unique (language, normalized-hash) index.
     /// Dense common-token evidence must never make an exact governed endpoint
     /// unreachable merely because its individual words occur in more than the
     /// bounded lexical candidate set. This method supplies source candidates
@@ -4221,7 +4268,7 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
     /// realization authorities still decide whether the endpoint can serve.
     /// </summary>
     private async Task<IReadOnlyList<Guid>>
-        LoadExactActiveFounderSemanticTextUnitIdsAsync(
+        LoadExactActiveFounderSemanticAnchorIdsAsync(
             string language,
             string normalizedInput,
             CancellationToken cancellationToken)
@@ -4230,15 +4277,20 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
             return [];
 
         var normalizedHash = LegendLanguageIdentity.TextHash(normalizedInput);
-        return await _db.Set<LegendLanguageTextUnit>()
-            .AsNoTracking()
-            .Where(unit =>
+        return await (
+            from unit in _db.Set<LegendLanguageTextUnit>().AsNoTracking()
+            join anchor in _db.Set<LegendLanguageCompositionalAnchor>().AsNoTracking()
+                on unit.Id equals anchor.TextUnitId
+            where
                 unit.LanguageCode == language &&
                 unit.NormalizedHash == normalizedHash &&
                 unit.IsTrainingEligible &&
-                unit.Provenance == LegendConnectKnowledgeProvenance.FounderApproved)
-            .Select(unit => unit.Id)
-            .Take(2)
+                unit.Provenance == LegendConnectKnowledgeProvenance.FounderApproved &&
+                anchor.LanguageCode == language &&
+                anchor.SupersededUtc == null &&
+                anchor.Provenance == LegendConnectKnowledgeProvenance.FounderApproved
+            select anchor.Id)
+            .Take(MaximumIndexedSemanticAnchors + 1)
             .ToArrayAsync(cancellationToken);
     }
 
@@ -4281,14 +4333,13 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
                 ["invalid_source_text"]);
         }
 
-        var indexedTextUnits = await LoadIndexedSemanticTextUnitIdsAsync(
+        var indexedAnchors = await LoadIndexedSemanticAnchorIdsAsync(
             sourceLanguage,
             sourceComponents
                 .Select(item => item.NormalizedHash)
-                .Distinct(StringComparer.Ordinal)
                 .ToArray(),
             cancellationToken);
-        if (indexedTextUnits.BoundExceeded)
+        if (indexedAnchors.BoundExceeded)
         {
             return new LegendShadowSourceUnderstanding(
                 LegendShadowSourceUnderstanding.InsufficientEvidence,
@@ -4296,7 +4347,7 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
                 [],
                 ["source_semantic_retrieval_bound_exceeded"]);
         }
-        if (indexedTextUnits.TextUnitIds.Count == 0)
+        if (indexedAnchors.AnchorIds.Count == 0)
         {
             return new LegendShadowSourceUnderstanding(
                 LegendShadowSourceUnderstanding.InsufficientEvidence,
@@ -4305,7 +4356,7 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
                 ["source_semantic_component_unknown"]);
         }
 
-        var candidateTextUnitIds = indexedTextUnits.TextUnitIds.ToArray();
+        var candidateAnchorIds = indexedAnchors.AnchorIds.ToArray();
 
         var proofs = await (
             from anchor in _db.Set<LegendLanguageCompositionalAnchor>().AsNoTracking()
@@ -4313,7 +4364,7 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
                 on anchor.TextUnitId equals unit.Id
             where anchor.LanguageCode == sourceLanguage &&
                 unit.LanguageCode == sourceLanguage &&
-                candidateTextUnitIds.Contains(anchor.TextUnitId) &&
+                candidateAnchorIds.Contains(anchor.Id) &&
                 unit.IsTrainingEligible &&
                 anchor.Provenance == LegendConnectKnowledgeProvenance.FounderApproved &&
                 anchor.SupersededUtc == null &&
@@ -4725,28 +4776,27 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
         // token of their controlled span. Start from the exact lexemes present
         // in this request so inference never materializes every supported
         // anchor for an entire language before doing an in-memory comparison.
-        var exactTextUnitIds =
-            await LoadExactActiveFounderSemanticTextUnitIdsAsync(
+        var exactAnchorIds =
+            await LoadExactActiveFounderSemanticAnchorIdsAsync(
                 languageCode,
                 normalizedInput,
                 cancellationToken);
-        IndexedSemanticTextUnitRetrieval indexedTextUnits;
-        if (exactTextUnitIds.Count > 0)
+        IndexedSemanticAnchorRetrieval indexedAnchors;
+        if (exactAnchorIds.Count > 0)
         {
-            indexedTextUnits = new(exactTextUnitIds, false);
+            indexedAnchors = new(exactAnchorIds, false);
         }
         else
         {
             var inputLexemeHashes = tokens
                 .Select(item => item.NormalizedHash)
-                .Distinct(StringComparer.Ordinal)
                 .ToArray();
-            indexedTextUnits = await LoadIndexedSemanticTextUnitIdsAsync(
+            indexedAnchors = await LoadIndexedSemanticAnchorIdsAsync(
                 languageCode,
                 inputLexemeHashes,
                 cancellationToken,
                 requireReusableMeaningEvidence: true);
-            if (indexedTextUnits.BoundExceeded)
+            if (indexedAnchors.BoundExceeded)
             {
                 return new(
                     false,
@@ -4756,7 +4806,7 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
                     "meaning_graph_retrieval_bound_exceeded");
             }
         }
-        if (indexedTextUnits.TextUnitIds.Count == 0)
+        if (indexedAnchors.AnchorIds.Count == 0)
         {
             return new(
                 false,
@@ -4765,7 +4815,7 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
                 tokens.Select(item => item.NormalizedText).ToArray(),
                 "meaning_graph_component_unknown");
         }
-        var candidateTextUnitIds = indexedTextUnits.TextUnitIds.ToArray();
+        var candidateAnchorIds = indexedAnchors.AnchorIds.ToArray();
 
         var candidates = await (
             from node in _db.Set<LegendLanguageMeaningNodeEvidence>().AsNoTracking()
@@ -4782,7 +4832,7 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
                 anchor.Provenance == LegendConnectKnowledgeProvenance.FounderApproved &&
                 unit.Provenance == LegendConnectKnowledgeProvenance.FounderApproved &&
                 anchor.ComponentStartTokenIndex != null && anchor.ComponentLength > 0 &&
-                candidateTextUnitIds.Contains(anchor.TextUnitId) &&
+                candidateAnchorIds.Contains(anchor.Id) &&
                 primitive.SupersededUtc == null &&
                 primitive.Provenance == LegendConnectKnowledgeProvenance.FounderApproved &&
                 primitive.MaturityState != "Contradicted" &&
@@ -4832,28 +4882,10 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
         if (exactSourceCandidates.Count > 0)
             candidates = exactSourceCandidates;
 
-        // If the same surface span has both mature and still-growing Founder
-        // interpretations, retain only the highest evidence standard for that
-        // span. Equal-standard disagreements remain visible and fail closed;
-        // a broad interpretation can never dilute a higher-standard one.
-        candidates = candidates
-            .GroupBy(item => (item.StartTokenIndex, item.TokenLength))
-            .SelectMany(group =>
-            {
-                var standard = group.Max(item => MeaningEvidenceStandard(
-                    item.IndependentSupportCount,
-                    item.HumanVerifiedSupportCount,
-                    item.MaturityState));
-                return group.Where(item => MeaningEvidenceStandard(
-                    item.IndependentSupportCount,
-                    item.HumanVerifiedSupportCount,
-                    item.MaturityState) == standard);
-            })
-            .ToList();
-
         var inputTokenValues = tokens.Select(item => item.NormalizedText).ToArray();
         var nodes = new List<LegendConnectUtteranceMeaningNode>();
         var nodeFamilyIds = new List<HashSet<Guid>>();
+        var nodeEvidenceStandards = new List<int>();
         foreach (var candidate in candidates)
         {
             if (candidate.StartTokenIndex is not int start || candidate.TokenLength is not int length || length <= 0)
@@ -4879,6 +4911,10 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
                 {
                     nodes.Add(node);
                     nodeFamilyIds.Add([candidate.CurriculumFamilyId]);
+                    nodeEvidenceStandards.Add(MeaningEvidenceStandard(
+                        candidate.IndependentSupportCount,
+                        candidate.HumanVerifiedSupportCount,
+                        candidate.MaturityState));
                 }
                 else
                 {
@@ -4886,8 +4922,39 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
                     // independent, but the authorization to compose this
                     // particular observed surface remains family-scoped.
                     nodeFamilyIds[existingNodeIndex].Add(candidate.CurriculumFamilyId);
+                    nodeEvidenceStandards[existingNodeIndex] = Math.Max(
+                        nodeEvidenceStandards[existingNodeIndex],
+                        MeaningEvidenceStandard(
+                            candidate.IndependentSupportCount,
+                            candidate.HumanVerifiedSupportCount,
+                            candidate.MaturityState));
                 }
             }
+        }
+
+        // Evidence dominance belongs to the observed request span, not to the
+        // token coordinates of unrelated curriculum sentences. Project exact
+        // surfaces first, then allow the strongest governed interpretation of
+        // each current-input span to dominate. Equal-standard disagreement is
+        // retained and continues to fail closed.
+        if (nodes.Count > 1)
+        {
+            var retainedNodeIndexes = Enumerable.Range(0, nodes.Count)
+                .GroupBy(index => (
+                    nodes[index].StartTokenIndex,
+                    nodes[index].TokenLength))
+                .SelectMany(group =>
+                {
+                    var standard = group.Max(index => nodeEvidenceStandards[index]);
+                    return group.Where(index => nodeEvidenceStandards[index] == standard);
+                })
+                .OrderBy(index => index)
+                .ToArray();
+            nodes = retainedNodeIndexes.Select(index => nodes[index]).ToList();
+            nodeFamilyIds = retainedNodeIndexes.Select(index => nodeFamilyIds[index]).ToList();
+            nodeEvidenceStandards = retainedNodeIndexes
+                .Select(index => nodeEvidenceStandards[index])
+                .ToList();
         }
 
         var relations = new List<LegendConnectUtteranceMeaningRelation>();
@@ -7285,16 +7352,15 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
         if (inputTokens.Length == 0)
             return [];
 
-        var indexedTextUnits = await LoadIndexedSemanticTextUnitIdsAsync(
+        var indexedAnchors = await LoadIndexedSemanticAnchorIdsAsync(
             sourceLanguage,
             SurfaceComponents(normalizedInput)
                 .Select(item => item.NormalizedHash)
-                .Distinct(StringComparer.Ordinal)
                 .ToArray(),
             cancellationToken);
-        if (indexedTextUnits.BoundExceeded || indexedTextUnits.TextUnitIds.Count == 0)
+        if (indexedAnchors.BoundExceeded || indexedAnchors.AnchorIds.Count == 0)
             return [];
-        var candidateTextUnitIds = indexedTextUnits.TextUnitIds.ToArray();
+        var candidateAnchorIds = indexedAnchors.AnchorIds.ToArray();
 
         var rows = await (
             from anchor in _db.Set<LegendLanguageCompositionalAnchor>().AsNoTracking()
@@ -7308,7 +7374,7 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
                 anchor.ComponentLength != null &&
                 anchor.ComponentLength > 0 &&
                 dimensions.Contains(anchor.Dimension) &&
-                candidateTextUnitIds.Contains(anchor.TextUnitId) &&
+                candidateAnchorIds.Contains(anchor.Id) &&
                 unit.LanguageCode == sourceLanguage &&
                 unit.IsTrainingEligible &&
                 unit.Provenance == LegendConnectKnowledgeProvenance.FounderApproved
@@ -14788,12 +14854,12 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
         Guid StructuralPatternId,
         Guid? StructuralRelationshipId);
 
-    private sealed record IndexedSemanticTextUnitRetrieval(
-        IReadOnlyList<Guid> TextUnitIds,
+    private sealed record IndexedSemanticAnchorRetrieval(
+        IReadOnlyList<Guid> AnchorIds,
         bool BoundExceeded)
     {
-        internal static readonly IndexedSemanticTextUnitRetrieval Empty = new([], false);
-        internal static readonly IndexedSemanticTextUnitRetrieval Bounded = new([], true);
+        internal static readonly IndexedSemanticAnchorRetrieval Empty = new([], false);
+        internal static readonly IndexedSemanticAnchorRetrieval Bounded = new([], true);
     }
 
     private sealed record SemanticTransitionObservation(

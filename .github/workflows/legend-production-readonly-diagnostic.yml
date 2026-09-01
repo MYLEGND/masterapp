@@ -142,7 +142,16 @@ jobs:
           $preflight = 'diagnostics/test-preflight.txt'
           $nativeExit = 99
           $executedTests = 0
-          $matrixCases = 0
+          $matrixCases = $null
+          $matrixTotalCases = $null
+          $matrixFailedCases = $null
+          $matrixStatus = ''
+          $matrixResultState = 'missing'
+          $nativePasses = $null
+          $negativePasses = $null
+          $providerClientCount = $null
+          $productionWriteCommandCount = $null
+          $validationErrors = [System.Collections.Generic.List[string]]::new()
           try {
             $testName = 'AgentPortal.Tests.LegendFounderCurriculumSqlServerE2ETests.ProductionReadOnlyNativeProofMatrix'
             $filter = "FullyQualifiedName=$testName"
@@ -163,15 +172,51 @@ jobs:
               if ($null -ne $counters) { $executedTests = [int]$counters.executed }
             }
             if (Test-Path $matrixResultPath) {
-              $matrixResult = Get-Content $matrixResultPath -Raw | ConvertFrom-Json
-              if ($matrixResult.MatrixVersion -ne $env:LEGEND_PRODUCTION_PROOF_MATRIX_VERSION) { throw 'The candidate observation used an unexpected matrix version.' }
-              if ($matrixResult.Status -ne 'passed') { throw 'The candidate observation did not report a passed matrix.' }
-              if ([int]$matrixResult.ProviderClientCount -ne 0) { throw 'The candidate observation created a provider client.' }
-              if ([int]$matrixResult.ProductionWriteCommandCount -ne 0) { throw 'The candidate observation reported a production write command.' }
-              $matrixCases = [int]$matrixResult.ExecutedCases
+              try {
+                $matrixResult = Get-Content $matrixResultPath -Raw | ConvertFrom-Json -ErrorAction Stop
+                $requiredResultFields = @('MatrixVersion','Status','ExecutedCases','TotalCases','FailedCases','NativePasses','NegativePasses','ProviderClientCount','ProductionWriteCommandCount','Categories','CaseResults')
+                $missingResultFields = @($requiredResultFields | Where-Object { $_ -notin $matrixResult.PSObject.Properties.Name })
+                if ($missingResultFields.Count -gt 0) { throw ('The candidate observation is missing required fields: ' + ($missingResultFields -join ', ') + '.') }
+                if ([string]::IsNullOrWhiteSpace([string]$matrixResult.Status) -or $null -eq $matrixResult.Categories -or $null -eq $matrixResult.CaseResults) { throw 'The candidate observation contains null required evidence fields.' }
+                foreach ($numericField in @('ExecutedCases','TotalCases','FailedCases','NativePasses','NegativePasses','ProviderClientCount','ProductionWriteCommandCount')) {
+                  if ($null -eq $matrixResult.$numericField) { throw "The candidate observation contains null numeric field '$numericField'." }
+                }
+                $matrixResultState = 'present'
+                $matrixStatus = [string]$matrixResult.Status
+                $matrixCases = [int]$matrixResult.ExecutedCases
+                $matrixTotalCases = [int]$matrixResult.TotalCases
+                $matrixFailedCases = [int]$matrixResult.FailedCases
+                $nativePasses = [int]$matrixResult.NativePasses
+                $negativePasses = [int]$matrixResult.NegativePasses
+                $providerClientCount = [int]$matrixResult.ProviderClientCount
+                $productionWriteCommandCount = [int]$matrixResult.ProductionWriteCommandCount
+                if ($matrixResult.MatrixVersion -ne $env:LEGEND_PRODUCTION_PROOF_MATRIX_VERSION) { $validationErrors.Add('The candidate observation used an unexpected matrix version.') }
+                if ($matrixStatus -ne 'passed') { $validationErrors.Add('The candidate observation did not report a passed matrix.') }
+                if ($providerClientCount -ne 0) { $validationErrors.Add('The candidate observation created a provider client.') }
+                if ($productionWriteCommandCount -ne 0) { $validationErrors.Add('The candidate observation reported a production write command.') }
+              }
+              catch {
+                $matrixResultState = 'malformed'
+                $matrixStatus = ''
+                $matrixCases = $null
+                $matrixTotalCases = $null
+                $matrixFailedCases = $null
+                $nativePasses = $null
+                $negativePasses = $null
+                $providerClientCount = $null
+                $productionWriteCommandCount = $null
+                $validationErrors.Add('The candidate observation could not be parsed: ' + $_.Exception.Message)
+              }
+            }
+            else {
+              $validationErrors.Add('The candidate observation result is missing.')
             }
             if ($executedTests -ne 1) { $nativeExit = 97 }
-            if ($matrixCases -lt 1) { $nativeExit = 98 }
+            if ($null -eq $matrixCases -or $matrixCases -lt 1) { $nativeExit = 98 }
+            if ($validationErrors.Count -gt 0) {
+              if ($nativeExit -eq 0) { $nativeExit = 96 }
+              ($validationErrors -join ' | ') | Add-Content -Path $preflight -Encoding utf8
+            }
           }
           catch {
             if ($nativeExit -eq 0) { $nativeExit = 96 }
@@ -181,6 +226,14 @@ jobs:
             "native_exit=$nativeExit" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
             "executed_tests=$executedTests" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
             "matrix_cases=$matrixCases" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+            "matrix_total_cases=$matrixTotalCases" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+            "matrix_failed_cases=$matrixFailedCases" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+            "matrix_status=$matrixStatus" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+            "matrix_result_state=$matrixResultState" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+            "native_passes=$nativePasses" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+            "negative_passes=$negativePasses" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+            "provider_client_count=$providerClientCount" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+            "production_write_command_count=$productionWriteCommandCount" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
           }
 
       - name: Assemble sanitized diagnostic transcript
@@ -200,7 +253,15 @@ jobs:
             "DiagnosticOutcome: ${{ steps.diagnostic.outcome }}"
             "NativeExit: ${{ steps.diagnostic.outputs.native_exit }}"
             "ExecutedTests: ${{ steps.diagnostic.outputs.executed_tests }}"
+            "MatrixResultState: ${{ steps.diagnostic.outputs.matrix_result_state }}"
+            "MatrixStatus: ${{ steps.diagnostic.outputs.matrix_status }}"
             "MatrixCases: ${{ steps.diagnostic.outputs.matrix_cases }}"
+            "MatrixTotalCases: ${{ steps.diagnostic.outputs.matrix_total_cases }}"
+            "MatrixFailedCases: ${{ steps.diagnostic.outputs.matrix_failed_cases }}"
+            "NativePasses: ${{ steps.diagnostic.outputs.native_passes }}"
+            "NegativePasses: ${{ steps.diagnostic.outputs.negative_passes }}"
+            "ProviderClientCount: ${{ steps.diagnostic.outputs.provider_client_count }}"
+            "ProductionWriteCommandCount: ${{ steps.diagnostic.outputs.production_write_command_count }}"
             ''
             '=== TEST PREFLIGHT ==='
             if (Test-Path diagnostics/test-preflight.txt) { Get-Content diagnostics/test-preflight.txt }
