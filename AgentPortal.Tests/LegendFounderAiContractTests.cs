@@ -10,11 +10,13 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using AgentPortal.Controllers;
+using AgentPortal.Mobile;
 using AgentPortal.Models;
 using AgentPortal.Security;
 using AgentPortal.Services;
 using Azure.Core;
 using Domain.Entities;
+using Domain.Messaging;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Configuration;
@@ -42,6 +44,15 @@ public sealed class LegendFounderAiContractTests
 
         Assert.NotNull(cache);
         Assert.True(cache!.NoStore);
+    }
+
+    [Fact]
+    public void MobileController_RetainsAuthenticatedFounderOnlyBoundary()
+    {
+        var type = typeof(MobileFounderAiController);
+
+        Assert.NotNull(type.GetCustomAttribute<AuthorizeAttribute>());
+        Assert.NotNull(type.GetCustomAttribute<FounderOnlyAttribute>());
     }
 
     [Fact]
@@ -104,7 +115,16 @@ public sealed class LegendFounderAiContractTests
             type.GetMethod(
                 nameof(
                     FounderLegendConnectService
-                        .QueueMachineTeachingProposalAsync)));
+                        .QueueMachineTeachingProposalAsync),
+                BindingFlags.Instance |
+                BindingFlags.NonPublic));
+        Assert.Null(
+            type.GetMethod(
+                nameof(
+                    FounderLegendConnectService
+                        .QueueMachineTeachingProposalAsync),
+                BindingFlags.Instance |
+                BindingFlags.Public));
     }
 
     [Fact]
@@ -179,6 +199,7 @@ public sealed class LegendFounderAiContractTests
         Assert.Contains("result.stage", script, StringComparison.Ordinal);
         Assert.Contains("result.reason", script, StringComparison.Ordinal);
         Assert.Contains("nativeOnly:", script, StringComparison.Ordinal);
+        Assert.Contains("sourceLanguageCode: null", script, StringComparison.Ordinal);
         Assert.Contains("result.responseAuthority ||", script, StringComparison.Ordinal);
         Assert.Contains("'Legend® Ai'", script, StringComparison.Ordinal);
         Assert.Contains("'OpenAI'", script, StringComparison.Ordinal);
@@ -186,6 +207,52 @@ public sealed class LegendFounderAiContractTests
         Assert.DoesNotContain("OpenAI Teacher · ${stage || 'provider response'}", script, StringComparison.Ordinal);
         Assert.Contains("OpenAI escalation is blocked for this clean conversation", script, StringComparison.Ordinal);
         Assert.DoesNotContain("progressUrlFor(modalElement.dataset.chatUrl, operationId)", script, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void FounderSourceLanguageContract_IsExplicitAndHasNoEnglishDefault()
+    {
+        var request = new LegendFounderAiChatRequest();
+        var json = JsonSerializer.Serialize(request);
+
+        Assert.Null(request.SourceLanguageCode);
+        using var document = JsonDocument.Parse(json);
+        Assert.Equal(
+            JsonValueKind.Null,
+            document.RootElement
+                .GetProperty("sourceLanguageCode")
+                .ValueKind);
+    }
+
+    [Fact]
+    public void FounderSourceLanguageWireContract_IsAlignedAcrossWebIosAndAndroid()
+    {
+        var web = File.ReadAllText(
+            Path.Combine(AppContext.BaseDirectory, "legend-founder-ai.js"));
+        var ios = File.ReadAllText(
+            Path.Combine(AppContext.BaseDirectory, "LegendApplicationShell.swift"));
+        var androidContracts = File.ReadAllText(
+            Path.Combine(AppContext.BaseDirectory, "LegendMobileContracts.kt"));
+        var androidViewModel = File.ReadAllText(
+            Path.Combine(AppContext.BaseDirectory, "LegendFeatureViewModels.kt"));
+
+        Assert.Contains("sourceLanguageCode: null", web, StringComparison.Ordinal);
+        Assert.Contains("let sourceLanguageCode: String?", ios, StringComparison.Ordinal);
+        Assert.Contains("sourceLanguageCode: String? = nil", ios, StringComparison.Ordinal);
+        Assert.Contains("sourceLanguageCode: sourceLanguageCode", ios, StringComparison.Ordinal);
+        Assert.Contains("let reason: String?", ios, StringComparison.Ordinal);
+
+        Assert.Contains(
+            "@SerialName(\"sourceLanguageCode\") val sourceLanguageCode: String? = null",
+            androidContracts,
+            StringComparison.Ordinal);
+        Assert.Contains("val reason: String? = null", androidContracts, StringComparison.Ordinal);
+        Assert.Contains("sourceLanguageCode: String? = null", androidViewModel, StringComparison.Ordinal);
+        Assert.Contains("sourceLanguageCode = sourceLanguageCode", androidViewModel, StringComparison.Ordinal);
+
+        Assert.DoesNotContain("sourceLanguageCode: 'en'", web, StringComparison.Ordinal);
+        Assert.DoesNotContain("sourceLanguageCode: \"en\"", ios, StringComparison.Ordinal);
+        Assert.DoesNotContain("sourceLanguageCode: String = \"en\"", androidContracts, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -367,7 +434,7 @@ public sealed class LegendFounderAiContractTests
 
 
     [Fact]
-    public void FounderTools_IncludeNativeWebResearchWithoutReplacingGovernedTools()
+    public void FounderTools_ExposeOneGovernedResearchFunctionAndNoRawProviderSearch()
     {
         var buildTools =
             typeof(LegendFounderToolAuthority)
@@ -394,14 +461,23 @@ public sealed class LegendFounderAiContractTests
                 .EnumerateArray()
                 .ToArray();
 
+        Assert.DoesNotContain(
+            toolArray,
+            tool =>
+                tool.TryGetProperty(
+                    "type",
+                    out var type) &&
+                type.GetString() ==
+                    "web_search");
+
         Assert.Single(
             toolArray.Where(
                 tool =>
                     tool.TryGetProperty(
-                        "type",
-                        out var type) &&
-                    type.GetString() ==
-                        "web_search"));
+                        "name",
+                        out var name) &&
+                    name.GetString() ==
+                        "legend_research_internet"));
 
         Assert.Contains(
             toolArray,
@@ -515,9 +591,204 @@ public sealed class LegendFounderAiContractTests
         var serialized = JsonSerializer.Serialize(tools);
 
         // OpenAI strict function schemas reject minProperties/maxProperties.
-        // Runtime parsing remains the canonical 1..12 dimension guard.
+        // The closed dimensions array and runtime parser share the 1..12 guard.
         Assert.DoesNotContain("\"minProperties\"", serialized, StringComparison.Ordinal);
         Assert.DoesNotContain("\"maxProperties\"", serialized, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void FounderToolCatalog_SerializedContractIsRecursivelyProviderValid()
+    {
+        var buildTools = typeof(LegendFounderToolAuthority)
+            .GetMethod("BuildFounderTools", BindingFlags.NonPublic | BindingFlags.Static);
+
+        Assert.NotNull(buildTools);
+        var tools = Assert.IsAssignableFrom<IReadOnlyList<object>>(
+            buildTools!.Invoke(null, null));
+
+        var first = LegendFounderToolAuthority
+            .ValidateSerializedToolCatalog(tools);
+        var second = LegendFounderToolAuthority
+            .ValidateSerializedToolCatalog(tools);
+
+        Assert.Empty(first);
+        Assert.Equal(first.ToArray(), second.ToArray());
+    }
+
+    [Theory]
+    [InlineData(
+        "{\"type\":\"object\",\"properties\":{\"value\":{\"type\":\"string\"}},\"required\":[],\"additionalProperties\":false}",
+        "required names must exactly match properties")]
+    [InlineData(
+        "{\"type\":\"object\",\"properties\":{},\"required\":[],\"additionalProperties\":true}",
+        "every strict object must be closed with false")]
+    [InlineData(
+        "{\"type\":\"object\",\"properties\":{\"value\":{\"type\":[\"string\",\"integer\"]}},\"required\":[\"value\"],\"additionalProperties\":false}",
+        "nullable schemas must contain exactly one supported non-null type and null")]
+    [InlineData(
+        "{\"type\":\"object\",\"properties\":{\"values\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"properties\":{\"value\":{\"type\":\"string\"}},\"required\":[],\"additionalProperties\":false}}},\"required\":[\"values\"],\"additionalProperties\":false}",
+        "properties.values.items.required")]
+    [InlineData(
+        "{\"type\":\"object\",\"properties\":{},\"required\":[],\"additionalProperties\":false,\"minProperties\":1}",
+        "keyword is not supported by the Founder provider schema contract")]
+    [InlineData(
+        "{\"type\":\"object\",\"properties\":{\"values\":{\"type\":\"array\",\"minItems\":\"1\",\"items\":{\"type\":\"string\"}}},\"required\":[\"values\"],\"additionalProperties\":false}",
+        "expected a nonnegative integer")]
+    public void FounderToolCatalog_RecursiveValidatorRejectsMalformedStrictSchemas(
+        string parametersJson,
+        string expectedError)
+    {
+        using var parametersDocument = JsonDocument.Parse(parametersJson);
+        IReadOnlyList<object> tools =
+        [
+            new
+            {
+                type = "function",
+                name = "legend_contract_probe",
+                description = "Validate one deliberately malformed strict schema.",
+                parameters = parametersDocument.RootElement.Clone(),
+                strict = true
+            }
+        ];
+
+        var errors = LegendFounderToolAuthority
+            .ValidateSerializedToolCatalog(tools);
+
+        Assert.Contains(
+            errors,
+            error => error.Contains(expectedError, StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void FounderToolSemanticFrameSchema_UsesClosedRequiredDimensionValueArray()
+    {
+        var buildTools = typeof(LegendFounderToolAuthority)
+            .GetMethod("BuildFounderTools", BindingFlags.NonPublic | BindingFlags.Static);
+
+        Assert.NotNull(buildTools);
+        var tools = Assert.IsAssignableFrom<IReadOnlyList<object>>(
+            buildTools!.Invoke(null, null));
+        using var document = JsonDocument.Parse(JsonSerializer.Serialize(tools));
+        var machineLearningTool = document.RootElement
+            .EnumerateArray()
+            .Single(tool =>
+                tool.TryGetProperty("name", out var name) &&
+                name.GetString() == "legend_submit_machine_learning_candidate");
+        var transition = machineLearningTool
+            .GetProperty("parameters")
+            .GetProperty("properties")
+            .GetProperty("semantic_transitions")
+            .GetProperty("items");
+
+        AssertClosedSemanticFrameSchema(
+            transition.GetProperty("properties").GetProperty("source"));
+        AssertClosedSemanticFrameSchema(
+            transition.GetProperty("properties").GetProperty("result"));
+    }
+
+    [Fact]
+    public void FounderMachineTeachingSchema_RequiresClosedCapabilityAndCategoryIdentities()
+    {
+        var buildTools = typeof(LegendFounderToolAuthority)
+            .GetMethod("BuildFounderTools", BindingFlags.NonPublic | BindingFlags.Static);
+
+        Assert.NotNull(buildTools);
+        var tools = Assert.IsAssignableFrom<IReadOnlyList<object>>(
+            buildTools!.Invoke(null, null));
+        using var document = JsonDocument.Parse(JsonSerializer.Serialize(tools));
+        var parameters = document.RootElement
+            .EnumerateArray()
+            .Single(tool =>
+                tool.TryGetProperty("name", out var name) &&
+                name.GetString() == "legend_submit_machine_learning_candidate")
+            .GetProperty("parameters");
+        var properties = parameters.GetProperty("properties");
+        var required = parameters.GetProperty("required")
+            .EnumerateArray()
+            .Select(item => item.GetString())
+            .ToHashSet(StringComparer.Ordinal);
+
+        Assert.Contains("capability_identity", required);
+        Assert.Contains("category_identity", required);
+        Assert.Contains("observation_origin", required);
+        Assert.Contains("research_observation_lineage", required);
+        Assert.Equal(
+            new[] { "translation", "same_language_semantic" },
+            properties.GetProperty("capability_identity")
+                .GetProperty("enum")
+                .EnumerateArray()
+                .Select(item => item.GetString()!)
+                .ToArray());
+        Assert.Equal(
+            new[] { "ConversationObservation", "ExternalResearchObservation" },
+            properties.GetProperty("observation_origin")
+                .GetProperty("enum")
+                .EnumerateArray()
+                .Select(item => item.GetString()!)
+                .ToArray());
+        Assert.Equal(
+            new[] { "reusable_semantic" },
+            properties.GetProperty("category_identity")
+                .GetProperty("enum")
+                .EnumerateArray()
+                .Select(item => item.GetString()!)
+                .ToArray());
+    }
+
+    [Fact]
+    public void FounderToolSemanticFrameParser_ReadsClosedDimensionValueArray()
+    {
+        const string input =
+            """
+            {
+              "source": {
+                "dimensions": [
+                  { "dimension": " conversation_function ", "value": " wellbeing_inquiry " },
+                  { "dimension": "audience.level", "value": "$Audience" }
+                ]
+              }
+            }
+            """;
+
+        Assert.True(TryParseFounderSemanticFrame(input, out var frame));
+        Assert.Equal(2, frame.Dimensions.Count);
+        Assert.Equal("wellbeing_inquiry", frame.Dimensions["conversation_function"]);
+        Assert.Equal("$Audience", frame.Dimensions["audience.level"]);
+    }
+
+    [Fact]
+    public void FounderToolSemanticFrameParser_RejectsInvalidClosedArrayInputs()
+    {
+        var invalidFrames = new[]
+        {
+            """{"source":{"dimensions":[]}}""",
+            """{"source":{"dimensions":{"intent":"diagnose"}}}""",
+            """{"source":{"dimensions":[{"dimension":"intent","value":"diagnose"},{"dimension":" InTeNt ","value":"plan"}]}}""",
+            """{"source":{"dimensions":[{"dimension":" ","value":"diagnose"}]}}""",
+            """{"source":{"dimensions":[{"dimension":"intent","value":" "}]}}""",
+            """{"source":{"dimensions":[{"dimension":"intent value","value":"diagnose"}]}}""",
+            """{"source":{"dimensions":[{"dimension":"intent","value":"$1invalid"}]}}""",
+            """{"source":{"dimensions":[{"dimension":"intent","value":"$invalid value"}]}}""",
+            """{"source":{"dimensions":[{"dimension":1,"value":"diagnose"}]}}""",
+            """{"source":{"dimensions":[{"dimension":"intent","value":false}]}}""",
+            """{"source":{"dimensions":[{"dimension":"intent"}]}}""",
+            """{"source":{"dimensions":[{"value":"diagnose"}]}}""",
+            """{"source":{"dimensions":["intent"]}}""",
+            """{"source":{"dimensions":[{"dimension":"intent","value":"diagnose","extra":"rejected"}]}}""",
+            """{"source":{"dimensions":[{"dimension":"intent","dimension":"plan","value":"diagnose"}]}}""",
+            """{"source":{"dimensions":[{"dimension":"intent","value":"diagnose"}]},"extra":true}""",
+            SemanticFrameJson(
+                Enumerable.Range(0, 13)
+                    .Select(index => ($"dimension_{index}", "value"))),
+            SemanticFrameJson(new[] { (new string('d', 81), "value") }),
+            SemanticFrameJson(new[] { ("dimension", new string('v', 161)) })
+        };
+
+        Assert.All(
+            invalidFrames,
+            input => Assert.False(
+                TryParseFounderSemanticFrame(input, out _),
+                input));
     }
 
     [Fact]
@@ -660,7 +931,7 @@ public sealed class LegendFounderAiContractTests
     }
 
     [Fact]
-    public async Task IntelligenceEvaluation_ProjectsOnlyCanonicalGovernedEvidenceWithoutDuplicates()
+    public async Task IntelligenceEvaluation_DoesNotRelabelRegressionOrTrafficAsDirectCaseMeasurements()
     {
         await using var db = ControllerTestHelpers.BuildDb();
         var now = DateTime.UtcNow;
@@ -720,6 +991,7 @@ public sealed class LegendFounderAiContractTests
         {
             RunKey = "evaluation-run", DatasetIdentity = "evaluation-dataset", TrainingProvider = "test",
             BaseModel = "test", EvaluationState = "Passed", HeldOutScore = 1m, RegressionScore = 1m,
+            FailureDetail = "evaluated=1;reference=1.000000;blocking=0;protected=0;leakage=0;prompt_set=test-v1;code_sha=0123456789abcdef0123456789abcdef01234567;runtime_mode=LockedHeldOutEvaluation;response_authority=LegendConnectActiveModelInference;settings=responses-v1,store=false,max_output_tokens=1200;criteria=governed-reference-policy-v1,held_out>=0.950000,regression>=1.000000,protected>=0.980000,blocking=0,leakage=0,runtime_model=exact;proof_set=abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789;latency_us=1;cost_micro=1",
             CompletedUtc = now, UpdatedUtc = now
         });
         db.LegendTranslationPairDemands.Add(new LegendTranslationPairDemand
@@ -731,13 +1003,16 @@ public sealed class LegendFounderAiContractTests
         var service = new LegendIntelligenceEvaluationService(db);
         var measured = await service.CreateEvidenceSnapshotAsync("founder-1", CancellationToken.None);
         var language = measured.Domains.Single(domain => domain.Key == "language_linguistic");
-        Assert.Equal(100m, language.EvidenceScore);
+        Assert.Null(language.EvidenceScore);
         Assert.Equal(1, language.ProductionEligibleEvidenceCount);
-        Assert.Equal(9, language.EvidenceVolume);
+        Assert.Equal(6, language.EvidenceVolume);
+        Assert.Contains("transfer", language.OpenKnowledgeGaps);
+        Assert.Contains("native_execution", language.OpenKnowledgeGaps);
+        Assert.Contains("calibration", language.OpenKnowledgeGaps);
 
         var repeated = await service.CreateEvidenceSnapshotAsync("founder-1", CancellationToken.None);
         Assert.Equal(measured.EvaluatedUtc, repeated.EvaluatedUtc);
-        Assert.Equal(9, await db.LegendIntelligenceEvaluationSignals.CountAsync());
+        Assert.Equal(6, await db.LegendIntelligenceEvaluationSignals.CountAsync());
         Assert.Equal(1, await db.LegendIntelligenceEvaluationSnapshots.CountAsync());
     }
 
@@ -776,14 +1051,14 @@ public sealed class LegendFounderAiContractTests
     }
 
     [Fact]
-    public async Task IntelligenceEvaluation_BlocksTakeoverClaimUntilEveryDomainBeatsOneLockedBaseline()
+    public async Task SyntheticPreLabeledComparativeSignals_CannotClaimTakeoverAuthority()
     {
         await using var db = ControllerTestHelpers.BuildDb();
         var service = new LegendIntelligenceEvaluationService(db);
         _ = await service.CreateEvidenceSnapshotAsync("founder-1", CancellationToken.None);
         var contract = await db.LegendIntelligenceEvaluationContracts.SingleAsync();
         const string authority =
-            LegendArchitecturalTakeoverGate.EvaluatorAuthorityPrefix + "gpt-5.6-sol@locked-2026-08-28";
+            "legend-locked-blind-comparative-evaluator-v1:gpt-5.6-sol@locked-2026-08-28";
         var metrics = new Dictionary<string, decimal>
         {
             ["sample_size"] = 200m,
@@ -818,24 +1093,10 @@ public sealed class LegendFounderAiContractTests
         await db.SaveChangesAsync();
 
         var proven = await service.CreateEvidenceSnapshotAsync("founder-1", CancellationToken.None);
-        Assert.True(proven.TakeoverReadiness.Proven);
-        Assert.Equal("PROVEN", proven.TakeoverReadiness.State);
-        Assert.Equal(LegendIntelligenceEvaluationDomainCatalog.All.Count,
-            proven.TakeoverReadiness.DomainWins);
-        Assert.Equal("gpt-5.6-sol@locked-2026-08-28",
-            proven.TakeoverReadiness.BaselineIdentity);
-
-        var regression = await db.LegendIntelligenceEvaluationSignals.SingleAsync(item =>
-            item.DomainKey == "software_systems" && item.MetricKey == "non_inferiority_rate");
-        regression.Value = 99m;
-        regression.MeasuredUtc = regression.MeasuredUtc.AddSeconds(1);
-        await db.SaveChangesAsync();
-
-        var blocked = await service.CreateEvidenceSnapshotAsync("founder-1", CancellationToken.None);
-        Assert.False(blocked.TakeoverReadiness.Proven);
-        Assert.Equal(11, blocked.TakeoverReadiness.DomainWins);
-        Assert.Contains(blocked.TakeoverReadiness.Blockers, item =>
-            item.Contains("software_systems: non_inferiority_rate", StringComparison.Ordinal));
+        Assert.False(proven.TakeoverReadiness.Proven);
+        Assert.Equal("BLOCKED", proven.TakeoverReadiness.State);
+        Assert.Equal(0, proven.TakeoverReadiness.DomainWins);
+        Assert.Null(proven.TakeoverReadiness.BaselineIdentity);
     }
 
     [Fact]
@@ -938,13 +1199,17 @@ public sealed class LegendFounderAiContractTests
         Assert.Contains("needs: security", workflow, StringComparison.Ordinal);
         Assert.Contains("Test full suite including security regressions", workflow, StringComparison.Ordinal);
         Assert.Contains("dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj", workflow, StringComparison.Ordinal);
+        Assert.Contains("FounderToolCatalog_SerializedContractIsRecursivelyProviderValid", workflow, StringComparison.Ordinal);
+        Assert.Contains("ProviderAcceptanceCanary_LiveProviderAcceptsCompleteZeroWriteCatalog", workflow, StringComparison.Ordinal);
+        Assert.Contains("LEGEND_FOUNDER_TOOL_CATALOG_PROVIDER_CANARY", workflow, StringComparison.Ordinal);
         Assert.Contains("run: ./scripts/db.sh validate-artifacts", workflow, StringComparison.Ordinal);
         Assert.DoesNotContain("run: ./scripts/db.sh validate\n", workflow, StringComparison.Ordinal);
         Assert.Contains("Merge exact validated PR head", workflow, StringComparison.Ordinal);
         Assert.Contains("Deploy immutable merged production tree", workflow, StringComparison.Ordinal);
         Assert.Contains("verify-legend-native:", workflow, StringComparison.Ordinal);
         Assert.Contains("Download exact tested binaries", workflow, StringComparison.Ordinal);
-        Assert.Contains("ProductionReadOnlyEightPromptNativeDiagnostic", workflow, StringComparison.Ordinal);
+        Assert.Contains("ProductionReadOnlyNativeProofMatrix", workflow, StringComparison.Ordinal);
+        Assert.Contains("LEGEND_PRODUCTION_PROOF_MATRIX_VERSION: lai-027-029-v1", workflow, StringComparison.Ordinal);
         Assert.DoesNotContain("verify-legend-convergence:", workflow, StringComparison.Ordinal);
         Assert.DoesNotContain("LegendProductionConvergenceGate", workflow, StringComparison.Ordinal);
         Assert.DoesNotContain("push:", workflow, StringComparison.Ordinal);
@@ -952,7 +1217,7 @@ public sealed class LegendFounderAiContractTests
     }
 
     [Fact]
-    public void ProductionDeploymentWorkflow_ExcludesLongRunningConvergenceAndUsesFocusedNativeProof()
+    public void ProductionDeploymentWorkflow_ExcludesReplayAndUsesOneBoundedNativeProofMatrix()
     {
         var workflow = File.ReadAllText(
             Path.Combine(AppContext.BaseDirectory, "agentportal-production-deploy.yml"));
@@ -963,9 +1228,35 @@ public sealed class LegendFounderAiContractTests
         Assert.Contains("- deploy", verify, StringComparison.Ordinal);
         Assert.Contains("Download exact tested binaries", verify, StringComparison.Ordinal);
         Assert.Contains("./tested/AgentPortal.Tests.dll", verify, StringComparison.Ordinal);
-        Assert.Contains("ProductionReadOnlyEightPromptNativeDiagnostic", verify, StringComparison.Ordinal);
+        Assert.Contains("ProductionReadOnlyNativeProofMatrix", verify, StringComparison.Ordinal);
+        Assert.Contains("FullyQualifiedName=$testName", verify, StringComparison.Ordinal);
+        Assert.Contains("LEGEND_PRODUCTION_PROOF_REQUIRED: 'true'", verify, StringComparison.Ordinal);
+        Assert.Contains("Required SQL proof reported zero executed matrix cases.", verify, StringComparison.Ordinal);
+        Assert.Contains("$executedTests -ne 1", verify, StringComparison.Ordinal);
+        Assert.Contains("$matrixCases -lt 1", verify, StringComparison.Ordinal);
+        Assert.Contains("legend-production-matrix-result.json", verify, StringComparison.Ordinal);
+        Assert.Contains("ProductionWriteCommandCount", verify, StringComparison.Ordinal);
+        Assert.Contains("ProviderClientCount", verify, StringComparison.Ordinal);
         Assert.DoesNotContain("LegendProductionConvergenceGate", workflow, StringComparison.Ordinal);
         Assert.DoesNotContain("verify-legend-convergence:", workflow, StringComparison.Ordinal);
+        Assert.DoesNotContain("run_full_shadow", verify, StringComparison.Ordinal);
+        Assert.DoesNotContain("live replay", verify, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void ProductionDeploymentWorkflow_BindsProofArtifactToCandidateTreeAndDeployedSha()
+    {
+        var workflow = File.ReadAllText(
+            Path.Combine(AppContext.BaseDirectory, "agentportal-production-deploy.yml"));
+
+        Assert.Contains("candidate_sha: ${{ steps.tree.outputs.candidate_sha }}", workflow, StringComparison.Ordinal);
+        Assert.Contains("deployed_sha: ${{ steps.identity.outputs.deployed_sha }}", workflow, StringComparison.Ordinal);
+        Assert.Contains("CandidateSha = $candidateSha", workflow, StringComparison.Ordinal);
+        Assert.Contains("CandidateTree = $candidateTree", workflow, StringComparison.Ordinal);
+        Assert.Contains("DeployedSha = $deployedSha", workflow, StringComparison.Ordinal);
+        Assert.Contains("if ($deployedSha -ne $mergeSha)", workflow, StringComparison.Ordinal);
+        Assert.Contains("legend-production-proof-${{ needs.deploy.outputs.deployed_sha }}-${{ github.run_id }}", workflow, StringComparison.Ordinal);
+        Assert.Contains("legend-production-proof-identity.json", workflow, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -1020,7 +1311,7 @@ public sealed class LegendFounderAiContractTests
     }
 
     [Fact]
-    public void ProductionReadOnlyDiagnosticWorkflow_CannotPushOrCommitToProduction()
+    public void ProductionReadOnlyDiagnosticWorkflow_IsExplicitlyNonAuthoritativeAndCannotMutateProduction()
     {
         var workflow = File.ReadAllText(
             Path.Combine(AppContext.BaseDirectory, "legend-production-readonly-diagnostic.yml"));
@@ -1028,7 +1319,13 @@ public sealed class LegendFounderAiContractTests
         Assert.Contains("contents: read", workflow, StringComparison.Ordinal);
         Assert.Contains("timeout-minutes: 30", workflow, StringComparison.Ordinal);
         Assert.Contains("cancel-in-progress: true", workflow, StringComparison.Ordinal);
-        Assert.Contains("ProductionReadOnlyEightPromptNativeDiagnostic", workflow, StringComparison.Ordinal);
+        Assert.Contains("ProductionReadOnlyNativeProofMatrix", workflow, StringComparison.Ordinal);
+        Assert.Contains("Authority: non-authoritative", workflow, StringComparison.Ordinal);
+        Assert.Contains("DeployedSha: unavailable", workflow, StringComparison.Ordinal);
+        Assert.Contains("production proof lives only in agentportal-production-deploy.yml", workflow, StringComparison.Ordinal);
+        Assert.Contains("$executedTests -ne 1", workflow, StringComparison.Ordinal);
+        Assert.Contains("$matrixCases -lt 1", workflow, StringComparison.Ordinal);
+        Assert.Contains("legend-production-matrix-result.json", workflow, StringComparison.Ordinal);
         Assert.Contains(
             "Production read-only diagnostic was not completed successfully.",
             workflow,
@@ -1049,6 +1346,79 @@ public sealed class LegendFounderAiContractTests
 
         Assert.False(request.FounderCommandConfirmed);
     }
+
+    private static void AssertClosedSemanticFrameSchema(JsonElement frame)
+    {
+        Assert.Equal("object", frame.GetProperty("type").GetString());
+        Assert.False(frame.GetProperty("additionalProperties").GetBoolean());
+        Assert.Equal(
+            new[] { "dimensions" },
+            frame.GetProperty("required")
+                .EnumerateArray()
+                .Select(item => item.GetString()!)
+                .ToArray());
+
+        var frameProperties = frame.GetProperty("properties");
+        Assert.Equal(
+            new[] { "dimensions" },
+            frameProperties.EnumerateObject().Select(item => item.Name).ToArray());
+
+        var dimensions = frameProperties.GetProperty("dimensions");
+        Assert.Equal("array", dimensions.GetProperty("type").GetString());
+        Assert.Equal(1, dimensions.GetProperty("minItems").GetInt32());
+        Assert.Equal(12, dimensions.GetProperty("maxItems").GetInt32());
+        Assert.False(dimensions.TryGetProperty("additionalProperties", out _));
+
+        var item = dimensions.GetProperty("items");
+        Assert.Equal("object", item.GetProperty("type").GetString());
+        Assert.False(item.GetProperty("additionalProperties").GetBoolean());
+        Assert.Equal(
+            new[] { "dimension", "value" },
+            item.GetProperty("required")
+                .EnumerateArray()
+                .Select(required => required.GetString()!)
+                .ToArray());
+
+        var properties = item.GetProperty("properties");
+        Assert.Equal(
+            new[] { "dimension", "value" },
+            properties.EnumerateObject().Select(property => property.Name).ToArray());
+        Assert.Equal("string", properties.GetProperty("dimension").GetProperty("type").GetString());
+        Assert.Equal(1, properties.GetProperty("dimension").GetProperty("minLength").GetInt32());
+        Assert.Equal(80, properties.GetProperty("dimension").GetProperty("maxLength").GetInt32());
+        Assert.Equal("string", properties.GetProperty("value").GetProperty("type").GetString());
+        Assert.Equal(1, properties.GetProperty("value").GetProperty("minLength").GetInt32());
+        Assert.Equal(160, properties.GetProperty("value").GetProperty("maxLength").GetInt32());
+    }
+
+    private static bool TryParseFounderSemanticFrame(
+        string json,
+        out LegendConnectSemanticFrameSubmission frame)
+    {
+        var parse = typeof(LegendFounderToolAuthority)
+            .GetMethod("TryReadSemanticFrame", BindingFlags.NonPublic | BindingFlags.Static);
+
+        Assert.NotNull(parse);
+        using var document = JsonDocument.Parse(json);
+        object?[] arguments = [document.RootElement, "source", null];
+        var parsed = Assert.IsType<bool>(parse!.Invoke(null, arguments));
+        frame = arguments[2] as LegendConnectSemanticFrameSubmission ?? null!;
+        return parsed;
+    }
+
+    private static string SemanticFrameJson(
+        IEnumerable<(string Dimension, string Value)> dimensions) =>
+        JsonSerializer.Serialize(new
+        {
+            source = new
+            {
+                dimensions = dimensions.Select(item => new
+                {
+                    dimension = item.Dimension,
+                    value = item.Value
+                })
+            }
+        });
 
     private sealed class ThrowingHttpClientFactory : IHttpClientFactory
     {

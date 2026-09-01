@@ -13,13 +13,16 @@ namespace AgentPortal.Tests;
 
 public sealed class LegendConnectProductionNeuralRoutingTests
 {
+    private const string RuntimeProof =
+        "evaluated=1;reference=1.000000;blocking=0;protected=0;leakage=0;prompt_set=test-v1;code_sha=0123456789abcdef0123456789abcdef01234567;runtime_mode=LockedHeldOutEvaluation;response_authority=LegendConnectActiveModelInference;settings=responses-v1,store=false,max_output_tokens=1200;criteria=governed-reference-policy-v1,held_out>=0.950000,regression>=1.000000,protected>=0.980000,blocking=0,leakage=0,runtime_model=exact;proof_set=abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789;latency_us=1;cost_micro=1";
+
     [Fact]
     public async Task ActivePromotedModel_ServesBeforeProviderObservation()
     {
         await using var db =
             ControllerTestHelpers.BuildDb();
 
-        db.Add(
+        var pair =
             new LegendLanguagePair
             {
                 Id = Guid.NewGuid(),
@@ -29,6 +32,39 @@ public sealed class LegendConnectProductionNeuralRoutingTests
                 IsEnabled = true,
                 ActiveModelVersion =
                     "ft:legend:active"
+            };
+        var run = new LegendConnectModelTrainingRun
+        {
+            Id = Guid.NewGuid(),
+            RunKey = "production-neural-routing",
+            ScopeKey = "Global",
+            Generation = 1,
+            DatasetIdentity =
+                "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789",
+            DatasetEvaluatorVersion = 13,
+            TrainingProvider = "OpenAI",
+            BaseModel = "base",
+            ChallengerModelVersion = "ft:legend:active",
+            State = "TrainingCompleted",
+            EvaluationState = "Passed",
+            PromotionState = "Promoted",
+            HeldOutScore = 1m,
+            RegressionScore = 1m,
+            FailureDetail = RuntimeProof,
+            CompletedUtc = DateTime.UtcNow.AddMinutes(-1),
+            PromotedUtc = DateTime.UtcNow
+        };
+        db.AddRange(
+            pair,
+            run,
+            new LegendConnectModelPromotionPair
+            {
+                Id = Guid.NewGuid(),
+                ModelTrainingRunId = run.Id,
+                PairKey = pair.PairKey,
+                PromotedModelVersion =
+                    run.ChallengerModelVersion,
+                PromotedUtc = run.PromotedUtc!.Value
             });
 
         await db.SaveChangesAsync();
@@ -57,6 +93,7 @@ public sealed class LegendConnectProductionNeuralRoutingTests
         Assert.Equal(
             "ft:legend:active",
             result.ModelVersion);
+        Assert.Equal(run.Id, result.ModelTrainingRunId);
         Assert.NotNull(transport.LastTask);
         Assert.Equal(LegendModelCapabilityKeys.Translation, transport.LastTask!.CapabilityKey);
         Assert.Equal("Hello", transport.LastTask.Input);

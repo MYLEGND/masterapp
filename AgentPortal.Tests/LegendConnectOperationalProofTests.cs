@@ -154,6 +154,7 @@ public sealed class LegendConnectOperationalProofTests
             Assert.Contains("data-legend-connect-shell", shellHtml, StringComparison.Ordinal);
             Assert.Contains("data-legend-section=\"submissions\"", shellHtml, StringComparison.Ordinal);
             Assert.Contains("data-legend-section=\"curriculum\"", shellHtml, StringComparison.Ordinal);
+            Assert.Contains("data-legend-section=\"machine-learning-lifecycle\"", shellHtml, StringComparison.Ordinal);
             Assert.DoesNotContain("historical.discoverable.family", shellHtml, StringComparison.Ordinal);
             Assert.DoesNotContain("A historical controlled curriculum example.", shellHtml, StringComparison.Ordinal);
 
@@ -562,7 +563,7 @@ public sealed class LegendConnectOperationalProofTests
     }
 
     [Fact]
-    public async Task FounderPostRoutes_ChallengeUnauthenticatedAndForbidNonFounderPrincipals()
+    public async Task FounderRoutes_ChallengeUnauthenticatedAndForbidNonFounderPrincipals()
     {
         var previousFounder = Environment.GetEnvironmentVariable("FOUNDER_OID");
         var founderId = Guid.NewGuid().ToString();
@@ -571,6 +572,27 @@ public sealed class LegendConnectOperationalProofTests
         {
             using var host = await BuildFounderHttpHostAsync(founderId);
             var client = host.GetTestClient();
+            using var nonFounderLifecycle = new HttpRequestMessage(
+                HttpMethod.Get,
+                "/founder/legend-connect/sections?section=machine-learning-lifecycle&language=en");
+            nonFounderLifecycle.Headers.Add(
+                FounderHeader,
+                Guid.NewGuid().ToString());
+            using var nonFounderLifecycleResponse =
+                await client.SendAsync(nonFounderLifecycle);
+            Assert.Equal(
+                HttpStatusCode.Forbidden,
+                nonFounderLifecycleResponse.StatusCode);
+
+            using var unauthenticatedLifecycle = new HttpRequestMessage(
+                HttpMethod.Get,
+                "/founder/legend-connect/sections?section=machine-learning-lifecycle&language=en");
+            using var unauthenticatedLifecycleResponse =
+                await client.SendAsync(unauthenticatedLifecycle);
+            Assert.Equal(
+                HttpStatusCode.Unauthorized,
+                unauthenticatedLifecycleResponse.StatusCode);
+
             var tokenRequest = new HttpRequestMessage(HttpMethod.Get, "/__legend-connect-proof/token");
             tokenRequest.Headers.Add(FounderHeader, founderId);
             var tokenResponse = await client.SendAsync(tokenRequest);

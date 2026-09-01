@@ -51,7 +51,7 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
         _output = output;
 
     [Fact]
-    public async Task LegendDirectEightPromptReleaseProof()
+    public async Task LegendDirectGreetingEndpointRegression()
     {
         await using var db = ControllerTestHelpers.BuildDb();
 
@@ -173,7 +173,7 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
         // There is no phrase-specific production routing.
         // ---------------------------------------------------------
 
-        var prompts = LiveFounderNativePrompts.Select(item => item.Text).ToArray();
+        var prompts = GreetingEndpointRegressionPrompts.Select(item => item.Text).ToArray();
 
         for (var sourceIndex = 1;
              sourceIndex <= 3;
@@ -335,7 +335,9 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
                 NullLogger<
                     LegendFounderAiConversationService>.Instance,
                 new LegendFounderAiDiscourseStateService(
-                    db, discourseProfiles, operations));
+                    db, discourseProfiles, operations),
+                registry,
+                ControllerTestHelpers.BuildTranslationService());
 
         var fallbackFragments = new[]
         {
@@ -374,7 +376,8 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
                         prompt,
                         Array.Empty<
                             LegendConnectConversationContextItem>(),
-                        discourseState: null);
+                        discourseState: null,
+                        sourceLanguageCode: "en");
 
             _output.WriteLine("");
             _output.WriteLine(
@@ -608,23 +611,34 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
     }
 
     [Fact]
-    public async Task ProductionReadOnlyEightPromptNativeDiagnostic()
+    public async Task ProductionReadOnlyNativeProofMatrix()
     {
+        const string matrixVersion = "lai-027-029-v1";
+        var proofRequired = string.Equals(
+            Environment.GetEnvironmentVariable("LEGEND_PRODUCTION_PROOF_REQUIRED"),
+            "true",
+            StringComparison.OrdinalIgnoreCase);
+        var requestedMatrixVersion = Environment.GetEnvironmentVariable(
+            "LEGEND_PRODUCTION_PROOF_MATRIX_VERSION");
+        if (!string.IsNullOrWhiteSpace(requestedMatrixVersion))
+            Assert.Equal(matrixVersion, requestedMatrixVersion);
+
         var connectionString = Environment.GetEnvironmentVariable(
             "LEGEND_PRODUCTION_READONLY_CONNECTION");
         if (string.IsNullOrWhiteSpace(connectionString))
         {
             _output.WriteLine(
-                "Production native diagnostic was not selected; " +
-                "LEGEND_PRODUCTION_READONLY_CONNECTION is unset.");
+                "PRODUCTION PROOF MATRIX STATUS: unavailable; " +
+                "LEGEND_PRODUCTION_READONLY_CONNECTION is unset; cases_executed=0.");
+            if (proofRequired)
+            {
+                Assert.True(
+                    false,
+                    "The required production proof matrix cannot report success without a production read-only SQL authority.");
+            }
             return;
         }
 
-        var expectNative = string.Equals(
-            Environment.GetEnvironmentVariable(
-                "LEGEND_PRODUCTION_READONLY_EXPECT_NATIVE"),
-            "true",
-            StringComparison.OrdinalIgnoreCase);
         var previousOpenAiApiKey = Environment.GetEnvironmentVariable("OPENAI_API_KEY");
         var previousOpenAiConfigApiKey = Environment.GetEnvironmentVariable("OpenAI__ApiKey");
         var previousFounderOid = Environment.GetEnvironmentVariable("FOUNDER_OID");
@@ -632,351 +646,415 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
         Environment.SetEnvironmentVariable("OpenAI__ApiKey", string.Empty);
         try
         {
-        var connection = new SqlConnectionStringBuilder(connectionString)
-        {
-            ApplicationName = "LEGEND production native read-only diagnostic",
-            ApplicationIntent = ApplicationIntent.ReadOnly
-        };
-        var readOnlyGuard = new ReadOnlyLegendDbCommandInterceptor();
-        await using var db = new MasterAppDbContext(
-            new DbContextOptionsBuilder<MasterAppDbContext>()
-                .UseSqlServer(connection.ConnectionString)
-                .UseQueryTrackingBehavior(QueryTrackingBehavior.NoTracking)
-                .AddInterceptors(readOnlyGuard)
-                .Options);
-
-        // Use the App Service's configured Founder OID, not an arbitrary
-        // active profile. This retains the exact serving authorization path
-        // without emitting the opaque identity to the transcript.
-        var founderId = Environment.GetEnvironmentVariable(
-            "LEGEND_PRODUCTION_READONLY_FOUNDER_OID");
-        Assert.False(
-            string.IsNullOrWhiteSpace(founderId),
-            "Production Founder OID was not supplied to the read-only serving diagnostic.");
-        Assert.True(await db.AgentProfiles
-                .AsNoTracking()
-                .AnyAsync(item => item.IsActive &&
-                    item.AgentUserId != null &&
-                    item.AgentUserId.ToLower() == founderId!.ToLower()),
-            "The configured production Founder OID has no active AgentProfile.");
-        // FounderGuard reads the same process-level authority that App
-        // Service supplies. Scope it to this diagnostic and restore it below;
-        // this neither writes nor changes production authorization state.
-        Environment.SetEnvironmentVariable("FOUNDER_OID", founderId);
-
-        var configuration = new ConfigurationBuilder()
-            .AddInMemoryCollection(new[]
+            var connection = new SqlConnectionStringBuilder(connectionString)
             {
-                new KeyValuePair<string, string?>("OpenAI:ApiKey", string.Empty),
-                new KeyValuePair<string, string?>("LegendConnect:CorpusAcquisition:Enabled", "false"),
-                new KeyValuePair<string, string?>("LegendConnect:ContextualComposition:Mode", "Shadow")
-            })
-            .Build();
-        var registry = new LegendLanguageRegistry(db, configuration);
-        var corpus = new LegendConnectCorpusService(
-            db,
-            registry,
-            NullLogger<LegendConnectCorpusService>.Instance);
-        var curriculum = new LegendConnectCurriculumService(db, registry, corpus);
-        var operations = new LegendConnectOperations(
-            db,
-            registry,
-            corpus,
-            configuration,
-            curriculum: curriculum);
-        var founder = new ClaimsPrincipal(
-            new ClaimsIdentity([new Claim("oid", founderId!)], "production-read-only"));
-        var profiles = new AgentProfileAccessResolver(db);
-        var founderLegend = new FounderLegendConnectService(operations, profiles);
-        var factory = new CountingHttpClientFactory();
-        var chat = new LegendFounderAiConversationService(
-            factory,
-            configuration,
-            founderLegend,
-            NullLogger<LegendFounderAiConversationService>.Instance,
-            new LegendFounderAiDiscourseStateService(db, profiles, operations));
+                ApplicationName = "LEGEND production native zero-write proof matrix",
+                ApplicationIntent = ApplicationIntent.ReadOnly
+            };
+            var readOnlyGuard = new ReadOnlyLegendDbCommandInterceptor();
+            await using var db = new MasterAppDbContext(
+                new DbContextOptionsBuilder<MasterAppDbContext>()
+                    .UseSqlServer(connection.ConnectionString)
+                    .UseQueryTrackingBehavior(QueryTrackingBehavior.NoTracking)
+                    .AddInterceptors(readOnlyGuard)
+                    .Options);
 
-        var corpusCounts = new
-        {
-            EnglishFounderExamples = await (
-                from example in db.LegendCurriculumExamples.AsNoTracking()
-                join unit in db.LegendLanguageTextUnits.AsNoTracking()
-                    on example.TextUnitId equals unit.Id
-                where example.LanguageCode == "en" &&
-                    example.SupersededUtc == null &&
-                    example.Provenance == LegendConnectKnowledgeProvenance.FounderApproved &&
-                    unit.LanguageCode == "en" &&
-                    unit.IsTrainingEligible &&
-                    unit.Provenance == LegendConnectKnowledgeProvenance.FounderApproved
-                select example.Id).LongCountAsync(),
-            SemanticSpanAnchors = await db.LegendLanguageCompositionalAnchors
-                .AsNoTracking()
-                .LongCountAsync(item =>
-                    item.LanguageCode == "en" &&
-                    item.Provenance == LegendConnectKnowledgeProvenance.FounderApproved &&
-                    item.SupersededUtc == null &&
-                    item.LexemeId != null &&
-                    item.ComponentStartTokenIndex != null &&
-                    item.ComponentLength != null &&
-                    item.ComponentLength > 0 &&
-                    item.SemanticSignature != null &&
-                    item.SemanticSignature != string.Empty),
-            ActiveTransitionEvidence = await db.LegendSemanticTransitionEvidence
-                .AsNoTracking()
-                .LongCountAsync(item =>
-                    item.SourceLanguageCode == "en" &&
-                    item.ResultLanguageCode == "en" &&
-                    item.SupersededUtc == null &&
-                    item.Provenance == LegendConnectKnowledgeProvenance.FounderApproved),
-            SupportedHumanVerifiedTransitions = await db.LegendSemanticTransitionEvidence
-                .AsNoTracking()
-                .LongCountAsync(item =>
-                    item.SourceLanguageCode == "en" &&
-                    item.ResultLanguageCode == "en" &&
-                    item.SupersededUtc == null &&
-                    item.Provenance == LegendConnectKnowledgeProvenance.FounderApproved &&
-                    item.ContributionState == "Supported" &&
-                    item.IsHumanVerifiedSupport),
-            ActiveTargetRealizationCandidates = await db.LegendLanguageTargetRealizationCandidates
-                .AsNoTracking()
-                .LongCountAsync(item => item.SupersededUtc == null),
-            ActiveTargetRealizationEvidence = await db.LegendLanguageTargetRealizationEvidence
-                .AsNoTracking()
-                .LongCountAsync(item => item.SupersededUtc == null)
-        };
-        _output.WriteLine("============================================================");
-        _output.WriteLine("LEGEND® PRODUCTION READ-ONLY NATIVE DIAGNOSTIC");
-        _output.WriteLine("============================================================");
-        _output.WriteLine($"ACTIVE ENGLISH FOUNDER EXAMPLES: {corpusCounts.EnglishFounderExamples}");
-        _output.WriteLine($"SEMANTIC SPAN ANCHORS: {corpusCounts.SemanticSpanAnchors}");
-        _output.WriteLine($"ACTIVE TRANSITION EVIDENCE: {corpusCounts.ActiveTransitionEvidence}");
-        _output.WriteLine($"SUPPORTED HUMAN-VERIFIED TRANSITIONS: {corpusCounts.SupportedHumanVerifiedTransitions}");
-        _output.WriteLine($"ACTIVE TARGET REALIZATION CANDIDATES: {corpusCounts.ActiveTargetRealizationCandidates}");
-        _output.WriteLine($"ACTIVE TARGET REALIZATION EVIDENCE: {corpusCounts.ActiveTargetRealizationEvidence}");
+            var founderId = Environment.GetEnvironmentVariable(
+                "LEGEND_PRODUCTION_READONLY_FOUNDER_OID");
+            Assert.False(
+                string.IsNullOrWhiteSpace(founderId),
+                "Production Founder OID was not supplied to the read-only serving proof.");
+            Assert.True(await db.AgentProfiles
+                    .AsNoTracking()
+                    .AnyAsync(item => item.IsActive &&
+                        item.AgentUserId != null &&
+                        item.AgentUserId.ToLower() == founderId!.ToLower()),
+                "The configured production Founder OID has no active AgentProfile.");
+            Environment.SetEnvironmentVariable("FOUNDER_OID", founderId);
 
-        var prompts = LiveFounderNativePrompts.Select(item => item.Text).ToArray();
+            var configuration = new ConfigurationBuilder()
+                .AddInMemoryCollection(new[]
+                {
+                    new KeyValuePair<string, string?>("OpenAI:ApiKey", string.Empty),
+                    new KeyValuePair<string, string?>("LegendConnect:CorpusAcquisition:Enabled", "false"),
+                    new KeyValuePair<string, string?>("LegendConnect:ContextualComposition:Mode", "Shadow")
+                })
+                .Build();
+            var registry = new LegendLanguageRegistry(db, configuration);
+            var corpus = new LegendConnectCorpusService(
+                db,
+                registry,
+                NullLogger<LegendConnectCorpusService>.Instance);
+            var curriculum = new LegendConnectCurriculumService(db, registry, corpus);
+            var operations = new LegendConnectOperations(
+                db,
+                registry,
+                corpus,
+                configuration,
+                curriculum: curriculum);
+            var founder = new ClaimsPrincipal(
+                new ClaimsIdentity([new Claim("oid", founderId!)], "production-read-only"));
+            var profiles = new AgentProfileAccessResolver(db);
+            var founderLegend = new FounderLegendConnectService(operations, profiles);
+            var factory = new CountingHttpClientFactory();
+            var chat = new LegendFounderAiConversationService(
+                factory,
+                configuration,
+                founderLegend,
+                NullLogger<LegendFounderAiConversationService>.Instance,
+                new LegendFounderAiDiscourseStateService(db, profiles, operations),
+                registry,
+                ControllerTestHelpers.BuildTranslationService());
 
-        var nativePasses = 0;
-        foreach (var prompt in prompts)
-        {
-            var normalizedPrompt = LegendLanguageIdentity.NormalizeText(prompt);
-            var transitionEndpoints = await (
-                from evidence in db.LegendSemanticTransitionEvidence.AsNoTracking()
-                join sourceExample in db.LegendCurriculumExamples.AsNoTracking()
-                    on evidence.SourceCurriculumExampleId equals sourceExample.Id
+            async Task<string> RequireReasoningSourceAsync(
+                string category,
+                string operatorPrefix)
+            {
+                var text = await (
+                    from relation in db.LegendFounderSemanticExampleRelationEvidence.AsNoTracking()
+                    join source in db.LegendCurriculumExamples.AsNoTracking()
+                        on relation.SourceCurriculumExampleId equals source.Id
+                    join unit in db.LegendLanguageTextUnits.AsNoTracking()
+                        on source.TextUnitId equals unit.Id
+                    where relation.SupersededUtc == null &&
+                        relation.ContributionState == "Supported" &&
+                        relation.IsHumanVerifiedSupport &&
+                        relation.Provenance == LegendConnectKnowledgeProvenance.FounderApproved &&
+                        relation.LanguageCode == "en" &&
+                        relation.RelationshipSemanticIdentity.StartsWith(operatorPrefix) &&
+                        source.SupersededUtc == null &&
+                        source.Provenance == LegendConnectKnowledgeProvenance.FounderApproved &&
+                        unit.LanguageCode == "en" &&
+                        unit.IsTrainingEligible &&
+                        unit.Provenance == LegendConnectKnowledgeProvenance.FounderApproved
+                    orderby relation.RelationshipSemanticIdentity, unit.NormalizedHash
+                    select unit.Text).FirstOrDefaultAsync();
+                Assert.False(
+                    string.IsNullOrWhiteSpace(text),
+                    $"The production matrix has no active Founder-governed {category} source for operator prefix '{operatorPrefix}'.");
+                return text!;
+            }
+
+            var audienceConstraintSource = await (
+                from transition in db.LegendSemanticTransitionEvidence.AsNoTracking()
+                join source in db.LegendCurriculumExamples.AsNoTracking()
+                    on transition.SourceCurriculumExampleId equals source.Id
                 join sourceUnit in db.LegendLanguageTextUnits.AsNoTracking()
-                    on sourceExample.TextUnitId equals sourceUnit.Id
-                join sourceFamily in db.LegendCurriculumFamilies.AsNoTracking()
-                    on sourceExample.CurriculumFamilyId equals sourceFamily.Id
-                join resultExample in db.LegendCurriculumExamples.AsNoTracking()
-                    on evidence.ResultCurriculumExampleId equals resultExample.Id
-                join resultUnit in db.LegendLanguageTextUnits.AsNoTracking()
-                    on resultExample.TextUnitId equals resultUnit.Id
-                join resultFamily in db.LegendCurriculumFamilies.AsNoTracking()
-                    on resultExample.CurriculumFamilyId equals resultFamily.Id
-                where evidence.SourceLanguageCode == "en" &&
-                    evidence.ResultLanguageCode == "en" &&
-                    evidence.SupersededUtc == null &&
-                    evidence.Provenance == LegendConnectKnowledgeProvenance.FounderApproved &&
-                    evidence.ContributionState == "Supported" &&
-                    evidence.IsHumanVerifiedSupport &&
-                    sourceExample.SupersededUtc == null &&
-                    resultExample.SupersededUtc == null &&
-                    sourceUnit.Text == normalizedPrompt
-                select new
+                    on source.TextUnitId equals sourceUnit.Id
+                join resultVariation in db.LegendCurriculumExampleVariations.AsNoTracking()
+                    on transition.ResultCurriculumExampleId equals resultVariation.CurriculumExampleId
+                where transition.SupersededUtc == null &&
+                    transition.ContributionState == "Supported" &&
+                    transition.IsHumanVerifiedSupport &&
+                    transition.Provenance == LegendConnectKnowledgeProvenance.FounderApproved &&
+                    transition.SourceLanguageCode == "en" &&
+                    transition.ResultLanguageCode == "en" &&
+                    source.SupersededUtc == null &&
+                    source.Provenance == LegendConnectKnowledgeProvenance.FounderApproved &&
+                    sourceUnit.IsTrainingEligible &&
+                    sourceUnit.Provenance == LegendConnectKnowledgeProvenance.FounderApproved &&
+                    resultVariation.Dimension == "response_audience"
+                orderby resultVariation.Value, sourceUnit.NormalizedHash
+                select sourceUnit.Text).FirstOrDefaultAsync();
+            Assert.False(
+                string.IsNullOrWhiteSpace(audienceConstraintSource),
+                "The production matrix has no active Founder-governed audience-constrained response source.");
+
+            var matrix = new List<ProductionNativeProofCase>
+            {
+                ProductionNativeProofCase.Positive(
+                    "exact-endpoint-hi-there",
+                    "exact_endpoint",
+                    "Hi there.",
+                    expectedEvidenceStandard: "HigherStandard"),
+                ProductionNativeProofCase.Positive(
+                    "exact-endpoint-hi-legend",
+                    "exact_endpoint",
+                    "Hi Legend.",
+                    expectedEvidenceStandard: "HigherStandard"),
+                ProductionNativeProofCase.Positive(
+                    "held-out-competing-hypotheses",
+                    "held_out_paraphrase",
+                    "Keep both hypotheses; plan an experiment.",
+                    mustBeHeldOut: true),
+                ProductionNativeProofCase.Positive(
+                    "held-out-discriminating-check",
+                    "held_out_paraphrase",
+                    "Retain the competing explanations; devise a discriminating check.",
+                    mustBeHeldOut: true),
+                new(
+                    "discourse-first-option",
+                    "discourse",
+                    "en",
+                    "en",
+                    [
+                        new LegendFounderAiChatMessage("user", "The alpha choice feels affordable to me."),
+                        new LegendFounderAiChatMessage("assistant", "I understand."),
+                        new LegendFounderAiChatMessage("user", "The beta choice seems reliable to me."),
+                        new LegendFounderAiChatMessage("assistant", "I understand."),
+                        new LegendFounderAiChatMessage("user", "No, I meant the first option.")
+                    ],
+                    true),
+                ProductionNativeProofCase.Negative(
+                    "cross-family-handoff-inventory",
+                    "cross_family_negative",
+                    "handoff failure"),
+                ProductionNativeProofCase.Negative(
+                    "cross-family-capacity-scheduling",
+                    "cross_family_negative",
+                    "capacity shortage"),
+                ProductionNativeProofCase.Positive(
+                    "governed-deduction",
+                    "deduction",
+                    await RequireReasoningSourceAsync("deduction", "reasoning.deduction.")),
+                ProductionNativeProofCase.Positive(
+                    "governed-uncertainty",
+                    "uncertainty",
+                    await RequireReasoningSourceAsync("uncertainty", "reasoning.epistemic.")),
+                ProductionNativeProofCase.Positive(
+                    "governed-diagnosis",
+                    "diagnosis",
+                    await RequireReasoningSourceAsync("diagnosis", "reasoning.causal-diagnostic.")),
+                ProductionNativeProofCase.Positive(
+                    "governed-planning",
+                    "planning",
+                    await RequireReasoningSourceAsync("planning", "reasoning.constrained-planning.")),
+                ProductionNativeProofCase.Positive(
+                    "governed-audience-constraints",
+                    "audience_constraints",
+                    audienceConstraintSource!),
+                ProductionNativeProofCase.Positive(
+                    "declared-language-normalization",
+                    "language_routing",
+                    "Hello.",
+                    declaredSourceLanguageCode: " en_US ",
+                    nativeSourceLanguageCode: "en",
+                    expectedEvidenceStandard: "HigherStandard"),
+                ProductionNativeProofCase.Negative(
+                    "native-only-provider-isolation",
+                    "native_only_isolation",
+                    "Uncatalogued zephyr request.")
+            };
+
+            var requiredCategories = new[]
+            {
+                "exact_endpoint",
+                "held_out_paraphrase",
+                "discourse",
+                "cross_family_negative",
+                "deduction",
+                "uncertainty",
+                "diagnosis",
+                "planning",
+                "audience_constraints",
+                "language_routing",
+                "native_only_isolation"
+            };
+            Assert.Equal(
+                requiredCategories.OrderBy(item => item, StringComparer.Ordinal),
+                matrix.Select(item => item.Category)
+                    .Distinct(StringComparer.Ordinal)
+                    .OrderBy(item => item, StringComparer.Ordinal));
+            Assert.InRange(matrix.Count, requiredCategories.Length, 16);
+
+            _output.WriteLine("============================================================");
+            _output.WriteLine("LEGEND® PRODUCTION ZERO-WRITE NATIVE PROOF MATRIX");
+            _output.WriteLine("============================================================");
+            _output.WriteLine($"PRODUCTION PROOF MATRIX VERSION: {matrixVersion}");
+            _output.WriteLine(
+                "PRODUCTION PROOF MATRIX CATEGORIES: " +
+                string.Join(",", requiredCategories));
+
+            var executed = 0;
+            var nativePasses = 0;
+            var negativePasses = 0;
+            foreach (var proofCase in matrix)
+            {
+                var caseStarted = Stopwatch.GetTimestamp();
+                var currentPrompt = proofCase.Messages[^1].Content!;
+                var normalizedPrompt = LegendLanguageIdentity.NormalizeText(currentPrompt);
+                if (proofCase.MustBeHeldOut)
                 {
-                    evidence.SourceCurriculumExampleId,
-                    evidence.ResultCurriculumExampleId,
-                    evidence.SourceSemanticFrame,
-                    evidence.ResultSemanticFrame,
-                    SourceFamily = sourceFamily.FamilyKey,
-                    ResultFamily = resultFamily.FamilyKey,
-                    ResultText = resultUnit.Text
-                }).ToListAsync();
-            var endpointSourceExampleIds = transitionEndpoints
-                .Select(item => item.SourceCurriculumExampleId)
-                .Distinct()
-                .ToArray();
-            var endpointSourceVariations = endpointSourceExampleIds.Length == 0
-                ? Array.Empty<string>()
-                : (await db.LegendCurriculumExampleVariations
-                    .AsNoTracking()
-                    .Where(item => endpointSourceExampleIds.Contains(item.CurriculumExampleId))
-                    .Select(item => new { item.Dimension, item.Value })
-                    .ToArrayAsync())
-                    .GroupBy(item => new { item.Dimension, item.Value })
-                    .OrderBy(group => group.Key.Dimension)
-                    .ThenBy(group => group.Key.Value)
-                    .Select(group =>
-                        $"{group.Key.Dimension}={group.Key.Value} ({group.Count()})")
+                    Assert.False(await db.LegendLanguageTextUnits
+                            .AsNoTracking()
+                            .AnyAsync(item =>
+                                item.LanguageCode == proofCase.NativeSourceLanguageCode &&
+                                item.Text == normalizedPrompt &&
+                                item.IsTrainingEligible &&
+                                item.Provenance == LegendConnectKnowledgeProvenance.FounderApproved),
+                        $"Matrix case '{proofCase.Reference}' is no longer held out.");
+                }
+
+                if (proofCase.Category == "exact_endpoint")
+                {
+                    Assert.True(await (
+                            from transition in db.LegendSemanticTransitionEvidence.AsNoTracking()
+                            join source in db.LegendCurriculumExamples.AsNoTracking()
+                                on transition.SourceCurriculumExampleId equals source.Id
+                            join unit in db.LegendLanguageTextUnits.AsNoTracking()
+                                on source.TextUnitId equals unit.Id
+                            where transition.SupersededUtc == null &&
+                                transition.ContributionState == "Supported" &&
+                                transition.IsHumanVerifiedSupport &&
+                                transition.Provenance == LegendConnectKnowledgeProvenance.FounderApproved &&
+                                source.SupersededUtc == null &&
+                                unit.Text == normalizedPrompt
+                            select transition.Id).AnyAsync(),
+                        $"Matrix case '{proofCase.Reference}' is not an active exact transition endpoint.");
+                }
+
+                var context = proofCase.Messages
+                    .Take(proofCase.Messages.Count - 1)
+                    .Select(message => new LegendConnectConversationContextItem(
+                        message.Role ?? string.Empty,
+                        message.Content ?? string.Empty))
                     .ToArray();
-            var endpointSemanticAnchors = endpointSourceExampleIds.Length == 0
-                ? []
-                : (await db.LegendLanguageCompositionalAnchors
-                    .AsNoTracking()
-                    .Where(item => endpointSourceExampleIds.Contains(item.CurriculumExampleId) &&
-                        item.LanguageCode == "en" &&
-                        item.Provenance == LegendConnectKnowledgeProvenance.FounderApproved &&
-                        item.SupersededUtc == null &&
-                        item.LexemeId != null &&
-                        item.ComponentStartTokenIndex != null &&
-                        item.ComponentLength != null &&
-                        item.ComponentLength > 0 &&
-                        item.SemanticSignature != null &&
-                        item.SemanticSignature != string.Empty)
-                    .Select(group => new
+                if (proofCase.Category == "cross_family_negative")
+                {
+                    var graph = await founderLegend.AnalyzeReusableMeaningGraphAsync(
+                        founder,
+                        currentPrompt,
+                        proofCase.NativeSourceLanguageCode);
+                    Assert.True(
+                        graph.IsComposed,
+                        $"Cross-family case '{proofCase.Reference}' did not compose governed primitives: {graph.ReasonCode}.");
+                    Assert.True(graph.Nodes.Count >= 2);
+                    Assert.Empty(graph.UnknownSurfaceComponents);
+                }
+                if (proofCase.Category == "discourse")
+                {
+                    var withoutContext = await founderLegend.TryInferConversationWithDiscourseAsync(
+                        founder,
+                        currentPrompt,
+                        Array.Empty<LegendConnectConversationContextItem>(),
+                        discourseState: null,
+                        proofCase.NativeSourceLanguageCode);
+                    Assert.False(
+                        withoutContext.Supported,
+                        "The discourse case must require its bounded prior-turn context.");
+                }
+                if (proofCase.Category is "deduction" or "uncertainty" or "diagnosis" or "planning")
+                {
+                    var planned = await operations.TryPlanConversationAsync(
+                        currentPrompt,
+                        discourseState: null,
+                        sourceLanguageCode: proofCase.NativeSourceLanguageCode);
+                    Assert.True(
+                        planned.Supported,
+                        $"Reasoning matrix case '{proofCase.Reference}' did not produce a governed plan: {planned.ReasonCode}.");
+                    var reasoningPlan = Assert.IsType<LegendConnectResponseMeaningPlanSnapshot>(
+                        planned.Plan);
+                    Assert.NotNull(reasoningPlan.ReasoningTransitionPath);
+                    Assert.NotEmpty(reasoningPlan.ReasoningTransitionPath!);
+                    Assert.True(reasoningPlan.ReasoningEvidenceCount > 0);
+                }
+                if (proofCase.Category == "audience_constraints")
+                {
+                    var planned = await operations.TryPlanConversationAsync(
+                        currentPrompt,
+                        discourseState: null,
+                        sourceLanguageCode: proofCase.NativeSourceLanguageCode);
+                    Assert.True(planned.Supported, planned.ReasonCode);
+                    var audiencePlan = Assert.IsType<LegendConnectResponseMeaningPlanSnapshot>(
+                        planned.Plan);
+                    Assert.NotNull(audiencePlan.PresentationConstraints);
+                    Assert.False(string.IsNullOrWhiteSpace(
+                        audiencePlan.PresentationConstraints!.Audience));
+                }
+                var providerCallsBefore = factory.CreateClientCalls;
+                var native = await founderLegend.TryInferConversationWithDiscourseAsync(
+                    founder,
+                    currentPrompt,
+                    context,
+                    discourseState: null,
+                    proofCase.NativeSourceLanguageCode);
+                var reply = await chat.ReplyAsync(
+                    founder,
+                    new LegendFounderAiChatRequest
                     {
-                        group.Dimension,
-                        group.Value
-                    })
-                    .ToArrayAsync())
-                    .GroupBy(item => new { item.Dimension, item.Value })
-                    .OrderBy(group => group.Key.Dimension)
-                    .ThenBy(group => group.Key.Value)
-                    .Select(group =>
-                        $"{group.Key.Dimension}={group.Key.Value} ({group.Count()})")
-                    .ToArray();
-            var source = await curriculum
-                .AnalyzeSemanticTransitionSourceSemanticsAsync("en", prompt);
-            var native = await founderLegend.TryInferConversationWithDiscourseAsync(
-                founder,
-                prompt,
-                Array.Empty<LegendConnectConversationContextItem>(),
-                discourseState: null);
-            var reply = await chat.ReplyAsync(
-                founder,
-                new LegendFounderAiChatRequest
+                        Mode = "legend",
+                        NativeOnly = true,
+                        SourceLanguageCode = proofCase.DeclaredSourceLanguageCode,
+                        Messages = proofCase.Messages
+                    });
+
+                executed++;
+                Assert.Equal(providerCallsBefore, factory.CreateClientCalls);
+                if (proofCase.ExpectNative)
                 {
-                    Mode = "legend",
-                    NativeOnly = true,
-                    Messages = [new LegendFounderAiChatMessage("user", prompt)]
-                });
+                    Assert.True(
+                        native.Supported,
+                        $"Matrix case '{proofCase.Reference}' was not supported: {native.ReasonCode}.");
+                    Assert.True(native.EvidenceCount > 0);
+                    Assert.False(native.RequiresEscalation);
+                    Assert.False(string.IsNullOrWhiteSpace(native.Answer));
+                    Assert.True(reply.Succeeded);
+                    Assert.Equal("LegendAi", reply.ResponseAuthority);
+                    Assert.Equal("native_response", reply.Stage);
+                    Assert.Equal(native.Answer, reply.Message);
+                    if (proofCase.ExpectedEvidenceStandard is not null)
+                    {
+                        Assert.Equal(
+                            proofCase.ExpectedEvidenceStandard,
+                            native.EvidenceStandard);
+                    }
+                    nativePasses++;
+                }
+                else
+                {
+                    Assert.False(
+                        native.Supported,
+                        $"Negative matrix case '{proofCase.Reference}' incorrectly produced a native answer.");
+                    Assert.True(reply.Succeeded);
+                    Assert.Equal("SystemDiagnostic", reply.ResponseAuthority);
+                    Assert.Equal("native_only_blocked", reply.Stage);
+                    Assert.Equal(native.ReasonCode, reply.Reason);
+                    negativePasses++;
+                }
 
-            _output.WriteLine("");
-            _output.WriteLine($"USER: {prompt}");
-            _output.WriteLine($"SOURCE STATE: {source.State}");
-            _output.WriteLine("SOURCE COMPONENTS: " +
-                (source.Components.Count == 0
-                    ? "<NONE>"
-                    : string.Join(" | ", source.Components.Select(item =>
-                        $"{item.Dimension}={item.Value}@{item.SurfaceForm}"))));
-            _output.WriteLine($"MATCHED TRANSITION ENDPOINTS: {transitionEndpoints.Count}");
-            foreach (var endpoint in transitionEndpoints
-                         .OrderBy(item => item.SourceFamily, StringComparer.Ordinal)
-                         .ThenBy(item => item.ResultFamily, StringComparer.Ordinal))
-            {
                 _output.WriteLine(
-                    $"TRANSITION: {endpoint.SourceFamily} -> {endpoint.ResultFamily}; " +
-                    $"SOURCE FRAME={endpoint.SourceSemanticFrame}; " +
-                    $"RESULT FRAME={endpoint.ResultSemanticFrame}; " +
-                    $"RESULT={endpoint.ResultText}");
+                    $"MATRIX CASE: reference={proofCase.Reference}; " +
+                    $"category={proofCase.Category}; expected_native={proofCase.ExpectNative}; " +
+                    $"native_supported={native.Supported}; reason={native.ReasonCode}; " +
+                    $"evidence={native.EvidenceCount}; authority={reply.ResponseAuthority}; " +
+                    $"stage={reply.Stage}; provider_clients={factory.CreateClientCalls}; " +
+                    $"elapsed_ms={Stopwatch.GetElapsedTime(caseStarted).TotalMilliseconds:0}");
             }
-            _output.WriteLine("SOURCE ENDPOINT VARIATIONS: " +
-                (endpointSourceVariations.Length == 0
-                    ? "<NONE>"
-                    : string.Join(" | ", endpointSourceVariations)));
-            _output.WriteLine("SOURCE ENDPOINT LEXICAL ANCHORS: " +
-                (endpointSemanticAnchors.Length == 0
-                    ? "<NONE>"
-                    : string.Join(" | ", endpointSemanticAnchors)));
-            _output.WriteLine($"NATIVE SUPPORTED: {native.Supported}");
-            _output.WriteLine($"NATIVE REASON: {native.ReasonCode}");
-            _output.WriteLine($"NATIVE EVIDENCE: {native.EvidenceCount}");
-            _output.WriteLine($"EVIDENCE STANDARD: {native.EvidenceStandard}");
-            _output.WriteLine($"ARTICULATION MODE: {native.ArticulationMode}");
-            _output.WriteLine($"REQUIRES ESCALATION: {native.RequiresEscalation}");
-            _output.WriteLine($"NATIVE ANSWER: {native.Answer ?? "<NULL>"}");
-            _output.WriteLine($"REPLYASYNC ANSWER: {reply.Message}");
-            _output.WriteLine($"OPENAI CLIENTS: {factory.CreateClientCalls}");
 
-            var isNativePass = native.Supported &&
-                native.EvidenceCount > 0 &&
-                native.EvidenceStandard != "Unavailable" &&
-                native.ArticulationMode != "Unavailable" &&
-                !native.RequiresEscalation &&
-                !string.IsNullOrWhiteSpace(native.Answer) &&
-                reply.Succeeded &&
-                reply.ResponseAuthority == "LegendAi" &&
-                reply.Stage == "native_response" &&
-                string.Equals(reply.Message, native.Answer, StringComparison.Ordinal);
-            if (isNativePass)
-                nativePasses++;
+            Assert.Equal(matrix.Count, executed);
+            Assert.True(nativePasses > 0);
+            Assert.True(negativePasses > 0);
+            Assert.Equal(0, factory.CreateClientCalls);
+            _output.WriteLine($"PRODUCTION PROOF MATRIX CASES EXECUTED: {executed}");
+            _output.WriteLine($"PRODUCTION PROOF MATRIX NATIVE PASSES: {nativePasses}");
+            _output.WriteLine($"PRODUCTION PROOF MATRIX NEGATIVE PASSES: {negativePasses}");
+            _output.WriteLine("OPENAI HTTP CALLS: 0");
+            _output.WriteLine("PRODUCTION WRITE COMMANDS: 0");
 
-            if (expectNative)
+            var resultPath = Environment.GetEnvironmentVariable(
+                "LEGEND_PRODUCTION_PROOF_RESULT_PATH");
+            if (!string.IsNullOrWhiteSpace(resultPath))
             {
-                Assert.True(isNativePass,
-                    $"Production native inference failed for '{prompt}'. " +
-                    $"Reason={native.ReasonCode}; Evidence={native.EvidenceCount}");
-                Assert.Equal("HigherStandard", native.EvidenceStandard);
+                var absoluteResultPath = Path.GetFullPath(resultPath);
+                var resultDirectory = Path.GetDirectoryName(absoluteResultPath);
+                Assert.False(string.IsNullOrWhiteSpace(resultDirectory));
+                Directory.CreateDirectory(resultDirectory!);
+                await File.WriteAllTextAsync(
+                    absoluteResultPath,
+                    JsonSerializer.Serialize(
+                        new
+                        {
+                            MatrixVersion = matrixVersion,
+                            Status = "passed",
+                            ExecutedCases = executed,
+                            NativePasses = nativePasses,
+                            NegativePasses = negativePasses,
+                            ProviderClientCount = factory.CreateClientCalls,
+                            ProductionWriteCommandCount = 0,
+                            Categories = requiredCategories
+                        },
+                        new JsonSerializerOptions { WriteIndented = true }));
             }
-        }
-
-        Assert.Equal(0, factory.CreateClientCalls);
-        if (expectNative)
-            Assert.Equal(prompts.Length, nativePasses);
-        _output.WriteLine($"NATIVE PASSES: {nativePasses}/{prompts.Length}");
-
-        // Reproduce the exact live-corpus selection used by the full shadow
-        // diagnostic for its non-conversation reasoning probe. This focused
-        // read-only gate catches the canonical-endpoint projection defect
-        // directly, without rebuilding every live family before each fix.
-        var governedReasoning = await (
-            from transition in db.LegendSemanticTransitionEvidence.AsNoTracking()
-            join sourceExample in db.LegendCurriculumExamples.AsNoTracking()
-                on transition.SourceCurriculumExampleId equals sourceExample.Id
-            join sourceUnit in db.LegendLanguageTextUnits.AsNoTracking()
-                on sourceExample.TextUnitId equals sourceUnit.Id
-            join sourceFamily in db.LegendCurriculumFamilies.AsNoTracking()
-                on sourceExample.CurriculumFamilyId equals sourceFamily.Id
-            where transition.SupersededUtc == null &&
-                transition.SourceLanguageCode == "en" &&
-                transition.ResultLanguageCode == "en" &&
-                transition.ContributionState == "Supported" &&
-                transition.IsHumanVerifiedSupport &&
-                transition.Provenance == LegendConnectKnowledgeProvenance.FounderApproved &&
-                sourceExample.SupersededUtc == null &&
-                sourceUnit.IsTrainingEligible &&
-                !prompts.Contains(sourceUnit.Text) &&
-                !sourceFamily.FamilyKey.StartsWith("conversation.")
-            orderby sourceFamily.FamilyKey, sourceUnit.NormalizedHash
-            select new { sourceUnit.Text, sourceUnit.NormalizedHash })
-            .FirstOrDefaultAsync();
-        Assert.NotNull(governedReasoning);
-
-        var governedNative = await founderLegend.TryInferConversationWithDiscourseAsync(
-            founder,
-            governedReasoning!.Text,
-            Array.Empty<LegendConnectConversationContextItem>(),
-            discourseState: null);
-        var governedReply = await chat.ReplyAsync(
-            founder,
-            new LegendFounderAiChatRequest
-            {
-                Mode = "legend",
-                NativeOnly = true,
-                Messages = [new LegendFounderAiChatMessage("user", governedReasoning.Text)]
-            });
-        var governedReference = "curriculum-reasoning-" + governedReasoning.NormalizedHash[..12];
-        _output.WriteLine($"FOCUSED LIVE CURRICULUM REFERENCE: {governedReference}");
-        _output.WriteLine($"FOCUSED LIVE CURRICULUM SUPPORTED: {governedNative.Supported}");
-        _output.WriteLine($"FOCUSED LIVE CURRICULUM REASON: {governedNative.ReasonCode}");
-        _output.WriteLine($"FOCUSED LIVE CURRICULUM EVIDENCE: {governedNative.EvidenceCount}");
-        if (expectNative)
-        {
-            Assert.True(governedNative.Supported,
-                $"Focused production curriculum inference failed for {governedReference}; " +
-                $"reason={governedNative.ReasonCode}; evidence={governedNative.EvidenceCount}");
-            Assert.True(governedNative.EvidenceCount > 0);
-            Assert.False(governedNative.RequiresEscalation);
-            Assert.False(string.IsNullOrWhiteSpace(governedNative.Answer));
-            Assert.True(governedReply.Succeeded);
-            Assert.Equal("LegendAi", governedReply.ResponseAuthority);
-            Assert.Equal("native_response", governedReply.Stage);
-            Assert.Equal(governedNative.Answer, governedReply.Message);
-        }
-        Assert.Equal(0, factory.CreateClientCalls);
-        _output.WriteLine("OPENAI HTTP CALLS: 0");
-        _output.WriteLine("PRODUCTION WRITE COMMANDS: 0");
         }
         finally
         {
@@ -1262,7 +1340,9 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
                 configuration,
                 founderLegend,
                 NullLogger<LegendFounderAiConversationService>.Instance,
-                new LegendFounderAiDiscourseStateService(shadow, profiles, operations));
+                new LegendFounderAiDiscourseStateService(shadow, profiles, operations),
+                registry,
+                ControllerTestHelpers.BuildTranslationService());
             var nativePasses = 0;
             foreach (var request in promptMatrix)
             {
@@ -1274,7 +1354,8 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
                     founder,
                     request.Text,
                     Array.Empty<LegendConnectConversationContextItem>(),
-                    discourseState: null);
+                    discourseState: null,
+                    sourceLanguageCode: "en");
                 var response = await chat.ReplyAsync(founder, new LegendFounderAiChatRequest
                 {
                     Mode = "legend",
@@ -1492,7 +1573,9 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
                 configuration,
                 founderLegend,
                 NullLogger<LegendFounderAiConversationService>.Instance,
-                new LegendFounderAiDiscourseStateService(db, profiles, operations));
+                new LegendFounderAiDiscourseStateService(db, profiles, operations),
+                registry,
+                ControllerTestHelpers.BuildTranslationService());
 
             _output.WriteLine("============================================================");
             _output.WriteLine("LEGEND® PRODUCTION-DATA-DERIVED v16 REPLAY TRANSCRIPT");
@@ -1504,7 +1587,8 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
                     founder,
                     prompt,
                     Array.Empty<LegendConnectConversationContextItem>(),
-                    new LegendConnectDiscourseStateSnapshot([]));
+                    new LegendConnectDiscourseStateSnapshot([]),
+                    "en");
                 var reply = await chat.ReplyAsync(
                     founder,
                     new LegendFounderAiChatRequest
@@ -1929,7 +2013,8 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
                     item.Role ?? string.Empty,
                     item.Content ?? string.Empty))
                 .ToArray(),
-            discourseState: null);
+            discourseState: null,
+            sourceLanguageCode: "en");
         nativeClock.Stop();
 
         _output.WriteLine($"REQUEST: {request}");
@@ -1985,7 +2070,9 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
             founderLegend,
             NullLogger<LegendFounderAiConversationService>.Instance,
             new LegendFounderAiDiscourseStateService(
-                db, new AgentProfileAccessResolver(db), operations));
+                db, new AgentProfileAccessResolver(db), operations),
+            registry,
+            ControllerTestHelpers.BuildTranslationService());
         var replyClock = Stopwatch.StartNew();
         var reply = await service.ReplyAsync(
             founder,
@@ -2424,7 +2511,7 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
     }
 
     [Fact]
-    public async Task FounderSectionPages_RemainBoundedAgainstAnIsolatedLargeSqlServerDataset()
+    public async Task FounderSectionPages_AndRetainedRetrievalQueryCountAndLatency_RemainBoundedAgainstLargeSqlServerDataset()
     {
         var connectionString = Environment.GetEnvironmentVariable("LEGEND_FOUNDER_SCALABILITY_CONNECTION");
         if (string.IsNullOrWhiteSpace(connectionString))
@@ -2489,7 +2576,10 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
                                 Id = Guid.NewGuid(),
                                 LanguageCode = "en",
                                 StoragePartition = "Legend:en",
-                                NormalizedHash = Guid.NewGuid().ToString("N"),
+                                NormalizedHash = LegendLanguageIdentity.TextHash(
+                                    index == 0
+                                        ? "A historical SQL Server curriculum example."
+                                        : $"SQL Server curriculum example {index}."),
                                 Text = index == 0 ? "A historical SQL Server curriculum example." : $"SQL Server curriculum example {index}.",
                                 Provenance = "FounderApproved",
                                 IsTrainingEligible = true,
@@ -2531,10 +2621,39 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
                         db.ChangeTracker.Clear();
                     }
                 }
+                var historicalUnit = await db.LegendLanguageTextUnits.SingleAsync(item =>
+                    item.LanguageCode == "en" &&
+                    item.Text == "A historical SQL Server curriculum example.");
+                var historicalHash = LegendLanguageIdentity.TextHash(historicalUnit.Text);
+                if (!string.Equals(historicalUnit.NormalizedHash, historicalHash, StringComparison.Ordinal))
+                {
+                    historicalUnit.NormalizedHash = historicalHash;
+                    await db.SaveChangesAsync();
+                    db.ChangeTracker.Clear();
+                }
 
                 var corpus = new LegendConnectCorpusService(db, registry, NullLogger<LegendConnectCorpusService>.Instance);
                 var operations = new LegendConnectOperations(db, registry, corpus, configuration);
                 var founder = new FounderLegendConnectService(operations, new AgentProfileAccessResolver(db));
+                commandCounter.Reset();
+                var retrievalClock = Stopwatch.StartNew();
+                var retained = await operations.SearchRetainedKnowledgeAsync(
+                    "A historical SQL Server curriculum example.",
+                    sourceLanguageCode: "en",
+                    take: 12);
+                retrievalClock.Stop();
+                Assert.Contains(retained.Items, item =>
+                    item.Kind == "CanonicalText" &&
+                    item.Content == "A historical SQL Server curriculum example.");
+                Assert.True(
+                    commandCounter.Commands <= 6,
+                    $"Indexed retained retrieval executed {commandCounter.Commands} commands.");
+                Assert.True(
+                    retrievalClock.Elapsed < TimeSpan.FromSeconds(5),
+                    $"Indexed retained retrieval took {retrievalClock.Elapsed.TotalMilliseconds:F0} ms.");
+                _output.WriteLine($"SQL RETAINED RETRIEVAL LATENCY MS: {retrievalClock.Elapsed.TotalMilliseconds:F0}");
+                _output.WriteLine($"SQL RETAINED RETRIEVAL QUERY COUNT: {commandCounter.Commands}");
+
                 commandCounter.Reset();
                 var shellClock = Stopwatch.StartNew();
                 var shell = await founder.GetDashboardAsync(
@@ -2723,6 +2842,8 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
                     });
                     services.AddSingleton(configuration);
                     services.AddSingleton(factory);
+                    services.AddSingleton<ITranslationService>(
+                        ControllerTestHelpers.BuildTranslationService());
                     services.AddScoped<ILegendLanguageRegistry, LegendLanguageRegistry>();
                     services.AddScoped<LegendConnectCorpusService>();
                     services.AddScoped<LegendConnectCurriculumService>();
@@ -2815,6 +2936,47 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
         string Text,
         bool ExpectNative,
         string? ExpectedEvidenceStandard = null);
+
+    private sealed record ProductionNativeProofCase(
+        string Reference,
+        string Category,
+        string DeclaredSourceLanguageCode,
+        string NativeSourceLanguageCode,
+        IReadOnlyList<LegendFounderAiChatMessage> Messages,
+        bool ExpectNative,
+        bool MustBeHeldOut = false,
+        string? ExpectedEvidenceStandard = null)
+    {
+        internal static ProductionNativeProofCase Positive(
+            string reference,
+            string category,
+            string prompt,
+            bool mustBeHeldOut = false,
+            string declaredSourceLanguageCode = "en",
+            string nativeSourceLanguageCode = "en",
+            string? expectedEvidenceStandard = null) =>
+            new(
+                reference,
+                category,
+                declaredSourceLanguageCode,
+                nativeSourceLanguageCode,
+                [new LegendFounderAiChatMessage("user", prompt)],
+                true,
+                mustBeHeldOut,
+                expectedEvidenceStandard);
+
+        internal static ProductionNativeProofCase Negative(
+            string reference,
+            string category,
+            string prompt) =>
+            new(
+                reference,
+                category,
+                "en",
+                "en",
+                [new LegendFounderAiChatMessage("user", prompt)],
+                false);
+    }
 
     private static async Task<ShadowCorpusCounts> ReadShadowCountsAsync(
         MasterAppDbContext db) => new(
@@ -3191,7 +3353,7 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
         FounderLegendConnectService founderLegend,
         ClaimsPrincipal founder)
     {
-        var knownGreetingTexts = LiveFounderNativePrompts
+        var knownGreetingTexts = GreetingEndpointRegressionPrompts
             .Select(item => LegendLanguageIdentity.NormalizeText(item.Text))
             .ToHashSet(StringComparer.Ordinal);
 
@@ -3254,7 +3416,8 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
                 founder,
                 candidate.Text,
                 Array.Empty<LegendConnectConversationContextItem>(),
-                discourseState: null);
+                discourseState: null,
+                sourceLanguageCode: "en");
             if (!native.Supported || native.EvidenceStandard != "BroadGoverned")
                 continue;
             broadGovernedPrompt = new(
@@ -3287,7 +3450,7 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
             select new { unit.Text, unit.NormalizedHash }).FirstOrDefaultAsync();
         Assert.NotNull(governedReasoning);
 
-        var prompts = new List<ShadowPrompt>(LiveFounderNativePrompts)
+        var prompts = new List<ShadowPrompt>(GreetingEndpointRegressionPrompts)
         {
             new("curriculum-reasoning-" + governedReasoning!.NormalizedHash[..12], governedReasoning.Text, true),
             new("ambiguous-request", "Hello or goodbye?", false),
@@ -3296,17 +3459,15 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
         if (broadGovernedPrompt is not null &&
             !prompts.Any(item => string.Equals(item.Text, broadGovernedPrompt.Text, StringComparison.Ordinal)))
         {
-            prompts.Insert(LiveFounderNativePrompts.Length, broadGovernedPrompt);
+            prompts.Insert(GreetingEndpointRegressionPrompts.Length, broadGovernedPrompt);
         }
         return prompts;
     }
 
-    // One exact live-Founder prompt matrix owns the direct native proofs and
-    // the isolated full-corpus reconstruction gate. The
-    // shadow must never invent a stronger expected endpoint than the direct
-    // live proof established, and it must never omit an endpoint that the
-    // direct gate requires.
-    private static readonly ShadowPrompt[] LiveFounderNativePrompts =
+    // The isolated direct and shadow regressions share this bounded greeting
+    // endpoint set. Production release authority belongs only to the broader
+    // zero-write matrix above; this set cannot satisfy deployment proof.
+    private static readonly ShadowPrompt[] GreetingEndpointRegressionPrompts =
     [
         new("greeting-hi-there", "Hi there.", true, "HigherStandard"),
         new("greeting-hi-legend", "Hi Legend.", true, "HigherStandard"),
@@ -3430,7 +3591,7 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
     }
 
     /// <summary>
-    /// Defence in depth for the production diagnostic: no database command
+    /// Defence in depth for production read-only proof and diagnostics: no database command
     /// other than a SELECT may leave the local process. The native authority
     /// is read-only by design, and this turns that design requirement into an
     /// executable invariant for the diagnostic.
@@ -3499,7 +3660,7 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
         }
 
         private static InvalidOperationException NewWriteBlocked(DbCommand command) =>
-            new("Production native diagnostic rejected a non-SELECT database command: " +
+            new("Production read-only proof rejected a non-SELECT database command: " +
                 command.CommandText.TrimStart().Split(
                     new[] { '\r', '\n', ' ' },
                     StringSplitOptions.RemoveEmptyEntries)[0]);

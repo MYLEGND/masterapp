@@ -38,6 +38,8 @@ public sealed class LegendTranslationUsagePeriod
     public long TranslationMemoryCharactersAvoided { get; set; }
     public long StructuralCompositionCharactersAvoided { get; set; }
     public long ContextualCharactersAvoided { get; set; }
+    public long PromotedTranslationModelCharactersAvoided { get; set; }
+    public long ProviderObservationCharactersAvoided { get; set; }
     public long QuotaDeniedRequestCount { get; set; }
     public long ProviderFailureCount { get; set; }
     public long GroupUniqueTargetReuseCount { get; set; }

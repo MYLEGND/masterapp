@@ -14,6 +14,7 @@ namespace Infrastructure.Messaging;
 internal sealed class AzureTranslatorService : ITranslationProvider
 {
     private const string ProviderIdentifier = "AzureTranslator";
+    private const decimal MinimumLanguageIdentificationConfidence = 0.50m;
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly IConfiguration _configuration;
     private readonly ILogger<AzureTranslatorService> _logger;
@@ -49,13 +50,46 @@ internal sealed class AzureTranslatorService : ITranslationProvider
             }
 
             using var document = JsonDocument.Parse(await response.Content.ReadAsStreamAsync(cancellationToken));
-            var language = document.RootElement.ValueKind == JsonValueKind.Array && document.RootElement.GetArrayLength() > 0 &&
-                           document.RootElement[0].TryGetProperty("language", out var property)
+            if (document.RootElement.ValueKind != JsonValueKind.Array ||
+                document.RootElement.GetArrayLength() == 0)
+            {
+                return new TranslationDetectionResult(
+                    false,
+                    null,
+                    "translation_provider_failed");
+            }
+
+            var candidate = document.RootElement[0];
+            var language = candidate.TryGetProperty("language", out var property)
                 ? CommunicationLanguages.NormalizeOrNull(property.GetString())
                 : null;
-            return language is null
-                ? new TranslationDetectionResult(false, null, "translation_language_unsupported")
-                : new TranslationDetectionResult(true, language);
+            if (language is null)
+            {
+                return new TranslationDetectionResult(
+                    false,
+                    null,
+                    "translation_language_unsupported");
+            }
+
+            if (!candidate.TryGetProperty("score", out var scoreProperty) ||
+                !scoreProperty.TryGetDecimal(out var confidence))
+            {
+                return new TranslationDetectionResult(
+                    false,
+                    null,
+                    "translation_provider_failed");
+            }
+
+            return confidence < MinimumLanguageIdentificationConfidence
+                ? new TranslationDetectionResult(
+                    false,
+                    null,
+                    "translation_language_ambiguous",
+                    confidence)
+                : new TranslationDetectionResult(
+                    true,
+                    language,
+                    Confidence: confidence);
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {

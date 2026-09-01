@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
+using Domain.Messaging;
 
 namespace Infrastructure.Messaging;
 
@@ -15,6 +17,18 @@ namespace Infrastructure.Messaging;
 ///   reasoning.forward.*       source -> result
 ///   reasoning.bidirectional.* source <-> result
 ///   reasoning.constraint.*    source and result may not coexist
+///   reasoning.deduction.universal.*   universal fact rule -> consequence
+///   reasoning.deduction.conditional.* conditional premises -> consequence
+///   reasoning.epistemic.observational-equivalence.* shared evidence -> no selection
+///   reasoning.epistemic.insufficient-evidence.*     governed insufficiency -> no selection
+///   reasoning.causal-diagnostic.plan.*              hypotheses -> differing predictions/test
+///   reasoning.causal-diagnostic.conclude.*          discriminating observation -> cause
+///   reasoning.causal-diagnostic.contradictory-evidence.* incompatible observation -> uncertainty
+///   reasoning.causal-diagnostic.resource-limited.*  unavailable discriminator -> uncertainty
+///   reasoning.constrained-planning.step.*           admissible action -> next plan cursor
+///   reasoning.constrained-planning.block.*          violated constraint -> blocked plan
+///   reasoning.constrained-planning.evidence-branch.* governed evidence -> branch cursor
+///   reasoning.constrained-planning.stop.*           observed stop condition -> stopped plan
 /// The suffix is opaque curriculum meaning, allowing new skill domains without
 /// adding code or a topic router.
 /// </summary>
@@ -23,22 +37,561 @@ internal static class LegendConnectGovernedReasoningExecutor
     internal const int MaximumDepth = 12;
     internal const int MaximumStates = 512;
     internal const int MaximumRules = 4096;
+    internal const int MaximumFrameDimensions = 12;
     internal const int MaximumRuleEvaluations = MaximumStates * MaximumRules;
+    internal const int MaximumPlanningMinutes = 1440;
+    internal const int MaximumPlanningResourceUnits = 1024;
+    internal const string EpistemicStatusDimension = "epistemic_status";
+    internal const string ObservationalEquivalenceValue = "observational_equivalence";
+    internal const string InsufficientEvidenceValue = "insufficient_evidence";
+    internal const string ResolvedByDiscriminatingEvidenceValue = "resolved_by_discriminating_evidence";
+    internal const string UnresolvedContradictionValue = "unresolved_contradiction";
+    internal const string CauseSelectionDimension = "cause_selection";
+    internal const string UndeterminedValue = "undetermined";
+    internal const string EvidenceAuthorityDimension = "evidence_authority";
+    internal const string EqualAuthorityValue = "equal";
+    internal const string NonDispositiveAuthorityValue = "non_dispositive_without_discrimination";
+    internal const string EvidenceRequirementDimension = "evidence_requirement";
+    internal const string DiscriminatingEvidenceValue = "discriminating_evidence";
+    internal const string DiscriminatingEvidenceDimension = "discriminating_evidence";
+    internal const string ConflictDimensionDimension = "conflict_dimension";
+    internal const string MultipleConflictDimensionsValue = "multiple";
+    internal const string FirstHypothesisDimension = "first_hypothesis";
+    internal const string SecondHypothesisDimension = "second_hypothesis";
+    internal const string FirstPredictionDimension = "first_prediction";
+    internal const string SecondPredictionDimension = "second_prediction";
+    internal const string FirstPredictionHypothesisDimension = "first_prediction_hypothesis";
+    internal const string SecondPredictionHypothesisDimension = "second_prediction_hypothesis";
+    internal const string FirstPredictionEvidenceDimension = "first_prediction_evidence";
+    internal const string SecondPredictionEvidenceDimension = "second_prediction_evidence";
+    internal const string HypothesisStatusDimension = "hypothesis_status";
+    internal const string CompetingHypothesesValue = "competing";
+    internal const string PredictionStatusDimension = "prediction_status";
+    internal const string DifferingPredictionsValue = "differing";
+    internal const string SelectedDiscriminatingEvidenceDimension = "selected_discriminating_evidence";
+    internal const string ObservedEvidenceSourceDimension = "observed_evidence_source";
+    internal const string ObservedEvidenceDimension = "observed_evidence";
+    internal const string DiagnosticPlanStatusDimension = "diagnostic_plan_status";
+    internal const string DiscriminatingEvidenceSelectedValue = "discriminating_evidence_selected";
+    internal const string DiagnosticConclusionStatusDimension = "diagnostic_conclusion_status";
+    internal const string ContradictoryEvidenceValue = "contradictory_evidence";
+    internal const string ResourceLimitedValue = "resource_limited";
+    internal const string DiagnosticResourceDimension = "diagnostic_resource";
+    internal const string DiagnosticResourceStatusDimension = "diagnostic_resource_status";
+    internal const string ResourceUnavailableValue = "unavailable";
+    internal const string PrematureAttributionStatusDimension = "premature_attribution_status";
+    internal const string AttributionWithheldValue = "withheld";
+    internal const string CausalAttributionStatusDimension = "causal_attribution_status";
+    internal const string AttributionSupportedValue = "supported_by_discriminating_evidence";
+    internal const string ReassessHypothesesValue = "reassess_hypotheses";
+    internal const string PlanGoalDimension = "plan_goal";
+    internal const string CurrentPlanActionDimension = "current_plan_action";
+    internal const string CandidatePlanActionDimension = "candidate_plan_action";
+    internal const string ActionPrerequisiteDimension = "action_prerequisite";
+    internal const string CurrentActionOrderDimension = "current_action_order";
+    internal const string CandidateActionOrderDimension = "candidate_action_order";
+    internal const string ActionDurationMinutesDimension = "action_duration_minutes";
+    internal const string PlanTimeLimitMinutesDimension = "plan_time_limit_minutes";
+    internal const string PlanElapsedMinutesDimension = "plan_elapsed_minutes";
+    internal const string AvailableResourceUnitsDimension = "available_resource_units";
+    internal const string RequiredResourceUnitsDimension = "required_resource_units";
+    internal const string SafetyConstraintStatusDimension = "safety_constraint_status";
+    internal const string SafetySatisfiedValue = "satisfied";
+    internal const string SafetyViolatedValue = "violated";
+    internal const string ConstraintContradictionValue = "contradictory";
+    internal const string PlanStatusDimension = "plan_status";
+    internal const string PlanReadyValue = "ready";
+    internal const string PlanInProgressValue = "in_progress";
+    internal const string PlanCompletedValue = "completed";
+    internal const string PlanBlockedValue = "blocked";
+    internal const string PlanStoppedValue = "stopped";
+    internal const string PlanBlockReasonDimension = "plan_block_reason";
+    internal const string InsufficientResourceValue = "insufficient_resource";
+    internal const string UnsafeStepValue = "unsafe_step";
+    internal const string TimeLimitExceededValue = "time_limit_exceeded";
+    internal const string PrerequisiteOrderViolationValue = "prerequisite_order_violation";
+    internal const string ContradictoryConstraintsValue = "contradictory_constraints";
+    internal const string UnprovenCausalAssumptionValue = "unproven_causal_assumption";
+    internal const string StopConditionDimension = "stop_condition";
+    internal const string ObservedStopEvidenceDimension = "observed_stop_evidence";
+    internal const string PlanStopReasonDimension = "plan_stop_reason";
+    internal const string SelectedStopEvidenceDimension = "selected_stop_evidence";
+    internal const string RequiredBranchEvidenceDimension = "required_branch_evidence";
+    internal const string ObservedBranchEvidenceDimension = "observed_branch_evidence";
+    internal const string SelectedBranchEvidenceDimension = "selected_branch_evidence";
+    internal const string EvidenceBranchStatusDimension = "evidence_branch_status";
+    internal const string EvidenceBranchSelectedValue = "evidence_branch_selected";
 
     internal static bool IsExecutableOperatorIdentity(string? identity) =>
         ResolveMode(identity) is not null;
 
+    /// <summary>
+    /// Applies the one canonical source-authority policy to a bounded external
+    /// research packet. This remains the governed reasoning entry point;
+    /// retrieval rank is intentionally absent and no transport or presenter
+    /// can authorize a claim. The delegated policy catalog validates direct
+    /// page support, claim-specific authority, dependency lineage, and
+    /// standards; this executor remains the sole conflict/reasoning authority.
+    /// </summary>
+    internal static LegendResearchEvidenceAssessment AssessResearchEvidence(
+        IReadOnlyList<LegendConnectResearchSourceIdentity> sources,
+        IReadOnlyList<LegendConnectRetrievedDocument> documents,
+        IReadOnlyList<LegendConnectCitation> citations,
+        IReadOnlyList<LegendConnectClaimEvidence> claims,
+        IReadOnlyList<LegendConnectContradictingEvidence> contradictions,
+        int minimumIndependentSources,
+        DateTime? assessedUtc = null,
+        LegendConnectResearchLanguageLineage? languageLineage = null)
+    {
+        var policyAssessment = LegendConnectResearchEvidenceAdmissibilityPolicy.Assess(
+            sources,
+            documents,
+            citations,
+            claims,
+            contradictions,
+            minimumIndependentSources,
+            assessedUtc ?? sources.Select(item => item.RetrievedUtc)
+                .DefaultIfEmpty(DateTime.UtcNow)
+                .Max(),
+            languageLineage);
+        return ResolveResearchMaterialEvidence(policyAssessment);
+    }
+
+    /// <summary>
+    /// Resolves claim agreement, contradiction, evidence insufficiency,
+    /// observational equivalence, discriminating corrections, standard
+    /// conflicts, and bounded inference at the existing reasoning authority.
+    /// It never considers search rank, popularity, or raw occurrence count.
+    /// </summary>
+    private static LegendResearchEvidenceAssessment ResolveResearchMaterialEvidence(
+        LegendConnectResearchEvidencePolicyAssessment policy)
+    {
+        var requestedMinimum = Math.Clamp(policy.RequestedMinimumIndependentSources, 1, 3);
+        var resolvedEvidence = new List<LegendConnectResearchMaterialClaimEvidence>();
+        var selectedClaims = new List<LegendConnectResearchMaterialClaimEvidence>();
+        var admittedContradictions = new List<LegendConnectResearchMaterialClaimEvidence>();
+        var resolutions = new List<LegendConnectResearchClaimResolution>();
+        var factualResolutionByClaim = new Dictionary<string, LegendConnectResearchClaimResolution>(
+            StringComparer.Ordinal);
+
+        var groups = policy.MaterialEvidence
+            .GroupBy(item => item.NormalizedClaimIdentity, StringComparer.Ordinal)
+            .OrderBy(group => group.Key, StringComparer.Ordinal)
+            .ToArray();
+        foreach (var group in groups.Where(group =>
+                     group.All(item => item.StatementKind != LegendConnectResearchStatementKind.Inference)))
+        {
+            var resolution = ResolveFactualClaimGroup(group.Key, group.ToArray(), requestedMinimum);
+            resolutions.Add(resolution.Resolution);
+            factualResolutionByClaim[group.Key] = resolution.Resolution;
+            resolvedEvidence.AddRange(resolution.Evidence);
+            selectedClaims.AddRange(resolution.SelectedEvidence);
+            admittedContradictions.AddRange(resolution.Evidence.Where(item =>
+                item.Relationship == LegendConnectResearchEvidenceRelationship.Contradiction));
+        }
+
+        foreach (var group in groups.Where(group =>
+                     group.Any(item => item.StatementKind == LegendConnectResearchStatementKind.Inference)))
+        {
+            var resolution = ResolveInferenceClaimGroup(
+                group.Key,
+                group.ToArray(),
+                factualResolutionByClaim);
+            resolutions.Add(resolution.Resolution);
+            resolvedEvidence.AddRange(resolution.Evidence);
+            selectedClaims.AddRange(resolution.SelectedEvidence);
+            admittedContradictions.AddRange(resolution.Evidence.Where(item =>
+                item.Relationship == LegendConnectResearchEvidenceRelationship.Contradiction));
+        }
+
+        var unresolved = resolutions.Any(item =>
+            item.State == LegendConnectResearchClaimVerificationState.UnresolvedConflict);
+        var hasConclusion = resolutions.Any(item =>
+            item.State is
+                LegendConnectResearchClaimVerificationState.VerifiedByControllingEvidence or
+                LegendConnectResearchClaimVerificationState.SupportedByIndependentlyCorroboratedEvidence or
+                LegendConnectResearchClaimVerificationState.ReasonedInferenceFromEvidence or
+                LegendConnectResearchClaimVerificationState.Disputed);
+        var state = unresolved
+            ? LegendResearchEvidenceAssessmentState.UnresolvedConflict
+            : hasConclusion
+                ? LegendResearchEvidenceAssessmentState.Conclusion
+                : LegendResearchEvidenceAssessmentState.InsufficientEvidence;
+        var reason = state switch
+        {
+            LegendResearchEvidenceAssessmentState.UnresolvedConflict =>
+                "research_evidence_conflict_unresolved",
+            LegendResearchEvidenceAssessmentState.Conclusion when resolutions.Any(item =>
+                item.State == LegendConnectResearchClaimVerificationState.Disputed) =>
+                "research_claim_disputed_resolved_by_higher_standard",
+            LegendResearchEvidenceAssessmentState.Conclusion when resolutions.Any(item =>
+                item.State == LegendConnectResearchClaimVerificationState.ReasonedInferenceFromEvidence) =>
+                "research_bounded_inference_governed",
+            LegendResearchEvidenceAssessmentState.Conclusion =>
+                "research_claims_governed_by_claim_evidence",
+            _ when resolutions.Any(item =>
+                item.State == LegendConnectResearchClaimVerificationState.Stale) =>
+                "research_claim_evidence_stale",
+            _ when resolutions.Any(item =>
+                item.ReasonCode == "research_observational_equivalence_requires_discriminating_evidence") =>
+                "research_observational_equivalence_requires_discriminating_evidence",
+            _ when policy.MaterialEvidence.Count == 0 =>
+                ResolveNoMaterialEvidenceReason(policy.Admissibility),
+            _ => "research_evidence_standard_unmet"
+        };
+        var selectedLineages = selectedClaims
+            .Select(item => item.IndependentSourceLineage)
+            .Distinct(StringComparer.Ordinal)
+            .Count();
+        var reportedRequired = resolvedEvidence
+            .Select(item => item.RequiredIndependentSourceCount)
+            .DefaultIfEmpty(requestedMinimum)
+            .Max();
+        var outcomeClaims = unresolved
+            ? resolvedEvidence.Where(item =>
+                item.Relationship != LegendConnectResearchEvidenceRelationship.Contradiction).ToArray()
+            : selectedClaims.ToArray();
+        return new LegendResearchEvidenceAssessment(
+            state,
+            outcomeClaims,
+            admittedContradictions.ToArray(),
+            resolvedEvidence.ToArray(),
+            resolutions.ToArray(),
+            selectedLineages,
+            reportedRequired,
+            reason,
+            policy.Admissibility);
+    }
+
+    private static ResearchClaimGroupResolution ResolveFactualClaimGroup(
+        string normalizedClaimIdentity,
+        IReadOnlyList<LegendConnectResearchMaterialClaimEvidence> evidence,
+        int required)
+    {
+        var current = evidence
+            .Where(item => item.Freshness == LegendConnectResearchFreshnessState.Current)
+            .ToArray();
+        if (current.Length == 0)
+        {
+            var unavailableState = evidence.Any(item => item.Freshness == LegendConnectResearchFreshnessState.Stale)
+                ? LegendConnectResearchClaimVerificationState.Stale
+                : LegendConnectResearchClaimVerificationState.InsufficientEvidence;
+            return ClaimGroup(
+                normalizedClaimIdentity,
+                evidence,
+                [],
+                unavailableState,
+                unavailableState == LegendConnectResearchClaimVerificationState.Stale
+                    ? "research_claim_evidence_stale"
+                    : "research_claim_evidence_insufficient",
+                "Unavailable",
+                requiresDiscriminatingEvidence: false);
+        }
+
+        var contextualOnly = current.All(item =>
+            item.Relationship == LegendConnectResearchEvidenceRelationship.Contextual);
+        if (contextualOnly)
+        {
+            return ClaimGroup(
+                normalizedClaimIdentity,
+                evidence,
+                [],
+                LegendConnectResearchClaimVerificationState.InsufficientEvidence,
+                "research_observational_equivalence_requires_discriminating_evidence",
+                current.MaxBy(item => item.EvidenceStandardRank)!.EvidenceStandard,
+                requiresDiscriminatingEvidence: true);
+        }
+
+        var sides = current
+            .Where(item => item.Relationship != LegendConnectResearchEvidenceRelationship.Contextual)
+            .GroupBy(item => (
+                Statement: NormalizeResearchStatement(item.Statement),
+                IsContradiction: item.Relationship ==
+                    LegendConnectResearchEvidenceRelationship.Contradiction))
+            .Select(group => BuildResearchClaimSide(group.ToArray(), required))
+            .OrderByDescending(item => item.EffectiveStandardRank)
+            .ThenBy(item => item.Statement, StringComparer.Ordinal)
+            .ToArray();
+        if (sides.Length == 0)
+        {
+            return ClaimGroup(
+                normalizedClaimIdentity,
+                evidence,
+                [],
+                LegendConnectResearchClaimVerificationState.InsufficientEvidence,
+                "research_claim_evidence_insufficient",
+                "Unavailable",
+                false);
+        }
+
+        if (sides.Length > 1)
+        {
+            var correction = SelectExplicitCorrection(sides);
+            var highest = sides[0];
+            var sameStandard = sides.Count(item =>
+                item.EffectiveStandardRank == highest.EffectiveStandardRank) > 1;
+            if (correction is null && sameStandard)
+            {
+                return ClaimGroup(
+                    normalizedClaimIdentity,
+                    evidence,
+                    [],
+                    LegendConnectResearchClaimVerificationState.UnresolvedConflict,
+                    "research_equal_authority_conflict_unresolved",
+                    highest.EvidenceStandard,
+                    true);
+            }
+
+            var selected = correction ?? highest;
+            if (!selected.Qualified && correction is null)
+            {
+                return ClaimGroup(
+                    normalizedClaimIdentity,
+                    evidence,
+                    [],
+                    LegendConnectResearchClaimVerificationState.UnresolvedConflict,
+                    "research_unresolved_contradiction",
+                    selected.EvidenceStandard,
+                    true);
+            }
+
+            return ClaimGroup(
+                normalizedClaimIdentity,
+                evidence,
+                selected.Evidence,
+                LegendConnectResearchClaimVerificationState.Disputed,
+                correction is not null
+                    ? "research_newer_controlling_correction_selected"
+                    : "research_higher_standard_conflict_selected",
+                selected.EvidenceStandard,
+                false);
+        }
+
+        var side = sides[0];
+        var state = side.HasControllingRecord
+            ? LegendConnectResearchClaimVerificationState.VerifiedByControllingEvidence
+            : side.Qualified
+                ? LegendConnectResearchClaimVerificationState.SupportedByIndependentlyCorroboratedEvidence
+                : LegendConnectResearchClaimVerificationState.SourceReportedButNotIndependentlyVerified;
+        return ClaimGroup(
+            normalizedClaimIdentity,
+            evidence,
+            side.Qualified || side.HasControllingRecord ? side.Evidence : [],
+            state,
+            state switch
+            {
+                LegendConnectResearchClaimVerificationState.VerifiedByControllingEvidence =>
+                    "research_claim_verified_by_controlling_evidence",
+                LegendConnectResearchClaimVerificationState.SupportedByIndependentlyCorroboratedEvidence =>
+                    "research_claim_independently_corroborated",
+                _ => "research_claim_source_reported_not_verified"
+            },
+            side.EvidenceStandard,
+            false);
+    }
+
+    private static ResearchClaimGroupResolution ResolveInferenceClaimGroup(
+        string normalizedClaimIdentity,
+        IReadOnlyList<LegendConnectResearchMaterialClaimEvidence> evidence,
+        IReadOnlyDictionary<string, LegendConnectResearchClaimResolution> factualResolutions)
+    {
+        var candidate = evidence
+            .Where(item => item.Freshness == LegendConnectResearchFreshnessState.Current)
+            .OrderByDescending(item => item.EvidenceStandardRank)
+            .ThenBy(item => item.EvidenceIdentity, StringComparer.Ordinal)
+            .FirstOrDefault();
+        if (candidate is null)
+        {
+            return ClaimGroup(
+                normalizedClaimIdentity,
+                evidence,
+                [],
+                LegendConnectResearchClaimVerificationState.Stale,
+                "research_inference_evidence_stale",
+                "Unavailable",
+                false);
+        }
+
+        var premises = candidate.PremiseClaimIdentities?
+            .Distinct(StringComparer.Ordinal)
+            .Take(3)
+            .ToArray() ?? [];
+        var premiseStatesGoverned = premises.Length is >= 2 and <= 3 &&
+            premises.All(item => factualResolutions.TryGetValue(item, out var resolution) &&
+                resolution.State is
+                    LegendConnectResearchClaimVerificationState.VerifiedByControllingEvidence or
+                    LegendConnectResearchClaimVerificationState.SupportedByIndependentlyCorroboratedEvidence);
+        var discriminating = candidate.DiscriminatingClaimIdentity is not null &&
+            factualResolutions.TryGetValue(candidate.DiscriminatingClaimIdentity, out var discriminatingResolution) &&
+            discriminatingResolution.State is
+                LegendConnectResearchClaimVerificationState.VerifiedByControllingEvidence or
+                LegendConnectResearchClaimVerificationState.SupportedByIndependentlyCorroboratedEvidence;
+        if (!premiseStatesGoverned || !discriminating)
+        {
+            return ClaimGroup(
+                normalizedClaimIdentity,
+                evidence,
+                [],
+                LegendConnectResearchClaimVerificationState.InsufficientEvidence,
+                "research_observational_equivalence_requires_discriminating_evidence",
+                candidate.EvidenceStandard,
+                true);
+        }
+
+        return ClaimGroup(
+            normalizedClaimIdentity,
+            evidence,
+            [candidate with
+            {
+                ExtractionMethod = LegendConnectResearchExtractionMethod.BoundedGovernedInference,
+                EvidenceStandard =
+                    LegendConnectResearchContracts.ClaimEvidencePolicy + "|BoundedCausalInference"
+            }],
+            LegendConnectResearchClaimVerificationState.ReasonedInferenceFromEvidence,
+            "research_bounded_causal_inference_supported",
+            LegendConnectResearchContracts.ClaimEvidencePolicy + "|BoundedCausalInference",
+            false);
+    }
+
+    private static ResearchClaimSide BuildResearchClaimSide(
+        IReadOnlyList<LegendConnectResearchMaterialClaimEvidence> evidence,
+        int requestedMinimum)
+    {
+        var required = Math.Clamp(
+            Math.Max(
+                requestedMinimum,
+                evidence.Max(item => item.RequiredIndependentSourceCount)),
+            1,
+            3);
+        var controlling = evidence.Any(item => item.EvidenceStandardRank >= 3);
+        var independent = evidence
+            .Where(item => item.EvidenceStandardRank >= 2)
+            .Select(item => item.IndependentSourceLineage)
+            .Distinct(StringComparer.Ordinal)
+            .Count();
+        var qualified = controlling || independent >= required;
+        var effectiveRank = controlling ? 3 : qualified ? 2 : 1;
+        var strongest = evidence.MaxBy(item => item.EvidenceStandardRank)!;
+        return new(
+            evidence[0].Statement,
+            evidence[0].Relationship == LegendConnectResearchEvidenceRelationship.Contradiction,
+            evidence,
+            controlling,
+            qualified,
+            effectiveRank,
+            strongest.EvidenceStandard);
+    }
+
+    private static ResearchClaimSide? SelectExplicitCorrection(
+        IReadOnlyList<ResearchClaimSide> sides)
+    {
+        foreach (var candidate in sides)
+        {
+            foreach (var correcting in candidate.Evidence.Where(item =>
+                         item.EvidenceStandardRank >= 3 &&
+                         !string.IsNullOrWhiteSpace(item.CorrectsSourceIdentity)))
+            {
+                var corrected = sides
+                    .Where(item => !ReferenceEquals(item, candidate))
+                    .SelectMany(item => item.Evidence)
+                    .FirstOrDefault(item => string.Equals(
+                        item.SourceIdentity,
+                        correcting.CorrectsSourceIdentity,
+                        StringComparison.Ordinal));
+                if (corrected is null ||
+                    correcting.PublishedUtc <= corrected.PublishedUtc)
+                    continue;
+                return candidate;
+            }
+        }
+        return null;
+    }
+
+    private static ResearchClaimGroupResolution ClaimGroup(
+        string normalizedClaimIdentity,
+        IReadOnlyList<LegendConnectResearchMaterialClaimEvidence> allEvidence,
+        IReadOnlyList<LegendConnectResearchMaterialClaimEvidence> selectedEvidence,
+        LegendConnectResearchClaimVerificationState state,
+        string reason,
+        string evidenceStandard,
+        bool requiresDiscriminatingEvidence)
+    {
+        var selectedIds = selectedEvidence
+            .Select(item => item.EvidenceIdentity)
+            .ToHashSet(StringComparer.Ordinal);
+        var selectedById = selectedEvidence.ToDictionary(
+            item => item.EvidenceIdentity,
+            StringComparer.Ordinal);
+        var updated = allEvidence.Select(item =>
+        {
+            var authoritative = selectedById.TryGetValue(item.EvidenceIdentity, out var selected)
+                ? selected
+                : item;
+            return authoritative with
+            {
+                VerificationState = selectedIds.Contains(item.EvidenceIdentity) || selectedIds.Count == 0
+                    ? state
+                    : LegendConnectResearchClaimVerificationState.SourceReportedButNotIndependentlyVerified
+            };
+        }).ToArray();
+        var selected = updated.Where(item => selectedIds.Contains(item.EvidenceIdentity)).ToArray();
+        var resolution = new LegendConnectResearchClaimResolution(
+            normalizedClaimIdentity,
+            state,
+            reason,
+            evidenceStandard,
+            allEvidence.Select(item => item.EvidenceIdentity).ToArray(),
+            allEvidence.Select(item => item.IndependentSourceLineage)
+                .Distinct(StringComparer.Ordinal)
+                .ToArray(),
+            selected.FirstOrDefault()?.Statement,
+            requiresDiscriminatingEvidence);
+        return new(resolution, updated, selected);
+    }
+
+    private static string ResolveNoMaterialEvidenceReason(
+        IReadOnlyList<LegendConnectResearchEvidenceAdmissibility> admissibility)
+    {
+        var reasons = admissibility
+            .Where(item => item.Disposition == LegendConnectResearchEvidenceDisposition.Rejected)
+            .Select(item => item.ReasonCode)
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+        return reasons.Length == 1 ? reasons[0] : "research_evidence_admissibility_failed";
+    }
+
+    private static string NormalizeResearchStatement(string statement) =>
+        string.Join(' ', statement.Split(
+            (char[]?)null,
+            StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+            .ToLowerInvariant();
+
+    private sealed record ResearchClaimSide(
+        string Statement,
+        bool IsContradiction,
+        IReadOnlyList<LegendConnectResearchMaterialClaimEvidence> Evidence,
+        bool HasControllingRecord,
+        bool Qualified,
+        int EffectiveStandardRank,
+        string EvidenceStandard);
+
+    private sealed record ResearchClaimGroupResolution(
+        LegendConnectResearchClaimResolution Resolution,
+        IReadOnlyList<LegendConnectResearchMaterialClaimEvidence> Evidence,
+        IReadOnlyList<LegendConnectResearchMaterialClaimEvidence> SelectedEvidence);
+
     internal static LegendGovernedReasoningExecution Derive(
         IReadOnlyDictionary<string, string> initialValues,
-        IReadOnlyList<LegendGovernedReasoningRule> rules)
+        IReadOnlyList<LegendGovernedReasoningRule> rules,
+        IReadOnlyCollection<Guid> initialSemanticFamilyIds)
     {
         if (initialValues.Count == 0 || rules.Count == 0)
             return LegendGovernedReasoningExecution.Empty;
         if (rules.Count > MaximumRules)
-            return new(false, true, []);
+            return new(false, false, true, [], []);
 
         var normalizedRules = rules
-            .Where(rule => ResolveMode(rule.OperatorIdentity) is not null)
+            .Where(IsGovernedExecutableRule)
             // Enumeration order is deterministic for reproducibility. Proof
             // authority is decided independently by IsStrongerProof so a
             // later multi-hop HigherStandard proof can replace an earlier
@@ -54,7 +607,7 @@ internal static class LegendConnectGovernedReasoningExecutor
             .Where(rule => ResolveMode(rule.OperatorIdentity) == ReasoningMode.Constraint)
             .ToArray();
         if (ViolatesConstraint(initialValues, constraints))
-            return new(true, false, []);
+            return new(true, false, false, [], []);
 
         var directional = new List<DirectionalRule>();
         foreach (var rule in normalizedRules)
@@ -62,20 +615,75 @@ internal static class LegendConnectGovernedReasoningExecutor
             var mode = ResolveMode(rule.OperatorIdentity);
             if (mode == ReasoningMode.Forward)
             {
-                directional.Add(new DirectionalRule(rule, rule.SourceFrame, rule.ResultFrame, false));
+                directional.Add(new DirectionalRule(
+                    rule,
+                    rule.SourceFrame,
+                    rule.ResultFrame,
+                    rule.SourceSemanticFamilyIds,
+                    rule.ResultSemanticFamilyIds,
+                    rule.FamilyConnections,
+                    false,
+                    false,
+                    ReasoningMode.Forward));
             }
             else if (mode == ReasoningMode.Bidirectional)
             {
-                directional.Add(new DirectionalRule(rule, rule.SourceFrame, rule.ResultFrame, false));
-                directional.Add(new DirectionalRule(rule, rule.ResultFrame, rule.SourceFrame, true));
+                directional.Add(new DirectionalRule(
+                    rule,
+                    rule.SourceFrame,
+                    rule.ResultFrame,
+                    rule.SourceSemanticFamilyIds,
+                    rule.ResultSemanticFamilyIds,
+                    rule.FamilyConnections,
+                    false,
+                    false,
+                    ReasoningMode.Bidirectional));
+                directional.Add(new DirectionalRule(
+                    rule,
+                    rule.ResultFrame,
+                    rule.SourceFrame,
+                    rule.ResultSemanticFamilyIds,
+                    rule.SourceSemanticFamilyIds,
+                    rule.FamilyConnections.Select(item => new LegendGovernedReasoningFamilyConnection(
+                        item.ResultSemanticFamilyId,
+                        item.SourceSemanticFamilyId,
+                        item.HasExplicitGovernedTransfer)).ToArray(),
+                    true,
+                    false,
+                    ReasoningMode.Bidirectional));
+            }
+            else if (mode == ReasoningMode.Deduction ||
+                     IsEpistemicMode(mode) ||
+                     IsCausalDiagnosticMode(mode) ||
+                     IsConstrainedPlanningMode(mode))
+            {
+                // Governed deductive, epistemic, causal-diagnostic, and
+                // constrained-planning rules are implications, never
+                // equivalences. No reverse rule is created, so a conclusion
+                // cannot manufacture its premises.
+                directional.Add(new DirectionalRule(
+                    rule,
+                    rule.SourceFrame,
+                    rule.ResultFrame,
+                    rule.SourceSemanticFamilyIds,
+                    rule.ResultSemanticFamilyIds,
+                    rule.FamilyConnections,
+                    false,
+                    true,
+                    mode!.Value));
             }
         }
 
         var initial = Copy(initialValues);
-        var initialIdentity = CanonicalState(initial);
+        var initialFamilies = initialSemanticFamilyIds
+            .OrderBy(item => item)
+            .ToHashSet();
+        var initialIdentity = CanonicalProofState(initial, initialFamilies);
         var initialProof = new LegendGovernedReasoningProof(
             initial,
             [],
+            [],
+            initialFamilies,
             0,
             int.MaxValue,
             int.MaxValue);
@@ -86,11 +694,14 @@ internal static class LegendConnectGovernedReasoningExecutor
         var queue = new Queue<LegendGovernedReasoningProof>();
         queue.Enqueue(initialProof);
         var ruleEvaluations = 0;
+        var conflictContexts = new Dictionary<string, ReasoningConflictContext>(StringComparer.Ordinal);
 
         while (queue.Count > 0)
         {
             var current = queue.Dequeue();
-            var currentIdentity = CanonicalState(current.Values);
+            var currentIdentity = CanonicalProofState(
+                current.Values,
+                current.SemanticFamilyIds);
             if (!bestProofs.TryGetValue(currentIdentity, out var authoritative) ||
                 !ReferenceEquals(authoritative, current))
             {
@@ -103,16 +714,77 @@ internal static class LegendConnectGovernedReasoningExecutor
             {
                 ruleEvaluations++;
                 if (ruleEvaluations > MaximumRuleEvaluations)
-                    return new(false, true, []);
-                if (!TryApply(rule.SourceFrame, rule.ResultFrame, current.Values, out var nextValues))
+                    return new(false, false, true, [], []);
+                var connectedResultFamilies = ResolveConnectedResultFamilies(
+                    current.SemanticFamilyIds,
+                    rule.FamilyConnections);
+                if (rule.IsProofCarrying && connectedResultFamilies.Count == 0)
+                {
                     continue;
+                }
+                if (!TryApply(
+                        rule.SourceFrame,
+                        rule.ResultFrame,
+                        current.Values,
+                        rule.IsProofCarrying,
+                        rule.Mode,
+                        out var nextValues,
+                        out var instantiatedConclusions,
+                        out var applicationConflicts))
+                {
+                    foreach (var applicationConflict in applicationConflicts)
+                    {
+                        var existingStep = FindConclusionAuthority(
+                            current,
+                            applicationConflict.SemanticDimension,
+                            applicationConflict.ExistingValue);
+                        // A governed rule may not silently overwrite a fact
+                        // supplied by the present meaning graph or discourse
+                        // state. Those inputs do not carry a comparable rule
+                        // authority, so retain the established fail-closed
+                        // contradiction outcome.
+                        if (existingStep is null)
+                            return new(false, true, false, [], []);
+
+                        var proposedFamilies = rule.IsProofCarrying
+                            ? connectedResultFamilies
+                            : rule.ResultSemanticFamilyIds.OrderBy(item => item).ToHashSet();
+                        var proposedStep = BuildProofStep(
+                            rule,
+                            current,
+                            proposedFamilies,
+                            instantiatedConclusions);
+                        var context = BuildConflictContext(
+                            applicationConflict,
+                            current,
+                            existingStep,
+                            proposedStep,
+                            proposedFamilies);
+                        if (!conflictContexts.ContainsKey(context.Identity))
+                        {
+                            if (bestProofs.Count + conflictContexts.Count >= MaximumStates)
+                                return new(false, false, true, [], []);
+                            conflictContexts[context.Identity] = context;
+                        }
+                    }
+                    continue;
+                }
                 if (ViolatesConstraint(nextValues, constraints))
                     continue;
 
-                var identity = CanonicalState(nextValues);
+                var nextFamilies = rule.IsProofCarrying
+                    ? connectedResultFamilies
+                    : rule.ResultSemanticFamilyIds.OrderBy(item => item).ToHashSet();
+                var identity = CanonicalProofState(nextValues, nextFamilies);
                 var transitionIdentity = rule.Rule.TransitionSignature +
                     (rule.Reversed ? ":reverse" : string.Empty);
                 var path = current.TransitionPath.Append(transitionIdentity).ToArray();
+                var evidenceLineage = current.EvidenceLineage.Append(
+                    BuildProofStep(
+                        rule,
+                        current,
+                        nextFamilies,
+                        instantiatedConclusions)).ToArray();
                 var evidence = current.Depth == 0
                     ? rule.Rule.IndependentEvidenceCount
                     : Math.Min(current.EvidenceCount, rule.Rule.IndependentEvidenceCount);
@@ -122,6 +794,8 @@ internal static class LegendConnectGovernedReasoningExecutor
                 var proof = new LegendGovernedReasoningProof(
                     nextValues,
                     path,
+                    evidenceLineage,
+                    nextFamilies,
                     current.Depth + 1,
                     evidence,
                     evidenceStandard);
@@ -130,21 +804,579 @@ internal static class LegendConnectGovernedReasoningExecutor
                 {
                     continue;
                 }
-                if (!bestProofs.ContainsKey(identity) && bestProofs.Count >= MaximumStates)
-                    return new(false, true, []);
+                if (!bestProofs.ContainsKey(identity) &&
+                    bestProofs.Count + conflictContexts.Count >= MaximumStates)
+                    return new(false, false, true, [], []);
 
                 bestProofs[identity] = proof;
                 queue.Enqueue(proof);
             }
         }
 
+        // A lower-standard tie among otherwise dispositive conclusions cannot
+        // keep a dimension unresolved when a uniquely higher governed
+        // authority also conflicts on that same dimension. Retain only pairs
+        // that include the dimension's highest observed authority. The
+        // non-dispositive observational/insufficiency gate below still
+        // requires explicit discriminating evidence regardless of rank.
+        var highestConflictStandards = conflictContexts.Values
+            .GroupBy(item => item.Conflict.SemanticDimension, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(
+                group => group.Key,
+                group => group.Max(item => Math.Max(
+                    item.Conflict.First.EvidenceStandard,
+                    item.Conflict.Second.EvidenceStandard)),
+                StringComparer.OrdinalIgnoreCase);
+        var authoritativeConflictContexts = conflictContexts.Values
+            .Where(item => Math.Max(
+                    item.Conflict.First.EvidenceStandard,
+                    item.Conflict.Second.EvidenceStandard) ==
+                highestConflictStandards[item.Conflict.SemanticDimension])
+            .ToArray();
+        var conflicts = authoritativeConflictContexts
+            .OrderBy(item => item.Identity, StringComparer.Ordinal)
+            .Select(item => item.Conflict)
+            .ToArray();
         var derived = bestProofs
             .Where(item => !string.Equals(item.Key, initialIdentity, StringComparison.Ordinal))
             .OrderBy(item => item.Key, StringComparer.Ordinal)
             .Select(item => item.Value)
+            .Where(proof => !IsRejectedByConflict(proof, conflicts))
             .ToArray();
-        return new(false, false, derived);
+        var unresolvedContexts = authoritativeConflictContexts
+            .Where(item => IsUnresolvedConflict(item.Conflict))
+            .OrderBy(item => item.Identity, StringComparer.Ordinal)
+            .ToArray();
+        LegendGovernedReasoningProof[] unresolvedProofs = unresolvedContexts.Length == 0
+            ? []
+            : new[] { BuildUnresolvedConflictProof(unresolvedContexts) };
+        var finalStates = derived
+            .Concat(unresolvedProofs)
+            .GroupBy(proof => CanonicalProofState(proof.Values, proof.SemanticFamilyIds), StringComparer.Ordinal)
+            .Select(group => group.Aggregate((best, candidate) =>
+                IsStrongerProof(candidate, best) ? candidate : best))
+            .OrderBy(proof => CanonicalProofState(proof.Values, proof.SemanticFamilyIds), StringComparer.Ordinal)
+            .ToArray();
+        return new(false, false, false, finalStates, conflicts);
     }
+
+    private static bool IsGovernedExecutableRule(LegendGovernedReasoningRule rule)
+    {
+        var mode = ResolveMode(rule.OperatorIdentity);
+        if (mode is null || string.IsNullOrWhiteSpace(rule.TransitionSignature) ||
+            rule.SourceFrame.Count is < 1 or > MaximumFrameDimensions ||
+            rule.ResultFrame.Count is < 1 or > MaximumFrameDimensions ||
+            rule.SourceFrame.Any(item => string.IsNullOrWhiteSpace(item.Key) ||
+                string.IsNullOrWhiteSpace(item.Value)) ||
+            rule.ResultFrame.Any(item => string.IsNullOrWhiteSpace(item.Key) ||
+                string.IsNullOrWhiteSpace(item.Value)) ||
+            rule.SourceSemanticFamilyIds.Count == 0 ||
+            rule.ResultSemanticFamilyIds.Count == 0 ||
+            rule.IndependentEvidenceCount <= 0)
+        {
+            return false;
+        }
+
+        var evidenceIdentities = rule.IndependentEvidenceIdentities
+            .Where(item => !string.IsNullOrWhiteSpace(item))
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+        if (evidenceIdentities.Length != rule.IndependentEvidenceCount)
+            return false;
+
+        if (IsEpistemicMode(mode) && !IsGovernedEpistemicRule(rule, mode!.Value))
+            return false;
+        if (IsCausalDiagnosticMode(mode) &&
+            !IsGovernedCausalDiagnosticRule(rule, mode!.Value))
+        {
+            return false;
+        }
+        if (IsConstrainedPlanningMode(mode) &&
+            !IsGovernedConstrainedPlanningRule(rule, mode!.Value))
+        {
+            return false;
+        }
+
+        if (rule.FamilyConnections.Count == 0 ||
+            rule.FamilyConnections.Distinct().Count() != rule.FamilyConnections.Count ||
+            rule.FamilyConnections.Any(item =>
+                !rule.SourceSemanticFamilyIds.Contains(item.SourceSemanticFamilyId) ||
+                !rule.ResultSemanticFamilyIds.Contains(item.ResultSemanticFamilyId) ||
+                (item.SourceSemanticFamilyId != item.ResultSemanticFamilyId &&
+                 !item.HasExplicitGovernedTransfer)))
+        {
+            return false;
+        }
+
+        return rule.SourceSemanticFamilyIds.SetEquals(
+                   rule.FamilyConnections.Select(item => item.SourceSemanticFamilyId)) &&
+               rule.ResultSemanticFamilyIds.SetEquals(
+                   rule.FamilyConnections.Select(item => item.ResultSemanticFamilyId));
+    }
+
+    private static bool IsGovernedEpistemicRule(
+        LegendGovernedReasoningRule rule,
+        ReasoningMode mode)
+    {
+        if (mode == ReasoningMode.ObservationalEquivalence)
+        {
+            return HasSemanticValue(
+                       rule.ResultFrame,
+                       EpistemicStatusDimension,
+                       ObservationalEquivalenceValue) &&
+                   HasSemanticValue(
+                       rule.ResultFrame,
+                       CauseSelectionDimension,
+                       UndeterminedValue) &&
+                   HasSemanticValue(
+                       rule.ResultFrame,
+                       EvidenceRequirementDimension,
+                       DiscriminatingEvidenceValue);
+        }
+        if (mode == ReasoningMode.InsufficientEvidence)
+        {
+            return HasSemanticValue(
+                       rule.ResultFrame,
+                       EpistemicStatusDimension,
+                       InsufficientEvidenceValue) &&
+                   HasSemanticValue(
+                       rule.ResultFrame,
+                       CauseSelectionDimension,
+                       UndeterminedValue) &&
+                   HasSemanticValue(
+                       rule.ResultFrame,
+                       EvidenceRequirementDimension,
+                       DiscriminatingEvidenceValue);
+        }
+        return false;
+    }
+
+    private static bool IsGovernedCausalDiagnosticRule(
+        LegendGovernedReasoningRule rule,
+        ReasoningMode mode)
+    {
+        if (!HasSemanticDimensions(
+                rule.SourceFrame,
+                FirstHypothesisDimension,
+                SecondHypothesisDimension,
+                FirstPredictionDimension,
+                SecondPredictionDimension,
+                FirstPredictionHypothesisDimension,
+                SecondPredictionHypothesisDimension,
+                FirstPredictionEvidenceDimension,
+                SecondPredictionEvidenceDimension) ||
+            !HasSemanticFlow(
+                rule.SourceFrame,
+                FirstHypothesisDimension,
+                rule.SourceFrame,
+                FirstPredictionHypothesisDimension) ||
+            !HasSemanticFlow(
+                rule.SourceFrame,
+                SecondHypothesisDimension,
+                rule.SourceFrame,
+                SecondPredictionHypothesisDimension))
+        {
+            return false;
+        }
+
+        if (mode == ReasoningMode.CausalDiagnosticPlan)
+        {
+            return HasSemanticDimensions(rule.SourceFrame, DiscriminatingEvidenceDimension) &&
+                   HasPredictionEvidenceFlow(
+                       rule.SourceFrame,
+                       DiscriminatingEvidenceDimension) &&
+                   HasSemanticValue(
+                       rule.ResultFrame,
+                       HypothesisStatusDimension,
+                       CompetingHypothesesValue) &&
+                   HasSemanticValue(
+                       rule.ResultFrame,
+                       PredictionStatusDimension,
+                       DifferingPredictionsValue) &&
+                   HasSemanticValue(
+                       rule.ResultFrame,
+                       DiagnosticPlanStatusDimension,
+                       DiscriminatingEvidenceSelectedValue) &&
+                   HasSemanticValue(
+                       rule.ResultFrame,
+                       PrematureAttributionStatusDimension,
+                       AttributionWithheldValue) &&
+                   HasSemanticFlow(
+                       rule.SourceFrame,
+                       DiscriminatingEvidenceDimension,
+                       rule.ResultFrame,
+                       SelectedDiscriminatingEvidenceDimension) &&
+                   !rule.ResultFrame.ContainsKey(CauseSelectionDimension);
+        }
+
+        if (mode == ReasoningMode.CausalDiagnosticConclusion)
+        {
+            return HasSemanticDimensions(
+                       rule.SourceFrame,
+                       SelectedDiscriminatingEvidenceDimension,
+                       ObservedEvidenceSourceDimension,
+                       ObservedEvidenceDimension) &&
+                   HasPredictionEvidenceFlow(
+                       rule.SourceFrame,
+                       SelectedDiscriminatingEvidenceDimension) &&
+                   HasSemanticValue(
+                       rule.SourceFrame,
+                       PredictionStatusDimension,
+                       DifferingPredictionsValue) &&
+                   HasSemanticFlow(
+                       rule.SourceFrame,
+                       SelectedDiscriminatingEvidenceDimension,
+                       rule.SourceFrame,
+                       ObservedEvidenceSourceDimension) &&
+                   HasSemanticValue(
+                       rule.ResultFrame,
+                       DiagnosticConclusionStatusDimension,
+                       ResolvedByDiscriminatingEvidenceValue) &&
+                   HasSemanticValue(
+                       rule.ResultFrame,
+                       CausalAttributionStatusDimension,
+                       AttributionSupportedValue) &&
+                   HasOneHypothesisSelectionFlow(rule);
+        }
+
+        if (mode == ReasoningMode.CausalDiagnosticContradictoryEvidence)
+        {
+            return HasSemanticDimensions(
+                       rule.SourceFrame,
+                       SelectedDiscriminatingEvidenceDimension,
+                       ObservedEvidenceSourceDimension,
+                       ObservedEvidenceDimension) &&
+                   HasPredictionEvidenceFlow(
+                       rule.SourceFrame,
+                       SelectedDiscriminatingEvidenceDimension) &&
+                   HasSemanticValue(
+                       rule.SourceFrame,
+                       PredictionStatusDimension,
+                       DifferingPredictionsValue) &&
+                   HasSemanticFlow(
+                       rule.SourceFrame,
+                       SelectedDiscriminatingEvidenceDimension,
+                       rule.SourceFrame,
+                       ObservedEvidenceSourceDimension) &&
+                   HasSemanticValue(
+                       rule.ResultFrame,
+                       DiagnosticConclusionStatusDimension,
+                       ContradictoryEvidenceValue) &&
+                   IsGovernedNonSelectionResult(
+                       rule.ResultFrame,
+                       ReassessHypothesesValue,
+                       includeUnresolvedContradiction: true);
+        }
+
+        if (mode == ReasoningMode.CausalDiagnosticResourceLimited)
+        {
+            return HasSemanticDimensions(
+                       rule.SourceFrame,
+                       SelectedDiscriminatingEvidenceDimension,
+                       DiagnosticResourceDimension) &&
+                   HasPredictionEvidenceFlow(
+                       rule.SourceFrame,
+                       SelectedDiscriminatingEvidenceDimension) &&
+                   HasSemanticValue(
+                       rule.SourceFrame,
+                       PredictionStatusDimension,
+                       DifferingPredictionsValue) &&
+                   HasSemanticValue(
+                       rule.SourceFrame,
+                       DiagnosticResourceStatusDimension,
+                       ResourceUnavailableValue) &&
+                   HasSemanticFlow(
+                       rule.SourceFrame,
+                       SelectedDiscriminatingEvidenceDimension,
+                       rule.SourceFrame,
+                       DiagnosticResourceDimension) &&
+                   HasSemanticValue(
+                       rule.ResultFrame,
+                       DiagnosticConclusionStatusDimension,
+                       ResourceLimitedValue) &&
+                   IsGovernedNonSelectionResult(
+                       rule.ResultFrame,
+                       DiscriminatingEvidenceValue,
+                       includeUnresolvedContradiction: false);
+        }
+
+        return false;
+    }
+
+    private static bool HasPredictionEvidenceFlow(
+        IReadOnlyDictionary<string, string> sourceFrame,
+        string evidenceDimension) =>
+        HasSemanticFlow(
+            sourceFrame,
+            evidenceDimension,
+            sourceFrame,
+            FirstPredictionEvidenceDimension) &&
+        HasSemanticFlow(
+            sourceFrame,
+            evidenceDimension,
+            sourceFrame,
+            SecondPredictionEvidenceDimension);
+
+    private static bool IsGovernedConstrainedPlanningRule(
+        LegendGovernedReasoningRule rule,
+        ReasoningMode mode)
+    {
+        if (rule.SourceFrame.ContainsKey(CauseSelectionDimension) ||
+            rule.ResultFrame.ContainsKey(CauseSelectionDimension))
+        {
+            return false;
+        }
+
+        if (mode is ReasoningMode.ConstrainedPlanningStep or
+            ReasoningMode.ConstrainedPlanningBlock)
+        {
+            if (!HasPlanningActionSource(rule.SourceFrame))
+                return false;
+        }
+
+        if (mode == ReasoningMode.ConstrainedPlanningStep)
+        {
+            var continues = HasSemanticValue(
+                rule.ResultFrame,
+                PlanStatusDimension,
+                PlanInProgressValue);
+            var completes = HasSemanticValue(
+                rule.ResultFrame,
+                PlanStatusDimension,
+                PlanCompletedValue);
+            if (continues == completes ||
+                !HasSemanticDimensions(rule.ResultFrame, PlanElapsedMinutesDimension) ||
+                !HasSemanticFlow(
+                    rule.SourceFrame,
+                    CandidatePlanActionDimension,
+                    rule.ResultFrame,
+                    CurrentPlanActionDimension) ||
+                !HasSemanticFlow(
+                    rule.SourceFrame,
+                    CandidateActionOrderDimension,
+                    rule.ResultFrame,
+                    CurrentActionOrderDimension))
+            {
+                return false;
+            }
+
+            return continues
+                ? HasNextPlanningCandidate(rule.ResultFrame)
+                : !ContainsAnyPlanningCandidateDimension(rule.ResultFrame);
+        }
+
+        if (mode == ReasoningMode.ConstrainedPlanningBlock)
+        {
+            return HasSemanticValue(
+                       rule.ResultFrame,
+                       PlanStatusDimension,
+                       PlanBlockedValue) &&
+                   rule.ResultFrame.TryGetValue(PlanBlockReasonDimension, out var reason) &&
+                   IsKnownPlanningBlockReason(reason) &&
+                   !rule.ResultFrame.ContainsKey(CurrentPlanActionDimension) &&
+                   !rule.ResultFrame.ContainsKey(CurrentActionOrderDimension) &&
+                   !rule.ResultFrame.ContainsKey(PlanElapsedMinutesDimension) &&
+                   !ContainsAnyPlanningCandidateDimension(rule.ResultFrame);
+        }
+
+        if (mode == ReasoningMode.ConstrainedPlanningEvidenceBranch)
+        {
+            return HasSemanticDimensions(
+                       rule.SourceFrame,
+                       PlanGoalDimension,
+                       PlanStatusDimension,
+                       CurrentPlanActionDimension,
+                       CandidatePlanActionDimension,
+                       ActionPrerequisiteDimension,
+                       CandidateActionOrderDimension,
+                       ActionDurationMinutesDimension,
+                       RequiredResourceUnitsDimension,
+                       SafetyConstraintStatusDimension,
+                       RequiredBranchEvidenceDimension,
+                       ObservedBranchEvidenceDimension) &&
+                   HasSemanticFlow(
+                       rule.SourceFrame,
+                       RequiredBranchEvidenceDimension,
+                       rule.SourceFrame,
+                       ObservedBranchEvidenceDimension) &&
+                   HasSemanticFlow(
+                       rule.SourceFrame,
+                       CurrentPlanActionDimension,
+                       rule.SourceFrame,
+                       ActionPrerequisiteDimension) &&
+                   HasSemanticFlow(
+                       rule.SourceFrame,
+                       CurrentPlanActionDimension,
+                       rule.ResultFrame,
+                       CurrentPlanActionDimension) &&
+                   HasNextPlanningCandidate(rule.ResultFrame) &&
+                   HasSemanticValue(
+                       rule.ResultFrame,
+                       EvidenceBranchStatusDimension,
+                       EvidenceBranchSelectedValue) &&
+                   !rule.ResultFrame.ContainsKey(PlanStatusDimension) &&
+                   !rule.ResultFrame.ContainsKey(CurrentActionOrderDimension) &&
+                   !rule.ResultFrame.ContainsKey(PlanElapsedMinutesDimension) &&
+                   HasSemanticFlow(
+                       rule.SourceFrame,
+                       ObservedBranchEvidenceDimension,
+                       rule.ResultFrame,
+                       SelectedBranchEvidenceDimension);
+        }
+
+        if (mode == ReasoningMode.ConstrainedPlanningStop)
+        {
+            return HasSemanticDimensions(
+                       rule.SourceFrame,
+                       PlanGoalDimension,
+                       PlanStatusDimension,
+                       CurrentPlanActionDimension,
+                       StopConditionDimension,
+                       ObservedStopEvidenceDimension) &&
+                   HasSemanticFlow(
+                       rule.SourceFrame,
+                       StopConditionDimension,
+                       rule.SourceFrame,
+                       ObservedStopEvidenceDimension) &&
+                   HasSemanticValue(
+                       rule.ResultFrame,
+                       PlanStatusDimension,
+                       PlanStoppedValue) &&
+                   HasSemanticFlow(
+                       rule.SourceFrame,
+                       StopConditionDimension,
+                       rule.ResultFrame,
+                       PlanStopReasonDimension) &&
+                   HasSemanticFlow(
+                       rule.SourceFrame,
+                       ObservedStopEvidenceDimension,
+                       rule.ResultFrame,
+                       SelectedStopEvidenceDimension) &&
+                   !rule.ResultFrame.ContainsKey(CurrentPlanActionDimension) &&
+                   !rule.ResultFrame.ContainsKey(CurrentActionOrderDimension) &&
+                   !rule.ResultFrame.ContainsKey(PlanElapsedMinutesDimension) &&
+                   !ContainsAnyPlanningCandidateDimension(rule.ResultFrame);
+        }
+
+        return false;
+    }
+
+    private static bool HasPlanningActionSource(IReadOnlyDictionary<string, string> sourceFrame) =>
+        HasSemanticDimensions(
+            sourceFrame,
+            PlanGoalDimension,
+            CandidatePlanActionDimension,
+            ActionPrerequisiteDimension,
+            CurrentActionOrderDimension,
+            CandidateActionOrderDimension,
+            ActionDurationMinutesDimension,
+            PlanTimeLimitMinutesDimension,
+            PlanElapsedMinutesDimension,
+            AvailableResourceUnitsDimension,
+            RequiredResourceUnitsDimension,
+            SafetyConstraintStatusDimension,
+            PlanStatusDimension);
+
+    private static bool HasNextPlanningCandidate(IReadOnlyDictionary<string, string> frame) =>
+        HasSemanticDimensions(
+            frame,
+            CandidatePlanActionDimension,
+            ActionPrerequisiteDimension,
+            CandidateActionOrderDimension,
+            ActionDurationMinutesDimension,
+            RequiredResourceUnitsDimension,
+            SafetyConstraintStatusDimension) &&
+        HasSemanticFlow(
+            frame,
+            CurrentPlanActionDimension,
+            frame,
+            ActionPrerequisiteDimension);
+
+    private static bool ContainsAnyPlanningCandidateDimension(
+        IReadOnlyDictionary<string, string> frame) =>
+        frame.ContainsKey(CandidatePlanActionDimension) ||
+        frame.ContainsKey(ActionPrerequisiteDimension) ||
+        frame.ContainsKey(CandidateActionOrderDimension) ||
+        frame.ContainsKey(ActionDurationMinutesDimension) ||
+        frame.ContainsKey(RequiredResourceUnitsDimension) ||
+        frame.ContainsKey(SafetyConstraintStatusDimension);
+
+    private static bool IsKnownPlanningBlockReason(string value) =>
+        value is InsufficientResourceValue or
+            UnsafeStepValue or
+            TimeLimitExceededValue or
+            PrerequisiteOrderViolationValue or
+            ContradictoryConstraintsValue or
+            UnprovenCausalAssumptionValue;
+
+    private static bool IsGovernedNonSelectionResult(
+        IReadOnlyDictionary<string, string> resultFrame,
+        string evidenceRequirement,
+        bool includeUnresolvedContradiction) =>
+        HasSemanticValue(
+            resultFrame,
+            HypothesisStatusDimension,
+            CompetingHypothesesValue) &&
+        HasSemanticValue(
+            resultFrame,
+            CauseSelectionDimension,
+            UndeterminedValue) &&
+        HasSemanticValue(
+            resultFrame,
+            PrematureAttributionStatusDimension,
+            AttributionWithheldValue) &&
+        HasSemanticValue(
+            resultFrame,
+            EvidenceRequirementDimension,
+            evidenceRequirement) &&
+        (!includeUnresolvedContradiction || HasSemanticValue(
+            resultFrame,
+            EpistemicStatusDimension,
+            UnresolvedContradictionValue));
+
+    private static bool HasOneHypothesisSelectionFlow(LegendGovernedReasoningRule rule) =>
+        HasSemanticFlow(
+            rule.SourceFrame,
+            FirstHypothesisDimension,
+            rule.ResultFrame,
+            CauseSelectionDimension) ^
+        HasSemanticFlow(
+            rule.SourceFrame,
+            SecondHypothesisDimension,
+            rule.ResultFrame,
+            CauseSelectionDimension);
+
+    private static bool HasSemanticDimensions(
+        IReadOnlyDictionary<string, string> frame,
+        params string[] dimensions) =>
+        dimensions.All(dimension => frame.TryGetValue(dimension, out var value) &&
+            !string.IsNullOrWhiteSpace(value));
+
+    private static bool HasSemanticFlow(
+        IReadOnlyDictionary<string, string> sourceFrame,
+        string sourceDimension,
+        IReadOnlyDictionary<string, string> resultFrame,
+        string resultDimension) =>
+        sourceFrame.TryGetValue(sourceDimension, out var sourceValue) &&
+        resultFrame.TryGetValue(resultDimension, out var resultValue) &&
+        !string.IsNullOrWhiteSpace(sourceValue) &&
+        string.Equals(sourceValue, resultValue, StringComparison.OrdinalIgnoreCase);
+
+    private static bool HasSemanticValue(
+        IReadOnlyDictionary<string, string> frame,
+        string dimension,
+        string expected) =>
+        frame.TryGetValue(dimension, out var value) &&
+        string.Equals(value, expected, StringComparison.OrdinalIgnoreCase);
+
+    private static HashSet<Guid> ResolveConnectedResultFamilies(
+        IReadOnlySet<Guid> currentSemanticFamilyIds,
+        IReadOnlyList<LegendGovernedReasoningFamilyConnection> connections) =>
+        connections
+            .Where(item => currentSemanticFamilyIds.Contains(item.SourceSemanticFamilyId))
+            .Select(item => item.ResultSemanticFamilyId)
+            .OrderBy(item => item)
+            .ToHashSet();
 
     private static bool IsStrongerProof(
         LegendGovernedReasoningProof candidate,
@@ -163,6 +1395,216 @@ internal static class LegendConnectGovernedReasoningExecutor
             return comparison > 0;
 
         return ComparePath(candidate.TransitionPath, existing.TransitionPath) < 0;
+    }
+
+    private static IReadOnlyDictionary<string, string> ProjectFrameValues(
+        IReadOnlyDictionary<string, string> frame,
+        IReadOnlyDictionary<string, string> values) =>
+        frame.Keys
+            .OrderBy(item => item, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(
+                key => key,
+                key => values[key],
+                StringComparer.OrdinalIgnoreCase);
+
+    private static LegendGovernedReasoningProofStep BuildProofStep(
+        DirectionalRule rule,
+        LegendGovernedReasoningProof current,
+        IReadOnlySet<Guid> resultFamilies,
+        IReadOnlyDictionary<string, string> conclusions) =>
+        new(
+            rule.Rule.TransitionSignature,
+            rule.Rule.OperatorIdentity,
+            ProjectFrameValues(rule.SourceFrame, current.Values),
+            conclusions,
+            rule.Rule.IndependentEvidenceIdentities,
+            rule.Rule.IndependentEvidenceCount,
+            rule.Rule.EvidenceStandard,
+            rule.IsProofCarrying
+                ? rule.FamilyConnections
+                    .Where(item => current.SemanticFamilyIds.Contains(
+                        item.SourceSemanticFamilyId))
+                    .Select(item => item.SourceSemanticFamilyId)
+                    .ToHashSet()
+                : rule.SourceSemanticFamilyIds,
+            resultFamilies,
+            rule.FamilyConnections.Any(item =>
+                current.SemanticFamilyIds.Contains(item.SourceSemanticFamilyId) &&
+                item.HasExplicitGovernedTransfer),
+            rule.Reversed);
+
+    private static LegendGovernedReasoningProofStep? FindConclusionAuthority(
+        LegendGovernedReasoningProof proof,
+        string semanticDimension,
+        string semanticValue)
+    {
+        for (var index = proof.EvidenceLineage.Count - 1; index >= 0; index--)
+        {
+            var step = proof.EvidenceLineage[index];
+            if (step.Conclusions.TryGetValue(semanticDimension, out var conclusion) &&
+                string.Equals(conclusion, semanticValue, StringComparison.OrdinalIgnoreCase))
+            {
+                return step;
+            }
+        }
+        return null;
+    }
+
+    private static ReasoningConflictContext BuildConflictContext(
+        ReasoningApplicationConflict applicationConflict,
+        LegendGovernedReasoningProof current,
+        LegendGovernedReasoningProofStep existingStep,
+        LegendGovernedReasoningProofStep proposedStep,
+        IReadOnlySet<Guid> proposedFamilies)
+    {
+        var existing = ConflictSide(
+            applicationConflict.ExistingValue,
+            existingStep);
+        var proposed = ConflictSide(
+            applicationConflict.ProposedValue,
+            proposedStep);
+        var ordered = new[] { existing, proposed }
+            .OrderBy(ConflictSideIdentity, StringComparer.Ordinal)
+            .ToArray();
+        var comparison = existing.EvidenceStandard.CompareTo(proposed.EvidenceStandard);
+        var lacksDiscriminatingEvidence =
+            (IsNonDispositiveOperator(existing.OperatorIdentity) &&
+             !IsDiscriminatingEvidenceOperator(proposed.OperatorIdentity)) ||
+            (IsNonDispositiveOperator(proposed.OperatorIdentity) &&
+             !IsDiscriminatingEvidenceOperator(existing.OperatorIdentity));
+        var resolution = lacksDiscriminatingEvidence
+            ? LegendGovernedReasoningConflictResolution.UnresolvedWithoutDiscriminatingEvidence
+            : comparison == 0
+                ? LegendGovernedReasoningConflictResolution.UnresolvedEqualAuthority
+                : LegendGovernedReasoningConflictResolution.ResolvedByHigherStandard;
+        LegendGovernedReasoningConflictSide? selected =
+            resolution != LegendGovernedReasoningConflictResolution.ResolvedByHigherStandard
+            ? null
+            : comparison > 0 ? existing : proposed;
+        var conflict = new LegendGovernedReasoningConflict(
+            applicationConflict.SemanticDimension,
+            ordered[0],
+            ordered[1],
+            resolution,
+            selected,
+            resolution != LegendGovernedReasoningConflictResolution.ResolvedByHigherStandard);
+        var identity = applicationConflict.SemanticDimension.Trim().ToLowerInvariant() + "\u001f" +
+            string.Join("\u001f", ordered.Select(ConflictSideIdentity));
+        return new(
+            identity,
+            conflict,
+            current,
+            proposedStep,
+            proposedFamilies);
+    }
+
+    private static LegendGovernedReasoningConflictSide ConflictSide(
+        string value,
+        LegendGovernedReasoningProofStep step) =>
+        new(
+            value,
+            step.TransitionSignature,
+            step.OperatorIdentity,
+            step.EvidenceStandard,
+            step.IndependentEvidenceCount,
+            step.IndependentEvidenceIdentities);
+
+    private static string ConflictSideIdentity(LegendGovernedReasoningConflictSide side) =>
+        side.TransitionSignature + "\u001e" + side.SemanticValue.Trim().ToLowerInvariant();
+
+    private static bool IsNonDispositiveOperator(string identity) =>
+        ResolveMode(identity) is ReasoningMode.ObservationalEquivalence or
+            ReasoningMode.InsufficientEvidence or
+            ReasoningMode.CausalDiagnosticContradictoryEvidence or
+            ReasoningMode.CausalDiagnosticResourceLimited;
+
+    private static bool IsDiscriminatingEvidenceOperator(string identity) =>
+        ResolveMode(identity) == ReasoningMode.CausalDiagnosticConclusion;
+
+    private static bool IsUnresolvedConflict(LegendGovernedReasoningConflict conflict) =>
+        conflict.Resolution != LegendGovernedReasoningConflictResolution.ResolvedByHigherStandard;
+
+    private static bool IsRejectedByConflict(
+        LegendGovernedReasoningProof proof,
+        IReadOnlyList<LegendGovernedReasoningConflict> conflicts)
+    {
+        foreach (var conflict in conflicts)
+        {
+            var rejectedSides = IsUnresolvedConflict(conflict)
+                ? new[] { conflict.First, conflict.Second }
+                : new[] { conflict.Selected == conflict.First ? conflict.Second : conflict.First };
+            foreach (var side in rejectedSides)
+            {
+                if (proof.EvidenceLineage.Any(step =>
+                        string.Equals(
+                            step.TransitionSignature,
+                            side.TransitionSignature,
+                            StringComparison.Ordinal) &&
+                        step.Conclusions.TryGetValue(conflict.SemanticDimension, out var value) &&
+                        string.Equals(value, side.SemanticValue, StringComparison.OrdinalIgnoreCase)))
+                {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    private static LegendGovernedReasoningProof BuildUnresolvedConflictProof(
+        IReadOnlyList<ReasoningConflictContext> contexts)
+    {
+        var values = Copy(contexts[0].Current.Values);
+        var conflictDimensions = contexts
+            .Select(item => item.Conflict.SemanticDimension)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(item => item, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        foreach (var dimension in conflictDimensions)
+            values.Remove(dimension);
+        if (conflictDimensions.Contains(
+                CauseSelectionDimension,
+                StringComparer.OrdinalIgnoreCase))
+        {
+            values[CauseSelectionDimension] = UndeterminedValue;
+        }
+        values[EpistemicStatusDimension] = UnresolvedContradictionValue;
+        values[EvidenceAuthorityDimension] = contexts.All(item =>
+                item.Conflict.Resolution ==
+                    LegendGovernedReasoningConflictResolution.UnresolvedEqualAuthority)
+            ? EqualAuthorityValue
+            : NonDispositiveAuthorityValue;
+        values[EvidenceRequirementDimension] = DiscriminatingEvidenceValue;
+        values[ConflictDimensionDimension] = conflictDimensions.Length == 1
+            ? conflictDimensions[0]
+            : MultipleConflictDimensionsValue;
+
+        var path = contexts
+            .SelectMany(item => item.Current.TransitionPath.Append(
+                item.ProposedStep.TransitionSignature))
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+        var evidenceLineage = contexts
+            .SelectMany(item => item.Current.EvidenceLineage.Append(item.ProposedStep))
+            .GroupBy(step => step.TransitionSignature + "\u001f" +
+                CanonicalState(step.Conclusions), StringComparer.Ordinal)
+            .Select(group => group.First())
+            .ToArray();
+        var families = contexts
+            .SelectMany(item => item.Current.SemanticFamilyIds.Concat(item.ProposedFamilies))
+            .OrderBy(item => item)
+            .ToHashSet();
+        return new(
+            values,
+            path,
+            evidenceLineage,
+            families,
+            Math.Min(MaximumDepth, contexts.Max(item => item.Current.Depth + 1)),
+            contexts.Min(item => Math.Min(
+                item.Current.EvidenceCount,
+                item.ProposedStep.IndependentEvidenceCount)),
+            contexts.Min(item => Math.Min(
+                item.Current.EvidenceStandard,
+                item.ProposedStep.EvidenceStandard)));
     }
 
     private static int ComparePath(
@@ -186,15 +1628,21 @@ internal static class LegendConnectGovernedReasoningExecutor
         IReadOnlyDictionary<string, string> sourceFrame,
         IReadOnlyDictionary<string, string> resultFrame,
         IReadOnlyDictionary<string, string> currentValues,
-        out IReadOnlyDictionary<string, string> nextValues)
+        bool requireMonotonicConclusion,
+        ReasoningMode mode,
+        out IReadOnlyDictionary<string, string> nextValues,
+        out IReadOnlyDictionary<string, string> instantiatedConclusions,
+        out IReadOnlyList<ReasoningApplicationConflict> conflicts)
     {
+        conflicts = [];
         if (!TryBindFrame(sourceFrame, currentValues, null, out var bindings))
         {
             nextValues = currentValues;
+            instantiatedConclusions = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
             return false;
         }
 
-        var next = Copy(currentValues);
+        var conclusions = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         foreach (var item in resultFrame)
         {
             string value;
@@ -203,6 +1651,7 @@ internal static class LegendConnectGovernedReasoningExecutor
                 if (!bindings.TryGetValue(item.Value, out value!) || string.IsNullOrWhiteSpace(value))
                 {
                     nextValues = currentValues;
+                    instantiatedConclusions = conclusions;
                     return false;
                 }
             }
@@ -210,14 +1659,559 @@ internal static class LegendConnectGovernedReasoningExecutor
             {
                 value = item.Value;
             }
-            next[item.Key] = value;
+            conclusions[item.Key] = value;
         }
 
+        if (IsCausalDiagnosticMode(mode) &&
+            !IsValidCausalDiagnosticApplication(mode, currentValues, conclusions))
+        {
+            nextValues = currentValues;
+            instantiatedConclusions = conclusions;
+            return false;
+        }
+
+        if (IsConstrainedPlanningMode(mode) &&
+            !IsValidConstrainedPlanningApplication(mode, currentValues, conclusions))
+        {
+            nextValues = currentValues;
+            instantiatedConclusions = conclusions;
+            return false;
+        }
+
+        if (requireMonotonicConclusion)
+        {
+            // Planning is the sole bounded state-machine exception to the
+            // executor's monotonic conclusion rule. The planning guard above
+            // has already proved that each permitted replacement consumes
+            // the current cursor, advances exactly one order, and preserves
+            // all other governed facts and proof lineage.
+            conflicts = conclusions
+                .Where(item => currentValues.TryGetValue(item.Key, out var existing) &&
+                    !string.Equals(existing, item.Value, StringComparison.OrdinalIgnoreCase) &&
+                    !CanReplaceConstrainedPlanningState(mode, item.Key))
+                .OrderBy(item => item.Key, StringComparer.OrdinalIgnoreCase)
+                .Select(item => new ReasoningApplicationConflict(
+                    item.Key,
+                    currentValues[item.Key],
+                    item.Value))
+                .ToArray();
+            if (conflicts.Count > 0)
+            {
+                nextValues = currentValues;
+                instantiatedConclusions = conclusions;
+                return false;
+            }
+        }
+
+        var next = Copy(currentValues);
+        foreach (var conclusion in conclusions)
+            next[conclusion.Key] = conclusion.Value;
         nextValues = next;
+        instantiatedConclusions = conclusions;
         return !string.Equals(
             CanonicalState(currentValues),
             CanonicalState(next),
             StringComparison.Ordinal);
+    }
+
+    private static bool IsValidCausalDiagnosticApplication(
+        ReasoningMode mode,
+        IReadOnlyDictionary<string, string> currentValues,
+        IReadOnlyDictionary<string, string> conclusions)
+    {
+        if (!TryGetSemanticValue(currentValues, FirstHypothesisDimension, out var firstHypothesis) ||
+            !TryGetSemanticValue(currentValues, SecondHypothesisDimension, out var secondHypothesis) ||
+            !TryGetSemanticValue(currentValues, FirstPredictionDimension, out var firstPrediction) ||
+            !TryGetSemanticValue(currentValues, SecondPredictionDimension, out var secondPrediction) ||
+            !HasMatchingCurrentValues(
+                currentValues,
+                FirstHypothesisDimension,
+                FirstPredictionHypothesisDimension) ||
+            !HasMatchingCurrentValues(
+                currentValues,
+                SecondHypothesisDimension,
+                SecondPredictionHypothesisDimension) ||
+            string.Equals(firstHypothesis, secondHypothesis, StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        var predictionsDiffer = !string.Equals(
+            firstPrediction,
+            secondPrediction,
+            StringComparison.OrdinalIgnoreCase);
+        if (!predictionsDiffer)
+            return false;
+
+        if (mode == ReasoningMode.CausalDiagnosticPlan)
+        {
+            return HasMatchingCurrentValues(
+                       currentValues,
+                       DiscriminatingEvidenceDimension,
+                       FirstPredictionEvidenceDimension) &&
+                   HasMatchingCurrentValues(
+                       currentValues,
+                       DiscriminatingEvidenceDimension,
+                       SecondPredictionEvidenceDimension);
+        }
+
+        if (!HasMatchingCurrentValues(
+                currentValues,
+                SelectedDiscriminatingEvidenceDimension,
+                FirstPredictionEvidenceDimension) ||
+            !HasMatchingCurrentValues(
+                currentValues,
+                SelectedDiscriminatingEvidenceDimension,
+                SecondPredictionEvidenceDimension))
+        {
+            return false;
+        }
+
+        if (mode == ReasoningMode.CausalDiagnosticResourceLimited)
+        {
+            return HasMatchingCurrentValues(
+                       currentValues,
+                       SelectedDiscriminatingEvidenceDimension,
+                       DiagnosticResourceDimension) &&
+                   HasSemanticValue(
+                       currentValues,
+                       DiagnosticResourceStatusDimension,
+                       ResourceUnavailableValue);
+        }
+
+        if (!HasMatchingCurrentValues(
+                currentValues,
+                SelectedDiscriminatingEvidenceDimension,
+                ObservedEvidenceSourceDimension) ||
+            !TryGetSemanticValue(currentValues, ObservedEvidenceDimension, out var observed))
+        {
+            return false;
+        }
+
+        var supportsFirst = string.Equals(
+            observed,
+            firstPrediction,
+            StringComparison.OrdinalIgnoreCase);
+        var supportsSecond = string.Equals(
+            observed,
+            secondPrediction,
+            StringComparison.OrdinalIgnoreCase);
+        if (mode == ReasoningMode.CausalDiagnosticContradictoryEvidence)
+            return !supportsFirst && !supportsSecond;
+        if (mode != ReasoningMode.CausalDiagnosticConclusion || supportsFirst == supportsSecond ||
+            !TryGetSemanticValue(conclusions, CauseSelectionDimension, out var selected))
+        {
+            return false;
+        }
+
+        return string.Equals(
+            selected,
+            supportsFirst ? firstHypothesis : secondHypothesis,
+            StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool HasMatchingCurrentValues(
+        IReadOnlyDictionary<string, string> values,
+        string firstDimension,
+        string secondDimension) =>
+        TryGetSemanticValue(values, firstDimension, out var first) &&
+        TryGetSemanticValue(values, secondDimension, out var second) &&
+        string.Equals(first, second, StringComparison.OrdinalIgnoreCase);
+
+    private static bool TryGetSemanticValue(
+        IReadOnlyDictionary<string, string> values,
+        string dimension,
+        out string value)
+    {
+        if (values.TryGetValue(dimension, out value!) && !string.IsNullOrWhiteSpace(value))
+            return true;
+        value = string.Empty;
+        return false;
+    }
+
+    private static bool IsValidConstrainedPlanningApplication(
+        ReasoningMode mode,
+        IReadOnlyDictionary<string, string> currentValues,
+        IReadOnlyDictionary<string, string> conclusions)
+    {
+        if (mode == ReasoningMode.ConstrainedPlanningStop)
+            return IsValidPlanningStop(currentValues, conclusions);
+
+        if (!IsActivePlan(currentValues) || HasSatisfiedStopCondition(currentValues))
+            return false;
+
+        if (mode == ReasoningMode.ConstrainedPlanningEvidenceBranch)
+            return IsValidPlanningEvidenceBranch(currentValues, conclusions);
+
+        if (!TryReadPlanningCandidate(currentValues, out var candidate))
+            return false;
+
+        var blockReason = DeterminePlanningBlockReason(currentValues, candidate);
+        if (mode == ReasoningMode.ConstrainedPlanningBlock)
+        {
+            return blockReason is not null &&
+                   HasSemanticValue(conclusions, PlanStatusDimension, PlanBlockedValue) &&
+                   HasSemanticValue(conclusions, PlanBlockReasonDimension, blockReason);
+        }
+
+        if (mode != ReasoningMode.ConstrainedPlanningStep || blockReason is not null ||
+            !TryGetSemanticValue(
+                conclusions,
+                CurrentPlanActionDimension,
+                out var selectedAction) ||
+            !string.Equals(
+                selectedAction,
+                candidate.CandidateAction,
+                StringComparison.OrdinalIgnoreCase) ||
+            !TryGetBoundedPlanningInteger(
+                conclusions,
+                CurrentActionOrderDimension,
+                0,
+                MaximumDepth,
+                out var selectedOrder) ||
+            selectedOrder != candidate.CandidateOrder ||
+            !TryGetBoundedPlanningInteger(
+                conclusions,
+                PlanElapsedMinutesDimension,
+                0,
+                MaximumPlanningMinutes,
+                out var resultingElapsed) ||
+            resultingElapsed != candidate.ElapsedMinutes + candidate.DurationMinutes)
+        {
+            return false;
+        }
+
+        if (HasSemanticValue(conclusions, PlanStatusDimension, PlanCompletedValue))
+            return true;
+        if (!HasSemanticValue(conclusions, PlanStatusDimension, PlanInProgressValue))
+            return false;
+
+        return TryGetSemanticValue(
+                   conclusions,
+                   CandidatePlanActionDimension,
+                   out var nextAction) &&
+               !string.Equals(
+                   nextAction,
+                   candidate.CandidateAction,
+                   StringComparison.OrdinalIgnoreCase) &&
+               HasSemanticValue(
+                   conclusions,
+                   ActionPrerequisiteDimension,
+                   candidate.CandidateAction) &&
+               TryGetBoundedPlanningInteger(
+                   conclusions,
+                   CandidateActionOrderDimension,
+                   1,
+                   MaximumDepth,
+                   out var nextOrder) &&
+               nextOrder == candidate.CandidateOrder + 1 &&
+               TryGetBoundedPlanningInteger(
+                   conclusions,
+                   ActionDurationMinutesDimension,
+                   1,
+                   MaximumPlanningMinutes,
+                   out _) &&
+               TryGetBoundedPlanningInteger(
+                   conclusions,
+                   RequiredResourceUnitsDimension,
+                   1,
+                   MaximumPlanningResourceUnits,
+                   out _) &&
+               TryGetSemanticValue(
+                   conclusions,
+                   SafetyConstraintStatusDimension,
+                   out var nextSafety) &&
+               IsKnownSafetyConstraintStatus(nextSafety);
+    }
+
+    private static bool IsValidPlanningEvidenceBranch(
+        IReadOnlyDictionary<string, string> currentValues,
+        IReadOnlyDictionary<string, string> conclusions)
+    {
+        if (HasUnsupportedCausalAssumption(currentValues) ||
+            !TryGetSemanticValue(
+                currentValues,
+                CurrentPlanActionDimension,
+                out var currentAction) ||
+            !TryGetSemanticValue(
+                currentValues,
+                CandidatePlanActionDimension,
+                out var pendingBranch) ||
+            !TryGetSemanticValue(
+                currentValues,
+                RequiredBranchEvidenceDimension,
+                out var requiredEvidence) ||
+            !TryGetSemanticValue(
+                currentValues,
+                ObservedBranchEvidenceDimension,
+                out var observedEvidence) ||
+            !string.Equals(requiredEvidence, observedEvidence, StringComparison.OrdinalIgnoreCase) ||
+            !HasSemanticValue(conclusions, CurrentPlanActionDimension, currentAction) ||
+            !TryGetSemanticValue(
+                conclusions,
+                CandidatePlanActionDimension,
+                out var selectedBranch) ||
+            string.Equals(selectedBranch, pendingBranch, StringComparison.OrdinalIgnoreCase) ||
+            !HasSemanticValue(conclusions, ActionPrerequisiteDimension, currentAction) ||
+            !TryGetBoundedPlanningInteger(
+                currentValues,
+                CurrentActionOrderDimension,
+                0,
+                MaximumDepth - 1,
+                out var currentOrder) ||
+            !TryGetBoundedPlanningInteger(
+                conclusions,
+                CandidateActionOrderDimension,
+                1,
+                MaximumDepth,
+                out var branchOrder) ||
+            branchOrder != currentOrder + 1 ||
+            !TryGetBoundedPlanningInteger(
+                conclusions,
+                ActionDurationMinutesDimension,
+                1,
+                MaximumPlanningMinutes,
+                out _) ||
+            !TryGetBoundedPlanningInteger(
+                conclusions,
+                RequiredResourceUnitsDimension,
+                1,
+                MaximumPlanningResourceUnits,
+                out _) ||
+            !TryGetSemanticValue(
+                conclusions,
+                SafetyConstraintStatusDimension,
+                out var safetyStatus) ||
+            !IsKnownSafetyConstraintStatus(safetyStatus))
+        {
+            return false;
+        }
+
+        return HasSemanticValue(
+                   conclusions,
+                   SelectedBranchEvidenceDimension,
+                   observedEvidence) &&
+               HasSemanticValue(
+                   conclusions,
+                   EvidenceBranchStatusDimension,
+                   EvidenceBranchSelectedValue);
+    }
+
+    private static bool IsValidPlanningStop(
+        IReadOnlyDictionary<string, string> currentValues,
+        IReadOnlyDictionary<string, string> conclusions)
+    {
+        if (!IsActivePlan(currentValues) ||
+            !TryGetSemanticValue(
+                currentValues,
+                StopConditionDimension,
+                out var stopCondition) ||
+            !TryGetSemanticValue(
+                currentValues,
+                ObservedStopEvidenceDimension,
+                out var observedStopEvidence) ||
+            !string.Equals(
+                stopCondition,
+                observedStopEvidence,
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        return HasSemanticValue(conclusions, PlanStatusDimension, PlanStoppedValue) &&
+               HasSemanticValue(conclusions, PlanStopReasonDimension, stopCondition) &&
+               HasSemanticValue(
+                   conclusions,
+                   SelectedStopEvidenceDimension,
+                   observedStopEvidence);
+    }
+
+    private static bool TryReadPlanningCandidate(
+        IReadOnlyDictionary<string, string> values,
+        out PlanningCandidateState candidate)
+    {
+        candidate = default!;
+        if (!TryGetSemanticValue(values, CurrentPlanActionDimension, out var currentAction) ||
+            !TryGetSemanticValue(values, CandidatePlanActionDimension, out var candidateAction) ||
+            !TryGetSemanticValue(values, ActionPrerequisiteDimension, out var prerequisite) ||
+            !TryGetBoundedPlanningInteger(
+                values,
+                CurrentActionOrderDimension,
+                0,
+                MaximumDepth,
+                out var currentOrder) ||
+            !TryGetBoundedPlanningInteger(
+                values,
+                CandidateActionOrderDimension,
+                0,
+                MaximumDepth,
+                out var candidateOrder) ||
+            !TryGetBoundedPlanningInteger(
+                values,
+                ActionDurationMinutesDimension,
+                1,
+                MaximumPlanningMinutes,
+                out var durationMinutes) ||
+            !TryGetBoundedPlanningInteger(
+                values,
+                PlanTimeLimitMinutesDimension,
+                1,
+                MaximumPlanningMinutes,
+                out var timeLimitMinutes) ||
+            !TryGetBoundedPlanningInteger(
+                values,
+                PlanElapsedMinutesDimension,
+                0,
+                MaximumPlanningMinutes,
+                out var elapsedMinutes) ||
+            !TryGetBoundedPlanningInteger(
+                values,
+                AvailableResourceUnitsDimension,
+                0,
+                MaximumPlanningResourceUnits,
+                out var availableResources) ||
+            !TryGetBoundedPlanningInteger(
+                values,
+                RequiredResourceUnitsDimension,
+                1,
+                MaximumPlanningResourceUnits,
+                out var requiredResources) ||
+            !TryGetSemanticValue(
+                values,
+                SafetyConstraintStatusDimension,
+                out var safetyStatus) ||
+            !IsKnownSafetyConstraintStatus(safetyStatus))
+        {
+            return false;
+        }
+
+        candidate = new PlanningCandidateState(
+            currentAction,
+            candidateAction,
+            prerequisite,
+            currentOrder,
+            candidateOrder,
+            durationMinutes,
+            timeLimitMinutes,
+            elapsedMinutes,
+            availableResources,
+            requiredResources,
+            safetyStatus);
+        return true;
+    }
+
+    private static string? DeterminePlanningBlockReason(
+        IReadOnlyDictionary<string, string> values,
+        PlanningCandidateState candidate)
+    {
+        if (HasUnsupportedCausalAssumption(values))
+            return UnprovenCausalAssumptionValue;
+        if (string.Equals(
+                candidate.SafetyStatus,
+                ConstraintContradictionValue,
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return ContradictoryConstraintsValue;
+        }
+        if (!string.Equals(
+                candidate.Prerequisite,
+                candidate.CurrentAction,
+                StringComparison.OrdinalIgnoreCase) ||
+            candidate.CandidateOrder != candidate.CurrentOrder + 1)
+        {
+            return PrerequisiteOrderViolationValue;
+        }
+        if (string.Equals(
+                candidate.SafetyStatus,
+                SafetyViolatedValue,
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return UnsafeStepValue;
+        }
+        if (candidate.RequiredResources > candidate.AvailableResources)
+            return InsufficientResourceValue;
+        if (candidate.ElapsedMinutes + candidate.DurationMinutes > candidate.TimeLimitMinutes)
+            return TimeLimitExceededValue;
+        return null;
+    }
+
+    private static bool HasUnsupportedCausalAssumption(
+        IReadOnlyDictionary<string, string> values)
+    {
+        if (!TryGetSemanticValue(values, CauseSelectionDimension, out var cause) ||
+            string.Equals(cause, UndeterminedValue, StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        return !HasSemanticValue(
+            values,
+            CausalAttributionStatusDimension,
+            AttributionSupportedValue);
+    }
+
+    private static bool IsActivePlan(IReadOnlyDictionary<string, string> values) =>
+        HasSemanticValue(values, PlanStatusDimension, PlanReadyValue) ||
+        HasSemanticValue(values, PlanStatusDimension, PlanInProgressValue);
+
+    private static bool HasSatisfiedStopCondition(IReadOnlyDictionary<string, string> values) =>
+        TryGetSemanticValue(values, StopConditionDimension, out var stopCondition) &&
+        TryGetSemanticValue(values, ObservedStopEvidenceDimension, out var observed) &&
+        string.Equals(stopCondition, observed, StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsKnownSafetyConstraintStatus(string value) =>
+        value is SafetySatisfiedValue or SafetyViolatedValue or ConstraintContradictionValue;
+
+    private static bool TryGetBoundedPlanningInteger(
+        IReadOnlyDictionary<string, string> values,
+        string dimension,
+        int minimum,
+        int maximum,
+        out int result)
+    {
+        result = 0;
+        return TryGetSemanticValue(values, dimension, out var value) &&
+               int.TryParse(
+                   value,
+                   NumberStyles.None,
+                   CultureInfo.InvariantCulture,
+                   out result) &&
+               result >= minimum &&
+               result <= maximum;
+    }
+
+    private static bool CanReplaceConstrainedPlanningState(
+        ReasoningMode mode,
+        string dimension)
+    {
+        if (mode == ReasoningMode.ConstrainedPlanningStep)
+        {
+            return dimension is CurrentPlanActionDimension or
+                CurrentActionOrderDimension or
+                PlanElapsedMinutesDimension or
+                PlanStatusDimension or
+                CandidatePlanActionDimension or
+                ActionPrerequisiteDimension or
+                CandidateActionOrderDimension or
+                ActionDurationMinutesDimension or
+                RequiredResourceUnitsDimension or
+                SafetyConstraintStatusDimension;
+        }
+        if (mode == ReasoningMode.ConstrainedPlanningBlock ||
+            mode == ReasoningMode.ConstrainedPlanningStop)
+        {
+            return dimension == PlanStatusDimension;
+        }
+        if (mode == ReasoningMode.ConstrainedPlanningEvidenceBranch)
+        {
+            return dimension is CandidatePlanActionDimension or
+                ActionPrerequisiteDimension or
+                CandidateActionOrderDimension or
+                ActionDurationMinutesDimension or
+                RequiredResourceUnitsDimension or
+                SafetyConstraintStatusDimension;
+        }
+        return false;
     }
 
     private static bool ViolatesConstraint(
@@ -290,6 +2284,13 @@ internal static class LegendConnectGovernedReasoningExecutor
             .ThenBy(item => item.Value, StringComparer.OrdinalIgnoreCase)
             .Select(item => item.Key.Trim().ToLowerInvariant() + "=" + item.Value.Trim().ToLowerInvariant()));
 
+    private static string CanonicalProofState(
+        IReadOnlyDictionary<string, string> values,
+        IReadOnlySet<Guid> semanticFamilyIds) =>
+        CanonicalState(values) + "\u001e" + string.Join(
+            "\u001f",
+            semanticFamilyIds.OrderBy(item => item).Select(item => item.ToString("N")));
+
     private static bool IsVariable(string value) =>
         value.Length > 1 && value[0] == '$';
 
@@ -304,22 +2305,121 @@ internal static class LegendConnectGovernedReasoningExecutor
             return ReasoningMode.Bidirectional;
         if (value == "reasoning.constraint" || value.StartsWith("reasoning.constraint.", StringComparison.Ordinal))
             return ReasoningMode.Constraint;
+        if (value == "reasoning.deduction.universal" ||
+            value.StartsWith("reasoning.deduction.universal.", StringComparison.Ordinal) ||
+            value == "reasoning.deduction.conditional" ||
+            value.StartsWith("reasoning.deduction.conditional.", StringComparison.Ordinal))
+        {
+            return ReasoningMode.Deduction;
+        }
+        if (value == "reasoning.epistemic.observational-equivalence" ||
+            value.StartsWith("reasoning.epistemic.observational-equivalence.", StringComparison.Ordinal))
+            return ReasoningMode.ObservationalEquivalence;
+        if (value == "reasoning.epistemic.insufficient-evidence" ||
+            value.StartsWith("reasoning.epistemic.insufficient-evidence.", StringComparison.Ordinal))
+            return ReasoningMode.InsufficientEvidence;
+        if (value == "reasoning.causal-diagnostic.plan" ||
+            value.StartsWith("reasoning.causal-diagnostic.plan.", StringComparison.Ordinal))
+            return ReasoningMode.CausalDiagnosticPlan;
+        if (value == "reasoning.causal-diagnostic.conclude" ||
+            value.StartsWith("reasoning.causal-diagnostic.conclude.", StringComparison.Ordinal))
+            return ReasoningMode.CausalDiagnosticConclusion;
+        if (value == "reasoning.causal-diagnostic.contradictory-evidence" ||
+            value.StartsWith("reasoning.causal-diagnostic.contradictory-evidence.", StringComparison.Ordinal))
+            return ReasoningMode.CausalDiagnosticContradictoryEvidence;
+        if (value == "reasoning.causal-diagnostic.resource-limited" ||
+            value.StartsWith("reasoning.causal-diagnostic.resource-limited.", StringComparison.Ordinal))
+            return ReasoningMode.CausalDiagnosticResourceLimited;
+        if (value == "reasoning.constrained-planning.step" ||
+            value.StartsWith("reasoning.constrained-planning.step.", StringComparison.Ordinal))
+            return ReasoningMode.ConstrainedPlanningStep;
+        if (value == "reasoning.constrained-planning.block" ||
+            value.StartsWith("reasoning.constrained-planning.block.", StringComparison.Ordinal))
+            return ReasoningMode.ConstrainedPlanningBlock;
+        if (value == "reasoning.constrained-planning.evidence-branch" ||
+            value.StartsWith("reasoning.constrained-planning.evidence-branch.", StringComparison.Ordinal))
+            return ReasoningMode.ConstrainedPlanningEvidenceBranch;
+        if (value == "reasoning.constrained-planning.stop" ||
+            value.StartsWith("reasoning.constrained-planning.stop.", StringComparison.Ordinal))
+            return ReasoningMode.ConstrainedPlanningStop;
         return null;
     }
+
+    private static bool IsEpistemicMode(ReasoningMode? mode) =>
+        mode is ReasoningMode.ObservationalEquivalence or
+            ReasoningMode.InsufficientEvidence;
+
+    private static bool IsCausalDiagnosticMode(ReasoningMode? mode) =>
+        mode is ReasoningMode.CausalDiagnosticPlan or
+            ReasoningMode.CausalDiagnosticConclusion or
+            ReasoningMode.CausalDiagnosticContradictoryEvidence or
+            ReasoningMode.CausalDiagnosticResourceLimited;
+
+    private static bool IsConstrainedPlanningMode(ReasoningMode? mode) =>
+        mode is ReasoningMode.ConstrainedPlanningStep or
+            ReasoningMode.ConstrainedPlanningBlock or
+            ReasoningMode.ConstrainedPlanningEvidenceBranch or
+            ReasoningMode.ConstrainedPlanningStop;
 
     private enum ReasoningMode
     {
         Forward,
         Bidirectional,
-        Constraint
+        Constraint,
+        Deduction,
+        ObservationalEquivalence,
+        InsufficientEvidence,
+        CausalDiagnosticPlan,
+        CausalDiagnosticConclusion,
+        CausalDiagnosticContradictoryEvidence,
+        CausalDiagnosticResourceLimited,
+        ConstrainedPlanningStep,
+        ConstrainedPlanningBlock,
+        ConstrainedPlanningEvidenceBranch,
+        ConstrainedPlanningStop
     }
 
     private sealed record DirectionalRule(
         LegendGovernedReasoningRule Rule,
         IReadOnlyDictionary<string, string> SourceFrame,
         IReadOnlyDictionary<string, string> ResultFrame,
-        bool Reversed);
+        IReadOnlySet<Guid> SourceSemanticFamilyIds,
+        IReadOnlySet<Guid> ResultSemanticFamilyIds,
+        IReadOnlyList<LegendGovernedReasoningFamilyConnection> FamilyConnections,
+        bool Reversed,
+        bool IsProofCarrying,
+        ReasoningMode Mode);
+
+    private sealed record ReasoningApplicationConflict(
+        string SemanticDimension,
+        string ExistingValue,
+        string ProposedValue);
+
+    private sealed record ReasoningConflictContext(
+        string Identity,
+        LegendGovernedReasoningConflict Conflict,
+        LegendGovernedReasoningProof Current,
+        LegendGovernedReasoningProofStep ProposedStep,
+        IReadOnlySet<Guid> ProposedFamilies);
+
+    private sealed record PlanningCandidateState(
+        string CurrentAction,
+        string CandidateAction,
+        string Prerequisite,
+        int CurrentOrder,
+        int CandidateOrder,
+        int DurationMinutes,
+        int TimeLimitMinutes,
+        int ElapsedMinutes,
+        int AvailableResources,
+        int RequiredResources,
+        string SafetyStatus);
 }
+
+internal sealed record LegendGovernedReasoningFamilyConnection(
+    Guid SourceSemanticFamilyId,
+    Guid ResultSemanticFamilyId,
+    bool HasExplicitGovernedTransfer);
 
 internal sealed record LegendGovernedReasoningRule(
     string TransitionSignature,
@@ -327,19 +2427,81 @@ internal sealed record LegendGovernedReasoningRule(
     IReadOnlyDictionary<string, string> SourceFrame,
     IReadOnlyDictionary<string, string> ResultFrame,
     int IndependentEvidenceCount,
-    int EvidenceStandard = 2);
+    int EvidenceStandard,
+    IReadOnlySet<Guid> SourceSemanticFamilyIds,
+    IReadOnlySet<Guid> ResultSemanticFamilyIds,
+    IReadOnlyList<string> IndependentEvidenceIdentities,
+    IReadOnlyList<LegendGovernedReasoningFamilyConnection> FamilyConnections);
+
+internal sealed record LegendGovernedReasoningProofStep(
+    string TransitionSignature,
+    string OperatorIdentity,
+    IReadOnlyDictionary<string, string> Premises,
+    IReadOnlyDictionary<string, string> Conclusions,
+    IReadOnlyList<string> IndependentEvidenceIdentities,
+    int IndependentEvidenceCount,
+    int EvidenceStandard,
+    IReadOnlySet<Guid> SourceSemanticFamilyIds,
+    IReadOnlySet<Guid> ResultSemanticFamilyIds,
+    bool HasExplicitGovernedTransfer,
+    bool Reversed);
 
 internal sealed record LegendGovernedReasoningProof(
     IReadOnlyDictionary<string, string> Values,
     IReadOnlyList<string> TransitionPath,
+    IReadOnlyList<LegendGovernedReasoningProofStep> EvidenceLineage,
+    IReadOnlySet<Guid> SemanticFamilyIds,
     int Depth,
     int EvidenceCount,
     int EvidenceStandard);
 
+internal enum LegendGovernedReasoningConflictResolution
+{
+    UnresolvedEqualAuthority,
+    UnresolvedWithoutDiscriminatingEvidence,
+    ResolvedByHigherStandard
+}
+
+internal sealed record LegendGovernedReasoningConflictSide(
+    string SemanticValue,
+    string TransitionSignature,
+    string OperatorIdentity,
+    int EvidenceStandard,
+    int IndependentEvidenceCount,
+    IReadOnlyList<string> IndependentEvidenceIdentities);
+
+internal sealed record LegendGovernedReasoningConflict(
+    string SemanticDimension,
+    LegendGovernedReasoningConflictSide First,
+    LegendGovernedReasoningConflictSide Second,
+    LegendGovernedReasoningConflictResolution Resolution,
+    LegendGovernedReasoningConflictSide? Selected,
+    bool RequiresDiscriminatingEvidence);
+
 internal sealed record LegendGovernedReasoningExecution(
     bool InitialContradiction,
+    bool DerivedContradiction,
     bool BudgetExceeded,
-    IReadOnlyList<LegendGovernedReasoningProof> DerivedStates)
+    IReadOnlyList<LegendGovernedReasoningProof> DerivedStates,
+    IReadOnlyList<LegendGovernedReasoningConflict> Conflicts)
 {
-    internal static readonly LegendGovernedReasoningExecution Empty = new(false, false, []);
+    internal static readonly LegendGovernedReasoningExecution Empty = new(false, false, false, [], []);
 }
+
+internal enum LegendResearchEvidenceAssessmentState
+{
+    Conclusion,
+    InsufficientEvidence,
+    UnresolvedConflict
+}
+
+internal sealed record LegendResearchEvidenceAssessment(
+    LegendResearchEvidenceAssessmentState State,
+    IReadOnlyList<LegendConnectResearchMaterialClaimEvidence> Claims,
+    IReadOnlyList<LegendConnectResearchMaterialClaimEvidence> Contradictions,
+    IReadOnlyList<LegendConnectResearchMaterialClaimEvidence> MaterialEvidence,
+    IReadOnlyList<LegendConnectResearchClaimResolution> ClaimResolutions,
+    int IndependentSourceCount,
+    int RequiredIndependentSourceCount,
+    string ReasonCode,
+    IReadOnlyList<LegendConnectResearchEvidenceAdmissibility> Admissibility);

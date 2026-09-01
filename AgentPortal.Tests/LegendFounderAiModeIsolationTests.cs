@@ -10,9 +10,11 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using AgentPortal.Controllers;
+using AgentPortal.Security;
 using AgentPortal.Services;
 using Domain.Entities;
 using Domain.Messaging;
+using Infrastructure.Messaging;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -209,11 +211,421 @@ public sealed class LegendFounderAiModeIsolationTests
         Assert.Equal(0, NativeInferenceCalls(operations));
     }
 
-    [Fact]
-    public async Task NativeGap_AutomaticallyRetainsOneMachineProposalWithoutFounderApproval()
+    [Theory]
+    [InlineData("Hello, can you help me?", "en", "en")]
+    [InlineData("Bonjour, pouvez-vous m’aider?", "fr-FR", "fr")]
+    [InlineData("Bonjou, èske ou ka ede m?", "ht", "ht")]
+    public async Task MissingSourceLanguage_UsesGovernedIdentificationBeforeNativeMeaning(
+        string prompt,
+        string detectedLanguage,
+        string expectedLanguage)
     {
-        var candidateId = Guid.Parse("11111111-1111-1111-1111-111111111111");
-        var proposalId = Guid.Parse("22222222-2222-2222-2222-222222222222");
+        using var founderEnvironment = new FounderEnvironmentScope();
+        await using var db = ControllerTestHelpers.BuildDb();
+        var founder = await AddFounderProfileAsync(db);
+        var operations = new Mock<ILegendConnectOperations>(MockBehavior.Strict);
+        operations
+            .Setup(operation => operation.TryInferConversationWithDiscourseAsync(
+                prompt,
+                It.IsAny<IReadOnlyList<LegendConnectConversationContextItem>>(),
+                It.IsAny<LegendConnectDiscourseStateSnapshot?>(),
+                It.IsAny<CancellationToken>(),
+                expectedLanguage))
+            .ReturnsAsync(NativeLanguageAnswer(expectedLanguage));
+        var detector = new FounderAiLanguageDetector(
+            new TranslationDetectionResult(
+                true,
+                detectedLanguage,
+                Confidence: 1m));
+        var service = CreateService(
+            db,
+            operations.Object,
+            new FounderAiScenarioHandler(),
+            detector);
+
+        var response = await service.ReplyAsync(
+            founder,
+            Request(
+                "legend",
+                prompt,
+                nativeOnly: true,
+                sourceLanguageCode: null));
+
+        Assert.True(response.Succeeded, Describe(response));
+        Assert.Equal("native_response", response.Stage);
+        Assert.Equal("Unavailable", response.ModelAssistanceState);
+        Assert.Equal("active_reasoning_model_unavailable", response.ModelAssistanceReason);
+        Assert.Equal(1, detector.DetectionCount);
+        operations.Verify(operation => operation.TryInferConversationWithDiscourseAsync(
+            prompt,
+            It.IsAny<IReadOnlyList<LegendConnectConversationContextItem>>(),
+            It.IsAny<LegendConnectDiscourseStateSnapshot?>(),
+            It.IsAny<CancellationToken>(),
+            expectedLanguage), Times.Once);
+    }
+
+    [Fact]
+    public async Task DeclaredSourceLanguage_IsNormalizedByRegistryWithoutDetection()
+    {
+        using var founderEnvironment = new FounderEnvironmentScope();
+        await using var db = ControllerTestHelpers.BuildDb();
+        var founder = await AddFounderProfileAsync(db);
+        var operations = new Mock<ILegendConnectOperations>(MockBehavior.Strict);
+        operations
+            .Setup(operation => operation.TryInferConversationWithDiscourseAsync(
+                "Expliquez cette distinction.",
+                It.IsAny<IReadOnlyList<LegendConnectConversationContextItem>>(),
+                It.IsAny<LegendConnectDiscourseStateSnapshot?>(),
+                It.IsAny<CancellationToken>(),
+                "fr"))
+            .ReturnsAsync(NativeLanguageAnswer("fr"));
+        var detector = new FounderAiLanguageDetector(
+            new TranslationDetectionResult(false, null, "must_not_detect"));
+        var service = CreateService(
+            db,
+            operations.Object,
+            new FounderAiScenarioHandler(),
+            detector);
+
+        var response = await service.ReplyAsync(
+            founder,
+            Request(
+                "legend",
+                "Expliquez cette distinction.",
+                nativeOnly: true,
+                sourceLanguageCode: " fr_fr "));
+
+        Assert.True(response.Succeeded, Describe(response));
+        Assert.Equal(0, detector.DetectionCount);
+        operations.Verify(operation => operation.TryInferConversationWithDiscourseAsync(
+            "Expliquez cette distinction.",
+            It.IsAny<IReadOnlyList<LegendConnectConversationContextItem>>(),
+            It.IsAny<LegendConnectDiscourseStateSnapshot?>(),
+            It.IsAny<CancellationToken>(),
+            "fr"), Times.Once);
+    }
+
+    [Theory]
+    [InlineData("translation_language_ambiguous", "source_language_ambiguous", 422)]
+    [InlineData("translation_language_unsupported", "source_language_unsupported", 422)]
+    [InlineData("translation_provider_failed", "source_language_identification_unavailable", 503)]
+    public async Task MissingSourceLanguage_FailureFailsClosedWithExactDiagnostic(
+        string detectorError,
+        string expectedReason,
+        int expectedStatus)
+    {
+        using var founderEnvironment = new FounderEnvironmentScope();
+        await using var db = ControllerTestHelpers.BuildDb();
+        var founder = await AddFounderProfileAsync(db);
+        var operations = new Mock<ILegendConnectOperations>(MockBehavior.Strict);
+        var detector = new FounderAiLanguageDetector(
+            new TranslationDetectionResult(false, null, detectorError));
+        var service = CreateService(
+            db,
+            operations.Object,
+            new FounderAiScenarioHandler(),
+            detector);
+
+        var response = await service.ReplyAsync(
+            founder,
+            Request(
+                "legend",
+                "Ambiguous language sample",
+                nativeOnly: true,
+                sourceLanguageCode: null));
+
+        Assert.False(response.Succeeded);
+        Assert.Equal("language_identification", response.FailureKind);
+        Assert.Equal("source_language_identification", response.Stage);
+        Assert.Equal(expectedReason, response.Reason);
+        Assert.Equal(expectedStatus, StatusFor(response));
+        Assert.Contains(
+            $"SourceLanguageFailure={expectedReason}",
+            response.Error,
+            StringComparison.Ordinal);
+        Assert.Empty(operations.Invocations);
+    }
+
+    [Fact]
+    public async Task DetectedButRegistryUnsupportedLanguage_FailsClosedBeforeMeaningGraph()
+    {
+        using var founderEnvironment = new FounderEnvironmentScope();
+        await using var db = ControllerTestHelpers.BuildDb();
+        var founder = await AddFounderProfileAsync(db);
+        var operations = new Mock<ILegendConnectOperations>(MockBehavior.Strict);
+        var detector = new FounderAiLanguageDetector(
+            new TranslationDetectionResult(true, "it", Confidence: 1m));
+        var service = CreateService(
+            db,
+            operations.Object,
+            new FounderAiScenarioHandler(),
+            detector);
+
+        var response = await service.ReplyAsync(
+            founder,
+            Request(
+                "legend",
+                "Ciao, puoi aiutarmi?",
+                nativeOnly: true,
+                sourceLanguageCode: null));
+
+        Assert.False(response.Succeeded);
+        Assert.Equal("source_language_unsupported", response.Reason);
+        Assert.Equal(1, detector.DetectionCount);
+        Assert.Empty(operations.Invocations);
+    }
+
+    [Theory]
+    [InlineData("en<script>", "source_language_code_invalid")]
+    [InlineData("x-spoofed", "source_language_unsupported")]
+    public async Task SpoofedDeclaredSourceLanguage_FailsClosedBeforeDetectionOrMeaningGraph(
+        string declaredCode,
+        string expectedReason)
+    {
+        using var founderEnvironment = new FounderEnvironmentScope();
+        await using var db = ControllerTestHelpers.BuildDb();
+        var founder = await AddFounderProfileAsync(db);
+        var operations = new Mock<ILegendConnectOperations>(MockBehavior.Strict);
+        var detector = new FounderAiLanguageDetector(
+            new TranslationDetectionResult(true, "en", Confidence: 1m));
+        var service = CreateService(
+            db,
+            operations.Object,
+            new FounderAiScenarioHandler(),
+            detector);
+
+        var response = await service.ReplyAsync(
+            founder,
+            Request(
+                "legend",
+                "Bonjour",
+                nativeOnly: true,
+                sourceLanguageCode: declaredCode));
+
+        Assert.False(response.Succeeded);
+        Assert.Equal(expectedReason, response.Reason);
+        Assert.Equal(0, detector.DetectionCount);
+        Assert.Empty(operations.Invocations);
+    }
+
+    [Fact]
+    public async Task SourceLanguageIdentification_DoesNotRunBeforeFounderAuthorization()
+    {
+        using var founderEnvironment = new FounderEnvironmentScope();
+        await using var db = ControllerTestHelpers.BuildDb();
+        var operations = new Mock<ILegendConnectOperations>(MockBehavior.Strict);
+        var detector = new FounderAiLanguageDetector(
+            new TranslationDetectionResult(true, "en", Confidence: 1m));
+        var service = CreateService(
+            db,
+            operations.Object,
+            new FounderAiScenarioHandler(),
+            detector);
+
+        await Assert.ThrowsAsync<ForbidResultException>(() => service.ReplyAsync(
+            ControllerTestHelpers.BuildUser("not-the-founder"),
+            Request(
+                "legend",
+                "Hello",
+                nativeOnly: true,
+                sourceLanguageCode: null)));
+
+        Assert.Equal(0, detector.DetectionCount);
+        Assert.Empty(operations.Invocations);
+    }
+
+    [Fact]
+    public async Task NativeReadOnlyContentBinding_UsesFounderToolAuthorityAndProducesZeroWriteProvenance()
+    {
+        using var founderEnvironment = new FounderEnvironmentScope();
+        await using var db = ControllerTestHelpers.BuildDb();
+        var founder = await AddFounderProfileAsync(db);
+        var operations = new Mock<ILegendConnectOperations>(MockBehavior.Strict);
+        var readRequest = ReadOnlyContentRequest();
+        operations
+            .Setup(operation => operation.TryInferConversationWithDiscourseAsync(
+                "What is the current open issue count?",
+                It.IsAny<IReadOnlyList<LegendConnectConversationContextItem>>(),
+                It.IsAny<LegendConnectDiscourseStateSnapshot?>(),
+                It.IsAny<CancellationToken>(),
+                "en"))
+            .ReturnsAsync(new LegendConnectNativeInferenceSnapshot(
+                false,
+                0m,
+                null,
+                "read_only_content_binding_required",
+                3,
+                "One governed read is required.",
+                false,
+                ReadOnlyContentRequest: readRequest));
+        operations
+            .Setup(operation => operation.GetTranslationQualityAsync(
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new LegendConnectTranslationQualitySnapshot(
+                4_458,
+                2_999,
+                300,
+                12,
+                8_796,
+                []));
+        LegendConnectReadOnlyContentBindingReceipt? observedReceipt = null;
+        operations
+            .Setup(operation => operation.TryInferConversationWithReadOnlyContentAsync(
+                "What is the current open issue count?",
+                It.IsAny<IReadOnlyList<LegendConnectConversationContextItem>>(),
+                It.IsAny<LegendConnectDiscourseStateSnapshot?>(),
+                It.IsAny<LegendConnectReadOnlyContentBindingReceipt>(),
+                It.IsAny<CancellationToken>(),
+                "en"))
+            .Callback((string _input,
+                IReadOnlyList<LegendConnectConversationContextItem> _context,
+                LegendConnectDiscourseStateSnapshot? _discourseState,
+                LegendConnectReadOnlyContentBindingReceipt receipt,
+                CancellationToken _cancellationToken,
+                string _language) => observedReceipt = receipt)
+            .ReturnsAsync(() => new LegendConnectNativeInferenceSnapshot(
+                true,
+                1m,
+                "Open issues 4,458.",
+                "semantic_transition_governed_composed",
+                4,
+                "Founder-authorized read-only content was bound with provenance.",
+                false,
+                "HigherStandard",
+                "OriginalComposition",
+                ContentBindingProvenance: observedReceipt is null ? null : [observedReceipt]));
+        var handler = new FounderAiScenarioHandler();
+        var service = CreateService(db, operations.Object, handler);
+
+        var response = await service.ReplyAsync(
+            founder,
+            Request(
+                "legend",
+                "What is the current open issue count?",
+                nativeOnly: true));
+
+        Assert.True(response.Succeeded, Describe(response));
+        Assert.Equal("native_response", response.Stage);
+        Assert.Equal("LegendAi", response.ResponseAuthority);
+        Assert.Equal("Open issues 4,458.", response.Message);
+        Assert.Equal(0, handler.RequestCount);
+        var receipt = Assert.IsType<LegendConnectReadOnlyContentBindingReceipt>(observedReceipt);
+        Assert.Equal("4458", receipt.SemanticValue);
+        Assert.Equal(LegendConnectReadOnlyContentBindingContracts.Provenance, receipt.Provenance);
+        Assert.True(receipt.IsReadOnly);
+        Assert.True(receipt.ZeroWrite);
+        var permittedReads = new HashSet<string>(StringComparer.Ordinal)
+        {
+            nameof(ILegendConnectOperations.AnalyzeReusableMeaningGraphAsync),
+            nameof(ILegendConnectOperations.TryInferConversationWithDiscourseAsync),
+            nameof(ILegendConnectOperations.GetTranslationQualityAsync),
+            nameof(ILegendConnectOperations.TryInferConversationWithReadOnlyContentAsync)
+        };
+        Assert.All(operations.Invocations, invocation =>
+            Assert.True(
+                permittedReads.Contains(invocation.Method.Name),
+                $"Unexpected non-read operation: {invocation.Method.Name}"));
+    }
+
+    [Fact]
+    public async Task NativeReadOnlyContentBinding_DoesNotExecuteBeforeFounderAuthorization()
+    {
+        using var founderEnvironment = new FounderEnvironmentScope();
+        await using var db = ControllerTestHelpers.BuildDb();
+        var operations = new Mock<ILegendConnectOperations>(MockBehavior.Strict);
+        var legend = new FounderLegendConnectService(
+            operations.Object,
+            new AgentProfileAccessResolver(db));
+        var authority = new LegendFounderToolAuthority(legend, null);
+
+        await Assert.ThrowsAsync<ForbidResultException>(() =>
+            authority.BindReadOnlyResultAsync(
+                ControllerTestHelpers.BuildUser("not-the-founder"),
+                ReadOnlyContentRequest(),
+                CancellationToken.None));
+
+        Assert.Empty(operations.Invocations);
+    }
+
+    [Fact]
+    public async Task NativeReadOnlyContentBinding_RejectsUnavailableAndNonPermittedTools()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var operations = new Mock<ILegendConnectOperations>(MockBehavior.Strict);
+        var authority = new LegendFounderToolAuthority(
+            new FounderLegendConnectService(
+                operations.Object,
+                new AgentProfileAccessResolver(db)),
+            null);
+
+        Assert.True(authority.IsNativeContentBindingRead("legend_translation_quality"));
+        Assert.False(authority.IsNativeContentBindingRead("legend_submit_founder_curriculum"));
+        Assert.False(authority.IsNativeContentBindingRead("legend_inspect_repository"));
+        Assert.False(authority.IsNativeContentBindingRead("legend_provider_capacity"));
+
+        var unavailable = await authority.BindReadOnlyResultAsync(
+            ControllerTestHelpers.BuildUser(),
+            ReadOnlyContentRequest() with { ToolName = "legend_unknown_read" },
+            CancellationToken.None);
+        var mutation = await authority.BindReadOnlyResultAsync(
+            ControllerTestHelpers.BuildUser(),
+            ReadOnlyContentRequest() with { ToolName = "legend_submit_founder_curriculum" },
+            CancellationToken.None);
+        var repository = await authority.BindReadOnlyResultAsync(
+            ControllerTestHelpers.BuildUser(),
+            ReadOnlyContentRequest() with { ToolName = "legend_inspect_repository" },
+            CancellationToken.None);
+        var malformedArguments = await authority.BindReadOnlyResultAsync(
+            ControllerTestHelpers.BuildUser(),
+            ReadOnlyContentRequest() with { ArgumentsJson = "{\"extra\":true}" },
+            CancellationToken.None);
+
+        Assert.Equal("read_only_content_binding_tool_unavailable", unavailable.ReasonCode);
+        Assert.Equal("read_only_content_binding_tool_not_read_only", mutation.ReasonCode);
+        Assert.Equal("read_only_content_binding_tool_not_permitted", repository.ReasonCode);
+        Assert.Equal(
+            "read_only_content_binding_arguments_invalid",
+            malformedArguments.ReasonCode);
+        Assert.Empty(operations.Invocations);
+    }
+
+    [Fact]
+    public void NativeReadOnlyContentBinding_RejectsMalformedAndStaleToolOutput()
+    {
+        var request = ReadOnlyContentRequest();
+        var now = DateTime.UtcNow;
+
+        Assert.False(LegendFounderToolAuthority.TryCreateReadOnlyContentBindingReceipt(
+            request,
+            "{\"needsReviewCount\":{\"unexpected\":4458}}",
+            now,
+            out var malformed,
+            out var malformedReason));
+        Assert.Null(malformed);
+        Assert.Equal("read_only_content_binding_output_malformed", malformedReason);
+
+        var freshnessRequest = request with
+        {
+            ObservedUtcPath = "refreshedUtc",
+            MaximumAgeSeconds = 30
+        };
+        Assert.False(LegendFounderToolAuthority.TryCreateReadOnlyContentBindingReceipt(
+            freshnessRequest,
+            JsonSerializer.Serialize(new
+            {
+                needsReviewCount = 4458,
+                refreshedUtc = now.AddMinutes(-5)
+            }),
+            now,
+            out var stale,
+            out var staleReason));
+        Assert.Null(stale);
+        Assert.Equal("read_only_content_binding_stale", staleReason);
+    }
+
+    [Fact]
+    public async Task NativeGap_DoesNotSubmitMachineProposalWithoutFounderConfirmation()
+    {
         using var founderEnvironment = new FounderEnvironmentScope();
         await using var db = ControllerTestHelpers.BuildDb();
         var founder = await AddFounderProfileAsync(db);
@@ -233,17 +645,9 @@ public sealed class LegendFounderAiModeIsolationTests
                 It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<string?>(),
                 It.IsAny<int>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new LegendConnectRetainedKnowledgeSearchSnapshot("gap", 0, []));
-        operations
-            .Setup(operation => operation.SubmitMachineTeachingProposalAsync(
-                It.IsAny<LegendConnectMachineTeachingSubmission>(),
-                It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new LegendConnectMachineTeachingSubmissionResult(
-                true, false, "AwaitingCritic", null,
-                "Retained as MachineProposed.", candidateId, proposalId));
-
         var handler = new FounderAiScenarioHandler(
             ProviderTool("legend_submit_machine_learning_candidate", MachineProposalArguments()),
-            ProviderText("I answered the request and retained one non-serving proposal for independent review."));
+            ProviderText("I answered the request without making a durable learning mutation."));
         var service = CreateService(db, operations.Object, handler);
 
         var response = await service.ReplyAsync(
@@ -252,13 +656,10 @@ public sealed class LegendFounderAiModeIsolationTests
 
         Assert.True(response.Succeeded, Describe(response));
         Assert.Equal("OpenAITeacher", response.ResponseAuthority);
-        Assert.Contains("LEGEND_GOVERNED_LEARNING_RECEIPT", response.Message);
-        Assert.Contains(candidateId.ToString(), response.Message);
-        Assert.Contains(proposalId.ToString(), response.Message);
-        Assert.Contains("AwaitingCritic", response.Message);
+        Assert.DoesNotContain("LEGEND_GOVERNED_LEARNING_RECEIPT", response.Message);
         operations.Verify(operation => operation.SubmitMachineTeachingProposalAsync(
             It.IsAny<LegendConnectMachineTeachingSubmission>(),
-            It.IsAny<CancellationToken>()), Times.Once);
+            It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
@@ -293,7 +694,7 @@ public sealed class LegendFounderAiModeIsolationTests
                 "{\"query\":\"reusable distinction\"}"),
             ProviderTool(
                 "legend_submit_machine_learning_candidate",
-                MachineProposalArguments()),
+                SameLanguageMachineProposalArguments()),
             ProviderText("The exact teaching family entered the governed critic lifecycle."));
         var service = CreateService(db, operations.Object, handler);
 
@@ -311,6 +712,21 @@ public sealed class LegendFounderAiModeIsolationTests
         Assert.Contains(candidateId.ToString(), response.Message);
         Assert.Contains(proposalId.ToString(), response.Message);
         Assert.Contains("AwaitingCritic", response.Message);
+        Assert.Contains("MachineProposed", response.Message);
+        Assert.Contains("NonServing", response.Message);
+        Assert.Contains("NonCanonical", response.Message);
+        var responseMessage = Assert.IsType<string>(response.Message);
+        var serializedReceipt = responseMessage[
+            (responseMessage.IndexOf(
+                "LEGEND_GOVERNED_LEARNING_RECEIPT",
+                StringComparison.Ordinal) +
+             "LEGEND_GOVERNED_LEARNING_RECEIPT".Length)..].Trim();
+        var receipt = Assert.IsType<LegendConnectMachineTeachingMutationReceipt>(
+            JsonSerializer.Deserialize<LegendConnectMachineTeachingMutationReceipt>(
+                serializedReceipt,
+                new JsonSerializerOptions(JsonSerializerDefaults.Web)));
+        Assert.True(receipt.Succeeded);
+        Assert.True(Guid.TryParseExact(receipt.AuthorizationCorrelation, "N", out _));
         operations.Verify(operation => operation.SearchRetainedKnowledgeAsync(
             "reusable distinction",
             null,
@@ -318,9 +734,282 @@ public sealed class LegendFounderAiModeIsolationTests
             It.IsAny<int>(),
             It.IsAny<CancellationToken>()), Times.Once);
         operations.Verify(operation => operation.SubmitMachineTeachingProposalAsync(
-            It.IsAny<LegendConnectMachineTeachingSubmission>(),
+            It.Is<LegendConnectMachineTeachingSubmission>(submission =>
+                submission.SourceLanguageCode == "en" &&
+                submission.TargetLanguageCode == "en" &&
+                submission.CapabilityIdentity ==
+                    LegendConnectMachineTeachingSubmission.SameLanguageSemanticCapability &&
+                submission.CategoryIdentity ==
+                    LegendConnectMachineTeachingSubmission.ReusableSemanticCategory),
             It.IsAny<CancellationToken>()), Times.Once);
         Assert.Equal(0, NativeInferenceCalls(operations));
+    }
+
+    [Fact]
+    public async Task MachineProposalMutation_RejectsReplayedAuthorizationCorrelation()
+    {
+        var candidateId = Guid.Parse("55555555-5555-5555-5555-555555555555");
+        var proposalId = Guid.Parse("66666666-6666-6666-6666-666666666666");
+        using var founderEnvironment = new FounderEnvironmentScope();
+        await using var db = ControllerTestHelpers.BuildDb();
+        var founder = await AddFounderProfileAsync(db);
+        var operations = new Mock<ILegendConnectOperations>(MockBehavior.Strict);
+        operations
+            .Setup(operation => operation.SubmitMachineTeachingProposalAsync(
+                It.IsAny<LegendConnectMachineTeachingSubmission>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new LegendConnectMachineTeachingSubmissionResult(
+                true, false, "AwaitingCritic", null,
+                "Retained as MachineProposed.", candidateId, proposalId));
+        var authority = new LegendFounderToolAuthority(
+            new FounderLegendConnectService(
+                operations.Object,
+                new AgentProfileAccessResolver(db)),
+            null);
+        var correlation = Guid.NewGuid().ToString("N");
+        var call = new FounderAiToolCall(
+            "machine-proposal-call",
+            "legend_submit_machine_learning_candidate",
+            MachineProposalArguments(),
+            new FounderAiMutationAuthorization(correlation));
+
+        var first = await authority.ExecuteAsync(
+            founder,
+            call,
+            "teacher",
+            CancellationToken.None);
+        var replay = await authority.ExecuteAsync(
+            founder,
+            call,
+            "teacher",
+            CancellationToken.None);
+
+        Assert.True(LegendFounderAiConversationService.TryReadMachineTeachingMutationReceipt(
+            first,
+            correlation,
+            out var receipt));
+        Assert.NotNull(receipt);
+        Assert.Contains("founder_mutation_authorization_replayed", replay);
+        operations.Verify(operation => operation.SubmitMachineTeachingProposalAsync(
+            It.IsAny<LegendConnectMachineTeachingSubmission>(),
+            It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task MachineProposalMutation_RejectsExistingDurableProposalAsReplay()
+    {
+        using var founderEnvironment = new FounderEnvironmentScope();
+        await using var db = ControllerTestHelpers.BuildDb();
+        var founder = await AddFounderProfileAsync(db);
+        var operations = new Mock<ILegendConnectOperations>(MockBehavior.Strict);
+        operations
+            .Setup(operation => operation.SubmitMachineTeachingProposalAsync(
+                It.IsAny<LegendConnectMachineTeachingSubmission>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new LegendConnectMachineTeachingSubmissionResult(
+                true,
+                true,
+                "AwaitingCritic",
+                null,
+                "The exact proposal already exists.",
+                Guid.NewGuid(),
+                Guid.NewGuid(),
+                ProposalAlreadyExisted: true));
+        var authority = new LegendFounderToolAuthority(
+            new FounderLegendConnectService(
+                operations.Object,
+                new AgentProfileAccessResolver(db)),
+            null);
+        var correlation = Guid.NewGuid().ToString("N");
+
+        var output = await authority.ExecuteAsync(
+            founder,
+            new FounderAiToolCall(
+                "existing-machine-proposal",
+                "legend_submit_machine_learning_candidate",
+                MachineProposalArguments(),
+                new FounderAiMutationAuthorization(correlation)),
+            "teacher",
+            CancellationToken.None);
+
+        Assert.Contains("machine_learning_mutation_replay", output);
+        Assert.False(LegendFounderAiConversationService.TryReadMachineTeachingMutationReceipt(
+            output,
+            correlation,
+            out var receipt));
+        Assert.Null(receipt);
+        operations.Verify(operation => operation.SubmitMachineTeachingProposalAsync(
+            It.IsAny<LegendConnectMachineTeachingSubmission>(),
+            It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task SameLanguageMachineProposal_RequiresAuthenticatedFounderAuthorization()
+    {
+        using var founderEnvironment = new FounderEnvironmentScope();
+        await using var db = ControllerTestHelpers.BuildDb();
+        var operations = new Mock<ILegendConnectOperations>(MockBehavior.Strict);
+        var authority = new LegendFounderToolAuthority(
+            new FounderLegendConnectService(
+                operations.Object,
+                new AgentProfileAccessResolver(db)),
+            null);
+        var unconfirmed = new FounderAiToolCall(
+            "unconfirmed-machine-proposal",
+            "legend_submit_machine_learning_candidate",
+            SameLanguageMachineProposalArguments());
+
+        var unconfirmedOutput = await authority.ExecuteAsync(
+            ControllerTestHelpers.BuildUser(),
+            unconfirmed,
+            "teacher",
+            CancellationToken.None);
+        Assert.Contains("founder_command_confirmation_required", unconfirmedOutput);
+
+        var malformedAuthorization = unconfirmed with
+        {
+            MutationAuthorization = new FounderAiMutationAuthorization(
+                "not-an-authorization-correlation")
+        };
+        var malformedAuthorizationOutput = await authority.ExecuteAsync(
+            ControllerTestHelpers.BuildUser(),
+            malformedAuthorization,
+            "teacher",
+            CancellationToken.None);
+        Assert.Contains(
+            "founder_mutation_authorization_invalid",
+            malformedAuthorizationOutput);
+
+        var unauthorized = unconfirmed with
+        {
+            MutationAuthorization = new FounderAiMutationAuthorization(
+                Guid.NewGuid().ToString("N"))
+        };
+        await Assert.ThrowsAsync<ForbidResultException>(() => authority.ExecuteAsync(
+            ControllerTestHelpers.BuildUser("not-the-founder"),
+            unauthorized,
+            "teacher",
+            CancellationToken.None));
+        Assert.Empty(operations.Invocations);
+    }
+
+    [Fact]
+    public void MachineProposalReceipt_RejectsMalformedAndMissingIdentity()
+    {
+        var correlation = Guid.NewGuid().ToString("N");
+
+        Assert.False(LegendFounderAiConversationService.TryReadMachineTeachingMutationReceipt(
+            "not-json",
+            correlation,
+            out var malformed));
+        Assert.Null(malformed);
+
+        var completeReceipt = new
+        {
+            succeeded = true,
+            candidateId = Guid.NewGuid(),
+            proposalId = Guid.NewGuid(),
+            durableState = "AwaitingCritic",
+            provenance = "MachineProposed",
+            authorizationCorrelation = correlation,
+            servingStatus = "NonServing",
+            canonicalStatus = "NonCanonical"
+        };
+        var missingCandidateId = JsonSerializer.Serialize(new
+        {
+            completeReceipt.succeeded,
+            completeReceipt.proposalId,
+            completeReceipt.durableState,
+            completeReceipt.provenance,
+            completeReceipt.authorizationCorrelation,
+            completeReceipt.servingStatus,
+            completeReceipt.canonicalStatus
+        });
+        Assert.False(LegendFounderAiConversationService.TryReadMachineTeachingMutationReceipt(
+            missingCandidateId,
+            correlation,
+            out var missingIdentity));
+        Assert.Null(missingIdentity);
+
+        var missingProposalId = JsonSerializer.Serialize(new
+        {
+            completeReceipt.succeeded,
+            completeReceipt.candidateId,
+            completeReceipt.durableState,
+            completeReceipt.provenance,
+            completeReceipt.authorizationCorrelation,
+            completeReceipt.servingStatus,
+            completeReceipt.canonicalStatus
+        });
+        Assert.False(LegendFounderAiConversationService.TryReadMachineTeachingMutationReceipt(
+            missingProposalId,
+            correlation,
+            out missingIdentity));
+        Assert.Null(missingIdentity);
+    }
+
+    [Fact]
+    public void MachineProposalReceipt_RejectsFalseSuccessAndReplayedCorrelation()
+    {
+        var correlation = Guid.NewGuid().ToString("N");
+        var receipt = new LegendConnectMachineTeachingMutationReceipt(
+            false,
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            "AwaitingCritic",
+            LegendConnectMachineTeachingMutationReceipt.RequiredProvenance,
+            correlation,
+            LegendConnectMachineTeachingMutationReceipt.RequiredServingStatus,
+            LegendConnectMachineTeachingMutationReceipt.RequiredCanonicalStatus);
+        var output = JsonSerializer.Serialize(
+            receipt,
+            new JsonSerializerOptions(JsonSerializerDefaults.Web));
+
+        Assert.False(LegendFounderAiConversationService.TryReadMachineTeachingMutationReceipt(
+            output,
+            correlation,
+            out var falseSuccess));
+        Assert.Null(falseSuccess);
+
+        output = JsonSerializer.Serialize(
+            receipt with { Succeeded = true },
+            new JsonSerializerOptions(JsonSerializerDefaults.Web));
+        Assert.False(LegendFounderAiConversationService.TryReadMachineTeachingMutationReceipt(
+            output,
+            Guid.NewGuid().ToString("N"),
+            out var replayed));
+        Assert.Null(replayed);
+    }
+
+    [Fact]
+    public async Task ConfirmedMachineProposal_ProviderFailureCreatesNoMutationReceipt()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var operations = new Mock<ILegendConnectOperations>(MockBehavior.Strict);
+        var rejected = ProviderResponse(new
+        {
+            error = new { message = "controlled teaching rejection" }
+        }, HttpStatusCode.BadRequest);
+        rejected.Headers.TryAddWithoutValidation("x-request-id", "teaching-provider-failure");
+        var service = CreateService(
+            db,
+            operations.Object,
+            new FounderAiScenarioHandler(rejected));
+
+        var response = await service.ReplyAsync(
+            ControllerTestHelpers.BuildUser(),
+            Request(
+                "teacher",
+                "Train LEGEND on this exact reusable distinction.",
+                founderCommandConfirmed: true));
+
+        Assert.False(response.Succeeded);
+        Assert.Equal("provider_http_400", response.Reason);
+        Assert.Equal("teaching-provider-failure", response.Reference);
+        Assert.DoesNotContain(
+            "LEGEND_GOVERNED_LEARNING_RECEIPT",
+            response.Message ?? string.Empty);
+        Assert.Empty(operations.Invocations);
     }
 
     [Fact]
@@ -767,10 +1456,106 @@ public sealed class LegendFounderAiModeIsolationTests
         Assert.Equal(1, handler.RequestCount);
     }
 
+    [Fact]
+    public async Task ProviderCatalogAcceptanceRequest_SerializesCompleteValidatedCatalogAndDisablesToolExecution()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var operations = new Mock<ILegendConnectOperations>(MockBehavior.Strict);
+        var handler = new FounderAiScenarioHandler(
+            ProviderAccepted("PROVIDER_CATALOG_ACCEPTED"));
+        var profiles = new AgentProfileAccessResolver(db);
+        var legend = new FounderLegendConnectService(
+            operations.Object,
+            profiles);
+        var service = new LegendFounderAiConversationService(
+            new FounderAiHttpClientFactory(handler),
+            new ConfigurationBuilder()
+                .AddInMemoryCollection(new Dictionary<string, string?>
+                {
+                    ["OpenAI:ApiKey"] = "test-only-key",
+                    ["OpenAI:LegendFounderAiModel"] = "gpt-5"
+                })
+                .Build(),
+            legend,
+            NullLogger<LegendFounderAiConversationService>.Instance,
+            new LegendFounderAiDiscourseStateService(
+                db,
+                profiles,
+                operations.Object),
+            new LegendLanguageRegistry(
+                db,
+                new ConfigurationBuilder().Build()),
+            ControllerTestHelpers.BuildTranslationService());
+
+        var responseId =
+            await service.VerifyProviderToolCatalogAcceptanceAsync();
+
+        Assert.Equal("resp_provider_catalog_accepted", responseId);
+        var requestBody = Assert.Single(handler.RequestBodies);
+        using var requestDocument = JsonDocument.Parse(requestBody);
+        var request = requestDocument.RootElement;
+        Assert.False(request.GetProperty("store").GetBoolean());
+        Assert.Equal("none", request.GetProperty("tool_choice").GetString());
+        Assert.False(request.GetProperty("parallel_tool_calls").GetBoolean());
+
+        var expectedTools = new LegendFounderToolAuthority(legend, null).Tools;
+        using var expectedDocument = JsonDocument.Parse(
+            JsonSerializer.Serialize(expectedTools));
+        Assert.Equal(
+            expectedDocument.RootElement.GetRawText(),
+            request.GetProperty("tools").GetRawText());
+        Assert.Empty(operations.Invocations);
+    }
+
+    [Fact]
+    public async Task ProviderAcceptanceCanary_LiveProviderAcceptsCompleteZeroWriteCatalog()
+    {
+        if (!string.Equals(
+                Environment.GetEnvironmentVariable(
+                    "LEGEND_FOUNDER_TOOL_CATALOG_PROVIDER_CANARY"),
+                "true",
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        var configuration = new ConfigurationBuilder()
+            .AddEnvironmentVariables()
+            .Build();
+        Assert.False(string.IsNullOrWhiteSpace(configuration["OpenAI:ApiKey"]));
+
+        await using var db = ControllerTestHelpers.BuildDb();
+        var operations = new Mock<ILegendConnectOperations>(MockBehavior.Strict);
+        var profiles = new AgentProfileAccessResolver(db);
+        var legend = new FounderLegendConnectService(
+            operations.Object,
+            profiles);
+        using var factory = new LiveOpenAiHttpClientFactory();
+        var service = new LegendFounderAiConversationService(
+            factory,
+            configuration,
+            legend,
+            NullLogger<LegendFounderAiConversationService>.Instance,
+            new LegendFounderAiDiscourseStateService(
+                db,
+                profiles,
+                operations.Object),
+            new LegendLanguageRegistry(db, configuration),
+            ControllerTestHelpers.BuildTranslationService());
+
+        var responseId =
+            await service.VerifyProviderToolCatalogAcceptanceAsync();
+
+        Assert.False(string.IsNullOrWhiteSpace(responseId));
+        Console.WriteLine($"ProviderAcceptanceResponseId={responseId}");
+        Assert.Empty(operations.Invocations);
+    }
+
     private static LegendFounderAiConversationService CreateService(
         Infrastructure.Data.MasterAppDbContext db,
         ILegendConnectOperations operations,
-        FounderAiScenarioHandler handler) =>
+        FounderAiScenarioHandler handler,
+        ITranslationService? translation = null) =>
         new(
             new FounderAiHttpClientFactory(handler),
             new ConfigurationBuilder()
@@ -787,13 +1572,50 @@ public sealed class LegendFounderAiModeIsolationTests
             new LegendFounderAiDiscourseStateService(
                 db,
                 new AgentProfileAccessResolver(db),
-                operations));
+                operations),
+            new LegendLanguageRegistry(
+                db,
+                new ConfigurationBuilder().Build()),
+            translation ?? ControllerTestHelpers.BuildTranslationService());
+
+    private static LegendConnectNativeInferenceSnapshot NativeLanguageAnswer(
+        string languageCode) =>
+        new(
+            true,
+            1m,
+            $"Governed {languageCode} answer.",
+            "semantic_transition_governed_composed",
+            1,
+            "Governed language-specific evidence was selected.",
+            false,
+            "HigherStandard",
+            "OriginalComposition",
+            ModelAssistance: new LegendConnectNativeModelAssistanceSnapshot(
+                "Unavailable",
+                "active_reasoning_model_unavailable",
+                LegendConnectNativeModelAssistanceContracts.GovernedReasoningCapability,
+                null,
+                null,
+                null));
+
+    private static LegendConnectReadOnlyContentBindingRequest ReadOnlyContentRequest() =>
+        new(
+            "read-request-identity",
+            "governed-transition-signature",
+            "governed-result-frame-signature",
+            "legend_translation_quality",
+            "{}",
+            "needsReviewCount",
+            null,
+            60,
+            "$issuecount",
+            "current_issue_count");
 
     private static LegendFounderAiChatRequest Request(
         string? mode,
         string prompt,
         bool nativeOnly = false,
-        string sourceLanguageCode = "en",
+        string? sourceLanguageCode = "en",
         bool founderCommandConfirmed = false) =>
         new()
         {
@@ -809,7 +1631,11 @@ public sealed class LegendFounderAiModeIsolationTests
         {
           "source_language":"en",
           "target_language":"es",
-          "family_key":"automatic-native-gap-distinction",
+          "capability_identity":"translation",
+          "category_identity":"reusable_semantic",
+          "observation_origin":"ConversationObservation",
+          "research_observation_lineage":null,
+          "family_key":"confirmed-machine-distinction",
           "semantic_category":"conversation_semantics",
           "rationale":"Retain one reusable distinction with machine provenance.",
           "confidence":0.7,
@@ -827,12 +1653,31 @@ public sealed class LegendFounderAiModeIsolationTests
           ],
           "semantic_transitions":[
             {
-              "source":{"dimensions":{"conversation_function":"wellbeing_inquiry"}},
-              "result":{"dimensions":{"conversation_response":"wellbeing_positive"}}
+              "source":{"dimensions":[{"dimension":"conversation_function","value":"wellbeing_inquiry"}]},
+              "result":{"dimensions":[{"dimension":"conversation_response","value":"wellbeing_positive"}]}
             }
           ]
         }
         """;
+
+    private static string SameLanguageMachineProposalArguments() =>
+        MachineProposalArguments()
+            .Replace(
+                "\"target_language\":\"es\"",
+                "\"target_language\":\"en\"",
+                StringComparison.Ordinal)
+            .Replace(
+                "\"capability_identity\":\"translation\"",
+                "\"capability_identity\":\"same_language_semantic\"",
+                StringComparison.Ordinal)
+            .Replace(
+                "\"target_text\":\"¿Cómo estás?\"",
+                "\"target_text\":null",
+                StringComparison.Ordinal)
+            .Replace(
+                "\"target_text\":\"Estoy bien.\"",
+                "\"target_text\":null",
+                StringComparison.Ordinal);
 
     private static async Task<System.Security.Claims.ClaimsPrincipal> AddFounderProfileAsync(
         Infrastructure.Data.MasterAppDbContext db)
@@ -930,6 +1775,24 @@ public sealed class LegendFounderAiModeIsolationTests
             }
         });
 
+    private static HttpResponseMessage ProviderAccepted(string text) =>
+        ProviderResponse(new
+        {
+            id = "resp_provider_catalog_accepted",
+            status = "completed",
+            output = new[]
+            {
+                new
+                {
+                    type = "message",
+                    content = new[]
+                    {
+                        new { type = "output_text", text }
+                    }
+                }
+            }
+        });
+
     private static HttpResponseMessage ProviderResponse(
         object payload,
         HttpStatusCode status = HttpStatusCode.OK) =>
@@ -974,6 +1837,8 @@ public sealed class LegendFounderAiModeIsolationTests
 
         public int RequestCount { get; private set; }
 
+        public List<string> RequestBodies { get; } = [];
+
         protected override async Task<HttpResponseMessage> SendAsync(
             HttpRequestMessage request,
             CancellationToken cancellationToken)
@@ -981,6 +1846,10 @@ public sealed class LegendFounderAiModeIsolationTests
             RequestCount++;
             Assert.Equal(HttpMethod.Post, request.Method);
             Assert.Equal("/v1/responses", request.RequestUri!.AbsolutePath);
+            RequestBodies.Add(
+                request.Content is null
+                    ? string.Empty
+                    : await request.Content.ReadAsStringAsync(cancellationToken));
             if (_responses.Count == 0)
                 throw new InvalidOperationException("No OpenAI response was queued for this test.");
 
@@ -989,6 +1858,22 @@ public sealed class LegendFounderAiModeIsolationTests
 
             return _responses.Dequeue();
         }
+    }
+
+    private sealed class LiveOpenAiHttpClientFactory : IHttpClientFactory, IDisposable
+    {
+        private readonly HttpClient _client = new()
+        {
+            BaseAddress = new Uri("https://api.openai.com/")
+        };
+
+        public HttpClient CreateClient(string name)
+        {
+            Assert.Equal("OpenAI", name);
+            return _client;
+        }
+
+        public void Dispose() => _client.Dispose();
     }
 
     private sealed class FounderEnvironmentScope : IDisposable
@@ -1003,5 +1888,27 @@ public sealed class LegendFounderAiModeIsolationTests
 
         public void Dispose() =>
             Environment.SetEnvironmentVariable("FOUNDER_OID", _previousFounderOid);
+    }
+
+    private sealed class FounderAiLanguageDetector(
+        TranslationDetectionResult result) : ITranslationService
+    {
+        public int DetectionCount { get; private set; }
+
+        public Task<TranslationDetectionResult> DetectLanguageAsync(
+            string text,
+            CancellationToken cancellationToken = default)
+        {
+            DetectionCount++;
+            return Task.FromResult(result);
+        }
+
+        public Task<TranslationProviderResult> TranslateAsync(
+            string text,
+            string targetLanguage,
+            string? sourceLanguage = null,
+            CancellationToken cancellationToken = default) =>
+            throw new InvalidOperationException(
+                "Founder AI language identification must not translate text.");
     }
 }

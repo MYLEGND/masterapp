@@ -356,7 +356,7 @@ public sealed class LegendConnectMeaningGraphTests
                         @node act | predicate=explain | surface=explain | clause=main
                         @node target | request_target=option | surface=the option | clause=main
                         @edge act -> target | relation=request-target | clause=main
-                        @reference act | entity_dimension=request_target | resolution=unique
+                        @reference act | entity_dimension=request_target | resolution=recent
                         @endmeaning
                         Please describe the alternative. | predicate=describe; request_target=alternative; utterance_kind=request
                         @end
@@ -377,6 +377,7 @@ public sealed class LegendConnectMeaningGraphTests
             var referenceRule = await db.LegendLanguageDiscourseReferenceRules.SingleAsync();
             Assert.Equal("Observation", referenceRule.MaturityState);
             Assert.False(referenceRule.IsProductionEligible);
+            Assert.Equal("recent", referenceRule.ResolutionMode);
             Assert.Single(await db.LegendLanguageDiscourseReferenceRuleEvidence.ToListAsync());
             Assert.Equal("Completed", await db.LegendCurriculumManifestWorkItems
                 .Select(item => item.ProcessingState)
@@ -691,7 +692,9 @@ public sealed class LegendConnectMeaningGraphTests
                 configuration,
                 founderLegend,
                 NullLogger<LegendFounderAiConversationService>.Instance,
-                new LegendFounderAiDiscourseStateService(db, profiles, operations));
+                new LegendFounderAiDiscourseStateService(db, profiles, operations),
+                registry,
+                ControllerTestHelpers.BuildTranslationService());
             var conversationId = Guid.NewGuid();
             const string unseenInput = "A private ungoverned surface request";
 

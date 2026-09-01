@@ -27,20 +27,56 @@ internal sealed class LegendLanguageRegistry : ILegendLanguageRegistry
         CancellationToken cancellationToken = default) =>
         (await GetLanguageAsync(language, cancellationToken))?.Code;
 
+    public async Task<string?> NormalizeEnabledTranslationLanguageReadOnlyAsync(
+        string? language,
+        CancellationToken cancellationToken = default) =>
+        (await ResolveEnabledLanguageAsync(
+            language,
+            requireTranslation: true,
+            requireLearning: false,
+            cancellationToken,
+            provisionBaseline: false))?.Code;
+
     public async Task<LegendLanguageDefinitionSnapshot?> GetLanguageAsync(
         string? language,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default) =>
+        await ResolveEnabledLanguageAsync(
+            language,
+            requireTranslation: true,
+            requireLearning: false,
+            cancellationToken);
+
+    public async Task<LegendLanguageDefinitionSnapshot?>
+        GetEnabledLearningLanguageAsync(
+            string? language,
+            CancellationToken cancellationToken = default) =>
+        await ResolveEnabledLanguageAsync(
+            language,
+            requireTranslation: false,
+            requireLearning: true,
+            cancellationToken);
+
+    private async Task<LegendLanguageDefinitionSnapshot?> ResolveEnabledLanguageAsync(
+        string? language,
+        bool requireTranslation,
+        bool requireLearning,
+        CancellationToken cancellationToken,
+        bool provisionBaseline = true)
     {
         var candidate = language?.Trim();
         if (string.IsNullOrWhiteSpace(candidate))
             return null;
 
-        await EnsureBaselineAsync(cancellationToken);
+        if (provisionBaseline)
+            await EnsureBaselineAsync(cancellationToken);
         var hasNormalizedCode = LegendLanguageIdentity.TryNormalize(candidate, out var normalized);
         var baseCode = hasNormalizedCode ? LegendLanguageIdentity.BaseCode(normalized) : string.Empty;
         var definition = await _db.Set<LegendLanguageDefinition>()
             .AsNoTracking()
-            .Where(item => item.IsEnabled && item.IsTranslationEnabled)
+            .Where(item =>
+                item.IsEnabled &&
+                (!requireTranslation || item.IsTranslationEnabled) &&
+                (!requireLearning || item.IsLearningEnabled))
             .Where(item =>
                 item.CanonicalName == candidate ||
                 item.NativeName == candidate ||
@@ -116,6 +152,32 @@ internal sealed class LegendLanguageRegistry : ILegendLanguageRegistry
         }
 
         return pair is { IsEnabled: true } ? ToSnapshot(pair) : null;
+    }
+
+    public async Task<LegendLanguagePairSnapshot?> GetEnabledPairAsync(
+        string sourceLanguage,
+        string targetLanguage,
+        CancellationToken cancellationToken = default)
+    {
+        var source = await NormalizeEnabledTranslationLanguageAsync(
+            sourceLanguage,
+            cancellationToken);
+        var target = await NormalizeEnabledTranslationLanguageAsync(
+            targetLanguage,
+            cancellationToken);
+        if (source is null || target is null ||
+            string.Equals(source, target, StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
+        var pairKey = LegendLanguageIdentity.PairKey(source, target);
+        var pair = await _db.Set<LegendLanguagePair>()
+            .AsNoTracking()
+            .SingleOrDefaultAsync(
+                item => item.PairKey == pairKey && item.IsEnabled,
+                cancellationToken);
+        return pair is null ? null : ToSnapshot(pair);
     }
 
     private async Task EnsureBaselineAsync(CancellationToken cancellationToken)

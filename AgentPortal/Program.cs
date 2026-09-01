@@ -129,7 +129,12 @@ builder.Services.AddScoped<AgentProfileAccessResolver>();
 builder.Services.AddScoped<AgencyCommandService>();
 builder.Services.AddScoped<FounderSubscribersService>();
 builder.Services.AddScoped<FounderLegendConnectService>();
-builder.Services.AddScoped<ILegendIntelligenceEvaluationService, LegendIntelligenceEvaluationService>();
+builder.Services.AddScoped<LegendIntelligenceEvaluationService>();
+builder.Services.AddScoped<ILegendIntelligenceEvaluationService>(provider =>
+    provider.GetRequiredService<LegendIntelligenceEvaluationService>());
+builder.Services.AddScoped<ILegendBlindBenchmarkRuntimeAuthority, LegendBlindBenchmarkRuntimeAuthority>();
+builder.Services.AddSingleton<ILegendBlindAnswerOrderRandomizer, LegendBlindCryptographicAnswerOrderRandomizer>();
+builder.Services.AddScoped<LegendBlindComparativeBenchmarkRunner>();
 builder.Services.AddScoped<LegendFounderAiDiscourseStateService>();
 builder.Services.AddScoped<IFounderSoftwareRemediationService, FounderSoftwareRemediationService>();
 builder.Services.AddScoped<LegendFounderAiConversationService>();

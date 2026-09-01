@@ -269,6 +269,8 @@ public sealed class LegendConnectEntitlementTests
     {
         await using var db = ControllerTestHelpers.BuildDb();
         var configuration = Configuration(0);
+        var registry = new LegendLanguageRegistry(db, configuration);
+        Assert.NotNull(await registry.GetOrCreateEnabledPairAsync("en", "ht"));
         var access = new TranslationAccessStub(granted: true);
         var authority = new TranslationEntitlementAuthority(
             db,
@@ -279,7 +281,7 @@ public sealed class LegendConnectEntitlementTests
 
         var router = new LegendConnectTranslationRouter(
             provider,
-            new LegendLanguageRegistry(db, configuration),
+            registry,
             new TranslationCapacityAuthority(
                 db,
                 configuration,

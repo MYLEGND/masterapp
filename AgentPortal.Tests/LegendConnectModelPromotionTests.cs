@@ -11,6 +11,9 @@ namespace AgentPortal.Tests;
 
 public sealed class LegendConnectModelPromotionTests
 {
+    private const string RuntimeProof =
+        "evaluated=1;reference=1.000000;blocking=0;protected=0;leakage=0;prompt_set=test-v1;code_sha=0123456789abcdef0123456789abcdef01234567;runtime_mode=LockedHeldOutEvaluation;response_authority=LegendConnectActiveModelInference;settings=responses-v1,store=false,max_output_tokens=1200;criteria=governed-reference-policy-v1,held_out>=0.950000,regression>=1.000000,protected>=0.980000,blocking=0,leakage=0,runtime_model=exact;proof_set=abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789;latency_us=1;cost_micro=1";
+
     [Fact]
     public async Task PassedChallenger_PromotesExactDatasetPairsOnly()
     {
@@ -213,6 +216,29 @@ public sealed class LegendConnectModelPromotionTests
             pair.ActiveModelVersion);
     }
 
+    [Fact]
+    public async Task PassedFlagWithoutLockedRuntimeProof_CannotPromote()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var run = await SeedAsync(
+            db,
+            currentModel: "ft:previous",
+            runtimeProof: false);
+
+        var promoted = await Service(db).PromoteAsync(run.Id);
+
+        Assert.False(promoted);
+        Assert.Equal("Rejected", run.PromotionState);
+        Assert.Equal(
+            "model_promotion_runtime_proof_missing",
+            run.FailureCode);
+        Assert.Equal(
+            "ft:previous",
+            Assert.Single(
+                    db.Set<LegendLanguagePair>())
+                .ActiveModelVersion);
+    }
+
     private static LegendConnectModelPromotionService Service(
         Infrastructure.Data.MasterAppDbContext db)
     {
@@ -240,7 +266,8 @@ public sealed class LegendConnectModelPromotionTests
     private static async Task<LegendConnectModelTrainingRun> SeedAsync(
         Infrastructure.Data.MasterAppDbContext db,
         string? currentModel,
-        bool contradiction = false)
+        bool contradiction = false,
+        bool runtimeProof = true)
     {
         db.Add(
             new LegendConnectRuntimePolicy
@@ -466,7 +493,10 @@ public sealed class LegendConnectModelPromotionTests
                 HeldOutScore =
                     1m,
                 RegressionScore =
-                    1m
+                    1m,
+                FailureDetail = runtimeProof
+                    ? RuntimeProof
+                    : null
             };
 
         db.Add(run);

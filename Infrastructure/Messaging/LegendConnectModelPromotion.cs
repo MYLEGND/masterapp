@@ -53,7 +53,12 @@ internal sealed class LegendConnectModelPromotionService
                     item.EvaluationState == "Passed" &&
                     item.PromotionState == "NotEvaluated" &&
                     item.ChallengerModelVersion != null &&
-                    item.ChallengerModelVersion != "")
+                    item.ChallengerModelVersion != "" &&
+                    item.FailureDetail != null &&
+                    item.FailureDetail.Contains(
+                        "runtime_mode=LockedHeldOutEvaluation") &&
+                    item.FailureDetail.Contains(
+                        "response_authority=LegendConnectActiveModelInference"))
                 .OrderBy(item => item.Generation)
                 .FirstOrDefaultAsync(
                     cancellationToken);
@@ -79,6 +84,19 @@ internal sealed class LegendConnectModelPromotionService
 
         if (run is null)
             return false;
+
+        if (run.State == "TrainingCompleted" &&
+            run.EvaluationState == "Passed" &&
+            run.PromotionState == "NotEvaluated" &&
+            !LegendConnectModelRuntimeProofSummary.IsValid(
+                run.FailureDetail))
+        {
+            await FailPromotionAsync(
+                run,
+                "model_promotion_runtime_proof_missing",
+                cancellationToken);
+            return false;
+        }
 
         if (!CanEnterPromotion(run))
             return false;
@@ -207,6 +225,16 @@ internal sealed class LegendConnectModelPromotionService
                     item => item.Id == run.Id,
                     cancellationToken);
 
+        if (!LegendConnectModelRuntimeProofSummary.IsValid(
+                run.FailureDetail))
+        {
+            await FailPromotionAsync(
+                run,
+                "model_promotion_runtime_proof_missing",
+                cancellationToken);
+            return false;
+        }
+
         pairs =
             await _db
                 .Set<LegendLanguagePair>()
@@ -289,7 +317,11 @@ internal sealed class LegendConnectModelPromotionService
             null;
 
         run.FailureDetail =
-            $"pairs={pairs.Count};dataset={run.DatasetIdentity};evaluator={run.DatasetEvaluatorVersion}";
+            PreserveEvaluationProof(
+                run.FailureDetail!,
+                pairs.Count,
+                run.DatasetIdentity,
+                run.DatasetEvaluatorVersion);
 
         run.UpdatedUtc =
             now;
@@ -398,7 +430,9 @@ internal sealed class LegendConnectModelPromotionService
             null;
 
         run.FailureDetail =
-            $"rollback_pairs={lineage.Count}";
+            AppendBounded(
+                run.FailureDetail,
+                $"rollback_pairs={lineage.Count}");
 
         run.UpdatedUtc =
             now;
@@ -417,8 +451,23 @@ internal sealed class LegendConnectModelPromotionService
             "Passed" &&
         run.PromotionState ==
             "NotEvaluated" &&
+        LegendConnectModelRuntimeProofSummary.IsValid(
+            run.FailureDetail) &&
         !string.IsNullOrWhiteSpace(
             run.ChallengerModelVersion);
+
+    private static string PreserveEvaluationProof(
+        string evaluationProof,
+        int pairCount,
+        string datasetIdentity,
+        int evaluatorVersion)
+    {
+        var detail =
+            $"{evaluationProof};promotion_pairs={pairCount};promotion_dataset={datasetIdentity};promotion_evaluator={evaluatorVersion}";
+        return detail[..Math.Min(
+            detail.Length,
+            1000)];
+    }
 
     private bool MeetsEvaluationThresholds(
         LegendConnectModelTrainingRun run)
@@ -472,7 +521,9 @@ internal sealed class LegendConnectModelPromotionService
                     120)];
 
         run.FailureDetail =
-            null;
+            AppendBounded(
+                run.FailureDetail,
+                $"promotion_failure={failureCode}");
 
         run.UpdatedUtc =
             DateTime.UtcNow;
@@ -487,6 +538,19 @@ internal sealed class LegendConnectModelPromotionService
                 Prefix + "Enabled"],
             out var enabled) &&
         enabled;
+
+    private static string AppendBounded(
+        string? existing,
+        string value)
+    {
+        var detail =
+            string.IsNullOrWhiteSpace(existing)
+                ? value
+                : $"{existing};{value}";
+        return detail[..Math.Min(
+            detail.Length,
+            1000)];
+    }
 
     private decimal MinimumHeldOutScore() =>
         Score(

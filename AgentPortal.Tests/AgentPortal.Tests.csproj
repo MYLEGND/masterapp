@@ -66,8 +66,14 @@
     <None Include="..\\Legend-Android\\app\\src\\main\\java\\com\\mylegnd\\legend\\registered\\core\\network\\LegendApi.kt"
           Link="LegendApi.kt"
           CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\\Legend-Android\\app\\src\\main\\java\\com\\mylegnd\\legend\\registered\\core\\model\\MobileContracts.kt"
+          Link="LegendMobileContracts.kt"
+          CopyToOutputDirectory="PreserveNewest" />
     <None Include="..\\Legend-Android\\app\\src\\main\\java\\com\\mylegnd\\legend\\registered\\data\\LegendRepositories.kt"
           Link="LegendRepositories.kt"
+          CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\\Legend-Android\\app\\src\\main\\java\\com\\mylegnd\\legend\\registered\\feature\\LegendFeatureViewModels.kt"
+          Link="LegendFeatureViewModels.kt"
           CopyToOutputDirectory="PreserveNewest" />
     <None Include="..\\Legend-Android\\app\\src\\main\\java\\com\\mylegnd\\legend\\registered\\ui\\LegendFounderAiConversation.kt"
           Link="LegendFounderAiConversation.kt"

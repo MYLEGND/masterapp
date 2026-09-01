@@ -277,6 +277,10 @@ public sealed class LegendTranslationLearningEvent
 /// </summary>
 public sealed class LegendCorpusCandidate
 {
+    /// <summary>
+    /// The durable, opaque correlation identity for this candidate's complete
+    /// machine-learning lifecycle. It contains no corpus or actor content.
+    /// </summary>
     public Guid Id { get; set; } = Guid.NewGuid();
     public string IdempotencyKey { get; set; } = string.Empty;
     public string SourceLanguageCode { get; set; } = string.Empty;
@@ -334,6 +338,12 @@ public sealed class LegendCorpusCandidate
 public sealed class LegendLanguageTeacherProposal
 {
     public Guid Id { get; set; } = Guid.NewGuid();
+
+    /// <summary>
+    /// Carries the originating candidate's durable correlation identity through
+    /// critic, canonical validation, and curriculum admission. Those stages
+    /// update this proposal rather than allocating another lifecycle identity.
+    /// </summary>
     public Guid CorpusCandidateId { get; set; }
 
     /// <summary>
@@ -1193,6 +1203,16 @@ public sealed class LegendTranslationSystemUsage
     public long TranslationMemoryCharactersAvoided { get; set; }
     public long StructuralCompositionCharactersAvoided { get; set; }
     public long ContextualCharactersAvoided { get; set; }
+    /// <summary>
+    /// Characters served by the promoted translation capability. Founder-chat
+    /// governed reasoning is a different capability and is never included.
+    /// </summary>
+    public long PromotedTranslationModelCharactersAvoided { get; set; }
+    /// <summary>
+    /// Characters served from exact provider-derived observations. This is
+    /// provider reuse, not native LEGEND translation intelligence.
+    /// </summary>
+    public long ProviderObservationCharactersAvoided { get; set; }
     public long QuotaDeniedRequestCount { get; set; }
     public long ProviderFailureCount { get; set; }
     public long GroupUniqueTargetReuseCount { get; set; }

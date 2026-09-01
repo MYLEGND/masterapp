@@ -344,6 +344,8 @@ public sealed class LegendFounderAiController : Controller
             "validation" => StatusCodes.Status400BadRequest,
             "authorization" => StatusCodes.Status403Forbidden,
             "configuration" => StatusCodes.Status503ServiceUnavailable,
+            "language_identification" when result.Reason == "source_language_identification_unavailable" => StatusCodes.Status503ServiceUnavailable,
+            "language_identification" => StatusCodes.Status422UnprocessableEntity,
             "timeout" => StatusCodes.Status504GatewayTimeout,
             "provider_http" when result.ProviderStatusCode == StatusCodes.Status429TooManyRequests => StatusCodes.Status429TooManyRequests,
             "provider_http" when result.ProviderStatusCode == StatusCodes.Status503ServiceUnavailable => StatusCodes.Status503ServiceUnavailable,

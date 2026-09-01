@@ -27,11 +27,27 @@ public sealed class AzureTranslatorServiceTests
 
         Assert.True(result.Succeeded);
         Assert.Equal("ht", result.Language);
+        Assert.Equal(1.0m, result.Confidence);
         Assert.Equal(HttpMethod.Post, handler.Method);
         Assert.Equal("/detect", handler.RequestUri!.AbsolutePath);
         Assert.Contains("api-version=3.0", handler.RequestUri.Query, StringComparison.Ordinal);
         Assert.Equal("test-region", handler.Region);
         Assert.Contains("Bonjou", handler.RequestBody, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task DetectLanguage_LowConfidenceFailsClosedAsAmbiguous()
+    {
+        var handler = new RecordingHandler(_ => JsonResponse(
+            "[{\"language\":\"en\",\"score\":0.49}]"));
+        var service = CreateService(handler);
+
+        var result = await service.DetectLanguageAsync("Bon");
+
+        Assert.False(result.Succeeded);
+        Assert.Null(result.Language);
+        Assert.Equal("translation_language_ambiguous", result.ErrorCode);
+        Assert.Equal(0.49m, result.Confidence);
     }
 
     [Fact]

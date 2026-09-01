@@ -2271,6 +2271,14 @@ internal sealed class LegendConnectAutonomousLearningService
 {
     private const string MachineConversationProvenance =
         "MachineConversation";
+    private const string ExternalObservationProvenance =
+        "ExternalObservation";
+    private const string LanguageTeacherIssueCategory =
+        "LanguageTeacherCircuitIssue";
+    private const string LanguageTeacherFailureCategory =
+        "LanguageTeacherFailureOccurrence";
+    private const string LanguageTeacherRecoveryCategory =
+        "LanguageTeacherCircuitRecovery";
 
     private readonly MasterAppDbContext _db;
     private readonly ILegendLanguageRegistry _registry;
@@ -2335,21 +2343,102 @@ internal sealed class LegendConnectAutonomousLearningService
                 "The existing independent language critic is unavailable.");
         }
 
-        var pair =
-            await _registry.GetOrCreateEnabledPairAsync(
-                submission.SourceLanguageCode,
-                submission.TargetLanguageCode,
-                cancellationToken);
-
-        if (pair is null ||
-            string.Equals(
-                pair.SourceLanguageCode,
-                pair.TargetLanguageCode,
-                StringComparison.OrdinalIgnoreCase))
+        if (_curriculum is null)
         {
             return MachineTeachingFailure(
-                "language_pair_unavailable",
-                "Machine teaching requires an enabled directional LEGEND pair.");
+                "curriculum_authority_unavailable",
+                "Machine teaching requires the existing LEGEND curriculum and semantic-transition authority.");
+        }
+
+        var capabilityIdentity =
+            NormalizeMachineTeachingField(
+                submission.CapabilityIdentity,
+                40);
+        var categoryIdentity =
+            NormalizeMachineTeachingField(
+                submission.CategoryIdentity,
+                40);
+        if (categoryIdentity is null ||
+            !string.Equals(
+                categoryIdentity,
+                LegendConnectMachineTeachingSubmission.ReusableSemanticCategory,
+                StringComparison.Ordinal))
+        {
+            return MachineTeachingFailure(
+                "machine_teaching_category_not_reusable",
+                "Machine teaching accepts only explicitly classified reusable semantic knowledge, never personal or transient facts.");
+        }
+        if (capabilityIdentity is null ||
+            (!string.Equals(
+                 capabilityIdentity,
+                 LegendConnectMachineTeachingSubmission.TranslationCapability,
+                 StringComparison.Ordinal) &&
+             !string.Equals(
+                 capabilityIdentity,
+                 LegendConnectMachineTeachingSubmission.SameLanguageSemanticCapability,
+                 StringComparison.Ordinal)))
+        {
+            return MachineTeachingFailure(
+                "machine_teaching_capability_invalid",
+                "Machine teaching requires one explicit supported capability identity.");
+        }
+        if (!LegendConnectCurriculumService
+                .HasValidMachineTeachingSemanticTransitions(
+                    submission.SemanticTransitions))
+        {
+            return MachineTeachingFailure(
+                "machine_teaching_semantic_transition_invalid",
+                "Machine teaching requires one bounded, structurally valid governed semantic transition.");
+        }
+
+        var sourceLanguage =
+            await _registry.GetEnabledLearningLanguageAsync(
+                submission.SourceLanguageCode,
+                cancellationToken);
+        var targetLanguage =
+            await _registry.GetEnabledLearningLanguageAsync(
+                submission.TargetLanguageCode,
+                cancellationToken);
+        if (sourceLanguage is null ||
+            targetLanguage is null ||
+            !sourceLanguage.IsLearningEnabled ||
+            !targetLanguage.IsLearningEnabled)
+        {
+            return MachineTeachingFailure(
+                "machine_teaching_language_unavailable",
+                "Machine teaching requires enabled governed learning-language identities.");
+        }
+
+        var sameLanguage = string.Equals(
+            sourceLanguage.Code,
+            targetLanguage.Code,
+            StringComparison.OrdinalIgnoreCase);
+        if (!LegendConnectMachineTeachingSubmission.IsSupportedIdentity(
+                capabilityIdentity,
+                categoryIdentity,
+                sameLanguage))
+        {
+            return MachineTeachingFailure(
+                "machine_teaching_capability_language_mismatch",
+                "Translation requires distinct languages and same-language semantic teaching requires one shared language identity.");
+        }
+
+        var pairKey = LegendLanguageIdentity.PairKey(
+            sourceLanguage.Code,
+            targetLanguage.Code);
+        if (!sameLanguage)
+        {
+            var pair = await _registry.GetOrCreateEnabledPairAsync(
+                sourceLanguage.Code,
+                targetLanguage.Code,
+                cancellationToken);
+            if (pair is null)
+            {
+                return MachineTeachingFailure(
+                    "language_pair_unavailable",
+                    "Translation teaching requires an enabled directional LEGEND pair.");
+            }
+            pairKey = pair.PairKey;
         }
 
         var familyKey =
@@ -2379,6 +2468,25 @@ internal sealed class LegendConnectAutonomousLearningService
                 "Machine teaching requires one bounded semantic family with 2–8 controlled examples.");
         }
 
+        var researchObservation = submission.ObservationOrigin ==
+            LegendConnectMachineObservationOrigin.ExternalResearchObservation;
+        if (researchObservation != (submission.ResearchObservationLineage is not null) ||
+            (researchObservation && !HasValidResearchObservationLineage(
+                submission.ResearchObservationLineage!)))
+        {
+            return MachineTeachingFailure(
+                "machine_teaching_research_lineage_invalid",
+                "External research may enter learning only as a complete, citation-validated ExternalObservation lineage.");
+        }
+        if (researchObservation && !await HasDurableResearchObservationReceiptAsync(
+                submission.ResearchObservationLineage!,
+                cancellationToken))
+        {
+            return MachineTeachingFailure(
+                "machine_teaching_research_receipt_unavailable",
+                "The exact external observation was not found in the existing bounded research observability ledger.");
+        }
+
         var examples =
             new List<LegendLanguageTeacherExampleProposal>(
                 submission.Examples.Count);
@@ -2403,6 +2511,7 @@ internal sealed class LegendConnectAutonomousLearningService
                         2_000);
 
             if (source is null ||
+                (sameLanguage && target is not null) ||
                 !sourceIdentities.Add(
                     LegendLanguageIdentity.TextHash(
                         source)) ||
@@ -2411,7 +2520,9 @@ internal sealed class LegendConnectAutonomousLearningService
             {
                 return MachineTeachingFailure(
                     "machine_teaching_invalid_example",
-                    "Machine teaching examples must be distinct, bounded and component-anchored.");
+                    sameLanguage && target is not null
+                        ? "Same-language semantic teaching uses controlled source examples and cannot masquerade as a same-language translation target."
+                        : "Machine teaching examples must be distinct, bounded and component-anchored.");
             }
 
             var components =
@@ -2487,17 +2598,45 @@ internal sealed class LegendConnectAutonomousLearningService
                     0m,
                     1m),
                 examples,
-                submission.SemanticTransitions);
+                submission.SemanticTransitions,
+                capabilityIdentity,
+                categoryIdentity,
+                submission.ResearchObservationLineage);
+
+        var initialProposalRequest = researchObservation
+            ? BuildResearchObservationProposalRequest(
+                sourceLanguage.Code,
+                targetLanguage.Code,
+                family)
+            : sameLanguage
+                ? await BuildGovernedSameLanguageMachineProposalRequestAsync(
+                sourceLanguage.Code,
+                targetLanguage.Code,
+                family,
+                cancellationToken)
+            : null;
+        if ((researchObservation || sameLanguage) && initialProposalRequest is null)
+        {
+            return MachineTeachingFailure(
+                researchObservation
+                    ? "machine_teaching_research_observation_unproven"
+                    : "machine_teaching_same_language_evidence_unproven",
+                researchObservation
+                    ? "Research retention requires controlled examples that exactly match citation-validated material claims from the observed session."
+                    : "Same-language semantic teaching requires controlled examples already resolved by the existing governed meaning authority.");
+        }
 
         var payload =
             JsonSerializer.Serialize(family);
 
         var candidateKey =
-            "legend-ai-conversation:v1:" +
+            (researchObservation
+                ? "legend-research-observation:v1:"
+                : "legend-ai-conversation:v1:") +
             LegendLanguageIdentity.TextHash(
                 string.Join(
                     "|",
-                    pair.PairKey,
+                    pairKey,
                     payload));
 
         var candidate =
@@ -2523,21 +2662,23 @@ internal sealed class LegendConnectAutonomousLearningService
                     IdempotencyKey =
                         candidateKey,
                     SourceLanguageCode =
-                        pair.SourceLanguageCode,
+                        sourceLanguage.Code,
                     TargetLanguageCode =
-                        pair.TargetLanguageCode,
+                        targetLanguage.Code,
                     SourceText =
                         sourceText,
                     SourceTextHash =
                         LegendLanguageIdentity.TextHash(
                             sourceText),
                     Category =
-                        semanticCategory[
-                            ..Math.Min(
-                                semanticCategory.Length,
-                                80)],
+                        LegendConnectMachineTeachingSubmission
+                            .CandidateCategoryIdentity(
+                                capabilityIdentity,
+                                categoryIdentity),
                     Provenance =
-                        MachineConversationProvenance,
+                        researchObservation
+                            ? ExternalObservationProvenance
+                            : MachineConversationProvenance,
 
                     // CRITICAL:
                     // conversation-derived material never impersonates an
@@ -2579,12 +2720,28 @@ internal sealed class LegendConnectAutonomousLearningService
 
         if (!string.Equals(
                 candidate.Provenance,
-                MachineConversationProvenance,
+                researchObservation
+                    ? ExternalObservationProvenance
+                    : MachineConversationProvenance,
                 StringComparison.Ordinal) ||
             candidate.IsApproved ||
             !string.Equals(
                 candidate.ProcessingState,
                 "ConversationProposal",
+                StringComparison.Ordinal) ||
+            !string.Equals(
+                candidate.SourceLanguageCode,
+                sourceLanguage.Code,
+                StringComparison.OrdinalIgnoreCase) ||
+            !string.Equals(
+                candidate.TargetLanguageCode,
+                targetLanguage.Code,
+                StringComparison.OrdinalIgnoreCase) ||
+            !string.Equals(
+                candidate.Category,
+                LegendConnectMachineTeachingSubmission.CandidateCategoryIdentity(
+                    capabilityIdentity,
+                    categoryIdentity),
                 StringComparison.Ordinal))
         {
             return MachineTeachingFailure(
@@ -2592,16 +2749,23 @@ internal sealed class LegendConnectAutonomousLearningService
                 "The deterministic candidate identity belongs to incompatible existing work.");
         }
 
-        var request =
-            await BuildLanguageProposalRequestAsync(
+        var requestBuild = initialProposalRequest is not null
+            ? LanguageProposalRequestBuildResult.Accepted(
+                initialProposalRequest)
+            : await BuildLanguageProposalRequestAsync(
                 candidate,
-                cancellationToken);
+                cancellationToken,
+                family);
+        var request = requestBuild.Request;
+        var insufficientEvidenceCode = requestBuild.FailureCode ??
+            "conversation_machine_relevant_evidence_insufficient";
 
         var evidenceIdentityHash =
             request is null
                 ? LegendLanguageIdentity.TextHash(
                     "insufficient|" +
-                    candidate.IdempotencyKey)
+                    candidate.IdempotencyKey + "|" +
+                    insufficientEvidenceCode)
                 : LegendLanguageIdentity.TextHash(
                     string.Join(
                         "\n",
@@ -2637,9 +2801,12 @@ internal sealed class LegendConnectAutonomousLearningService
                 true,
                 existing.ValidationState,
                 null,
-                "The exact conversational teaching artifact is already retained in LEGEND.",
+                researchObservation
+                    ? "The exact external observation proposal is already retained in LEGEND."
+                    : "The exact conversational teaching artifact is already retained in LEGEND.",
                 candidate.Id,
-                existing.Id);
+                existing.Id,
+                ProposalAlreadyExisted: true);
         }
 
         var state =
@@ -2659,11 +2826,11 @@ internal sealed class LegendConnectAutonomousLearningService
                 ProposalIdentity =
                     proposalIdentity,
                 PairKey =
-                    pair.PairKey,
+                    pairKey,
                 SourceLanguageCode =
-                    pair.SourceLanguageCode,
+                    sourceLanguage.Code,
                 TargetLanguageCode =
-                    pair.TargetLanguageCode,
+                    targetLanguage.Code,
                 EvidenceIdentityHash =
                     evidenceIdentityHash,
                 FamilyKey =
@@ -2702,7 +2869,7 @@ internal sealed class LegendConnectAutonomousLearningService
 
         candidate.TeacherProposalFailureCode =
             request is null
-                ? "conversation_machine_evidence_insufficient"
+                ? insufficientEvidenceCode
                 : null;
 
         candidate.TeacherProposalLeaseExpiresUtc =
@@ -2739,23 +2906,32 @@ internal sealed class LegendConnectAutonomousLearningService
                 true,
                 concurrent.ValidationState,
                 null,
-                "Concurrent conversational teaching converged on the existing deterministic LEGEND proposal.",
+                researchObservation
+                    ? "Concurrent external-observation retention converged on the existing deterministic LEGEND proposal."
+                    : "Concurrent conversational teaching converged on the existing deterministic LEGEND proposal.",
                 candidate.Id,
-                concurrent.Id);
+                concurrent.Id,
+                ProposalAlreadyExisted: true);
         }
 
         await RecordAsync(
-            "ConversationMachineProposal",
+            researchObservation
+                ? "ResearchExternalObservationProposal"
+                : "ConversationMachineProposal",
             "Info",
             state,
-            pair.SourceLanguageCode,
-            pair.PairKey,
+            sourceLanguage.Code,
+            pairKey,
             request is null
-                ? "conversation_machine_evidence_insufficient"
+                ? insufficientEvidenceCode
                 : null,
             request is null
-                ? "The conversational teaching artifact was retained as MachineProposed but lacks sufficient governed evidence to enter critique."
-                : "The conversational teaching artifact was retained as MachineProposed and queued on the existing teacher/critic lifecycle.",
+                ? researchObservation
+                    ? "The external observation was retained as MachineProposed but lacks sufficient governed evidence to enter critique."
+                    : "The conversational teaching artifact was retained as MachineProposed but lacks sufficient governed evidence to enter critique."
+                : researchObservation
+                    ? "The external observation entered the existing MachineProposed teacher/critic lifecycle without gaining canonical or serving authority."
+                    : "The conversational teaching artifact was retained as MachineProposed and queued on the existing teacher/critic lifecycle.",
             cancellationToken);
 
         return new LegendConnectMachineTeachingSubmissionResult(
@@ -2763,7 +2939,7 @@ internal sealed class LegendConnectAutonomousLearningService
             duplicateCandidate,
             state,
             request is null
-                ? "conversation_machine_evidence_insufficient"
+                ? insufficientEvidenceCode
                 : null,
             request is null
                 ? "LEGEND retained the proposal but will not promote it without additional governed evidence."
@@ -2775,14 +2951,122 @@ internal sealed class LegendConnectAutonomousLearningService
     private static bool IsConversationMachineCandidate(
         LegendCorpusCandidate candidate) =>
         !candidate.IsApproved &&
-        string.Equals(
-            candidate.Provenance,
-            MachineConversationProvenance,
-            StringComparison.Ordinal) &&
+        candidate.Provenance is
+            MachineConversationProvenance or ExternalObservationProvenance &&
         string.Equals(
             candidate.ProcessingState,
             "ConversationProposal",
             StringComparison.Ordinal);
+
+    internal static bool HasValidResearchObservationLineage(
+        LegendConnectResearchRetentionLineage lineage) =>
+        LegendConnectResearchRetentionContracts.IsStructurallyValid(lineage);
+
+    private static LegendLanguageTeacherProposalRequest?
+        BuildResearchObservationProposalRequest(
+            string sourceLanguageCode,
+            string targetLanguageCode,
+            LegendLanguageTeacherFamilyProposal family)
+    {
+        var lineage = family.ResearchObservationLineage;
+        if (lineage is null || !HasValidResearchObservationLineage(lineage))
+            return null;
+
+        var materialByStatement = lineage.MaterialClaims
+            .GroupBy(item => LegendLanguageIdentity.NormalizeText(item.Statement), StringComparer.Ordinal)
+            .Where(group => group.Count() == 1)
+            .ToDictionary(group => group.Key, group => group.Single(), StringComparer.Ordinal);
+        var evidence = new List<LegendLanguageTeacherEvidence>(family.Examples.Count);
+        foreach (var example in family.Examples)
+        {
+            var statement = LegendLanguageIdentity.NormalizeText(example.SourceText);
+            if (!materialByStatement.TryGetValue(statement, out var material))
+                return null;
+            evidence.Add(new LegendLanguageTeacherEvidence(
+                material.EvidenceIdentity,
+                statement,
+                example.TargetText,
+                ExternalObservationProvenance,
+                material.VerificationState.ToString()));
+        }
+
+        if (evidence.Count != lineage.MaterialClaims.Count ||
+            evidence.Select(item => item.EvidenceIdentity)
+                .Distinct(StringComparer.Ordinal).Count() != evidence.Count)
+        {
+            return null;
+        }
+
+        return new LegendLanguageTeacherProposalRequest(
+            sourceLanguageCode,
+            targetLanguageCode,
+            family.SemanticCategory,
+            evidence,
+            MaximumFamilies: 1,
+            CapabilityIdentity: family.CapabilityIdentity,
+            CategoryIdentity: family.CategoryIdentity,
+            SemanticFamilyKey: family.FamilyKey,
+            SemanticCategory: family.SemanticCategory);
+    }
+
+    private async Task<bool> HasDurableResearchObservationReceiptAsync(
+        LegendConnectResearchRetentionLineage lineage,
+        CancellationToken cancellationToken)
+    {
+        var correlation = lineage.SessionId.ToString("N");
+        var events = await _db.Set<LegendConnectOperationalEvent>()
+            .AsNoTracking()
+            .Where(item =>
+                item.Category == LegendConnectResearchContracts.ObservabilityCategory &&
+                item.CorrelationId == correlation)
+            .Select(item => new
+            {
+                item.Status,
+                item.ErrorCode,
+                item.Summary
+            })
+            .ToListAsync(cancellationToken);
+        if (!events.Any(item =>
+                item.Status == "Session:Conclusion" &&
+                item.ErrorCode == null &&
+                (item.Summary ?? string.Empty).Contains(
+                    "code_sha=" + lineage.CodeSha,
+                    StringComparison.Ordinal) &&
+                (item.Summary ?? string.Empty).Contains(
+                    "configuration=" + lineage.ConfigurationIdentity,
+                    StringComparison.Ordinal)) ||
+            !events.Any(item =>
+                item.Status == "Retention:ExternalObservation" &&
+                (item.Summary ?? string.Empty).Contains(
+                    "observation=" + lineage.ObservationIdentity,
+                    StringComparison.Ordinal) &&
+                (item.Summary ?? string.Empty).Contains(
+                    "provenance=ExternalObservation",
+                    StringComparison.Ordinal)))
+        {
+            return false;
+        }
+
+        return lineage.MaterialClaims.All(claim =>
+                   events.Any(item =>
+                       (item.Status is "Claim:Supported" or "Claim:Contradicted") &&
+                       (item.Summary ?? string.Empty).Contains(
+                           "evidence=" + claim.EvidenceIdentity,
+                           StringComparison.Ordinal))) &&
+               lineage.MaterialClaims
+                   .Select(item => item.SourceIdentity)
+                   .Distinct(StringComparer.Ordinal)
+                   .All(source => events.Any(item =>
+                       (item.Status is "Source:Opened" or "Source:Discovered") &&
+                       (item.Summary ?? string.Empty).Contains(
+                           "source=" + source,
+                           StringComparison.Ordinal))) &&
+               lineage.Citations.All(citation => events.Any(item =>
+                   item.Status == "Citation:Used" &&
+                   (item.Summary ?? string.Empty).Contains(
+                       "citation=" + citation.CitationIdentity,
+                       StringComparison.Ordinal)));
+    }
 
     private static string? NormalizeMachineTeachingField(
         string? value,
@@ -3147,44 +3431,6 @@ internal sealed class LegendConnectAutonomousLearningService
                 return true;
             }
 
-            // Reuse the exact Phase-3 evidence construction. Phase 4 does not
-            // introduce a second evidence query or reinterpret what the teacher
-            // originally saw.
-            var request = await BuildLanguageProposalRequestAsync(
-                candidate,
-                cancellationToken);
-
-            if (request is null)
-            {
-                await CompleteCanonicalLanguageProposalAsync(
-                    proposal,
-                    "InsufficientEvidence",
-                    "canonical_governed_evidence_unavailable",
-                    cancellationToken);
-                return true;
-            }
-
-            var currentEvidenceIdentityHash =
-                LegendLanguageIdentity.TextHash(
-                    string.Join(
-                        "\n",
-                        request.Evidence
-                            .Select(item => item.EvidenceIdentity)
-                            .OrderBy(item => item, StringComparer.Ordinal)));
-
-            if (!string.Equals(
-                    proposal.EvidenceIdentityHash,
-                    currentEvidenceIdentityHash,
-                    StringComparison.Ordinal))
-            {
-                await CompleteCanonicalLanguageProposalAsync(
-                    proposal,
-                    "Rejected",
-                    "canonical_evidence_identity_mismatch",
-                    cancellationToken);
-                return true;
-            }
-
             LegendLanguageTeacherFamilyProposal? family;
             try
             {
@@ -3230,6 +3476,71 @@ internal sealed class LegendConnectAutonomousLearningService
                 return true;
             }
 
+            // Reuse the exact Phase-3 evidence construction. Phase 4 does not
+            // introduce a second evidence query or reinterpret what the teacher
+            // originally saw.
+            var requestBuild = await BuildLanguageProposalRequestAsync(
+                candidate,
+                cancellationToken,
+                family);
+            var request = requestBuild.Request;
+
+            if (request is null)
+            {
+                await CompleteCanonicalLanguageProposalAsync(
+                    proposal,
+                    "InsufficientEvidence",
+                    requestBuild.FailureCode ??
+                        "canonical_governed_evidence_unavailable",
+                    cancellationToken);
+                return true;
+            }
+
+            var currentEvidenceIdentityHash =
+                LegendLanguageIdentity.TextHash(
+                    string.Join(
+                        "\n",
+                        request.Evidence
+                            .Select(item => item.EvidenceIdentity)
+                            .OrderBy(item => item, StringComparer.Ordinal)));
+
+            if (!string.Equals(
+                    proposal.EvidenceIdentityHash,
+                    currentEvidenceIdentityHash,
+                    StringComparison.Ordinal))
+            {
+                await CompleteCanonicalLanguageProposalAsync(
+                    proposal,
+                    "Rejected",
+                    "canonical_evidence_identity_mismatch",
+                    cancellationToken);
+                return true;
+            }
+
+            var sameLanguage = string.Equals(
+                proposal.SourceLanguageCode,
+                proposal.TargetLanguageCode,
+                StringComparison.OrdinalIgnoreCase);
+            if (!LegendConnectMachineTeachingSubmission.IsSupportedIdentity(
+                    family.CapabilityIdentity,
+                    family.CategoryIdentity,
+                    sameLanguage) ||
+                (IsConversationMachineCandidate(candidate) &&
+                 !string.Equals(
+                     candidate.Category,
+                     LegendConnectMachineTeachingSubmission.CandidateCategoryIdentity(
+                         family.CapabilityIdentity,
+                         family.CategoryIdentity),
+                     StringComparison.Ordinal)))
+            {
+                await CompleteCanonicalLanguageProposalAsync(
+                    proposal,
+                    "Rejected",
+                    "canonical_capability_identity_mismatch",
+                    cancellationToken);
+                return true;
+            }
+
             // Recompute the exact Phase-3 proposal identity from the original
             // candidate, current exact governed evidence identity, and exact
             // persisted payload. Changed lineage can never inherit an earlier
@@ -3256,145 +3567,20 @@ internal sealed class LegendConnectAutonomousLearningService
                 return true;
             }
 
-            foreach (var example in family.Examples)
+            var canonicalValidation =
+                await ValidateCanonicalMachineProposalAsync(
+                    candidate,
+                    proposal,
+                    family,
+                    cancellationToken);
+            if (!canonicalValidation.Succeeded)
             {
-                if (string.IsNullOrWhiteSpace(example.SourceText) ||
-                    example.Components is null ||
-                    example.Components.Count is < 1 or > 16)
-                {
-                    await CompleteCanonicalLanguageProposalAsync(
-                        proposal,
-                        "Rejected",
-                        "canonical_example_payload_invalid",
-                        cancellationToken);
-                    return true;
-                }
-
-                var understanding =
-                    await _curriculum!.AnalyzeShadowSourceSemanticsAsync(
-                        proposal.SourceLanguageCode,
-                        example.SourceText,
-                        cancellationToken);
-
-                if (string.Equals(
-                        understanding.State,
-                        LegendShadowSourceUnderstanding.Ambiguous,
-                        StringComparison.Ordinal))
-                {
-                    await CompleteCanonicalLanguageProposalAsync(
-                        proposal,
-                        "Rejected",
-                        "canonical_source_semantics_ambiguous",
-                        cancellationToken);
-                    return true;
-                }
-
-                if (!string.Equals(
-                        understanding.State,
-                        LegendShadowSourceUnderstanding
-                            .SupportedForShadowEvaluation,
-                        StringComparison.Ordinal))
-                {
-                    await CompleteCanonicalLanguageProposalAsync(
-                        proposal,
-                        "InsufficientEvidence",
-                        "canonical_source_semantics_insufficient",
-                        cancellationToken);
-                    return true;
-                }
-
-                var proposedComponents = example.Components
-                    .Select(item => CanonicalMachineComponentIdentity(
-                        item.Dimension,
-                        item.Value,
-                        item.SurfaceForm))
-                    .OrderBy(item => item, StringComparer.Ordinal)
-                    .ToArray();
-
-                var establishedComponents = understanding.Components
-                    .Select(item => CanonicalMachineComponentIdentity(
-                        item.Dimension,
-                        item.Value,
-                        item.SurfaceForm))
-                    .OrderBy(item => item, StringComparer.Ordinal)
-                    .ToArray();
-
-                if (proposedComponents.Length !=
-                        proposedComponents
-                            .Distinct(StringComparer.Ordinal)
-                            .Count() ||
-                    !proposedComponents.SequenceEqual(
-                        establishedComponents,
-                        StringComparer.Ordinal))
-                {
-                    await CompleteCanonicalLanguageProposalAsync(
-                        proposal,
-                        "Rejected",
-                        "canonical_semantic_component_mismatch",
-                        cancellationToken);
-                    return true;
-                }
-
-                // A null target remains a source-only machine proposal and is
-                // not allowed to invent a target. When a target is supplied,
-                // require the existing Founder-backed directional formulation
-                // authority to independently produce that exact target.
-                if (!string.IsNullOrWhiteSpace(example.TargetText))
-                {
-                    var formulation =
-                        await _curriculum.FormulateShadowTargetAsync(
-                            proposal.SourceLanguageCode,
-                            proposal.TargetLanguageCode,
-                            example.SourceText,
-                            cancellationToken);
-
-                    if (string.Equals(
-                            formulation.State,
-                            LegendShadowTargetFormulation.Ambiguous,
-                            StringComparison.Ordinal) ||
-                        string.Equals(
-                            formulation.State,
-                            LegendShadowTargetFormulation.Contradicted,
-                            StringComparison.Ordinal))
-                    {
-                        await CompleteCanonicalLanguageProposalAsync(
-                            proposal,
-                            "Rejected",
-                            "canonical_target_formulation_contradicted",
-                            cancellationToken);
-                        return true;
-                    }
-
-                    if (!string.Equals(
-                            formulation.State,
-                            LegendShadowTargetFormulation
-                                .SupportedForShadowEvaluation,
-                            StringComparison.Ordinal) ||
-                        string.IsNullOrWhiteSpace(formulation.Text))
-                    {
-                        await CompleteCanonicalLanguageProposalAsync(
-                            proposal,
-                            "InsufficientEvidence",
-                            "canonical_target_formulation_insufficient",
-                            cancellationToken);
-                        return true;
-                    }
-
-                    if (!string.Equals(
-                            LegendLanguageIdentity.NormalizeText(
-                                formulation.Text),
-                            LegendLanguageIdentity.NormalizeText(
-                                example.TargetText),
-                            StringComparison.OrdinalIgnoreCase))
-                    {
-                        await CompleteCanonicalLanguageProposalAsync(
-                            proposal,
-                            "Rejected",
-                            "canonical_target_text_mismatch",
-                            cancellationToken);
-                        return true;
-                    }
-                }
+                await CompleteCanonicalLanguageProposalAsync(
+                    proposal,
+                    canonicalValidation.State,
+                    canonicalValidation.FailureCode!,
+                    cancellationToken);
+                return true;
             }
 
             // Phase 4 admits only the proposal artifact into the governed
@@ -3418,7 +3604,7 @@ internal sealed class LegendConnectAutonomousLearningService
                 proposal.SourceLanguageCode,
                 proposal.PairKey,
                 null,
-                "The exact machine proposal and its original governed evidence lineage passed existing LEGEND semantic and directional validation gates. No curriculum or corpus knowledge was written.",
+                "The critic-approved machine proposal passed governed definition, constraint, contradiction, family, contrast, transition, and held-out validation. No curriculum or corpus knowledge was written.",
                 cancellationToken);
 
             return true;
@@ -3468,6 +3654,466 @@ internal sealed class LegendConnectAutonomousLearningService
 
             return true;
         }
+    }
+
+    private async Task<CanonicalMachineProposalValidation>
+        ValidateCanonicalMachineProposalAsync(
+            LegendCorpusCandidate candidate,
+            LegendLanguageTeacherProposal proposal,
+            LegendLanguageTeacherFamilyProposal family,
+            CancellationToken cancellationToken)
+    {
+        var proposedLineage = LegendConnectCurriculumService
+            .NormalizeMachineTeachingSemanticLineage(family);
+        if (proposedLineage is null)
+        {
+            return CanonicalMachineProposalValidation.Rejected(
+                "canonical_semantic_lineage_invalid");
+        }
+
+        LegendCurriculumFamily? governedFamily;
+        if (candidate.CurriculumFamilyId is Guid familyId)
+        {
+            governedFamily = await _db.Set<LegendCurriculumFamily>()
+                .AsNoTracking()
+                .SingleOrDefaultAsync(
+                    item => item.Id == familyId,
+                    cancellationToken);
+        }
+        else
+        {
+            var matches = await _db.Set<LegendCurriculumFamily>()
+                .AsNoTracking()
+                .Where(item =>
+                    item.FamilyKey == proposedLineage.FamilyKey)
+                .Take(2)
+                .ToListAsync(cancellationToken);
+            governedFamily = matches.Count == 1
+                ? matches[0]
+                : null;
+        }
+
+        var governedCategory = governedFamily is null ||
+            string.IsNullOrWhiteSpace(governedFamily.SemanticCategory)
+                ? governedFamily?.FamilyKey
+                : governedFamily.SemanticCategory.Trim();
+        if (governedFamily is null ||
+            !string.Equals(
+                governedFamily.Provenance,
+                LegendConnectKnowledgeProvenance.FounderApproved,
+                StringComparison.Ordinal) ||
+            !string.Equals(
+                governedFamily.FamilyKey,
+                proposedLineage.FamilyKey,
+                StringComparison.Ordinal) ||
+            !string.Equals(
+                governedCategory,
+                proposedLineage.SemanticCategory,
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return CanonicalMachineProposalValidation.Rejected(
+                "canonical_founder_family_lineage_unproven");
+        }
+
+        var governedExamples = await _db
+            .Set<LegendCurriculumExample>()
+            .AsNoTracking()
+            .Where(item =>
+                item.CurriculumFamilyId == governedFamily.Id &&
+                item.LanguageCode == proposal.SourceLanguageCode &&
+                item.SupersededUtc == null &&
+                item.Provenance ==
+                    LegendConnectKnowledgeProvenance.FounderApproved)
+            .Select(item => item.Id)
+            .ToListAsync(cancellationToken);
+        if (governedExamples.Count < 2)
+        {
+            return CanonicalMachineProposalValidation.Insufficient(
+                "canonical_founder_family_examples_insufficient");
+        }
+
+        var governedAnchors = await _db
+            .Set<LegendLanguageCompositionalAnchor>()
+            .AsNoTracking()
+            .Where(item =>
+                governedExamples.Contains(item.CurriculumExampleId) &&
+                item.CurriculumFamilyId == governedFamily.Id &&
+                item.LanguageCode == proposal.SourceLanguageCode &&
+                item.SupersededUtc == null &&
+                item.SemanticSignature != null &&
+                item.SemanticSignature != string.Empty &&
+                item.Provenance ==
+                    LegendConnectKnowledgeProvenance.FounderApproved)
+            .Select(item => new
+            {
+                item.CurriculumExampleId,
+                item.Dimension,
+                item.Value,
+                SemanticSignature = item.SemanticSignature!
+            })
+            .Distinct()
+            .ToListAsync(cancellationToken);
+        if (governedAnchors.Count == 0)
+        {
+            return CanonicalMachineProposalValidation.Insufficient(
+                "canonical_founder_definitions_insufficient");
+        }
+
+        var definitions = governedAnchors
+            .GroupBy(item => item.SemanticSignature, StringComparer.Ordinal)
+            .ToDictionary(
+                group => group.Key,
+                group => group
+                    .Select(item => CanonicalMachineDefinitionIdentity(
+                        item.Dimension,
+                        item.Value))
+                    .Distinct(StringComparer.Ordinal)
+                    .ToArray(),
+                StringComparer.Ordinal);
+        if (definitions.Values.Any(item => item.Length != 1))
+        {
+            return CanonicalMachineProposalValidation.Rejected(
+                "canonical_founder_definition_contradicted");
+        }
+
+        var governedProfiles = governedAnchors
+            .GroupBy(item => item.CurriculumExampleId)
+            .ToDictionary(
+                group => group.Key,
+                group => CanonicalMachineProfile(
+                    group.Select(item => item.SemanticSignature)));
+        var governedProfileSet = governedProfiles.Values
+            .ToHashSet(StringComparer.Ordinal);
+
+        var contrastRows = await _db
+            .Set<LegendLanguageStructuralEvidence>()
+            .AsNoTracking()
+            .Where(item =>
+                item.CurriculumFamilyId == governedFamily.Id &&
+                item.LanguageCode == proposal.SourceLanguageCode &&
+                item.PairKey == string.Empty &&
+                governedExamples.Contains(
+                    item.BaselineCurriculumExampleId) &&
+                governedExamples.Contains(
+                    item.ComparedCurriculumExampleId) &&
+                item.SupersededUtc == null &&
+                item.IsHumanVerifiedSupport &&
+                item.Provenance ==
+                    LegendConnectKnowledgeProvenance.FounderApproved)
+            .Select(item => new
+            {
+                item.BaselineCurriculumExampleId,
+                item.ComparedCurriculumExampleId,
+                item.ContributionState
+            })
+            .ToListAsync(cancellationToken);
+
+        var supportedContrasts = new HashSet<string>(
+            StringComparer.Ordinal);
+        var contradictedContrasts = new HashSet<string>(
+            StringComparer.Ordinal);
+        foreach (var contrast in contrastRows)
+        {
+            if (!governedProfiles.TryGetValue(
+                    contrast.BaselineCurriculumExampleId,
+                    out var baselineProfile) ||
+                !governedProfiles.TryGetValue(
+                    contrast.ComparedCurriculumExampleId,
+                    out var comparedProfile))
+            {
+                continue;
+            }
+
+            var contrastIdentity = CanonicalMachineContrastIdentity(
+                baselineProfile,
+                comparedProfile);
+            if (string.Equals(
+                    contrast.ContributionState,
+                    "Supported",
+                    StringComparison.Ordinal))
+            {
+                supportedContrasts.Add(contrastIdentity);
+            }
+            else if (string.Equals(
+                         contrast.ContributionState,
+                         "Contradictory",
+                         StringComparison.Ordinal))
+            {
+                contradictedContrasts.Add(contrastIdentity);
+            }
+        }
+
+        var proposedProfiles = proposedLineage.Examples
+            .Select(item => CanonicalMachineProfile(
+                item.PrimitiveSignatures))
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+        if (proposedProfiles.Length < 2)
+        {
+            return CanonicalMachineProposalValidation.Rejected(
+                "canonical_controlled_contrast_missing");
+        }
+        if (proposedProfiles.Any(
+                item => !governedProfileSet.Contains(item)))
+        {
+            return CanonicalMachineProposalValidation.Rejected(
+                "canonical_semantic_profile_outside_founder_family");
+        }
+
+        foreach (var profile in proposedProfiles)
+        {
+            var peerIdentities = proposedProfiles
+                .Where(item => !string.Equals(
+                    item,
+                    profile,
+                    StringComparison.Ordinal))
+                .Select(item => CanonicalMachineContrastIdentity(
+                    profile,
+                    item))
+                .ToArray();
+            if (peerIdentities.Any(
+                    contradictedContrasts.Contains))
+            {
+                return CanonicalMachineProposalValidation.Rejected(
+                    "canonical_controlled_contrast_contradicted");
+            }
+            if (!peerIdentities.Any(supportedContrasts.Contains))
+            {
+                return CanonicalMachineProposalValidation.Insufficient(
+                    "canonical_controlled_contrast_insufficient");
+            }
+        }
+
+        if (proposedLineage.TransitionSignatures.Count > 0)
+        {
+            var proposedTransitionSignatures =
+                proposedLineage.TransitionSignatures.ToArray();
+            var transitionStates = await _db
+                .Set<LegendSemanticTransitionEvidence>()
+                .AsNoTracking()
+                .Where(item =>
+                    governedExamples.Contains(
+                        item.SourceCurriculumExampleId) &&
+                    governedExamples.Contains(
+                        item.ResultCurriculumExampleId) &&
+                    item.SourceLanguageCode ==
+                        proposal.SourceLanguageCode &&
+                    item.ResultLanguageCode ==
+                        proposal.SourceLanguageCode &&
+                    proposedTransitionSignatures.Contains(
+                        item.TransitionSignature) &&
+                    item.SupersededUtc == null &&
+                    item.IsHumanVerifiedSupport &&
+                    item.Provenance ==
+                        LegendConnectKnowledgeProvenance.FounderApproved)
+                .Select(item => new
+                {
+                    item.TransitionSignature,
+                    item.ContributionState
+                })
+                .ToListAsync(cancellationToken);
+            if (transitionStates.Any(item => string.Equals(
+                    item.ContributionState,
+                    "Contradictory",
+                    StringComparison.Ordinal)))
+            {
+                return CanonicalMachineProposalValidation.Rejected(
+                    "canonical_semantic_transition_contradicted");
+            }
+
+            var supportedTransitions = transitionStates
+                .Where(item => string.Equals(
+                    item.ContributionState,
+                    "Supported",
+                    StringComparison.Ordinal))
+                .Select(item => item.TransitionSignature)
+                .ToHashSet(StringComparer.Ordinal);
+            if (proposedTransitionSignatures.Any(
+                    item => !supportedTransitions.Contains(item)))
+            {
+                return CanonicalMachineProposalValidation.Insufficient(
+                    "canonical_semantic_transition_unsupported");
+            }
+        }
+
+        var containsNovelBehavior = false;
+        foreach (var example in family.Examples)
+        {
+            var normalized = LegendConnectCurriculumService
+                .NormalizeMachineTeachingExampleSemantics(example);
+            if (normalized is null)
+            {
+                return CanonicalMachineProposalValidation.Rejected(
+                    "canonical_example_constraints_invalid");
+            }
+
+            var normalizedProfile = CanonicalMachineProfile(
+                normalized.Components.Select(item =>
+                    item.SemanticSignature));
+            if (!governedProfileSet.Contains(normalizedProfile) ||
+                normalized.Components.Any(component =>
+                    !definitions.TryGetValue(
+                        component.SemanticSignature,
+                        out var definition) ||
+                    definition.Length != 1 ||
+                    !string.Equals(
+                        definition[0],
+                        CanonicalMachineDefinitionIdentity(
+                            component.Dimension,
+                            component.Value),
+                        StringComparison.Ordinal)))
+            {
+                return CanonicalMachineProposalValidation.Rejected(
+                    "canonical_semantic_definition_unsupported");
+            }
+
+            var established = await _curriculum!
+                .AnalyzeShadowSourceSemanticsAsync(
+                    proposal.SourceLanguageCode,
+                    example.SourceText,
+                    cancellationToken);
+            if (string.Equals(
+                    established.State,
+                    LegendShadowSourceUnderstanding.Ambiguous,
+                    StringComparison.Ordinal))
+            {
+                return CanonicalMachineProposalValidation.Rejected(
+                    "canonical_source_semantics_ambiguous");
+            }
+            if (string.Equals(
+                    established.State,
+                    LegendShadowSourceUnderstanding
+                        .SupportedForShadowEvaluation,
+                    StringComparison.Ordinal))
+            {
+                var proposedComponents = normalized.Components
+                    .Select(item => CanonicalMachineComponentIdentity(
+                        item.Dimension,
+                        item.Value,
+                        item.SurfaceForm))
+                    .OrderBy(item => item, StringComparer.Ordinal)
+                    .ToArray();
+                var establishedComponents = established.Components
+                    .Select(item => CanonicalMachineComponentIdentity(
+                        item.Dimension,
+                        item.Value,
+                        item.SurfaceForm))
+                    .OrderBy(item => item, StringComparer.Ordinal)
+                    .ToArray();
+                if (!proposedComponents.SequenceEqual(
+                        establishedComponents,
+                        StringComparer.Ordinal))
+                {
+                    return CanonicalMachineProposalValidation.Rejected(
+                        "canonical_source_semantics_contradicted");
+                }
+            }
+            else
+            {
+                // The surface sentence itself is intentionally held out. Its
+                // semantic profile is authorized by independent Founder
+                // definitions and contrasts above, not by exact preexistence.
+                containsNovelBehavior = true;
+            }
+
+            if (!string.IsNullOrWhiteSpace(example.TargetText))
+            {
+                var normalizedTarget =
+                    LegendLanguageIdentity.NormalizeText(
+                        example.TargetText);
+                if (string.IsNullOrWhiteSpace(normalizedTarget) ||
+                    normalizedTarget.Length > 10_000)
+                {
+                    return CanonicalMachineProposalValidation.Rejected(
+                        "canonical_target_constraints_invalid");
+                }
+
+                var formulation = await _curriculum
+                    .FormulateShadowTargetAsync(
+                        proposal.SourceLanguageCode,
+                        proposal.TargetLanguageCode,
+                        example.SourceText,
+                        cancellationToken);
+                if (string.Equals(
+                        formulation.State,
+                        LegendShadowTargetFormulation.Ambiguous,
+                        StringComparison.Ordinal) ||
+                    string.Equals(
+                        formulation.State,
+                        LegendShadowTargetFormulation.Contradicted,
+                        StringComparison.Ordinal))
+                {
+                    return CanonicalMachineProposalValidation.Rejected(
+                        "canonical_target_formulation_contradicted");
+                }
+                if (string.Equals(
+                        formulation.State,
+                        LegendShadowTargetFormulation
+                            .SupportedForShadowEvaluation,
+                        StringComparison.Ordinal))
+                {
+                    if (string.IsNullOrWhiteSpace(formulation.Text) ||
+                        !string.Equals(
+                            LegendLanguageIdentity.NormalizeText(
+                                formulation.Text),
+                            normalizedTarget,
+                            StringComparison.OrdinalIgnoreCase))
+                    {
+                        return CanonicalMachineProposalValidation.Rejected(
+                            "canonical_target_text_contradicted");
+                    }
+                }
+                else
+                {
+                    containsNovelBehavior = true;
+                }
+            }
+        }
+
+        return containsNovelBehavior
+            ? CanonicalMachineProposalValidation.Accepted()
+            : CanonicalMachineProposalValidation.Rejected(
+                "canonical_proposal_already_known");
+    }
+
+    private static string CanonicalMachineDefinitionIdentity(
+        string dimension,
+        string value) =>
+        string.Join(
+            "|",
+            dimension.Trim().ToLowerInvariant(),
+            value.Trim().ToLowerInvariant());
+
+    private static string CanonicalMachineProfile(
+        IEnumerable<string> semanticSignatures) =>
+        string.Join(
+            "|",
+            semanticSignatures
+                .Distinct(StringComparer.Ordinal)
+                .OrderBy(item => item, StringComparer.Ordinal));
+
+    private static string CanonicalMachineContrastIdentity(
+        string firstProfile,
+        string secondProfile) =>
+        string.CompareOrdinal(firstProfile, secondProfile) <= 0
+            ? firstProfile + "\n↔\n" + secondProfile
+            : secondProfile + "\n↔\n" + firstProfile;
+
+    private sealed record CanonicalMachineProposalValidation(
+        bool Succeeded,
+        string State,
+        string? FailureCode)
+    {
+        internal static CanonicalMachineProposalValidation Accepted() =>
+            new(true, "SystemValidated", null);
+
+        internal static CanonicalMachineProposalValidation Rejected(
+            string failureCode) =>
+            new(false, "Rejected", failureCode);
+
+        internal static CanonicalMachineProposalValidation Insufficient(
+            string failureCode) =>
+            new(false, "InsufficientEvidence", failureCode);
     }
 
     private async Task<LegendLanguageTeacherProposal?>
@@ -3638,10 +4284,49 @@ internal sealed class LegendConnectAutonomousLearningService
             1,
             5);
 
-        var candidate = await TryClaimLanguageProposalCandidateAsync(
+        var selected = await SelectLanguageProposalCandidateAsync(
             maximumAttempts,
             cancellationToken);
+        if (selected is null)
+            return false;
 
+        var requiredRoles = selected.CriticOnly
+            ? new[] { LegendLanguageTeacherRole.Critic }
+            : new[]
+            {
+                LegendLanguageTeacherRole.Teacher,
+                LegendLanguageTeacherRole.Critic
+            };
+        var preflights = new Dictionary<
+            string,
+            LegendLanguageTeacherConfigurationPreflight>(
+                StringComparer.Ordinal);
+        var preflightSucceeded = true;
+        foreach (var role in requiredRoles)
+        {
+            var preflight = _languageTeacher!.Preflight(role);
+            preflights[role] = preflight;
+            if (!await PreflightLanguageTeacherRoleAsync(
+                    selected,
+                    preflight,
+                    cancellationToken))
+            {
+                preflightSucceeded = false;
+            }
+        }
+
+        if (!preflightSucceeded)
+        {
+            // The candidate remains unleased. Configuration absence or an
+            // open provider circuit never consumes an attempt. All required
+            // roles are inspected so each role/fingerprint issue is visible.
+            return true;
+        }
+
+        var candidate = await TryClaimLanguageProposalCandidateAsync(
+            selected.Id,
+            maximumAttempts,
+            cancellationToken);
         if (candidate is null)
             return false;
 
@@ -3649,14 +4334,16 @@ internal sealed class LegendConnectAutonomousLearningService
             candidate.SourceLanguageCode,
             candidate.TargetLanguageCode);
 
-        var request = await BuildLanguageProposalRequestAsync(
+        var requestBuild = await BuildLanguageProposalRequestAsync(
             candidate,
             cancellationToken);
+        var request = requestBuild.Request;
 
         if (request is null)
         {
             candidate.TeacherProposalProcessingState = "InsufficientEvidence";
             candidate.TeacherProposalFailureCode =
+                requestBuild.FailureCode ??
                 "language_teacher_insufficient_governed_evidence";
             candidate.TeacherProposalLeaseExpiresUtc = null;
             candidate.TeacherProposalProcessedUtc = DateTime.UtcNow;
@@ -3678,19 +4365,28 @@ internal sealed class LegendConnectAutonomousLearningService
 
         if (IsConversationMachineCandidate(candidate))
         {
+            var researchObservation = string.Equals(
+                candidate.Provenance,
+                ExternalObservationProvenance,
+                StringComparison.Ordinal);
             await RecordAsync(
-                "ConversationMachineProposal",
+                researchObservation
+                    ? "ResearchExternalObservationProposal"
+                    : "ConversationMachineProposal",
                 "Info",
                 "CriticRequested",
                 candidate.SourceLanguageCode,
                 pairKey,
                 null,
-                "The existing autonomous authority sent the retained conversational MachineProposed artifact to the existing independent critic.",
+                researchObservation
+                    ? "The existing autonomous authority sent the retained ExternalObservation MachineProposed artifact to the existing independent critic."
+                    : "The existing autonomous authority sent the retained conversational MachineProposed artifact to the existing independent critic.",
                 cancellationToken);
 
             return await ProcessConversationMachineCritiqueAsync(
                 candidate,
                 request,
+                preflights[LegendLanguageTeacherRole.Critic],
                 maximumAttempts,
                 cancellationToken);
         }
@@ -3716,22 +4412,13 @@ internal sealed class LegendConnectAutonomousLearningService
         {
             throw;
         }
-        catch (Exception)
+        catch (Exception exception)
         {
-            await DeferLanguageProposalAsync(
+            await HandleLanguageTeacherFailureAsync(
                 candidate,
-                "language_teacher_failed",
+                preflights[LegendLanguageTeacherRole.Teacher],
+                ClassifyLanguageTeacherException(exception),
                 maximumAttempts,
-                CancellationToken.None);
-
-            await RecordAsync(
-                "LanguageTeacherProposal",
-                "Warning",
-                candidate.TeacherProposalProcessingState,
-                candidate.SourceLanguageCode,
-                pairKey,
-                candidate.TeacherProposalFailureCode,
-                "The teacher boundary failed without changing canonical knowledge.",
                 CancellationToken.None);
 
             return true;
@@ -3739,41 +4426,70 @@ internal sealed class LegendConnectAutonomousLearningService
 
         if (!teacherResult.Succeeded || teacherResult.Families.Count == 0)
         {
-            await DeferLanguageProposalAsync(
+            await HandleLanguageTeacherFailureAsync(
                 candidate,
-                teacherResult.ErrorCode ?? "language_teacher_failed",
+                preflights[LegendLanguageTeacherRole.Teacher],
+                teacherResult.Succeeded
+                    ? LegendLanguageTeacherFailureClassification.Parsing
+                    : NormalizeLanguageTeacherFailureCode(
+                        teacherResult.ErrorCode,
+                        LegendLanguageTeacherFailureClassification.Provider),
                 maximumAttempts,
-                cancellationToken);
-
-            await RecordAsync(
-                "LanguageTeacherProposal",
-                "Warning",
-                candidate.TeacherProposalProcessingState,
-                candidate.SourceLanguageCode,
-                pairKey,
-                candidate.TeacherProposalFailureCode,
-                "The teacher returned no admissible proposal artifact; canonical knowledge was unchanged.",
                 cancellationToken);
 
             return true;
         }
+
+        await ResolveLanguageTeacherCircuitAsync(
+            preflights[LegendLanguageTeacherRole.Teacher],
+            "ProviderRecovered",
+            cancellationToken);
 
         // Phase-2 already bounds this to four; autonomous Phase-3 orchestration
         // deliberately narrows it further to two families per candidate.
         var families = teacherResult.Families.Take(2).ToArray();
         var critiques = new List<(
             LegendLanguageTeacherFamilyProposal Family,
-            LegendLanguageTeacherCritiqueResult Critique)>(families.Length);
+            LegendLanguageTeacherCritiqueResult Critique,
+            LegendLanguageTeacherProposalRequest? Request,
+            string? PacketFailureCode)>(families.Length);
+        var criticProviderCompleted = false;
 
         foreach (var family in families)
         {
+            var criticRequestBuild =
+                await BuildLanguageProposalRequestAsync(
+                    candidate,
+                    cancellationToken,
+                    family);
+            var criticRequest = criticRequestBuild.Request;
+            if (criticRequest is null)
+            {
+                var packetFailureCode =
+                    criticRequestBuild.FailureCode ??
+                    "language_critic_relevant_evidence_insufficient";
+                critiques.Add((
+                    family,
+                    new LegendLanguageTeacherCritiqueResult(
+                        true,
+                        false,
+                        null,
+                        [
+                            packetFailureCode,
+                            "critic_packet_rejected"
+                        ]),
+                    null,
+                    packetFailureCode));
+                continue;
+            }
+
             LegendLanguageTeacherCritiqueResult critique;
 
             try
             {
                 critique = await _languageTeacher!.CritiqueAsync(
                     new LegendLanguageTeacherCritiqueRequest(
-                        request,
+                        criticRequest,
                         family),
                     cancellationToken);
             }
@@ -3782,22 +4498,13 @@ internal sealed class LegendConnectAutonomousLearningService
             {
                 throw;
             }
-            catch (Exception)
+            catch (Exception exception)
             {
-                await DeferLanguageProposalAsync(
+                await HandleLanguageTeacherFailureAsync(
                     candidate,
-                    "language_critic_failed",
+                    preflights[LegendLanguageTeacherRole.Critic],
+                    ClassifyLanguageTeacherException(exception),
                     maximumAttempts,
-                    CancellationToken.None);
-
-                await RecordAsync(
-                    "LanguageTeacherProposal",
-                    "Warning",
-                    candidate.TeacherProposalProcessingState,
-                    candidate.SourceLanguageCode,
-                    pairKey,
-                    candidate.TeacherProposalFailureCode,
-                    "Independent critique failed; no machine proposal was admitted to canonical knowledge.",
                     CancellationToken.None);
 
                 return true;
@@ -3805,40 +4512,49 @@ internal sealed class LegendConnectAutonomousLearningService
 
             if (!critique.Succeeded)
             {
-                await DeferLanguageProposalAsync(
+                await HandleLanguageTeacherFailureAsync(
                     candidate,
-                    critique.ErrorCode ?? "language_critic_failed",
+                    preflights[LegendLanguageTeacherRole.Critic],
+                    NormalizeLanguageTeacherFailureCode(
+                        critique.ErrorCode,
+                        LegendLanguageTeacherFailureClassification.Provider),
                     maximumAttempts,
-                    cancellationToken);
-
-                await RecordAsync(
-                    "LanguageTeacherProposal",
-                    "Warning",
-                    candidate.TeacherProposalProcessingState,
-                    candidate.SourceLanguageCode,
-                    pairKey,
-                    candidate.TeacherProposalFailureCode,
-                    "Independent critique did not complete; canonical knowledge was unchanged.",
                     cancellationToken);
 
                 return true;
             }
 
-            critiques.Add((family, critique));
+            criticProviderCompleted = true;
+            critiques.Add((family, critique, criticRequest, null));
         }
 
-        var evidenceIdentityHash = LegendLanguageIdentity.TextHash(
-            string.Join(
-                "\n",
-                request.Evidence
-                    .Select(item => item.EvidenceIdentity)
-                    .OrderBy(item => item, StringComparer.Ordinal)));
+        if (criticProviderCompleted)
+        {
+            await ResolveLanguageTeacherCircuitAsync(
+                preflights[LegendLanguageTeacherRole.Critic],
+                "ProviderRecovered",
+                cancellationToken);
+        }
 
         var anyApproved = false;
 
-        foreach (var (family, critique) in critiques)
+        foreach (var (family, critique, criticRequest, packetFailureCode) in critiques)
         {
             var payload = JsonSerializer.Serialize(family);
+            var evidenceIdentityHash = criticRequest is null
+                ? LegendLanguageIdentity.TextHash(
+                    string.Join(
+                        "|",
+                        "critic-packet-rejected:v1",
+                        candidate.IdempotencyKey,
+                        packetFailureCode ?? string.Empty,
+                        payload))
+                : LegendLanguageIdentity.TextHash(
+                    string.Join(
+                        "\n",
+                        criticRequest.Evidence
+                            .Select(item => item.EvidenceIdentity)
+                            .OrderBy(item => item, StringComparer.Ordinal)));
             var proposalIdentity = LegendLanguageIdentity.TextHash(
                 string.Join(
                     "|",
@@ -3902,7 +4618,11 @@ internal sealed class LegendConnectAutonomousLearningService
         candidate.TeacherProposalProcessingState = anyApproved
             ? "AwaitingCanonicalValidation"
             : "CriticRejected";
-        candidate.TeacherProposalFailureCode = null;
+        candidate.TeacherProposalFailureCode = anyApproved
+            ? null
+            : critiques
+                .Select(item => item.PacketFailureCode)
+                .FirstOrDefault(item => item is not null);
         candidate.TeacherProposalLeaseExpiresUtc = null;
         candidate.TeacherProposalProcessedUtc = DateTime.UtcNow;
 
@@ -3924,9 +4644,110 @@ internal sealed class LegendConnectAutonomousLearningService
     }
 
     private async Task<LegendLanguageTeacherProposalRequest?>
+        BuildGovernedSameLanguageMachineProposalRequestAsync(
+            string sourceLanguageCode,
+            string targetLanguageCode,
+            LegendLanguageTeacherFamilyProposal family,
+            CancellationToken cancellationToken)
+    {
+        if (_curriculum is null ||
+            !string.Equals(
+                sourceLanguageCode,
+                targetLanguageCode,
+                StringComparison.OrdinalIgnoreCase) ||
+            !LegendConnectMachineTeachingSubmission.IsSupportedIdentity(
+                family.CapabilityIdentity,
+                family.CategoryIdentity,
+                sameLanguage: true) ||
+            family.Examples is null ||
+            family.Examples.Count is < 2 or > 8)
+        {
+            return null;
+        }
+
+        var semanticEvidence =
+            new List<LegendLanguageTeacherEvidence>(
+                family.Examples.Count);
+        foreach (var example in family.Examples)
+        {
+            if (!string.IsNullOrWhiteSpace(example.TargetText) ||
+                example.Components is null ||
+                example.Components.Count is < 1 or > 16)
+            {
+                return null;
+            }
+
+            var understanding =
+                await _curriculum.AnalyzeShadowSourceSemanticsAsync(
+                    sourceLanguageCode,
+                    example.SourceText,
+                    cancellationToken);
+            if (!string.Equals(
+                    understanding.State,
+                    LegendShadowSourceUnderstanding.SupportedForShadowEvaluation,
+                    StringComparison.Ordinal))
+            {
+                return null;
+            }
+
+            var proposedComponents = example.Components
+                .Select(item => CanonicalMachineComponentIdentity(
+                    item.Dimension,
+                    item.Value,
+                    item.SurfaceForm))
+                .OrderBy(item => item, StringComparer.Ordinal)
+                .ToArray();
+            var governedComponents = understanding.Components
+                .Select(item => CanonicalMachineComponentIdentity(
+                    item.Dimension,
+                    item.Value,
+                    item.SurfaceForm))
+                .OrderBy(item => item, StringComparer.Ordinal)
+                .ToArray();
+            if (!proposedComponents.SequenceEqual(
+                    governedComponents,
+                    StringComparer.Ordinal))
+            {
+                return null;
+            }
+
+            var evidenceIdentity =
+                "semantic:" + LegendLanguageIdentity.TextHash(
+                    string.Join(
+                        "|",
+                        sourceLanguageCode,
+                        LegendLanguageIdentity.NormalizeText(example.SourceText),
+                        string.Join(",", understanding.Components
+                            .Select(item => item.SemanticSignature)
+                            .OrderBy(item => item, StringComparer.Ordinal))));
+            semanticEvidence.Add(
+                new LegendLanguageTeacherEvidence(
+                    evidenceIdentity,
+                    LegendLanguageIdentity.NormalizeText(example.SourceText),
+                    null,
+                    LegendConnectKnowledgeProvenance.FounderApproved,
+                    "GovernedSemanticPrimitive"));
+        }
+
+        return semanticEvidence.Count == family.Examples.Count
+            ? new LegendLanguageTeacherProposalRequest(
+                sourceLanguageCode,
+                targetLanguageCode,
+                family.SemanticCategory,
+                semanticEvidence,
+                MaximumFamilies: 1,
+                CapabilityIdentity: family.CapabilityIdentity,
+                CategoryIdentity: family.CategoryIdentity,
+                SemanticFamilyKey: family.FamilyKey,
+                SemanticCategory: family.SemanticCategory)
+            : null;
+    }
+
+    private async Task<LanguageProposalRequestBuildResult>
         BuildLanguageProposalRequestAsync(
             LegendCorpusCandidate candidate,
-            CancellationToken cancellationToken)
+            CancellationToken cancellationToken,
+            LegendLanguageTeacherFamilyProposal? submittedConversationFamily = null)
     {
         var pairKey = LegendLanguageIdentity.PairKey(
             candidate.SourceLanguageCode,
@@ -3935,6 +4756,87 @@ internal sealed class LegendConnectAutonomousLearningService
         var isConversationMachineCandidate =
             IsConversationMachineCandidate(
                 candidate);
+
+        LegendLanguageTeacherFamilyProposal? conversationFamily =
+            submittedConversationFamily;
+        if (isConversationMachineCandidate && conversationFamily is null)
+        {
+            var payload = await _db.Set<LegendLanguageTeacherProposal>()
+                .AsNoTracking()
+                .Where(item =>
+                    item.CorpusCandidateId == candidate.Id &&
+                    item.Provenance == "MachineProposed")
+                .OrderByDescending(item => item.CreatedUtc)
+                .Select(item => item.ProposalPayloadJson)
+                .FirstOrDefaultAsync(cancellationToken);
+            if (string.IsNullOrWhiteSpace(payload))
+            {
+                return LanguageProposalRequestBuildResult.Rejected(
+                    "language_teacher_proposal_lineage_unavailable");
+            }
+            try
+            {
+                conversationFamily =
+                    JsonSerializer.Deserialize<LegendLanguageTeacherFamilyProposal>(
+                        payload);
+            }
+            catch (JsonException)
+            {
+                return LanguageProposalRequestBuildResult.Rejected(
+                    "language_teacher_proposal_lineage_invalid");
+            }
+        }
+
+        var sameLanguage = string.Equals(
+            candidate.SourceLanguageCode,
+            candidate.TargetLanguageCode,
+            StringComparison.OrdinalIgnoreCase);
+        if (isConversationMachineCandidate &&
+            (conversationFamily is null ||
+             conversationFamily.Examples is null ||
+             conversationFamily.Examples.Count is < 2 or > 8 ||
+             !LegendConnectMachineTeachingSubmission.IsSupportedIdentity(
+                 conversationFamily.CapabilityIdentity,
+                 conversationFamily.CategoryIdentity,
+                 sameLanguage) ||
+             !string.Equals(
+                 candidate.Category,
+                 LegendConnectMachineTeachingSubmission.CandidateCategoryIdentity(
+                     conversationFamily.CapabilityIdentity,
+                     conversationFamily.CategoryIdentity),
+                 StringComparison.Ordinal)))
+        {
+            return LanguageProposalRequestBuildResult.Rejected(
+                "language_teacher_proposal_lineage_invalid");
+        }
+
+        var proposedLineage = conversationFamily is null
+            ? null
+            : LegendConnectCurriculumService
+                .NormalizeMachineTeachingSemanticLineage(
+                    conversationFamily);
+        if (conversationFamily is not null && proposedLineage is null)
+        {
+            return LanguageProposalRequestBuildResult.Rejected(
+                "language_teacher_semantic_lineage_invalid");
+        }
+
+        if (string.Equals(
+                candidate.Provenance,
+                ExternalObservationProvenance,
+                StringComparison.Ordinal))
+        {
+            var researchRequest = conversationFamily is null
+                ? null
+                : BuildResearchObservationProposalRequest(
+                    candidate.SourceLanguageCode,
+                    candidate.TargetLanguageCode,
+                    conversationFamily);
+            return researchRequest is null
+                ? LanguageProposalRequestBuildResult.Rejected(
+                    "language_teacher_research_observation_lineage_invalid")
+                : LanguageProposalRequestBuildResult.Accepted(researchRequest);
+        }
 
         LegendLanguageTextUnit? source = null;
 
@@ -3959,7 +4861,8 @@ internal sealed class LegendConnectAutonomousLearningService
                         candidate.SourceText),
                     StringComparison.Ordinal))
             {
-                return null;
+                return LanguageProposalRequestBuildResult.Rejected(
+                    "language_teacher_source_lineage_unavailable");
             }
         }
         else
@@ -3976,13 +4879,328 @@ internal sealed class LegendConnectAutonomousLearningService
                         normalizedSource),
                     StringComparison.Ordinal))
             {
-                return null;
+                return LanguageProposalRequestBuildResult.Rejected(
+                    "language_teacher_source_lineage_invalid");
             }
         }
 
-        // Teacher evidence is intentionally stronger than ordinary translation
-        // memory eligibility. Provider-only Observation rows are not allowed to
-        // teach themselves into stronger knowledge.
+        if (isConversationMachineCandidate && sameLanguage)
+        {
+            var sameLanguageRequest =
+                await BuildGovernedSameLanguageMachineProposalRequestAsync(
+                    candidate.SourceLanguageCode,
+                    candidate.TargetLanguageCode,
+                    conversationFamily!,
+                    cancellationToken);
+            return sameLanguageRequest is null
+                ? LanguageProposalRequestBuildResult.Rejected(
+                    "language_teacher_same_language_lineage_unproven")
+                : LanguageProposalRequestBuildResult.Accepted(
+                    sameLanguageRequest);
+        }
+
+        LegendCurriculumFamily? governedFamily;
+        if (candidate.CurriculumFamilyId is Guid governedFamilyId)
+        {
+            governedFamily = await _db.Set<LegendCurriculumFamily>()
+                .AsNoTracking()
+                .SingleOrDefaultAsync(
+                    item => item.Id == governedFamilyId,
+                    cancellationToken);
+        }
+        else if (proposedLineage is not null)
+        {
+            var matchingFamilies = await _db.Set<LegendCurriculumFamily>()
+                .AsNoTracking()
+                .Where(item => item.FamilyKey == proposedLineage.FamilyKey)
+                .Take(2)
+                .ToListAsync(cancellationToken);
+            var matchedFamily = matchingFamilies.Count == 1
+                ? matchingFamilies[0]
+                : null;
+            var matchedCategory = matchedFamily is null ||
+                string.IsNullOrWhiteSpace(matchedFamily.SemanticCategory)
+                    ? matchedFamily?.FamilyKey
+                    : matchedFamily.SemanticCategory.Trim();
+            governedFamily = matchedFamily is not null &&
+                string.Equals(
+                    matchedCategory,
+                    proposedLineage.SemanticCategory,
+                    StringComparison.OrdinalIgnoreCase)
+                        ? matchedFamily
+                        : null;
+        }
+        else
+        {
+            governedFamily = null;
+        }
+
+        if (governedFamily is null)
+        {
+            return LanguageProposalRequestBuildResult.Rejected(
+                "language_teacher_semantic_family_lineage_unproven");
+        }
+
+        var governedSemanticCategory =
+            string.IsNullOrWhiteSpace(governedFamily.SemanticCategory)
+                ? governedFamily.FamilyKey
+                : governedFamily.SemanticCategory.Trim();
+
+        if (proposedLineage is not null &&
+            (!string.Equals(
+                 governedFamily.FamilyKey,
+                 proposedLineage.FamilyKey,
+                 StringComparison.Ordinal) ||
+             !string.Equals(
+                 governedSemanticCategory,
+                 proposedLineage.SemanticCategory,
+                 StringComparison.OrdinalIgnoreCase)))
+        {
+            return LanguageProposalRequestBuildResult.Rejected(
+                "language_teacher_semantic_family_lineage_mismatch");
+        }
+
+        var familyExamples = await (
+            from example in _db.Set<LegendCurriculumExample>()
+                .AsNoTracking()
+            join unit in _db.Set<LegendLanguageTextUnit>()
+                .AsNoTracking()
+                on example.TextUnitId equals unit.Id
+            where
+                example.CurriculumFamilyId == governedFamily.Id &&
+                example.SupersededUtc == null &&
+                unit.IsTrainingEligible &&
+                example.LanguageCode == unit.LanguageCode &&
+                (example.LanguageCode == candidate.SourceLanguageCode ||
+                 example.LanguageCode == candidate.TargetLanguageCode)
+            select new LanguageFamilyExampleLineage(
+                example.Id,
+                example.TextUnitId,
+                example.LanguageCode,
+                example.DerivedFromCurriculumExampleId))
+            .ToListAsync(cancellationToken);
+
+        var sourceExamples = familyExamples
+            .Where(item => string.Equals(
+                item.LanguageCode,
+                candidate.SourceLanguageCode,
+                StringComparison.OrdinalIgnoreCase))
+            .ToArray();
+        var targetExamples = familyExamples
+            .Where(item => string.Equals(
+                item.LanguageCode,
+                candidate.TargetLanguageCode,
+                StringComparison.OrdinalIgnoreCase) &&
+                item.DerivedFromCurriculumExampleId is not null)
+            .ToArray();
+        if (sourceExamples.Length < 2 || targetExamples.Length < 2)
+        {
+            return LanguageProposalRequestBuildResult.Rejected(
+                "language_teacher_family_examples_insufficient");
+        }
+
+        LanguageFamilyExampleLineage? candidateSourceExample = null;
+        if (!isConversationMachineCandidate)
+        {
+            candidateSourceExample = candidate.SourceCurriculumExampleId is Guid sourceExampleId
+                ? sourceExamples.SingleOrDefault(item =>
+                    item.Id == sourceExampleId &&
+                    item.TextUnitId == source!.Id)
+                : null;
+            if (candidateSourceExample is null)
+            {
+                return LanguageProposalRequestBuildResult.Rejected(
+                    "language_teacher_candidate_family_lineage_unproven");
+            }
+        }
+
+        var allExampleIds = sourceExamples
+            .Select(item => item.Id)
+            .Concat(targetExamples.Select(item => item.Id))
+            .Distinct()
+            .ToArray();
+        var primitiveRows = await _db
+            .Set<LegendLanguageCompositionalAnchor>()
+            .AsNoTracking()
+            .Where(item =>
+                allExampleIds.Contains(item.CurriculumExampleId) &&
+                item.CurriculumFamilyId == governedFamily.Id &&
+                item.SupersededUtc == null &&
+                item.SemanticSignature != null &&
+                item.SemanticSignature != string.Empty &&
+                item.Provenance ==
+                    LegendConnectKnowledgeProvenance.FounderApproved)
+            .Select(item => new
+            {
+                item.CurriculumExampleId,
+                SemanticSignature = item.SemanticSignature!
+            })
+            .Distinct()
+            .ToListAsync(cancellationToken);
+        var primitivesByExample = primitiveRows
+            .GroupBy(item => item.CurriculumExampleId)
+            .ToDictionary(
+                group => group.Key,
+                group => (IReadOnlyList<string>)group
+                    .Select(item => item.SemanticSignature)
+                    .Distinct(StringComparer.Ordinal)
+                    .OrderBy(item => item, StringComparer.Ordinal)
+                    .ToArray());
+
+        var sourceExampleIds = sourceExamples
+            .Select(item => item.Id)
+            .ToArray();
+        var transitions = await _db
+            .Set<LegendSemanticTransitionEvidence>()
+            .AsNoTracking()
+            .Where(item =>
+                sourceExampleIds.Contains(item.SourceCurriculumExampleId) &&
+                sourceExampleIds.Contains(item.ResultCurriculumExampleId) &&
+                item.SourceLanguageCode == candidate.SourceLanguageCode &&
+                item.ResultLanguageCode == candidate.SourceLanguageCode &&
+                item.SupersededUtc == null &&
+                item.ContributionState == "Supported" &&
+                item.IsHumanVerifiedSupport &&
+                item.Provenance ==
+                    LegendConnectKnowledgeProvenance.FounderApproved)
+            .Select(item => new LanguageTransitionLineage(
+                item.TransitionSignature,
+                item.SourceCurriculumExampleId,
+                item.ResultCurriculumExampleId,
+                item.IndependentSourceIdentity))
+            .ToListAsync(cancellationToken);
+
+        var transitionSignatures = transitions
+            .Select(item => item.TransitionSignature)
+            .Distinct(StringComparer.Ordinal)
+            .ToHashSet(StringComparer.Ordinal);
+        if (proposedLineage is { TransitionSignatures.Count: > 0 } &&
+            proposedLineage.TransitionSignatures.Any(
+                item => !transitionSignatures.Contains(item)))
+        {
+            return LanguageProposalRequestBuildResult.Rejected(
+                "language_teacher_semantic_transition_lineage_unproven");
+        }
+
+        var selectedTransitionSignatures = proposedLineage is
+            { TransitionSignatures.Count: > 0 }
+                ? proposedLineage.TransitionSignatures.ToHashSet(
+                    StringComparer.Ordinal)
+                : transitionSignatures;
+        var selectedTransitions = transitions
+            .Where(item => selectedTransitionSignatures.Contains(
+                item.TransitionSignature))
+            .ToArray();
+        var transitionExampleIds = selectedTransitions
+            .Select(item => item.SourceCurriculumExampleId)
+            .Concat(selectedTransitions.Select(
+                item => item.ResultCurriculumExampleId))
+            .ToHashSet();
+
+        var contrasts = await _db
+            .Set<LegendLanguageStructuralEvidence>()
+            .AsNoTracking()
+            .Where(item =>
+                item.CurriculumFamilyId == governedFamily.Id &&
+                item.LanguageCode == candidate.SourceLanguageCode &&
+                item.PairKey == string.Empty &&
+                sourceExampleIds.Contains(item.BaselineCurriculumExampleId) &&
+                sourceExampleIds.Contains(item.ComparedCurriculumExampleId) &&
+                item.SupersededUtc == null &&
+                item.ContributionState == "Supported" &&
+                item.IsHumanVerifiedSupport &&
+                item.Provenance ==
+                    LegendConnectKnowledgeProvenance.FounderApproved)
+            .Select(item => new LanguageControlledContrastLineage(
+                item.EvidenceSignature,
+                item.BaselineCurriculumExampleId,
+                item.ComparedCurriculumExampleId,
+                item.IndependentSourceIdentity))
+            .ToListAsync(cancellationToken);
+        var contrastExampleIds = contrasts
+            .Select(item => item.BaselineCurriculumExampleId)
+            .Concat(contrasts.Select(item =>
+                item.ComparedCurriculumExampleId))
+            .ToHashSet();
+        if (contrasts.Count == 0 || contrastExampleIds.Count < 2)
+        {
+            return LanguageProposalRequestBuildResult.Rejected(
+                "language_teacher_controlled_contrast_lineage_unproven");
+        }
+
+        if (proposedLineage is not null)
+        {
+            var governedPrimitiveProfiles = sourceExamples
+                .Where(item => primitivesByExample.ContainsKey(item.Id))
+                .Select(item => string.Join(
+                    "|",
+                    primitivesByExample[item.Id]))
+                .ToHashSet(StringComparer.Ordinal);
+            var proposedPrimitiveProfiles = proposedLineage.Examples
+                .Select(item => string.Join(
+                    "|",
+                    item.PrimitiveSignatures))
+                .ToArray();
+            if (proposedPrimitiveProfiles.Distinct(
+                    StringComparer.Ordinal).Count() < 2 ||
+                proposedPrimitiveProfiles.Any(
+                    item => !governedPrimitiveProfiles.Contains(item)))
+            {
+                return LanguageProposalRequestBuildResult.Rejected(
+                    "language_teacher_semantic_primitive_lineage_unproven");
+            }
+        }
+
+        var candidateSourcePrimitives = candidateSourceExample is null
+            ? []
+            : primitivesByExample.GetValueOrDefault(
+                candidateSourceExample.Id) ?? [];
+        var candidateSourceTransitions = candidateSourceExample is null
+            ? []
+            : selectedTransitions
+                .Where(item =>
+                    item.SourceCurriculumExampleId == candidateSourceExample.Id ||
+                    item.ResultCurriculumExampleId == candidateSourceExample.Id)
+                .Select(item =>
+                    item.TransitionSignature + ":" +
+                    item.IndependentSourceIdentity)
+                .Distinct(StringComparer.Ordinal)
+                .OrderBy(item => item, StringComparer.Ordinal)
+                .ToArray();
+        var candidateSourceContrasts = candidateSourceExample is null
+            ? []
+            : contrasts
+                .Where(item =>
+                    item.BaselineCurriculumExampleId == candidateSourceExample.Id ||
+                    item.ComparedCurriculumExampleId == candidateSourceExample.Id)
+                .Select(item =>
+                    item.EvidenceSignature + ":" +
+                    item.IndependentSourceIdentity)
+                .Distinct(StringComparer.Ordinal)
+                .OrderBy(item => item, StringComparer.Ordinal)
+                .ToArray();
+        if (candidateSourceExample is not null &&
+            (candidateSourcePrimitives.Count == 0 ||
+             candidateSourceContrasts.Length == 0 ||
+             (selectedTransitions.Length > 0 &&
+              candidateSourceTransitions.Length == 0)))
+        {
+            return LanguageProposalRequestBuildResult.Rejected(
+                "language_teacher_candidate_semantic_lineage_unproven");
+        }
+
+        var sourceTextUnitIds = sourceExamples
+            .Select(item => item.TextUnitId)
+            .Distinct()
+            .ToArray();
+        var targetTextUnitIds = targetExamples
+            .Select(item => item.TextUnitId)
+            .Distinct()
+            .ToArray();
+        // This is the single trusted-alignment query used by proposal and
+        // critic packets. It is bounded first by durable family/example
+        // lineage; there is no language-pair-wide candidate pool to filter
+        // after selection.
         var trusted = await (
             from alignment in _db.Set<LegendTranslationAlignment>()
                 .AsNoTracking()
@@ -3995,30 +5213,24 @@ internal sealed class LegendConnectAutonomousLearningService
             where
                 alignment.PairKey == pairKey &&
                 alignment.SupersededUtc == null &&
+                sourceTextUnitIds.Contains(alignment.SourceTextUnitId) &&
+                targetTextUnitIds.Contains(alignment.TargetTextUnitId) &&
                 evidenceSource.IsTrainingEligible &&
                 evidenceTarget.IsTrainingEligible &&
-                evidenceSource.LanguageCode ==
-                    candidate.SourceLanguageCode &&
-                evidenceTarget.LanguageCode ==
-                    candidate.TargetLanguageCode &&
-                (
-                    alignment.HumanVerified ||
-                    alignment.QualityState == "SystemValidated"
-                )
-            orderby
-                alignment.HumanVerified descending,
-                alignment.Confidence descending,
-                alignment.UpdatedUtc descending
-            select new
-            {
+                evidenceSource.LanguageCode == candidate.SourceLanguageCode &&
+                evidenceTarget.LanguageCode == candidate.TargetLanguageCode &&
+                (alignment.HumanVerified ||
+                 alignment.QualityState == "SystemValidated")
+            select new TrustedLanguageAlignment(
                 alignment.Id,
+                alignment.SourceTextUnitId,
+                alignment.TargetTextUnitId,
                 alignment.HumanVerified,
+                alignment.Confidence,
                 alignment.Provenance,
                 alignment.QualityState,
-                SourceText = evidenceSource.Text,
-                TargetText = evidenceTarget.Text
-            })
-            .Take(64)
+                evidenceSource.Text,
+                evidenceTarget.Text))
             .ToListAsync(cancellationToken);
 
         var machineValidatedIds = trusted
@@ -4041,97 +5253,671 @@ internal sealed class LegendConnectAutonomousLearningService
                 .ToListAsync(cancellationToken))
                 .ToHashSet();
 
-        var evidence =
-            new List<LegendLanguageTeacherEvidence>(32);
+        var lineageRows = new List<TrustedLanguageAlignmentLineage>();
+        foreach (var row in trusted.Where(item =>
+                     item.HumanVerified ||
+                     !contradicted.Contains(item.Id)))
+        {
+            foreach (var sourceExample in sourceExamples.Where(item =>
+                         item.TextUnitId == row.SourceTextUnitId &&
+                         contrastExampleIds.Contains(item.Id) &&
+                         (transitionExampleIds.Count == 0 ||
+                          transitionExampleIds.Contains(item.Id))))
+            {
+                foreach (var targetExample in targetExamples.Where(item =>
+                             item.TextUnitId == row.TargetTextUnitId &&
+                             item.DerivedFromCurriculumExampleId ==
+                                sourceExample.Id))
+                {
+                    var sourcePrimitives = primitivesByExample
+                        .GetValueOrDefault(sourceExample.Id) ?? [];
+                    var targetPrimitives = primitivesByExample
+                        .GetValueOrDefault(targetExample.Id) ?? [];
+                    if (sourcePrimitives.Count == 0 ||
+                        !sourcePrimitives.SequenceEqual(
+                            targetPrimitives,
+                            StringComparer.Ordinal))
+                    {
+                        continue;
+                    }
 
-        if (isConversationMachineCandidate)
-        {
-            evidence.Add(
-                new LegendLanguageTeacherEvidence(
-                    $"conversation-source:{candidate.Id:D}",
-                    LegendLanguageIdentity.NormalizeText(
-                        candidate.SourceText),
-                    null,
-                    "MachineProposed",
-                    "ConversationCandidate"));
+                    var rowTransitions = selectedTransitions
+                        .Where(item =>
+                            item.SourceCurriculumExampleId == sourceExample.Id ||
+                            item.ResultCurriculumExampleId == sourceExample.Id)
+                        .Select(item =>
+                            item.TransitionSignature + ":" +
+                            item.IndependentSourceIdentity)
+                        .Distinct(StringComparer.Ordinal)
+                        .OrderBy(item => item, StringComparer.Ordinal)
+                        .ToArray();
+                    var rowContrasts = contrasts
+                        .Where(item =>
+                            item.BaselineCurriculumExampleId == sourceExample.Id ||
+                            item.ComparedCurriculumExampleId == sourceExample.Id)
+                        .Select(item =>
+                            item.EvidenceSignature + ":" +
+                            item.IndependentSourceIdentity)
+                        .Distinct(StringComparer.Ordinal)
+                        .OrderBy(item => item, StringComparer.Ordinal)
+                        .ToArray();
+                    if (rowContrasts.Length == 0 ||
+                        (selectedTransitions.Length > 0 &&
+                         rowTransitions.Length == 0))
+                    {
+                        continue;
+                    }
+
+                    var standardIdentity = row.HumanVerified
+                        ? "HumanVerified"
+                        : "SystemValidated";
+                    var durableIdentity = LegendLanguageIdentity.TextHash(
+                        string.Join(
+                            "|",
+                            "language-critic-lineage:v1",
+                            governedFamily.Id.ToString("N"),
+                            sourceExample.Id.ToString("N"),
+                            targetExample.Id.ToString("N"),
+                            standardIdentity,
+                            row.Provenance,
+                            row.QualityState,
+                            string.Join(",", sourcePrimitives),
+                            string.Join(",", rowTransitions),
+                            string.Join(",", rowContrasts)));
+                    lineageRows.Add(
+                        new TrustedLanguageAlignmentLineage(
+                            row,
+                            sourceExample,
+                            targetExample,
+                            "lineage:" + durableIdentity));
+                }
+            }
         }
-        else
+
+        // Multiple physical alignments for the same durable example lineage
+        // cannot manufacture critic support. Prefer the existing higher
+        // evidence standard, then choose a stable row without exposing its
+        // physical identity in the packet.
+        var selectedLineages = lineageRows
+            .GroupBy(
+                item => new
+                {
+                    item.SourceExample.Id,
+                    TargetExampleId = item.TargetExample.Id
+                })
+            .Select(group => group
+                .OrderByDescending(item => item.Alignment.HumanVerified)
+                .ThenByDescending(item => item.Alignment.Confidence)
+                .ThenBy(item => item.Alignment.Provenance, StringComparer.Ordinal)
+                .ThenBy(item => item.Alignment.QualityState, StringComparer.Ordinal)
+                .ThenBy(item => item.Alignment.Id)
+                .First())
+            .OrderBy(item => item.EvidenceIdentity, StringComparer.Ordinal)
+            .Take(isConversationMachineCandidate ? 32 : 31)
+            .ToArray();
+
+        var evidence = new List<LegendLanguageTeacherEvidence>(32);
+        if (!isConversationMachineCandidate)
         {
             evidence.Add(
                 new LegendLanguageTeacherEvidence(
-                    $"source:{source!.Id:D}",
+                    "family-source:" + LegendLanguageIdentity.TextHash(
+                        string.Join(
+                            "|",
+                            "language-critic-source-lineage:v1",
+                            governedFamily.Id.ToString("N"),
+                            candidateSourceExample!.Id.ToString("N"),
+                            source!.Provenance,
+                            string.Join(",", candidateSourcePrimitives),
+                            string.Join(",", candidateSourceTransitions),
+                            string.Join(",", candidateSourceContrasts))),
                     source.Text,
                     null,
                     source.Provenance,
                     "CanonicalSource"));
         }
 
-        foreach (var row in trusted
-                     .Where(item =>
-                         item.HumanVerified ||
-                         !contradicted.Contains(item.Id))
-                     .Take(31))
+        foreach (var lineage in selectedLineages)
         {
             evidence.Add(
                 new LegendLanguageTeacherEvidence(
-                    $"alignment:{row.Id:D}",
-                    row.SourceText,
-                    row.TargetText,
-                    row.Provenance,
-                    row.QualityState));
+                    lineage.EvidenceIdentity,
+                    lineage.Alignment.SourceText,
+                    lineage.Alignment.TargetText,
+                    lineage.Alignment.Provenance,
+                    lineage.Alignment.QualityState));
         }
 
-        // A source alone does not justify machine derivation. Require at least
-        // one independently governed directional relationship before making
-        // any external teacher call.
-        if (evidence.Count < 2)
-            return null;
-
-        LegendCurriculumFamily? family = null;
-
-        if (candidate.CurriculumFamilyId is Guid familyId)
+        // A conversational proposal has no canonical source evidence of its
+        // own, so it requires two independently lineaged governed contrasts.
+        // An autonomous family candidate retains the existing source-plus-one-
+        // relationship minimum. Neither path may count duplicate alignments.
+        if (evidence.Count < 2 ||
+            selectedLineages.Length <
+                (isConversationMachineCandidate ? 2 : 1))
         {
-            family = await _db.Set<LegendCurriculumFamily>()
-                .AsNoTracking()
-                .SingleOrDefaultAsync(
-                    item => item.Id == familyId,
-                    cancellationToken);
+            return LanguageProposalRequestBuildResult.Rejected(
+                "language_teacher_relevant_evidence_insufficient");
         }
 
-        var learningGoal = family is null
-            ? candidate.Category
-            : string.IsNullOrWhiteSpace(family.SemanticCategory)
-                ? family.FamilyKey
-                : $"{family.FamilyKey} | {family.SemanticCategory}";
+        var learningGoal = string.Equals(
+            governedSemanticCategory,
+            governedFamily.FamilyKey,
+            StringComparison.Ordinal)
+                ? governedFamily.FamilyKey
+                : $"{governedFamily.FamilyKey} | " +
+                  governedSemanticCategory;
 
         learningGoal = learningGoal.Trim();
         if (learningGoal.Length > 500)
             learningGoal = learningGoal[..500];
 
-        return new LegendLanguageTeacherProposalRequest(
-            candidate.SourceLanguageCode,
-            candidate.TargetLanguageCode,
-            learningGoal,
-            evidence,
-            MaximumFamilies: 2);
+        return LanguageProposalRequestBuildResult.Accepted(
+            new LegendLanguageTeacherProposalRequest(
+                candidate.SourceLanguageCode,
+                candidate.TargetLanguageCode,
+                learningGoal,
+                evidence,
+                MaximumFamilies: 2,
+                CapabilityIdentity:
+                    conversationFamily?.CapabilityIdentity ??
+                    LegendConnectMachineTeachingSubmission.TranslationCapability,
+                CategoryIdentity:
+                    conversationFamily?.CategoryIdentity ??
+                    LegendConnectMachineTeachingSubmission.ReusableSemanticCategory,
+                SemanticFamilyKey: governedFamily.FamilyKey,
+                SemanticCategory: governedSemanticCategory));
     }
 
-    private async Task<LegendCorpusCandidate?>
-        TryClaimLanguageProposalCandidateAsync(
+    private sealed record LanguageProposalRequestBuildResult(
+        LegendLanguageTeacherProposalRequest? Request,
+        string? FailureCode)
+    {
+        internal static LanguageProposalRequestBuildResult Accepted(
+            LegendLanguageTeacherProposalRequest request) =>
+            new(request, null);
+
+        internal static LanguageProposalRequestBuildResult Rejected(
+            string failureCode) =>
+            new(null, failureCode);
+    }
+
+    private sealed record LanguageFamilyExampleLineage(
+        Guid Id,
+        Guid TextUnitId,
+        string LanguageCode,
+        Guid? DerivedFromCurriculumExampleId);
+
+    private sealed record LanguageTransitionLineage(
+        string TransitionSignature,
+        Guid SourceCurriculumExampleId,
+        Guid ResultCurriculumExampleId,
+        string IndependentSourceIdentity);
+
+    private sealed record LanguageControlledContrastLineage(
+        string EvidenceSignature,
+        Guid BaselineCurriculumExampleId,
+        Guid ComparedCurriculumExampleId,
+        string IndependentSourceIdentity);
+
+    private sealed record TrustedLanguageAlignment(
+        Guid Id,
+        Guid SourceTextUnitId,
+        Guid TargetTextUnitId,
+        bool HumanVerified,
+        decimal? Confidence,
+        string Provenance,
+        string QualityState,
+        string SourceText,
+        string TargetText);
+
+    private sealed record TrustedLanguageAlignmentLineage(
+        TrustedLanguageAlignment Alignment,
+        LanguageFamilyExampleLineage SourceExample,
+        LanguageFamilyExampleLineage TargetExample,
+        string EvidenceIdentity);
+
+    private async Task<bool> PreflightLanguageTeacherRoleAsync(
+        LanguageProposalWorkCandidate selected,
+        LegendLanguageTeacherConfigurationPreflight preflight,
+        CancellationToken cancellationToken)
+    {
+        var normalizedRole = NormalizeLanguageTeacherRole(
+            preflight.Role);
+        var fingerprint = NormalizeLanguageTeacherFingerprint(
+            normalizedRole,
+            preflight.ConfigurationFingerprint);
+        var normalized = preflight with
+        {
+            Role = normalizedRole,
+            ConfigurationFingerprint = fingerprint,
+            FailureCode = preflight.IsReady
+                ? null
+                : NormalizeLanguageTeacherFailureCode(
+                    preflight.FailureCode,
+                    LegendLanguageTeacherFailureClassification
+                        .ConfigurationInvalid)
+        };
+
+        if (normalized.IsReady)
+        {
+            await ResolveSupersededLanguageTeacherCircuitsAsync(
+                normalized,
+                cancellationToken);
+        }
+
+        if (await IsLanguageTeacherCircuitCoolingAsync(
+                normalized,
+                cancellationToken))
+        {
+            return false;
+        }
+
+        if (normalized.IsReady)
+            return true;
+
+        await RecordLanguageTeacherFailureAsync(
+            normalized,
+            normalized.FailureCode!,
+            selected.SourceLanguageCode,
+            LegendLanguageIdentity.PairKey(
+                selected.SourceLanguageCode,
+                selected.TargetLanguageCode),
+            cancellationToken);
+        return false;
+    }
+
+    private async Task HandleLanguageTeacherFailureAsync(
+        LegendCorpusCandidate candidate,
+        LegendLanguageTeacherConfigurationPreflight preflight,
+        string failureCode,
+        int maximumAttempts,
+        CancellationToken cancellationToken)
+    {
+        var normalizedFailure = NormalizeLanguageTeacherFailureCode(
+            failureCode,
+            LegendLanguageTeacherFailureClassification.Provider);
+        var normalizedPreflight = preflight with
+        {
+            Role = NormalizeLanguageTeacherRole(preflight.Role),
+            ConfigurationFingerprint =
+                NormalizeLanguageTeacherFingerprint(
+                    preflight.Role,
+                    preflight.ConfigurationFingerprint)
+        };
+        await RecordLanguageTeacherFailureAsync(
+            normalizedPreflight,
+            normalizedFailure,
+            candidate.SourceLanguageCode,
+            candidate.PairKey(),
+            cancellationToken);
+
+        if (LegendLanguageTeacherFailureClassification
+            .IsLocalConfiguration(normalizedFailure))
+        {
+            // Configuration disappeared after preflight. Return the exact
+            // lease attempt because no provider work could have occurred.
+            candidate.TeacherProposalAttemptCount = Math.Max(
+                0,
+                candidate.TeacherProposalAttemptCount - 1);
+            candidate.TeacherProposalProcessingState = "Pending";
+            candidate.TeacherProposalFailureCode = normalizedFailure;
+            candidate.TeacherProposalLeaseExpiresUtc = null;
+            candidate.TeacherProposalProcessedUtc = null;
+            await _db.SaveChangesAsync(cancellationToken);
+            return;
+        }
+
+        await DeferLanguageProposalAsync(
+            candidate,
+            normalizedFailure,
+            maximumAttempts,
+            DateTime.UtcNow.Add(LanguageTeacherFailureCooldown()),
+            cancellationToken);
+    }
+
+    private async Task<bool> IsLanguageTeacherCircuitCoolingAsync(
+        LegendLanguageTeacherConfigurationPreflight preflight,
+        CancellationToken cancellationToken)
+    {
+        var correlationId = LanguageTeacherCircuitCorrelation(
+            preflight.Role,
+            preflight.ConfigurationFingerprint);
+        var issueId = LanguageTeacherIssueId(correlationId);
+        var openIssue = await _db
+            .Set<LegendConnectOperationalEvent>()
+            .AsNoTracking()
+            .AnyAsync(item =>
+                item.Id == issueId &&
+                item.Category == LanguageTeacherIssueCategory &&
+                !item.IsResolved,
+                cancellationToken);
+        if (!openIssue)
+            return false;
+
+        var latestOccurrence = await _db
+            .Set<LegendConnectOperationalEvent>()
+            .AsNoTracking()
+            .Where(item =>
+                item.Category == LanguageTeacherFailureCategory &&
+                item.CorrelationId == correlationId)
+            .Select(item => (DateTime?)item.OccurredUtc)
+            .MaxAsync(cancellationToken);
+        return latestOccurrence is null ||
+            latestOccurrence.Value.Add(
+                LanguageTeacherFailureCooldown()) > DateTime.UtcNow;
+    }
+
+    private async Task RecordLanguageTeacherFailureAsync(
+        LegendLanguageTeacherConfigurationPreflight preflight,
+        string failureCode,
+        string? languageCode,
+        string? pairKey,
+        CancellationToken cancellationToken)
+    {
+        var role = NormalizeLanguageTeacherRole(preflight.Role);
+        var fingerprint = NormalizeLanguageTeacherFingerprint(
+            role,
+            preflight.ConfigurationFingerprint);
+        var correlationId = LanguageTeacherCircuitCorrelation(
+            role,
+            fingerprint);
+        var now = DateTime.UtcNow;
+        _db.Set<LegendConnectOperationalEvent>().Add(
+            new LegendConnectOperationalEvent
+            {
+                Id = Guid.NewGuid(),
+                Category = LanguageTeacherFailureCategory,
+                Severity = "Info",
+                Status = "Occurrence",
+                LanguageCode = BoundedLanguageTeacherValue(
+                    languageCode,
+                    32),
+                PairKey = BoundedLanguageTeacherValue(pairKey, 72),
+                CorrelationId = correlationId,
+                ErrorCode = failureCode,
+                Summary =
+                    $"{role} failure evidence for configuration {fingerprint[..12]}.",
+                IsResolved = true,
+                OccurredUtc = now
+            });
+        await _db.SaveChangesAsync(cancellationToken);
+
+        var occurrences = await _db
+            .Set<LegendConnectOperationalEvent>()
+            .AsNoTracking()
+            .Where(item =>
+                item.Category == LanguageTeacherFailureCategory &&
+                item.CorrelationId == correlationId)
+            .Select(item => item.OccurredUtc)
+            .ToListAsync(cancellationToken);
+        var summary =
+            $"{role} configuration {fingerprint[..12]} circuit open; " +
+            $"Occurrences={occurrences.Count}; " +
+            $"FirstUtc={occurrences.Min():O}; " +
+            $"LastUtc={occurrences.Max():O}; " +
+            $"Latest={failureCode}.";
+        var issueId = LanguageTeacherIssueId(correlationId);
+        var issue = await _db.Set<LegendConnectOperationalEvent>()
+            .SingleOrDefaultAsync(
+                item => item.Id == issueId,
+                cancellationToken);
+        if (issue is null)
+        {
+            issue = new LegendConnectOperationalEvent
+            {
+                Id = issueId,
+                Category = LanguageTeacherIssueCategory,
+                Severity = LanguageTeacherFailureSeverity(failureCode),
+                Status = "CircuitOpen",
+                LanguageCode = BoundedLanguageTeacherValue(
+                    languageCode,
+                    32),
+                PairKey = BoundedLanguageTeacherValue(pairKey, 72),
+                CorrelationId = correlationId,
+                ErrorCode = failureCode,
+                Summary = summary[..Math.Min(summary.Length, 500)],
+                IsResolved = false,
+                OccurredUtc = occurrences.Min()
+            };
+            _db.Set<LegendConnectOperationalEvent>().Add(issue);
+        }
+        else
+        {
+            issue.Severity = LanguageTeacherFailureSeverity(
+                failureCode);
+            issue.Status = "CircuitOpen";
+            issue.LanguageCode ??= BoundedLanguageTeacherValue(
+                languageCode,
+                32);
+            issue.PairKey ??= BoundedLanguageTeacherValue(pairKey, 72);
+            issue.ErrorCode = failureCode;
+            issue.Summary = summary[..Math.Min(summary.Length, 500)];
+            issue.IsResolved = false;
+        }
+
+        try
+        {
+            await _db.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateException)
+        {
+            // The deterministic issue identity makes concurrent openings one
+            // logical issue. Re-read and refresh the winning row so its
+            // aggregate remains consistent with every immutable occurrence.
+            var entry = _db.Entry(issue);
+            if (entry.State != EntityState.Added)
+                throw;
+
+            entry.State = EntityState.Detached;
+            var persistedIssue = await _db
+                .Set<LegendConnectOperationalEvent>()
+                .SingleOrDefaultAsync(
+                    item => item.Id == issueId,
+                    cancellationToken);
+            if (persistedIssue is null)
+                throw;
+
+            var concurrentOccurrences = await _db
+                .Set<LegendConnectOperationalEvent>()
+                .AsNoTracking()
+                .Where(item =>
+                    item.Category == LanguageTeacherFailureCategory &&
+                    item.CorrelationId == correlationId)
+                .Select(item => item.OccurredUtc)
+                .ToListAsync(cancellationToken);
+            var concurrentSummary =
+                $"{role} configuration {fingerprint[..12]} circuit open; " +
+                $"Occurrences={concurrentOccurrences.Count}; " +
+                $"FirstUtc={concurrentOccurrences.Min():O}; " +
+                $"LastUtc={concurrentOccurrences.Max():O}; " +
+                $"Latest={failureCode}.";
+            persistedIssue.Severity =
+                LanguageTeacherFailureSeverity(failureCode);
+            persistedIssue.Status = "CircuitOpen";
+            persistedIssue.ErrorCode = failureCode;
+            persistedIssue.Summary = concurrentSummary[..Math.Min(
+                concurrentSummary.Length,
+                500)];
+            persistedIssue.IsResolved = false;
+            await _db.SaveChangesAsync(cancellationToken);
+        }
+    }
+
+    private async Task ResolveSupersededLanguageTeacherCircuitsAsync(
+        LegendLanguageTeacherConfigurationPreflight preflight,
+        CancellationToken cancellationToken)
+    {
+        var rolePrefix = NormalizeLanguageTeacherRole(preflight.Role) + ":";
+        var currentCorrelation = LanguageTeacherCircuitCorrelation(
+            preflight.Role,
+            preflight.ConfigurationFingerprint);
+        var superseded = await _db
+            .Set<LegendConnectOperationalEvent>()
+            .Where(item =>
+                item.Category == LanguageTeacherIssueCategory &&
+                item.CorrelationId != null &&
+                item.CorrelationId.StartsWith(rolePrefix) &&
+                item.CorrelationId != currentCorrelation &&
+                !item.IsResolved)
+            .ToListAsync(cancellationToken);
+        foreach (var issue in superseded)
+        {
+            await ResolveLanguageTeacherIssueAsync(
+                issue,
+                "ConfigurationChanged",
+                cancellationToken);
+        }
+    }
+
+    private async Task ResolveLanguageTeacherCircuitAsync(
+        LegendLanguageTeacherConfigurationPreflight preflight,
+        string recoveryStatus,
+        CancellationToken cancellationToken)
+    {
+        var correlationId = LanguageTeacherCircuitCorrelation(
+            preflight.Role,
+            preflight.ConfigurationFingerprint);
+        var issue = await _db.Set<LegendConnectOperationalEvent>()
+            .SingleOrDefaultAsync(item =>
+                item.Id == LanguageTeacherIssueId(correlationId) &&
+                !item.IsResolved,
+                cancellationToken);
+        if (issue is null)
+            return;
+
+        await ResolveLanguageTeacherIssueAsync(
+            issue,
+            recoveryStatus,
+            cancellationToken);
+    }
+
+    private async Task ResolveLanguageTeacherIssueAsync(
+        LegendConnectOperationalEvent issue,
+        string recoveryStatus,
+        CancellationToken cancellationToken)
+    {
+        issue.IsResolved = true;
+        issue.Status = recoveryStatus;
+        var recoveredUtc = DateTime.UtcNow;
+        var existingSummary = issue.Summary ?? string.Empty;
+        var summary = existingSummary +
+            $" RecoveredUtc={recoveredUtc:O}.";
+        issue.Summary = summary[..Math.Min(summary.Length, 500)];
+        _db.Set<LegendConnectOperationalEvent>().Add(
+            new LegendConnectOperationalEvent
+            {
+                Id = Guid.NewGuid(),
+                Category = LanguageTeacherRecoveryCategory,
+                Severity = "Info",
+                Status = recoveryStatus,
+                LanguageCode = issue.LanguageCode,
+                PairKey = issue.PairKey,
+                CorrelationId = issue.CorrelationId,
+                ErrorCode = issue.ErrorCode,
+                Summary =
+                    "The existing language teacher/critic circuit recovered; prior failure occurrences remain retained.",
+                IsResolved = true,
+                OccurredUtc = recoveredUtc
+            });
+        await _db.SaveChangesAsync(cancellationToken);
+    }
+
+    private TimeSpan LanguageTeacherFailureCooldown() =>
+        TimeSpan.FromMinutes(
+            Math.Clamp(
+                _configuration.GetValue<int?>(
+                    "LegendConnect:LanguageTeacher:FailureCooldownMinutes") ??
+                15,
+                1,
+                60));
+
+    private static string NormalizeLanguageTeacherRole(string? role) =>
+        string.Equals(
+            role,
+            LegendLanguageTeacherRole.Critic,
+            StringComparison.OrdinalIgnoreCase)
+                ? LegendLanguageTeacherRole.Critic
+                : LegendLanguageTeacherRole.Teacher;
+
+    private static string NormalizeLanguageTeacherFingerprint(
+        string role,
+        string? fingerprint)
+    {
+        var normalized = fingerprint?.Trim().ToLowerInvariant();
+        return !string.IsNullOrWhiteSpace(normalized) &&
+               normalized.Length <= 80
+            ? normalized
+            : LegendLanguageIdentity.TextHash(
+                "invalid-language-teacher-fingerprint|" +
+                NormalizeLanguageTeacherRole(role));
+    }
+
+    private static string NormalizeLanguageTeacherFailureCode(
+        string? failureCode,
+        string fallback) =>
+        LegendLanguageTeacherFailureClassification.Normalize(
+            failureCode,
+            fallback);
+
+    private static string ClassifyLanguageTeacherException(
+        Exception exception) =>
+        LegendLanguageTeacherFailureClassification.FromException(
+            exception);
+
+    private static string LanguageTeacherCircuitCorrelation(
+        string role,
+        string fingerprint) =>
+        NormalizeLanguageTeacherRole(role) + ":" +
+        NormalizeLanguageTeacherFingerprint(role, fingerprint);
+
+    private static Guid LanguageTeacherIssueId(string correlationId)
+    {
+        var hash = LegendLanguageIdentity.TextHash(
+            "language-teacher-provider-issue:v1|" + correlationId);
+        return Guid.ParseExact(hash[..32], "N");
+    }
+
+    private static string LanguageTeacherFailureSeverity(
+        string failureCode) =>
+        failureCode is
+            LegendLanguageTeacherFailureClassification.Authentication or
+            LegendLanguageTeacherFailureClassification.Schema or
+            LegendLanguageTeacherFailureClassification.Parsing
+                ? "Error"
+                : "Warning";
+
+    private static string? BoundedLanguageTeacherValue(
+        string? value,
+        int maximumLength)
+    {
+        var normalized = value?.Trim();
+        return string.IsNullOrWhiteSpace(normalized)
+            ? null
+            : normalized[..Math.Min(normalized.Length, maximumLength)];
+    }
+
+    private sealed record LanguageProposalWorkCandidate(
+        Guid Id,
+        bool CriticOnly,
+        string SourceLanguageCode,
+        string TargetLanguageCode);
+
+    private async Task<LanguageProposalWorkCandidate?>
+        SelectLanguageProposalCandidateAsync(
             int maximumAttempts,
             CancellationToken cancellationToken)
     {
         var now = DateTime.UtcNow;
-        var expires = now.AddMinutes(10);
-
-        var candidateId = await _db.Set<LegendCorpusCandidate>()
+        return await _db.Set<LegendCorpusCandidate>()
             .AsNoTracking()
             .Where(item =>
                 (
                     (item.IsApproved &&
                      item.ProcessingState == "Queued") ||
                     (!item.IsApproved &&
-                     item.Provenance == MachineConversationProvenance &&
+                     (item.Provenance == MachineConversationProvenance ||
+                      item.Provenance == ExternalObservationProvenance) &&
                      item.ProcessingState == "ConversationProposal")
                 ) &&
                 item.TeacherProposalAttemptCount < maximumAttempts &&
@@ -4145,23 +5931,39 @@ internal sealed class LegendConnectAutonomousLearningService
                 ))
             .OrderByDescending(item => item.Priority)
             .ThenBy(item => item.CreatedUtc)
-            .Select(item => (Guid?)item.Id)
+            .Select(item => new LanguageProposalWorkCandidate(
+                item.Id,
+                !item.IsApproved &&
+                    (item.Provenance == MachineConversationProvenance ||
+                     item.Provenance == ExternalObservationProvenance) &&
+                    item.ProcessingState ==
+                        "ConversationProposal",
+                item.SourceLanguageCode,
+                item.TargetLanguageCode))
             .FirstOrDefaultAsync(cancellationToken);
+    }
 
-        if (candidateId is null)
-            return null;
+    private async Task<LegendCorpusCandidate?>
+        TryClaimLanguageProposalCandidateAsync(
+            Guid candidateId,
+            int maximumAttempts,
+            CancellationToken cancellationToken)
+    {
+        var now = DateTime.UtcNow;
+        var expires = now.AddMinutes(10);
 
         if (!_db.Database.IsRelational())
         {
             var candidate = await _db.Set<LegendCorpusCandidate>()
                 .SingleOrDefaultAsync(
                     item =>
-                        item.Id == candidateId.Value &&
+                        item.Id == candidateId &&
                         (
                             (item.IsApproved &&
                              item.ProcessingState == "Queued") ||
                             (!item.IsApproved &&
-                             item.Provenance == MachineConversationProvenance &&
+                             (item.Provenance == MachineConversationProvenance ||
+                              item.Provenance == ExternalObservationProvenance) &&
                              item.ProcessingState == "ConversationProposal")
                         ) &&
                         item.TeacherProposalAttemptCount <
@@ -4193,12 +5995,13 @@ internal sealed class LegendConnectAutonomousLearningService
 
         var claimed = await _db.Set<LegendCorpusCandidate>()
             .Where(item =>
-                item.Id == candidateId.Value &&
+                item.Id == candidateId &&
                 (
                     (item.IsApproved &&
                      item.ProcessingState == "Queued") ||
                     (!item.IsApproved &&
-                     item.Provenance == MachineConversationProvenance &&
+                     (item.Provenance == MachineConversationProvenance ||
+                      item.Provenance == ExternalObservationProvenance) &&
                      item.ProcessingState == "ConversationProposal")
                 ) &&
                 item.TeacherProposalAttemptCount < maximumAttempts &&
@@ -4226,7 +6029,7 @@ internal sealed class LegendConnectAutonomousLearningService
         return claimed == 1
             ? await _db.Set<LegendCorpusCandidate>()
                 .SingleAsync(
-                    item => item.Id == candidateId.Value,
+                    item => item.Id == candidateId,
                     cancellationToken)
             : null;
     }
@@ -4235,6 +6038,7 @@ internal sealed class LegendConnectAutonomousLearningService
         ProcessConversationMachineCritiqueAsync(
             LegendCorpusCandidate candidate,
             LegendLanguageTeacherProposalRequest request,
+            LegendLanguageTeacherConfigurationPreflight preflight,
             int maximumAttempts,
             CancellationToken cancellationToken)
     {
@@ -4327,22 +6131,13 @@ internal sealed class LegendConnectAutonomousLearningService
         {
             throw;
         }
-        catch (Exception)
+        catch (Exception exception)
         {
-            await DeferLanguageProposalAsync(
+            await HandleLanguageTeacherFailureAsync(
                 candidate,
-                "language_critic_failed",
+                preflight,
+                ClassifyLanguageTeacherException(exception),
                 maximumAttempts,
-                CancellationToken.None);
-
-            await RecordAsync(
-                "ConversationMachineProposal",
-                "Warning",
-                candidate.TeacherProposalProcessingState,
-                candidate.SourceLanguageCode,
-                candidate.PairKey(),
-                candidate.TeacherProposalFailureCode,
-                "The independent critic failed; the MachineProposed artifact remains retained and retryable on the existing candidate lease.",
                 CancellationToken.None);
 
             return true;
@@ -4350,15 +6145,22 @@ internal sealed class LegendConnectAutonomousLearningService
 
         if (!critique.Succeeded)
         {
-            await DeferLanguageProposalAsync(
+            await HandleLanguageTeacherFailureAsync(
                 candidate,
-                critique.ErrorCode ??
-                    "language_critic_failed",
+                preflight,
+                NormalizeLanguageTeacherFailureCode(
+                    critique.ErrorCode,
+                    LegendLanguageTeacherFailureClassification.Provider),
                 maximumAttempts,
                 cancellationToken);
 
             return true;
         }
+
+        await ResolveLanguageTeacherCircuitAsync(
+            preflight,
+            "ProviderRecovered",
+            cancellationToken);
 
         proposal.CriticApproved =
             critique.Approved;
@@ -4399,15 +6201,21 @@ internal sealed class LegendConnectAutonomousLearningService
             cancellationToken);
 
         await RecordAsync(
-            "ConversationMachineProposal",
+            string.Equals(candidate.Provenance, ExternalObservationProvenance, StringComparison.Ordinal)
+                ? "ResearchExternalObservationProposal"
+                : "ConversationMachineProposal",
             "Info",
             proposal.ValidationState,
             candidate.SourceLanguageCode,
             candidate.PairKey(),
             null,
-            critique.Approved
-                ? "The retained conversational MachineProposed artifact survived the existing independent critic and now awaits the existing canonical validator."
-                : "The retained conversational MachineProposed artifact was rejected by the existing independent critic and remains durable historical evidence.",
+            string.Equals(candidate.Provenance, ExternalObservationProvenance, StringComparison.Ordinal)
+                ? critique.Approved
+                    ? "The retained ExternalObservation MachineProposed artifact survived the existing independent critic and now awaits the existing canonical novelty validator."
+                    : "The retained ExternalObservation MachineProposed artifact was rejected by the existing independent critic and remains durable historical evidence."
+                : critique.Approved
+                    ? "The retained conversational MachineProposed artifact survived the existing independent critic and now awaits the existing canonical validator."
+                    : "The retained conversational MachineProposed artifact was rejected by the existing independent critic and remains durable historical evidence.",
             cancellationToken);
 
         return true;
@@ -4417,11 +6225,12 @@ internal sealed class LegendConnectAutonomousLearningService
         LegendCorpusCandidate candidate,
         string failureCode,
         int maximumAttempts,
+        DateTime minimumLeaseExpiresUtc,
         CancellationToken cancellationToken)
     {
         candidate.TeacherProposalFailureCode =
             string.IsNullOrWhiteSpace(failureCode)
-                ? "language_teacher_failed"
+                ? LegendLanguageTeacherFailureClassification.Provider
                 : failureCode[..Math.Min(failureCode.Length, 120)];
 
         if (candidate.TeacherProposalAttemptCount >= maximumAttempts)
@@ -4433,13 +6242,16 @@ internal sealed class LegendConnectAutonomousLearningService
         else
         {
             candidate.TeacherProposalProcessingState = "Processing";
-            candidate.TeacherProposalLeaseExpiresUtc =
-                DateTime.UtcNow.AddMinutes(
+            var retryLease = DateTime.UtcNow.AddMinutes(
                     Math.Min(
                         30,
                         Math.Max(
                             5,
                             candidate.TeacherProposalAttemptCount * 5)));
+            candidate.TeacherProposalLeaseExpiresUtc =
+                retryLease > minimumLeaseExpiresUtc
+                    ? retryLease
+                    : minimumLeaseExpiresUtc;
             candidate.TeacherProposalProcessedUtc = null;
         }
 

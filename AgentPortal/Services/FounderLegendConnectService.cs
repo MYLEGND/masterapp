@@ -227,14 +227,75 @@ public sealed class FounderLegendConnectService
                 cancellationToken);
     }
 
+    internal async Task<LegendConnectResearchNeededDecision>
+        DecideResearchNeededAsync(
+            ClaimsPrincipal user,
+            string input,
+            string sourceLanguageCode,
+            LegendConnectNativeInferenceSnapshot? internalInference,
+            CancellationToken cancellationToken = default)
+    {
+        _ = await ResolveFounderActorAsync(user, cancellationToken);
+        return await _operations.DecideResearchNeededAsync(
+            input,
+            sourceLanguageCode,
+            internalInference,
+            cancellationToken);
+    }
+
+    internal async Task<LegendConnectResearchOutcome> ExecuteResearchAsync(
+        ClaimsPrincipal user,
+        LegendConnectResearchRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        _ = await ResolveFounderActorAsync(user, cancellationToken);
+        var outcome = await _operations.ExecuteResearchAsync(
+            request,
+            cancellationToken);
+        var lineage = LegendConnectResearchRetentionContracts
+            .CreateExternalObservation(outcome);
+        outcome = outcome with
+        {
+            Retention = new LegendConnectResearchRetentionReceipt(
+                lineage is null
+                    ? LegendConnectResearchRetentionState.Failed
+                    : LegendConnectResearchRetentionState.ExternalObservation,
+                LegendConnectResearchRetentionContracts.ObservationIdentity(outcome),
+                null,
+                null,
+                lineage is null ? "NoRetention" : "ExternalObservation",
+                "NonServing",
+                "NonCanonical",
+                lineage is null
+                    ? "research_retention_observation_ineligible"
+                    : null),
+            RetentionLineage = lineage
+        };
+        await _operations.RecordResearchObservabilityAsync(
+            outcome,
+            cancellationToken);
+        return outcome;
+    }
+
+    internal async Task RecordResearchObservabilityAsync(
+        ClaimsPrincipal user,
+        LegendConnectResearchOutcome outcome,
+        CancellationToken cancellationToken = default)
+    {
+        _ = await ResolveFounderActorAsync(user, cancellationToken);
+        await _operations.RecordResearchObservabilityAsync(
+            outcome,
+            cancellationToken);
+    }
+
     public async Task<LegendConnectNativeInferenceSnapshot>
         TryInferConversationWithDiscourseAsync(
             ClaimsPrincipal user,
             string input,
             IReadOnlyList<LegendConnectConversationContextItem> context,
             LegendConnectDiscourseStateSnapshot? discourseState,
-            CancellationToken cancellationToken = default,
-            string sourceLanguageCode = "en")
+            string sourceLanguageCode,
+            CancellationToken cancellationToken = default)
     {
         _ = await ResolveFounderActorAsync(user, cancellationToken);
         return await _operations.TryInferConversationWithDiscourseAsync(
@@ -246,6 +307,44 @@ public sealed class FounderLegendConnectService
     }
 
     /// <summary>
+    /// Founder-gated completion of the same native inference after the
+    /// existing Founder tool authority produced one proof-carrying read-only
+    /// receipt. The operations facade revalidates the selected result frame.
+    /// </summary>
+    internal async Task<LegendConnectNativeInferenceSnapshot>
+        TryInferConversationWithReadOnlyContentAsync(
+            ClaimsPrincipal user,
+            string input,
+            IReadOnlyList<LegendConnectConversationContextItem> context,
+            LegendConnectDiscourseStateSnapshot? discourseState,
+            string sourceLanguageCode,
+            LegendConnectReadOnlyContentBindingReceipt receipt,
+            CancellationToken cancellationToken = default)
+    {
+        _ = await ResolveFounderActorAsync(user, cancellationToken);
+        return await _operations.TryInferConversationWithReadOnlyContentAsync(
+            input,
+            context,
+            discourseState,
+            receipt,
+            cancellationToken,
+            sourceLanguageCode);
+    }
+
+    /// <summary>
+    /// Defense-in-depth authorization for Founder conversation work that must
+    /// happen before a provider-backed language-identification read. This is
+    /// the same account reconciliation authority used by every Founder LEGEND
+    /// operation; it introduces no language or conversation policy.
+    /// </summary>
+    internal async Task EnsureFounderAuthorizedAsync(
+        ClaimsPrincipal user,
+        CancellationToken cancellationToken = default) =>
+        _ = await ResolveFounderActorAsync(
+            user,
+            cancellationToken);
+
+    /// <summary>
     /// Founder-gated read-through to the canonical observational meaning
     /// analysis. It does not serve, write curriculum, or bypass inference.
     /// </summary>
@@ -253,8 +352,8 @@ public sealed class FounderLegendConnectService
         AnalyzeReusableMeaningGraphAsync(
             ClaimsPrincipal user,
             string input,
-            CancellationToken cancellationToken = default,
-            string sourceLanguageCode = "en")
+            string sourceLanguageCode,
+            CancellationToken cancellationToken = default)
     {
         _ = await ResolveFounderActorAsync(user, cancellationToken);
         return await _operations.AnalyzeReusableMeaningGraphAsync(
@@ -263,7 +362,7 @@ public sealed class FounderLegendConnectService
             sourceLanguageCode);
     }
 
-    public async Task<LegendConnectMachineTeachingSubmissionResult>
+    internal async Task<LegendConnectMachineTeachingSubmissionResult>
         QueueMachineTeachingProposalAsync(
             ClaimsPrincipal user,
             LegendConnectMachineTeachingSubmission submission,
@@ -273,10 +372,18 @@ public sealed class FounderLegendConnectService
             user,
             cancellationToken);
 
-        return await _operations
+        var result = await _operations
             .SubmitMachineTeachingProposalAsync(
                 submission,
                 cancellationToken);
+        if (submission.ResearchObservationLineage is { } lineage)
+        {
+            await _operations.RecordResearchRetentionAsync(
+                lineage,
+                result,
+                cancellationToken);
+        }
+        return result;
     }
 
     public async Task<LegendConnectKnowledgeSubmissionResult> QueueFounderLearningSeedAsync(
@@ -983,7 +1090,7 @@ public sealed class FounderLegendConnectService
                 }
                 if (!TryParseDiscourseReference(referenceSuffix, out var reference, out var referenceError))
                 {
-                    error = referenceError ?? $"Line {index + 1}: use @reference selector_node | entity_dimension=controlled_dimension | resolution=ordinal|unique.";
+                    error = referenceError ?? $"Line {index + 1}: use @reference selector_node | entity_dimension=controlled_dimension | resolution=ordinal|unique|recent.";
                     return false;
                 }
                 if (meaningReferences.Any(item =>
@@ -1402,7 +1509,7 @@ public sealed class FounderLegendConnectService
         var parts = input.Split('|', StringSplitOptions.TrimEntries);
         if (parts.Length is < 3 or > 6 || !IsSemanticDimensionName(parts[0]))
         {
-            error = "A discourse reference must use selector_node | entity_dimension=controlled_dimension | resolution=ordinal|unique [| rank=positive_integer] [| roles=user,assistant] [| replace_active=true].";
+            error = "A discourse reference must use selector_node | entity_dimension=controlled_dimension | resolution=ordinal|unique|recent [| rank=positive_integer] [| roles=user,assistant] [| replace_active=true].";
             return false;
         }
 
@@ -1426,7 +1533,7 @@ public sealed class FounderLegendConnectService
                 continue;
             }
             if (string.Equals(option[0], "resolution", StringComparison.OrdinalIgnoreCase) &&
-                resolution is null && option[1] is "ordinal" or "unique")
+                resolution is null && option[1] is "ordinal" or "unique" or "recent")
             {
                 resolution = option[1];
                 continue;
@@ -1465,9 +1572,9 @@ public sealed class FounderLegendConnectService
 
         if (entityDimension is null || resolution is null ||
             (resolution == "ordinal" && rank is null) ||
-            (resolution == "unique" && rank is not null))
+            (resolution is "unique" or "recent" && rank is not null))
         {
-            error = "An ordinal discourse reference requires rank=positive_integer; a unique discourse reference must not declare rank.";
+            error = "An ordinal discourse reference requires rank=positive_integer; unique and recent discourse references must not declare rank.";
             return false;
         }
 

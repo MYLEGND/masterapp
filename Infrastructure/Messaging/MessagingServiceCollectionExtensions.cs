@@ -60,16 +60,17 @@ public static class MessagingServiceCollectionExtensions
                 provider.GetRequiredService<Infrastructure.Data.MasterAppDbContext>(),
                 provider.GetRequiredService<LegendConnectTrainingDatasetCompiler>(),
                 provider.GetRequiredService<ILegendConnectModelEvaluationBackend>(),
-                provider.GetRequiredService<ILegendConnectCurrentProductionBaseline>(),
+                provider.GetRequiredService<ILegendConnectActiveModelInference>(),
                 provider.GetRequiredService<IConfiguration>()));
         services.AddScoped<ILegendConnectModelEvaluationBackend, OpenAiLegendConnectModelEvaluationBackend>();
         services.AddScoped<ILegendConnectActiveModelInference, LegendConnectActiveModelInference>();
+        services.AddScoped<ILegendConnectResearchSearchTransport, LegendConnectConfiguredReadOnlySearchTransport>();
+        services.AddScoped<ILegendConnectResearchPageRetriever, LegendConnectResearchPageRetriever>();
         services.AddScoped<LegendConnectModelPromotionService>(provider =>
             new LegendConnectModelPromotionService(
                 provider.GetRequiredService<Infrastructure.Data.MasterAppDbContext>(),
                 provider.GetRequiredService<LegendConnectTrainingDatasetCompiler>(),
                 provider.GetRequiredService<IConfiguration>()));
-        services.AddScoped<ILegendConnectCurrentProductionBaseline, LegendConnectCurrentProductionBaseline>();
         services.AddScoped<ILegendConnectLanguageTeacher, OpenAiLegendConnectLanguageTeacher>();
         services.AddScoped<ILegendConnectOperations, LegendConnectOperations>();
         services.AddHttpClient("LegendModelTraining", client =>
@@ -97,6 +98,22 @@ public static class MessagingServiceCollectionExtensions
                 TimeSpan.FromSeconds(
                     teacherTimeoutSeconds);
         });
+        services.AddHttpClient("LegendInternetResearchSearch", client =>
+        {
+            // The outer governed research deadline remains authoritative.
+            client.Timeout = TimeSpan.FromSeconds(
+                LegendConnectResearchContracts.TotalResearchDeadlineSeconds);
+        })
+        .ConfigurePrimaryHttpMessageHandler(() =>
+            LegendConnectResearchNetworkPolicy.CreatePublicReadOnlyHandler());
+        services.AddHttpClient(LegendConnectResearchPageRetriever.ClientName, client =>
+        {
+            // Per-request and total deadlines are linked inside the retriever.
+            client.Timeout = Timeout.InfiniteTimeSpan;
+        })
+        .ConfigurePrimaryHttpMessageHandler(() =>
+            LegendConnectResearchNetworkPolicy.CreatePublicReadOnlyHandler())
+        .SetHandlerLifetime(Timeout.InfiniteTimeSpan);
         services.AddHttpClient("AzureTranslator", client =>
         {
             // Provider failures must never hold up message delivery.

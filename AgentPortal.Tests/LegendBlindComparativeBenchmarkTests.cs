@@ -3,6 +3,7 @@ using System.Linq;
 using AgentPortal.Models;
 using AgentPortal.Services;
 using Domain.Entities;
+using Domain.Messaging;
 using Xunit;
 
 namespace AgentPortal.Tests;
@@ -19,15 +20,17 @@ public sealed class LegendBlindComparativeBenchmarkTests
         new(2026, 8, 29, 0, 0, 0, DateTimeKind.Utc);
 
     [Fact]
-    public void CaseLevelBlindResults_MustPassStatisticalGateAcrossEveryDomain()
+    public void SyntheticCaseLevelWinners_AggregateButCannotBecomeTakeoverEvidence()
     {
         var evaluation =
             LegendBlindComparativeBenchmarkEvaluator.Evaluate(
                 Report(legendWinsPerDomain: 60));
 
         Assert.True(evaluation.Valid);
+        Assert.False(evaluation.TakeoverEligible);
         Assert.NotNull(evaluation.SuiteIdentity);
         Assert.Empty(evaluation.Blockers);
+        Assert.NotEmpty(evaluation.TakeoverBlockers);
         Assert.All(evaluation.Metrics.Values, metrics =>
         {
             Assert.Equal(100m, metrics["sample_size"]);
@@ -44,16 +47,7 @@ public sealed class LegendBlindComparativeBenchmarkTests
                 Guid.NewGuid(),
                 Baseline,
                 MeasuredUtc);
-        var readiness =
-            LegendArchitecturalTakeoverGate.Evaluate(
-                LegendIntelligenceEvaluationDomainCatalog.All,
-                signals);
-
-        Assert.True(readiness.Proven);
-        Assert.Equal("PROVEN", readiness.State);
-        Assert.Equal(
-            LegendIntelligenceEvaluationDomainCatalog.All.Count,
-            readiness.DomainWins);
+        Assert.Empty(signals);
     }
 
     [Fact]
@@ -113,8 +107,26 @@ public sealed class LegendBlindComparativeBenchmarkTests
                 StringComparison.OrdinalIgnoreCase));
     }
 
+    [Fact]
+    public void SyntheticResearchCases_AggregateEveryResearchMetricButCannotProveSuperiority()
+    {
+        var evaluation = LegendBlindComparativeBenchmarkEvaluator.Evaluate(
+            Report(60, includeResearchCases: true));
+        var metrics = evaluation.Metrics["knowledge_synthesis"];
+
+        Assert.True(evaluation.Valid);
+        Assert.False(evaluation.TakeoverEligible);
+        Assert.Equal(20m, metrics["research_case_count"]);
+        Assert.Equal(100m, metrics["research_answer_correctness"]);
+        Assert.Equal(100m, metrics["research_citation_correctness"]);
+        Assert.Equal(0m, metrics["research_unsupported_claim_rate"]);
+        Assert.Equal(100m, metrics["research_prompt_injection_resistance"]);
+        Assert.Empty(evaluation.BuildSignals(Guid.NewGuid(), Baseline, MeasuredUtc));
+    }
+
     private static LegendBlindBenchmarkReport Report(
-        int legendWinsPerDomain)
+        int legendWinsPerDomain,
+        bool includeResearchCases = false)
     {
         var cases =
             LegendIntelligenceEvaluationDomainCatalog.All
@@ -137,7 +149,13 @@ public sealed class LegendBlindComparativeBenchmarkTests
                                 LegendCostMicrounits: 1,
                                 BaselineCostMicrounits: 2,
                                 AgreedJudgeVotes: 3,
-                                TotalJudgeVotes: 3)))
+                                TotalJudgeVotes: 3,
+                                ResearchMeasurements:
+                                    includeResearchCases &&
+                                    domain.Key == "knowledge_synthesis" &&
+                                    index < 20
+                                        ? ResearchMeasurements(index)
+                                        : null)))
                 .ToArray();
 
         return new(
@@ -147,4 +165,28 @@ public sealed class LegendBlindComparativeBenchmarkTests
             MeasuredUtc,
             cases);
     }
+
+    private static LegendConnectResearchEvaluationMeasurements ResearchMeasurements(int index) =>
+        new(
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            0m,
+            true,
+            1_000,
+            1,
+            true,
+            true,
+            true,
+            RuntimeObserved: false,
+            SyntheticOrManual: true,
+            Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(
+                System.Text.Encoding.UTF8.GetBytes("synthetic-research-" + index)))
+                .ToLowerInvariant());
 }

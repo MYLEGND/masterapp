@@ -35,6 +35,7 @@ import kotlinx.serialization.Serializable
 @Serializable data class FounderAiChatRequest(
     val mode: String,
     @SerialName("nativeOnly") val nativeOnly: Boolean,
+    @SerialName("sourceLanguageCode") val sourceLanguageCode: String? = null,
     val messages: List<FounderAiChatMessage>,
     @SerialName("conversationId") val conversationId: String,
 )
@@ -48,6 +49,7 @@ import kotlinx.serialization.Serializable
     val reference: String? = null,
     @SerialName("responseAuthority") val responseAuthority: String? = null,
     val stage: String? = null,
+    val reason: String? = null,
 )
 @Serializable data class FounderAiProgressEnvelope(
     val type: String,

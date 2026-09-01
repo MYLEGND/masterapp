@@ -266,6 +266,13 @@
                 <small>No translation provider call required</small>
             </article>
 
+            <article class="lc-metric lc-tone-blue"
+                     data-live-metric="cross-language-translation-requests">
+                <span>Cross-language requests</span>
+                <strong>—</strong>
+                <small>Canonical denominator for the terminal-stage reconciliation</small>
+            </article>
+
             <article class="lc-metric lc-tone-green"
                      data-live-metric="translation-memory-hits">
                 <span>Translation memory hits</span>
@@ -287,18 +294,39 @@
                 <small>Context-sensitive internal realization</small>
             </article>
 
+            <article class="lc-metric lc-tone-green"
+                     data-live-metric="promoted-translation-model-served">
+                <span>Promoted translation model served</span>
+                <strong>—</strong>
+                <small>Translation capability only; excludes Founder chat reasoning</small>
+            </article>
+
+            <article class="lc-metric lc-tone-blue"
+                     data-live-metric="provider-observation-reused">
+                <span>Provider observations reused</span>
+                <strong>—</strong>
+                <small>Provider-derived reuse; not native LEGEND® intelligence</small>
+            </article>
+
+            <article class="lc-metric lc-tone-green"
+                     data-live-metric="native-translation-intelligence-served">
+                <span>Native translation intelligence served</span>
+                <strong>—</strong>
+                <small>Memory, structure, context, and promoted translation model</small>
+            </article>
+
             <article class="lc-metric lc-tone-gold"
                      data-live-metric="internal-coverage">
                 <span>Internal coverage</span>
                 <strong>—</strong>
-                <small>Requests served without external translation</small>
+                <small>Native translation stages only; excludes provider reuse</small>
             </article>
 
             <article class="lc-metric lc-tone-gold"
                      data-live-metric="provider-avoidance">
                 <span>Azure avoidance</span>
                 <strong>—</strong>
-                <small>External provider usage prevented by LEGEND®</small>
+                <small>New Azure translation calls avoided, including exact provider reuse</small>
             </article>
 
             <article class="lc-metric lc-tone-amber"
@@ -313,6 +341,20 @@
                 <span>Provider dependency</span>
                 <strong>—</strong>
                 <small>Current external translation dependency</small>
+            </article>
+
+            <article class="lc-metric lc-tone-red"
+                     data-live-metric="promoted-translation-model-failures">
+                <span>Promoted translation model failures</span>
+                <strong>—</strong>
+                <small>Active translation-model attempts without usable output</small>
+            </article>
+
+            <article class="lc-metric lc-tone-red"
+                     data-live-metric="translation-routing-reconciliation">
+                <span>Routing reconciliation gap</span>
+                <strong>—</strong>
+                <small>Cross-language requests minus exactly one terminal stage</small>
             </article>
         </div>
         </div>
@@ -654,8 +696,12 @@
                     "Founder-controlled compositional anchors."),
                 ("relationships", "Relationships",
                     "Structural relationships and contradiction state."),
-                ("learning", "Learning",
-                    "Durable learning work and processing state."),
+                ("learning", "Translation Events",
+                    "Durable translation-acquisition work and processing state."),
+                ("machine-learning-lifecycle", "Machine Learning Lifecycle",
+                    "Read-only MachineProposed candidate, critic, validator, and admission lineage. Pending material remains noncanonical and non-serving."),
+                ("research-observability", "Research Observability",
+                    "Sanitized, bounded research decisions, queries, sources, claim relationships, citations, timing, cost, failures, runtime identity, and retention correlation. These receipts are observations, not retained knowledge."),
                 ("models", "Models",
                     "Governed model-training lifecycle records."),
                 ("health", "Health",

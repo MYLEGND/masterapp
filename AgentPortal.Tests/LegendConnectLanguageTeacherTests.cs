@@ -28,12 +28,57 @@ public sealed class LegendConnectLanguageTeacherTests
             await teacher.ProposeAsync(
                 ProposalRequest());
 
+        var preflight = teacher.Preflight(
+            LegendLanguageTeacherRole.Teacher);
+
         Assert.False(result.Succeeded);
         Assert.Empty(result.Families);
         Assert.Equal(
-            "language_teacher_unavailable",
+            "language_teacher_configuration_missing",
             result.ErrorCode);
+        Assert.False(preflight.IsReady);
+        Assert.Equal(
+            "language_teacher_configuration_missing",
+            preflight.FailureCode);
+        Assert.False(
+            string.IsNullOrWhiteSpace(
+                preflight.ConfigurationFingerprint));
         Assert.Equal(0, handler.RequestCount);
+    }
+
+    [Theory]
+    [InlineData(401, "language_teacher_authentication_failed")]
+    [InlineData(403, "language_teacher_authentication_failed")]
+    [InlineData(400, "language_teacher_schema_failed")]
+    [InlineData(422, "language_teacher_schema_failed")]
+    [InlineData(429, "language_teacher_quota_exceeded")]
+    [InlineData(408, "language_teacher_timeout")]
+    [InlineData(504, "language_teacher_timeout")]
+    public async Task ProviderHttpFailure_IsClassifiedByFailureBoundary(
+        int statusCode,
+        string expectedFailureCode)
+    {
+        var handler = new StubHttpMessageHandler();
+        handler.Enqueue(
+            new HttpResponseMessage(
+                (HttpStatusCode)statusCode));
+        var teacher = CreateTeacher(
+            handler,
+            new Dictionary<string, string?>
+            {
+                ["LegendConnect:LanguageTeacher:ApiKey"] =
+                    "test-key",
+                ["LegendConnect:LanguageTeacher:TeacherModel"] =
+                    "teacher-test-model"
+            });
+
+        var result = await teacher.ProposeAsync(
+            ProposalRequest());
+
+        Assert.False(result.Succeeded);
+        Assert.Empty(result.Families);
+        Assert.Equal(expectedFailureCode, result.ErrorCode);
+        Assert.Equal(1, handler.RequestCount);
     }
 
     [Fact]
@@ -138,6 +183,8 @@ public sealed class LegendConnectLanguageTeacherTests
 
         Assert.Equal(2, family.Examples.Count);
         Assert.Equal(0.94m, family.Confidence);
+        Assert.Equal("translation", family.CapabilityIdentity);
+        Assert.Equal("reusable_semantic", family.CategoryIdentity);
 
         Assert.Equal(1, handler.RequestCount);
         Assert.Equal(
@@ -193,6 +240,20 @@ public sealed class LegendConnectLanguageTeacherTests
             format
                 .GetProperty("name")
                 .GetString());
+        using var input = JsonDocument.Parse(
+            body.RootElement.GetProperty("input").GetString()!);
+        Assert.Equal(
+            "translation",
+            input.RootElement.GetProperty("capability_identity").GetString());
+        Assert.Equal(
+            "reusable_semantic",
+            input.RootElement.GetProperty("category_identity").GetString());
+        Assert.Equal(
+            "generated.request.assistance",
+            input.RootElement.GetProperty("semantic_family_key").GetString());
+        Assert.Equal(
+            "Requesting assistance",
+            input.RootElement.GetProperty("semantic_category").GetString());
     }
 
     [Fact]
@@ -288,6 +349,20 @@ public sealed class LegendConnectLanguageTeacherTests
                 .GetProperty("format")
                 .GetProperty("name")
                 .GetString());
+        using var input = JsonDocument.Parse(
+            body.RootElement.GetProperty("input").GetString()!);
+        Assert.Equal(
+            "translation",
+            input.RootElement.GetProperty("capability_identity").GetString());
+        Assert.Equal(
+            "reusable_semantic",
+            input.RootElement.GetProperty("category_identity").GetString());
+        Assert.Equal(
+            "generated.request.assistance",
+            input.RootElement.GetProperty("semantic_family_key").GetString());
+        Assert.Equal(
+            "Requesting assistance",
+            input.RootElement.GetProperty("semantic_category").GetString());
     }
 
     [Fact]
@@ -322,7 +397,7 @@ public sealed class LegendConnectLanguageTeacherTests
         Assert.Empty(result.Families);
 
         Assert.Equal(
-            "language_teacher_invalid_response",
+            "language_teacher_parsing_failed",
             result.ErrorCode);
     }
 
@@ -361,7 +436,9 @@ public sealed class LegendConnectLanguageTeacherTests
                     "ProviderDerived",
                     "SystemValidated")
             ],
-            2);
+            2,
+            SemanticFamilyKey: "generated.request.assistance",
+            SemanticCategory: "Requesting assistance");
 
     private static HttpResponseMessage StructuredResponse(
         object value) =>

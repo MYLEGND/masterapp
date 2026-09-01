@@ -10,6 +10,7 @@ using Domain.Billing;
 using AgentPortal.Services.Tracking;
 using AgentPortal.Hubs;
 using Infrastructure.Data;
+using Domain.Messaging;
 using Infrastructure.Identity;
 using Infrastructure.Households;
 using Infrastructure.Mobile;
@@ -48,6 +49,21 @@ internal static class ControllerTestHelpers
             .ConfigureWarnings(warnings => warnings.Ignore(InMemoryEventId.TransactionIgnoredWarning))
             .Options;
         return new MasterAppDbContext(options);
+    }
+
+    public static ITranslationService BuildTranslationService(
+        string detectedLanguage = "en")
+    {
+        var translation = new Mock<ITranslationService>(MockBehavior.Strict);
+        translation
+            .Setup(service => service.DetectLanguageAsync(
+                It.IsAny<string>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new TranslationDetectionResult(
+                true,
+                detectedLanguage,
+                Confidence: 1m));
+        return translation.Object;
     }
 
     public static IHouseholdMembershipService BuildHouseholdMembershipService(MasterAppDbContext db)
