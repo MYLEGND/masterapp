@@ -2271,6 +2271,8 @@ internal sealed class LegendConnectAutonomousLearningService
 {
     private const string MachineConversationProvenance =
         "MachineConversation";
+    private const string ExternalObservationProvenance =
+        "ExternalObservation";
     private const string LanguageTeacherIssueCategory =
         "LanguageTeacherCircuitIssue";
     private const string LanguageTeacherFailureCategory =
@@ -2464,6 +2466,25 @@ internal sealed class LegendConnectAutonomousLearningService
                 "Machine teaching requires one bounded semantic family with 2–8 controlled examples.");
         }
 
+        var researchObservation = submission.ObservationOrigin ==
+            LegendConnectMachineObservationOrigin.ExternalResearchObservation;
+        if (researchObservation != (submission.ResearchObservationLineage is not null) ||
+            (researchObservation && !HasValidResearchObservationLineage(
+                submission.ResearchObservationLineage!)))
+        {
+            return MachineTeachingFailure(
+                "machine_teaching_research_lineage_invalid",
+                "External research may enter learning only as a complete, citation-validated ExternalObservation lineage.");
+        }
+        if (researchObservation && !await HasDurableResearchObservationReceiptAsync(
+                submission.ResearchObservationLineage!,
+                cancellationToken))
+        {
+            return MachineTeachingFailure(
+                "machine_teaching_research_receipt_unavailable",
+                "The exact external observation was not found in the existing bounded research observability ledger.");
+        }
+
         var examples =
             new List<LegendLanguageTeacherExampleProposal>(
                 submission.Examples.Count);
@@ -2577,27 +2598,39 @@ internal sealed class LegendConnectAutonomousLearningService
                 examples,
                 submission.SemanticTransitions,
                 capabilityIdentity,
-                categoryIdentity);
+                categoryIdentity,
+                submission.ResearchObservationLineage);
 
-        var sameLanguageRequest = sameLanguage
-            ? await BuildGovernedSameLanguageMachineProposalRequestAsync(
+        var initialProposalRequest = researchObservation
+            ? BuildResearchObservationProposalRequest(
+                sourceLanguage.Code,
+                targetLanguage.Code,
+                family)
+            : sameLanguage
+                ? await BuildGovernedSameLanguageMachineProposalRequestAsync(
                 sourceLanguage.Code,
                 targetLanguage.Code,
                 family,
                 cancellationToken)
             : null;
-        if (sameLanguage && sameLanguageRequest is null)
+        if ((researchObservation || sameLanguage) && initialProposalRequest is null)
         {
             return MachineTeachingFailure(
-                "machine_teaching_same_language_evidence_unproven",
-                "Same-language semantic teaching requires controlled examples already resolved by the existing governed meaning authority.");
+                researchObservation
+                    ? "machine_teaching_research_observation_unproven"
+                    : "machine_teaching_same_language_evidence_unproven",
+                researchObservation
+                    ? "Research retention requires controlled examples that exactly match citation-validated material claims from the observed session."
+                    : "Same-language semantic teaching requires controlled examples already resolved by the existing governed meaning authority.");
         }
 
         var payload =
             JsonSerializer.Serialize(family);
 
         var candidateKey =
-            "legend-ai-conversation:v1:" +
+            (researchObservation
+                ? "legend-research-observation:v1:"
+                : "legend-ai-conversation:v1:") +
             LegendLanguageIdentity.TextHash(
                 string.Join(
                     "|",
@@ -2641,7 +2674,9 @@ internal sealed class LegendConnectAutonomousLearningService
                                 capabilityIdentity,
                                 categoryIdentity),
                     Provenance =
-                        MachineConversationProvenance,
+                        researchObservation
+                            ? ExternalObservationProvenance
+                            : MachineConversationProvenance,
 
                     // CRITICAL:
                     // conversation-derived material never impersonates an
@@ -2683,7 +2718,9 @@ internal sealed class LegendConnectAutonomousLearningService
 
         if (!string.Equals(
                 candidate.Provenance,
-                MachineConversationProvenance,
+                researchObservation
+                    ? ExternalObservationProvenance
+                    : MachineConversationProvenance,
                 StringComparison.Ordinal) ||
             candidate.IsApproved ||
             !string.Equals(
@@ -2710,9 +2747,9 @@ internal sealed class LegendConnectAutonomousLearningService
                 "The deterministic candidate identity belongs to incompatible existing work.");
         }
 
-        var requestBuild = sameLanguageRequest is not null
+        var requestBuild = initialProposalRequest is not null
             ? LanguageProposalRequestBuildResult.Accepted(
-                sameLanguageRequest)
+                initialProposalRequest)
             : await BuildLanguageProposalRequestAsync(
                 candidate,
                 cancellationToken,
@@ -2762,7 +2799,9 @@ internal sealed class LegendConnectAutonomousLearningService
                 true,
                 existing.ValidationState,
                 null,
-                "The exact conversational teaching artifact is already retained in LEGEND.",
+                researchObservation
+                    ? "The exact external observation proposal is already retained in LEGEND."
+                    : "The exact conversational teaching artifact is already retained in LEGEND.",
                 candidate.Id,
                 existing.Id,
                 ProposalAlreadyExisted: true);
@@ -2865,14 +2904,18 @@ internal sealed class LegendConnectAutonomousLearningService
                 true,
                 concurrent.ValidationState,
                 null,
-                "Concurrent conversational teaching converged on the existing deterministic LEGEND proposal.",
+                researchObservation
+                    ? "Concurrent external-observation retention converged on the existing deterministic LEGEND proposal."
+                    : "Concurrent conversational teaching converged on the existing deterministic LEGEND proposal.",
                 candidate.Id,
                 concurrent.Id,
                 ProposalAlreadyExisted: true);
         }
 
         await RecordAsync(
-            "ConversationMachineProposal",
+            researchObservation
+                ? "ResearchExternalObservationProposal"
+                : "ConversationMachineProposal",
             "Info",
             state,
             sourceLanguage.Code,
@@ -2881,8 +2924,12 @@ internal sealed class LegendConnectAutonomousLearningService
                 ? insufficientEvidenceCode
                 : null,
             request is null
-                ? "The conversational teaching artifact was retained as MachineProposed but lacks sufficient governed evidence to enter critique."
-                : "The conversational teaching artifact was retained as MachineProposed and queued on the existing teacher/critic lifecycle.",
+                ? researchObservation
+                    ? "The external observation was retained as MachineProposed but lacks sufficient governed evidence to enter critique."
+                    : "The conversational teaching artifact was retained as MachineProposed but lacks sufficient governed evidence to enter critique."
+                : researchObservation
+                    ? "The external observation entered the existing MachineProposed teacher/critic lifecycle without gaining canonical or serving authority."
+                    : "The conversational teaching artifact was retained as MachineProposed and queued on the existing teacher/critic lifecycle.",
             cancellationToken);
 
         return new LegendConnectMachineTeachingSubmissionResult(
@@ -2902,14 +2949,122 @@ internal sealed class LegendConnectAutonomousLearningService
     private static bool IsConversationMachineCandidate(
         LegendCorpusCandidate candidate) =>
         !candidate.IsApproved &&
-        string.Equals(
-            candidate.Provenance,
-            MachineConversationProvenance,
-            StringComparison.Ordinal) &&
+        candidate.Provenance is
+            MachineConversationProvenance or ExternalObservationProvenance &&
         string.Equals(
             candidate.ProcessingState,
             "ConversationProposal",
             StringComparison.Ordinal);
+
+    internal static bool HasValidResearchObservationLineage(
+        LegendConnectResearchRetentionLineage lineage) =>
+        LegendConnectResearchRetentionContracts.IsStructurallyValid(lineage);
+
+    private static LegendLanguageTeacherProposalRequest?
+        BuildResearchObservationProposalRequest(
+            string sourceLanguageCode,
+            string targetLanguageCode,
+            LegendLanguageTeacherFamilyProposal family)
+    {
+        var lineage = family.ResearchObservationLineage;
+        if (lineage is null || !HasValidResearchObservationLineage(lineage))
+            return null;
+
+        var materialByStatement = lineage.MaterialClaims
+            .GroupBy(item => LegendLanguageIdentity.NormalizeText(item.Statement), StringComparer.Ordinal)
+            .Where(group => group.Count() == 1)
+            .ToDictionary(group => group.Key, group => group.Single(), StringComparer.Ordinal);
+        var evidence = new List<LegendLanguageTeacherEvidence>(family.Examples.Count);
+        foreach (var example in family.Examples)
+        {
+            var statement = LegendLanguageIdentity.NormalizeText(example.SourceText);
+            if (!materialByStatement.TryGetValue(statement, out var material))
+                return null;
+            evidence.Add(new LegendLanguageTeacherEvidence(
+                material.EvidenceIdentity,
+                statement,
+                example.TargetText,
+                ExternalObservationProvenance,
+                material.VerificationState.ToString()));
+        }
+
+        if (evidence.Count != lineage.MaterialClaims.Count ||
+            evidence.Select(item => item.EvidenceIdentity)
+                .Distinct(StringComparer.Ordinal).Count() != evidence.Count)
+        {
+            return null;
+        }
+
+        return new LegendLanguageTeacherProposalRequest(
+            sourceLanguageCode,
+            targetLanguageCode,
+            family.SemanticCategory,
+            evidence,
+            MaximumFamilies: 1,
+            CapabilityIdentity: family.CapabilityIdentity,
+            CategoryIdentity: family.CategoryIdentity,
+            SemanticFamilyKey: family.FamilyKey,
+            SemanticCategory: family.SemanticCategory);
+    }
+
+    private async Task<bool> HasDurableResearchObservationReceiptAsync(
+        LegendConnectResearchRetentionLineage lineage,
+        CancellationToken cancellationToken)
+    {
+        var correlation = lineage.SessionId.ToString("N");
+        var events = await _db.Set<LegendConnectOperationalEvent>()
+            .AsNoTracking()
+            .Where(item =>
+                item.Category == LegendConnectResearchContracts.ObservabilityCategory &&
+                item.CorrelationId == correlation)
+            .Select(item => new
+            {
+                item.Status,
+                item.ErrorCode,
+                item.Summary
+            })
+            .ToListAsync(cancellationToken);
+        if (!events.Any(item =>
+                item.Status == "Session:Conclusion" &&
+                item.ErrorCode == null &&
+                (item.Summary ?? string.Empty).Contains(
+                    "code_sha=" + lineage.CodeSha,
+                    StringComparison.Ordinal) &&
+                (item.Summary ?? string.Empty).Contains(
+                    "configuration=" + lineage.ConfigurationIdentity,
+                    StringComparison.Ordinal)) ||
+            !events.Any(item =>
+                item.Status == "Retention:ExternalObservation" &&
+                (item.Summary ?? string.Empty).Contains(
+                    "observation=" + lineage.ObservationIdentity,
+                    StringComparison.Ordinal) &&
+                (item.Summary ?? string.Empty).Contains(
+                    "provenance=ExternalObservation",
+                    StringComparison.Ordinal)))
+        {
+            return false;
+        }
+
+        return lineage.MaterialClaims.All(claim =>
+                   events.Any(item =>
+                       (item.Status is "Claim:Supported" or "Claim:Contradicted") &&
+                       (item.Summary ?? string.Empty).Contains(
+                           "evidence=" + claim.EvidenceIdentity,
+                           StringComparison.Ordinal))) &&
+               lineage.MaterialClaims
+                   .Select(item => item.SourceIdentity)
+                   .Distinct(StringComparer.Ordinal)
+                   .All(source => events.Any(item =>
+                       (item.Status is "Source:Opened" or "Source:Discovered") &&
+                       (item.Summary ?? string.Empty).Contains(
+                           "source=" + source,
+                           StringComparison.Ordinal))) &&
+               lineage.Citations.All(citation => events.Any(item =>
+                   item.Status == "Citation:Used" &&
+                   (item.Summary ?? string.Empty).Contains(
+                       "citation=" + citation.CitationIdentity,
+                       StringComparison.Ordinal)));
+    }
 
     private static string? NormalizeMachineTeachingField(
         string? value,
@@ -4208,14 +4363,22 @@ internal sealed class LegendConnectAutonomousLearningService
 
         if (IsConversationMachineCandidate(candidate))
         {
+            var researchObservation = string.Equals(
+                candidate.Provenance,
+                ExternalObservationProvenance,
+                StringComparison.Ordinal);
             await RecordAsync(
-                "ConversationMachineProposal",
+                researchObservation
+                    ? "ResearchExternalObservationProposal"
+                    : "ConversationMachineProposal",
                 "Info",
                 "CriticRequested",
                 candidate.SourceLanguageCode,
                 pairKey,
                 null,
-                "The existing autonomous authority sent the retained conversational MachineProposed artifact to the existing independent critic.",
+                researchObservation
+                    ? "The existing autonomous authority sent the retained ExternalObservation MachineProposed artifact to the existing independent critic."
+                    : "The existing autonomous authority sent the retained conversational MachineProposed artifact to the existing independent critic.",
                 cancellationToken);
 
             return await ProcessConversationMachineCritiqueAsync(
@@ -4654,6 +4817,23 @@ internal sealed class LegendConnectAutonomousLearningService
         {
             return LanguageProposalRequestBuildResult.Rejected(
                 "language_teacher_semantic_lineage_invalid");
+        }
+
+        if (string.Equals(
+                candidate.Provenance,
+                ExternalObservationProvenance,
+                StringComparison.Ordinal))
+        {
+            var researchRequest = conversationFamily is null
+                ? null
+                : BuildResearchObservationProposalRequest(
+                    candidate.SourceLanguageCode,
+                    candidate.TargetLanguageCode,
+                    conversationFamily);
+            return researchRequest is null
+                ? LanguageProposalRequestBuildResult.Rejected(
+                    "language_teacher_research_observation_lineage_invalid")
+                : LanguageProposalRequestBuildResult.Accepted(researchRequest);
         }
 
         LegendLanguageTextUnit? source = null;
@@ -5734,7 +5914,8 @@ internal sealed class LegendConnectAutonomousLearningService
                     (item.IsApproved &&
                      item.ProcessingState == "Queued") ||
                     (!item.IsApproved &&
-                     item.Provenance == MachineConversationProvenance &&
+                     (item.Provenance == MachineConversationProvenance ||
+                      item.Provenance == ExternalObservationProvenance) &&
                      item.ProcessingState == "ConversationProposal")
                 ) &&
                 item.TeacherProposalAttemptCount < maximumAttempts &&
@@ -5751,8 +5932,8 @@ internal sealed class LegendConnectAutonomousLearningService
             .Select(item => new LanguageProposalWorkCandidate(
                 item.Id,
                 !item.IsApproved &&
-                    item.Provenance ==
-                        MachineConversationProvenance &&
+                    (item.Provenance == MachineConversationProvenance ||
+                     item.Provenance == ExternalObservationProvenance) &&
                     item.ProcessingState ==
                         "ConversationProposal",
                 item.SourceLanguageCode,
@@ -5779,7 +5960,8 @@ internal sealed class LegendConnectAutonomousLearningService
                             (item.IsApproved &&
                              item.ProcessingState == "Queued") ||
                             (!item.IsApproved &&
-                             item.Provenance == MachineConversationProvenance &&
+                             (item.Provenance == MachineConversationProvenance ||
+                              item.Provenance == ExternalObservationProvenance) &&
                              item.ProcessingState == "ConversationProposal")
                         ) &&
                         item.TeacherProposalAttemptCount <
@@ -5816,7 +5998,8 @@ internal sealed class LegendConnectAutonomousLearningService
                     (item.IsApproved &&
                      item.ProcessingState == "Queued") ||
                     (!item.IsApproved &&
-                     item.Provenance == MachineConversationProvenance &&
+                     (item.Provenance == MachineConversationProvenance ||
+                      item.Provenance == ExternalObservationProvenance) &&
                      item.ProcessingState == "ConversationProposal")
                 ) &&
                 item.TeacherProposalAttemptCount < maximumAttempts &&
@@ -6016,15 +6199,21 @@ internal sealed class LegendConnectAutonomousLearningService
             cancellationToken);
 
         await RecordAsync(
-            "ConversationMachineProposal",
+            string.Equals(candidate.Provenance, ExternalObservationProvenance, StringComparison.Ordinal)
+                ? "ResearchExternalObservationProposal"
+                : "ConversationMachineProposal",
             "Info",
             proposal.ValidationState,
             candidate.SourceLanguageCode,
             candidate.PairKey(),
             null,
-            critique.Approved
-                ? "The retained conversational MachineProposed artifact survived the existing independent critic and now awaits the existing canonical validator."
-                : "The retained conversational MachineProposed artifact was rejected by the existing independent critic and remains durable historical evidence.",
+            string.Equals(candidate.Provenance, ExternalObservationProvenance, StringComparison.Ordinal)
+                ? critique.Approved
+                    ? "The retained ExternalObservation MachineProposed artifact survived the existing independent critic and now awaits the existing canonical novelty validator."
+                    : "The retained ExternalObservation MachineProposed artifact was rejected by the existing independent critic and remains durable historical evidence."
+                : critique.Approved
+                    ? "The retained conversational MachineProposed artifact survived the existing independent critic and now awaits the existing canonical validator."
+                    : "The retained conversational MachineProposed artifact was rejected by the existing independent critic and remains durable historical evidence.",
             cancellationToken);
 
         return true;

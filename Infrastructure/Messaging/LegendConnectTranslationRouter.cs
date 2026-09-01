@@ -71,7 +71,8 @@ internal sealed record LegendConnectLockedServingEvaluationResult(
     long LatencyMicroseconds,
     long? CostMicrounits,
     string? ErrorCode = null,
-    bool Retryable = false);
+    bool Retryable = false,
+    LegendConnectResearchEvaluationMeasurements? ResearchMeasurements = null);
 
 internal sealed record LegendConnectGovernedReasoningCandidateRequest(
     string SourceLanguageCode,

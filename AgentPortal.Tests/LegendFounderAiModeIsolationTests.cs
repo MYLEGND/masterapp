@@ -1632,6 +1632,8 @@ public sealed class LegendFounderAiModeIsolationTests
           "target_language":"es",
           "capability_identity":"translation",
           "category_identity":"reusable_semantic",
+          "observation_origin":"ConversationObservation",
+          "research_observation_lineage":null,
           "family_key":"confirmed-machine-distinction",
           "semantic_category":"conversation_semantics",
           "rationale":"Retain one reusable distinction with machine provenance.",

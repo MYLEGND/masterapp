@@ -249,8 +249,42 @@ public sealed class FounderLegendConnectService
         CancellationToken cancellationToken = default)
     {
         _ = await ResolveFounderActorAsync(user, cancellationToken);
-        return await _operations.ExecuteResearchAsync(
+        var outcome = await _operations.ExecuteResearchAsync(
             request,
+            cancellationToken);
+        var lineage = LegendConnectResearchRetentionContracts
+            .CreateExternalObservation(outcome);
+        outcome = outcome with
+        {
+            Retention = new LegendConnectResearchRetentionReceipt(
+                lineage is null
+                    ? LegendConnectResearchRetentionState.Failed
+                    : LegendConnectResearchRetentionState.ExternalObservation,
+                LegendConnectResearchRetentionContracts.ObservationIdentity(outcome),
+                null,
+                null,
+                lineage is null ? "NoRetention" : "ExternalObservation",
+                "NonServing",
+                "NonCanonical",
+                lineage is null
+                    ? "research_retention_observation_ineligible"
+                    : null),
+            RetentionLineage = lineage
+        };
+        await _operations.RecordResearchObservabilityAsync(
+            outcome,
+            cancellationToken);
+        return outcome;
+    }
+
+    internal async Task RecordResearchObservabilityAsync(
+        ClaimsPrincipal user,
+        LegendConnectResearchOutcome outcome,
+        CancellationToken cancellationToken = default)
+    {
+        _ = await ResolveFounderActorAsync(user, cancellationToken);
+        await _operations.RecordResearchObservabilityAsync(
+            outcome,
             cancellationToken);
     }
 
@@ -338,10 +372,18 @@ public sealed class FounderLegendConnectService
             user,
             cancellationToken);
 
-        return await _operations
+        var result = await _operations
             .SubmitMachineTeachingProposalAsync(
                 submission,
                 cancellationToken);
+        if (submission.ResearchObservationLineage is { } lineage)
+        {
+            await _operations.RecordResearchRetentionAsync(
+                lineage,
+                result,
+                cancellationToken);
+        }
+        return result;
     }
 
     public async Task<LegendConnectKnowledgeSubmissionResult> QueueFounderLearningSeedAsync(

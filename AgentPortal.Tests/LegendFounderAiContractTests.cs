@@ -710,9 +710,18 @@ public sealed class LegendFounderAiContractTests
 
         Assert.Contains("capability_identity", required);
         Assert.Contains("category_identity", required);
+        Assert.Contains("observation_origin", required);
+        Assert.Contains("research_observation_lineage", required);
         Assert.Equal(
             new[] { "translation", "same_language_semantic" },
             properties.GetProperty("capability_identity")
+                .GetProperty("enum")
+                .EnumerateArray()
+                .Select(item => item.GetString()!)
+                .ToArray());
+        Assert.Equal(
+            new[] { "ConversationObservation", "ExternalResearchObservation" },
+            properties.GetProperty("observation_origin")
                 .GetProperty("enum")
                 .EnumerateArray()
                 .Select(item => item.GetString()!)

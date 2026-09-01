@@ -6,6 +6,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using AgentPortal.Models;
 using AgentPortal.Services;
+using Domain.Messaging;
 using Microsoft.EntityFrameworkCore;
 using Xunit;
 
@@ -361,7 +362,10 @@ public sealed class LegendBlindComparativeBenchmarkRunnerTests
                                 IsUnsupportedRequest:
                                     index % 5 == 0,
                                 IsTransferCase:
-                                    index % 2 == 0);
+                                    index % 2 == 0,
+                                IsResearchCase:
+                                    domain.Key == "knowledge_synthesis" &&
+                                    index < 20);
                         }))
                 .ToArray();
         return Lock(
@@ -443,7 +447,31 @@ public sealed class LegendBlindComparativeBenchmarkRunnerTests
                     manifest.DeployedSha,
                     1,
                     1,
-                    Proof));
+                    Proof,
+                    ResearchMeasurements:
+                        benchmarkCase.IsResearchCase
+                            ? new LegendConnectResearchEvaluationMeasurements(
+                                true,
+                                false,
+                                true,
+                                true,
+                                true,
+                                true,
+                                true,
+                                true,
+                                true,
+                                0m,
+                                true,
+                                1,
+                                1,
+                                true,
+                                true,
+                                true,
+                                true,
+                                false,
+                                LegendBlindComparativeBenchmarkRunner.ContentHash(
+                                    "research-proof-" + benchmarkCase.CaseIdentity))
+                            : null));
         }
 
         public Task<LegendBlindBenchmarkRuntimeOutput> ExecuteBaselineAsync(
@@ -517,7 +545,11 @@ public sealed class LegendBlindComparativeBenchmarkRunnerTests
                     LegendBlindComparativeBenchmarkRunner.ContentHash(
                         $"{request.AssignmentIdentity}:{judgeIdentity}:{request.IsAdjudication}"),
                     1,
-                    1));
+                    1,
+                    ResearchAnswerACorrect:
+                        request.IsResearchCase ? true : null,
+                    ResearchAnswerBCorrect:
+                        request.IsResearchCase ? true : null));
         }
     }
 }

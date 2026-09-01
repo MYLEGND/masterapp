@@ -80,7 +80,6 @@ internal sealed class LegendFounderToolAuthority
             "legend_translation_quality" or
             "legend_target_realizations" or
             "legend_search_retained_knowledge" or
-            "legend_research_internet" or
             "legend_metric_detail" or
             "legend_language_state";
 
@@ -101,6 +100,7 @@ internal sealed class LegendFounderToolAuthority
             "legend_translation_quality" or
             "legend_target_realizations" or
             "legend_search_retained_knowledge" or
+            "legend_research_internet" or
             "legend_metric_detail" or
             "legend_language_state";
 
@@ -172,7 +172,7 @@ internal sealed class LegendFounderToolAuthority
         var requestId = Guid.NewGuid();
         if (!decision.ResearchRequired)
         {
-            return ResearchFailure(
+            var failure = ResearchFailure(
                 requestId,
                 decision,
                 "research_not_authorized_by_serving_decision",
@@ -182,6 +182,11 @@ internal sealed class LegendFounderToolAuthority
                 decision.InternalKnowledgeAvailable
                     ? LegendConnectResearchEvidenceOrigin.InternalKnowledge
                     : LegendConnectResearchEvidenceOrigin.UnresolvedEvidence);
+            await _legend.RecordResearchObservabilityAsync(
+                founder,
+                failure,
+                cancellationToken);
+            return failure;
         }
 
         LegendConnectResearchAuthorization authorization;
@@ -207,7 +212,7 @@ internal sealed class LegendFounderToolAuthority
                     cancellationToken);
             if (authorizationFailure is not null)
             {
-                return ResearchFailure(
+                var failure = ResearchFailure(
                     requestId,
                     decision,
                     ReadFailureCode(
@@ -215,6 +220,11 @@ internal sealed class LegendFounderToolAuthority
                         "research_restricted_authorization_required"),
                     "LEGEND did not execute restricted research because the exact existing Founder authorization was absent, invalid, or already consumed.",
                     LegendConnectResearchEvidenceOrigin.UnresolvedEvidence);
+                await _legend.RecordResearchObservabilityAsync(
+                    founder,
+                    failure,
+                    cancellationToken);
+                return failure;
             }
 
             authorization = new LegendConnectResearchAuthorization(
@@ -226,43 +236,15 @@ internal sealed class LegendFounderToolAuthority
                 true);
         }
 
-        var normalizedQuestion = question.Trim();
-        if (normalizedQuestion.Length >
-            LegendConnectResearchContracts.MaximumQueryCharacters)
-        {
-            normalizedQuestion = normalizedQuestion[
-                ..LegendConnectResearchContracts.MaximumQueryCharacters];
-        }
-        var queryIdentity = LegendLanguageIdentity.TextHash(
-            "legend-research-query|v1|" +
-            decision.SourceLanguageCode + "|" +
-            normalizedQuestion);
-        var request = new LegendConnectResearchRequest(
-            requestId,
-            normalizedQuestion,
+        var request = LegendConnectResearchRequestFactory.Create(
+            question,
             decision,
-            [
-                new LegendConnectBoundedSearchQuery(
-                    queryIdentity,
-                    1,
-                    normalizedQuestion,
-                    decision.SourceLanguageCode,
-                    LegendConnectResearchContracts.MaximumResults)
-            ],
-            LegendConnectResearchContracts.MaximumResults,
-            LegendConnectResearchContracts.MaximumDocuments,
-            LegendConnectResearchContracts.MaximumClaims,
-            LegendConnectResearchContracts.MaximumDocumentCharacters,
-            decision.Need == LegendConnectResearchNeed.NamedExternalDocumentOrSource
-                ? 1
-                : 2,
             authorization,
             internalInference is { Supported: true }
                 ? BoundResearchInternalAnswer(internalInference.Answer)
                 : null,
             internalInference?.ReasonCode,
             internalInference?.EvidenceCount ?? 0,
-            DateTime.UtcNow,
             internalInference?.PresentationConstraints);
         return await _legend.ExecuteResearchAsync(
             founder,
@@ -626,6 +608,37 @@ internal sealed class LegendFounderToolAuthority
                         arguments.RootElement,
                         "category_identity");
 
+                var observationOriginValue =
+                    ReadRequiredString(
+                        arguments.RootElement,
+                        "observation_origin");
+                var researchObservationJson =
+                    ReadOptionalString(
+                        arguments.RootElement,
+                        "research_observation_lineage");
+                if (!Enum.TryParse<LegendConnectMachineObservationOrigin>(
+                        observationOriginValue,
+                        ignoreCase: false,
+                        out var observationOrigin))
+                {
+                    return """{"error":"invalid_machine_learning_observation_origin"}""";
+                }
+                LegendConnectResearchRetentionLineage? researchObservationLineage = null;
+                if (!string.IsNullOrWhiteSpace(researchObservationJson))
+                {
+                    try
+                    {
+                        researchObservationLineage =
+                            JsonSerializer.Deserialize<LegendConnectResearchRetentionLineage>(
+                                researchObservationJson,
+                                JsonOptions);
+                    }
+                    catch (JsonException)
+                    {
+                        return """{"error":"invalid_machine_learning_research_lineage"}""";
+                    }
+                }
+
                 var familyKey =
                     ReadRequiredString(
                         arguments.RootElement,
@@ -769,7 +782,9 @@ internal sealed class LegendFounderToolAuthority
                                 examples,
                                 semanticTransitions,
                                 capabilityIdentity,
-                                categoryIdentity),
+                                categoryIdentity,
+                                observationOrigin,
+                                researchObservationLineage),
                             cancellationToken);
 
                 if (!result.Succeeded)
@@ -803,7 +818,8 @@ internal sealed class LegendFounderToolAuthority
                         LegendConnectMachineTeachingMutationReceipt.RequiredProvenance,
                         call.MutationAuthorization.CorrelationId,
                         LegendConnectMachineTeachingMutationReceipt.RequiredServingStatus,
-                        LegendConnectMachineTeachingMutationReceipt.RequiredCanonicalStatus));
+                        LegendConnectMachineTeachingMutationReceipt.RequiredCanonicalStatus,
+                        researchObservationLineage?.ObservationIdentity));
             }
 
             case "legend_submit_founder_seed":
@@ -1898,7 +1914,7 @@ internal sealed class LegendFounderToolAuthority
                 type = "function",
                 name = "legend_submit_machine_learning_candidate",
                 description =
-                    "Retain reusable machine-derived LANGUAGE teaching from the current conversation in LEGEND's existing MachineProposed lifecycle. Declare translation for distinct-language teaching or same_language_semantic for governed semantic teaching within one language, and classify it as reusable_semantic. Conversational learning must include explicit language-neutral semantic_transitions connecting controlled source and result frames. This tool does NOT approve, validate, train, serve or promote the material. The existing independent critic and canonical validator remain authoritative. Never use it for personal facts, private messages, transient platform facts or unsupported speculation.",
+                    "Retain reusable machine-derived LANGUAGE teaching through LEGEND's existing MachineProposed lifecycle. ConversationObservation accepts only current conversational observations. ExternalResearchObservation additionally requires the exact serialized, citation-validated research observation lineage; it remains ExternalObservation until this existing tool creates a noncanonical proposal. Explicit semantic transitions and controlled examples are still required. This tool does NOT approve, validate, train, serve or promote material: the existing critic, canonical novelty validator, governed admission authority and canonical eligibility checks remain authoritative. Never infer retention from retrieval, citation, repetition, or answer use.",
                 parameters = new
                 {
                     type = "object",
@@ -1932,6 +1948,20 @@ internal sealed class LegendFounderToolAuthority
                             {
                                 LegendConnectMachineTeachingSubmission.ReusableSemanticCategory
                             }
+                        },
+                        observation_origin = new
+                        {
+                            type = "string",
+                            @enum = new[]
+                            {
+                                nameof(LegendConnectMachineObservationOrigin.ConversationObservation),
+                                nameof(LegendConnectMachineObservationOrigin.ExternalResearchObservation)
+                            }
+                        },
+                        research_observation_lineage = new
+                        {
+                            type = new[] { "string", "null" },
+                            maxLength = 64_000
                         },
                         family_key = new
                         {
@@ -2054,6 +2084,8 @@ internal sealed class LegendFounderToolAuthority
                         "target_language",
                         "capability_identity",
                         "category_identity",
+                        "observation_origin",
+                        "research_observation_lineage",
                         "family_key",
                         "semantic_category",
                         "rationale",

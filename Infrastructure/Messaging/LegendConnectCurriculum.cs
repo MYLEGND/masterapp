@@ -1382,10 +1382,22 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
                 item => item.Id == proposal.CorpusCandidateId,
                 cancellationToken);
         var isConversationMachineProposal = machineCandidate is not null &&
-            string.Equals(machineCandidate.Provenance, "MachineConversation", StringComparison.Ordinal) &&
+            (machineCandidate.Provenance is "MachineConversation" or "ExternalObservation") &&
             string.Equals(machineCandidate.ProcessingState, "ConversationProposal", StringComparison.Ordinal);
         if (isConversationMachineProposal && semanticTransitions.Count == 0)
             return "machine_conversation_semantic_transition_required";
+        var isResearchObservation = machineCandidate is not null &&
+            string.Equals(
+                machineCandidate.Provenance,
+                "ExternalObservation",
+                StringComparison.Ordinal);
+        if (isResearchObservation &&
+            (machineFamily.ResearchObservationLineage is null ||
+             !LegendConnectAutonomousLearningService.HasValidResearchObservationLineage(
+                 machineFamily.ResearchObservationLineage)))
+        {
+            return "machine_research_observation_lineage_invalid";
+        }
         var sameLanguage = string.Equals(
             proposal.SourceLanguageCode,
             proposal.TargetLanguageCode,

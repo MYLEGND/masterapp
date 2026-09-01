@@ -54,7 +54,8 @@ internal sealed record LegendLanguageTeacherFamilyProposal(
     string CapabilityIdentity =
         LegendConnectMachineTeachingSubmission.TranslationCapability,
     string CategoryIdentity =
-        LegendConnectMachineTeachingSubmission.ReusableSemanticCategory);
+        LegendConnectMachineTeachingSubmission.ReusableSemanticCategory,
+    LegendConnectResearchRetentionLineage? ResearchObservationLineage = null);
 
 internal sealed record LegendLanguageTeacherProposalRequest(
     string SourceLanguageCode,

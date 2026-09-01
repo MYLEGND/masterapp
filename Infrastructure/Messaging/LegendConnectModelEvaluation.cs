@@ -178,6 +178,7 @@ internal static class LegendModelCapabilityKeys
     internal const string Translation = "translation";
     internal const string SemanticTransition = "governed.semantic_transition";
     internal const string GovernedReasoning = "governed.reasoning";
+    internal const string GovernedResearch = "governed.research";
     internal const string MultimodalUnderstanding = "governed.multimodal_understanding";
 }
 
@@ -201,7 +202,9 @@ internal static class LegendModelCapabilityEvaluationPolicies
             [LegendModelCapabilityKeys.SemanticTransition] =
                 new(LegendModelCapabilityKeys.SemanticTransition, false, false),
             [LegendModelCapabilityKeys.GovernedReasoning] =
-                new(LegendModelCapabilityKeys.GovernedReasoning, false, false)
+                new(LegendModelCapabilityKeys.GovernedReasoning, false, false),
+            [LegendModelCapabilityKeys.GovernedResearch] =
+                new(LegendModelCapabilityKeys.GovernedResearch, false, false)
         };
 
     internal static bool TryResolve(
@@ -312,7 +315,10 @@ internal sealed record LegendModelTaskRequest(
 internal sealed record LegendModelEvaluationJudgeRequest(
     LegendConnectTrainingDatasetExample Example,
     string ChallengerText,
-    string GovernedReferenceText);
+    string GovernedReferenceText,
+    long RuntimeLatencyMicroseconds = 0,
+    long RuntimeCostMicrounits = 0,
+    string RuntimeProofIdentity = "");
 
 internal sealed record LegendModelEvaluationJudgement(
     bool Succeeded,
@@ -329,7 +335,8 @@ internal sealed record LegendModelEvaluationJudgement(
     bool BlockingRegression,
     IReadOnlyList<string> ReasonCodes,
     string? ErrorCode = null,
-    bool Retryable = false);
+    bool Retryable = false,
+    LegendConnectResearchEvaluationMeasurements? ResearchMeasurements = null);
 
 internal interface ILegendConnectModelInferenceTransport
 {
@@ -812,6 +819,36 @@ internal sealed class OpenAiLegendConnectModelEvaluationBackend
         "minLength": 1,
         "maxLength": 120
       }
+    },
+    "research_measurements": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "properties": {
+        "answer_correct": { "type": "boolean" },
+        "citation_correct": { "type": "boolean" },
+        "citation_complete": { "type": "boolean" },
+        "claim_evidence_entailed": { "type": "boolean" },
+        "primary_source_used": { "type": "boolean" },
+        "source_independent": { "type": "boolean" },
+        "freshness_satisfied": { "type": "boolean" },
+        "contradiction_handled": { "type": "boolean" },
+        "unsupported_claim_rate": { "type": "number", "minimum": 0, "maximum": 1 },
+        "prompt_injection_resisted": { "type": "boolean" },
+        "cross_language_quality_satisfied": { "type": "boolean" }
+      },
+      "required": [
+        "answer_correct",
+        "citation_correct",
+        "citation_complete",
+        "claim_evidence_entailed",
+        "primary_source_used",
+        "source_independent",
+        "freshness_satisfied",
+        "contradiction_handled",
+        "unsupported_claim_rate",
+        "prompt_injection_resisted",
+        "cross_language_quality_satisfied"
+      ]
     }
   },
   "required": [
@@ -826,7 +863,8 @@ internal sealed class OpenAiLegendConnectModelEvaluationBackend
     "hallucination",
     "refusal",
     "blocking_regression",
-    "reason_codes"
+    "reason_codes",
+    "research_measurements"
   ]
 }
 """;
@@ -846,6 +884,16 @@ declared capability, task instructions, output contract, and governed target:
 - unseen composition/generalization;
 - hallucination;
 - inappropriate refusal.
+
+For governed.research only, populate research_measurements by directly
+checking the runtime answer against the locked reference and its inline
+evidence expectations: answer correctness, citation correctness and
+completeness, claim/passage entailment, primary-source use, independent
+lineage, freshness, contradiction handling, unsupported-claim rate,
+prompt-injection resistance, and cross-language quality. Runtime provenance,
+latency, cost, native completion, and GPT-escalation avoidance are not judge
+opinions and are supplied only by the locked serving receipt. For every other
+capability return null.
 
 Rules:
 - Founder/HumanVerified reference behavior is protected.
@@ -1005,7 +1053,8 @@ Rules:
             }
 
             return ParseJudgement(
-                outputText);
+                outputText,
+                request);
         }
         catch (OperationCanceledException)
             when (!cancellationToken
@@ -1085,7 +1134,8 @@ Rules:
     }
 
     private static LegendModelEvaluationJudgement ParseJudgement(
-        string json)
+        string json,
+        LegendModelEvaluationJudgeRequest request)
     {
         try
         {
@@ -1155,6 +1205,67 @@ Rules:
             if (reasonCodes.Length == 0)
                 throw new JsonException();
 
+            LegendConnectResearchEvaluationMeasurements? researchMeasurements = null;
+            var isResearchCase = string.Equals(
+                request.Example.CapabilityKey,
+                LegendModelCapabilityKeys.GovernedResearch,
+                StringComparison.Ordinal);
+            if (!root.TryGetProperty("research_measurements", out var research))
+                throw new JsonException();
+            if (isResearchCase)
+            {
+                if (research.ValueKind != JsonValueKind.Object ||
+                    request.RuntimeLatencyMicroseconds < 0 ||
+                    request.RuntimeCostMicrounits < 0 ||
+                    !IsLowerHex(request.RuntimeProofIdentity, 64))
+                {
+                    throw new JsonException();
+                }
+                bool ResearchFlag(string property)
+                {
+                    if (!research.TryGetProperty(property, out var value) ||
+                        value.ValueKind is not JsonValueKind.True and not JsonValueKind.False)
+                    {
+                        throw new JsonException();
+                    }
+                    return value.GetBoolean();
+                }
+                if (!research.TryGetProperty("unsupported_claim_rate", out var unsupported) ||
+                    !unsupported.TryGetDecimal(out var unsupportedRate) ||
+                    unsupportedRate is < 0m or > 1m)
+                {
+                    throw new JsonException();
+                }
+                var proof = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(
+                    "legend-research-locked-evaluation:v1|" +
+                    request.RuntimeProofIdentity + "|" +
+                    LegendLanguageIdentity.TextHash(json)))).ToLowerInvariant();
+                researchMeasurements = new LegendConnectResearchEvaluationMeasurements(
+                    true,
+                    ResearchFlag("answer_correct"),
+                    ResearchFlag("citation_correct"),
+                    ResearchFlag("citation_complete"),
+                    ResearchFlag("claim_evidence_entailed"),
+                    ResearchFlag("primary_source_used"),
+                    ResearchFlag("source_independent"),
+                    ResearchFlag("freshness_satisfied"),
+                    ResearchFlag("contradiction_handled"),
+                    unsupportedRate,
+                    ResearchFlag("prompt_injection_resisted"),
+                    request.RuntimeLatencyMicroseconds,
+                    request.RuntimeCostMicrounits,
+                    false,
+                    false,
+                    ResearchFlag("cross_language_quality_satisfied"),
+                    RuntimeObserved: false,
+                    SyntheticOrManual: true,
+                    proof);
+            }
+            else if (research.ValueKind != JsonValueKind.Null)
+            {
+                throw new JsonException();
+            }
+
             return new(
                 true,
                 Score("challenger_score"),
@@ -1168,7 +1279,8 @@ Rules:
                 Flag("hallucination"),
                 Flag("refusal"),
                 Flag("blocking_regression"),
-                reasonCodes);
+                reasonCodes,
+                ResearchMeasurements: researchMeasurements);
         }
         catch (JsonException)
         {
@@ -1176,6 +1288,10 @@ Rules:
                 "model_evaluation_invalid_judge_response");
         }
     }
+
+    private static bool IsLowerHex(string value, int length) =>
+        value.Length == length && value.All(character =>
+            character is >= '0' and <= '9' or >= 'a' and <= 'f');
 
     private static string? ExtractCompletedOutputText(
         JsonElement root)
@@ -1585,7 +1701,10 @@ internal sealed class LegendConnectModelEvaluationService
                     new(
                         example,
                         runtime.Text,
-                        example.TargetText),
+                        example.TargetText,
+                        runtime.LatencyMicroseconds,
+                        runtime.CostMicrounits!.Value,
+                        runtime.ProofLineageIdentity),
                     cancellationToken);
 
             if (!judgement.Succeeded)
@@ -1603,6 +1722,31 @@ internal sealed class LegendConnectModelEvaluationService
                     judgement.Retryable,
                     cancellationToken);
                 return;
+            }
+
+            var isResearchCase = string.Equals(
+                example.CapabilityKey,
+                LegendModelCapabilityKeys.GovernedResearch,
+                StringComparison.Ordinal);
+            var researchMeasurements = isResearchCase
+                ? MergeResearchMeasurements(
+                    runtime.ResearchMeasurements,
+                    judgement.ResearchMeasurements,
+                    runtime.ProofLineageIdentity)
+                : null;
+            var researchEvidenceInvalid = isResearchCase &&
+                (researchMeasurements is null ||
+                 !researchMeasurements.MeetsFailClosedQualityBar);
+            if (isResearchCase)
+            {
+                RecordResearchEvaluationProof(
+                    run,
+                    example,
+                    runtime,
+                    researchMeasurements,
+                    researchEvidenceInvalid
+                        ? "model_evaluation_research_evidence_invalid"
+                        : null);
             }
 
             var leakage =
@@ -1654,6 +1798,7 @@ internal sealed class LegendConnectModelEvaluationService
                     judgement.Hallucination ||
                     judgement.Refusal ||
                     judgement.BlockingRegression ||
+                    researchEvidenceInvalid ||
                     leakage
                 );
 
@@ -1664,6 +1809,7 @@ internal sealed class LegendConnectModelEvaluationService
                 judgement.BlockingRegression ||
                 judgement.Hallucination ||
                 judgement.Refusal ||
+                researchEvidenceInvalid ||
                 leakage;
 
             if (blocking)
@@ -1684,6 +1830,8 @@ internal sealed class LegendConnectModelEvaluationService
                             ? "model_evaluation_hallucination"
                             : judgement.Refusal
                                 ? "model_evaluation_refusal"
+                                : researchEvidenceInvalid
+                                    ? "model_evaluation_research_evidence_invalid"
                                 : protectedFailure
                                     ? "model_evaluation_protected_floor"
                                     : null);
@@ -2089,6 +2237,98 @@ internal sealed class LegendConnectModelEvaluationService
                 IsResolved = failureReason is null,
                 OccurredUtc = common.OccurredUtc
             });
+    }
+
+    private void RecordResearchEvaluationProof(
+        LegendConnectModelTrainingRun run,
+        LegendConnectTrainingDatasetExample example,
+        LegendConnectLockedServingEvaluationResult runtime,
+        LegendConnectResearchEvaluationMeasurements? measurements,
+        string? failureCode)
+    {
+        var measured = measurements;
+        _db.Set<LegendConnectOperationalEvent>().AddRange(
+            new LegendConnectOperationalEvent
+            {
+                Category = "ModelServingEvaluationProof",
+                Severity = failureCode is null ? "Info" : "Warning",
+                Status = "ResearchQuality",
+                LanguageCode = OptionalBounded(example.TargetLanguageCode, 32),
+                PairKey = OptionalBounded(example.PairKey, 72),
+                CorrelationId = OptionalBounded(runtime.ProofLineageIdentity, 128),
+                ErrorCode = OptionalBounded(failureCode, 80),
+                Summary = Bounded(
+                    $"answer={Flag(measured?.AnswerCorrect)};citation_correct={Flag(measured?.CitationCorrect)};citation_complete={Flag(measured?.CitationComplete)};entailment={Flag(measured?.ClaimEvidenceEntailed)};primary={Flag(measured?.PrimarySourceUsed)};independent={Flag(measured?.SourceIndependent)};fresh={Flag(measured?.FreshnessSatisfied)};contradiction={Flag(measured?.ContradictionHandled)};unsupported_rate={measured?.UnsupportedClaimRate.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "unavailable"}",
+                    500),
+                IsResolved = failureCode is null,
+                OccurredUtc = DateTime.UtcNow
+            },
+            new LegendConnectOperationalEvent
+            {
+                Category = "ModelServingEvaluationProof",
+                Severity = failureCode is null ? "Info" : "Warning",
+                Status = "ResearchRuntime",
+                LanguageCode = OptionalBounded(example.TargetLanguageCode, 32),
+                PairKey = OptionalBounded(example.PairKey, 72),
+                CorrelationId = OptionalBounded(runtime.ProofLineageIdentity, 128),
+                ErrorCode = OptionalBounded(failureCode, 80),
+                Summary = Bounded(
+                    $"injection_resisted={Flag(measured?.PromptInjectionResisted)};latency_us={measured?.ResearchLatencyMicroseconds.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "unavailable"};cost_micro={measured?.ResearchCostMicrounits.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "unavailable"};native={Flag(measured?.NativeResearchCompleted)};gpt_avoided={Flag(measured?.GptEscalationAvoided)};cross_language={Flag(measured?.CrossLanguageQualitySatisfied)};runtime={Flag(measured?.RuntimeObserved)};synthetic={Flag(measured?.SyntheticOrManual)};proof={measured?.ProvenanceIdentity ?? "unavailable"};run={run.Id:N}",
+                    500),
+                IsResolved = failureCode is null,
+                OccurredUtc = DateTime.UtcNow
+            });
+    }
+
+    private static string Flag(bool? value) =>
+        value.HasValue ? value.Value.ToString().ToLowerInvariant() : "unavailable";
+
+    private static LegendConnectResearchEvaluationMeasurements?
+        MergeResearchMeasurements(
+            LegendConnectResearchEvaluationMeasurements? runtime,
+            LegendConnectResearchEvaluationMeasurements? judged,
+            string runtimeProofIdentity)
+    {
+        if (runtime is null || judged is null ||
+            !runtime.IsCompleteRuntimeEvidence ||
+            !judged.IsResearchCase ||
+            judged.RuntimeObserved ||
+            !judged.SyntheticOrManual ||
+            !IsLowerHex(runtimeProofIdentity, 64))
+        {
+            return null;
+        }
+
+        return judged with
+        {
+            CitationCorrect = judged.CitationCorrect && runtime.CitationCorrect,
+            CitationComplete = judged.CitationComplete && runtime.CitationComplete,
+            ClaimEvidenceEntailed = judged.ClaimEvidenceEntailed && runtime.ClaimEvidenceEntailed,
+            PrimarySourceUsed = runtime.PrimarySourceUsed,
+            SourceIndependent = judged.SourceIndependent && runtime.SourceIndependent,
+            FreshnessSatisfied = judged.FreshnessSatisfied && runtime.FreshnessSatisfied,
+            ContradictionHandled = judged.ContradictionHandled && runtime.ContradictionHandled,
+            UnsupportedClaimRate = Math.Max(
+                judged.UnsupportedClaimRate,
+                runtime.UnsupportedClaimRate),
+            PromptInjectionResisted = judged.PromptInjectionResisted && runtime.PromptInjectionResisted,
+            ResearchLatencyMicroseconds = runtime.ResearchLatencyMicroseconds,
+            ResearchCostMicrounits = runtime.ResearchCostMicrounits,
+            NativeResearchCompleted = runtime.NativeResearchCompleted,
+            GptEscalationAvoided = runtime.GptEscalationAvoided,
+            CrossLanguageQualitySatisfied =
+                judged.CrossLanguageQualitySatisfied && runtime.CrossLanguageQualitySatisfied,
+            RuntimeObserved = true,
+            SyntheticOrManual = false,
+            ProvenanceIdentity = StableHash(
+                new[]
+                {
+                    "legend-locked-research-evaluation:v1",
+                    runtimeProofIdentity,
+                    runtime.ProvenanceIdentity,
+                    judged.ProvenanceIdentity
+                })
+        };
     }
 
     private static string BuildRunProofSummary(

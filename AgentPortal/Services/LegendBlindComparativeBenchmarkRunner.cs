@@ -2,6 +2,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using AgentPortal.Models;
+using Domain.Messaging;
 
 namespace AgentPortal.Services;
 
@@ -16,7 +17,8 @@ internal sealed record LegendBlindBenchmarkCaseDefinition(
     bool IsAdversarial,
     bool IsUnsupportedRequest,
     bool IsTransferCase,
-    string SourceLanguageCode = "en");
+    string SourceLanguageCode = "en",
+    bool IsResearchCase = false);
 
 internal sealed record LegendBlindBenchmarkManifest(
     string ManifestIdentity,
@@ -49,7 +51,8 @@ internal sealed record LegendBlindBenchmarkRuntimeOutput(
     long? CostMicrounits,
     string ProvenanceIdentity,
     string? ErrorCode = null,
-    bool Retryable = false);
+    bool Retryable = false,
+    LegendConnectResearchEvaluationMeasurements? ResearchMeasurements = null);
 
 internal sealed record LegendBlindBenchmarkJudgeRequest(
     string DomainKey,
@@ -62,6 +65,7 @@ internal sealed record LegendBlindBenchmarkJudgeRequest(
     bool IsAdversarial,
     bool IsUnsupportedRequest,
     bool IsTransferCase,
+    bool IsResearchCase,
     bool IsAdjudication);
 
 internal sealed record LegendBlindBenchmarkJudgeVote(
@@ -78,7 +82,9 @@ internal sealed record LegendBlindBenchmarkJudgeVote(
     long LatencyMicroseconds,
     long CostMicrounits,
     string? ErrorCode = null,
-    bool Retryable = false);
+    bool Retryable = false,
+    bool? ResearchAnswerACorrect = null,
+    bool? ResearchAnswerBCorrect = null);
 
 internal interface ILegendBlindBenchmarkRuntimeAuthority
 {
@@ -186,7 +192,8 @@ internal sealed class LegendBlindComparativeBenchmarkRunner
                 RuntimeFailure(
                     legend,
                     manifest,
-                    candidate: true);
+                    candidate: true,
+                    benchmarkCase);
             if (legendFailure is not null)
             {
                 return Failure(
@@ -204,7 +211,8 @@ internal sealed class LegendBlindComparativeBenchmarkRunner
                 RuntimeFailure(
                     baseline,
                     manifest,
-                    candidate: false);
+                    candidate: false,
+                    benchmarkCase);
             if (baselineFailure is not null)
             {
                 return Failure(
@@ -252,6 +260,7 @@ internal sealed class LegendBlindComparativeBenchmarkRunner
                     benchmarkCase.IsAdversarial,
                     benchmarkCase.IsUnsupportedRequest,
                     benchmarkCase.IsTransferCase,
+                    benchmarkCase.IsResearchCase,
                     IsAdjudication: false);
             var votes =
                 new List<LegendBlindBenchmarkJudgeVote>(
@@ -269,7 +278,8 @@ internal sealed class LegendBlindComparativeBenchmarkRunner
                     VoteFailure(
                         vote,
                         judge,
-                        manifest.JudgeSettings);
+                        manifest.JudgeSettings,
+                        benchmarkCase.IsResearchCase);
                 if (voteFailure is not null)
                 {
                     return Failure(
@@ -305,7 +315,8 @@ internal sealed class LegendBlindComparativeBenchmarkRunner
                     VoteFailure(
                         adjudication,
                         manifest.AdjudicatorIdentity,
-                        manifest.JudgeSettings);
+                        manifest.JudgeSettings,
+                        benchmarkCase.IsResearchCase);
                 if (adjudicationFailure is not null)
                 {
                     return Failure(
@@ -348,6 +359,23 @@ internal sealed class LegendBlindComparativeBenchmarkRunner
                             item.ProvenanceIdentity)),
                     adjudication?.ProvenanceIdentity ??
                         string.Empty);
+            var researchMeasurements = legend.ResearchMeasurements;
+            if (researchMeasurements is not null)
+            {
+                var answerCorrect = MajorityFlag(
+                    decidingVotes,
+                    item => (legendIsA
+                        ? item.ResearchAnswerACorrect
+                        : item.ResearchAnswerBCorrect) == true);
+                researchMeasurements = researchMeasurements with
+                {
+                    AnswerCorrect = answerCorrect,
+                    ProvenanceIdentity = StableHash(
+                        "legend-blind-research-measurement-v1",
+                        researchMeasurements.ProvenanceIdentity,
+                        outcomeIdentity)
+                };
+            }
 
             cases.Add(
                 new LegendBlindBenchmarkCaseResult(
@@ -446,7 +474,9 @@ internal sealed class LegendBlindComparativeBenchmarkRunner
                                             adjudication.CostMicrounits,
                                             IsAdjudication: true)
                                     ])
-                            .ToArray()));
+                            .ToArray(),
+                    ResearchMeasurements:
+                        researchMeasurements));
         }
 
         var measuredUtc =
@@ -821,7 +851,8 @@ internal sealed class LegendBlindComparativeBenchmarkRunner
     private static string? RuntimeFailure(
         LegendBlindBenchmarkRuntimeOutput output,
         LegendBlindBenchmarkManifest manifest,
-        bool candidate)
+        bool candidate,
+        LegendBlindBenchmarkCaseDefinition benchmarkCase)
     {
         var expectedAuthority = candidate
             ? LegendBlindBenchmarkContracts.CandidateResponseAuthority
@@ -872,13 +903,27 @@ internal sealed class LegendBlindComparativeBenchmarkRunner
                 : "blind_benchmark_baseline_drift";
         }
 
+        if (candidate && benchmarkCase.IsResearchCase &&
+            (output.ResearchMeasurements is null ||
+             !output.ResearchMeasurements.IsCompleteRuntimeEvidence))
+        {
+            return "blind_benchmark_research_runtime_evidence_invalid";
+        }
+
+        if (candidate && !benchmarkCase.IsResearchCase &&
+            output.ResearchMeasurements is not null)
+        {
+            return "blind_benchmark_research_measurement_case_mismatch";
+        }
+
         return null;
     }
 
     private static string? VoteFailure(
         LegendBlindBenchmarkJudgeVote vote,
         string expectedJudge,
-        string expectedSettings)
+        string expectedSettings,
+        bool isResearchCase)
     {
         if (!vote.Succeeded)
         {
@@ -897,6 +942,9 @@ internal sealed class LegendBlindComparativeBenchmarkRunner
                vote.Winner is not ("A" or "B" or "TIE") ||
                vote.LatencyMicroseconds < 0 ||
                vote.CostMicrounits < 0 ||
+               isResearchCase !=
+                   (vote.ResearchAnswerACorrect.HasValue &&
+                    vote.ResearchAnswerBCorrect.HasValue) ||
                !IsLowerHex(
                    vote.ProvenanceIdentity,
                    64)
@@ -945,6 +993,7 @@ internal sealed class LegendBlindComparativeBenchmarkRunner
             output.CostMicrounits!.Value.ToString(
                 System.Globalization.CultureInfo.InvariantCulture),
             output.ProvenanceIdentity,
+            output.ResearchMeasurements?.ProvenanceIdentity ?? "not-research",
             StableHash(output.Text!));
 
     private static long SaturatingSum(

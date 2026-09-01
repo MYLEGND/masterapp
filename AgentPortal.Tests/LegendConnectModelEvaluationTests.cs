@@ -11,6 +11,17 @@ namespace AgentPortal.Tests;
 
 public sealed class LegendConnectModelEvaluationTests
 {
+    [Fact]
+    public void LockedEvaluator_RegistersGovernedResearchWithoutCreatingAnotherEvaluator()
+    {
+        Assert.True(
+            LegendModelCapabilityEvaluationPolicies.TryResolve(
+                LegendModelCapabilityKeys.GovernedResearch,
+                out var policy));
+        Assert.Equal(LegendModelCapabilityKeys.GovernedResearch, policy.CapabilityKey);
+        Assert.False(policy.RequiresTranslationAccuracy);
+        Assert.False(policy.RequiresMorphologyPreservation);
+    }
     private const string DatasetSha =
         "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789";
 

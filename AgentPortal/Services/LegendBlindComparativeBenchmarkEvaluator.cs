@@ -3,6 +3,7 @@ using System.Text;
 using System.Text.Json;
 using AgentPortal.Models;
 using Domain.Entities;
+using Domain.Messaging;
 
 namespace AgentPortal.Services;
 
@@ -52,7 +53,8 @@ internal sealed record LegendBlindBenchmarkCaseResult(
     long JudgeCostMicrounits = 0,
     long AdjudicationLatencyMicroseconds = 0,
     long AdjudicationCostMicrounits = 0,
-    IReadOnlyList<LegendBlindBenchmarkJudgeOutcome>? JudgeOutcomes = null);
+    IReadOnlyList<LegendBlindBenchmarkJudgeOutcome>? JudgeOutcomes = null,
+    LegendConnectResearchEvaluationMeasurements? ResearchMeasurements = null);
 
 internal sealed record LegendBlindBenchmarkReport(
     string BaselineIdentity,
@@ -168,6 +170,7 @@ internal static class LegendBlindBenchmarkContracts
 internal static class LegendBlindComparativeBenchmarkEvaluator
 {
     private const int RequiredCasesPerDomain = 100;
+    private const int RequiredResearchCases = 20;
 
     internal static LegendBlindBenchmarkEvaluation Evaluate(
         LegendBlindBenchmarkReport report) =>
@@ -236,7 +239,11 @@ internal static class LegendBlindComparativeBenchmarkEvaluator
                 item.AdjudicationCostMicrounits < 0 ||
                 item.TotalJudgeVotes <= 0 ||
                 item.AgreedJudgeVotes < 0 ||
-                item.AgreedJudgeVotes > item.TotalJudgeVotes))
+                item.AgreedJudgeVotes > item.TotalJudgeVotes ||
+                (item.ResearchMeasurements is { } research &&
+                 (research.UnsupportedClaimRate is < 0m or > 1m ||
+                  research.ResearchLatencyMicroseconds < 0 ||
+                  research.ResearchCostMicrounits < 0))))
         {
             blockers.Add("The report contains an invalid case result.");
         }
@@ -259,6 +266,16 @@ internal static class LegendBlindComparativeBenchmarkEvaluator
                 blockers.Add(
                     $"{domain.Key}: requires at least {RequiredCasesPerDomain} unique blind cases.");
                 continue;
+            }
+
+            var researchCases = cases
+                .Where(item => item.ResearchMeasurements?.IsResearchCase == true)
+                .ToArray();
+            if (string.Equals(domain.Key, "knowledge_synthesis", StringComparison.Ordinal) &&
+                researchCases.Length < RequiredResearchCases)
+            {
+                takeoverBlockers.Add(
+                    $"{domain.Key}: requires at least {RequiredResearchCases} locked runtime research cases.");
             }
 
             var wins = cases.Count(item => item.Winner == "LEGEND");
@@ -332,7 +349,25 @@ internal static class LegendBlindComparativeBenchmarkEvaluator
                             cases.Count(item =>
                                 item.ContaminationChecked &&
                                 item.PromptHeldOut),
-                            cases.Length)
+                            cases.Length),
+                    ["research_case_count"] = researchCases.Length,
+                    ["research_answer_correctness"] = ResearchPercent(researchCases, item => item.AnswerCorrect),
+                    ["research_citation_correctness"] = ResearchPercent(researchCases, item => item.CitationCorrect),
+                    ["research_citation_completeness"] = ResearchPercent(researchCases, item => item.CitationComplete),
+                    ["research_claim_evidence_entailment"] = ResearchPercent(researchCases, item => item.ClaimEvidenceEntailed),
+                    ["research_primary_source_usage"] = ResearchPercent(researchCases, item => item.PrimarySourceUsed),
+                    ["research_source_independence"] = ResearchPercent(researchCases, item => item.SourceIndependent),
+                    ["research_freshness"] = ResearchPercent(researchCases, item => item.FreshnessSatisfied),
+                    ["research_contradiction_handling"] = ResearchPercent(researchCases, item => item.ContradictionHandled),
+                    ["research_unsupported_claim_rate"] = researchCases.Length == 0
+                        ? 0m
+                        : Decimal.Round(researchCases.Average(item => item.ResearchMeasurements!.UnsupportedClaimRate) * 100m, 6),
+                    ["research_prompt_injection_resistance"] = ResearchPercent(researchCases, item => item.PromptInjectionResisted),
+                    ["research_latency_microseconds"] = ResearchAverage(researchCases, item => item.ResearchLatencyMicroseconds),
+                    ["research_cost_microunits"] = ResearchAverage(researchCases, item => item.ResearchCostMicrounits),
+                    ["native_research_completion"] = ResearchPercent(researchCases, item => item.NativeResearchCompleted),
+                    ["gpt_escalation_avoidance"] = ResearchPercent(researchCases, item => item.GptEscalationAvoided),
+                    ["cross_language_research_quality"] = ResearchPercent(researchCases, item => item.CrossLanguageQualitySatisfied)
                 };
         }
 
@@ -518,10 +553,21 @@ internal static class LegendBlindComparativeBenchmarkEvaluator
                     judges,
                     StringComparer.Ordinal) ||
                 item.Adjudication is not
-                    ("JudgeMajority" or "IndependentAdjudicator")))
+                    ("JudgeMajority" or "IndependentAdjudicator") ||
+                (item.ResearchMeasurements is { IsResearchCase: true } research &&
+                 !research.IsCompleteRuntimeEvidence)))
         {
             blockers.Add(
                 "One or more cases lack complete blinded runtime, judge, baseline, or contamination provenance.");
+        }
+
+        if (HasDuplicate(
+                report.Cases
+                    .Where(item => item.ResearchMeasurements is not null)
+                    .Select(item => item.ResearchMeasurements!.ProvenanceIdentity)))
+        {
+            blockers.Add(
+                "The report reuses research measurement proof lineage across cases.");
         }
 
         if (HasDuplicate(
@@ -676,6 +722,23 @@ internal static class LegendBlindComparativeBenchmarkEvaluator
             ? 0m
             : Math.Round(
                 (decimal)numerator * 100m / denominator,
+                6,
+                MidpointRounding.AwayFromZero);
+
+    private static decimal ResearchPercent(
+        IReadOnlyCollection<LegendBlindBenchmarkCaseResult> cases,
+        Func<LegendConnectResearchEvaluationMeasurements, bool> predicate) =>
+        Percent(
+            cases.Count(item => predicate(item.ResearchMeasurements!)),
+            cases.Count);
+
+    private static decimal ResearchAverage(
+        IReadOnlyCollection<LegendBlindBenchmarkCaseResult> cases,
+        Func<LegendConnectResearchEvaluationMeasurements, long> selector) =>
+        cases.Count == 0
+            ? 0m
+            : Decimal.Round(
+                cases.Average(item => (decimal)selector(item.ResearchMeasurements!)),
                 6,
                 MidpointRounding.AwayFromZero);
 

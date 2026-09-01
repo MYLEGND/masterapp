@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
 
 namespace Domain.Messaging;
 
@@ -768,6 +769,32 @@ public sealed record LegendConnectMachineTeachingExampleSubmission(
     string? TargetText,
     IReadOnlyList<LegendConnectMachineTeachingComponentSubmission> Components);
 
+public enum LegendConnectMachineObservationOrigin
+{
+    ConversationObservation,
+    ExternalResearchObservation
+}
+
+/// <summary>
+/// Exact external-observation lineage attached to a Founder-authorized
+/// MachineProposed candidate. It is evidence supplied to the existing critic;
+/// it is never canonical knowledge, a serving receipt, or an admission grant.
+/// </summary>
+public sealed record LegendConnectResearchRetentionLineage(
+    Guid RequestId,
+    Guid SessionId,
+    string ConclusionIdentity,
+    LegendConnectResearchOutcomeState OutcomeState,
+    LegendConnectResearchEvidenceOrigin EvidenceOrigin,
+    IReadOnlyList<LegendConnectResearchMaterialClaimEvidence> MaterialClaims,
+    IReadOnlyList<LegendConnectCitation> Citations,
+    LegendConnectResearchCitationValidationReceipt CitationValidation,
+    string ResearchAuthorizationProvenance,
+    string? ResearchAuthorizationCorrelationId,
+    string ObservationIdentity,
+    string CodeSha,
+    string ConfigurationIdentity);
+
 /// <summary>
 /// A bounded machine-derived teaching candidate. This contract feeds the
 /// existing LegendCorpusCandidate / LegendLanguageTeacherProposal lifecycle;
@@ -783,7 +810,10 @@ public sealed record LegendConnectMachineTeachingSubmission(
     IReadOnlyList<LegendConnectMachineTeachingExampleSubmission> Examples,
     IReadOnlyList<LegendConnectSemanticTransitionSubmission>? SemanticTransitions = null,
     string CapabilityIdentity = TranslationCapability,
-    string CategoryIdentity = ReusableSemanticCategory)
+    string CategoryIdentity = ReusableSemanticCategory,
+    LegendConnectMachineObservationOrigin ObservationOrigin =
+        LegendConnectMachineObservationOrigin.ConversationObservation,
+    LegendConnectResearchRetentionLineage? ResearchObservationLineage = null)
 {
     public const string TranslationCapability = "translation";
     public const string SameLanguageSemanticCapability =
@@ -840,7 +870,8 @@ public sealed record LegendConnectMachineTeachingMutationReceipt(
     string Provenance,
     string AuthorizationCorrelation,
     string ServingStatus,
-    string CanonicalStatus)
+    string CanonicalStatus,
+    string? ResearchObservationIdentity = null)
 {
     public const string RequiredProvenance = "MachineProposed";
     public const string RequiredServingStatus = "NonServing";
@@ -1166,6 +1197,49 @@ public sealed record LegendConnectResearchRequest(
     int InternalEvidenceCount,
     DateTime RequestedUtc,
     LegendConnectResponsePresentationConstraintsSnapshot? PresentationConstraints = null);
+
+public static class LegendConnectResearchRequestFactory
+{
+    public static LegendConnectResearchRequest Create(
+        string question,
+        LegendConnectResearchNeededDecision decision,
+        LegendConnectResearchAuthorization authorization,
+        string? internalAnswer,
+        string? internalReasonCode,
+        int internalEvidenceCount,
+        LegendConnectResponsePresentationConstraintsSnapshot? presentationConstraints = null)
+    {
+        var normalizedQuestion = (question ?? string.Empty).Trim();
+        normalizedQuestion = normalizedQuestion[
+            ..Math.Min(normalizedQuestion.Length, LegendConnectResearchContracts.MaximumQueryCharacters)];
+        var requestId = Guid.NewGuid();
+        var queryIdentity = LegendLanguageIdentity.TextHash(
+            "legend-research-query|v1|" +
+            decision.SourceLanguageCode + "|" +
+            normalizedQuestion);
+        return new LegendConnectResearchRequest(
+            requestId,
+            normalizedQuestion,
+            decision,
+            [new LegendConnectBoundedSearchQuery(
+                queryIdentity,
+                1,
+                normalizedQuestion,
+                decision.SourceLanguageCode,
+                LegendConnectResearchContracts.MaximumResults)],
+            LegendConnectResearchContracts.MaximumResults,
+            LegendConnectResearchContracts.MaximumDocuments,
+            LegendConnectResearchContracts.MaximumClaims,
+            LegendConnectResearchContracts.MaximumDocumentCharacters,
+            decision.Need == LegendConnectResearchNeed.NamedExternalDocumentOrSource ? 1 : 2,
+            authorization,
+            internalAnswer,
+            internalReasonCode,
+            internalEvidenceCount,
+            DateTime.UtcNow,
+            presentationConstraints);
+    }
+}
 
 public enum LegendConnectResearchSourceClass
 {
@@ -1665,7 +1739,12 @@ public sealed record LegendConnectResearchSession(
     IReadOnlyList<LegendConnectResearchMaterialClaimEvidence>? MaterialClaimEvidence = null,
     IReadOnlyList<LegendConnectResearchClaimResolution>? ClaimResolutions = null,
     string? ClaimEvidencePolicyIdentity = null,
-    LegendConnectResearchCitationValidationReceipt? CitationValidation = null);
+    LegendConnectResearchCitationValidationReceipt? CitationValidation = null,
+    long SearchLatencyMilliseconds = 0,
+    long RetrievalLatencyMilliseconds = 0,
+    long ReasoningLatencyMilliseconds = 0,
+    long? SearchCostMicrounits = null,
+    long? ModelCostMicrounits = null);
 
 public sealed record LegendConnectResearchConclusion(
     string ConclusionIdentity,
@@ -1693,6 +1772,28 @@ public sealed record LegendConnectResearchFailureResult(
     string PresentedText,
     bool Retryable,
     string? DiagnosticDetail = null);
+
+public enum LegendConnectResearchRetentionState
+{
+    ExternalObservation,
+    MachineProposed,
+    CriticRejected,
+    AwaitingCanonicalNoveltyValidation,
+    SystemValidatedMachine,
+    GovernedAdmission,
+    CanonicalEligible,
+    Failed
+}
+
+public sealed record LegendConnectResearchRetentionReceipt(
+    LegendConnectResearchRetentionState State,
+    string ObservationIdentity,
+    Guid? CandidateId,
+    Guid? ProposalId,
+    string Provenance,
+    string ServingStatus,
+    string CanonicalStatus,
+    string? FailureCode = null);
 
 /// <summary>
 /// Complete, zero-write lineage for one research outcome. External evidence is
@@ -1738,7 +1839,9 @@ public sealed record LegendConnectResearchProvenance(
     IReadOnlyList<LegendConnectResearchClaimResolution>? ClaimResolutions = null,
     string? ClaimEvidencePolicyIdentity = null,
     LegendConnectResearchCitationValidationReceipt? CitationValidation = null,
-    string? CitationPresentationPolicyIdentity = null);
+    string? CitationPresentationPolicyIdentity = null,
+    string CodeSha = "Unavailable",
+    string ConfigurationIdentity = "Unavailable");
 
 public sealed record LegendConnectResearchOutcome(
     LegendConnectResearchOutcomeState State,
@@ -1750,7 +1853,9 @@ public sealed record LegendConnectResearchOutcome(
     LegendConnectResearchUnresolvedConflictResult? UnresolvedConflict,
     LegendConnectResearchFailureResult? Failure,
     LegendConnectResearchProvenance Provenance,
-    LegendConnectResearchPresentation? Presentation = null)
+    LegendConnectResearchPresentation? Presentation = null,
+    LegendConnectResearchRetentionReceipt? Retention = null,
+    LegendConnectResearchRetentionLineage? RetentionLineage = null)
 {
     public string PresentedText =>
         Presentation?.PresentedText ??
@@ -1759,6 +1864,218 @@ public sealed record LegendConnectResearchOutcome(
         UnresolvedConflict?.PresentedText ??
         Failure?.PresentedText ??
         "LEGEND could not establish a research outcome.";
+}
+
+public static class LegendConnectResearchRetentionContracts
+{
+    public static string ObservationIdentity(LegendConnectResearchOutcome outcome) =>
+        ObservationIdentity(
+            outcome.Provenance.RequestId,
+            outcome.Provenance.SessionId,
+            outcome.Conclusion?.ConclusionIdentity ?? outcome.State.ToString(),
+            outcome.State,
+            outcome.EvidenceOrigin,
+            outcome.Conclusion?.MaterialClaims ?? [],
+            outcome.Conclusion?.Citations ?? [],
+            outcome.Session.CitationValidation,
+            outcome.Provenance.AuthorizationProvenance,
+            outcome.Provenance.AuthorizationCorrelationId,
+            outcome.Provenance.CodeSha,
+            outcome.Provenance.ConfigurationIdentity);
+
+    public static string ObservationIdentity(
+        LegendConnectResearchRetentionLineage lineage) =>
+        ObservationIdentity(
+            lineage.RequestId,
+            lineage.SessionId,
+            lineage.ConclusionIdentity,
+            lineage.OutcomeState,
+            lineage.EvidenceOrigin,
+            lineage.MaterialClaims,
+            lineage.Citations,
+            lineage.CitationValidation,
+            lineage.ResearchAuthorizationProvenance,
+            lineage.ResearchAuthorizationCorrelationId,
+            lineage.CodeSha,
+            lineage.ConfigurationIdentity);
+
+    private static string ObservationIdentity(
+        Guid requestId,
+        Guid sessionId,
+        string conclusionIdentity,
+        LegendConnectResearchOutcomeState outcomeState,
+        LegendConnectResearchEvidenceOrigin evidenceOrigin,
+        IReadOnlyList<LegendConnectResearchMaterialClaimEvidence> materialClaims,
+        IReadOnlyList<LegendConnectCitation> citations,
+        LegendConnectResearchCitationValidationReceipt? citationValidation,
+        string researchAuthorizationProvenance,
+        string? researchAuthorizationCorrelationId,
+        string codeSha,
+        string configurationIdentity) =>
+        LegendLanguageIdentity.TextHash(
+            JsonSerializer.Serialize(new
+            {
+                LegendConnectResearchContracts.RetentionPolicy,
+                RequestId = requestId.ToString("N"),
+                SessionId = sessionId.ToString("N"),
+                ConclusionIdentity = conclusionIdentity,
+                OutcomeState = outcomeState.ToString(),
+                EvidenceOrigin = evidenceOrigin.ToString(),
+                MaterialClaims = materialClaims
+                    .OrderBy(item => item.EvidenceIdentity, StringComparer.Ordinal)
+                    .ToArray(),
+                Citations = citations
+                    .OrderBy(item => item.CitationIdentity, StringComparer.Ordinal)
+                    .ToArray(),
+                CitationValidation = citationValidation,
+                ResearchAuthorizationProvenance = researchAuthorizationProvenance,
+                ResearchAuthorizationCorrelationId = researchAuthorizationCorrelationId,
+                CodeSha = codeSha,
+                ConfigurationIdentity = configurationIdentity
+            }));
+
+    public static bool IsStructurallyValid(
+        LegendConnectResearchRetentionLineage lineage)
+    {
+        if (lineage.RequestId == Guid.Empty ||
+            lineage.SessionId == Guid.Empty ||
+            string.IsNullOrWhiteSpace(lineage.ConclusionIdentity) ||
+            lineage.ConclusionIdentity.Length > 80 ||
+            lineage.OutcomeState != LegendConnectResearchOutcomeState.Conclusion ||
+            lineage.EvidenceOrigin is not (
+                LegendConnectResearchEvidenceOrigin.ExternalResearch or
+                LegendConnectResearchEvidenceOrigin.Combined) ||
+            lineage.MaterialClaims is null ||
+            lineage.MaterialClaims.Count is < 2 or > 8 ||
+            lineage.MaterialClaims.Any(item => item is null) ||
+            lineage.Citations is null ||
+            lineage.Citations.Count is < 1 or > LegendConnectResearchContracts.MaximumClaims ||
+            lineage.Citations.Any(item => item is null) ||
+            lineage.CitationValidation is null ||
+            !lineage.CitationValidation.Succeeded ||
+            !string.Equals(
+                lineage.CitationValidation.PolicyIdentity,
+                LegendConnectResearchContracts.CitationPresentationPolicy,
+                StringComparison.Ordinal) ||
+            lineage.CitationValidation.MaterialClaimCount != lineage.MaterialClaims.Count ||
+            lineage.CitationValidation.InlineCitationCount < 1 ||
+            !HasValidResearchAuthorization(lineage) ||
+            !IsLowerHex(lineage.ObservationIdentity, 64) ||
+            !IsLowerHex(lineage.CodeSha, 40) ||
+            !IsLowerHex(lineage.ConfigurationIdentity, 64))
+        {
+            return false;
+        }
+
+        var evidenceIds = lineage.MaterialClaims
+            .Select(item => item.EvidenceIdentity)
+            .ToArray();
+        var citations = lineage.Citations
+            .GroupBy(item => item.CitationIdentity, StringComparer.Ordinal)
+            .Where(group => group.Count() == 1)
+            .ToDictionary(group => group.Key, group => group.Single(), StringComparer.Ordinal);
+        if (evidenceIds.Distinct(StringComparer.Ordinal).Count() != evidenceIds.Length ||
+            citations.Count != lineage.Citations.Count ||
+            lineage.MaterialClaims.Any(item =>
+                string.IsNullOrWhiteSpace(item.Statement) ||
+                item.Statement.Length > 2_000 ||
+                string.IsNullOrWhiteSpace(item.EvidenceIdentity) ||
+                item.EvidenceIdentity.Length > 80 ||
+                string.IsNullOrWhiteSpace(item.SourceIdentity) ||
+                item.SourceIdentity.Length > 80 ||
+                string.IsNullOrWhiteSpace(item.DocumentIdentity) ||
+                item.DocumentIdentity.Length > 80 ||
+                string.IsNullOrWhiteSpace(item.CitationIdentity) ||
+                item.CitationIdentity.Length > 80 ||
+                item.Passage is null ||
+                item.Provenance is null ||
+                !citations.TryGetValue(item.CitationIdentity, out var citation) ||
+                !string.Equals(citation.SourceIdentity, item.SourceIdentity, StringComparison.Ordinal) ||
+                !string.Equals(citation.DocumentIdentity, item.DocumentIdentity, StringComparison.Ordinal) ||
+                !string.Equals(item.Passage.DocumentIdentity, item.DocumentIdentity, StringComparison.Ordinal) ||
+                !string.Equals(item.Passage.LocationIdentity, item.Provenance.PassageLocationIdentity, StringComparison.Ordinal) ||
+                !IsLowerHex(item.Passage.PassageHash, 64) ||
+                !IsLowerHex(item.Provenance.SourceContentHash, 64) ||
+                !string.Equals(item.Provenance.SourceIdentity, item.SourceIdentity, StringComparison.Ordinal) ||
+                !string.Equals(item.Provenance.DocumentIdentity, item.DocumentIdentity, StringComparison.Ordinal) ||
+                !string.Equals(item.Provenance.CitationIdentity, item.CitationIdentity, StringComparison.Ordinal) ||
+                (item.Provenance.StatementHash is { } statementHash &&
+                 !string.Equals(
+                     statementHash,
+                     LegendLanguageIdentity.TextHash(item.Statement),
+                     StringComparison.Ordinal)) ||
+                !item.Provenance.SourceValidated ||
+                !item.Provenance.DocumentValidated ||
+                !item.Provenance.PassageValidated ||
+                !item.Provenance.TimestampsValidated ||
+                !item.Provenance.ZeroWrite ||
+                !string.Equals(
+                    item.Provenance.PolicyIdentity,
+                    LegendConnectResearchContracts.ClaimEvidencePolicy,
+                    StringComparison.Ordinal)))
+        {
+            return false;
+        }
+
+        return string.Equals(
+            lineage.ObservationIdentity,
+            ObservationIdentity(lineage),
+            StringComparison.Ordinal);
+    }
+
+    public static LegendConnectResearchRetentionLineage? CreateExternalObservation(
+        LegendConnectResearchOutcome outcome)
+    {
+        if (outcome.State != LegendConnectResearchOutcomeState.Conclusion ||
+            outcome.Conclusion is null ||
+            outcome.EvidenceOrigin is not (
+                LegendConnectResearchEvidenceOrigin.ExternalResearch or
+                LegendConnectResearchEvidenceOrigin.Combined) ||
+            outcome.Conclusion.MaterialClaims is not { Count: >= 2 and <= 8 } claims ||
+            outcome.Session.CitationValidation is not { Succeeded: true } validation ||
+            !IsLowerHex(outcome.Provenance.CodeSha, 40) ||
+            !IsLowerHex(outcome.Provenance.ConfigurationIdentity, 64))
+        {
+            return null;
+        }
+        var lineage = new LegendConnectResearchRetentionLineage(
+            outcome.Provenance.RequestId,
+            outcome.Provenance.SessionId,
+            outcome.Conclusion.ConclusionIdentity,
+            outcome.State,
+            outcome.EvidenceOrigin,
+            claims,
+            outcome.Conclusion.Citations,
+            validation,
+            outcome.Provenance.AuthorizationProvenance,
+            outcome.Provenance.AuthorizationCorrelationId,
+            ObservationIdentity(outcome),
+            outcome.Provenance.CodeSha,
+            outcome.Provenance.ConfigurationIdentity);
+        return IsStructurallyValid(lineage)
+            ? lineage
+            : null;
+    }
+
+    private static bool IsLowerHex(string? value, int length) =>
+        value is not null && value.Length == length && value.All(character =>
+            character is >= '0' and <= '9' or >= 'a' and <= 'f');
+
+    private static bool HasValidResearchAuthorization(
+        LegendConnectResearchRetentionLineage lineage) =>
+        string.Equals(
+            lineage.ResearchAuthorizationProvenance,
+            LegendConnectResearchContracts.PublicAuthorizationProvenance,
+            StringComparison.Ordinal)
+            ? lineage.ResearchAuthorizationCorrelationId is null
+            : string.Equals(
+                  lineage.ResearchAuthorizationProvenance,
+                  LegendConnectResearchContracts.RestrictedAuthorizationProvenance,
+                  StringComparison.Ordinal) &&
+              Guid.TryParseExact(
+                  lineage.ResearchAuthorizationCorrelationId,
+                  "N",
+                  out _);
 }
 
 public sealed record LegendConnectResearchClaimCandidate(
@@ -1875,7 +2192,12 @@ public static class LegendConnectResearchContracts
         "LegendResearchBoundedClaimEvidence:v1";
     public const string CitationPresentationPolicy =
         "LegendResearchCitationAndPresentation:v1";
+    public const string RetentionPolicy =
+        "LegendResearchExternalObservationRetention:v1";
+    public const string ObservabilityCategory = "ResearchObservability";
     public const string PublicAuthorizationProvenance = "FounderAuthenticatedPublicReadOnly";
+    public const string LockedEvaluationAuthorizationProvenance =
+        "LockedEvaluatorPublicReadOnly";
     public const string RestrictedAuthorizationProvenance = "FounderExplicitRequestAuthorization";
     public const int MaximumQueries = 3;
     public const int MaximumQueryCharacters = 500;
@@ -1888,6 +2210,59 @@ public static class LegendConnectResearchContracts
     public const int MaximumRedirects = 3;
     public const int RequestTimeoutSeconds = 10;
     public const int TotalResearchDeadlineSeconds = 30;
+}
+
+/// <summary>
+/// Case-level measurements consumed only by the existing locked evaluator and
+/// blind benchmark. A synthetic or manually assembled measurement is useful
+/// for aggregation tests but is never promotion or superiority evidence.
+/// </summary>
+public sealed record LegendConnectResearchEvaluationMeasurements(
+    bool IsResearchCase,
+    bool AnswerCorrect,
+    bool CitationCorrect,
+    bool CitationComplete,
+    bool ClaimEvidenceEntailed,
+    bool PrimarySourceUsed,
+    bool SourceIndependent,
+    bool FreshnessSatisfied,
+    bool ContradictionHandled,
+    decimal UnsupportedClaimRate,
+    bool PromptInjectionResisted,
+    long ResearchLatencyMicroseconds,
+    long ResearchCostMicrounits,
+    bool NativeResearchCompleted,
+    bool GptEscalationAvoided,
+    bool CrossLanguageQualitySatisfied,
+    bool RuntimeObserved,
+    bool SyntheticOrManual,
+    string ProvenanceIdentity)
+{
+    public bool IsCompleteRuntimeEvidence =>
+        IsResearchCase &&
+        RuntimeObserved &&
+        !SyntheticOrManual &&
+        UnsupportedClaimRate is >= 0m and <= 1m &&
+        ResearchLatencyMicroseconds >= 0 &&
+        ResearchCostMicrounits >= 0 &&
+        ProvenanceIdentity is { Length: 64 } &&
+        ProvenanceIdentity.All(character =>
+            character is >= '0' and <= '9' or >= 'a' and <= 'f');
+
+    public bool MeetsFailClosedQualityBar =>
+        IsCompleteRuntimeEvidence &&
+        AnswerCorrect &&
+        CitationCorrect &&
+        CitationComplete &&
+        ClaimEvidenceEntailed &&
+        SourceIndependent &&
+        FreshnessSatisfied &&
+        ContradictionHandled &&
+        UnsupportedClaimRate == 0m &&
+        PromptInjectionResisted &&
+        NativeResearchCompleted &&
+        GptEscalationAvoided &&
+        CrossLanguageQualitySatisfied;
 }
 
 /// <summary>
@@ -2019,6 +2394,20 @@ public interface ILegendConnectOperations
 
     Task<LegendConnectResearchOutcome> ExecuteResearchAsync(
         LegendConnectResearchRequest request,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Writes sanitized, bounded operational receipts for the completed
+    /// zero-write research session. These receipts are read-only diagnostics;
+    /// retained/native serving never queries them as knowledge.
+    /// </summary>
+    Task RecordResearchObservabilityAsync(
+        LegendConnectResearchOutcome outcome,
+        CancellationToken cancellationToken = default);
+
+    Task RecordResearchRetentionAsync(
+        LegendConnectResearchRetentionLineage lineage,
+        LegendConnectMachineTeachingSubmissionResult result,
         CancellationToken cancellationToken = default);
 
     /// <summary>

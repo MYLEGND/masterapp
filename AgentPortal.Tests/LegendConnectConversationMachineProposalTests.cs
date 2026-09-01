@@ -134,6 +134,86 @@ public sealed class LegendConnectConversationMachineProposalTests
     }
 
     [Fact]
+    public async Task FounderAuthorizedResearchObservation_UsesExistingCriticLifecycleWithoutCanonicalWrite()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var submission = ResearchObservationSubmission();
+        await SeedResearchObservationReceiptAsync(
+            fixture.Db,
+            submission.ResearchObservationLineage!);
+        var before = await CanonicalCountsAsync(fixture.Db);
+
+        var result = await fixture.Service.SubmitConversationMachineProposalAsync(submission);
+
+        Assert.True(result.Succeeded, result.Message);
+        Assert.Equal("AwaitingCritic", result.State);
+        var candidate = await fixture.Db.LegendCorpusCandidates.SingleAsync();
+        var proposal = await fixture.Db.LegendLanguageTeacherProposals.SingleAsync();
+        Assert.Equal("ExternalObservation", candidate.Provenance);
+        Assert.False(candidate.IsApproved);
+        Assert.Equal("MachineProposed", proposal.Provenance);
+        Assert.Equal("AwaitingCritic", proposal.ValidationState);
+        Assert.Equal(before, await CanonicalCountsAsync(fixture.Db));
+
+        await fixture.Service.ProcessOneAsync();
+
+        Assert.Equal(0, fixture.Teacher.ProposeCalls);
+        Assert.Equal(1, fixture.Teacher.CritiqueCalls);
+        await fixture.Db.Entry(proposal).ReloadAsync();
+        Assert.Equal("AwaitingCanonicalValidation", proposal.ValidationState);
+        Assert.Equal("MachineProposed", proposal.Provenance);
+        Assert.Equal(before, await CanonicalCountsAsync(fixture.Db));
+    }
+
+    [Fact]
+    public async Task ResearchObservation_ReplayConvergesOnExistingCandidateAndProposal()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var submission = ResearchObservationSubmission();
+        await SeedResearchObservationReceiptAsync(
+            fixture.Db,
+            submission.ResearchObservationLineage!);
+
+        var first = await fixture.Service.SubmitConversationMachineProposalAsync(submission);
+        var replay = await fixture.Service.SubmitConversationMachineProposalAsync(submission);
+
+        Assert.True(first.Succeeded);
+        Assert.True(replay.Succeeded);
+        Assert.True(replay.DuplicatePrevented);
+        Assert.True(replay.ProposalAlreadyExisted);
+        Assert.Equal(first.CorpusCandidateId, replay.CorpusCandidateId);
+        Assert.Equal(first.ProposalId, replay.ProposalId);
+        Assert.Single(await fixture.Db.LegendCorpusCandidates.ToListAsync());
+        Assert.Single(await fixture.Db.LegendLanguageTeacherProposals.ToListAsync());
+    }
+
+    [Fact]
+    public async Task ResearchObservation_WithAlteredClaimUnderOriginalReceiptFailsBeforeAnyWrite()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var submission = ResearchObservationSubmission();
+        var original = submission.ResearchObservationLineage!;
+        submission = submission with
+        {
+            ResearchObservationLineage = original with
+            {
+                MaterialClaims = original.MaterialClaims
+                    .Select((item, index) => index == 0
+                        ? item with { Statement = "A hostile replacement claim." }
+                        : item)
+                    .ToArray()
+            }
+        };
+
+        var result = await fixture.Service.SubmitConversationMachineProposalAsync(submission);
+
+        Assert.False(result.Succeeded);
+        Assert.Equal("machine_teaching_research_lineage_invalid", result.ErrorCode);
+        Assert.Empty(await fixture.Db.LegendCorpusCandidates.ToListAsync());
+        Assert.Empty(await fixture.Db.LegendLanguageTeacherProposals.ToListAsync());
+    }
+
+    [Fact]
     public async Task ExactDuplicate_ReusesCandidateAndProposalIdentityWithoutAnotherArtifact()
     {
         await using var fixture = await Fixture.CreateAsync();
@@ -273,6 +353,228 @@ public sealed class LegendConnectConversationMachineProposalTests
             ],
             LegendConnectMachineTeachingSubmission.SameLanguageSemanticCapability,
             LegendConnectMachineTeachingSubmission.ReusableSemanticCategory);
+
+    private static LegendConnectMachineTeachingSubmission ResearchObservationSubmission()
+    {
+        var lineage = ResearchObservationLineage();
+        return new LegendConnectMachineTeachingSubmission(
+            "en",
+            "en",
+            "research.governed.external-observation",
+            "research_observation_semantics",
+            "Founder requested that two exact cited observations enter independent review.",
+            0.9m,
+            lineage.MaterialClaims.Select((item, index) =>
+                new LegendConnectMachineTeachingExampleSubmission(
+                    item.Statement,
+                    null,
+                    [
+                        new LegendConnectMachineTeachingComponentSubmission(
+                            "research_observation_role",
+                            index == 0 ? "premise" : "conclusion",
+                            item.Statement),
+                        new LegendConnectMachineTeachingComponentSubmission(
+                            "research_claim_identity",
+                            item.NormalizedClaimIdentity,
+                            item.Statement)
+                    ])).ToArray(),
+            [new LegendConnectSemanticTransitionSubmission(
+                new LegendConnectSemanticFrameSubmission(
+                    new Dictionary<string, string>
+                    {
+                        ["research_observation_role"] = "premise"
+                    }),
+                new LegendConnectSemanticFrameSubmission(
+                    new Dictionary<string, string>
+                    {
+                        ["research_observation_role"] = "conclusion"
+                    }))],
+            LegendConnectMachineTeachingSubmission.SameLanguageSemanticCapability,
+            LegendConnectMachineTeachingSubmission.ReusableSemanticCategory,
+            LegendConnectMachineObservationOrigin.ExternalResearchObservation,
+            lineage);
+    }
+
+    private static LegendConnectResearchRetentionLineage ResearchObservationLineage()
+    {
+        var requestId = Guid.Parse("11111111-1111-1111-1111-111111111111");
+        var sessionId = Guid.Parse("22222222-2222-2222-2222-222222222222");
+        const string conclusion = "governed-research-conclusion";
+        const string codeSha = "0123456789abcdef0123456789abcdef01234567";
+        const string configuration = "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789";
+        var claims = new[]
+        {
+            ResearchMaterial("claim-a", "The controlling record establishes claim A.", "source-a", "document-a", "citation-a"),
+            ResearchMaterial("claim-b", "The independent record establishes claim B.", "source-b", "document-b", "citation-b")
+        };
+        var citations = claims.Select(item => new LegendConnectCitation(
+            item.CitationIdentity,
+            item.SourceIdentity,
+            item.DocumentIdentity,
+            "Observed source",
+            "https://example.test/" + item.SourceIdentity,
+            item.RetrievedUtc,
+            "en")).ToArray();
+        var lineage = new LegendConnectResearchRetentionLineage(
+            requestId,
+            sessionId,
+            conclusion,
+            LegendConnectResearchOutcomeState.Conclusion,
+            LegendConnectResearchEvidenceOrigin.ExternalResearch,
+            claims,
+            citations,
+            new LegendConnectResearchCitationValidationReceipt(
+                true,
+                LegendConnectResearchContracts.CitationPresentationPolicy,
+                [],
+                claims.Length,
+                claims.Length,
+                DateTime.UtcNow),
+            LegendConnectResearchContracts.PublicAuthorizationProvenance,
+            null,
+            new string('0', 64),
+            codeSha,
+            configuration);
+        return lineage with
+        {
+            ObservationIdentity =
+                LegendConnectResearchRetentionContracts.ObservationIdentity(lineage)
+        };
+    }
+
+    private static async Task SeedResearchObservationReceiptAsync(
+        MasterAppDbContext db,
+        LegendConnectResearchRetentionLineage lineage)
+    {
+        var correlation = lineage.SessionId.ToString("N");
+        var now = DateTime.UtcNow;
+        var events = new List<LegendConnectOperationalEvent>
+        {
+            new()
+            {
+                Id = Guid.NewGuid(),
+                Category = LegendConnectResearchContracts.ObservabilityCategory,
+                Severity = "Info",
+                Status = "Session:Conclusion",
+                LanguageCode = "en",
+                CorrelationId = correlation,
+                Summary = $"code_sha={lineage.CodeSha};configuration={lineage.ConfigurationIdentity}",
+                IsResolved = true,
+                OccurredUtc = now
+            },
+            new()
+            {
+                Id = Guid.NewGuid(),
+                Category = LegendConnectResearchContracts.ObservabilityCategory,
+                Severity = "Info",
+                Status = "Retention:ExternalObservation",
+                LanguageCode = "en",
+                CorrelationId = correlation,
+                Summary = $"observation={lineage.ObservationIdentity};provenance=ExternalObservation",
+                IsResolved = true,
+                OccurredUtc = now
+            }
+        };
+        events.AddRange(lineage.MaterialClaims.Select(claim =>
+            new LegendConnectOperationalEvent
+            {
+                Id = Guid.NewGuid(),
+                Category = LegendConnectResearchContracts.ObservabilityCategory,
+                Severity = "Info",
+                Status = "Claim:Supported",
+                LanguageCode = "en",
+                CorrelationId = correlation,
+                Summary = $"evidence={claim.EvidenceIdentity}",
+                IsResolved = true,
+                OccurredUtc = now
+            }));
+        events.AddRange(lineage.MaterialClaims
+            .Select(item => item.SourceIdentity)
+            .Distinct(StringComparer.Ordinal)
+            .Select(source => new LegendConnectOperationalEvent
+            {
+                Id = Guid.NewGuid(),
+                Category = LegendConnectResearchContracts.ObservabilityCategory,
+                Severity = "Info",
+                Status = "Source:Opened",
+                LanguageCode = "en",
+                CorrelationId = correlation,
+                Summary = $"source={source}",
+                IsResolved = true,
+                OccurredUtc = now
+            }));
+        events.AddRange(lineage.Citations.Select(citation =>
+            new LegendConnectOperationalEvent
+            {
+                Id = Guid.NewGuid(),
+                Category = LegendConnectResearchContracts.ObservabilityCategory,
+                Severity = "Info",
+                Status = "Citation:Used",
+                LanguageCode = "en",
+                CorrelationId = correlation,
+                Summary = $"citation={citation.CitationIdentity}",
+                IsResolved = true,
+                OccurredUtc = now
+            }));
+        db.LegendConnectOperationalEvents.AddRange(events);
+        await db.SaveChangesAsync();
+    }
+
+    private static LegendConnectResearchMaterialClaimEvidence ResearchMaterial(
+        string claimIdentity,
+        string statement,
+        string sourceIdentity,
+        string documentIdentity,
+        string citationIdentity)
+    {
+        var now = DateTime.UtcNow;
+        var passageHash = LegendLanguageIdentity.TextHash(statement);
+        return new LegendConnectResearchMaterialClaimEvidence(
+            LegendLanguageIdentity.TextHash("evidence|" + claimIdentity),
+            claimIdentity,
+            statement,
+            sourceIdentity,
+            documentIdentity,
+            citationIdentity,
+            new LegendConnectResearchPassageLocation(
+                documentIdentity,
+                0,
+                statement.Length,
+                statement,
+                passageHash,
+                "location-" + claimIdentity),
+            LegendConnectResearchSourceClass.PrimaryOfficialRecord,
+            now.AddDays(-1),
+            now,
+            LegendConnectResearchClaimSubject.General,
+            LegendConnectResearchAuthorityScope.GeneralRecord,
+            LegendConnectResearchEvidenceRelationship.DirectSupport,
+            "lineage-" + claimIdentity,
+            LegendConnectResearchFreshnessState.Current,
+            "controlling-record",
+            1,
+            1,
+            new LegendConnectResearchClaimTranslationLineage(
+                "en", "en", "en", false, true, null, "NotRequired"),
+            LegendConnectResearchExtractionMethod.ModelAssistedProposalValidatedAgainstExactPassage,
+            new LegendConnectResearchMaterialClaimProvenance(
+                "proposal-" + claimIdentity,
+                sourceIdentity,
+                documentIdentity,
+                citationIdentity,
+                "location-" + claimIdentity,
+                passageHash,
+                LegendConnectResearchContracts.ClaimEvidencePolicy,
+                now,
+                true,
+                true,
+                true,
+                true,
+                true,
+                LegendLanguageIdentity.TextHash(statement)),
+            LegendConnectResearchStatementKind.Fact,
+            LegendConnectResearchClaimVerificationState.VerifiedByControllingEvidence);
+    }
 
     private static LegendConnectMachineTeachingSubmission TranslationSubmission() =>
         new(

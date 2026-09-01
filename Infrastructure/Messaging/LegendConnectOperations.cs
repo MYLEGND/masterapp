@@ -193,6 +193,7 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
             "relationships" => await GetRelationshipPageAsync(language, normalizedSearch, pageCursor, cancellationToken),
             "learning" => await GetLearningPageAsync(language, normalizedSearch, pageCursor, cancellationToken),
             "machine-learning-lifecycle" => await GetMachineLearningLifecyclePageAsync(language, normalizedSearch, pageCursor, cancellationToken),
+            "research-observability" => await GetResearchObservabilityPageAsync(language, normalizedSearch, pageCursor, cancellationToken),
             "models" => await GetModelPageAsync(language, normalizedSearch, pageCursor, cancellationToken),
             "health" => await GetHealthPageAsync(language, normalizedSearch, pageCursor, cancellationToken),
             "retained-knowledge" => await GetRetainedKnowledgePageAsync(language, normalizedSearch, pageCursor, cancellationToken),
@@ -821,7 +822,7 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
                 searchProvider: evidencePacket.SearchProvider);
         }
 
-        var completed = DateTime.UtcNow;
+        var reasoningStartedUtc = DateTime.UtcNow;
         var assessment =
             LegendConnectGovernedReasoningExecutor.AssessResearchEvidence(
                 evidencePacket.Sources,
@@ -830,7 +831,7 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
                 evidencePacket.ClaimEvidence,
                 evidencePacket.ContradictingEvidence,
                 request.MinimumIndependentSources,
-                completed,
+                reasoningStartedUtc,
                 evidencePacket.LanguageLineage);
         var unresolvedInternalConflict =
             request.Decision.Need ==
@@ -848,30 +849,6 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
                 : !string.IsNullOrWhiteSpace(request.InternalAnswer)
                     ? LegendConnectResearchEvidenceOrigin.Combined
                     : LegendConnectResearchEvidenceOrigin.ExternalResearch;
-        var session = new LegendConnectResearchSession(
-            sessionId,
-            request.RequestId,
-            startedUtc,
-            completed,
-            evidencePacket.ExecutedQueries,
-            evidencePacket.SearchResults,
-            evidencePacket.Sources,
-            evidencePacket.Documents,
-            evidencePacket.ClaimEvidence,
-            evidencePacket.ContradictingEvidence,
-            evidencePacket.Citations,
-            evidencePacket.LatencyMilliseconds,
-            evidencePacket.CostMicrounits,
-            effectiveAssessmentState.ToString(),
-            null,
-            evidencePacket.SearchQueryReceipts,
-            evidencePacket.PageReceipts,
-            evidencePacket.LanguageLineage,
-            LegendConnectResearchEvidenceAdmissibilityPolicy.PolicyIdentity,
-            assessment.Admissibility,
-            assessment.MaterialEvidence,
-            assessment.ClaimResolutions,
-            LegendConnectResearchContracts.ClaimEvidencePolicy);
         var presentationResult = LegendConnectCurriculumService.PresentResearchEvidence(
             effectiveAssessmentState,
             evidenceOrigin,
@@ -887,17 +864,47 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
             evidencePacket.LanguageLineage,
             request.PresentationConstraints,
             effectiveReasonCode,
-            completed);
-        session = session with
-        {
-            CitationValidation = presentationResult.Presentation.CitationValidation,
-            CompletionState = presentationResult.Succeeded
-                ? session.CompletionState
+            reasoningStartedUtc);
+        var completed = DateTime.UtcNow;
+        var session = new LegendConnectResearchSession(
+            sessionId,
+            request.RequestId,
+            startedUtc,
+            completed,
+            evidencePacket.ExecutedQueries,
+            evidencePacket.SearchResults,
+            evidencePacket.Sources,
+            evidencePacket.Documents,
+            evidencePacket.ClaimEvidence,
+            evidencePacket.ContradictingEvidence,
+            evidencePacket.Citations,
+            Math.Max(
+                0,
+                (long)Math.Ceiling((completed - startedUtc).TotalMilliseconds)),
+            evidencePacket.CostMicrounits,
+            presentationResult.Succeeded
+                ? effectiveAssessmentState.ToString()
                 : "Failure",
-            FailureReason = presentationResult.Succeeded
-                ? session.FailureReason
-                : presentationResult.ReasonCode
-        };
+            presentationResult.Succeeded
+                ? null
+                : presentationResult.ReasonCode,
+            evidencePacket.SearchQueryReceipts,
+            evidencePacket.PageReceipts,
+            evidencePacket.LanguageLineage,
+            LegendConnectResearchEvidenceAdmissibilityPolicy.PolicyIdentity,
+            assessment.Admissibility,
+            assessment.MaterialEvidence,
+            assessment.ClaimResolutions,
+            LegendConnectResearchContracts.ClaimEvidencePolicy,
+            presentationResult.Presentation.CitationValidation,
+            searchResult.LatencyMilliseconds,
+            pageResult.LatencyMilliseconds,
+            Math.Max(
+                0,
+                (long)Math.Ceiling(
+                    (completed - reasoningStartedUtc).TotalMilliseconds)),
+            searchResult.CostMicrounits,
+            null);
         var provenance = BuildResearchProvenance(
             request,
             session,
@@ -997,6 +1004,227 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
                 EvidenceOrigin = LegendConnectResearchEvidenceOrigin.UnresolvedEvidence
             },
             presentationResult.Presentation);
+    }
+
+    /// <summary>
+    /// Adds bounded operational receipts to the existing diagnostics ledger.
+    /// These rows contain sanitized observation metadata only and are never a
+    /// source for retained retrieval, native inference, learning, or admission.
+    /// </summary>
+    public async Task RecordResearchObservabilityAsync(
+        LegendConnectResearchOutcome outcome,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(outcome);
+        if (_operationalEvents is null)
+            return;
+
+        var session = outcome.Session;
+        var correlation = session.SessionId.ToString("N");
+        var language = session.LanguageLineage?.UserLanguageCode ??
+            outcome.Decision.SourceLanguageCode;
+        var failureCode = outcome.Failure?.ReasonCode ?? session.FailureReason;
+        var externalObservation = outcome.RetentionLineage ??
+            LegendConnectResearchRetentionContracts.CreateExternalObservation(outcome);
+        var retention = outcome.Retention ?? new LegendConnectResearchRetentionReceipt(
+            externalObservation is null
+                ? LegendConnectResearchRetentionState.Failed
+                : LegendConnectResearchRetentionState.ExternalObservation,
+            LegendConnectResearchRetentionContracts.ObservationIdentity(outcome),
+            null,
+            null,
+            externalObservation is null ? "NoRetention" : "ExternalObservation",
+            "NonServing",
+            "NonCanonical",
+            externalObservation is null
+                ? "research_retention_observation_ineligible"
+                : null);
+
+        await RecordResearchObservationFacetAsync(
+            "Session",
+            outcome.State.ToString(),
+            language,
+            correlation,
+            failureCode,
+            $"code_sha={Observe(outcome.Provenance.CodeSha, 40)};configuration={Observe(outcome.Provenance.ConfigurationIdentity, 64)};reason={Observe(outcome.Decision.ReasonCode, 80)};provider={Observe(outcome.Provenance.SearchProvider, 80)};authorization={Observe(outcome.Provenance.AuthorizationProvenance, 80)}",
+            cancellationToken);
+
+        await RecordResearchObservationFacetAsync(
+            "Accounting",
+            session.CostMicrounits.HasValue ? "Measured" : "Unavailable",
+            language,
+            correlation,
+            failureCode,
+            $"search_ms={session.SearchLatencyMilliseconds};retrieval_ms={session.RetrievalLatencyMilliseconds};reasoning_ms={session.ReasoningLatencyMilliseconds};total_ms={session.LatencyMilliseconds};search_cost_micro={Cost(session.SearchCostMicrounits)};model_cost_micro={Cost(session.ModelCostMicrounits)};total_cost_micro={Cost(session.CostMicrounits)}",
+            cancellationToken);
+
+        foreach (var query in session.Queries.Take(LegendConnectResearchContracts.MaximumQueries))
+        {
+            await RecordResearchObservationFacetAsync(
+                "Query",
+                outcome.State.ToString(),
+                language,
+                correlation,
+                failureCode,
+                $"ordinal={query.Ordinal};identity={Observe(query.QueryIdentity, 80)};language={Observe(query.QueryLanguageCode ?? query.SourceLanguageCode, 32)};query={Observe(query.Query, 240)}",
+                cancellationToken);
+        }
+
+        var openedSources = session.Documents
+            .Where(item => item.RetrievalSucceeded)
+            .Select(item => item.SourceIdentity)
+            .ToHashSet(StringComparer.Ordinal);
+        foreach (var source in session.Sources.Take(LegendConnectResearchContracts.MaximumResults))
+        {
+            var lineages = session.MaterialClaimEvidence?
+                .Where(item => string.Equals(item.SourceIdentity, source.SourceIdentity, StringComparison.Ordinal))
+                .Select(item => item.IndependentSourceLineage)
+                .Distinct(StringComparer.Ordinal)
+                .Take(4)
+                .ToArray() ?? [];
+            await RecordResearchObservationFacetAsync(
+                "Source",
+                openedSources.Contains(source.SourceIdentity) ? "Opened" : "Discovered",
+                language,
+                correlation,
+                null,
+                $"source={Observe(source.SourceIdentity, 80)};class={source.SourceClass};opened={openedSources.Contains(source.SourceIdentity).ToString().ToLowerInvariant()};independence={Observe(string.Join(',', lineages), 160)};uri={ObservePublicUri(source.CanonicalUri)}",
+                cancellationToken);
+        }
+
+        foreach (var claim in (session.MaterialClaimEvidence ?? [])
+                     .Take(LegendConnectResearchContracts.MaximumClaims))
+        {
+            await RecordResearchObservationFacetAsync(
+                "Claim",
+                claim.Relationship == LegendConnectResearchEvidenceRelationship.Contradiction
+                    ? "Contradicted"
+                    : "Supported",
+                language,
+                correlation,
+                null,
+                $"claim={Observe(claim.NormalizedClaimIdentity, 80)};evidence={Observe(claim.EvidenceIdentity, 80)};relationship={claim.Relationship};verification={claim.VerificationState};lineage={Observe(claim.IndependentSourceLineage, 120)}",
+                cancellationToken);
+        }
+
+        foreach (var resolution in (session.ClaimResolutions ?? [])
+                     .Where(item => item.State is
+                         LegendConnectResearchClaimVerificationState.Disputed or
+                         LegendConnectResearchClaimVerificationState.UnresolvedConflict)
+                     .Take(LegendConnectResearchContracts.MaximumClaims))
+        {
+            await RecordResearchObservationFacetAsync(
+                "Conflict",
+                resolution.State.ToString(),
+                language,
+                correlation,
+                resolution.ReasonCode,
+                $"claim={Observe(resolution.NormalizedClaimIdentity, 80)};reason={Observe(resolution.ReasonCode, 80)};requires_discriminating={resolution.RequiresDiscriminatingEvidence.ToString().ToLowerInvariant()}",
+                cancellationToken);
+        }
+
+        var inlineCitations = outcome.Presentation?.InlineCitations ?? [];
+        foreach (var citation in inlineCitations.Take(LegendConnectResearchContracts.MaximumClaims))
+        {
+            await RecordResearchObservationFacetAsync(
+                "Citation",
+                "Used",
+                language,
+                correlation,
+                null,
+                $"ordinal={citation.Ordinal};citation={Observe(citation.CitationIdentity, 80)};claim={Observe(citation.NormalizedClaimIdentity, 80)};source={Observe(citation.SourceIdentity, 80)}",
+                cancellationToken);
+        }
+
+        await RecordResearchObservationFacetAsync(
+            "Retention",
+            retention.State.ToString(),
+            language,
+            correlation,
+            retention.FailureCode,
+            $"observation={Observe(retention.ObservationIdentity, 80)};candidate={retention.CandidateId?.ToString("N") ?? "none"};proposal={retention.ProposalId?.ToString("N") ?? "none"};provenance={Observe(retention.Provenance, 80)};serving={retention.ServingStatus};canonical={retention.CanonicalStatus}",
+            cancellationToken);
+    }
+
+    public Task RecordResearchRetentionAsync(
+        LegendConnectResearchRetentionLineage lineage,
+        LegendConnectMachineTeachingSubmissionResult result,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(lineage);
+        ArgumentNullException.ThrowIfNull(result);
+        if (_operationalEvents is null)
+            return Task.CompletedTask;
+
+        var accepted = result.Succeeded && !result.ProposalAlreadyExisted;
+        var state = accepted
+            ? LegendConnectResearchRetentionState.MachineProposed.ToString()
+            : LegendConnectResearchRetentionState.Failed.ToString();
+        return RecordResearchObservationFacetAsync(
+            "Retention",
+            state,
+            lineage.MaterialClaims.FirstOrDefault()?.TranslationLineage.FinalResponseLanguageCode ?? "und",
+            lineage.SessionId.ToString("N"),
+            result.ProposalAlreadyExisted
+                ? "machine_learning_mutation_replay"
+                : result.ErrorCode,
+            $"observation={Observe(lineage.ObservationIdentity, 80)};candidate={result.CorpusCandidateId?.ToString("N") ?? "none"};proposal={result.ProposalId?.ToString("N") ?? "none"};provenance={(accepted ? "MachineProposed" : "ExternalObservation")};research_authorization={Observe(lineage.ResearchAuthorizationProvenance, 80)};serving=NonServing;canonical=NonCanonical",
+            cancellationToken);
+    }
+
+    private Task RecordResearchObservationFacetAsync(
+        string facet,
+        string status,
+        string language,
+        string correlation,
+        string? failureCode,
+        string summary,
+        CancellationToken cancellationToken) =>
+        _operationalEvents!.TryRecordAsync(
+            LegendConnectResearchContracts.ObservabilityCategory,
+            failureCode is null ? "Info" : "Warning",
+            facet + ":" + status,
+            language,
+            errorCode: failureCode,
+            correlationId: correlation,
+            summary: SanitizeResearchObservationSummary(summary),
+            isResolved: failureCode is null,
+            cancellationToken: cancellationToken);
+
+    private static string Cost(long? value) =>
+        value?.ToString(CultureInfo.InvariantCulture) ?? "unavailable";
+
+    private static string Observe(string? value, int maximumLength)
+    {
+        var normalized = (value ?? "Unavailable")
+            .Replace('\r', ' ')
+            .Replace('\n', ' ')
+            .Replace(';', ',')
+            .Replace('=', ':')
+            .Trim();
+        normalized = new string(normalized
+            .Where(character => !char.IsControl(character))
+            .ToArray());
+        if (LegendConnectResearchExternalDataPolicy.IsPotentialInstruction(normalized))
+            return "withheld_untrusted_instruction_like_content";
+        return normalized[..Math.Min(normalized.Length, maximumLength)];
+    }
+
+    private static string ObservePublicUri(string? value)
+    {
+        if (!Uri.TryCreate(value, UriKind.Absolute, out var uri) ||
+            uri.Scheme is not ("http" or "https"))
+        {
+            return "withheld_invalid_public_uri";
+        }
+        var display = new UriBuilder(uri)
+        {
+            Query = string.Empty,
+            Fragment = string.Empty,
+            UserName = string.Empty,
+            Password = string.Empty
+        }.Uri.AbsoluteUri;
+        return Observe(display, 180);
     }
 
     public Task<LegendConnectNativeInferenceSnapshot>
@@ -1504,10 +1732,9 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
         }
 
         if (request.Decision.AccessClass == LegendConnectResearchAccessClass.PublicReadOnly &&
-            !string.Equals(
-                request.Authorization.AuthorizationProvenance,
-                LegendConnectResearchContracts.PublicAuthorizationProvenance,
-                StringComparison.Ordinal))
+            request.Authorization.AuthorizationProvenance is not
+                LegendConnectResearchContracts.PublicAuthorizationProvenance and not
+                LegendConnectResearchContracts.LockedEvaluationAuthorizationProvenance)
         {
             failureReason = "research_public_authorization_invalid";
             return false;
@@ -1955,15 +2182,49 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
                    });
     }
 
-    private static LegendConnectResearchProvenance BuildResearchProvenance(
+    private LegendConnectResearchProvenance BuildResearchProvenance(
         LegendConnectResearchRequest request,
         LegendConnectResearchSession session,
         LegendConnectResearchEvidenceOrigin origin,
         string transport,
         string? model,
         string settings,
-        string? searchProvider = null) =>
-        new(
+        string? searchProvider = null)
+    {
+        var configuredCodeSha =
+            (_configuration["LegendConnect:Research:CodeSha"] ??
+             _configuration["LegendConnect:ModelEvaluation:CodeSha"] ??
+             string.Empty).Trim();
+        var codeSha = IsLowerHex(configuredCodeSha, 40)
+            ? configuredCodeSha
+            : "Unavailable";
+        var configurationIdentity = LegendLanguageIdentity.TextHash(
+            string.Join(
+                "|",
+                "legend-research-configuration:v1",
+                codeSha,
+                transport,
+                searchProvider ?? "Unavailable",
+                settings,
+                LegendConnectResearchEvidenceAdmissibilityPolicy.PolicyIdentity,
+                LegendConnectResearchContracts.ClaimEvidencePolicy,
+                LegendConnectResearchContracts.CitationPresentationPolicy,
+                LegendConnectResearchContracts.MaximumQueries,
+                LegendConnectResearchContracts.MaximumResults,
+                LegendConnectResearchContracts.MaximumDocuments,
+                LegendConnectResearchContracts.MaximumClaims,
+                LegendConnectResearchContracts.MaximumDocumentCharacters,
+                LegendConnectResearchContracts.MaximumTotalDocumentCharacters,
+                LegendConnectResearchContracts.MaximumRedirects,
+                LegendConnectResearchContracts.MaximumPageBytes,
+                LegendConnectResearchContracts.RequestTimeoutSeconds,
+                LegendConnectResearchContracts.TotalResearchDeadlineSeconds,
+                request.MaximumResults,
+                request.MaximumDocuments,
+                request.MaximumClaims,
+                request.MaximumDocumentCharacters,
+                request.MinimumIndependentSources));
+        return new(
             request.RequestId,
             session.SessionId,
             request.Decision.ReasonCode,
@@ -2004,7 +2265,10 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
             session.CitationValidation,
             session.CitationValidation is null
                 ? null
-                : LegendConnectResearchContracts.CitationPresentationPolicy);
+                : LegendConnectResearchContracts.CitationPresentationPolicy,
+            codeSha,
+            configurationIdentity);
+    }
 
     /// <summary>
     /// Observational Stage 4 boundary. It deliberately returns governed result
@@ -5890,6 +6154,72 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
                 : null);
     }
 
+    /// <summary>
+    /// Founder-visible projection over the existing operational-event ledger.
+    /// It is deliberately paged and read-only and is not a research document,
+    /// memory, evidence, learning, or serving query path.
+    /// </summary>
+    private async Task<LegendConnectFounderSectionPageSnapshot>
+        GetResearchObservabilityPageAsync(
+            string language,
+            string? search,
+            FounderSectionCursor? cursor,
+            CancellationToken cancellationToken)
+    {
+        var query = _db.Set<LegendConnectOperationalEvent>()
+            .AsNoTracking()
+            .Where(item =>
+                item.Category == LegendConnectResearchContracts.ObservabilityCategory &&
+                item.LanguageCode == language);
+        if (search is not null)
+        {
+            query = query.Where(item =>
+                item.Status.ToLower().Contains(search) ||
+                (item.CorrelationId ?? string.Empty).ToLower().Contains(search) ||
+                (item.ErrorCode ?? string.Empty).ToLower().Contains(search) ||
+                (item.Summary ?? string.Empty).ToLower().Contains(search));
+        }
+        if (cursor is { } after)
+        {
+            query = query.Where(item =>
+                item.OccurredUtc < after.UpdatedUtc ||
+                (item.OccurredUtc == after.UpdatedUtc &&
+                 item.Id.CompareTo(after.Id) < 0));
+        }
+
+        var events = await query
+            .OrderByDescending(item => item.OccurredUtc)
+            .ThenByDescending(item => item.Id)
+            .Take(FounderSectionPageSize + 1)
+            .Select(item => new
+            {
+                item.Id,
+                item.CorrelationId,
+                item.Status,
+                item.ErrorCode,
+                item.Summary,
+                item.OccurredUtc
+            })
+            .ToListAsync(cancellationToken);
+        return FounderPage(
+            "research-observability",
+            language,
+            search,
+            events,
+            item => item.Id,
+            item => item.OccurredUtc,
+            item => new[]
+            {
+                SanitizeLifecycleMetadata(item.CorrelationId, "unavailable_session"),
+                SanitizeLifecycleMetadata(item.Status, "unavailable_facet"),
+                SanitizeLifecycleFailure(item.ErrorCode),
+                SanitizeResearchObservationSummary(item.Summary),
+                item.OccurredUtc.ToString("u", CultureInfo.InvariantCulture)
+            },
+            new[] { "Session", "Facet / state", "Failure", "Sanitized receipt", "Observed" },
+            "No governed research observations match this language and filter.");
+    }
+
     private async Task<LegendConnectFounderSectionPageSnapshot> GetModelPageAsync(
         string language,
         string? search,
@@ -6285,6 +6615,20 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
             : SanitizeLifecycleMetadata(
                 value,
                 "withheld_invalid_diagnostic");
+
+    private static string SanitizeResearchObservationSummary(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return "—";
+        var normalized = new string(value.Trim()
+            .Where(character => !char.IsControl(character))
+            .ToArray());
+        return normalized[..Math.Min(normalized.Length, 500)];
+    }
+
+    private static bool IsLowerHex(string value, int length) =>
+        value.Length == length && value.All(character =>
+            character is >= '0' and <= '9' or >= 'a' and <= 'f');
 
     private static string FormatLifecycleTimestamp(DateTime? value) =>
         value?.ToString("u", CultureInfo.InvariantCulture) ?? "—";
