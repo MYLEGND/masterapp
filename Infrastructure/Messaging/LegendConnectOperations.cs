@@ -268,13 +268,24 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
             .Max();
         var duplicateCount = state.DuplicateOperationalEventCount + state.DuplicateKnowledgeAuditCount;
         var translationOpportunities = state.Demand.Sum(item => item.TranslationRequestCount);
+        var exactMemoryServed = state.Demand.Sum(item => item.TranslationMemoryHitCount);
         var contextualInternalServed = state.Demand.Sum(item => item.ContextualInternalServeCount);
         var structuralInternalServed = state.Demand.Sum(item => item.StructuralInternalServeCount);
-        var internalServed =
-            state.Demand.Sum(item => item.TranslationMemoryHitCount) +
+        var promotedTranslationModelServed = state.Demand.Sum(item => item.NeuralModelServeCount);
+        var promotedTranslationModelFailed = state.Demand.Sum(item => item.NeuralModelFailureCount);
+        var providerObservationReused = state.Demand.Sum(item => item.ProviderObservationReuseCount);
+        var nativeTranslationIntelligenceServed =
+            exactMemoryServed +
             structuralInternalServed +
-            contextualInternalServed;
+            contextualInternalServed +
+            promotedTranslationModelServed;
         var azureFallbacks = state.Demand.Sum(item => item.AzureFallbackCount);
+        var providerAvoidedRequests =
+            nativeTranslationIntelligenceServed +
+            providerObservationReused;
+        var reconciledTerminalRoutes = providerAvoidedRequests + azureFallbacks;
+        var translationRoutingReconciliationGap =
+            translationOpportunities - reconciledTerminalRoutes;
         var consentedLiveEvents = state.LearningEvents
             .Where(item => item.Provenance == "ConsentedLiveTranslation")
             .ToArray();
@@ -286,7 +297,7 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
             languages,
             pairs,
             state.SystemUsage.Sum(item => item.SameLanguageBypassCount),
-            state.Demand.Sum(item => item.TranslationMemoryHitCount),
+            exactMemoryServed,
             azureFallbacks,
             used,
             configuredCapacity,
@@ -307,9 +318,9 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
             state.SystemUsage.Sum(item => item.ProviderFailureCount),
             state.SystemUsage.Sum(item => item.GroupUniqueTargetReuseCount),
             contextualInternalServed,
-            translationOpportunities == 0 ? 0m : Math.Round((decimal)internalServed / translationOpportunities, 4),
+            translationOpportunities == 0 ? 0m : Math.Round((decimal)providerAvoidedRequests / translationOpportunities, 4),
             translationOpportunities == 0 ? 0m : Math.Round((decimal)azureFallbacks / translationOpportunities, 4),
-            translationOpportunities == 0 ? 0m : Math.Round((decimal)internalServed / translationOpportunities, 4),
+            translationOpportunities == 0 ? 0m : Math.Round((decimal)nativeTranslationIntelligenceServed / translationOpportunities, 4),
             consumedLive,
             consumedCorpus,
             inFlight,
@@ -331,7 +342,25 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
             StructuralCompositionCharactersAvoided:
                 state.SystemUsage.Sum(item => item.StructuralCompositionCharactersAvoided),
             StructuralInternalServeCount:
-                structuralInternalServed);
+                structuralInternalServed,
+            PromotedTranslationModelServeCount:
+                promotedTranslationModelServed,
+            PromotedTranslationModelFailureCount:
+                promotedTranslationModelFailed,
+            ProviderObservationReuseCount:
+                providerObservationReused,
+            NativeTranslationIntelligenceServeCount:
+                nativeTranslationIntelligenceServed,
+            ReconciledTerminalRouteCount:
+                reconciledTerminalRoutes,
+            TranslationRoutingReconciliationGap:
+                translationRoutingReconciliationGap,
+            PromotedTranslationModelCharactersAvoided:
+                state.SystemUsage.Sum(item => item.PromotedTranslationModelCharactersAvoided),
+            ProviderObservationCharactersAvoided:
+                state.SystemUsage.Sum(item => item.ProviderObservationCharactersAvoided),
+            CrossLanguageTranslationRequestCount:
+                translationOpportunities);
     }
 
     public Task<LegendConnectMachineTeachingSubmissionResult>
@@ -1192,7 +1221,8 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
             return await BuildCapacityMetricDetailAsync(key, cancellationToken);
 
         if (key is "provider-operations" or "provider-billable-characters" or "same-language-avoided" or
-            "memory-avoided" or "structural-avoided" or "context-avoided" or "quota-denied" or "provider-failures" or
+            "memory-avoided" or "structural-avoided" or "context-avoided" or "promoted-translation-model-avoided" or
+            "provider-observation-avoided" or "quota-denied" or "provider-failures" or
             "group-target-reuse" or "high-consumption-accounts")
             return await BuildUsageMetricDetailAsync(key, cancellationToken);
 
@@ -1204,7 +1234,7 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
             "learning-failures" => BuildLearningFailureMetricDetail(state),
             "duplicate-prevention" or "readiness-duplicates-prevented" => BuildDuplicateMetricDetail(state, key),
             "approved-candidates" or "eligible-pending" or "rejected-ineligible" or "pairs-awaiting-knowledge" => BuildCandidateMetricDetail(state, key),
-            "same-language-bypasses" or "translation-memory-hits" or "provider-fallback-required" or "trusted-structural-served" or "trusted-contextual-served" or "provider-avoidance" or "provider-dependency" => BuildDemandMetricDetail(state, key),
+            "same-language-bypasses" or "cross-language-translation-requests" or "translation-memory-hits" or "provider-fallback-required" or "trusted-structural-served" or "trusted-contextual-served" or "promoted-translation-model-served" or "promoted-translation-model-failures" or "provider-observation-reused" or "native-translation-intelligence-served" or "translation-routing-reconciliation" or "internal-coverage" or "provider-avoidance" or "provider-dependency" => BuildDemandMetricDetail(state, key),
             "pending-learning-jobs" => BuildPendingLearningMetricDetail(state),
             "quality-needs-review" or "quality-provider-observations" or "quality-supported-observations" or "quality-contradictions" or "quality-human-verified" => await BuildQualityMetricDetailAsync(state, key, cancellationToken),
             "consented-accounts" or "eligible-live-translations" or "promoted-to-learning" or "canonical-reuse-prevented-duplicates" or "awaiting-corpus-processing" => BuildConsentedLearningMetricDetail(state, key),
@@ -1486,11 +1516,17 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
                 Section("Daily same-language bypasses", "Daily aggregate records behind the count.", new[] { "Date", "Bypasses", "Updated" }, state.SystemUsage.OrderByDescending(item => item.UsageDate).Select(item => new[] { item.UsageDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture), Display(item.SameLanguageBypassCount), Display(item.UpdatedUtc) })));
         return Detail(key, TitleFor(key), "Directional demand authority", "Each row is the server-owned directional demand record used for routing and planner decisions.",
             Section("Directional routing evidence", "The relevant routing counters by canonical pair.",
-                new[] { "Pair", "Requests", "Memory hits", "Provider work required", "Structural served", "Context served", "Provider characters", "Last request" },
+                new[] { "Pair", "Requests", "Exact memory", "Structural", "Contextual", "Promoted translation model", "Model failures", "Provider observation reuse", "Provider work required", "Reconciliation gap", "Provider characters", "Last request" },
                 state.Demand.OrderByDescending(item => item.LastRequestedUtc).Select(item => new[]
                 {
-                    item.PairKey, Display(item.TranslationRequestCount), Display(item.TranslationMemoryHitCount), Display(item.AzureFallbackCount),
+                    item.PairKey, Display(item.TranslationRequestCount), Display(item.TranslationMemoryHitCount),
                     Display(item.StructuralInternalServeCount), Display(item.ContextualInternalServeCount),
+                    Display(item.NeuralModelServeCount), Display(item.NeuralModelFailureCount),
+                    Display(item.ProviderObservationReuseCount), Display(item.AzureFallbackCount),
+                    Display(item.TranslationRequestCount - item.TranslationMemoryHitCount -
+                        item.StructuralInternalServeCount - item.ContextualInternalServeCount -
+                        item.NeuralModelServeCount - item.ProviderObservationReuseCount -
+                        item.AzureFallbackCount),
                     Display(item.ProviderCharacterCount), Display(item.LastRequestedUtc)
                 })));
     }
@@ -1750,6 +1786,15 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
         "LegendConnectStructuralComposition" => new(
             "Legend structural composition",
             "Existing structural composition gate served the result; provider was not called."),
+        "LegendConnectPromotedTranslationModel" => new(
+            "LEGEND promoted translation model",
+            "The promoted translation capability served this route; Founder-chat reasoning is a separate capability."),
+        "LegendConnectNeuralModel" => new(
+            "LEGEND promoted translation model (legacy label)",
+            "A previously persisted translation-model route; it remains separate from Founder-chat reasoning."),
+        "LegendConnectProviderObservation" => new(
+            "Exact provider observation reuse",
+            "An eligible provider-derived output was reused without a new Azure call; it is not native LEGEND intelligence."),
         "AzureTranslator" => new(
             "Azure Translator full fallback",
             "Azure result is provider-derived evidence and is never trusted merely because it was returned."),
@@ -1860,10 +1905,17 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
         "pairs-awaiting-knowledge" => "Pairs awaiting knowledge",
         "readiness-duplicates-prevented" => "Duplicates prevented",
         "same-language-bypasses" => "Same-language bypasses",
+        "cross-language-translation-requests" => "Cross-language translation requests",
         "translation-memory-hits" => "Translation Memory hits",
         "provider-fallback-required" => "Provider fallback required",
         "trusted-structural-served" => "Trusted structural served",
         "trusted-contextual-served" => "Trusted contextual served",
+        "promoted-translation-model-served" => "Promoted translation model served",
+        "promoted-translation-model-failures" => "Promoted translation model failures",
+        "provider-observation-reused" => "Provider observation reused",
+        "native-translation-intelligence-served" => "Native translation intelligence served",
+        "translation-routing-reconciliation" => "Translation routing reconciliation",
+        "internal-coverage" => "Native translation coverage",
         "provider-avoidance" => "Provider avoidance",
         "provider-dependency" => "Provider dependency",
         "azure-characters-used" => "Azure characters used",
@@ -1882,6 +1934,8 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
         "memory-avoided" => "Memory avoided",
         "structural-avoided" => "Structural composition avoided",
         "context-avoided" => "Context avoided",
+        "promoted-translation-model-avoided" => "Promoted translation model avoided",
+        "provider-observation-avoided" => "Provider observation reuse avoided",
         "quota-denied" => "Quota denied",
         "provider-failures" => "Provider failures",
         "group-target-reuse" => "Group target reuse",
@@ -1916,6 +1970,8 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
         "memory-avoided" => nameof(LegendTranslationSystemUsage.TranslationMemoryCharactersAvoided),
         "structural-avoided" => nameof(LegendTranslationSystemUsage.StructuralCompositionCharactersAvoided),
         "context-avoided" => nameof(LegendTranslationSystemUsage.ContextualCharactersAvoided),
+        "promoted-translation-model-avoided" => nameof(LegendTranslationSystemUsage.PromotedTranslationModelCharactersAvoided),
+        "provider-observation-avoided" => nameof(LegendTranslationSystemUsage.ProviderObservationCharactersAvoided),
         "quota-denied" => nameof(LegendTranslationSystemUsage.QuotaDeniedRequestCount),
         "provider-failures" => nameof(LegendTranslationSystemUsage.ProviderFailureCount),
         "group-target-reuse" => nameof(LegendTranslationSystemUsage.GroupUniqueTargetReuseCount),
@@ -1930,6 +1986,8 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
         "memory-avoided" => nameof(LegendTranslationUsagePeriod.TranslationMemoryCharactersAvoided),
         "structural-avoided" => nameof(LegendTranslationUsagePeriod.StructuralCompositionCharactersAvoided),
         "context-avoided" => nameof(LegendTranslationUsagePeriod.ContextualCharactersAvoided),
+        "promoted-translation-model-avoided" => nameof(LegendTranslationUsagePeriod.PromotedTranslationModelCharactersAvoided),
+        "provider-observation-avoided" => nameof(LegendTranslationUsagePeriod.ProviderObservationCharactersAvoided),
         "quota-denied" => nameof(LegendTranslationUsagePeriod.QuotaDeniedRequestCount),
         "provider-failures" => nameof(LegendTranslationUsagePeriod.ProviderFailureCount),
         "group-target-reuse" => nameof(LegendTranslationUsagePeriod.GroupUniqueTargetReuseCount),
@@ -1944,6 +2002,8 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
         nameof(LegendTranslationSystemUsage.TranslationMemoryCharactersAvoided) => usage.TranslationMemoryCharactersAvoided,
         nameof(LegendTranslationSystemUsage.StructuralCompositionCharactersAvoided) => usage.StructuralCompositionCharactersAvoided,
         nameof(LegendTranslationSystemUsage.ContextualCharactersAvoided) => usage.ContextualCharactersAvoided,
+        nameof(LegendTranslationSystemUsage.PromotedTranslationModelCharactersAvoided) => usage.PromotedTranslationModelCharactersAvoided,
+        nameof(LegendTranslationSystemUsage.ProviderObservationCharactersAvoided) => usage.ProviderObservationCharactersAvoided,
         nameof(LegendTranslationSystemUsage.QuotaDeniedRequestCount) => usage.QuotaDeniedRequestCount,
         nameof(LegendTranslationSystemUsage.ProviderFailureCount) => usage.ProviderFailureCount,
         nameof(LegendTranslationSystemUsage.GroupUniqueTargetReuseCount) => usage.GroupUniqueTargetReuseCount,
@@ -1958,6 +2018,8 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
         nameof(LegendTranslationUsagePeriod.TranslationMemoryCharactersAvoided) => usage.TranslationMemoryCharactersAvoided,
         nameof(LegendTranslationUsagePeriod.StructuralCompositionCharactersAvoided) => usage.StructuralCompositionCharactersAvoided,
         nameof(LegendTranslationUsagePeriod.ContextualCharactersAvoided) => usage.ContextualCharactersAvoided,
+        nameof(LegendTranslationUsagePeriod.PromotedTranslationModelCharactersAvoided) => usage.PromotedTranslationModelCharactersAvoided,
+        nameof(LegendTranslationUsagePeriod.ProviderObservationCharactersAvoided) => usage.ProviderObservationCharactersAvoided,
         nameof(LegendTranslationUsagePeriod.QuotaDeniedRequestCount) => usage.QuotaDeniedRequestCount,
         nameof(LegendTranslationUsagePeriod.ProviderFailureCount) => usage.ProviderFailureCount,
         nameof(LegendTranslationUsagePeriod.GroupUniqueTargetReuseCount) => usage.GroupUniqueTargetReuseCount,
@@ -3345,7 +3407,19 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
         var memoryHits = demand?.TranslationMemoryHitCount ?? 0;
         var contextualInternal = demand?.ContextualInternalServeCount ?? 0;
         var structuralInternal = demand?.StructuralInternalServeCount ?? 0;
-        var internalServed = memoryHits + structuralInternal + contextualInternal;
+        var promotedTranslationModelServed = demand?.NeuralModelServeCount ?? 0;
+        var promotedTranslationModelFailed = demand?.NeuralModelFailureCount ?? 0;
+        var providerObservationReused = demand?.ProviderObservationReuseCount ?? 0;
+        var nativeTranslationIntelligenceServed =
+            memoryHits +
+            structuralInternal +
+            contextualInternal +
+            promotedTranslationModelServed;
+        var providerAvoidedRequests =
+            nativeTranslationIntelligenceServed +
+            providerObservationReused;
+        var reconciledTerminalRoutes = providerAvoidedRequests + fallback;
+        var routingReconciliationGap = total - reconciledTerminalRoutes;
         var approvedBacklog = activeCandidates.LongCount(item => item.IsApproved &&
             item.ProcessingState is "Pending" or "Processing" &&
             string.Equals(LegendLanguageIdentity.PairKey(item.SourceLanguageCode, item.TargetLanguageCode), pair.PairKey, StringComparison.OrdinalIgnoreCase));
@@ -3387,14 +3461,20 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
             recentAlignments,
             errors,
             contextualInternal,
-            total == 0 ? 0m : Math.Round((decimal)internalServed / total, 4),
+            total == 0 ? 0m : Math.Round((decimal)providerAvoidedRequests / total, 4),
             total == 0 ? 0m : Math.Round((decimal)fallback / total, 4),
-            total == 0 ? 0m : Math.Round((decimal)internalServed / total, 4),
+            total == 0 ? 0m : Math.Round((decimal)nativeTranslationIntelligenceServed / total, 4),
             internalQuality,
             coverageAdditions,
             approvedBacklog,
             lastProviderAcquisition,
-            structuralInternal);
+            structuralInternal,
+            promotedTranslationModelServed,
+            promotedTranslationModelFailed,
+            providerObservationReused,
+            nativeTranslationIntelligenceServed,
+            reconciledTerminalRoutes,
+            routingReconciliationGap);
     }
 
     private static List<LegendConnectOperationalEventSnapshot> ErrorsFor(

@@ -291,10 +291,7 @@ public sealed record FounderLegendConnectLiveMetricsSnapshot(
         int runtimeAuditCount)
     {
         var metrics = new Dictionary<string, FounderLegendConnectLiveMetricSnapshot>(StringComparer.Ordinal);
-        var routedRequestCount = dashboard.TranslationMemoryHitCount +
-            dashboard.StructuralInternalServeCount +
-            dashboard.ContextualInternalServeCount +
-            dashboard.AzureFallbackCount;
+        var routedRequestCount = dashboard.ReconciledTerminalRouteCount;
 
         Add(metrics, "active-languages", dashboard.Languages.Count, LegendConnectMetricTone.InformationalActivity(dashboard.Languages.Count));
         Add(metrics, "directional-pairs", dashboard.Pairs.Count, LegendConnectMetricTone.InformationalActivity(dashboard.Pairs.Count));
@@ -308,9 +305,15 @@ public sealed record FounderLegendConnectLiveMetricsSnapshot(
         Add(metrics, "pairs-awaiting-knowledge", readiness.AwaitingKnowledgePairCount, LegendConnectMetricTone.PendingWork(readiness.AwaitingKnowledgePairCount));
 
         Add(metrics, "same-language-bypasses", dashboard.SameLanguageBypassCount, LegendConnectMetricTone.BeneficialActivity(dashboard.SameLanguageBypassCount));
+        Add(metrics, "cross-language-translation-requests", dashboard.CrossLanguageTranslationRequestCount, LegendConnectMetricTone.InformationalActivity(dashboard.CrossLanguageTranslationRequestCount));
         Add(metrics, "translation-memory-hits", dashboard.TranslationMemoryHitCount, LegendConnectMetricTone.BeneficialActivity(dashboard.TranslationMemoryHitCount));
         Add(metrics, "trusted-structural-served", dashboard.StructuralInternalServeCount, LegendConnectMetricTone.BeneficialActivity(dashboard.StructuralInternalServeCount));
         Add(metrics, "trusted-contextual-served", dashboard.ContextualInternalServeCount, LegendConnectMetricTone.BeneficialActivity(dashboard.ContextualInternalServeCount));
+        Add(metrics, "promoted-translation-model-served", dashboard.PromotedTranslationModelServeCount, LegendConnectMetricTone.BeneficialActivity(dashboard.PromotedTranslationModelServeCount));
+        Add(metrics, "promoted-translation-model-failures", dashboard.PromotedTranslationModelFailureCount, LegendConnectMetricTone.Failure(dashboard.PromotedTranslationModelFailureCount));
+        Add(metrics, "provider-observation-reused", dashboard.ProviderObservationReuseCount, LegendConnectMetricTone.InformationalActivity(dashboard.ProviderObservationReuseCount));
+        Add(metrics, "native-translation-intelligence-served", dashboard.NativeTranslationIntelligenceServeCount, LegendConnectMetricTone.BeneficialActivity(dashboard.NativeTranslationIntelligenceServeCount));
+        Add(metrics, "translation-routing-reconciliation", dashboard.TranslationRoutingReconciliationGap, LegendConnectMetricTone.Failure(Math.Abs(dashboard.TranslationRoutingReconciliationGap)));
         AddPercent(metrics, "internal-coverage", dashboard.InternalCoverageRate, LegendConnectMetricTone.Avoidance(dashboard.InternalCoverageRate, routedRequestCount));
         AddPercent(metrics, "provider-avoidance", dashboard.ProviderAvoidanceRate, LegendConnectMetricTone.Avoidance(dashboard.ProviderAvoidanceRate, routedRequestCount));
         Add(metrics, "provider-fallback-required", dashboard.AzureFallbackCount, LegendConnectMetricTone.PendingWork(dashboard.AzureFallbackCount));
@@ -333,6 +336,8 @@ public sealed record FounderLegendConnectLiveMetricsSnapshot(
         Add(metrics, "memory-avoided", dashboard.TranslationMemoryCharactersAvoided, LegendConnectMetricTone.BeneficialActivity(dashboard.TranslationMemoryCharactersAvoided));
         Add(metrics, "structural-avoided", dashboard.StructuralCompositionCharactersAvoided, LegendConnectMetricTone.BeneficialActivity(dashboard.StructuralCompositionCharactersAvoided));
         Add(metrics, "context-avoided", dashboard.ContextualCharactersAvoided, LegendConnectMetricTone.BeneficialActivity(dashboard.ContextualCharactersAvoided));
+        Add(metrics, "promoted-translation-model-avoided", dashboard.PromotedTranslationModelCharactersAvoided, LegendConnectMetricTone.BeneficialActivity(dashboard.PromotedTranslationModelCharactersAvoided));
+        Add(metrics, "provider-observation-avoided", dashboard.ProviderObservationCharactersAvoided, LegendConnectMetricTone.InformationalActivity(dashboard.ProviderObservationCharactersAvoided));
         Add(metrics, "quota-denied", dashboard.QuotaDeniedRequestCount, LegendConnectMetricTone.Failure(dashboard.QuotaDeniedRequestCount));
         Add(metrics, "provider-failures", dashboard.ProviderFailureCount, LegendConnectMetricTone.Failure(dashboard.ProviderFailureCount));
         Add(metrics, "group-target-reuse", dashboard.GroupUniqueTargetReuseCount, LegendConnectMetricTone.BeneficialActivity(dashboard.GroupUniqueTargetReuseCount));

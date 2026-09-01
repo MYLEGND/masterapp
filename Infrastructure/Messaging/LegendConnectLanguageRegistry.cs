@@ -142,6 +142,32 @@ internal sealed class LegendLanguageRegistry : ILegendLanguageRegistry
         return pair is { IsEnabled: true } ? ToSnapshot(pair) : null;
     }
 
+    public async Task<LegendLanguagePairSnapshot?> GetEnabledPairAsync(
+        string sourceLanguage,
+        string targetLanguage,
+        CancellationToken cancellationToken = default)
+    {
+        var source = await NormalizeEnabledTranslationLanguageAsync(
+            sourceLanguage,
+            cancellationToken);
+        var target = await NormalizeEnabledTranslationLanguageAsync(
+            targetLanguage,
+            cancellationToken);
+        if (source is null || target is null ||
+            string.Equals(source, target, StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
+        var pairKey = LegendLanguageIdentity.PairKey(source, target);
+        var pair = await _db.Set<LegendLanguagePair>()
+            .AsNoTracking()
+            .SingleOrDefaultAsync(
+                item => item.PairKey == pairKey && item.IsEnabled,
+                cancellationToken);
+        return pair is null ? null : ToSnapshot(pair);
+    }
+
     private async Task EnsureBaselineAsync(CancellationToken cancellationToken)
     {
         // Runtime is intentionally idempotent. Migrations seed this data for

@@ -58,7 +58,9 @@ public sealed record TranslationAccountUsageMetrics(
     long QuotaDeniedRequestCount,
     long ProviderFailureCount,
     long GroupUniqueTargetReuseCount,
-    long StructuralCompositionCharactersAvoided = 0);
+    long StructuralCompositionCharactersAvoided = 0,
+    long PromotedTranslationModelCharactersAvoided = 0,
+    long ProviderObservationCharactersAvoided = 0);
 
 public sealed record TranslationFounderScaleSnapshot(
     long ProviderOperationCount,
@@ -70,7 +72,9 @@ public sealed record TranslationFounderScaleSnapshot(
     long ProviderFailureCount,
     long GroupUniqueTargetReuseCount,
     long HighConsumptionAccountCount,
-    long StructuralCompositionCharactersAvoided = 0);
+    long StructuralCompositionCharactersAvoided = 0,
+    long PromotedTranslationModelCharactersAvoided = 0,
+    long ProviderObservationCharactersAvoided = 0);
 
 /// <summary>
 /// Server configuration can publish named allowance presets without moving an
@@ -109,6 +113,8 @@ public enum TranslationAvoidedPath
     TranslationMemory,
     StructuralComposition,
     ContextualComposition,
+    PromotedTranslationModel,
+    ProviderObservationReuse,
     GroupUniqueTargetReuse
 }
 

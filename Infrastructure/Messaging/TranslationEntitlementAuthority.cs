@@ -219,7 +219,9 @@ internal sealed class TranslationEntitlementAuthority : ITranslationEntitlementA
             usage.Sum(item => Math.Max(0, item.ProviderFailureCount)),
             usage.Sum(item => Math.Max(0, item.GroupUniqueTargetReuseCount)),
             highConsumption,
-            usage.Sum(item => Math.Max(0, item.StructuralCompositionCharactersAvoided)));
+            usage.Sum(item => Math.Max(0, item.StructuralCompositionCharactersAvoided)),
+            usage.Sum(item => Math.Max(0, item.PromotedTranslationModelCharactersAvoided)),
+            usage.Sum(item => Math.Max(0, item.ProviderObservationCharactersAvoided)));
     }
 
     public async Task<TranslationAccountEntitlementSnapshot> SetEntitlementAsync(
@@ -483,6 +485,18 @@ internal sealed class TranslationEntitlementAuthority : ITranslationEntitlementA
                     .SetProperty(item => item.LastTranslationActivityUtc, now)
                     .SetProperty(item => item.UpdatedUtc, now), cancellationToken);
                 break;
+            case TranslationAvoidedPath.PromotedTranslationModel:
+                await query.ExecuteUpdateAsync(setters => setters
+                    .SetProperty(item => item.PromotedTranslationModelCharactersAvoided, item => item.PromotedTranslationModelCharactersAvoided + amount)
+                    .SetProperty(item => item.LastTranslationActivityUtc, now)
+                    .SetProperty(item => item.UpdatedUtc, now), cancellationToken);
+                break;
+            case TranslationAvoidedPath.ProviderObservationReuse:
+                await query.ExecuteUpdateAsync(setters => setters
+                    .SetProperty(item => item.ProviderObservationCharactersAvoided, item => item.ProviderObservationCharactersAvoided + amount)
+                    .SetProperty(item => item.LastTranslationActivityUtc, now)
+                    .SetProperty(item => item.UpdatedUtc, now), cancellationToken);
+                break;
             case TranslationAvoidedPath.GroupUniqueTargetReuse:
                 await query.ExecuteUpdateAsync(setters => setters
                     .SetProperty(item => item.GroupUniqueTargetReuseCount, item => item.GroupUniqueTargetReuseCount + Math.Max(1, amount))
@@ -728,6 +742,12 @@ internal sealed class TranslationEntitlementAuthority : ITranslationEntitlementA
             case TranslationAvoidedPath.ContextualComposition:
                 usage.ContextualCharactersAvoided += amount;
                 break;
+            case TranslationAvoidedPath.PromotedTranslationModel:
+                usage.PromotedTranslationModelCharactersAvoided += amount;
+                break;
+            case TranslationAvoidedPath.ProviderObservationReuse:
+                usage.ProviderObservationCharactersAvoided += amount;
+                break;
             case TranslationAvoidedPath.GroupUniqueTargetReuse:
                 usage.GroupUniqueTargetReuseCount += Math.Max(1, amount);
                 break;
@@ -798,7 +818,9 @@ internal sealed class TranslationEntitlementAuthority : ITranslationEntitlementA
         usage?.QuotaDeniedRequestCount ?? 0,
         usage?.ProviderFailureCount ?? 0,
         usage?.GroupUniqueTargetReuseCount ?? 0,
-        usage?.StructuralCompositionCharactersAvoided ?? 0);
+        usage?.StructuralCompositionCharactersAvoided ?? 0,
+        usage?.PromotedTranslationModelCharactersAvoided ?? 0,
+        usage?.ProviderObservationCharactersAvoided ?? 0);
 
     private long DefaultAllowance() => Math.Max(0,
         _configuration.GetValue<long?>("LegendConnect:Entitlements:DefaultMonthlyCharacterAllowance") ?? 0);

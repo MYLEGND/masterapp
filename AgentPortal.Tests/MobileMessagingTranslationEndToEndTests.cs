@@ -295,6 +295,12 @@ public sealed class MobileMessagingTranslationEndToEndTests
         var usage = await db.LegendTranslationUsagePeriods.SingleAsync();
         Assert.Equal(0, usage.ConsumedCharacters);
         Assert.Equal(0, usage.ProviderOperationCount);
+        Assert.True(usage.TranslationMemoryCharactersAvoided > 0);
+        var demand = await db.LegendTranslationPairDemands.SingleAsync();
+        Assert.Equal(1, demand.TranslationRequestCount);
+        Assert.Equal(1, demand.TranslationMemoryHitCount);
+        Assert.Equal(0, demand.ProviderObservationReuseCount);
+        Assert.Equal(0, demand.AzureFallbackCount);
     }
 
     [Fact]

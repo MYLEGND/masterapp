@@ -8663,6 +8663,12 @@ namespace Infrastructure.Migrations
                     b.Property<long>("ProviderOperationCount")
                         .HasColumnType("bigint");
 
+                    b.Property<long>("PromotedTranslationModelCharactersAvoided")
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("ProviderObservationCharactersAvoided")
+                        .HasColumnType("bigint");
+
                     b.Property<long>("QuotaDeniedRequestCount")
                         .HasColumnType("bigint");
 
@@ -8809,6 +8815,12 @@ namespace Infrastructure.Migrations
                         .HasColumnType("bigint");
 
                     b.Property<long>("ProviderOperationCount")
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("PromotedTranslationModelCharactersAvoided")
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("ProviderObservationCharactersAvoided")
                         .HasColumnType("bigint");
 
                     b.Property<long>("QuotaDeniedRequestCount")

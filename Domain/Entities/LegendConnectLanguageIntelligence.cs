@@ -1203,6 +1203,16 @@ public sealed class LegendTranslationSystemUsage
     public long TranslationMemoryCharactersAvoided { get; set; }
     public long StructuralCompositionCharactersAvoided { get; set; }
     public long ContextualCharactersAvoided { get; set; }
+    /// <summary>
+    /// Characters served by the promoted translation capability. Founder-chat
+    /// governed reasoning is a different capability and is never included.
+    /// </summary>
+    public long PromotedTranslationModelCharactersAvoided { get; set; }
+    /// <summary>
+    /// Characters served from exact provider-derived observations. This is
+    /// provider reuse, not native LEGEND translation intelligence.
+    /// </summary>
+    public long ProviderObservationCharactersAvoided { get; set; }
     public long QuotaDeniedRequestCount { get; set; }
     public long ProviderFailureCount { get; set; }
     public long GroupUniqueTargetReuseCount { get; set; }

@@ -42,7 +42,9 @@ internal sealed record TranslationSystemUsageDelta(
     long ProviderFailures = 0,
     long GroupUniqueTargetReuses = 0,
     long SameLanguageBypasses = 0,
-    long StructuralCompositionCharactersAvoided = 0);
+    long StructuralCompositionCharactersAvoided = 0,
+    long PromotedTranslationModelCharactersAvoided = 0,
+    long ProviderObservationCharactersAvoided = 0);
 
 /// <summary>
 /// A retry-safe aggregate signal. It deliberately records pair metadata only;
@@ -320,6 +322,12 @@ internal sealed class TranslationSystemUsageRecorder : ITranslationSystemUsageRe
         var quotaDeniedRequests = Math.Max(0, delta.QuotaDeniedRequests);
         var providerFailures = Math.Max(0, delta.ProviderFailures);
         var groupUniqueTargetReuses = Math.Max(0, delta.GroupUniqueTargetReuses);
+        var promotedTranslationModelCharactersAvoided = Math.Max(
+            0,
+            delta.PromotedTranslationModelCharactersAvoided);
+        var providerObservationCharactersAvoided = Math.Max(
+            0,
+            delta.ProviderObservationCharactersAvoided);
         return _db.Set<LegendTranslationSystemUsage>()
             .Where(item => item.UsageDate == usageDate)
             .ExecuteUpdateAsync(setters => setters
@@ -333,6 +341,8 @@ internal sealed class TranslationSystemUsageRecorder : ITranslationSystemUsageRe
                 .SetProperty(item => item.QuotaDeniedRequestCount, item => item.QuotaDeniedRequestCount + quotaDeniedRequests)
                 .SetProperty(item => item.ProviderFailureCount, item => item.ProviderFailureCount + providerFailures)
                 .SetProperty(item => item.GroupUniqueTargetReuseCount, item => item.GroupUniqueTargetReuseCount + groupUniqueTargetReuses)
+                .SetProperty(item => item.PromotedTranslationModelCharactersAvoided, item => item.PromotedTranslationModelCharactersAvoided + promotedTranslationModelCharactersAvoided)
+                .SetProperty(item => item.ProviderObservationCharactersAvoided, item => item.ProviderObservationCharactersAvoided + providerObservationCharactersAvoided)
                 .SetProperty(item => item.UpdatedUtc, now), cancellationToken);
     }
 
@@ -348,6 +358,12 @@ internal sealed class TranslationSystemUsageRecorder : ITranslationSystemUsageRe
         usage.QuotaDeniedRequestCount += Math.Max(0, delta.QuotaDeniedRequests);
         usage.ProviderFailureCount += Math.Max(0, delta.ProviderFailures);
         usage.GroupUniqueTargetReuseCount += Math.Max(0, delta.GroupUniqueTargetReuses);
+        usage.PromotedTranslationModelCharactersAvoided += Math.Max(
+            0,
+            delta.PromotedTranslationModelCharactersAvoided);
+        usage.ProviderObservationCharactersAvoided += Math.Max(
+            0,
+            delta.ProviderObservationCharactersAvoided);
     }
 }
 

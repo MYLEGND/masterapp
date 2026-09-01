@@ -50,6 +50,16 @@ public interface ILegendLanguageRegistry
     Task<IReadOnlyList<LegendLanguageDefinitionSnapshot>> ListEnabledTranslationLanguagesAsync(
         CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Reads the existing directional serving eligibility without creating or
+    /// enabling a pair. Production routing must never turn an unsupported pair
+    /// into a supported one as a side effect of receiving a message.
+    /// </summary>
+    Task<LegendLanguagePairSnapshot?> GetEnabledPairAsync(
+        string sourceLanguage,
+        string targetLanguage,
+        CancellationToken cancellationToken = default);
+
     Task<LegendLanguagePairSnapshot?> GetOrCreateEnabledPairAsync(
         string sourceLanguage,
         string targetLanguage,
@@ -330,7 +340,13 @@ public sealed record LegendConnectPairHealthSnapshot(
     int CoverageAdditionsLast30Days = 0,
     long ApprovedBacklog = 0,
     DateTime? LastProviderAcquisitionUtc = null,
-    long StructuralInternalServeCount = 0);
+    long StructuralInternalServeCount = 0,
+    long PromotedTranslationModelServeCount = 0,
+    long PromotedTranslationModelFailureCount = 0,
+    long ProviderObservationReuseCount = 0,
+    long NativeTranslationIntelligenceServeCount = 0,
+    long ReconciledTerminalRouteCount = 0,
+    long RoutingReconciliationGap = 0);
 
 public sealed record LegendConnectAlignmentSnapshot(
     Guid Id,
@@ -591,7 +607,17 @@ public sealed record LegendConnectDashboardSnapshot(
     long ActiveDirectionalAtomicAlignmentCount = 0,
     LegendConnectProviderCapacitySnapshot? ProviderCapacity = null,
     long StructuralCompositionCharactersAvoided = 0,
-    long StructuralInternalServeCount = 0);
+    long StructuralInternalServeCount = 0,
+    long PromotedTranslationModelServeCount = 0,
+    long PromotedTranslationModelFailureCount = 0,
+    long ProviderObservationReuseCount = 0,
+    long NativeTranslationIntelligenceServeCount = 0,
+    long ReconciledTerminalRouteCount = 0,
+    long TranslationRoutingReconciliationGap = 0,
+    long PromotedTranslationModelCharactersAvoided = 0,
+    long ProviderObservationCharactersAvoided = 0,
+    string TranslationServingCapability = "translation",
+    long CrossLanguageTranslationRequestCount = 0);
 
 /// <summary>
 /// One coherent Founder dashboard read. The selected language and pair are

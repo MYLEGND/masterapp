@@ -684,9 +684,30 @@ internal sealed class LegendConnectTranslationRouter : IAccountScopedTranslation
         }
 
         LegendContextualTranslationSuggestion? contextualSuggestion = null;
-        var neuralModelFailed = false;
+        var promotedTranslationModelFailed = false;
         var pairKey = source is null ? null : LegendLanguageIdentity.PairKey(source, target);
-        if (source is not null && _intelligence is not null)
+        LegendLanguagePairSnapshot? enabledPair = null;
+        if (source is not null)
+        {
+            try
+            {
+                enabledPair = await _languages.GetEnabledPairAsync(
+                    source,
+                    target,
+                    cancellationToken);
+            }
+            catch (Exception exception) when (!cancellationToken.IsCancellationRequested)
+            {
+                // Pair eligibility is a fail-closed gate for internal stages,
+                // not permission to strand recipient translation. Preserve the
+                // established provider path and make the internal outage clear.
+                _logger.LogWarning(
+                    exception,
+                    "Legend Connect pair eligibility was unavailable; Azure fallback remains active. Pair={PairKey}",
+                    pairKey);
+            }
+        }
+        if (enabledPair is not null && _intelligence is not null)
         {
             try
             {
@@ -805,14 +826,29 @@ internal sealed class LegendConnectTranslationRouter : IAccountScopedTranslation
                                 cancellationToken: cancellationToken);
                         }
 
+                        if (_systemUsage is not null)
+                        {
+                            await _systemUsage.TryRecordAsync(
+                                new TranslationSystemUsageDelta(
+                                    PromotedTranslationModelCharactersAvoided:
+                                        text?.Length ?? 0),
+                                cancellationToken);
+                        }
+
+                        await RecordAvoidedSafelyAsync(
+                            account,
+                            TranslationAvoidedPath.PromotedTranslationModel,
+                            text?.Length ?? 0,
+                            cancellationToken);
+
                         return new TranslationProviderResult(
                             true,
                             neural.Text,
                             source,
-                            "LegendConnectNeuralModel");
+                            "LegendConnectPromotedTranslationModel");
                     }
 
-                    neuralModelFailed =
+                    promotedTranslationModelFailed =
                         !string.Equals(
                             neural.ErrorCode,
                             "active_model_unavailable",
@@ -833,15 +869,26 @@ internal sealed class LegendConnectTranslationRouter : IAccountScopedTranslation
                         await _demand.TryRecordAsync(
                             pairKey!,
                             0,
-                            translationMemoryHit: true,
-                            neuralModelFailed: neuralModelFailed,
+                            neuralModelFailed: promotedTranslationModelFailed,
                             providerObservationReused: true,
                             cancellationToken:
                                 cancellationToken);
                     }
 
-                    LegendConnectTelemetry.TranslationMemoryHit(
-                        pairKey!);
+                    if (_systemUsage is not null)
+                    {
+                        await _systemUsage.TryRecordAsync(
+                            new TranslationSystemUsageDelta(
+                                ProviderObservationCharactersAvoided:
+                                    text?.Length ?? 0),
+                            cancellationToken);
+                    }
+
+                    await RecordAvoidedSafelyAsync(
+                        account,
+                        TranslationAvoidedPath.ProviderObservationReuse,
+                        text?.Length ?? 0,
+                        cancellationToken);
 
                     return new TranslationProviderResult(
                         true,
@@ -875,7 +922,7 @@ internal sealed class LegendConnectTranslationRouter : IAccountScopedTranslation
                 text?.Length ?? 0,
                 azureFallback: true,
                 contextualCompositionObserved: contextualSuggestion is not null,
-                neuralModelFailed: neuralModelFailed,
+                neuralModelFailed: promotedTranslationModelFailed,
                 cancellationToken: cancellationToken);
         }
 
