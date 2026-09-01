@@ -160,6 +160,24 @@ public sealed class LegendConnectGovernedInternetResearchTests
             decision.ReasonCode);
     }
 
+    [Theory]
+    [InlineData("Which one did I say was reliable?")]
+    [InlineData("What did I mean in my previous message?")]
+    [InlineData("Did you say the first option or the second option?")]
+    public void Decision_ConversationEvidenceNeverCreatesInternetAuthority(
+        string question)
+    {
+        var decision = Decide(question, Unsupported());
+
+        Assert.False(decision.ResearchRequired);
+        Assert.Equal(
+            LegendConnectResearchNeed.NotResearchable,
+            decision.Need);
+        Assert.Equal(
+            "conversation_context_is_not_external_research",
+            decision.ReasonCode);
+    }
+
     [Fact]
     public void Decision_DoesNotReplaceInternalLegendStateToolsWithInternet()
     {
@@ -374,6 +392,138 @@ public sealed class LegendConnectGovernedInternetResearchTests
                 LegendConnectResearchEvidenceOrigin.UnresolvedEvidence
             },
             Enum.GetValues<LegendConnectResearchEvidenceOrigin>());
+    }
+
+    [Fact]
+    public void TransportLineage_AllowsBoundedFailedPageAttemptsBeforeOneDocument()
+    {
+        var decision = Decide(
+            "Verify the current public evidence.",
+            Unsupported());
+        var baseRequest = Request(
+            decision,
+            new LegendConnectResearchAuthorization(
+                true,
+                LegendConnectResearchContracts.PublicAuthorizationProvenance,
+                null,
+                LegendConnectResearchAccessClass.PublicReadOnly,
+                true,
+                true));
+        var query = Assert.Single(baseRequest.Queries) with
+        {
+            MaximumResults = LegendConnectResearchContracts.MaximumResults
+        };
+        var request = baseRequest with
+        {
+            Queries = [query],
+            MaximumResults = LegendConnectResearchContracts.MaximumResults
+        };
+        const string uri = "https://example.com/evidence";
+        const string excerpt = "The official record supplies bounded public evidence.";
+        var source = new LegendConnectResearchSourceIdentity(
+            "source-1",
+            uri,
+            "Official record",
+            "Example",
+            LegendConnectResearchSourceClass.PrimaryOfficialRecord,
+            DecisionUtc,
+            DecisionUtc,
+            "en",
+            true);
+        var document = new LegendConnectRetrievedDocument(
+            "document-1",
+            source.SourceIdentity,
+            uri,
+            excerpt,
+            LegendLanguageIdentity.TextHash(excerpt),
+            DecisionUtc,
+            true,
+            null,
+            "en",
+            "text/html",
+            0,
+            128,
+            true);
+        var citation = new LegendConnectCitation(
+            "citation-1",
+            source.SourceIdentity,
+            document.DocumentIdentity,
+            source.Title,
+            uri,
+            DecisionUtc,
+            "en",
+            true);
+        var pageReceipts = Enumerable.Range(1, 7)
+            .Select(index => new LegendConnectResearchPageReceipt(
+                "page-receipt-" + index,
+                uri + "?candidate=" + index,
+                uri + "?candidate=" + index,
+                DecisionUtc,
+                DecisionUtc.AddMilliseconds(index),
+                "FixturePageTransport",
+                "PublicInternet",
+                1,
+                0,
+                index == 7 ? 200 : 503,
+                "text/html",
+                index == 7 ? 128 : 0,
+                index,
+                null,
+                "NotMeteredByTransport",
+                index == 7,
+                index == 7 ? null : "internet_research_page_http_failed",
+                true,
+                true))
+            .ToArray();
+        var packet = new LegendConnectResearchEvidencePacket(
+            "FixtureSearch->FixturePages",
+            "FixtureSearchProvider",
+            "fixture-model",
+            "fixture-settings",
+            [query],
+            [new LegendConnectResearchSearchQueryReceipt(
+                "query-receipt-1",
+                query.QueryIdentity,
+                query.Query,
+                "en",
+                DecisionUtc,
+                "FixtureSearch",
+                "FixtureSearchProvider",
+                1,
+                null,
+                "Unavailable",
+                true,
+                true)],
+            pageReceipts,
+            [new LegendConnectSearchResult(
+                "result-1",
+                query.QueryIdentity,
+                1,
+                source.SourceIdentity,
+                source.Title,
+                uri,
+                null,
+                "en",
+                "en",
+                true)],
+            [source],
+            [document],
+            [],
+            [],
+            [citation],
+            new LegendConnectResearchLanguageLineage(
+                "en", ["en"], ["en"], "en", "en", []),
+            8,
+            null);
+
+        Assert.True(
+            LegendConnectOperations.HasCompleteResearchTransportLineage(
+                request,
+                packet));
+        Assert.Null(
+            LegendConnectOperations.ResearchTransportLineageFailure(
+                request,
+                packet));
     }
 
     [Fact]

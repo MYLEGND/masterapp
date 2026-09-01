@@ -417,22 +417,18 @@ internal sealed class LegendFounderToolAuthority
 
             case "legend_operational_diagnostics":
             {
-                // Preserve the current production readiness projection: the
-                // diagnostic must expose the governing readiness authority,
-                // rather than infer a claim decision from aggregate metrics.
-                var state = await _legend.GetLanguageStateAsync(
-                    founder,
-                    "en",
-                    null,
-                    cancellationToken);
-                var capacity = await _legend.GetProviderCapacityAsync(
+                // Preserve the governing readiness and capacity authorities
+                // without rebuilding the unrelated all-language dashboard.
+                // The previous broad projection routinely exhausted the
+                // bounded read-only tool window in production.
+                var diagnostics = await _legend.GetOperationalDiagnosticsAsync(
                     founder,
                     cancellationToken);
                 return SerializeUnbounded(new
                 {
-                    state.RuntimePolicy,
-                    state.ProductionReadiness,
-                    ProviderCapacity = capacity,
+                    diagnostics.RuntimePolicy,
+                    diagnostics.ProductionReadiness,
+                    diagnostics.ProviderCapacity,
                     acquisitionContract = new
                     {
                         queueAuthority = "LegendCorpusCandidate",
@@ -1044,28 +1040,21 @@ internal sealed class LegendFounderToolAuthority
                 if (string.IsNullOrWhiteSpace(language))
                     return """{"error":"language_required"}""";
 
-                var dashboard =
-                    await _legend.GetLanguageStateAsync(
+                var state =
+                    await _legend.GetLanguageDiagnosticAsync(
                         founder,
                         language,
                         pair,
                         cancellationToken);
-
-                var safeProjection = new
+                return SerializeUnbounded(new
                 {
-                    dashboard = dashboard.Dashboard,
-                    selectedLanguage = dashboard.SelectedLanguage,
-                    selectedLanguageKnowledge =
-                        dashboard.SelectedLanguageKnowledge,
-                    selectedPair = dashboard.SelectedPair,
-                    translationQuality =
-                        dashboard.TranslationQuality,
-                    runtimePolicy = dashboard.RuntimePolicy,
-                    productionReadiness =
-                        dashboard.ProductionReadiness
-                };
-
-                return SerializeUnbounded(safeProjection);
+                    selectedLanguage = state.Knowledge?.Health,
+                    selectedLanguageKnowledge = state.Knowledge,
+                    selectedPair = state.Pair,
+                    translationQuality = state.TranslationQuality,
+                    runtimePolicy = state.RuntimePolicy,
+                    productionReadiness = state.ProductionReadiness
+                });
             }
 
             default:

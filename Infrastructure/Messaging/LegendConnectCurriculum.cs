@@ -4130,10 +4130,14 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
             cancellationToken);
 
     /// <summary>
-    /// Resolves only text units containing exact observed lexemes from the
-    /// current request. The lexeme (language, hash) and occurrence
-    /// (lexeme, active-state) indexes are the retrieval authority; downstream
-    /// semantic gates still decide whether any candidate means anything.
+    /// Resolves only active, serveable Founder meaning units containing exact
+    /// observed lexemes from the current request.  The former query bounded
+    /// raw lexical occurrences before proving that a text unit had any active
+    /// meaning evidence.  Dense common words could therefore spend the entire
+    /// budget on unrelated or structurally incomplete rows and prevent the
+    /// governed graph from seeing its real candidates.  Qualification and
+    /// relevance ordering now happen in the same indexed query; downstream
+    /// graph, relation, contradiction and transition gates remain unchanged.
     /// </summary>
     private async Task<IndexedSemanticTextUnitRetrieval>
         LoadIndexedSemanticTextUnitIdsAsync(
@@ -4148,12 +4152,41 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
             from lexeme in _db.Set<LegendLanguageLexeme>().AsNoTracking()
             join occurrence in _db.Set<LegendLanguageLexicalOccurrence>().AsNoTracking()
                 on lexeme.Id equals occurrence.LexemeId
+            join unit in _db.Set<LegendLanguageTextUnit>().AsNoTracking()
+                on occurrence.TextUnitId equals unit.Id
+            join anchor in _db.Set<LegendLanguageCompositionalAnchor>().AsNoTracking()
+                on unit.Id equals anchor.TextUnitId
+            join node in _db.Set<LegendLanguageMeaningNodeEvidence>().AsNoTracking()
+                on anchor.Id equals node.CompositionalAnchorId
+            join primitive in _db.Set<LegendLanguageMeaningPrimitive>().AsNoTracking()
+                on new { node.LanguageCode, node.SemanticSignature }
+                equals new { primitive.LanguageCode, primitive.SemanticSignature }
             where lexeme.LanguageCode == language &&
                 inputLexemeHashes.Contains(lexeme.NormalizedHash) &&
-                occurrence.SupersededUtc == null
-            orderby occurrence.TextUnitId
-            select occurrence.TextUnitId
-        ).Distinct()
+                occurrence.SupersededUtc == null &&
+                unit.LanguageCode == language &&
+                unit.IsTrainingEligible &&
+                unit.Provenance == LegendConnectKnowledgeProvenance.FounderApproved &&
+                anchor.LanguageCode == language &&
+                anchor.SupersededUtc == null &&
+                anchor.Provenance == LegendConnectKnowledgeProvenance.FounderApproved &&
+                anchor.ComponentStartTokenIndex != null &&
+                anchor.ComponentLength > 0 &&
+                node.LanguageCode == language &&
+                node.SupersededUtc == null &&
+                node.Provenance == LegendConnectKnowledgeProvenance.FounderApproved &&
+                primitive.LanguageCode == language &&
+                primitive.SupersededUtc == null &&
+                primitive.Provenance == LegendConnectKnowledgeProvenance.FounderApproved &&
+                primitive.MaturityState != "Contradicted" &&
+                primitive.ContradictionCount == 0 &&
+                primitive.IndependentSourceCount >= 1 &&
+                primitive.HumanVerifiedSupportCount >= 1
+            group lexeme by occurrence.TextUnitId into candidate
+            orderby candidate.Select(item => item.NormalizedHash).Distinct().Count() descending,
+                candidate.Key
+            select candidate.Key
+        )
             .Take(MaximumIndexedSemanticTextUnits + 1)
             .ToArrayAsync(cancellationToken);
 
