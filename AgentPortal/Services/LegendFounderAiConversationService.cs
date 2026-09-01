@@ -40,7 +40,11 @@ public sealed class LegendFounderAiConversationService
     private const int MinimumRetainedKnowledgeLookupSeconds = 4;
     private const int MaximumRetainedKnowledgeLookupSeconds = 12;
     private const int MinimumReadOnlyToolSeconds = 12;
-    private const int MaximumReadOnlyToolSeconds = 45;
+    // Read-only research, repository inspection and bounded operational
+    // projections may legitimately cross one provider-round window.  Keep a
+    // hard request-scoped ceiling while leaving the configured 900-second
+    // conversation budget enough time for final synthesis.
+    private const int MaximumReadOnlyToolSeconds = 90;
     private const int MinimumToolOutputCharacters = 40_000;
     private const int MaximumToolOutputCharacters = 160_000;
     private const int MinimumRetainedContextCharacters = 32_000;

@@ -544,6 +544,19 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
                 "existing_governed_knowledge_answers_request");
         }
 
+        // Questions whose evidence is the current conversation cannot gain
+        // authority from the public internet.  When native discourse binding
+        // is incomplete, leave the request to the normal conversational
+        // provider path with its transcript rather than launching irrelevant
+        // web research.
+        if (IsConversationInternalQuestion(normalized))
+        {
+            return Decision(
+                false,
+                LegendConnectResearchNeed.NotResearchable,
+                "conversation_context_is_not_external_research");
+        }
+
         if (internalInference is { RequiresEscalation: true } &&
             IsExternalFactualQuestion(normalized))
         {
@@ -584,6 +597,8 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
             IReadOnlyList<LegendConnectSearchResult>? searchResults = null,
             IReadOnlyList<LegendConnectResearchSourceIdentity>? sources = null,
             IReadOnlyList<LegendConnectRetrievedDocument>? documents = null,
+            IReadOnlyList<LegendConnectClaimEvidence>? claimEvidence = null,
+            IReadOnlyList<LegendConnectContradictingEvidence>? contradictingEvidence = null,
             IReadOnlyList<LegendConnectCitation>? citations = null,
             long searchLatency = 0,
             long retrievalLatency = 0,
@@ -601,8 +616,8 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
                 searchResults ?? [],
                 sources ?? [],
                 documents ?? [],
-                [],
-                [],
+                claimEvidence ?? [],
+                contradictingEvidence ?? [],
                 citations ?? [],
                 latency,
                 cost,
@@ -854,11 +869,13 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
             searchResult,
             pageResult,
             (long)Math.Ceiling((DateTime.UtcNow - startedUtc).TotalMilliseconds));
-        if (!HasCompleteResearchTransportLineage(request, evidencePacket))
+        var transportLineageFailure =
+            ResearchTransportLineageFailure(request, evidencePacket);
+        if (transportLineageFailure is not null)
         {
             return Failure(
-                "internet_research_provenance_incomplete",
-                "LEGEND rejected the external research packet because its search, page, source, document, language, claim, or citation lineage was incomplete.",
+                transportLineageFailure,
+                "LEGEND rejected the external research packet at the exact incomplete lineage boundary named by the failure code.",
                 transport: evidencePacket.Transport,
                 model: evidencePacket.ModelVersion,
                 settings: evidencePacket.SettingsIdentity,
@@ -867,7 +884,17 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
                 searchQueryReceipts: evidencePacket.SearchQueryReceipts,
                 pageReceipts: evidencePacket.PageReceipts,
                 languageLineage: evidencePacket.LanguageLineage,
-                searchProvider: evidencePacket.SearchProvider);
+                searchProvider: evidencePacket.SearchProvider,
+                executedQueries: evidencePacket.ExecutedQueries,
+                searchResults: evidencePacket.SearchResults,
+                sources: evidencePacket.Sources,
+                documents: evidencePacket.Documents,
+                claimEvidence: evidencePacket.ClaimEvidence,
+                contradictingEvidence: evidencePacket.ContradictingEvidence,
+                citations: evidencePacket.Citations,
+                searchLatency: searchResult.LatencyMilliseconds,
+                retrievalLatency: pageResult.LatencyMilliseconds,
+                searchCost: searchResult.CostMicrounits);
         }
 
         var reasoningStartedUtc = DateTime.UtcNow;
@@ -1694,6 +1721,15 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
         }.Any(prefix => normalized.StartsWith(prefix, StringComparison.Ordinal));
     }
 
+    private static bool IsConversationInternalQuestion(string normalized) =>
+        ContainsResearchSignal(
+            normalized,
+            "did i say", "did i mean", "i said", "i meant",
+            "you said", "you meant", "we said", "we discussed",
+            "earlier in this conversation", "previous message",
+            "previous answer", "above", "first option", "second option",
+            "that answer", "those two");
+
     private static string? TryIdentifyNamedExternalSource(string question)
     {
         var normalized = question.ToLowerInvariant();
@@ -2031,6 +2067,11 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
 
     internal static bool HasCompleteResearchTransportLineage(
         LegendConnectResearchRequest request,
+        LegendConnectResearchEvidencePacket result) =>
+        ResearchTransportLineageFailure(request, result) is null;
+
+    internal static string? ResearchTransportLineageFailure(
+        LegendConnectResearchRequest request,
         LegendConnectResearchEvidencePacket result)
     {
         if (string.IsNullOrWhiteSpace(result.Transport) ||
@@ -2039,7 +2080,14 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
             result.LatencyMilliseconds < 0 ||
             result.ExecutedQueries.Count is < 1 or > LegendConnectResearchContracts.MaximumQueries ||
             result.SearchQueryReceipts.Count != result.ExecutedQueries.Count ||
-            result.PageReceipts.Count is < 1 or > LegendConnectResearchContracts.MaximumDocuments ||
+            // Receipts include failed/blocked candidate attempts as well as
+            // successful documents.  The canonical retriever may examine up
+            // to MaximumResults candidates while still returning no more than
+            // MaximumDocuments documents.  Capping receipts at the document
+            // limit rejected complete fail-closed lineage after ordinary page
+            // failures.
+            result.PageReceipts.Count < 1 ||
+            result.PageReceipts.Count > request.MaximumResults ||
             result.SearchResults.Count > request.MaximumResults ||
             result.Sources.Count > request.MaximumResults ||
             result.Documents.Count > request.MaximumDocuments ||
@@ -2047,7 +2095,7 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
             result.ContradictingEvidence.Count > request.MaximumClaims ||
             result.Citations.Count > request.MaximumClaims)
         {
-            return false;
+            return "internet_research_provenance_packet_bounds_incomplete";
         }
 
         var queryIds = result.ExecutedQueries
@@ -2062,7 +2110,7 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
                     request.Decision.SourceLanguageCode,
                     StringComparison.OrdinalIgnoreCase)))
         {
-            return false;
+            return "internet_research_provenance_query_lineage_incomplete";
         }
         var sourceIds = result.Sources
             .Select(item => item.SourceIdentity)
@@ -2074,7 +2122,7 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
                 LegendConnectResearchNetworkPolicy.NormalizePublicHttpUri(item.CanonicalUri) is null ||
                 !item.IsUntrustedExternalData))
         {
-            return false;
+            return "internet_research_provenance_source_lineage_incomplete";
         }
         var sourceSet = sourceIds.ToHashSet(StringComparer.Ordinal);
 
@@ -2086,7 +2134,7 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
                 item.Rank < 1 ||
                 !item.IsUntrustedExternalData))
         {
-            return false;
+            return "internet_research_provenance_search_result_lineage_incomplete";
         }
 
         var documentIds = result.Documents
@@ -2107,7 +2155,7 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
                     LegendLanguageIdentity.TextHash(item.ContentExcerpt),
                     StringComparison.Ordinal)))
         {
-            return false;
+            return "internet_research_provenance_document_lineage_incomplete";
         }
         var documentSet = documentIds.ToHashSet(StringComparer.Ordinal);
 
@@ -2119,7 +2167,7 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
                 !sourceSet.Contains(item.SourceIdentity) ||
                 !documentSet.Contains(item.DocumentIdentity)))
         {
-            return false;
+            return "internet_research_provenance_citation_lineage_incomplete";
         }
         var citationSet = citationIds.ToHashSet(StringComparer.Ordinal);
 
@@ -2163,10 +2211,10 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
             result.LanguageLineage.QueryLanguageCodes.Any(item =>
                 !string.Equals(item, request.Decision.SourceLanguageCode, StringComparison.OrdinalIgnoreCase)))
         {
-            return false;
+            return "internet_research_provenance_receipt_or_language_lineage_incomplete";
         }
 
-        return result.ClaimEvidence
+        var claimLineageComplete = result.ClaimEvidence
                    .Cast<object>()
                    .Concat(result.ContradictingEvidence)
                    .All(item => item switch
@@ -2227,6 +2275,9 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
                            citationSet.Contains(contradiction.CitationIdentity),
                        _ => false
                    });
+        return claimLineageComplete
+            ? null
+            : "internet_research_provenance_claim_lineage_incomplete";
     }
 
     private LegendConnectResearchProvenance BuildResearchProvenance(

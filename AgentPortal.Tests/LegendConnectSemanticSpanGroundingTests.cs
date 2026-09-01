@@ -1336,6 +1336,59 @@ public sealed class LegendConnectSemanticSpanGroundingTests
     }
 
     [Fact]
+    public async Task HeldOutComposition_IgnoresDenseLexicalRowsWithoutServeableMeaningEvidence()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var fixture = CreateFixture(db);
+        for (var family = 1; family <= 3; family++)
+        {
+            Assert.True((await fixture.Curriculum.SubmitFounderEnglishBatchAsync(
+                CompetingHypothesesTestDesignFamily(family))).Succeeded);
+        }
+
+        var keepLexeme = await db.LegendLanguageLexemes.SingleAsync(item =>
+            item.LanguageCode == "en" &&
+            item.NormalizedHash == LegendLanguageIdentity.TextHash("keep"));
+        var fillerUnits = Enumerable.Range(0, 512)
+            .Select(index => new LegendLanguageTextUnit
+            {
+                LanguageCode = "en",
+                StoragePartition = "test-unqualified-lexical-density",
+                NormalizedHash = LegendLanguageIdentity.TextHash(
+                    $"keep unrelated lexical observation {index}"),
+                Text = $"keep unrelated lexical observation {index}",
+                Provenance = LegendConnectKnowledgeProvenance.FounderApproved,
+                IsTrainingEligible = true
+            })
+            .ToArray();
+        db.LegendLanguageTextUnits.AddRange(fillerUnits);
+        db.LegendLanguageLexicalOccurrences.AddRange(fillerUnits.Select(unit =>
+            new LegendLanguageLexicalOccurrence
+            {
+                TextUnitId = unit.Id,
+                LexemeId = keepLexeme.Id,
+                TokenIndex = 0,
+                CharacterOffset = 0,
+                CharacterLength = "keep".Length
+            }));
+        await db.SaveChangesAsync();
+
+        var graph = await fixture.Operations.AnalyzeReusableMeaningGraphAsync(
+            "Keep both hypotheses; plan an experiment.");
+        Assert.True(graph.IsComposed, graph.ReasonCode);
+        Assert.Equal(2, graph.Nodes.Count);
+        Assert.Single(graph.Relations);
+
+        var inferred = await fixture.Operations.TryInferConversationWithDiscourseAsync(
+            "Keep both hypotheses; plan an experiment.",
+            [],
+            new LegendConnectDiscourseStateSnapshot([]));
+        Assert.True(inferred.Supported, inferred.ReasonCode);
+        Assert.False(inferred.RequiresEscalation);
+        Assert.Equal("HigherStandard", inferred.EvidenceStandard);
+    }
+
+    [Fact]
     public async Task ControlledSurfaceVariations_DoNotUseSubstringOrNearNeighborMatching()
     {
         await using var db = ControllerTestHelpers.BuildDb();

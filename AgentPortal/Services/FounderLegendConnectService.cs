@@ -490,6 +490,74 @@ public sealed class FounderLegendConnectService
     }
 
     /// <summary>
+    /// Supplies the Founder tool's operational diagnostic from the exact
+    /// runtime-policy, readiness and provider-capacity authorities.  It avoids
+    /// rebuilding the complete dashboard, language corpus and translation
+    /// quality projection merely to answer a readiness question.
+    /// </summary>
+    internal async Task<FounderLegendOperationalDiagnosticsSnapshot>
+        GetOperationalDiagnosticsAsync(
+            ClaimsPrincipal user,
+            CancellationToken cancellationToken = default)
+    {
+        _ = await ResolveFounderActorAsync(user, cancellationToken);
+        var runtimePolicy = _runtimePolicy is null
+            ? new LegendConnectRuntimePolicySnapshot(
+                false, 0, 0, 0, false, true, "Shadow", 0.98m,
+                null, null, DateTime.MinValue)
+            : await _runtimePolicy.GetEffectiveAsync(cancellationToken);
+        var readiness = _runtimePolicy is null
+            ? new LegendConnectProductionReadinessSnapshot(
+                "BLOCKED",
+                false,
+                "Legend Connect runtime policy authority is unavailable.",
+                [], 0, 0, 0, 0, 0)
+            : await _runtimePolicy.GetReadinessAsync(cancellationToken);
+        var capacity = await _operations.GetProviderCapacityAsync(cancellationToken);
+        return new(runtimePolicy, readiness, capacity);
+    }
+
+    /// <summary>
+    /// Returns the bounded language-specific projection used by the Founder
+    /// tool without materializing the unrelated all-language dashboard.
+    /// </summary>
+    internal async Task<FounderLegendLanguageDiagnosticSnapshot>
+        GetLanguageDiagnosticAsync(
+            ClaimsPrincipal user,
+            string language,
+            string? pair,
+            CancellationToken cancellationToken = default)
+    {
+        _ = await ResolveFounderActorAsync(user, cancellationToken);
+        var knowledge = await _operations.GetLanguageKnowledgeAsync(
+            language,
+            cancellationToken);
+        var pairHealth = string.IsNullOrWhiteSpace(pair)
+            ? null
+            : await _operations.GetPairHealthAsync(pair, cancellationToken);
+        var translationQuality = await _operations.GetTranslationQualityAsync(
+            cancellationToken);
+        var runtimePolicy = _runtimePolicy is null
+            ? new LegendConnectRuntimePolicySnapshot(
+                false, 0, 0, 0, false, true, "Shadow", 0.98m,
+                null, null, DateTime.MinValue)
+            : await _runtimePolicy.GetEffectiveAsync(cancellationToken);
+        var readiness = _runtimePolicy is null
+            ? new LegendConnectProductionReadinessSnapshot(
+                "BLOCKED",
+                false,
+                "Legend Connect runtime policy authority is unavailable.",
+                [], 0, 0, 0, 0, 0)
+            : await _runtimePolicy.GetReadinessAsync(cancellationToken);
+        return new(
+            knowledge,
+            pairHealth,
+            translationQuality,
+            runtimePolicy,
+            readiness);
+    }
+
+    /// <summary>
     /// Founder-gated read-through to the existing Legend Connect operational
     /// authorities for the record-level evidence behind a dashboard metric.
     /// </summary>
@@ -1648,3 +1716,15 @@ public sealed class FounderLegendConnectService
         return agentUserId.ToLowerInvariant();
     }
 }
+
+internal sealed record FounderLegendOperationalDiagnosticsSnapshot(
+    LegendConnectRuntimePolicySnapshot RuntimePolicy,
+    LegendConnectProductionReadinessSnapshot ProductionReadiness,
+    LegendConnectProviderCapacitySnapshot ProviderCapacity);
+
+internal sealed record FounderLegendLanguageDiagnosticSnapshot(
+    LegendConnectLanguageKnowledgeSnapshot? Knowledge,
+    LegendConnectPairHealthSnapshot? Pair,
+    LegendConnectTranslationQualitySnapshot TranslationQuality,
+    LegendConnectRuntimePolicySnapshot RuntimePolicy,
+    LegendConnectProductionReadinessSnapshot ProductionReadiness);
