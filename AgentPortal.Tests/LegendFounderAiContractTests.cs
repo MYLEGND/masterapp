@@ -1263,6 +1263,42 @@ public sealed class LegendFounderAiContractTests
     }
 
     [Fact]
+    public void ProductionDeploymentWorkflow_PreservesFailedMatrixEvidenceBeforeFailingGate()
+    {
+        var workflow = File.ReadAllText(
+            Path.Combine(AppContext.BaseDirectory, "agentportal-production-deploy.yml"));
+
+        var verifyStart = workflow.IndexOf("      - name: Verify bounded production Founder native proof matrix", StringComparison.Ordinal);
+        var finalizeStart = workflow.IndexOf("      - name: Finalize exact production proof manifest", StringComparison.Ordinal);
+        var uploadStart = workflow.IndexOf("      - name: Upload exact Founder production proof artifact", StringComparison.Ordinal);
+        Assert.True(verifyStart >= 0);
+        Assert.True(finalizeStart > verifyStart);
+        Assert.True(uploadStart > finalizeStart);
+
+        var verify = workflow[verifyStart..finalizeStart];
+        var capture = verify.IndexOf("$matrixCases = [int]$matrixResult.ExecutedCases", StringComparison.Ordinal);
+        var publish = verify.IndexOf("\"matrix_cases=$matrixCases\"", StringComparison.Ordinal);
+        var fail = verify.IndexOf("if ($validationErrors.Count -gt 0) { throw", StringComparison.Ordinal);
+        Assert.True(capture >= 0);
+        Assert.True(publish > capture);
+        Assert.True(fail > publish);
+        Assert.Contains("matrix_total_cases=$matrixTotalCases", verify, StringComparison.Ordinal);
+        Assert.Contains("matrix_failed_cases=$matrixFailedCases", verify, StringComparison.Ordinal);
+        Assert.Contains("matrix_result_state=$matrixResultState", verify, StringComparison.Ordinal);
+        Assert.Contains("provider_client_count=$providerClientCount", verify, StringComparison.Ordinal);
+        Assert.Contains("production_write_command_count=$productionWriteCommandCount", verify, StringComparison.Ordinal);
+
+        var finalize = workflow[finalizeStart..uploadStart];
+        Assert.Contains("$matrixResultState = 'missing'", finalize, StringComparison.Ordinal);
+        Assert.Contains("$matrixResultState = 'malformed'", finalize, StringComparison.Ordinal);
+        Assert.Contains("Get-Content $matrixResultPath -Raw | ConvertFrom-Json", finalize, StringComparison.Ordinal);
+        Assert.Contains("Get-FileHash -Path $matrixResultPath -Algorithm SHA256", finalize, StringComparison.Ordinal);
+        Assert.Contains("MatrixResult = $matrixResult", finalize, StringComparison.Ordinal);
+        Assert.Contains("ConvertTo-Json -Depth 12", finalize, StringComparison.Ordinal);
+        Assert.DoesNotContain("MatrixCases = '${{ steps.native.outputs.matrix_cases }}'", finalize, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void UnifiedProductionMigrationGate_ValidatesBuiltArtifactsWithoutRebuildingOrRetesting()
     {
         var script = File.ReadAllText(
@@ -1340,6 +1376,33 @@ public sealed class LegendFounderAiContractTests
         Assert.DoesNotContain("git push", workflow, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("git commit", workflow, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("contents: write", workflow, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void ProductionReadOnlyDiagnosticWorkflow_PublishesFailedMatrixEvidenceWithoutFalseZero()
+    {
+        var workflow = File.ReadAllText(
+            Path.Combine(AppContext.BaseDirectory, "legend-production-readonly-diagnostic.yml"));
+
+        var diagnosticStart = workflow.IndexOf("      - name: Run canonical production read-only diagnostics", StringComparison.Ordinal);
+        var transcriptStart = workflow.IndexOf("      - name: Assemble sanitized diagnostic transcript", StringComparison.Ordinal);
+        Assert.True(diagnosticStart >= 0);
+        Assert.True(transcriptStart > diagnosticStart);
+        var diagnostic = workflow[diagnosticStart..transcriptStart];
+
+        var capture = diagnostic.IndexOf("$matrixCases = [int]$matrixResult.ExecutedCases", StringComparison.Ordinal);
+        var publish = diagnostic.IndexOf("\"matrix_cases=$matrixCases\"", StringComparison.Ordinal);
+        Assert.True(capture >= 0);
+        Assert.True(publish > capture);
+        Assert.Contains("$matrixCases = $null", diagnostic, StringComparison.Ordinal);
+        Assert.DoesNotContain("$matrixCases = 0", diagnostic, StringComparison.Ordinal);
+        Assert.Contains("$matrixResultState = 'missing'", diagnostic, StringComparison.Ordinal);
+        Assert.Contains("$matrixResultState = 'malformed'", diagnostic, StringComparison.Ordinal);
+        Assert.Contains("matrix_total_cases=$matrixTotalCases", diagnostic, StringComparison.Ordinal);
+        Assert.Contains("matrix_failed_cases=$matrixFailedCases", diagnostic, StringComparison.Ordinal);
+        Assert.Contains("matrix_result_state=$matrixResultState", diagnostic, StringComparison.Ordinal);
+        Assert.Contains("provider_client_count=$providerClientCount", diagnostic, StringComparison.Ordinal);
+        Assert.Contains("production_write_command_count=$productionWriteCommandCount", diagnostic, StringComparison.Ordinal);
     }
 
     [Fact]

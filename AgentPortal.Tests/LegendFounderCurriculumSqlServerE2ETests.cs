@@ -660,6 +660,61 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
     }
 
     [Fact]
+    public void ProductionMeaningFixtureContract_ClassifiesPrimitiveAndRelationPrerequisites()
+    {
+        var first = new LegendConnectUtteranceMeaningNode(
+            "sig-a", "diagnostic_subject", "handoff", 0, 1, 3);
+        var second = new LegendConnectUtteranceMeaningNode(
+            "sig-b", "diagnostic_family", "failure", 1, 1, 3);
+
+        var primitiveFailure = ProductionMeaningFixtureFailure(
+            "handoff failure",
+            new LegendConnectUtteranceMeaningGraphSnapshot(
+                false,
+                [first],
+                [],
+                ["failure"],
+                "meaning_graph_component_unknown"),
+            requireMultipleNodes: true);
+        Assert.Contains("meaning primitives", primitiveFailure);
+        Assert.Contains("failure", primitiveFailure);
+
+        var retrievalFailure = ProductionMeaningFixtureFailure(
+            "handoff failure",
+            new LegendConnectUtteranceMeaningGraphSnapshot(
+                false,
+                [],
+                [],
+                ["handoff", "failure"],
+                "meaning_graph_retrieval_bound_exceeded"),
+            requireMultipleNodes: true);
+        Assert.Null(retrievalFailure);
+
+        var relationFailure = ProductionMeaningFixtureFailure(
+            "handoff failure",
+            new LegendConnectUtteranceMeaningGraphSnapshot(
+                false,
+                [first, second],
+                [],
+                [],
+                "meaning_graph_relation_unproven"),
+            requireMultipleNodes: true);
+        Assert.Contains("no active Founder-governed relation", relationFailure);
+
+        var supported = ProductionMeaningFixtureFailure(
+            "handoff failure",
+            new LegendConnectUtteranceMeaningGraphSnapshot(
+                true,
+                [first, second],
+                [new LegendConnectUtteranceMeaningRelation(
+                    "relation", "qualified-by", 0, 1, 3)],
+                [],
+                "meaning_graph_observational_composed"),
+            requireMultipleNodes: true);
+        Assert.Null(supported);
+    }
+
+    [Fact]
     public async Task ProductionReadOnlyNativeProofMatrix()
     {
         const string matrixVersion = "lai-027-029-v1";
@@ -746,12 +801,32 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
             var profiles = new AgentProfileAccessResolver(db);
             var founderLegend = new FounderLegendConnectService(operations, profiles);
             var factory = new CountingHttpClientFactory();
+            // Production remains strictly read-only. Conversation-scoped
+            // discourse state is exercised through its canonical persistence
+            // authority in an isolated test store while every meaning graph,
+            // reference rule, and response decision still comes from the
+            // production read-only authorities above.
+            await using var discourseDb = ControllerTestHelpers.BuildDb();
+            discourseDb.AgentProfiles.Add(new AgentProfile
+            {
+                Id = Guid.NewGuid(),
+                AgentUserId = founderId,
+                AgentUpn = "legend-production-proof-discourse@legend.local",
+                NormalizedEmail = "legend-production-proof-discourse@legend.local",
+                IsActive = true
+            });
+            await discourseDb.SaveChangesAsync();
+            var discourseProfiles = new AgentProfileAccessResolver(discourseDb);
+            var discourse = new LegendFounderAiDiscourseStateService(
+                discourseDb,
+                discourseProfiles,
+                operations);
             var chat = new LegendFounderAiConversationService(
                 factory,
                 configuration,
                 founderLegend,
                 NullLogger<LegendFounderAiConversationService>.Instance,
-                new LegendFounderAiDiscourseStateService(db, profiles, operations),
+                discourse,
                 registry,
                 ControllerTestHelpers.BuildTranslationService());
 
@@ -844,6 +919,59 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
                     "The production matrix has no active Founder-governed audience-constrained response source."));
             }
 
+            var heldOutCases = new[]
+            {
+                ProductionNativeProofCase.Positive(
+                    "held-out-competing-hypotheses",
+                    "held_out_paraphrase",
+                    "Keep both hypotheses; plan an experiment.",
+                    mustBeHeldOut: true),
+                ProductionNativeProofCase.Positive(
+                    "held-out-discriminating-check",
+                    "held_out_paraphrase",
+                    "Retain the competing explanations; devise a discriminating check.",
+                    mustBeHeldOut: true)
+            };
+            var crossFamilyCases = new[]
+            {
+                ProductionNativeProofCase.Negative(
+                    "cross-family-handoff-inventory",
+                    "cross_family_negative",
+                    "handoff failure"),
+                ProductionNativeProofCase.Negative(
+                    "cross-family-capacity-scheduling",
+                    "cross_family_negative",
+                    "capacity shortage")
+            };
+            var discourseCase = new ProductionNativeProofCase(
+                "discourse-first-option",
+                "discourse",
+                "en",
+                "en",
+                [
+                    new LegendFounderAiChatMessage("user", "The alpha choice feels affordable to me."),
+                    new LegendFounderAiChatMessage("assistant", "I understand."),
+                    new LegendFounderAiChatMessage("user", "The beta choice seems reliable to me."),
+                    new LegendFounderAiChatMessage("assistant", "I understand."),
+                    new LegendFounderAiChatMessage("user", "No, I meant the first option.")
+                ],
+                true);
+
+            async Task<string?> MeaningFixtureFailureAsync(
+                ProductionNativeProofCase proofCase,
+                bool requireMultipleNodes)
+            {
+                var prompt = proofCase.Messages[^1].Content!;
+                var graph = await founderLegend.AnalyzeReusableMeaningGraphAsync(
+                    founder,
+                    prompt,
+                    proofCase.NativeSourceLanguageCode);
+                return ProductionMeaningFixtureFailure(
+                    prompt,
+                    graph,
+                    requireMultipleNodes);
+            }
+
             var matrix = new List<ProductionNativeProofCase>
             {
                 ProductionNativeProofCase.Positive(
@@ -857,37 +985,6 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
                     "Hi Legend.",
                     expectedEvidenceStandard: "HigherStandard"),
                 ProductionNativeProofCase.Positive(
-                    "held-out-competing-hypotheses",
-                    "held_out_paraphrase",
-                    "Keep both hypotheses; plan an experiment.",
-                    mustBeHeldOut: true),
-                ProductionNativeProofCase.Positive(
-                    "held-out-discriminating-check",
-                    "held_out_paraphrase",
-                    "Retain the competing explanations; devise a discriminating check.",
-                    mustBeHeldOut: true),
-                new(
-                    "discourse-first-option",
-                    "discourse",
-                    "en",
-                    "en",
-                    [
-                        new LegendFounderAiChatMessage("user", "The alpha choice feels affordable to me."),
-                        new LegendFounderAiChatMessage("assistant", "I understand."),
-                        new LegendFounderAiChatMessage("user", "The beta choice seems reliable to me."),
-                        new LegendFounderAiChatMessage("assistant", "I understand."),
-                        new LegendFounderAiChatMessage("user", "No, I meant the first option.")
-                    ],
-                    true),
-                ProductionNativeProofCase.Negative(
-                    "cross-family-handoff-inventory",
-                    "cross_family_negative",
-                    "handoff failure"),
-                ProductionNativeProofCase.Negative(
-                    "cross-family-capacity-scheduling",
-                    "cross_family_negative",
-                    "capacity shortage"),
-                ProductionNativeProofCase.Positive(
                     "declared-language-normalization",
                     "language_routing",
                     "Hello.",
@@ -899,6 +996,95 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
                     "native_only_isolation",
                     "Uncatalogued zephyr request.")
             };
+            foreach (var heldOutCase in heldOutCases)
+            {
+                var failure = await MeaningFixtureFailureAsync(
+                    heldOutCase,
+                    requireMultipleNodes: false);
+                if (failure is null)
+                    matrix.Add(heldOutCase);
+                else
+                    fixtureFailures.Add(ProductionNativeProofResult.FailedFixture(
+                        "fixture-" + heldOutCase.Reference,
+                        heldOutCase.Category,
+                        failure));
+            }
+            foreach (var crossFamilyCase in crossFamilyCases)
+            {
+                var failure = await MeaningFixtureFailureAsync(
+                    crossFamilyCase,
+                    requireMultipleNodes: true);
+                if (failure is null)
+                    matrix.Add(crossFamilyCase);
+                else
+                    fixtureFailures.Add(ProductionNativeProofResult.FailedFixture(
+                        "fixture-" + crossFamilyCase.Reference,
+                        crossFamilyCase.Category,
+                        failure));
+            }
+
+            var discourseFailure = await MeaningFixtureFailureAsync(
+                discourseCase,
+                requireMultipleNodes: false);
+            if (discourseFailure is null)
+            {
+                var selectorGraph = await founderLegend.AnalyzeReusableMeaningGraphAsync(
+                    founder,
+                    discourseCase.Messages[^1].Content!,
+                    discourseCase.NativeSourceLanguageCode);
+                var rules = await operations.GetProductionDiscourseReferenceRulesAsync(
+                    discourseCase.NativeSourceLanguageCode,
+                    selectorGraph.Nodes.Select(item => item.SemanticSignature)
+                        .Distinct(StringComparer.Ordinal)
+                        .ToArray());
+                if (rules.Count != 1)
+                {
+                    discourseFailure = rules.Count == 0
+                        ? "The production fixture has no active production-eligible discourse-reference rule for the governed selector."
+                        : "The production fixture has ambiguous production-eligible discourse-reference rules for the governed selector.";
+                }
+                else
+                {
+                    var preflightConversationId = Guid.NewGuid();
+                    foreach (var message in discourseCase.Messages)
+                    {
+                        var graph = await founderLegend.AnalyzeReusableMeaningGraphAsync(
+                            founder,
+                            message.Content ?? string.Empty,
+                            discourseCase.NativeSourceLanguageCode);
+                        await discourse.RecordObservationAsync(
+                            founder,
+                            preflightConversationId.ToString(),
+                            message.Role ?? string.Empty,
+                            graph,
+                            sourceLanguageCode: discourseCase.NativeSourceLanguageCode);
+                    }
+                    var preflightState = await discourse.GetStateAsync(
+                        founder,
+                        preflightConversationId.ToString());
+                    var selectorBindings = preflightState?.Turns.LastOrDefault()?.Bindings ?? [];
+                    if (!selectorBindings.Any(item => item.ResolutionState == "bound"))
+                    {
+                        var reasons = selectorBindings.Count == 0
+                            ? "no governed binding was produced"
+                            : string.Join(",", selectorBindings.Select(item => item.ReasonCode)
+                                .Distinct(StringComparer.Ordinal));
+                        discourseFailure =
+                            $"The production fixture has the discourse selector rule but the canonical discourse-state authority could not bind its prior entity prerequisites: {reasons}.";
+                    }
+                }
+            }
+            if (discourseFailure is null)
+            {
+                matrix.Add(discourseCase);
+            }
+            else
+            {
+                fixtureFailures.Add(ProductionNativeProofResult.FailedFixture(
+                    "fixture-" + discourseCase.Reference,
+                    discourseCase.Category,
+                    discourseFailure));
+            }
             if (deductionSource is not null)
             {
                 matrix.Add(ProductionNativeProofCase.Positive(
@@ -990,6 +1176,26 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
             var executed = 0;
             var nativePasses = 0;
             var negativePasses = 0;
+            async Task RecordDiscourseMessagesAsync(
+                Guid conversationId,
+                IReadOnlyList<LegendFounderAiChatMessage> messages,
+                string sourceLanguageCode)
+            {
+                foreach (var message in messages)
+                {
+                    var graph = await founderLegend.AnalyzeReusableMeaningGraphAsync(
+                        founder,
+                        message.Content ?? string.Empty,
+                        sourceLanguageCode);
+                    await discourse.RecordObservationAsync(
+                        founder,
+                        conversationId.ToString(),
+                        message.Role ?? string.Empty,
+                        graph,
+                        sourceLanguageCode: sourceLanguageCode);
+                }
+            }
+
             foreach (var proofCase in matrix)
             {
                 var caseStarted = Stopwatch.GetTimestamp();
@@ -1034,6 +1240,8 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
                         message.Role ?? string.Empty,
                         message.Content ?? string.Empty))
                     .ToArray();
+                LegendConnectDiscourseStateSnapshot? discourseState = null;
+                string? replyConversationId = null;
                 if (proofCase.Category == "cross_family_negative")
                 {
                     var graph = await founderLegend.AnalyzeReusableMeaningGraphAsync(
@@ -1057,6 +1265,28 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
                     Assert.False(
                         withoutContext.Supported,
                         "The discourse case must require its bounded prior-turn context.");
+
+                    var directConversationId = Guid.NewGuid();
+                    await RecordDiscourseMessagesAsync(
+                        directConversationId,
+                        proofCase.Messages,
+                        proofCase.NativeSourceLanguageCode);
+                    discourseState = await discourse.GetStateAsync(
+                        founder,
+                        directConversationId.ToString());
+                    Assert.NotNull(discourseState);
+                    Assert.Contains(
+                        discourseState!.Turns.SelectMany(item => item.Bindings),
+                        item => item.ResolutionState == "bound");
+
+                    // ReplyAsync records the current user selector itself,
+                    // exactly as production serving does. Seed only the prior
+                    // governed turns into a separate canonical conversation.
+                    replyConversationId = Guid.NewGuid().ToString();
+                    await RecordDiscourseMessagesAsync(
+                        Guid.Parse(replyConversationId),
+                        proofCase.Messages.Take(proofCase.Messages.Count - 1).ToArray(),
+                        proofCase.NativeSourceLanguageCode);
                 }
                 if (proofCase.Category is "deduction" or "uncertainty" or "diagnosis" or "planning")
                 {
@@ -1091,7 +1321,7 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
                     founder,
                     currentPrompt,
                     context,
-                    discourseState: null,
+                    discourseState,
                     proofCase.NativeSourceLanguageCode);
                 var reply = await chat.ReplyAsync(
                     founder,
@@ -1099,6 +1329,7 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
                     {
                         Mode = "legend",
                         NativeOnly = true,
+                        ConversationId = replyConversationId,
                         SourceLanguageCode = proofCase.DeclaredSourceLanguageCode,
                         Messages = proofCase.Messages
                     });
@@ -3167,6 +3398,35 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
                 "en",
                 [new LegendFounderAiChatMessage("user", prompt)],
                 false);
+    }
+
+    private static string? ProductionMeaningFixtureFailure(
+        string prompt,
+        LegendConnectUtteranceMeaningGraphSnapshot graph,
+        bool requireMultipleNodes)
+    {
+        // Capacity/authority failures must execute and remain visible as code
+        // failures. Only explicit absence of governed semantic evidence is a
+        // production-data fixture failure.
+        if (graph.ReasonCode == "meaning_graph_retrieval_bound_exceeded")
+            return null;
+        if (graph.ReasonCode == "meaning_graph_component_unknown" ||
+            graph.Nodes.Count == 0 || graph.UnknownSurfaceComponents.Count > 0)
+        {
+            return $"The production fixture lacks complete active Founder-governed meaning primitives for '{prompt}'. " +
+                $"Reason={graph.ReasonCode}; unknown={string.Join(",", graph.UnknownSurfaceComponents)}.";
+        }
+        if (requireMultipleNodes && graph.Nodes.Count < 2)
+        {
+            return $"The production fixture for '{prompt}' does not contain the required independently governed cross-family primitives.";
+        }
+        if (graph.Nodes.Count > 1 && graph.Relations.Count == 0)
+        {
+            return $"The production fixture has governed primitives for '{prompt}' but no active Founder-governed relation connecting them.";
+        }
+        return graph.IsComposed
+            ? null
+            : $"The production fixture cannot compose '{prompt}' through governed meaning evidence. Reason={graph.ReasonCode}.";
     }
 
     private sealed record ProductionNativeProofResult(

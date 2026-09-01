@@ -1436,6 +1436,88 @@ public sealed class LegendConnectSemanticSpanGroundingTests
     }
 
     [Fact]
+    public async Task HeldOutComposition_IgnoresDenseServeableAnchorsWhoseRemainingSpanLexemesAreAbsent()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var fixture = CreateFixture(db);
+        for (var family = 1; family <= 3; family++)
+        {
+            Assert.True((await fixture.Curriculum.SubmitFounderBatchAsync(
+                CompetingHypothesesTestDesignFamily(family))).Succeeded);
+        }
+
+        await AddDensePartiallyCompatibleKeepMeaningEvidenceAsync(db);
+
+        var graph = await fixture.Operations.AnalyzeReusableMeaningGraphAsync(
+            "Keep both hypotheses; plan an experiment.");
+
+        Assert.True(graph.IsComposed, graph.ReasonCode);
+        Assert.Equal(2, graph.Nodes.Count);
+        Assert.Single(graph.Relations);
+    }
+
+    [Fact]
+    public async Task HeldOutComposition_CountsOnlyCompatibleAnchorsFromQualifiedTextUnits()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var fixture = CreateFixture(db);
+        for (var family = 1; family <= 3; family++)
+        {
+            Assert.True((await fixture.Curriculum.SubmitFounderBatchAsync(
+                CompetingHypothesesTestDesignFamily(family))).Succeeded);
+        }
+
+        await AddDenseCoOwnedIncompatibleAnchorsAsync(db);
+
+        var graph = await fixture.Operations.AnalyzeReusableMeaningGraphAsync(
+            "Keep both hypotheses; plan an experiment.");
+
+        Assert.True(graph.IsComposed, graph.ReasonCode);
+        Assert.Equal(2, graph.Nodes.Count);
+        Assert.Single(graph.Relations);
+    }
+
+    [Fact]
+    public async Task RetrievalDensity_RequiresCompleteSpanAndRequestTokenMultiplicity()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var fixture = CreateFixture(db);
+        Assert.True((await fixture.Curriculum.SubmitFounderBatchAsync(
+            CompetingHypothesesTestDesignFamily(1))).Succeeded);
+
+        await AddIncompleteRepeatedAndOverlongAnchorDensityAsync(db);
+
+        var graph = await fixture.Operations.AnalyzeReusableMeaningGraphAsync("Keep novel.");
+
+        Assert.False(graph.IsComposed);
+        Assert.Equal("meaning_graph_component_unknown", graph.ReasonCode);
+        Assert.NotEqual("meaning_graph_retrieval_bound_exceeded", graph.ReasonCode);
+    }
+
+    [Fact]
+    public async Task CurrentInputCoordinates_DetermineEvidenceDominanceAfterSurfaceProjection()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var fixture = CreateFixture(db);
+        Assert.True((await fixture.Curriculum.SubmitFounderBatchAsync(
+            CompetingHypothesesTestDesignFamily(1))).Succeeded);
+        for (var family = 1; family <= 3; family++)
+        {
+            var submitted = await fixture.Curriculum.SubmitFounderBatchAsync(
+                SourceCoordinateCollisionFamily(family));
+            Assert.True(submitted.Succeeded, submitted.Message);
+        }
+
+        var graph = await fixture.Operations.AnalyzeReusableMeaningGraphAsync(
+            "Keep both hypotheses; plan an experiment; observe carefully now.");
+
+        Assert.True(graph.IsComposed, graph.ReasonCode);
+        Assert.Contains(graph.Nodes, item => item.SemanticValue == "retain_competing_hypotheses");
+        Assert.Contains(graph.Nodes, item => item.SemanticValue == "design_discriminating_test");
+        Assert.Single(graph.Relations);
+    }
+
+    [Fact]
     public async Task DenseServeableAnchorsInsideGovernedSpan_StillFailClosedAtRetrievalBound()
     {
         await using var db = ControllerTestHelpers.BuildDb();
@@ -3379,6 +3461,307 @@ public sealed class LegendConnectSemanticSpanGroundingTests
 
         await db.SaveChangesAsync();
     }
+
+    private static async Task AddDensePartiallyCompatibleKeepMeaningEvidenceAsync(
+        MasterAppDbContext db)
+    {
+        var owner = await db.LegendLanguageMeaningNodeEvidence
+            .AsNoTracking()
+            .Where(item => item.LanguageCode == "en")
+            .Select(item => new { item.CurriculumFamilyId, item.CurriculumExampleId })
+            .FirstAsync();
+        var keepLexeme = await db.LegendLanguageLexemes.SingleAsync(item =>
+            item.LanguageCode == "en" &&
+            item.NormalizedHash == LegendLanguageIdentity.TextHash("keep"));
+        var unrelatedLexeme = new LegendLanguageLexeme
+        {
+            LanguageCode = "en",
+            NormalizedHash = LegendLanguageIdentity.TextHash("unrelated"),
+            SurfaceForm = "unrelated",
+            Provenance = LegendConnectKnowledgeProvenance.FounderApproved
+        };
+        db.LegendLanguageLexemes.Add(unrelatedLexeme);
+
+        for (var index = 0; index < 513; index++)
+        {
+            var text = $"keep unrelated {index}";
+            var textUnit = new LegendLanguageTextUnit
+            {
+                LanguageCode = "en",
+                StoragePartition = "test-partially-compatible-semantic-retrieval",
+                NormalizedHash = LegendLanguageIdentity.TextHash(text),
+                Text = text,
+                Provenance = LegendConnectKnowledgeProvenance.FounderApproved,
+                IsTrainingEligible = true
+            };
+            var signature = LegendLanguageIdentity.TextHash(
+                $"partial_retrieval_control|{index}");
+            var anchor = new LegendLanguageCompositionalAnchor
+            {
+                LanguageCode = "en",
+                TextUnitId = textUnit.Id,
+                LexemeId = keepLexeme.Id,
+                ComponentStartTokenIndex = 0,
+                ComponentLength = 2,
+                CurriculumFamilyId = owner.CurriculumFamilyId,
+                CurriculumExampleId = owner.CurriculumExampleId,
+                Dimension = "partial_retrieval_control",
+                Value = $"control_{index}",
+                SemanticSignature = signature,
+                AnchorSignature = LegendLanguageIdentity.TextHash($"partial-anchor|{index}"),
+                Provenance = LegendConnectKnowledgeProvenance.FounderApproved
+            };
+            db.LegendLanguageTextUnits.Add(textUnit);
+            db.LegendLanguageLexicalOccurrences.AddRange(
+                new LegendLanguageLexicalOccurrence
+                {
+                    TextUnitId = textUnit.Id,
+                    LexemeId = keepLexeme.Id,
+                    TokenIndex = 0,
+                    CharacterOffset = 0,
+                    CharacterLength = 4
+                },
+                new LegendLanguageLexicalOccurrence
+                {
+                    TextUnitId = textUnit.Id,
+                    LexemeId = unrelatedLexeme.Id,
+                    TokenIndex = 1,
+                    CharacterOffset = 5,
+                    CharacterLength = 9
+                });
+            db.LegendLanguageCompositionalAnchors.Add(anchor);
+            db.LegendLanguageMeaningNodeEvidence.Add(new LegendLanguageMeaningNodeEvidence
+            {
+                LanguageCode = "en",
+                CurriculumFamilyId = owner.CurriculumFamilyId,
+                CurriculumExampleId = owner.CurriculumExampleId,
+                CompositionalAnchorId = anchor.Id,
+                NodeKey = $"partial-retrieval-control-{index}",
+                SemanticSignature = signature,
+                SemanticDimension = "partial_retrieval_control",
+                SemanticValue = $"control_{index}",
+                Provenance = LegendConnectKnowledgeProvenance.FounderApproved
+            });
+            db.LegendLanguageMeaningPrimitives.Add(new LegendLanguageMeaningPrimitive
+            {
+                LanguageCode = "en",
+                SemanticSignature = signature,
+                SemanticDimension = "partial_retrieval_control",
+                SemanticValue = $"control_{index}",
+                MaturityState = "Validated",
+                SupportCount = 1,
+                IndependentSourceCount = 1,
+                HumanVerifiedSupportCount = 1,
+                Confidence = 1m,
+                IsProductionEligible = true,
+                Provenance = LegendConnectKnowledgeProvenance.FounderApproved
+            });
+        }
+
+        await db.SaveChangesAsync();
+    }
+
+    private static async Task AddDenseCoOwnedIncompatibleAnchorsAsync(
+        MasterAppDbContext db)
+    {
+        var owner = await (
+            from unit in db.LegendLanguageTextUnits
+            join example in db.LegendCurriculumExamples on unit.Id equals example.TextUnitId
+            where unit.LanguageCode == "en" &&
+                unit.NormalizedHash == LegendLanguageIdentity.TextHash(
+                    LegendLanguageIdentity.NormalizeText("Keep both hypotheses; design a test."))
+            select new
+            {
+                unit.Id,
+                example.CurriculumFamilyId,
+                ExampleId = example.Id
+            }).FirstAsync();
+        var designLexeme = await db.LegendLanguageLexemes.SingleAsync(item =>
+            item.LanguageCode == "en" &&
+            item.NormalizedHash == LegendLanguageIdentity.TextHash("design"));
+
+        for (var index = 0; index < 4097; index++)
+        {
+            var signature = LegendLanguageIdentity.TextHash($"co_owned_control|{index}");
+            var anchor = new LegendLanguageCompositionalAnchor
+            {
+                LanguageCode = "en",
+                TextUnitId = owner.Id,
+                LexemeId = designLexeme.Id,
+                ComponentStartTokenIndex = 3,
+                ComponentLength = 1,
+                CurriculumFamilyId = owner.CurriculumFamilyId,
+                CurriculumExampleId = owner.ExampleId,
+                Dimension = "co_owned_control",
+                Value = $"control_{index}",
+                SemanticSignature = signature,
+                AnchorSignature = LegendLanguageIdentity.TextHash($"co-owned-anchor|{index}"),
+                Provenance = LegendConnectKnowledgeProvenance.FounderApproved
+            };
+            db.LegendLanguageCompositionalAnchors.Add(anchor);
+            db.LegendLanguageMeaningNodeEvidence.Add(new LegendLanguageMeaningNodeEvidence
+            {
+                LanguageCode = "en",
+                CurriculumFamilyId = owner.CurriculumFamilyId,
+                CurriculumExampleId = owner.ExampleId,
+                CompositionalAnchorId = anchor.Id,
+                NodeKey = $"co-owned-control-{index}",
+                SemanticSignature = signature,
+                SemanticDimension = "co_owned_control",
+                SemanticValue = $"control_{index}",
+                Provenance = LegendConnectKnowledgeProvenance.FounderApproved
+            });
+            db.LegendLanguageMeaningPrimitives.Add(new LegendLanguageMeaningPrimitive
+            {
+                LanguageCode = "en",
+                SemanticSignature = signature,
+                SemanticDimension = "co_owned_control",
+                SemanticValue = $"control_{index}",
+                MaturityState = "Validated",
+                SupportCount = 1,
+                IndependentSourceCount = 1,
+                HumanVerifiedSupportCount = 1,
+                Confidence = 1m,
+                IsProductionEligible = true,
+                Provenance = LegendConnectKnowledgeProvenance.FounderApproved
+            });
+        }
+
+        await db.SaveChangesAsync();
+    }
+
+    private static async Task AddIncompleteRepeatedAndOverlongAnchorDensityAsync(
+        MasterAppDbContext db)
+    {
+        var owner = await db.LegendLanguageMeaningNodeEvidence
+            .AsNoTracking()
+            .Where(item => item.LanguageCode == "en")
+            .Select(item => new { item.CurriculumFamilyId, item.CurriculumExampleId })
+            .FirstAsync();
+        var keepLexeme = await db.LegendLanguageLexemes.SingleAsync(item =>
+            item.LanguageCode == "en" &&
+            item.NormalizedHash == LegendLanguageIdentity.TextHash("keep"));
+        var novelLexeme = new LegendLanguageLexeme
+        {
+            LanguageCode = "en",
+            NormalizedHash = LegendLanguageIdentity.TextHash("novel"),
+            SurfaceForm = "novel",
+            Provenance = LegendConnectKnowledgeProvenance.FounderApproved
+        };
+        db.LegendLanguageLexemes.Add(novelLexeme);
+
+        void AddEvidence(
+            string partition,
+            int index,
+            string text,
+            int componentLength,
+            IReadOnlyList<(LegendLanguageLexeme Lexeme, int TokenIndex, int Offset)> occurrences)
+        {
+            var textUnit = new LegendLanguageTextUnit
+            {
+                LanguageCode = "en",
+                StoragePartition = partition,
+                NormalizedHash = LegendLanguageIdentity.TextHash(text),
+                Text = text,
+                Provenance = LegendConnectKnowledgeProvenance.FounderApproved,
+                IsTrainingEligible = true
+            };
+            var signature = LegendLanguageIdentity.TextHash($"{partition}|{index}");
+            var anchor = new LegendLanguageCompositionalAnchor
+            {
+                LanguageCode = "en",
+                TextUnitId = textUnit.Id,
+                LexemeId = keepLexeme.Id,
+                ComponentStartTokenIndex = 0,
+                ComponentLength = componentLength,
+                CurriculumFamilyId = owner.CurriculumFamilyId,
+                CurriculumExampleId = owner.CurriculumExampleId,
+                Dimension = partition,
+                Value = $"control_{index}",
+                SemanticSignature = signature,
+                AnchorSignature = LegendLanguageIdentity.TextHash($"{partition}-anchor|{index}"),
+                Provenance = LegendConnectKnowledgeProvenance.FounderApproved
+            };
+            db.LegendLanguageTextUnits.Add(textUnit);
+            db.LegendLanguageLexicalOccurrences.AddRange(occurrences.Select(item =>
+                new LegendLanguageLexicalOccurrence
+                {
+                    TextUnitId = textUnit.Id,
+                    LexemeId = item.Lexeme.Id,
+                    TokenIndex = item.TokenIndex,
+                    CharacterOffset = item.Offset,
+                    CharacterLength = item.Lexeme.SurfaceForm.Length
+                }));
+            db.LegendLanguageCompositionalAnchors.Add(anchor);
+            db.LegendLanguageMeaningNodeEvidence.Add(new LegendLanguageMeaningNodeEvidence
+            {
+                LanguageCode = "en",
+                CurriculumFamilyId = owner.CurriculumFamilyId,
+                CurriculumExampleId = owner.CurriculumExampleId,
+                CompositionalAnchorId = anchor.Id,
+                NodeKey = $"{partition}-{index}",
+                SemanticSignature = signature,
+                SemanticDimension = partition,
+                SemanticValue = $"control_{index}",
+                Provenance = LegendConnectKnowledgeProvenance.FounderApproved
+            });
+            db.LegendLanguageMeaningPrimitives.Add(new LegendLanguageMeaningPrimitive
+            {
+                LanguageCode = "en",
+                SemanticSignature = signature,
+                SemanticDimension = partition,
+                SemanticValue = $"control_{index}",
+                MaturityState = "Validated",
+                SupportCount = 1,
+                IndependentSourceCount = 1,
+                HumanVerifiedSupportCount = 1,
+                Confidence = 1m,
+                IsProductionEligible = true,
+                Provenance = LegendConnectKnowledgeProvenance.FounderApproved
+            });
+        }
+
+        for (var index = 0; index < 513; index++)
+        {
+            AddEvidence(
+                "incomplete-span-density",
+                index,
+                $"keep incomplete-{index}",
+                2,
+                [(keepLexeme, 0, 0)]);
+            AddEvidence(
+                "repeated-token-density",
+                index,
+                $"keep keep repeated-{index}",
+                2,
+                [(keepLexeme, 0, 0), (keepLexeme, 1, 5)]);
+            AddEvidence(
+                "overlong-span-density",
+                index,
+                $"keep novel keep overlong-{index}",
+                3,
+                [(keepLexeme, 0, 0), (novelLexeme, 1, 5), (keepLexeme, 2, 11)]);
+        }
+
+        await db.SaveChangesAsync();
+    }
+
+    private static LegendConnectCurriculumBatchSubmission SourceCoordinateCollisionFamily(int family) =>
+        new(
+            $"reasoning.source-coordinate-collision.{family}",
+            "Independent mature meaning at the same source-relative coordinates",
+            [
+                new LegendConnectCurriculumExampleSubmission(
+                    "Observe carefully now.",
+                    new Dictionary<string, string> { ["observation"] = "careful_observation" },
+                    new LegendConnectMeaningGraphSubmission(
+                        [new LegendConnectMeaningNodeSubmission(
+                            "observation", "observation", "careful_observation", "Observe carefully now")],
+                        [])),
+                new LegendConnectCurriculumExampleSubmission(
+                    $"Founder coordinate control {family}.",
+                    new Dictionary<string, string> { ["control"] = $"coordinate_{family}" })
+            ]);
 
     private static LegendConnectCurriculumBatchSubmission
         PrematureHypothesisSelectionFamily(int family) =>
