@@ -4156,11 +4156,6 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
                 on occurrence.TextUnitId equals unit.Id
             join anchor in _db.Set<LegendLanguageCompositionalAnchor>().AsNoTracking()
                 on unit.Id equals anchor.TextUnitId
-            join node in _db.Set<LegendLanguageMeaningNodeEvidence>().AsNoTracking()
-                on anchor.Id equals node.CompositionalAnchorId
-            join primitive in _db.Set<LegendLanguageMeaningPrimitive>().AsNoTracking()
-                on new { node.LanguageCode, node.SemanticSignature }
-                equals new { primitive.LanguageCode, primitive.SemanticSignature }
             where lexeme.LanguageCode == language &&
                 inputLexemeHashes.Contains(lexeme.NormalizedHash) &&
                 occurrence.SupersededUtc == null &&
@@ -4171,17 +4166,7 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
                 anchor.SupersededUtc == null &&
                 anchor.Provenance == LegendConnectKnowledgeProvenance.FounderApproved &&
                 anchor.ComponentStartTokenIndex != null &&
-                anchor.ComponentLength > 0 &&
-                node.LanguageCode == language &&
-                node.SupersededUtc == null &&
-                node.Provenance == LegendConnectKnowledgeProvenance.FounderApproved &&
-                primitive.LanguageCode == language &&
-                primitive.SupersededUtc == null &&
-                primitive.Provenance == LegendConnectKnowledgeProvenance.FounderApproved &&
-                primitive.MaturityState != "Contradicted" &&
-                primitive.ContradictionCount == 0 &&
-                primitive.IndependentSourceCount >= 1 &&
-                primitive.HumanVerifiedSupportCount >= 1
+                anchor.ComponentLength > 0
             group lexeme by occurrence.TextUnitId into candidate
             orderby candidate.Select(item => item.NormalizedHash).Distinct().Count() descending,
                 candidate.Key
