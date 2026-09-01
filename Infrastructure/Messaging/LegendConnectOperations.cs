@@ -22,6 +22,8 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
 {
     private const int LanguageKnowledgeDetailRecordLimit = 250;
     private const int TranslationRouteAuditRecordLimit = 250;
+    private const int MaximumRetainedRetrievalLanguages = 64;
+    private const int MaximumRetainedSemanticCandidates = 512;
 
     private readonly MasterAppDbContext _db;
     private readonly ILegendLanguageRegistry _registry;
@@ -799,135 +801,212 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
                 1,
                 64);
 
-        var terms =
-            normalizedQuery
-                .ToLowerInvariant()
-                .Split(
-                    ' ',
-                    StringSplitOptions.RemoveEmptyEntries |
-                    StringSplitOptions.TrimEntries)
-                .Select(item =>
-                    item.Trim(
-                        '.', ',', ';', ':',
-                        '!', '?', '"', '\'',
-                        '(', ')', '[', ']'))
-                .Where(item =>
-                    item.Length >= 2)
-                .Distinct(StringComparer.Ordinal)
-                .Take(Math.Clamp(boundedTake * 2, 12, 64))
-                .ToArray();
-
-        var languages =
-            await _db.Set<LegendLanguageDefinition>()
-                .AsNoTracking()
-                .Where(item => item.IsEnabled)
-                .ToListAsync(cancellationToken);
-
-        var sourceLanguage =
-            string.IsNullOrWhiteSpace(
-                sourceLanguageCode)
-                ? null
-                : (
-                    LegendLanguageIdentity.TryNormalize(
-                        sourceLanguageCode,
-                        out var normalizedSource)
-                        ? normalizedSource
-                        : null
-                );
-
-        var targetLanguage =
-            string.IsNullOrWhiteSpace(
-                targetLanguageCode)
-                ? null
-                : (
-                    LegendLanguageIdentity.TryNormalize(
-                        targetLanguageCode,
-                        out var normalizedTarget)
-                        ? normalizedTarget
-                        : null
-                );
-
-        if (sourceLanguage is null)
+        var queryComponents = normalizedQuery
+            .Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(item => item.Trim(
+                '.', ',', ';', ':', '!', '?', '"', '\'', '(', ')', '[', ']', '{', '}'))
+            .Where(item => item.Length >= 2 && item.Any(char.IsLetterOrDigit))
+            .Select(item => item.Normalize().ToLowerInvariant())
+            .Distinct(StringComparer.Ordinal)
+            .Take(64)
+            .ToArray();
+        if (queryComponents.Length == 0)
         {
-            sourceLanguage =
-                languages
-                    .Where(item =>
-                        normalizedQuery.Contains(
-                            item.CanonicalName,
-                            StringComparison.OrdinalIgnoreCase) ||
-                        normalizedQuery.Contains(
-                            item.NativeName,
-                            StringComparison.OrdinalIgnoreCase))
-                    .Select(item =>
-                        item.LanguageCode)
-                    .FirstOrDefault();
+            return new LegendConnectRetainedKnowledgeSearchSnapshot(
+                normalizedQuery,
+                0,
+                []);
+        }
+        var queryLexemeHashes = queryComponents
+            .Select(LegendLanguageIdentity.TextHash)
+            .ToArray();
+
+        var sourceLanguage = string.IsNullOrWhiteSpace(sourceLanguageCode)
+            ? null
+            : await _registry.NormalizeEnabledTranslationLanguageAsync(
+                sourceLanguageCode,
+                cancellationToken);
+        if (!string.IsNullOrWhiteSpace(sourceLanguageCode) && sourceLanguage is null)
+        {
+            return new LegendConnectRetainedKnowledgeSearchSnapshot(normalizedQuery, 0, []);
+        }
+        var targetLanguage = string.IsNullOrWhiteSpace(targetLanguageCode)
+            ? null
+            : await _registry.NormalizeEnabledTranslationLanguageAsync(
+                targetLanguageCode,
+                cancellationToken);
+        if (!string.IsNullOrWhiteSpace(targetLanguageCode) && targetLanguage is null)
+        {
+            return new LegendConnectRetainedKnowledgeSearchSnapshot(normalizedQuery, 0, []);
         }
 
-        var units =
-            await _db.Set<LegendLanguageTextUnit>()
+        var retrievalLanguages = sourceLanguage is not null
+            ? new[] { sourceLanguage! }
+            : await _db.Set<LegendLanguageDefinition>()
                 .AsNoTracking()
-                .Where(item =>
-                    item.IsTrainingEligible &&
-                    (
-                        item.Provenance ==
-                            LegendConnectKnowledgeProvenance.FounderApproved ||
-                        item.Provenance ==
-                            LegendConnectKnowledgeProvenance.SystemValidatedMachine
-                    ) &&
-                    (sourceLanguage == null || item.LanguageCode == sourceLanguage))
-                .OrderByDescending(item =>
-                    item.UpdatedUtc)
-                .ToListAsync(cancellationToken);
+                .Where(item => item.IsEnabled)
+                .OrderBy(item => item.LanguageCode)
+                .Select(item => item.LanguageCode)
+                .Take(MaximumRetainedRetrievalLanguages + 1)
+                .ToArrayAsync(cancellationToken);
+        if (retrievalLanguages.Length == 0 ||
+            retrievalLanguages.Length > MaximumRetainedRetrievalLanguages)
+        {
+            return new LegendConnectRetainedKnowledgeSearchSnapshot(normalizedQuery, 0, []);
+        }
 
-        var alignments =
-            await (
-                from alignment in
-                    _db.Set<LegendTranslationAlignment>()
-                        .AsNoTracking()
-                join source in
-                    _db.Set<LegendLanguageTextUnit>()
-                        .AsNoTracking()
-                    on alignment.SourceTextUnitId
-                    equals source.Id
-                join target in
-                    _db.Set<LegendLanguageTextUnit>()
-                        .AsNoTracking()
-                    on alignment.TargetTextUnitId
-                    equals target.Id
-                where
+        var candidateBudget = Math.Min(
+            MaximumRetainedSemanticCandidates,
+            Math.Max(64, boundedTake * 8));
+        var semanticCandidates = await (
+            from lexeme in _db.Set<LegendLanguageLexeme>().AsNoTracking()
+            join occurrence in _db.Set<LegendLanguageLexicalOccurrence>().AsNoTracking()
+                on lexeme.Id equals occurrence.LexemeId
+            join anchor in _db.Set<LegendLanguageCompositionalAnchor>().AsNoTracking()
+                on occurrence.TextUnitId equals anchor.TextUnitId
+            join node in _db.Set<LegendLanguageMeaningNodeEvidence>().AsNoTracking()
+                on anchor.Id equals node.CompositionalAnchorId
+            join primitive in _db.Set<LegendLanguageMeaningPrimitive>().AsNoTracking()
+                on new { node.LanguageCode, node.SemanticSignature }
+                equals new { primitive.LanguageCode, primitive.SemanticSignature }
+            join example in _db.Set<LegendCurriculumExample>().AsNoTracking()
+                on node.CurriculumExampleId equals example.Id
+            where retrievalLanguages.Contains(lexeme.LanguageCode) &&
+                queryLexemeHashes.Contains(lexeme.NormalizedHash) &&
+                occurrence.SupersededUtc == null &&
+                anchor.LanguageCode == lexeme.LanguageCode &&
+                anchor.SupersededUtc == null &&
+                anchor.Provenance == LegendConnectKnowledgeProvenance.FounderApproved &&
+                node.LanguageCode == lexeme.LanguageCode &&
+                node.SupersededUtc == null &&
+                node.Provenance == LegendConnectKnowledgeProvenance.FounderApproved &&
+                primitive.SupersededUtc == null &&
+                primitive.Provenance == LegendConnectKnowledgeProvenance.FounderApproved &&
+                primitive.MaturityState != "Contradicted" &&
+                primitive.ContradictionCount == 0 &&
+                primitive.IndependentSourceCount >= 1 &&
+                primitive.HumanVerifiedSupportCount >= 1 &&
+                example.SupersededUtc == null &&
+                example.LanguageCode == lexeme.LanguageCode &&
+                example.Provenance == LegendConnectKnowledgeProvenance.FounderApproved
+            select new RetainedSemanticCandidate(
+                example.CurriculumFamilyId,
+                node.SemanticSignature,
+                lexeme.NormalizedHash)
+        ).Distinct()
+            .OrderBy(item => item.CurriculumFamilyId)
+            .ThenBy(item => item.SemanticSignature)
+            .ThenBy(item => item.LexemeHash)
+            .Take(MaximumRetainedSemanticCandidates)
+            .ToArrayAsync(cancellationToken);
+
+        var rankedFamilies = semanticCandidates
+            .GroupBy(item => item.CurriculumFamilyId)
+            .Select(group => new
+            {
+                CurriculumFamilyId = group.Key,
+                Match = group.Select(item => item.LexemeHash).Distinct(StringComparer.Ordinal).Count(),
+                PrimitiveCount = group.Select(item => item.SemanticSignature).Distinct(StringComparer.Ordinal).Count()
+            })
+            .OrderByDescending(item => item.Match)
+            .ThenByDescending(item => item.PrimitiveCount)
+            .ThenBy(item => item.CurriculumFamilyId)
+            .Take(candidateBudget)
+            .ToArray();
+        var familyIds = rankedFamilies.Select(item => item.CurriculumFamilyId).ToArray();
+        var matchByFamily = rankedFamilies.ToDictionary(
+            item => item.CurriculumFamilyId,
+            item => item.Match);
+
+        var exactQueryHash = LegendLanguageIdentity.TextHash(normalizedQuery);
+        var exactUnits = await _db.Set<LegendLanguageTextUnit>()
+            .AsNoTracking()
+            .Where(item => retrievalLanguages.Contains(item.LanguageCode) &&
+                item.NormalizedHash == exactQueryHash &&
+                item.IsTrainingEligible &&
+                (item.Provenance == LegendConnectKnowledgeProvenance.FounderApproved ||
+                 item.Provenance == LegendConnectKnowledgeProvenance.SystemValidatedMachine))
+            .OrderByDescending(item => item.UpdatedUtc)
+            .ThenBy(item => item.Id)
+            .Take(candidateBudget)
+            .ToArrayAsync(cancellationToken);
+        var familyUnits = familyIds.Length == 0
+            ? Array.Empty<RetainedFamilyTextUnit>()
+            : await (
+                from example in _db.Set<LegendCurriculumExample>().AsNoTracking()
+                join unit in _db.Set<LegendLanguageTextUnit>().AsNoTracking()
+                    on example.TextUnitId equals unit.Id
+                where familyIds.Contains(example.CurriculumFamilyId) &&
+                    retrievalLanguages.Contains(example.LanguageCode) &&
+                    example.SupersededUtc == null &&
+                    (example.Provenance == LegendConnectKnowledgeProvenance.FounderApproved ||
+                     example.Provenance == LegendConnectKnowledgeProvenance.SystemValidatedMachine) &&
+                    unit.IsTrainingEligible &&
+                    (unit.Provenance == LegendConnectKnowledgeProvenance.FounderApproved ||
+                     unit.Provenance == LegendConnectKnowledgeProvenance.SystemValidatedMachine)
+                orderby unit.UpdatedUtc descending, unit.Id
+                select new RetainedFamilyTextUnit(
+                    example.CurriculumFamilyId,
+                    unit.Id,
+                    unit.LanguageCode,
+                    unit.Text,
+                    unit.Provenance,
+                    unit.UpdatedUtc)
+            ).Take(candidateBudget).ToArrayAsync(cancellationToken);
+
+        var units = familyUnits
+            .Concat(exactUnits.Select(unit => new RetainedFamilyTextUnit(
+                Guid.Empty,
+                unit.Id,
+                unit.LanguageCode,
+                unit.Text,
+                unit.Provenance,
+                unit.UpdatedUtc)))
+            .GroupBy(item => item.TextUnitId)
+            .Select(group => group
+                .OrderByDescending(item => item.CurriculumFamilyId != Guid.Empty)
+                .First())
+            .Take(candidateBudget)
+            .ToArray();
+
+        var candidateUnitIds = units.Select(item => item.TextUnitId).ToArray();
+        var pairKey = sourceLanguage is not null && targetLanguage is not null
+            ? LegendLanguageIdentity.PairKey(sourceLanguage, targetLanguage)
+            : null;
+        var alignments = pairKey is null || candidateUnitIds.Length == 0
+            ? Array.Empty<RetainedAlignmentCandidate>()
+            : await (
+                from alignment in _db.Set<LegendTranslationAlignment>().AsNoTracking()
+                join source in _db.Set<LegendLanguageTextUnit>().AsNoTracking()
+                    on alignment.SourceTextUnitId equals source.Id
+                join target in _db.Set<LegendLanguageTextUnit>().AsNoTracking()
+                    on alignment.TargetTextUnitId equals target.Id
+                where alignment.PairKey == pairKey &&
                     alignment.SupersededUtc == null &&
+                    candidateUnitIds.Contains(alignment.SourceTextUnitId) &&
+                    source.LanguageCode == sourceLanguage &&
+                    target.LanguageCode == targetLanguage &&
                     source.IsTrainingEligible &&
                     target.IsTrainingEligible &&
-                    (sourceLanguage == null || source.LanguageCode == sourceLanguage) &&
-                    (targetLanguage == null || target.LanguageCode == targetLanguage) &&
-                    (
-                        alignment.HumanVerified ||
-                        alignment.QualityState ==
-                            "SystemValidated" ||
-                        alignment.Provenance ==
-                            LegendConnectKnowledgeProvenance.ProviderDerived
-                    )
-                orderby
-                    alignment.UpdatedUtc descending
-                select new
-                {
-                    Alignment = alignment,
-                    SourceLanguage =
-                        source.LanguageCode,
-                    SourceText =
-                        source.Text,
-                    TargetLanguage =
-                        target.LanguageCode,
-                    TargetText =
-                        target.Text
-                })
-                .ToListAsync(cancellationToken);
+                    (alignment.HumanVerified ||
+                     alignment.QualityState == "SystemValidated" ||
+                     alignment.Provenance == LegendConnectKnowledgeProvenance.ProviderDerived)
+                orderby alignment.UpdatedUtc descending, alignment.Id
+                select new RetainedAlignmentCandidate(
+                    alignment.Id,
+                    alignment.PairKey,
+                    alignment.Provenance,
+                    alignment.QualityState,
+                    alignment.HumanVerified,
+                    alignment.Confidence,
+                    alignment.SourceTextUnitId,
+                    source.LanguageCode,
+                    source.Text,
+                    target.Text,
+                    alignment.UpdatedUtc)
+            ).Take(candidateBudget).ToArrayAsync(cancellationToken);
 
-        var alignmentIds =
-            alignments
-                .Select(item =>
-                    item.Alignment.Id)
-                .ToArray();
+        var alignmentIds = alignments.Select(item => item.Id).ToArray();
 
         var contradictedIds =
             alignmentIds.Length == 0
@@ -952,20 +1031,17 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
                             cancellationToken)
                 ).ToHashSet();
 
-        // MachineProposed artifacts are intentionally absent from retained
-        // knowledge search. Their actual noncanonical lifecycle is visible only
-        // through the bounded Founder lifecycle projection below; admitted
-        // knowledge enters this search through its canonical text, alignment,
-        // and curriculum authorities rather than through proposal payloads.
-        var activeModels =
-            await _db.Set<LegendLanguagePair>()
+        // MachineProposed artifacts are intentionally absent. A model row is
+        // relevant only for the exact requested directional pair; query text
+        // similarity can never imply that a model is active or authoritative.
+        var activeModel = pairKey is null
+            ? null
+            : await _db.Set<LegendLanguagePair>()
                 .AsNoTracking()
-                .Where(item =>
+                .Where(item => item.PairKey == pairKey &&
                     item.IsEnabled &&
                     item.ActiveModelVersion != null)
-                .OrderByDescending(item =>
-                    item.UpdatedUtc)
-                .ToListAsync(cancellationToken);
+                .SingleOrDefaultAsync(cancellationToken);
 
         var scored =
             new List<(
@@ -974,24 +1050,10 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
 
         foreach (var unit in units)
         {
-            if (sourceLanguage is not null &&
-                !string.Equals(
-                    unit.LanguageCode,
-                    sourceLanguage,
-                    StringComparison.OrdinalIgnoreCase))
-            {
-                continue;
-            }
-
-            var match =
-                RetainedKnowledgeMatch(
-                    unit.Text,
-                    terms);
-
-            if (match == 0)
-            {
-                continue;
-            }
+            var match = unit.CurriculumFamilyId == Guid.Empty
+                ? queryComponents.Length + 1
+                : matchByFamily.GetValueOrDefault(unit.CurriculumFamilyId);
+            if (match <= 0) continue;
 
             var founder =
                 string.Equals(
@@ -1023,57 +1085,31 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
 
         foreach (var row in alignments)
         {
-            if (sourceLanguage is not null &&
-                !string.Equals(
-                    row.SourceLanguage,
-                    sourceLanguage,
-                    StringComparison.OrdinalIgnoreCase))
-            {
-                continue;
-            }
-
-            if (targetLanguage is not null &&
-                !string.Equals(
-                    row.TargetLanguage,
-                    targetLanguage,
-                    StringComparison.OrdinalIgnoreCase))
-            {
-                continue;
-            }
-
-            var match =
-                RetainedKnowledgeMatch(
-                    row.SourceText +
-                    "\n" +
-                    row.TargetText +
-                    "\n" +
-                    row.Alignment.PairKey,
-                    terms);
-
-            if (match == 0)
-            {
-                continue;
-            }
+            var unit = units.First(item => item.TextUnitId == row.SourceTextUnitId);
+            var match = unit.CurriculumFamilyId == Guid.Empty
+                ? queryComponents.Length + 1
+                : matchByFamily.GetValueOrDefault(unit.CurriculumFamilyId);
+            if (match <= 0) continue;
 
             var contradicted =
                 contradictedIds.Contains(
-                    row.Alignment.Id);
+                    row.Id);
 
             var systemValidated =
                 string.Equals(
-                    row.Alignment.QualityState,
+                    row.QualityState,
                     "SystemValidated",
                     StringComparison.Ordinal);
 
             var authority =
-                row.Alignment.HumanVerified
+                row.HumanVerified
                     ? "HumanVerified"
                     : systemValidated
                         ? "SystemValidatedMachine"
-                        : row.Alignment.QualityState;
+                        : row.QualityState;
 
             var rank =
-                row.Alignment.HumanVerified
+                row.HumanVerified
                     ? 100
                     : systemValidated
                         ? 90
@@ -1088,55 +1124,39 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
                         "DirectionalAlignment",
                         authority,
                         rank,
-                        row.Alignment.Provenance,
+                        row.Provenance,
                         row.SourceLanguage,
-                        row.Alignment.PairKey,
+                        row.PairKey,
                         row.SourceText,
                         row.TargetText,
-                        row.Alignment.Confidence,
-                        row.Alignment.HumanVerified ||
+                        row.Confidence,
+                        row.HumanVerified ||
                         systemValidated,
                         contradicted,
                         null,
-                        row.Alignment.UpdatedUtc)
+                        row.UpdatedUtc)
                 ));
         }
 
-        foreach (var pair in activeModels)
+        if (activeModel is not null)
         {
-            var match =
-                RetainedKnowledgeMatch(
-                    pair.PairKey +
-                    "\n" +
-                    pair.SourceLanguageCode +
-                    "\n" +
-                    pair.TargetLanguageCode +
-                    "\n" +
-                    pair.ActiveModelVersion,
-                    terms);
-
-            if (match == 0)
-            {
-                continue;
-            }
-
             scored.Add(
                 (
-                    match,
+                    1,
                     new LegendConnectRetainedKnowledgeItemSnapshot(
                         "ActiveModel",
                         "Promoted",
                         80,
                         "GovernedModelPromotion",
-                        pair.SourceLanguageCode,
-                        pair.PairKey,
+                        activeModel.SourceLanguageCode,
+                        activeModel.PairKey,
                         "Promoted LEGEND neural model for this directional pair.",
                         null,
                         null,
                         true,
                         false,
-                        pair.ActiveModelVersion,
-                        pair.UpdatedUtc)
+                        activeModel.ActiveModelVersion,
+                        activeModel.UpdatedUtc)
                 ));
         }
 
@@ -1148,6 +1168,12 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
                     item.Item.AuthorityRank)
                 .ThenByDescending(item =>
                     item.Item.UpdatedUtc)
+                .ThenBy(item =>
+                    item.Item.Kind,
+                    StringComparer.Ordinal)
+                .ThenBy(item =>
+                    item.Item.Content,
+                    StringComparer.Ordinal)
                 .Take(boundedTake)
                 .Select(item =>
                     item.Item)
@@ -1159,22 +1185,31 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
             selected);
     }
 
-    private static int RetainedKnowledgeMatch(
-        string? content,
-        IReadOnlyCollection<string> terms)
-    {
-        if (terms.Count == 0 ||
-            string.IsNullOrWhiteSpace(
-                content))
-        {
-            return 0;
-        }
+    private sealed record RetainedSemanticCandidate(
+        Guid CurriculumFamilyId,
+        string SemanticSignature,
+        string LexemeHash);
 
-        return terms.Count(term =>
-            content.Contains(
-                term,
-                StringComparison.OrdinalIgnoreCase));
-    }
+    private sealed record RetainedFamilyTextUnit(
+        Guid CurriculumFamilyId,
+        Guid TextUnitId,
+        string LanguageCode,
+        string Text,
+        string Provenance,
+        DateTime UpdatedUtc);
+
+    private sealed record RetainedAlignmentCandidate(
+        Guid Id,
+        string PairKey,
+        string Provenance,
+        string QualityState,
+        bool HumanVerified,
+        decimal? Confidence,
+        Guid SourceTextUnitId,
+        string SourceLanguage,
+        string SourceText,
+        string TargetText,
+        DateTime UpdatedUtc);
 
     private static string BoundRetainedKnowledge(
         string value,
@@ -4606,6 +4641,9 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
             "No health events match this language and filter.");
     }
 
+    // Paged Founder inventory only. This optional SQL display filter is not a
+    // candidate source for SearchRetainedKnowledgeAsync or native serving and
+    // therefore cannot compete with the indexed semantic retrieval authority.
     private async Task<LegendConnectFounderSectionPageSnapshot> GetRetainedKnowledgePageAsync(
         string language,
         string? search,

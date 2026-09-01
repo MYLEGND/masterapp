@@ -2439,7 +2439,7 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
     }
 
     [Fact]
-    public async Task FounderSectionPages_RemainBoundedAgainstAnIsolatedLargeSqlServerDataset()
+    public async Task FounderSectionPages_AndRetainedRetrievalQueryCountAndLatency_RemainBoundedAgainstLargeSqlServerDataset()
     {
         var connectionString = Environment.GetEnvironmentVariable("LEGEND_FOUNDER_SCALABILITY_CONNECTION");
         if (string.IsNullOrWhiteSpace(connectionString))
@@ -2504,7 +2504,10 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
                                 Id = Guid.NewGuid(),
                                 LanguageCode = "en",
                                 StoragePartition = "Legend:en",
-                                NormalizedHash = Guid.NewGuid().ToString("N"),
+                                NormalizedHash = LegendLanguageIdentity.TextHash(
+                                    index == 0
+                                        ? "A historical SQL Server curriculum example."
+                                        : $"SQL Server curriculum example {index}."),
                                 Text = index == 0 ? "A historical SQL Server curriculum example." : $"SQL Server curriculum example {index}.",
                                 Provenance = "FounderApproved",
                                 IsTrainingEligible = true,
@@ -2546,10 +2549,39 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
                         db.ChangeTracker.Clear();
                     }
                 }
+                var historicalUnit = await db.LegendLanguageTextUnits.SingleAsync(item =>
+                    item.LanguageCode == "en" &&
+                    item.Text == "A historical SQL Server curriculum example.");
+                var historicalHash = LegendLanguageIdentity.TextHash(historicalUnit.Text);
+                if (!string.Equals(historicalUnit.NormalizedHash, historicalHash, StringComparison.Ordinal))
+                {
+                    historicalUnit.NormalizedHash = historicalHash;
+                    await db.SaveChangesAsync();
+                    db.ChangeTracker.Clear();
+                }
 
                 var corpus = new LegendConnectCorpusService(db, registry, NullLogger<LegendConnectCorpusService>.Instance);
                 var operations = new LegendConnectOperations(db, registry, corpus, configuration);
                 var founder = new FounderLegendConnectService(operations, new AgentProfileAccessResolver(db));
+                commandCounter.Reset();
+                var retrievalClock = Stopwatch.StartNew();
+                var retained = await operations.SearchRetainedKnowledgeAsync(
+                    "A historical SQL Server curriculum example.",
+                    sourceLanguageCode: "en",
+                    take: 12);
+                retrievalClock.Stop();
+                Assert.Contains(retained.Items, item =>
+                    item.Kind == "CanonicalText" &&
+                    item.Content == "A historical SQL Server curriculum example.");
+                Assert.True(
+                    commandCounter.Commands <= 6,
+                    $"Indexed retained retrieval executed {commandCounter.Commands} commands.");
+                Assert.True(
+                    retrievalClock.Elapsed < TimeSpan.FromSeconds(5),
+                    $"Indexed retained retrieval took {retrievalClock.Elapsed.TotalMilliseconds:F0} ms.");
+                _output.WriteLine($"SQL RETAINED RETRIEVAL LATENCY MS: {retrievalClock.Elapsed.TotalMilliseconds:F0}");
+                _output.WriteLine($"SQL RETAINED RETRIEVAL QUERY COUNT: {commandCounter.Commands}");
+
                 commandCounter.Reset();
                 var shellClock = Stopwatch.StartNew();
                 var shell = await founder.GetDashboardAsync(

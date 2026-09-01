@@ -1641,6 +1641,151 @@ public sealed class LegendConnectSemanticSpanGroundingTests
     }
 
     [Fact]
+    public async Task ResponseMeaningPlan_RetainsDecisionParityWithUnrelatedCorpusAndInactiveRelevantContradiction()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var fixture = CreateFixture(db);
+        for (var family = 1; family <= 3; family++)
+        {
+            var submitted = await fixture.Curriculum.SubmitFounderEnglishBatchAsync(
+                ResponsePlanFamily(family));
+            Assert.True(submitted.Succeeded, submitted.Message);
+        }
+
+        var before = await fixture.Operations.TryPlanConversationAsync(
+            "Hi there.",
+            new LegendConnectDiscourseStateSnapshot([]));
+        Assert.True(before.Supported, before.ReasonCode);
+        var beforePlan = Assert.IsType<LegendConnectResponseMeaningPlanSnapshot>(before.Plan);
+
+        var relevant = await db.LegendSemanticTransitionEvidence
+            .Where(item => item.SupersededUtc == null)
+            .OrderBy(item => item.Id)
+            .FirstAsync();
+        var relevantSource = await db.LegendCurriculumExamples
+            .SingleAsync(item => item.Id == relevant.SourceCurriculumExampleId);
+        var inactiveSourceUnit = TestTextUnit("Inactive relevant source evidence.");
+        var inactiveResultUnit = TestTextUnit("Inactive relevant result evidence.");
+        var inactiveSource = TestExample(relevantSource.CurriculumFamilyId, inactiveSourceUnit.Id);
+        var inactiveResult = TestExample(relevantSource.CurriculumFamilyId, inactiveResultUnit.Id);
+        var relevantContradiction = new LegendSemanticTransitionEvidence
+        {
+            Id = Guid.NewGuid(),
+            TransitionSignature = relevant.TransitionSignature,
+            SourceSemanticFrameSignature = relevant.SourceSemanticFrameSignature,
+            ResultSemanticFrameSignature = relevant.ResultSemanticFrameSignature,
+            SourceSemanticFrame = relevant.SourceSemanticFrame,
+            ResultSemanticFrame = relevant.ResultSemanticFrame,
+            SourceLanguageCode = "en",
+            ResultLanguageCode = "en",
+            SourceCurriculumExampleId = inactiveSource.Id,
+            ResultCurriculumExampleId = inactiveResult.Id,
+            IndependentSourceIdentity = "inactive-relevant-contradiction",
+            ContributionState = "Contradictory",
+            IsHumanVerifiedSupport = true,
+            Provenance = LegendConnectKnowledgeProvenance.FounderApproved,
+            SupersededUtc = DateTime.UtcNow.AddMinutes(-1)
+        };
+        db.AddRange(
+            inactiveSourceUnit,
+            inactiveResultUnit,
+            inactiveSource,
+            inactiveResult,
+            relevantContradiction);
+
+        for (var index = 0; index < 300; index++)
+        {
+            var unrelatedFamily = new LegendCurriculumFamily
+            {
+                Id = Guid.NewGuid(),
+                FamilyKey = $"retrieval.parity.unrelated.{index:D3}",
+                SemanticCategory = "unrelated",
+                Provenance = LegendConnectKnowledgeProvenance.FounderApproved
+            };
+            var sourceUnit = TestTextUnit($"Unrelated source {index:D3}.");
+            var resultUnit = TestTextUnit($"Unrelated result {index:D3}.");
+            var source = TestExample(unrelatedFamily.Id, sourceUnit.Id);
+            var result = TestExample(unrelatedFamily.Id, resultUnit.Id);
+            var sourceFrame = System.Text.Json.JsonSerializer.Serialize(
+                new SortedDictionary<string, string>(StringComparer.Ordinal)
+                {
+                    ["unrelated_dimension"] = $"source_{index:D3}"
+                });
+            var resultFrame = System.Text.Json.JsonSerializer.Serialize(
+                new SortedDictionary<string, string>(StringComparer.Ordinal)
+                {
+                    ["unrelated_dimension"] = $"result_{index:D3}"
+                });
+            db.AddRange(
+                unrelatedFamily,
+                sourceUnit,
+                resultUnit,
+                source,
+                result,
+                new LegendSemanticTransitionEvidence
+                {
+                    Id = Guid.NewGuid(),
+                    TransitionSignature = LegendLanguageIdentity.TextHash(
+                        $"unrelated-transition-{index:D3}"),
+                    SourceSemanticFrameSignature = LegendLanguageIdentity.TextHash(sourceFrame),
+                    ResultSemanticFrameSignature = LegendLanguageIdentity.TextHash(resultFrame),
+                    SourceSemanticFrame = sourceFrame,
+                    ResultSemanticFrame = resultFrame,
+                    SourceLanguageCode = "en",
+                    ResultLanguageCode = "en",
+                    SourceCurriculumExampleId = source.Id,
+                    ResultCurriculumExampleId = result.Id,
+                    IndependentSourceIdentity = $"unrelated-source-{index:D3}",
+                    ContributionState = "Supported",
+                    IsHumanVerifiedSupport = true,
+                    Provenance = LegendConnectKnowledgeProvenance.FounderApproved
+                });
+        }
+        await db.SaveChangesAsync();
+
+        var after = await fixture.Operations.TryPlanConversationAsync(
+            "Hi there.",
+            new LegendConnectDiscourseStateSnapshot([]));
+
+        Assert.True(after.Supported, after.ReasonCode);
+        var afterPlan = Assert.IsType<LegendConnectResponseMeaningPlanSnapshot>(after.Plan);
+        Assert.Equal(before.ReasonCode, after.ReasonCode);
+        Assert.Equal(beforePlan.PlanIdentity, afterPlan.PlanIdentity);
+        Assert.Equal(beforePlan.ResultSemanticFrameSignature, afterPlan.ResultSemanticFrameSignature);
+        Assert.Equal(
+            beforePlan.ResultDimensions.OrderBy(item => item.Key, StringComparer.Ordinal),
+            afterPlan.ResultDimensions.OrderBy(item => item.Key, StringComparer.Ordinal));
+
+        relevantContradiction.SupersededUtc = null;
+        await db.SaveChangesAsync();
+        var contradicted = await fixture.Operations.TryPlanConversationAsync(
+            "Hi there.",
+            new LegendConnectDiscourseStateSnapshot([]));
+        Assert.False(contradicted.Supported);
+        Assert.Equal("semantic_transition_contradicted", contradicted.ReasonCode);
+
+        static LegendLanguageTextUnit TestTextUnit(string text) => new()
+        {
+            Id = Guid.NewGuid(),
+            LanguageCode = "en",
+            StoragePartition = "/en",
+            NormalizedHash = LegendLanguageIdentity.TextHash(text),
+            Text = text,
+            Provenance = LegendConnectKnowledgeProvenance.FounderApproved,
+            IsTrainingEligible = true
+        };
+
+        static LegendCurriculumExample TestExample(Guid familyId, Guid unitId) => new()
+        {
+            Id = Guid.NewGuid(),
+            CurriculumFamilyId = familyId,
+            TextUnitId = unitId,
+            LanguageCode = "en",
+            Provenance = LegendConnectKnowledgeProvenance.FounderApproved
+        };
+    }
+
+    [Fact]
     public async Task ResponseMeaningPlan_FailsClosedForMissingOrContradictedTransitionEvidence()
     {
         await using var db = ControllerTestHelpers.BuildDb();
