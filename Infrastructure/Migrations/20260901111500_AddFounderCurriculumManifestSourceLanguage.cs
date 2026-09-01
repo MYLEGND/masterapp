@@ -1,13 +1,9 @@
-using Infrastructure.Data;
-using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
 
 namespace Infrastructure.Migrations;
 
-[DbContext(typeof(MasterAppDbContext))]
-[Migration("20260901111500_AddFounderCurriculumManifestSourceLanguage")]
 public partial class AddFounderCurriculumManifestSourceLanguage : Migration
 {
     protected override void Up(MigrationBuilder migrationBuilder)
