@@ -139,7 +139,7 @@ public sealed class LegendConnectResearchEvidenceAdmissibilityPolicyTests
     }
 
     [Fact]
-    public void StaleCurrentEventSource_IsRejectedForClaimSpecificFreshness()
+    public void StaleCurrentEventSource_IsPreservedAsStaleButCannotAuthorizeClaim()
     {
         var assessment = Assess(
             1,
@@ -154,6 +154,9 @@ public sealed class LegendConnectResearchEvidenceAdmissibilityPolicyTests
         Assert.Equal(
             "research_source_stale_for_claim",
             Assert.Single(assessment.Admissibility).ReasonCode);
+        Assert.Equal(
+            LegendConnectResearchClaimVerificationState.Stale,
+            Assert.Single(assessment.ClaimResolutions).State);
     }
 
     [Fact]
@@ -335,11 +338,12 @@ public sealed class LegendConnectResearchEvidenceAdmissibilityPolicyTests
             "document-" + item.Identity,
             item.Identity,
             Uri(item.Identity),
-            item.Content,
-            LegendLanguageIdentity.TextHash(item.Content),
+            item.Content + " The exact claim under review.",
+            LegendLanguageIdentity.TextHash(item.Content + " The exact claim under review."),
             AssessedUtc,
             true,
-            null)).ToArray();
+            null,
+            DocumentLanguageCode: "en")).ToArray();
         var citations = specs.Select(item => new LegendConnectCitation(
             "citation-" + item.Identity,
             item.Identity,
@@ -360,7 +364,8 @@ public sealed class LegendConnectResearchEvidenceAdmissibilityPolicyTests
             item.Support,
             item.RequiredScope,
             AssessedUtc,
-            item.Content)).ToArray();
+            "The exact claim under review.",
+            EvidenceLanguageCode: "en")).ToArray();
 
         return LegendConnectGovernedReasoningExecutor.AssessResearchEvidence(
             sources,
@@ -398,7 +403,8 @@ public sealed class LegendConnectResearchEvidenceAdmissibilityPolicyTests
             LegendLanguageIdentity.TextHash(item.Content),
             AssessedUtc,
             true,
-            null);
+            null,
+            DocumentLanguageCode: "en");
         var citation = new LegendConnectCitation(
             "citation-" + item.Identity,
             item.Identity,
@@ -419,7 +425,8 @@ public sealed class LegendConnectResearchEvidenceAdmissibilityPolicyTests
             item.Support,
             item.RequiredScope,
             AssessedUtc,
-            supportingExcerpt);
+            supportingExcerpt,
+            EvidenceLanguageCode: "en");
         return LegendConnectGovernedReasoningExecutor.AssessResearchEvidence(
             [source],
             [document],

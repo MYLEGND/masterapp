@@ -186,7 +186,8 @@ internal static class LegendConnectResearchEvidenceAdmissibilityPolicy
         IReadOnlyList<LegendConnectClaimEvidence> claims,
         IReadOnlyList<LegendConnectContradictingEvidence> contradictions,
         int minimumIndependentSources,
-        DateTime assessedUtc)
+        DateTime assessedUtc,
+        LegendConnectResearchLanguageLineage? languageLineage = null)
     {
         var boundedMinimum = Math.Clamp(minimumIndependentSources, 1, 3);
         assessedUtc = NormalizeUtc(assessedUtc);
@@ -208,6 +209,14 @@ internal static class LegendConnectResearchEvidenceAdmissibilityPolicy
             .Where(group => group.Count() != 1)
             .Select(group => group.Key)
             .ToHashSet(StringComparer.Ordinal);
+        var classificationConflictEvidenceIds = rows
+            .GroupBy(item => NormalizeClaimKey(item.ClaimIdentity), StringComparer.Ordinal)
+            .Where(group => group
+                .Select(item => (item.Subject, item.StatementKind, item.RequiredAuthorityScope))
+                .Distinct()
+                .Count() != 1)
+            .SelectMany(group => group.Select(item => item.EvidenceIdentity))
+            .ToHashSet(StringComparer.Ordinal);
         var directRowsByClaimAndSource = rows
             .Where(item => item.Support == LegendConnectResearchEvidenceSupport.Direct)
             .GroupBy(item => (item.ClaimIdentity, item.SourceIdentity))
@@ -216,109 +225,51 @@ internal static class LegendConnectResearchEvidenceAdmissibilityPolicy
         var evaluated = rows.Select(row => Evaluate(
                 row,
                 duplicateEvidenceIds,
+                classificationConflictEvidenceIds,
                 sourceById,
                 documentById,
                 citationById,
                 contentHashCounts,
                 directRowsByClaimAndSource,
-                assessedUtc))
+                assessedUtc,
+                languageLineage))
             .ToArray();
 
-        var resolved = ResolveClaimGroups(evaluated, boundedMinimum, assessedUtc);
-        var admittedClaims = resolved
-            .Where(item =>
-                !item.Row.IsContradiction &&
-                (item.Decision.Disposition is
-                    LegendConnectResearchEvidenceDisposition.ControllingEvidence or
-                    LegendConnectResearchEvidenceDisposition.CorroboratingEvidence) &&
-                item.ClaimAdmitted)
-            .Select(item => item.Row.Claim!)
-            .OrderBy(item => item.ClaimIdentity, StringComparer.Ordinal)
-            .ThenBy(item => item.SourceIdentity, StringComparer.Ordinal)
-            .ToArray();
-        var admittedContradictions = resolved
-            .Where(item =>
-                item.Row.IsContradiction &&
-                (item.Decision.Disposition is
-                    LegendConnectResearchEvidenceDisposition.ControllingEvidence or
-                    LegendConnectResearchEvidenceDisposition.CorroboratingEvidence) &&
-                item.ClaimAdmitted)
-            .Select(item => item.Row.Contradiction!)
-            .OrderBy(item => item.ClaimIdentity, StringComparer.Ordinal)
-            .ThenBy(item => item.SourceIdentity, StringComparer.Ordinal)
-            .ToArray();
-
-        var positiveClaimIds = admittedClaims
-            .Select(item => item.ClaimIdentity)
-            .ToHashSet(StringComparer.Ordinal);
-        var explicitConflict = admittedContradictions.Any(item =>
-            positiveClaimIds.Contains(item.ClaimIdentity));
-        var implicitConflict = admittedClaims
-            .GroupBy(item => item.ClaimIdentity, StringComparer.Ordinal)
-            .Any(group => group
-                .Select(item => item.Statement.Trim())
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .Count() > 1);
-        var decisions = resolved.Select(item => item.Decision).ToArray();
-        var required = resolved
-            .Where(item => !item.Row.IsContradiction)
-            .Select(item => item.RequiredIndependentSources)
-            .DefaultIfEmpty(boundedMinimum)
-            .Max();
-        var independentCount = resolved
-            .Where(item =>
-                !item.Row.IsContradiction &&
-                item.ClaimAdmitted &&
-                (item.Decision.Disposition is
-                    LegendConnectResearchEvidenceDisposition.ControllingEvidence or
-                    LegendConnectResearchEvidenceDisposition.CorroboratingEvidence))
-            .Select(item => item.Decision.IndependentLineageIdentity)
-            .Distinct(StringComparer.Ordinal)
-            .Count();
-
-        if (explicitConflict || implicitConflict)
+        var material = new List<LegendConnectResearchMaterialClaimEvidence>();
+        var decisions = new List<LegendConnectResearchEvidenceAdmissibility>(evaluated.Length);
+        foreach (var item in evaluated)
         {
-            return new(
-                LegendResearchEvidenceAssessmentState.UnresolvedConflict,
-                admittedClaims,
-                admittedContradictions,
-                independentCount,
-                required,
-                "research_evidence_conflict_unresolved",
-                decisions);
-        }
+            if (item.Decision.Disposition == LegendConnectResearchEvidenceDisposition.Rejected ||
+                !sourceById.TryGetValue(item.Row.SourceIdentity, out var source) ||
+                !documentById.TryGetValue(item.Row.DocumentIdentity, out var document) ||
+                !citationById.TryGetValue(item.Row.CitationIdentity, out var citation))
+            {
+                decisions.Add(item.Decision);
+                continue;
+            }
 
-        if (admittedClaims.Length == 0)
-        {
-            var rejectionReasons = decisions
-                .Where(item => item.Disposition == LegendConnectResearchEvidenceDisposition.Rejected)
-                .Select(item => item.ReasonCode)
-                .Distinct(StringComparer.Ordinal)
-                .ToArray();
-            var reason = decisions.Any(item =>
-                item.Disposition != LegendConnectResearchEvidenceDisposition.Rejected)
-                    ? "research_evidence_standard_unmet"
-                    : rejectionReasons.Length == 1
-                        ? rejectionReasons[0]
-                        : "research_evidence_admissibility_failed";
-            return new(
-                LegendResearchEvidenceAssessmentState.InsufficientEvidence,
-                [],
-                admittedContradictions,
-                independentCount,
-                required,
-                reason,
-                decisions);
+            var evidence = Materialize(
+                item,
+                source,
+                document,
+                citation,
+                assessedUtc,
+                languageLineage,
+                boundedMinimum);
+            material.Add(evidence);
+            decisions.Add(item.Decision with
+            {
+                NormalizedClaimIdentity = evidence.NormalizedClaimIdentity,
+                MaterialEvidenceIdentity = evidence.EvidenceIdentity
+            });
         }
 
         return new(
-            LegendResearchEvidenceAssessmentState.Conclusion,
-            admittedClaims,
-            admittedContradictions,
-            independentCount,
-            required,
-            "research_claims_governed_by_source_authority",
-            decisions);
+            material.OrderBy(item => item.NormalizedClaimIdentity, StringComparer.Ordinal)
+                .ThenBy(item => item.SourceIdentity, StringComparer.Ordinal)
+                .ToArray(),
+            decisions,
+            boundedMinimum);
     }
 
     internal static EvidenceStandard StandardFor(LegendConnectResearchClaimSubject subject) =>
@@ -329,15 +280,16 @@ internal static class LegendConnectResearchEvidenceAdmissibilityPolicy
     private static EvaluatedEvidence Evaluate(
         EvidenceRow row,
         IReadOnlySet<string> duplicateEvidenceIds,
+        IReadOnlySet<string> classificationConflictEvidenceIds,
         IReadOnlyDictionary<string, LegendConnectResearchSourceIdentity> sourceById,
         IReadOnlyDictionary<string, LegendConnectRetrievedDocument> documentById,
         IReadOnlyDictionary<string, LegendConnectCitation> citationById,
         IReadOnlyDictionary<string, int> contentHashCounts,
         IReadOnlyDictionary<(string ClaimIdentity, string SourceIdentity), EvidenceRow[]> directRows,
-        DateTime assessedUtc)
+        DateTime assessedUtc,
+        LegendConnectResearchLanguageLineage? languageLineage)
     {
         var standard = StandardFor(row.Subject);
-        var required = standard.MinimumIndependentSources;
         var emptyLineage = "unresolved:" + (row.SourceIdentity ?? "missing");
 
         EvaluatedEvidence Result(
@@ -361,9 +313,7 @@ internal static class LegendConnectResearchEvidenceAdmissibilityPolicy
                     row.IsContradiction,
                     assessedUtc,
                     PolicyIdentity),
-                preliminarilyAdmissible,
-                false,
-                required);
+                preliminarilyAdmissible);
 
         if (string.IsNullOrWhiteSpace(row.EvidenceIdentity) ||
             string.IsNullOrWhiteSpace(row.ClaimIdentity) ||
@@ -380,14 +330,85 @@ internal static class LegendConnectResearchEvidenceAdmissibilityPolicy
                 emptyLineage);
         }
 
-        var lineage = ResolveIndependentLineage(source, document, contentHashCounts);
-        if (row.Support == LegendConnectResearchEvidenceSupport.Direct &&
-            !HasExactSupportingExcerpt(row.SupportingExcerpt, document.ContentExcerpt))
+        if (classificationConflictEvidenceIds.Contains(row.EvidenceIdentity))
         {
             return Result(
                 LegendConnectResearchEvidenceDisposition.Rejected,
-                "research_claim_direct_support_missing",
+                "research_claim_classification_conflict",
+                emptyLineage);
+        }
+
+        var lineage = ResolveIndependentLineage(source, document, contentHashCounts);
+        var premiseCount = row.PremiseClaimIdentities?.Count ?? 0;
+        var invalidPremises = premiseCount > 3 ||
+            (row.PremiseClaimIdentities ?? []).Any(identity =>
+                string.IsNullOrWhiteSpace(identity) ||
+                string.Equals(identity, row.ClaimIdentity, StringComparison.Ordinal));
+        if (invalidPremises ||
+            (row.StatementKind == LegendConnectResearchStatementKind.Inference &&
+             (row.Support != LegendConnectResearchEvidenceSupport.Direct ||
+              premiseCount is < 2 or > 3 ||
+              string.IsNullOrWhiteSpace(row.DiscriminatingClaimIdentity))) ||
+            (row.StatementKind != LegendConnectResearchStatementKind.Inference &&
+             (premiseCount > 0 || !string.IsNullOrWhiteSpace(row.DiscriminatingClaimIdentity))))
+        {
+            return Result(
+                LegendConnectResearchEvidenceDisposition.Rejected,
+                "research_bounded_inference_proposal_invalid",
                 lineage);
+        }
+        if (!string.IsNullOrWhiteSpace(row.CorrectsSourceIdentity) &&
+            (!sourceById.ContainsKey(row.CorrectsSourceIdentity) ||
+             string.Equals(row.CorrectsSourceIdentity, row.SourceIdentity, StringComparison.Ordinal)))
+        {
+            return Result(
+                LegendConnectResearchEvidenceDisposition.Rejected,
+                "research_correction_lineage_invalid",
+                lineage);
+        }
+        if (row.ExtractionMethod != LegendConnectResearchExtractionMethod.ModelAssistedProposal ||
+            !TryLocateExactPassage(
+                row.SupportingExcerpt,
+                document,
+                out _))
+        {
+            return Result(
+                LegendConnectResearchEvidenceDisposition.Rejected,
+                row.ExtractionMethod != LegendConnectResearchExtractionMethod.ModelAssistedProposal
+                    ? "research_extraction_method_not_proposal"
+                    : "research_claim_direct_support_missing",
+                lineage);
+        }
+
+        if (row.Support == LegendConnectResearchEvidenceSupport.Direct)
+        {
+            var documentLanguage = document.DocumentLanguageCode ?? "und";
+            var translated = !string.Equals(
+                documentLanguage,
+                row.EvidenceLanguageCode,
+                StringComparison.OrdinalIgnoreCase);
+            if (translated && !HasGovernedTranslation(
+                    row,
+                    document,
+                    row.EvidenceLanguageCode,
+                    languageLineage,
+                    assessedUtc))
+            {
+                return Result(
+                    LegendConnectResearchEvidenceDisposition.ObservationOnly,
+                    "research_translation_not_governed",
+                    lineage);
+            }
+
+            if (!translated && !PassageDirectlySupportsClaim(
+                    row.Statement,
+                    row.SupportingExcerpt!))
+            {
+                return Result(
+                    LegendConnectResearchEvidenceDisposition.Rejected,
+                    "research_claim_passage_entailment_failed",
+                    lineage);
+            }
         }
 
         if (HasCircularCitation(source.SourceIdentity, sourceById))
@@ -421,12 +442,14 @@ internal static class LegendConnectResearchEvidenceAdmissibilityPolicy
             var terminalAssessment = Evaluate(
                 terminalRow,
                 duplicateEvidenceIds,
+                classificationConflictEvidenceIds,
                 sourceById,
                 documentById,
                 citationById,
                 contentHashCounts,
                 directRows,
-                assessedUtc);
+                assessedUtc,
+                languageLineage);
             if (!terminalAssessment.PreliminarilyAdmissible)
             {
                 return Result(
@@ -449,6 +472,22 @@ internal static class LegendConnectResearchEvidenceAdmissibilityPolicy
                 lineage);
         }
 
+        if (source.PublishedUtc is null)
+        {
+            return Result(
+                LegendConnectResearchEvidenceDisposition.Rejected,
+                "research_source_publication_timestamp_missing",
+                lineage);
+        }
+        if (NormalizeUtc(source.PublishedUtc.Value) > NormalizeUtc(document.RetrievedUtc) ||
+            NormalizeUtc(document.RetrievedUtc) > assessedUtc)
+        {
+            return Result(
+                LegendConnectResearchEvidenceDisposition.Rejected,
+                "research_claim_timestamps_invalid",
+                lineage);
+        }
+
         var contentTimestamp = new[]
             {
                 source.PublishedUtc,
@@ -459,18 +498,11 @@ internal static class LegendConnectResearchEvidenceAdmissibilityPolicy
             .Select(item => (DateTime?)NormalizeUtc(item.GetValueOrDefault()))
             .DefaultIfEmpty()
             .Max();
-        if (contentTimestamp is null)
-        {
-            return Result(
-                LegendConnectResearchEvidenceDisposition.ObservationOnly,
-                "research_source_date_missing",
-                lineage);
-        }
         if (standard.MaximumAge is { } maximumAge &&
             NormalizeUtc(row.AsOfUtc ?? assessedUtc) - NormalizeUtc(contentTimestamp.Value) > maximumAge)
         {
             return Result(
-                LegendConnectResearchEvidenceDisposition.Rejected,
+                LegendConnectResearchEvidenceDisposition.ObservationOnly,
                 "research_source_stale_for_claim",
                 lineage);
         }
@@ -602,95 +634,6 @@ internal static class LegendConnectResearchEvidenceAdmissibilityPolicy
             true);
     }
 
-    private static EvaluatedEvidence[] ResolveClaimGroups(
-        IReadOnlyList<EvaluatedEvidence> evaluated,
-        int requestedMinimum,
-        DateTime assessedUtc)
-    {
-        var resolved = evaluated.ToArray();
-        foreach (var group in resolved.GroupBy(item =>
-                     (item.Row.ClaimIdentity, item.Row.IsContradiction)))
-        {
-            if (group.Select(item => item.Row.Subject).Distinct().Count() != 1 ||
-                group.Select(item => item.Row.StatementKind).Distinct().Count() != 1 ||
-                group.Select(item => item.Row.RequiredAuthorityScope).Distinct().Count() != 1)
-            {
-                foreach (var item in group)
-                {
-                    var conflictingIndex = Array.IndexOf(resolved, item);
-                    if (conflictingIndex < 0)
-                        continue;
-                    resolved[conflictingIndex] = item with
-                    {
-                        Decision = item.Decision with
-                        {
-                            Disposition = LegendConnectResearchEvidenceDisposition.Rejected,
-                            ReasonCode = "research_claim_classification_conflict",
-                            AssessedUtc = assessedUtc
-                        },
-                        PreliminarilyAdmissible = false,
-                        ClaimAdmitted = false,
-                        RequiredIndependentSources = requestedMinimum
-                    };
-                }
-                continue;
-            }
-
-            var standard = StandardFor(group.First().Row.Subject);
-            var required = Math.Clamp(
-                Math.Max(requestedMinimum, standard.MinimumIndependentSources),
-                1,
-                3);
-            var controlling = group
-                .Where(item => item.PreliminarilyAdmissible &&
-                               item.Decision.Disposition ==
-                                   LegendConnectResearchEvidenceDisposition.ControllingEvidence)
-                .ToArray();
-            var admissible = group
-                .Where(item => item.PreliminarilyAdmissible)
-                .ToArray();
-            var admitted = group.Key.IsContradiction
-                ? admissible.Length > 0
-                : controlling.Length > 0 ||
-                  admissible.Select(item => item.Decision.IndependentLineageIdentity)
-                      .Distinct(StringComparer.Ordinal)
-                      .Count() >= required;
-
-            foreach (var item in group)
-            {
-                var index = Array.IndexOf(resolved, item);
-                if (index < 0)
-                    continue;
-                if (controlling.Length > 0 &&
-                    item.PreliminarilyAdmissible &&
-                    item.Decision.Disposition !=
-                        LegendConnectResearchEvidenceDisposition.ControllingEvidence)
-                {
-                    resolved[index] = item with
-                    {
-                        Decision = item.Decision with
-                        {
-                            Disposition = LegendConnectResearchEvidenceDisposition.ObservationOnly,
-                            ReasonCode = "research_primary_record_preferred_over_secondary_support",
-                            AssessedUtc = assessedUtc
-                        },
-                        ClaimAdmitted = false,
-                        RequiredIndependentSources = required
-                    };
-                }
-                else
-                {
-                    resolved[index] = item with
-                    {
-                        ClaimAdmitted = admitted && item.PreliminarilyAdmissible,
-                        RequiredIndependentSources = required
-                    };
-                }
-            }
-        }
-        return resolved;
-    }
-
     private static bool HasCompleteLineage(
         EvidenceRow row,
         LegendConnectResearchSourceIdentity source,
@@ -700,21 +643,306 @@ internal static class LegendConnectResearchEvidenceAdmissibilityPolicy
         string.Equals(citation.SourceIdentity, row.SourceIdentity, StringComparison.Ordinal) &&
         string.Equals(citation.DocumentIdentity, row.DocumentIdentity, StringComparison.Ordinal) &&
         string.Equals(document.CanonicalUri, source.CanonicalUri, StringComparison.Ordinal) &&
-        string.Equals(citation.CanonicalUri, source.CanonicalUri, StringComparison.Ordinal);
+        string.Equals(citation.CanonicalUri, source.CanonicalUri, StringComparison.Ordinal) &&
+        NormalizeUtc(citation.RetrievedUtc) == NormalizeUtc(document.RetrievedUtc);
 
-    private static bool HasExactSupportingExcerpt(
-        string? supportingExcerpt,
-        string documentContent)
+    private static LegendConnectResearchMaterialClaimEvidence Materialize(
+        EvaluatedEvidence evaluated,
+        LegendConnectResearchSourceIdentity source,
+        LegendConnectRetrievedDocument document,
+        LegendConnectCitation citation,
+        DateTime assessedUtc,
+        LegendConnectResearchLanguageLineage? languageLineage,
+        int requestedMinimum)
     {
+        var row = evaluated.Row;
+        var standard = StandardFor(row.Subject);
+        var applicableScope = row.RequiredAuthorityScope ==
+            LegendConnectResearchAuthorityScope.GeneralRecord
+                ? standard.DefaultAuthorityScope
+                : row.RequiredAuthorityScope;
+        _ = TryLocateExactPassage(row.SupportingExcerpt, document, out var passage);
+        var exactPassage = passage!;
+        var normalizedClaimIdentity = NormalizeClaimIdentity(
+            row.ClaimIdentity,
+            row.Subject,
+            applicableScope);
+        var materialIdentity = LegendLanguageIdentity.TextHash(string.Join(
+            '|',
+            "research-material-claim|v1",
+            normalizedClaimIdentity,
+            source.SourceIdentity,
+            exactPassage.LocationIdentity,
+            row.EvidenceIdentity,
+            row.IsContradiction));
+        var translation = ResolveTranslationLineage(
+            row,
+            document,
+            languageLineage,
+            assessedUtc);
+        var freshness = ResolveFreshness(
+            source,
+            standard,
+            row.AsOfUtc ?? assessedUtc);
+        var standardRank = evaluated.Decision.Disposition switch
+        {
+            LegendConnectResearchEvidenceDisposition.ControllingEvidence => 3,
+            LegendConnectResearchEvidenceDisposition.CorroboratingEvidence => 2,
+            _ => 1
+        };
+        var evidenceStandard = string.Join(
+            '|',
+            LegendConnectResearchContracts.ClaimEvidencePolicy,
+            row.Subject,
+            evaluated.Decision.Disposition,
+            "minimum-independent:" + Math.Clamp(
+                Math.Max(requestedMinimum, standard.MinimumIndependentSources),
+                1,
+                3));
+        var initialState = freshness == LegendConnectResearchFreshnessState.Stale
+            ? LegendConnectResearchClaimVerificationState.Stale
+            : evaluated.Decision.Disposition ==
+                LegendConnectResearchEvidenceDisposition.ControllingEvidence
+                ? LegendConnectResearchClaimVerificationState.VerifiedByControllingEvidence
+                : LegendConnectResearchClaimVerificationState.SourceReportedButNotIndependentlyVerified;
+        var relationship = row.IsContradiction
+            ? LegendConnectResearchEvidenceRelationship.Contradiction
+            : row.Support == LegendConnectResearchEvidenceSupport.Direct
+                ? LegendConnectResearchEvidenceRelationship.DirectSupport
+                : LegendConnectResearchEvidenceRelationship.Contextual;
+        var premiseClaims = (row.PremiseClaimIdentities ?? [])
+            .Select(item => NormalizeClaimIdentity(item, row.Subject, applicableScope))
+            .Distinct(StringComparer.Ordinal)
+            .Take(3)
+            .ToArray();
+        var discriminatingClaim = string.IsNullOrWhiteSpace(row.DiscriminatingClaimIdentity)
+            ? null
+            : NormalizeClaimIdentity(
+                row.DiscriminatingClaimIdentity,
+                row.Subject,
+                applicableScope);
+        return new LegendConnectResearchMaterialClaimEvidence(
+            materialIdentity,
+            normalizedClaimIdentity,
+            row.Statement.Trim(),
+            source.SourceIdentity,
+            document.DocumentIdentity,
+            citation.CitationIdentity,
+            exactPassage,
+            source.SourceClass,
+            NormalizeUtc(source.PublishedUtc.Value),
+            NormalizeUtc(document.RetrievedUtc),
+            row.Subject,
+            applicableScope,
+            relationship,
+            evaluated.Decision.IndependentLineageIdentity,
+            freshness,
+            evidenceStandard,
+            standardRank,
+            Math.Clamp(
+                Math.Max(requestedMinimum, standard.MinimumIndependentSources),
+                1,
+                3),
+            translation,
+            translation.TranslationApplied && translation.GovernedTranslationValidated
+                ? LegendConnectResearchExtractionMethod.GovernedTranslationValidated
+                : LegendConnectResearchExtractionMethod.ModelAssistedProposalValidatedAgainstExactPassage,
+            new LegendConnectResearchMaterialClaimProvenance(
+                row.EvidenceIdentity,
+                source.SourceIdentity,
+                document.DocumentIdentity,
+                citation.CitationIdentity,
+                exactPassage.LocationIdentity,
+                document.ContentHash,
+                LegendConnectResearchContracts.ClaimEvidencePolicy,
+                assessedUtc,
+                true,
+                true,
+                true,
+                !HasConflictingTimestamps(source),
+                true),
+            row.StatementKind,
+            initialState,
+            premiseClaims,
+            discriminatingClaim,
+            row.CorrectsSourceIdentity);
+    }
+
+    internal static string NormalizeClaimIdentity(
+        string proposedIdentity,
+        LegendConnectResearchClaimSubject subject,
+        LegendConnectResearchAuthorityScope scope)
+    {
+        var normalized = NormalizeClaimKey(proposedIdentity);
+        return LegendLanguageIdentity.TextHash(string.Join(
+            '|',
+            "research-normalized-claim|v1",
+            subject,
+            scope,
+            normalized));
+    }
+
+    private static bool TryLocateExactPassage(
+        string? supportingExcerpt,
+        LegendConnectRetrievedDocument document,
+        out LegendConnectResearchPassageLocation? passage)
+    {
+        passage = null;
         if (string.IsNullOrWhiteSpace(supportingExcerpt) ||
             LegendConnectResearchExternalDataPolicy.IsPotentialInstruction(supportingExcerpt))
             return false;
-        var normalizedExcerpt = NormalizeEvidenceText(supportingExcerpt);
-        var normalizedDocument = NormalizeEvidenceText(documentContent);
-        return normalizedExcerpt.Length > 0 &&
-               normalizedDocument.Contains(
-                   normalizedExcerpt,
-                   StringComparison.OrdinalIgnoreCase);
+        var exact = supportingExcerpt.Trim();
+        var start = document.ContentExcerpt.IndexOf(
+            exact,
+            StringComparison.OrdinalIgnoreCase);
+        if (start < 0 || exact.Length > 800)
+            return false;
+        var sourcePassage = document.ContentExcerpt.Substring(start, exact.Length);
+        var passageHash = LegendLanguageIdentity.TextHash(sourcePassage);
+        passage = new LegendConnectResearchPassageLocation(
+            document.DocumentIdentity,
+            start,
+            exact.Length,
+            sourcePassage,
+            passageHash,
+            LegendLanguageIdentity.TextHash(string.Join(
+                '|',
+                "research-passage-location|v1",
+                document.DocumentIdentity,
+                start,
+                exact.Length,
+                passageHash)));
+        return true;
+    }
+
+    private static bool PassageDirectlySupportsClaim(
+        string statement,
+        string supportingPassage)
+    {
+        var normalizedStatement = NormalizeEvidenceText(statement).ToLowerInvariant();
+        var normalizedPassage = NormalizeEvidenceText(supportingPassage).ToLowerInvariant();
+        return normalizedStatement.Length > 0 &&
+               normalizedPassage.Contains(normalizedStatement, StringComparison.Ordinal);
+    }
+
+    private static string NormalizeClaimKey(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return string.Empty;
+        var token = new System.Text.StringBuilder();
+        var pendingSeparator = false;
+        foreach (var character in value)
+        {
+            if (char.IsLetterOrDigit(character))
+            {
+                if (pendingSeparator && token.Length > 0)
+                    token.Append(' ');
+                token.Append(char.ToLowerInvariant(character));
+                pendingSeparator = false;
+                continue;
+            }
+            pendingSeparator = true;
+        }
+        return token.ToString();
+    }
+
+    private static bool HasGovernedTranslation(
+        EvidenceRow row,
+        LegendConnectRetrievedDocument document,
+        string evidenceLanguageCode,
+        LegendConnectResearchLanguageLineage? languageLineage,
+        DateTime assessedUtc)
+    {
+        if (languageLineage is null)
+            return false;
+        return languageLineage.TranslationReceipts.Any(item =>
+            IsGovernedTranslationReceipt(
+                row,
+                document,
+                evidenceLanguageCode,
+                item,
+                assessedUtc));
+    }
+
+    private static bool IsGovernedTranslationReceipt(
+        EvidenceRow row,
+        LegendConnectRetrievedDocument document,
+        string evidenceLanguageCode,
+        LegendConnectResearchTranslationReceipt item,
+        DateTime assessedUtc) =>
+        string.Equals(item.InputIdentity, document.ContentHash, StringComparison.Ordinal) &&
+        !string.IsNullOrWhiteSpace(item.ReceiptIdentity) &&
+        !string.IsNullOrWhiteSpace(item.Transport) &&
+        !string.IsNullOrWhiteSpace(item.OutputIdentity) &&
+        string.Equals(
+            item.SourceLanguageCode,
+            document.DocumentLanguageCode,
+            StringComparison.OrdinalIgnoreCase) &&
+        string.Equals(
+            item.TargetLanguageCode,
+            evidenceLanguageCode,
+            StringComparison.OrdinalIgnoreCase) &&
+        string.Equals(
+            item.State,
+            "GovernedTranslationValidated",
+            StringComparison.Ordinal) &&
+        item.ValidatedProposalIdentities?.Contains(
+            row.EvidenceIdentity,
+            StringComparer.Ordinal) == true &&
+        NormalizeUtc(item.ObservedUtc) >= NormalizeUtc(document.RetrievedUtc) &&
+        NormalizeUtc(item.ObservedUtc) <= assessedUtc;
+
+    private static LegendConnectResearchClaimTranslationLineage ResolveTranslationLineage(
+        EvidenceRow row,
+        LegendConnectRetrievedDocument document,
+        LegendConnectResearchLanguageLineage? languageLineage,
+        DateTime assessedUtc)
+    {
+        var documentLanguage = document.DocumentLanguageCode ?? "und";
+        var evidenceLanguage = string.IsNullOrWhiteSpace(row.EvidenceLanguageCode)
+            ? "und"
+            : row.EvidenceLanguageCode;
+        var translated = !string.Equals(
+            documentLanguage,
+            evidenceLanguage,
+            StringComparison.OrdinalIgnoreCase);
+        var receipt = languageLineage?.TranslationReceipts.FirstOrDefault(item =>
+            IsGovernedTranslationReceipt(
+                row,
+                document,
+                evidenceLanguage,
+                item,
+                assessedUtc));
+        return new LegendConnectResearchClaimTranslationLineage(
+            documentLanguage,
+            evidenceLanguage,
+            languageLineage?.FinalResponseLanguageCode ?? evidenceLanguage,
+            translated,
+            !translated || string.Equals(
+                receipt?.State,
+                "GovernedTranslationValidated",
+                StringComparison.Ordinal),
+            receipt?.ReceiptIdentity,
+            translated ? receipt?.State ?? "TranslationLineageMissing" : "NotRequired");
+    }
+
+    private static LegendConnectResearchFreshnessState ResolveFreshness(
+        LegendConnectResearchSourceIdentity source,
+        EvidenceStandard standard,
+        DateTime asOfUtc)
+    {
+        if (HasConflictingTimestamps(source))
+            return LegendConnectResearchFreshnessState.ConflictingTimestamps;
+        var timestamps = new[] { source.PublishedUtc, source.UpdatedUtc, source.EffectiveUtc }
+            .Where(item => item.HasValue)
+            .Select(item => NormalizeUtc(item.GetValueOrDefault()))
+            .ToArray();
+        if (timestamps.Length == 0)
+            return LegendConnectResearchFreshnessState.Undated;
+        return standard.MaximumAge is { } maximumAge &&
+               NormalizeUtc(asOfUtc) - timestamps.Max() > maximumAge
+            ? LegendConnectResearchFreshnessState.Stale
+            : LegendConnectResearchFreshnessState.Current;
     }
 
     private static string NormalizeEvidenceText(string value) =>
@@ -911,9 +1139,12 @@ internal static class LegendConnectResearchEvidenceAdmissibilityPolicy
         LegendConnectResearchAuthorityScope RequiredAuthorityScope,
         DateTime? AsOfUtc,
         string? SupportingExcerpt,
-        bool IsContradiction,
-        LegendConnectClaimEvidence? Claim,
-        LegendConnectContradictingEvidence? Contradiction)
+        string EvidenceLanguageCode,
+        LegendConnectResearchExtractionMethod ExtractionMethod,
+        IReadOnlyList<string>? PremiseClaimIdentities,
+        string? DiscriminatingClaimIdentity,
+        string? CorrectsSourceIdentity,
+        bool IsContradiction)
     {
         internal static EvidenceRow From(LegendConnectClaimEvidence item) => new(
             item.EvidenceIdentity,
@@ -928,9 +1159,12 @@ internal static class LegendConnectResearchEvidenceAdmissibilityPolicy
             item.RequiredAuthorityScope,
             item.AsOfUtc,
             item.SupportingExcerpt,
-            false,
-            item,
-            null);
+            item.EvidenceLanguageCode,
+            item.ExtractionMethod,
+            item.PremiseClaimIdentities,
+            item.DiscriminatingClaimIdentity,
+            item.CorrectsSourceIdentity,
+            false);
 
         internal static EvidenceRow From(LegendConnectContradictingEvidence item) => new(
             item.EvidenceIdentity,
@@ -945,24 +1179,21 @@ internal static class LegendConnectResearchEvidenceAdmissibilityPolicy
             item.RequiredAuthorityScope,
             item.AsOfUtc,
             item.SupportingExcerpt,
-            true,
-            null,
-            item);
+            item.EvidenceLanguageCode,
+            item.ExtractionMethod,
+            item.PremiseClaimIdentities,
+            item.DiscriminatingClaimIdentity,
+            item.CorrectsSourceIdentity,
+            true);
     }
 
     private sealed record EvaluatedEvidence(
         EvidenceRow Row,
         LegendConnectResearchEvidenceAdmissibility Decision,
-        bool PreliminarilyAdmissible,
-        bool ClaimAdmitted,
-        int RequiredIndependentSources);
+        bool PreliminarilyAdmissible);
 }
 
 internal sealed record LegendConnectResearchEvidencePolicyAssessment(
-    LegendResearchEvidenceAssessmentState State,
-    IReadOnlyList<LegendConnectClaimEvidence> Claims,
-    IReadOnlyList<LegendConnectContradictingEvidence> Contradictions,
-    int IndependentSourceCount,
-    int RequiredIndependentSourceCount,
-    string ReasonCode,
-    IReadOnlyList<LegendConnectResearchEvidenceAdmissibility> Admissibility);
+    IReadOnlyList<LegendConnectResearchMaterialClaimEvidence> MaterialEvidence,
+    IReadOnlyList<LegendConnectResearchEvidenceAdmissibility> Admissibility,
+    int RequestedMinimumIndependentSources);

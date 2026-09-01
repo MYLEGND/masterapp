@@ -282,22 +282,24 @@ public sealed class LegendConnectGovernedInternetResearchTests
     public void ReasoningExecutor_PreservesContradictionAsUnresolved()
     {
         var packet = EvidencePacket();
-        var contradiction = new LegendConnectContradictingEvidence(
-            "contra-1",
-            "claim-1",
-            "The measured value is 11.",
-            packet.Sources[1].SourceIdentity,
-            packet.Documents[1].DocumentIdentity,
-            packet.Citations[1].CitationIdentity,
-            DecisionUtc,
-            SupportingExcerpt: "Direct evidence two.");
+        var contradictions = packet.Sources.Select((source, index) =>
+            new LegendConnectContradictingEvidence(
+                "contra-" + (index + 1),
+                "claim-1",
+                "The measured value is 11.",
+                source.SourceIdentity,
+                packet.Documents[index].DocumentIdentity,
+                packet.Citations[index].CitationIdentity,
+                DecisionUtc,
+                SupportingExcerpt: "The measured value is 11.",
+                EvidenceLanguageCode: "en")).ToArray();
         var assessment =
             LegendConnectGovernedReasoningExecutor.AssessResearchEvidence(
                 packet.Sources,
                 packet.Documents,
                 packet.Citations,
                 packet.Claims,
-                [contradiction],
+                contradictions,
                 minimumIndependentSources: 2);
 
         Assert.Equal(
@@ -409,20 +411,24 @@ public sealed class LegendConnectGovernedInternetResearchTests
             "document-1",
             sourceOne.SourceIdentity,
             sourceOne.CanonicalUri,
-            "Direct evidence one.",
-            LegendLanguageIdentity.TextHash("Direct evidence one."),
+            "The measured value is 10. The measured value is 11. Record one.",
+            LegendLanguageIdentity.TextHash(
+                "The measured value is 10. The measured value is 11. Record one."),
             DecisionUtc,
             true,
-            null);
+            null,
+            DocumentLanguageCode: "en");
         var documentTwo = new LegendConnectRetrievedDocument(
             "document-2",
             sourceTwo.SourceIdentity,
             sourceTwo.CanonicalUri,
-            "Direct evidence two.",
-            LegendLanguageIdentity.TextHash("Direct evidence two."),
+            "The measured value is 10. The measured value is 11. Record two.",
+            LegendLanguageIdentity.TextHash(
+                "The measured value is 10. The measured value is 11. Record two."),
             DecisionUtc,
             true,
-            null);
+            null,
+            DocumentLanguageCode: "en");
         var citationOne = new LegendConnectCitation(
             "citation-1",
             sourceOne.SourceIdentity,
@@ -450,7 +456,8 @@ public sealed class LegendConnectGovernedInternetResearchTests
                     documentOne.DocumentIdentity,
                     citationOne.CitationIdentity,
                     DecisionUtc,
-                    SupportingExcerpt: "Direct evidence one."),
+                    SupportingExcerpt: "The measured value is 10.",
+                    EvidenceLanguageCode: "en"),
                 new LegendConnectClaimEvidence(
                     "evidence-2",
                     "claim-1",
@@ -459,7 +466,8 @@ public sealed class LegendConnectGovernedInternetResearchTests
                     documentTwo.DocumentIdentity,
                     citationTwo.CitationIdentity,
                     DecisionUtc,
-                    SupportingExcerpt: "Direct evidence two.")
+                    SupportingExcerpt: "The measured value is 10.",
+                    EvidenceLanguageCode: "en")
             ]);
     }
 

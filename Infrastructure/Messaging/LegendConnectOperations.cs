@@ -830,7 +830,8 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
                 evidencePacket.ClaimEvidence,
                 evidencePacket.ContradictingEvidence,
                 request.MinimumIndependentSources,
-                completed);
+                completed,
+                evidencePacket.LanguageLineage);
         var unresolvedInternalConflict =
             request.Decision.Need ==
                 LegendConnectResearchNeed.ConflictingInternalEvidence &&
@@ -867,7 +868,10 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
             evidencePacket.PageReceipts,
             evidencePacket.LanguageLineage,
             LegendConnectResearchEvidenceAdmissibilityPolicy.PolicyIdentity,
-            assessment.Admissibility);
+            assessment.Admissibility,
+            assessment.MaterialEvidence,
+            assessment.ClaimResolutions,
+            LegendConnectResearchContracts.ClaimEvidencePolicy);
         var provenance = BuildResearchProvenance(
             request,
             session,
@@ -1595,7 +1599,15 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
                     candidate.Support,
                     candidate.RequiredAuthorityScope,
                     candidate.AsOfUtc,
-                    candidate.SupportingExcerpt));
+                    candidate.SupportingExcerpt,
+                    candidate.EvidenceLanguageCode,
+                    LegendConnectResearchExtractionMethod.ModelAssistedProposal,
+                    candidate.PremiseClaimIdentities,
+                    candidate.DiscriminatingClaimIdentity,
+                    candidate.CorrectsCanonicalUri is not null &&
+                    artifactsByUri.TryGetValue(candidate.CorrectsCanonicalUri, out var correctedArtifact)
+                        ? correctedArtifact.SourceIdentity
+                        : null));
                 if (claims.Count >= request.MaximumClaims)
                     break;
             }
@@ -1625,7 +1637,15 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
                     candidate.Support,
                     candidate.RequiredAuthorityScope,
                     candidate.AsOfUtc,
-                    candidate.SupportingExcerpt));
+                    candidate.SupportingExcerpt,
+                    candidate.EvidenceLanguageCode,
+                    LegendConnectResearchExtractionMethod.ModelAssistedProposal,
+                    candidate.PremiseClaimIdentities,
+                    candidate.DiscriminatingClaimIdentity,
+                    candidate.CorrectsCanonicalUri is not null &&
+                    artifactsByUri.TryGetValue(candidate.CorrectsCanonicalUri, out var correctedArtifact)
+                        ? correctedArtifact.SourceIdentity
+                        : null));
                 if (contradictions.Count >= request.MaximumClaims)
                     break;
             }
@@ -1842,11 +1862,55 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
                    {
                        LegendConnectClaimEvidence claim =>
                            !LegendConnectResearchExternalDataPolicy.IsPotentialInstruction(claim.Statement) &&
+                           !string.IsNullOrWhiteSpace(claim.SupportingExcerpt) &&
+                           claim.SupportingExcerpt.Length <= 800 &&
+                           !LegendConnectResearchExternalDataPolicy.IsPotentialInstruction(
+                               claim.SupportingExcerpt) &&
+                           string.Equals(
+                               claim.EvidenceLanguageCode,
+                               request.Decision.SourceLanguageCode,
+                               StringComparison.OrdinalIgnoreCase) &&
+                           claim.ExtractionMethod ==
+                               LegendConnectResearchExtractionMethod.ModelAssistedProposal &&
+                           (claim.PremiseClaimIdentities?.Count ?? 0) <= 3 &&
+                           (claim.PremiseClaimIdentities ?? []).All(identity =>
+                               !string.IsNullOrWhiteSpace(identity) &&
+                               !string.Equals(identity, claim.ClaimIdentity, StringComparison.Ordinal)) &&
+                           (claim.StatementKind != LegendConnectResearchStatementKind.Inference ||
+                            (claim.Support == LegendConnectResearchEvidenceSupport.Direct &&
+                             claim.PremiseClaimIdentities?.Count is >= 2 and <= 3 &&
+                             !string.IsNullOrWhiteSpace(claim.DiscriminatingClaimIdentity))) &&
+                           (claim.CorrectsSourceIdentity is null ||
+                            sourceSet.Contains(claim.CorrectsSourceIdentity)) &&
                            sourceSet.Contains(claim.SourceIdentity) &&
                            documentSet.Contains(claim.DocumentIdentity) &&
                            citationSet.Contains(claim.CitationIdentity),
                        LegendConnectContradictingEvidence contradiction =>
                            !LegendConnectResearchExternalDataPolicy.IsPotentialInstruction(contradiction.Statement) &&
+                           !string.IsNullOrWhiteSpace(contradiction.SupportingExcerpt) &&
+                           contradiction.SupportingExcerpt.Length <= 800 &&
+                           !LegendConnectResearchExternalDataPolicy.IsPotentialInstruction(
+                               contradiction.SupportingExcerpt) &&
+                           string.Equals(
+                               contradiction.EvidenceLanguageCode,
+                               request.Decision.SourceLanguageCode,
+                               StringComparison.OrdinalIgnoreCase) &&
+                           contradiction.ExtractionMethod ==
+                               LegendConnectResearchExtractionMethod.ModelAssistedProposal &&
+                           (contradiction.PremiseClaimIdentities?.Count ?? 0) <= 3 &&
+                           (contradiction.PremiseClaimIdentities ?? []).All(identity =>
+                               !string.IsNullOrWhiteSpace(identity) &&
+                               !string.Equals(
+                                   identity,
+                                   contradiction.ClaimIdentity,
+                                   StringComparison.Ordinal)) &&
+                           (contradiction.StatementKind != LegendConnectResearchStatementKind.Inference ||
+                            (contradiction.Support == LegendConnectResearchEvidenceSupport.Direct &&
+                             contradiction.PremiseClaimIdentities?.Count is >= 2 and <= 3 &&
+                             !string.IsNullOrWhiteSpace(
+                                 contradiction.DiscriminatingClaimIdentity))) &&
+                           (contradiction.CorrectsSourceIdentity is null ||
+                            sourceSet.Contains(contradiction.CorrectsSourceIdentity)) &&
                            sourceSet.Contains(contradiction.SourceIdentity) &&
                            documentSet.Contains(contradiction.DocumentIdentity) &&
                            citationSet.Contains(contradiction.CitationIdentity),
@@ -1896,7 +1960,10 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
             session.PageReceipts?.Select(item => item.ReceiptIdentity).ToArray() ?? [],
             session.LanguageLineage,
             session.EvidencePolicyIdentity,
-            session.EvidenceAdmissibility);
+            session.EvidenceAdmissibility,
+            session.MaterialClaimEvidence?.Select(item => item.EvidenceIdentity).ToArray() ?? [],
+            session.ClaimResolutions,
+            session.ClaimEvidencePolicyIdentity);
 
     /// <summary>
     /// Observational Stage 4 boundary. It deliberately returns governed result

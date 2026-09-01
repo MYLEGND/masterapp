@@ -37,6 +37,7 @@ Execute only the supplied bounded queries and return only the requested JSON.
 - Classify every source using exactly one supplied source class, record its common/original lineage, and never treat rank, popularity, repetition, domain age, or confidence as truth.
 - Classify each atomic statement by subject, statement kind, required authority scope, and whether candidate source evidence directly supports it or only supplies a citation chain or observation.
 - For direct support, return one short exact excerpt from the candidate source; never synthesize or paraphrase that excerpt.
+- An inference is still only a proposal: it must use direct support, quote an exact passage containing the proposed inference, reference two or three returned premise claim identifiers, and name one returned discriminating claim identifier. A correction may identify only the exact returned source it explicitly corrects.
 - Prefer original primary evidence. Identify copied, syndicated, press-release-derived, and common-origin material so dependent sources cannot masquerade as independent confirmations.
 - Record authorship, publication/update/effective dates, methodology availability, provenance completeness, and citation targets only when the public source actually exposes them. Do not guess missing metadata.
 - Express evidence statements in the supplied final response language, while preserving query and document languages.
@@ -90,9 +91,12 @@ Execute only the supplied bounded queries and return only the requested JSON.
           "evidence_language": { "type": "string", "minLength": 1, "maxLength": 80 },
           "source_urls": { "type": "array", "minItems": 1, "maxItems": 8, "items": { "type": "string", "minLength": 8, "maxLength": 2000 } },
           "observed_utc": { "type": ["string", "null"], "maxLength": 40 },
-          "as_of_utc": { "type": ["string", "null"], "maxLength": 40 }
+          "as_of_utc": { "type": ["string", "null"], "maxLength": 40 },
+          "premise_claim_ids": { "type": "array", "maxItems": 3, "items": { "type": "string", "minLength": 1, "maxLength": 160 } },
+          "discriminating_claim_id": { "type": ["string", "null"], "maxLength": 160 },
+          "corrects_source_url": { "type": ["string", "null"], "maxLength": 2000 }
         },
-        "required": ["claim_id", "statement", "subject", "statement_kind", "support", "supporting_excerpt", "required_authority_scope", "evidence_language", "source_urls", "observed_utc", "as_of_utc"]
+        "required": ["claim_id", "statement", "subject", "statement_kind", "support", "supporting_excerpt", "required_authority_scope", "evidence_language", "source_urls", "observed_utc", "as_of_utc", "premise_claim_ids", "discriminating_claim_id", "corrects_source_url"]
       }
     },
     "contradictions": {
@@ -110,9 +114,12 @@ Execute only the supplied bounded queries and return only the requested JSON.
           "evidence_language": { "type": "string", "minLength": 1, "maxLength": 80 },
           "source_urls": { "type": "array", "minItems": 1, "maxItems": 8, "items": { "type": "string", "minLength": 8, "maxLength": 2000 } },
           "observed_utc": { "type": ["string", "null"], "maxLength": 40 },
-          "as_of_utc": { "type": ["string", "null"], "maxLength": 40 }
+          "as_of_utc": { "type": ["string", "null"], "maxLength": 40 },
+          "premise_claim_ids": { "type": "array", "maxItems": 3, "items": { "type": "string", "minLength": 1, "maxLength": 160 } },
+          "discriminating_claim_id": { "type": ["string", "null"], "maxLength": 160 },
+          "corrects_source_url": { "type": ["string", "null"], "maxLength": 2000 }
         },
-        "required": ["claim_id", "statement", "subject", "statement_kind", "support", "supporting_excerpt", "required_authority_scope", "evidence_language", "source_urls", "observed_utc", "as_of_utc"]
+        "required": ["claim_id", "statement", "subject", "statement_kind", "support", "supporting_excerpt", "required_authority_scope", "evidence_language", "source_urls", "observed_utc", "as_of_utc", "premise_claim_ids", "discriminating_claim_id", "corrects_source_url"]
       }
     }
   },
@@ -545,6 +552,41 @@ Execute only the supplied bounded queries and return only the requested JSON.
                 .ToArray();
             if (canonicalUris.Length == 0)
                 continue;
+            var subject = ReadEnum(
+                item,
+                "subject",
+                LegendConnectResearchClaimSubject.General);
+            var statementKind = ReadEnum(
+                item,
+                "statement_kind",
+                LegendConnectResearchStatementKind.Fact);
+            var support = ReadEnum(
+                item,
+                "support",
+                LegendConnectResearchEvidenceSupport.Observation);
+            var supportingExcerpt = LegendConnectResearchExternalDataPolicy.SanitizeMetadata(
+                ReadString(item, "supporting_excerpt"),
+                800);
+            var premiseClaimIdentities = ReadStringArray(item, "premise_claim_ids", 3, 160);
+            var discriminatingClaimIdentity =
+                LegendConnectResearchExternalDataPolicy.SanitizeMetadata(
+                    ReadString(item, "discriminating_claim_id"),
+                    160);
+            var correctsCanonicalUri = ReadCanonicalSourceUri(
+                item,
+                "corrects_source_url",
+                actualUris);
+            if (string.IsNullOrWhiteSpace(supportingExcerpt) ||
+                LegendConnectResearchExternalDataPolicy.IsPotentialInstruction(supportingExcerpt) ||
+                premiseClaimIdentities.Any(identity =>
+                    string.Equals(identity, claimIdentity, StringComparison.Ordinal)) ||
+                (statementKind == LegendConnectResearchStatementKind.Inference &&
+                 (support != LegendConnectResearchEvidenceSupport.Direct ||
+                  premiseClaimIdentities.Count is < 2 or > 3 ||
+                  string.IsNullOrWhiteSpace(discriminatingClaimIdentity))))
+            {
+                continue;
+            }
             rows.Add(new LegendConnectResearchClaimCandidate(
                 claimIdentity,
                 statement,
@@ -552,26 +594,18 @@ Execute only the supplied bounded queries and return only the requested JSON.
                 TryReadDateTime(item, "observed_utc"),
                 expectedEvidenceLanguage,
                 true,
-                ReadEnum(
-                    item,
-                    "subject",
-                    LegendConnectResearchClaimSubject.General),
-                ReadEnum(
-                    item,
-                    "statement_kind",
-                    LegendConnectResearchStatementKind.Fact),
-                ReadEnum(
-                    item,
-                    "support",
-                    LegendConnectResearchEvidenceSupport.Observation),
+                subject,
+                statementKind,
+                support,
                 ReadEnum(
                     item,
                     "required_authority_scope",
                     LegendConnectResearchAuthorityScope.GeneralRecord),
                 TryReadDateTime(item, "as_of_utc"),
-                LegendConnectResearchExternalDataPolicy.SanitizeMetadata(
-                    ReadString(item, "supporting_excerpt"),
-                    800)));
+                supportingExcerpt,
+                premiseClaimIdentities,
+                discriminatingClaimIdentity,
+                correctsCanonicalUri));
             if (rows.Count >= maximumClaims)
                 break;
         }
@@ -766,6 +800,40 @@ Execute only the supplied bounded queries and return only the requested JSON.
             .Distinct(StringComparer.Ordinal)
             .Take(LegendConnectResearchContracts.MaximumResults)
             .ToArray();
+    }
+
+    private static IReadOnlyList<string> ReadStringArray(
+        JsonElement root,
+        string property,
+        int maximum,
+        int maximumCharacters)
+    {
+        if (!root.TryGetProperty(property, out var values) ||
+            values.ValueKind != JsonValueKind.Array)
+            return [];
+        return values.EnumerateArray()
+            .Select(item => item.ValueKind == JsonValueKind.String
+                ? LegendConnectResearchExternalDataPolicy.SanitizeMetadata(
+                    item.GetString(),
+                    maximumCharacters)
+                : null)
+            .Where(item => !string.IsNullOrWhiteSpace(item))
+            .Select(item => item!)
+            .Distinct(StringComparer.Ordinal)
+            .Take(maximum)
+            .ToArray();
+    }
+
+    private static string? ReadCanonicalSourceUri(
+        JsonElement root,
+        string property,
+        IReadOnlySet<string> actualUris)
+    {
+        var canonical = LegendConnectResearchNetworkPolicy.NormalizePublicHttpUri(
+            ReadString(root, property));
+        return canonical is not null && actualUris.Contains(canonical)
+            ? canonical
+            : null;
     }
 
     private sealed record ExecutedSearch(

@@ -282,8 +282,8 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
     /// </summary>
     internal static string PresentResearchEvidence(
         LegendResearchEvidenceAssessmentState state,
-        IReadOnlyList<LegendConnectClaimEvidence> claims,
-        IReadOnlyList<LegendConnectContradictingEvidence> contradictions,
+        IReadOnlyList<LegendConnectResearchMaterialClaimEvidence> claims,
+        IReadOnlyList<LegendConnectResearchMaterialClaimEvidence> contradictions,
         IReadOnlyList<LegendConnectCitation> citations,
         string reasonCode)
     {
@@ -300,7 +300,7 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
         if (state == LegendResearchEvidenceAssessmentState.Conclusion)
         {
             foreach (var claim in claims
-                         .GroupBy(item => item.ClaimIdentity, StringComparer.Ordinal)
+                         .GroupBy(item => item.NormalizedClaimIdentity, StringComparer.Ordinal)
                          .OrderBy(group => group.Key, StringComparer.Ordinal))
             {
                 var representative = claim.First();

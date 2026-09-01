@@ -129,9 +129,9 @@ internal static class LegendConnectGovernedReasoningExecutor
     /// Applies the one canonical source-authority policy to a bounded external
     /// research packet. This remains the governed reasoning entry point;
     /// retrieval rank is intentionally absent and no transport or presenter
-    /// can authorize a claim. Direct page support, claim-specific authority,
-    /// dependency lineage, evidence standards, and contradictions all fail
-    /// closed through the delegated policy catalog.
+    /// can authorize a claim. The delegated policy catalog validates direct
+    /// page support, claim-specific authority, dependency lineage, and
+    /// standards; this executor remains the sole conflict/reasoning authority.
     /// </summary>
     internal static LegendResearchEvidenceAssessment AssessResearchEvidence(
         IReadOnlyList<LegendConnectResearchSourceIdentity> sources,
@@ -140,7 +140,8 @@ internal static class LegendConnectGovernedReasoningExecutor
         IReadOnlyList<LegendConnectClaimEvidence> claims,
         IReadOnlyList<LegendConnectContradictingEvidence> contradictions,
         int minimumIndependentSources,
-        DateTime? assessedUtc = null)
+        DateTime? assessedUtc = null,
+        LegendConnectResearchLanguageLineage? languageLineage = null)
     {
         var policyAssessment = LegendConnectResearchEvidenceAdmissibilityPolicy.Assess(
             sources,
@@ -151,16 +152,433 @@ internal static class LegendConnectGovernedReasoningExecutor
             minimumIndependentSources,
             assessedUtc ?? sources.Select(item => item.RetrievedUtc)
                 .DefaultIfEmpty(DateTime.UtcNow)
-                .Max());
-        return new LegendResearchEvidenceAssessment(
-            policyAssessment.State,
-            policyAssessment.Claims,
-            policyAssessment.Contradictions,
-            policyAssessment.IndependentSourceCount,
-            policyAssessment.RequiredIndependentSourceCount,
-            policyAssessment.ReasonCode,
-            policyAssessment.Admissibility);
+                .Max(),
+            languageLineage);
+        return ResolveResearchMaterialEvidence(policyAssessment);
     }
+
+    /// <summary>
+    /// Resolves claim agreement, contradiction, evidence insufficiency,
+    /// observational equivalence, discriminating corrections, standard
+    /// conflicts, and bounded inference at the existing reasoning authority.
+    /// It never considers search rank, popularity, or raw occurrence count.
+    /// </summary>
+    private static LegendResearchEvidenceAssessment ResolveResearchMaterialEvidence(
+        LegendConnectResearchEvidencePolicyAssessment policy)
+    {
+        var requestedMinimum = Math.Clamp(policy.RequestedMinimumIndependentSources, 1, 3);
+        var resolvedEvidence = new List<LegendConnectResearchMaterialClaimEvidence>();
+        var selectedClaims = new List<LegendConnectResearchMaterialClaimEvidence>();
+        var admittedContradictions = new List<LegendConnectResearchMaterialClaimEvidence>();
+        var resolutions = new List<LegendConnectResearchClaimResolution>();
+        var factualResolutionByClaim = new Dictionary<string, LegendConnectResearchClaimResolution>(
+            StringComparer.Ordinal);
+
+        var groups = policy.MaterialEvidence
+            .GroupBy(item => item.NormalizedClaimIdentity, StringComparer.Ordinal)
+            .OrderBy(group => group.Key, StringComparer.Ordinal)
+            .ToArray();
+        foreach (var group in groups.Where(group =>
+                     group.All(item => item.StatementKind != LegendConnectResearchStatementKind.Inference)))
+        {
+            var resolution = ResolveFactualClaimGroup(group.Key, group.ToArray(), requestedMinimum);
+            resolutions.Add(resolution.Resolution);
+            factualResolutionByClaim[group.Key] = resolution.Resolution;
+            resolvedEvidence.AddRange(resolution.Evidence);
+            selectedClaims.AddRange(resolution.SelectedEvidence);
+            admittedContradictions.AddRange(resolution.Evidence.Where(item =>
+                item.Relationship == LegendConnectResearchEvidenceRelationship.Contradiction));
+        }
+
+        foreach (var group in groups.Where(group =>
+                     group.Any(item => item.StatementKind == LegendConnectResearchStatementKind.Inference)))
+        {
+            var resolution = ResolveInferenceClaimGroup(
+                group.Key,
+                group.ToArray(),
+                factualResolutionByClaim);
+            resolutions.Add(resolution.Resolution);
+            resolvedEvidence.AddRange(resolution.Evidence);
+            selectedClaims.AddRange(resolution.SelectedEvidence);
+            admittedContradictions.AddRange(resolution.Evidence.Where(item =>
+                item.Relationship == LegendConnectResearchEvidenceRelationship.Contradiction));
+        }
+
+        var unresolved = resolutions.Any(item =>
+            item.State == LegendConnectResearchClaimVerificationState.UnresolvedConflict);
+        var hasConclusion = resolutions.Any(item =>
+            item.State is
+                LegendConnectResearchClaimVerificationState.VerifiedByControllingEvidence or
+                LegendConnectResearchClaimVerificationState.SupportedByIndependentlyCorroboratedEvidence or
+                LegendConnectResearchClaimVerificationState.ReasonedInferenceFromEvidence or
+                LegendConnectResearchClaimVerificationState.Disputed);
+        var state = unresolved
+            ? LegendResearchEvidenceAssessmentState.UnresolvedConflict
+            : hasConclusion
+                ? LegendResearchEvidenceAssessmentState.Conclusion
+                : LegendResearchEvidenceAssessmentState.InsufficientEvidence;
+        var reason = state switch
+        {
+            LegendResearchEvidenceAssessmentState.UnresolvedConflict =>
+                "research_evidence_conflict_unresolved",
+            LegendResearchEvidenceAssessmentState.Conclusion when resolutions.Any(item =>
+                item.State == LegendConnectResearchClaimVerificationState.Disputed) =>
+                "research_claim_disputed_resolved_by_higher_standard",
+            LegendResearchEvidenceAssessmentState.Conclusion when resolutions.Any(item =>
+                item.State == LegendConnectResearchClaimVerificationState.ReasonedInferenceFromEvidence) =>
+                "research_bounded_inference_governed",
+            LegendResearchEvidenceAssessmentState.Conclusion =>
+                "research_claims_governed_by_claim_evidence",
+            _ when resolutions.Any(item =>
+                item.State == LegendConnectResearchClaimVerificationState.Stale) =>
+                "research_claim_evidence_stale",
+            _ when resolutions.Any(item =>
+                item.ReasonCode == "research_observational_equivalence_requires_discriminating_evidence") =>
+                "research_observational_equivalence_requires_discriminating_evidence",
+            _ when policy.MaterialEvidence.Count == 0 =>
+                ResolveNoMaterialEvidenceReason(policy.Admissibility),
+            _ => "research_evidence_standard_unmet"
+        };
+        var selectedLineages = selectedClaims
+            .Select(item => item.IndependentSourceLineage)
+            .Distinct(StringComparer.Ordinal)
+            .Count();
+        var reportedRequired = resolvedEvidence
+            .Select(item => item.RequiredIndependentSourceCount)
+            .DefaultIfEmpty(requestedMinimum)
+            .Max();
+        var outcomeClaims = unresolved
+            ? resolvedEvidence.Where(item =>
+                item.Relationship != LegendConnectResearchEvidenceRelationship.Contradiction).ToArray()
+            : selectedClaims.ToArray();
+        return new LegendResearchEvidenceAssessment(
+            state,
+            outcomeClaims,
+            admittedContradictions.ToArray(),
+            resolvedEvidence.ToArray(),
+            resolutions.ToArray(),
+            selectedLineages,
+            reportedRequired,
+            reason,
+            policy.Admissibility);
+    }
+
+    private static ResearchClaimGroupResolution ResolveFactualClaimGroup(
+        string normalizedClaimIdentity,
+        IReadOnlyList<LegendConnectResearchMaterialClaimEvidence> evidence,
+        int required)
+    {
+        var current = evidence
+            .Where(item => item.Freshness == LegendConnectResearchFreshnessState.Current)
+            .ToArray();
+        if (current.Length == 0)
+        {
+            var state = evidence.Any(item => item.Freshness == LegendConnectResearchFreshnessState.Stale)
+                ? LegendConnectResearchClaimVerificationState.Stale
+                : LegendConnectResearchClaimVerificationState.InsufficientEvidence;
+            return ClaimGroup(
+                normalizedClaimIdentity,
+                evidence,
+                [],
+                state,
+                state == LegendConnectResearchClaimVerificationState.Stale
+                    ? "research_claim_evidence_stale"
+                    : "research_claim_evidence_insufficient",
+                "Unavailable",
+                requiresDiscriminatingEvidence: false);
+        }
+
+        var contextualOnly = current.All(item =>
+            item.Relationship == LegendConnectResearchEvidenceRelationship.Contextual);
+        if (contextualOnly)
+        {
+            return ClaimGroup(
+                normalizedClaimIdentity,
+                evidence,
+                [],
+                LegendConnectResearchClaimVerificationState.InsufficientEvidence,
+                "research_observational_equivalence_requires_discriminating_evidence",
+                current.MaxBy(item => item.EvidenceStandardRank)!.EvidenceStandard,
+                requiresDiscriminatingEvidence: true);
+        }
+
+        var sides = current
+            .Where(item => item.Relationship != LegendConnectResearchEvidenceRelationship.Contextual)
+            .GroupBy(item => (
+                Statement: NormalizeResearchStatement(item.Statement),
+                IsContradiction: item.Relationship ==
+                    LegendConnectResearchEvidenceRelationship.Contradiction))
+            .Select(group => BuildResearchClaimSide(group.ToArray(), required))
+            .OrderByDescending(item => item.EffectiveStandardRank)
+            .ThenBy(item => item.Statement, StringComparer.Ordinal)
+            .ToArray();
+        if (sides.Length == 0)
+        {
+            return ClaimGroup(
+                normalizedClaimIdentity,
+                evidence,
+                [],
+                LegendConnectResearchClaimVerificationState.InsufficientEvidence,
+                "research_claim_evidence_insufficient",
+                "Unavailable",
+                false);
+        }
+
+        if (sides.Length > 1)
+        {
+            var correction = SelectExplicitCorrection(sides);
+            var highest = sides[0];
+            var sameStandard = sides.Count(item =>
+                item.EffectiveStandardRank == highest.EffectiveStandardRank) > 1;
+            if (correction is null && sameStandard)
+            {
+                return ClaimGroup(
+                    normalizedClaimIdentity,
+                    evidence,
+                    [],
+                    LegendConnectResearchClaimVerificationState.UnresolvedConflict,
+                    "research_equal_authority_conflict_unresolved",
+                    highest.EvidenceStandard,
+                    true);
+            }
+
+            var selected = correction ?? highest;
+            if (!selected.Qualified && correction is null)
+            {
+                return ClaimGroup(
+                    normalizedClaimIdentity,
+                    evidence,
+                    [],
+                    LegendConnectResearchClaimVerificationState.UnresolvedConflict,
+                    "research_unresolved_contradiction",
+                    selected.EvidenceStandard,
+                    true);
+            }
+
+            return ClaimGroup(
+                normalizedClaimIdentity,
+                evidence,
+                selected.Evidence,
+                LegendConnectResearchClaimVerificationState.Disputed,
+                correction is not null
+                    ? "research_newer_controlling_correction_selected"
+                    : "research_higher_standard_conflict_selected",
+                selected.EvidenceStandard,
+                false);
+        }
+
+        var side = sides[0];
+        var state = side.HasControllingRecord
+            ? LegendConnectResearchClaimVerificationState.VerifiedByControllingEvidence
+            : side.Qualified
+                ? LegendConnectResearchClaimVerificationState.SupportedByIndependentlyCorroboratedEvidence
+                : LegendConnectResearchClaimVerificationState.SourceReportedButNotIndependentlyVerified;
+        return ClaimGroup(
+            normalizedClaimIdentity,
+            evidence,
+            side.Qualified || side.HasControllingRecord ? side.Evidence : [],
+            state,
+            state switch
+            {
+                LegendConnectResearchClaimVerificationState.VerifiedByControllingEvidence =>
+                    "research_claim_verified_by_controlling_evidence",
+                LegendConnectResearchClaimVerificationState.SupportedByIndependentlyCorroboratedEvidence =>
+                    "research_claim_independently_corroborated",
+                _ => "research_claim_source_reported_not_verified"
+            },
+            side.EvidenceStandard,
+            false);
+    }
+
+    private static ResearchClaimGroupResolution ResolveInferenceClaimGroup(
+        string normalizedClaimIdentity,
+        IReadOnlyList<LegendConnectResearchMaterialClaimEvidence> evidence,
+        IReadOnlyDictionary<string, LegendConnectResearchClaimResolution> factualResolutions)
+    {
+        var candidate = evidence
+            .Where(item => item.Freshness == LegendConnectResearchFreshnessState.Current)
+            .OrderByDescending(item => item.EvidenceStandardRank)
+            .ThenBy(item => item.EvidenceIdentity, StringComparer.Ordinal)
+            .FirstOrDefault();
+        if (candidate is null)
+        {
+            return ClaimGroup(
+                normalizedClaimIdentity,
+                evidence,
+                [],
+                LegendConnectResearchClaimVerificationState.Stale,
+                "research_inference_evidence_stale",
+                "Unavailable",
+                false);
+        }
+
+        var premises = candidate.PremiseClaimIdentities?
+            .Distinct(StringComparer.Ordinal)
+            .Take(3)
+            .ToArray() ?? [];
+        var premiseStatesGoverned = premises.Length is >= 2 and <= 3 &&
+            premises.All(item => factualResolutions.TryGetValue(item, out var resolution) &&
+                resolution.State is
+                    LegendConnectResearchClaimVerificationState.VerifiedByControllingEvidence or
+                    LegendConnectResearchClaimVerificationState.SupportedByIndependentlyCorroboratedEvidence);
+        var discriminating = candidate.DiscriminatingClaimIdentity is not null &&
+            factualResolutions.TryGetValue(candidate.DiscriminatingClaimIdentity, out var discriminatingResolution) &&
+            discriminatingResolution.State is
+                LegendConnectResearchClaimVerificationState.VerifiedByControllingEvidence or
+                LegendConnectResearchClaimVerificationState.SupportedByIndependentlyCorroboratedEvidence;
+        if (!premiseStatesGoverned || !discriminating)
+        {
+            return ClaimGroup(
+                normalizedClaimIdentity,
+                evidence,
+                [],
+                LegendConnectResearchClaimVerificationState.InsufficientEvidence,
+                "research_observational_equivalence_requires_discriminating_evidence",
+                candidate.EvidenceStandard,
+                true);
+        }
+
+        return ClaimGroup(
+            normalizedClaimIdentity,
+            evidence,
+            [candidate with
+            {
+                ExtractionMethod = LegendConnectResearchExtractionMethod.BoundedGovernedInference,
+                EvidenceStandard =
+                    LegendConnectResearchContracts.ClaimEvidencePolicy + "|BoundedCausalInference"
+            }],
+            LegendConnectResearchClaimVerificationState.ReasonedInferenceFromEvidence,
+            "research_bounded_causal_inference_supported",
+            LegendConnectResearchContracts.ClaimEvidencePolicy + "|BoundedCausalInference",
+            false);
+    }
+
+    private static ResearchClaimSide BuildResearchClaimSide(
+        IReadOnlyList<LegendConnectResearchMaterialClaimEvidence> evidence,
+        int requestedMinimum)
+    {
+        var required = Math.Clamp(
+            Math.Max(
+                requestedMinimum,
+                evidence.Max(item => item.RequiredIndependentSourceCount)),
+            1,
+            3);
+        var controlling = evidence.Any(item => item.EvidenceStandardRank >= 3);
+        var independent = evidence
+            .Where(item => item.EvidenceStandardRank >= 2)
+            .Select(item => item.IndependentSourceLineage)
+            .Distinct(StringComparer.Ordinal)
+            .Count();
+        var qualified = controlling || independent >= required;
+        var effectiveRank = controlling ? 3 : qualified ? 2 : 1;
+        var strongest = evidence.MaxBy(item => item.EvidenceStandardRank)!;
+        return new(
+            evidence[0].Statement,
+            evidence[0].Relationship == LegendConnectResearchEvidenceRelationship.Contradiction,
+            evidence,
+            controlling,
+            qualified,
+            effectiveRank,
+            strongest.EvidenceStandard);
+    }
+
+    private static ResearchClaimSide? SelectExplicitCorrection(
+        IReadOnlyList<ResearchClaimSide> sides)
+    {
+        foreach (var candidate in sides)
+        {
+            foreach (var correcting in candidate.Evidence.Where(item =>
+                         item.EvidenceStandardRank >= 3 &&
+                         !string.IsNullOrWhiteSpace(item.CorrectsSourceIdentity)))
+            {
+                var corrected = sides
+                    .Where(item => !ReferenceEquals(item, candidate))
+                    .SelectMany(item => item.Evidence)
+                    .FirstOrDefault(item => string.Equals(
+                        item.SourceIdentity,
+                        correcting.CorrectsSourceIdentity,
+                        StringComparison.Ordinal));
+                if (corrected is null ||
+                    correcting.PublishedUtc <= corrected.PublishedUtc)
+                    continue;
+                return candidate;
+            }
+        }
+        return null;
+    }
+
+    private static ResearchClaimGroupResolution ClaimGroup(
+        string normalizedClaimIdentity,
+        IReadOnlyList<LegendConnectResearchMaterialClaimEvidence> allEvidence,
+        IReadOnlyList<LegendConnectResearchMaterialClaimEvidence> selectedEvidence,
+        LegendConnectResearchClaimVerificationState state,
+        string reason,
+        string evidenceStandard,
+        bool requiresDiscriminatingEvidence)
+    {
+        var selectedIds = selectedEvidence
+            .Select(item => item.EvidenceIdentity)
+            .ToHashSet(StringComparer.Ordinal);
+        var selectedById = selectedEvidence.ToDictionary(
+            item => item.EvidenceIdentity,
+            StringComparer.Ordinal);
+        var updated = allEvidence.Select(item =>
+        {
+            var authoritative = selectedById.TryGetValue(item.EvidenceIdentity, out var selected)
+                ? selected
+                : item;
+            return authoritative with
+            {
+                VerificationState = selectedIds.Contains(item.EvidenceIdentity) || selectedIds.Count == 0
+                    ? state
+                    : LegendConnectResearchClaimVerificationState.SourceReportedButNotIndependentlyVerified
+            };
+        }).ToArray();
+        var selected = updated.Where(item => selectedIds.Contains(item.EvidenceIdentity)).ToArray();
+        var resolution = new LegendConnectResearchClaimResolution(
+            normalizedClaimIdentity,
+            state,
+            reason,
+            evidenceStandard,
+            allEvidence.Select(item => item.EvidenceIdentity).ToArray(),
+            allEvidence.Select(item => item.IndependentSourceLineage)
+                .Distinct(StringComparer.Ordinal)
+                .ToArray(),
+            selected.FirstOrDefault()?.Statement,
+            requiresDiscriminatingEvidence);
+        return new(resolution, updated, selected);
+    }
+
+    private static string ResolveNoMaterialEvidenceReason(
+        IReadOnlyList<LegendConnectResearchEvidenceAdmissibility> admissibility)
+    {
+        var reasons = admissibility
+            .Where(item => item.Disposition == LegendConnectResearchEvidenceDisposition.Rejected)
+            .Select(item => item.ReasonCode)
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+        return reasons.Length == 1 ? reasons[0] : "research_evidence_admissibility_failed";
+    }
+
+    private static string NormalizeResearchStatement(string statement) =>
+        string.Join(' ', statement.Split(
+            (char[]?)null,
+            StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+            .ToLowerInvariant();
+
+    private sealed record ResearchClaimSide(
+        string Statement,
+        bool IsContradiction,
+        IReadOnlyList<LegendConnectResearchMaterialClaimEvidence> Evidence,
+        bool HasControllingRecord,
+        bool Qualified,
+        int EffectiveStandardRank,
+        string EvidenceStandard);
+
+    private sealed record ResearchClaimGroupResolution(
+        LegendConnectResearchClaimResolution Resolution,
+        IReadOnlyList<LegendConnectResearchMaterialClaimEvidence> Evidence,
+        IReadOnlyList<LegendConnectResearchMaterialClaimEvidence> SelectedEvidence);
 
     internal static LegendGovernedReasoningExecution Derive(
         IReadOnlyDictionary<string, string> initialValues,
@@ -2079,8 +2497,10 @@ internal enum LegendResearchEvidenceAssessmentState
 
 internal sealed record LegendResearchEvidenceAssessment(
     LegendResearchEvidenceAssessmentState State,
-    IReadOnlyList<LegendConnectClaimEvidence> Claims,
-    IReadOnlyList<LegendConnectContradictingEvidence> Contradictions,
+    IReadOnlyList<LegendConnectResearchMaterialClaimEvidence> Claims,
+    IReadOnlyList<LegendConnectResearchMaterialClaimEvidence> Contradictions,
+    IReadOnlyList<LegendConnectResearchMaterialClaimEvidence> MaterialEvidence,
+    IReadOnlyList<LegendConnectResearchClaimResolution> ClaimResolutions,
     int IndependentSourceCount,
     int RequiredIndependentSourceCount,
     string ReasonCode,
