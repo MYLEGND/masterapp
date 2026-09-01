@@ -52,8 +52,8 @@ public sealed record MobileFinancialWeekAtGlance(
     IReadOnlyList<MobileFinancialCashFlowEvent> Events);
 
 /// <summary>
-/// Server-authoritative view of the authenticated account's selected calendar
-/// month.
+/// Server-authoritative view of the authenticated account's actual current
+/// calendar month.
 /// </summary>
 public sealed record MobileFinancialMonthAtGlance(
     string MonthKey,

@@ -16,6 +16,7 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.Json
+import java.util.TimeZone
 
 sealed interface LoadState<out T> { data object Idle : LoadState<Nothing>; data object Loading : LoadState<Nothing>; data class Data<T>(val value: T) : LoadState<T>; data class Error(val message: String) : LoadState<Nothing> }
 private suspend fun <T> request(block: suspend () -> T): LoadState<T> = runCatching { LoadState.Data(block()) }.getOrElse { LoadState.Error((it as? LegendApiException)?.problem?.message ?: "Legend is unavailable right now.") }
@@ -85,7 +86,19 @@ class AgentWorkspaceRepository(private val client: LegendApiClient) {
         launch.copy(launchPath = launchUrl.toString())
     }
 }
-class FinancialRepository(private val client: LegendApiClient) { suspend fun load(role: String) = request { client.api.financial(role).legendBody() } }
+class FinancialRepository(private val client: LegendApiClient) {
+    suspend fun load(role: String) = request {
+        val timeZone = TimeZone.getDefault()
+        val minutesBehindUtc = -(
+            timeZone.getOffset(System.currentTimeMillis()) / 60_000
+        )
+        client.api.financial(
+            role,
+            timeZone.id,
+            minutesBehindUtc.toString(),
+        ).legendBody()
+    }
+}
 class AccountRepository(private val client: LegendApiClient) { suspend fun profile(role: String) = request { client.api.account(role).legendBody() }; suspend fun lifecycle(role: String) = request { client.api.lifecycle(role).legendBody() }; suspend fun usernameAvailability(role: String, username: String?) = request { client.api.usernameAvailability(role, username).legendBody() }; suspend fun update(role: String, update: AccountUpdateRequest) = request { client.api.updateAccount(role, update).legendBody() }; suspend fun updatePrivacy(role: String, isPrivate: Boolean) = request { client.api.updatePrivacy(role, AccountPrivacyUpdateRequest(isPrivate)).legendBody() }; suspend fun updateTranslationLearningConsent(role: String, allowsConsentedTranslationLearning: Boolean) = request { client.api.updateTranslationLearningConsent(role, TranslationLearningConsentUpdateRequest(allowsConsentedTranslationLearning)).legendBody() }; suspend fun updateAvatar(role: String, base64Content: String) = request { client.api.updateAvatar(role, AccountAvatarUpdateRequest(base64Content)).legendBody() }; suspend fun requestDeletion(role: String, confirmation: String) = request { client.api.deletionRequest(role, ConfirmationRequest(confirmation)).legendBody() }; suspend fun pause(role: String) = request { client.api.pauseAccount(role, ConfirmationRequest("PAUSE")).legendBody() }; suspend fun resume(role: String) = request { client.api.resumeAccount(role).legendBody() } }
 class DailyScriptureManagementRepository(private val client: LegendApiClient) { suspend fun management(role: String) = request { client.api.dailyScriptureManagement(role).legendBody() }; suspend fun create(role: String, draft: DailyScriptureOverrideRequest) = request { client.api.createDailyScriptureOverride(role, draft).legendBody() }; suspend fun update(role: String, id: String, draft: DailyScriptureOverrideRequest) = request { client.api.updateDailyScriptureOverride(role, id, draft).legendBody() }; suspend fun remove(role: String, id: String) = request { client.api.deleteDailyScriptureOverride(role, id).legendBody() } }
 class FounderAccountRepository(private val client: LegendApiClient) {

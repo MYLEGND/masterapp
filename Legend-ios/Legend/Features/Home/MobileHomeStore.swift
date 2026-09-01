@@ -127,12 +127,23 @@ struct URLSessionMobileHomeAPI: MobileHomeAPI, MobileFinancialAPI {
         try await client.get(
             "/api/v1/mobile/financial",
             accessToken: accessToken,
-            headers: participantHeader,
+            headers: financialHeaders,
             response: MobileFinancialSnapshotResponse.self)
     }
 
     private var participantHeader: [String: String] {
         ["X-Legend-Participant-Type": participantType.rawValue]
+    }
+
+    private var financialHeaders: [String: String] {
+        let timeZone = TimeZone.current
+        return [
+            "X-Legend-Participant-Type": participantType.rawValue,
+            "X-Agent-TimeZone": timeZone.identifier,
+            // The established server hint follows JavaScript's convention:
+            // minutes behind UTC, which is the inverse of secondsFromGMT.
+            "X-Agent-TzOffset": String(-(timeZone.secondsFromGMT() / 60))
+        ]
     }
 }
 

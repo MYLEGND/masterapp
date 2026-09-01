@@ -10,6 +10,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Reflection;
 using AgentPortal.Mobile;
+using AgentPortal.Services;
 using AgentPortal.Services.Tracking;
 using Domain.Entities;
 using Domain.JourneyCircles;
@@ -1713,6 +1714,7 @@ public sealed class MobileIntegrationTests
                     actor.Actor.UserId == client.ClientUserId &&
                     actor.Actor.ParticipantType == MessagingParticipantTypes.Client &&
                     actor.ProfileId == client.Id),
+                It.IsAny<DateOnly>(),
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(MobileFinancialResult.Success(
                 new MobileFinancialSnapshot(null, null, [], null, presentation)));
@@ -1766,6 +1768,7 @@ public sealed class MobileIntegrationTests
                     actor.Actor.UserId == agent.AgentUserId &&
                     actor.Actor.ParticipantType == MessagingParticipantTypes.Agent &&
                     actor.ProfileId == agent.Id),
+                It.IsAny<DateOnly>(),
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(MobileFinancialResult.Success(
                 new MobileFinancialSnapshot(null, null, [], null, presentation)));
@@ -1942,7 +1945,8 @@ public sealed class MobileIntegrationTests
         return new MobileHomeController(
             CreateResolver(db),
             home,
-            providedProfiles ?? CreateEmptyProfileResolver())
+            providedProfiles ?? CreateEmptyProfileResolver(),
+            new AgentTimeZoneResolver())
         {
             ControllerContext = new ControllerContext
             {

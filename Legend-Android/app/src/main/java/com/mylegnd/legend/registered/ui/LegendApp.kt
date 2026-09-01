@@ -97,8 +97,10 @@ import com.mylegnd.legend.registered.data.FinancialRepository
 import com.mylegnd.legend.registered.data.LoadState
 import com.mylegnd.legend.registered.feature.*
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import coil3.compose.AsyncImage
+import java.time.LocalDate
 
 @Composable
 fun LegendRoot(sessionViewModel: SessionViewModel, container: LegendContainer) {
@@ -6275,7 +6277,18 @@ private fun FinancialScreen(repository: FinancialRepository, participantType: St
     var route by remember { mutableStateOf(FinancialRoute.CashFlowLanding) }
     var detailDestination by remember { mutableStateOf<FinancialDetailDestination?>(null) }
     var outlookDetail by remember { mutableStateOf<FinancialOutlookSelection?>(null) }
-    LaunchedEffect(Unit) { viewModel.load() }
+    LaunchedEffect(Unit) {
+        var loadedDate = LocalDate.now()
+        viewModel.load()
+        while (true) {
+            delay(60_000)
+            val currentDate = LocalDate.now()
+            if (currentDate != loadedDate) {
+                loadedDate = currentDate
+                viewModel.load()
+            }
+        }
+    }
     BackHandler(enabled = route != FinancialRoute.CashFlowLanding && outlookDetail == null) {
         when (route) {
             FinancialRoute.Detail -> {

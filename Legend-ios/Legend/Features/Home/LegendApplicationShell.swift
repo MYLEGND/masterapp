@@ -3273,6 +3273,18 @@ private struct LegendFinancialProfilePanel: View {
         .task {
             await bootstrap.loadFinancialIntelligenceIfNeeded()
         }
+        .onReceive(
+            NotificationCenter.default.publisher(
+                for: .NSCalendarDayChanged)
+        ) { _ in
+            Task { await bootstrap.refreshFinancial() }
+        }
+        .onReceive(
+            NotificationCenter.default.publisher(
+                for: .NSSystemTimeZoneDidChange)
+        ) { _ in
+            Task { await bootstrap.refreshFinancial() }
+        }
         .sheet(item: $selectedOutlook) { selection in
             LegendFinancialOutlookSheet(selection: selection)
         }

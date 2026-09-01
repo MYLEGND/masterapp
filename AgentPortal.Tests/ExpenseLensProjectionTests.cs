@@ -49,6 +49,11 @@ if (!api) {
 let result;
 if (functionName === "projectExpenseLensTimeline") {
     result = api.projectExpenseLensTimeline(payload);
+} else if (functionName === "buildMobilePeriodProjection") {
+    const projection = api.projectExpenseLensTimeline(payload);
+    result = api.buildMobilePeriodProjection(
+        projection,
+        new Date(payload.generatedAt));
 } else if (functionName === "normalizeState") {
     result = api.normalizeState(payload);
 } else if (functionName === "getScheduledOccurrenceDays") {
@@ -148,6 +153,83 @@ process.stdout.write(JSON.stringify(result));
                 File.Delete(tempScriptPath);
             }
         }
+    }
+
+    [Fact]
+    public void BuildMobilePeriodProjection_PreservesEveryWebAuthoredCalendarPeriod()
+    {
+        using var result = InvokeProjectionApi(
+            "buildMobilePeriodProjection",
+            new
+            {
+                selectedMonthKey = "2026-07",
+                asOfDate = "2026-07-10",
+                generatedAt = "2026-07-10T18:00:00Z",
+                horizonMonths = 18,
+                state = new
+                {
+                    incomeStreams = new
+                    {
+                        primary = new[]
+                        {
+                            new
+                            {
+                                id = "pay",
+                                amount = "4000",
+                                frequency = "monthly",
+                                anchorDate = "2026-07-08"
+                            }
+                        },
+                        secondary = Array.Empty<object>()
+                    },
+                    categories = new[]
+                    {
+                        new
+                        {
+                            id = "rent",
+                            name = "Rent",
+                            amount = "1200",
+                            due = "2026-07-03",
+                            frequency = "monthly",
+                            paymentMethod = "debit"
+                        }
+                    },
+                    debt = new
+                    {
+                        openingBalance = 0,
+                        asOfDate = "2026-07-01"
+                    }
+                }
+            });
+
+        var root = result.RootElement;
+        Assert.Equal(1, root.GetProperty("schemaVersion").GetInt32());
+        Assert.Equal(
+            "2026-07-10T18:00:00.000Z",
+            root.GetProperty("generatedUtc").GetString());
+
+        var periods = root.GetProperty("periods");
+        Assert.True(periods.GetArrayLength() >= 18);
+        Assert.True(periods.GetArrayLength() <= 24);
+        Assert.Equal(
+            "2026-07",
+            periods[0].GetProperty("monthKey").GetString());
+
+        var july = periods.EnumerateArray().Single(period =>
+            period.GetProperty("monthKey").GetString() == "2026-07");
+        Assert.Equal(
+            400_000,
+            july.GetProperty("monthSnapshot")
+                .GetProperty("incomeCents")
+                .GetInt32());
+
+        var currentWeek = july.GetProperty("weekSnapshots")
+            .EnumerateArray()
+            .Single(week =>
+                week.GetProperty("startDate").GetString() == "2026-07-08");
+        Assert.Equal(
+            400_000,
+            currentWeek.GetProperty("incomeCents").GetInt32());
     }
 
     [Fact]

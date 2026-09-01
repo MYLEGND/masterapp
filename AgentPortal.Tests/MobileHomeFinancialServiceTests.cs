@@ -123,7 +123,8 @@ public sealed class MobileHomeFinancialServiceTests
         var result = await service.GetFinancialAsync(new MobileResolvedActor(
             new MessagingActor(client.ClientUserId, MessagingParticipantTypes.Client),
             client.Id,
-            "Client One"));
+            "Client One"),
+            new DateOnly(2026, 7, 27));
 
         var presentation = Assert.IsType<MobileFinancialPresentation>(result.Snapshot!.Presentation);
         Assert.NotEmpty(presentation.PrioritySections);
@@ -169,7 +170,8 @@ public sealed class MobileHomeFinancialServiceTests
         var result = await service.GetFinancialAsync(new MobileResolvedActor(
             new MessagingActor(secondClient.ClientUserId, MessagingParticipantTypes.Client),
             secondClient.Id,
-            "Second Client"));
+            "Second Client"),
+            new DateOnly(2026, 7, 27));
 
         var presentation = Assert.IsType<MobileFinancialPresentation>(result.Snapshot!.Presentation);
         Assert.NotEmpty(presentation.PrioritySections);
@@ -203,7 +205,8 @@ public sealed class MobileHomeFinancialServiceTests
         var result = await service.GetFinancialAsync(new MobileResolvedActor(
             new MessagingActor("agent-oid", MessagingParticipantTypes.Agent),
             Guid.NewGuid(),
-            "Taylor Reed"));
+            "Taylor Reed"),
+            new DateOnly(2026, 7, 27));
 
         Assert.True(result.Succeeded);
         var snapshot = Assert.IsType<MobileFinancialSnapshot>(result.Snapshot);
@@ -317,7 +320,8 @@ public sealed class MobileHomeFinancialServiceTests
         var result = await service.GetFinancialAsync(new MobileResolvedActor(
             new MessagingActor(member.ClientUserId, MessagingParticipantTypes.Client),
             member.Id,
-            "Member Client"));
+            "Member Client"),
+            new DateOnly(2026, 7, 27));
 
         var snapshot = Assert.IsType<MobileFinancialSnapshot>(result.Snapshot);
         var health = Assert.IsType<MobileFinancialHealthSnapshot>(snapshot.HealthSnapshot);
@@ -380,7 +384,8 @@ public sealed class MobileHomeFinancialServiceTests
         var result = await service.GetFinancialAsync(new MobileResolvedActor(
             new MessagingActor(member.ClientUserId, MessagingParticipantTypes.Client),
             member.Id,
-            "Isolated Member"));
+            "Isolated Member"),
+            new DateOnly(2026, 7, 27));
 
         var snapshot = Assert.IsType<MobileFinancialSnapshot>(result.Snapshot);
         Assert.Null(snapshot.Position);
@@ -418,11 +423,13 @@ public sealed class MobileHomeFinancialServiceTests
         operatingSystemService
             .Setup(service => service.ProjectAsync(
                 It.IsAny<Guid>(),
+                It.IsAny<DateOnly>(),
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(operatingSystem);
         operatingSystemService
             .Setup(service => service.ProjectAgentAsync(
                 It.IsAny<string>(),
+                It.IsAny<DateOnly>(),
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(operatingSystem);
 
