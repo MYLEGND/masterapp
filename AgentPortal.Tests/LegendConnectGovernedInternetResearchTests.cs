@@ -1,8 +1,13 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 using Domain.Messaging;
+using Infrastructure.Data;
 using Infrastructure.Messaging;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
 
 namespace AgentPortal.Tests;
@@ -333,6 +338,62 @@ public sealed class LegendConnectGovernedInternetResearchTests
             Enum.GetValues<LegendConnectResearchEvidenceOrigin>());
     }
 
+    [Fact]
+    public async Task PageFailure_PreservesValidatedSearchAndStageReceiptLineage()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["LegendConnect:Research:CodeSha"] =
+                    "0123456789abcdef0123456789abcdef01234567"
+            })
+            .Build();
+        var registry = new LegendLanguageRegistry(db, configuration);
+        var operations = new LegendConnectOperations(
+            db,
+            registry,
+            new LegendConnectCorpusService(
+                db,
+                registry,
+                NullLogger<LegendConnectCorpusService>.Instance),
+            configuration,
+            researchSearch: new SuccessfulSearchTransport(),
+            researchPages: new FailedPageTransport());
+        var decision = Decide(
+            "Verify the current public evidence.",
+            Unsupported());
+
+        var outcome = await operations.ExecuteResearchAsync(Request(
+            decision,
+            new LegendConnectResearchAuthorization(
+                true,
+                LegendConnectResearchContracts.PublicAuthorizationProvenance,
+                null,
+                LegendConnectResearchAccessClass.PublicReadOnly,
+                true,
+                true)));
+
+        Assert.Equal(LegendConnectResearchOutcomeState.Failure, outcome.State);
+        Assert.Equal("internet_research_page_content_oversized", outcome.Failure?.ReasonCode);
+        Assert.Single(outcome.Session.Queries);
+        Assert.Single(outcome.Session.SearchResults);
+        Assert.Single(outcome.Session.Sources);
+        Assert.Empty(outcome.Session.Documents);
+        Assert.Empty(outcome.Session.Citations);
+        Assert.Equal(25, outcome.Session.SearchLatencyMilliseconds);
+        Assert.Equal(7, outcome.Session.RetrievalLatencyMilliseconds);
+        Assert.Equal(32, outcome.Session.LatencyMilliseconds);
+        Assert.Equal(123, outcome.Session.CostMicrounits);
+        Assert.Equal(123, outcome.Session.SearchCostMicrounits);
+        Assert.Single(outcome.Session.SearchQueryReceipts!);
+        Assert.Single(outcome.Session.PageReceipts!);
+        Assert.Single(outcome.Provenance.QueryIdentities);
+        Assert.Single(outcome.Provenance.SourceIdentities);
+        Assert.Single(outcome.Provenance.SearchQueryReceiptIdentities!);
+        Assert.Single(outcome.Provenance.PageReceiptIdentities!);
+    }
+
     private static LegendConnectResearchNeededDecision Decide(
         string question,
         LegendConnectNativeInferenceSnapshot inference) =>
@@ -476,4 +537,113 @@ public sealed class LegendConnectGovernedInternetResearchTests
         IReadOnlyList<LegendConnectRetrievedDocument> Documents,
         IReadOnlyList<LegendConnectCitation> Citations,
         IReadOnlyList<LegendConnectClaimEvidence> Claims);
+
+    private sealed class SuccessfulSearchTransport : ILegendConnectResearchSearchTransport
+    {
+        public Task<LegendConnectResearchSearchTransportResult> SearchAsync(
+            LegendConnectResearchSearchTransportRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            var query = Assert.Single(request.Queries);
+            var source = new LegendConnectResearchSourceIdentity(
+                "source-observed",
+                "https://example.com/evidence",
+                "Observed source",
+                "Example",
+                LegendConnectResearchSourceClass.PrimaryOfficialRecord,
+                DecisionUtc,
+                DecisionUtc,
+                "en",
+                true,
+                ProvenanceComplete: true,
+                LineageKind: LegendConnectResearchSourceLineageKind.Original,
+                AuthorityScopes: [LegendConnectResearchAuthorityScope.GeneralRecord]);
+            return Task.FromResult(new LegendConnectResearchSearchTransportResult(
+                true,
+                "FixtureSearchTransport",
+                "FixtureSearchProvider",
+                "fixture-model-v1",
+                "fixture-settings",
+                [query],
+                [
+                    new LegendConnectResearchSearchQueryReceipt(
+                        "search-receipt-1",
+                        query.QueryIdentity,
+                        query.Query,
+                        "en",
+                        DecisionUtc,
+                        "FixtureSearchTransport",
+                        "FixtureSearchProvider",
+                        25,
+                        123,
+                        "Measured",
+                        true,
+                        true)
+                ],
+                [
+                    new LegendConnectSearchResult(
+                        "search-result-1",
+                        query.QueryIdentity,
+                        1,
+                        source.SourceIdentity,
+                        source.Title,
+                        source.CanonicalUri,
+                        "Observed public evidence.",
+                        "en",
+                        "en",
+                        true)
+                ],
+                [source],
+                [],
+                [],
+                25,
+                123,
+                null,
+                false));
+        }
+    }
+
+    private sealed class FailedPageTransport : ILegendConnectResearchPageRetriever
+    {
+        public Task<LegendConnectResearchPageRetrievalResult> RetrieveAsync(
+            LegendConnectResearchPageRetrievalRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            var source = Assert.Single(request.Sources);
+            return Task.FromResult(new LegendConnectResearchPageRetrievalResult(
+                false,
+                "FixturePageTransport",
+                "fixture-page-settings",
+                [],
+                [],
+                [],
+                [],
+                [],
+                [
+                    new LegendConnectResearchPageReceipt(
+                        "page-receipt-1",
+                        source.CanonicalUri,
+                        source.CanonicalUri,
+                        DecisionUtc,
+                        DecisionUtc,
+                        "FixturePageTransport",
+                        "PublicInternet",
+                        1,
+                        0,
+                        200,
+                        "text/html",
+                        0,
+                        7,
+                        null,
+                        "NotMeteredByTransport",
+                        false,
+                        "internet_research_page_content_oversized",
+                        true,
+                        true)
+                ],
+                7,
+                "internet_research_page_content_oversized",
+                false));
+        }
+    }
 }

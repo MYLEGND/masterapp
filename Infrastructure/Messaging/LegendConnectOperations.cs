@@ -578,7 +578,17 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
             IReadOnlyList<LegendConnectResearchSearchQueryReceipt>? searchQueryReceipts = null,
             IReadOnlyList<LegendConnectResearchPageReceipt>? pageReceipts = null,
             LegendConnectResearchLanguageLineage? languageLineage = null,
-            string? searchProvider = null)
+            string? searchProvider = null,
+            IReadOnlyList<LegendConnectBoundedSearchQuery>? executedQueries = null,
+            IReadOnlyList<LegendConnectSearchResult>? searchResults = null,
+            IReadOnlyList<LegendConnectResearchSourceIdentity>? sources = null,
+            IReadOnlyList<LegendConnectRetrievedDocument>? documents = null,
+            IReadOnlyList<LegendConnectCitation>? citations = null,
+            long searchLatency = 0,
+            long retrievalLatency = 0,
+            long reasoningLatency = 0,
+            long? searchCost = null,
+            long? modelCost = null)
         {
             var completedUtc = DateTime.UtcNow;
             var session = new LegendConnectResearchSession(
@@ -586,20 +596,25 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
                 request.RequestId,
                 startedUtc,
                 completedUtc,
-                request.Queries,
+                executedQueries ?? [],
+                searchResults ?? [],
+                sources ?? [],
+                documents ?? [],
                 [],
                 [],
-                [],
-                [],
-                [],
-                [],
+                citations ?? [],
                 latency,
                 cost,
                 "Failure",
                 reasonCode,
                 searchQueryReceipts,
                 pageReceipts,
-                languageLineage);
+                languageLineage,
+                SearchLatencyMilliseconds: searchLatency,
+                RetrievalLatencyMilliseconds: retrievalLatency,
+                ReasoningLatencyMilliseconds: reasoningLatency,
+                SearchCostMicrounits: searchCost,
+                ModelCostMicrounits: modelCost);
             var provenance = BuildResearchProvenance(
                 request,
                 session,
@@ -709,7 +724,10 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
                 searchResult.CostMicrounits,
                 searchResult.QueryReceipts,
                 [],
-                searchProvider: searchResult.Provider);
+                searchProvider: searchResult.Provider,
+                executedQueries: searchResult.ExecutedQueries,
+                searchLatency: searchResult.LatencyMilliseconds,
+                searchCost: searchResult.CostMicrounits);
         }
 
         if (!HasCompleteResearchSearchLineage(request, searchResult))
@@ -724,7 +742,10 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
                 cost: searchResult.CostMicrounits,
                 searchQueryReceipts: searchResult.QueryReceipts,
                 pageReceipts: [],
-                searchProvider: searchResult.Provider);
+                searchProvider: searchResult.Provider,
+                executedQueries: searchResult.ExecutedQueries,
+                searchLatency: searchResult.LatencyMilliseconds,
+                searchCost: searchResult.CostMicrounits);
         }
 
         LegendConnectResearchPageRetrievalResult pageResult;
@@ -762,7 +783,12 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
                 cost: searchResult.CostMicrounits,
                 searchQueryReceipts: searchResult.QueryReceipts,
                 pageReceipts: [],
-                searchProvider: searchResult.Provider);
+                searchProvider: searchResult.Provider,
+                executedQueries: searchResult.ExecutedQueries,
+                searchResults: searchResult.SearchResults,
+                sources: searchResult.Sources,
+                searchLatency: searchResult.LatencyMilliseconds,
+                searchCost: searchResult.CostMicrounits);
         }
         catch
         {
@@ -777,7 +803,12 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
                 cost: searchResult.CostMicrounits,
                 searchQueryReceipts: searchResult.QueryReceipts,
                 pageReceipts: [],
-                searchProvider: searchResult.Provider);
+                searchProvider: searchResult.Provider,
+                executedQueries: searchResult.ExecutedQueries,
+                searchResults: searchResult.SearchResults,
+                sources: searchResult.Sources,
+                searchLatency: searchResult.LatencyMilliseconds,
+                searchCost: searchResult.CostMicrounits);
         }
 
         if (!pageResult.Succeeded)
@@ -806,7 +837,15 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
                     [],
                     "FailurePresentedAsLanguageNeutralReasonCode",
                     searchResult.Transport),
-                searchResult.Provider);
+                searchResult.Provider,
+                executedQueries: searchResult.ExecutedQueries,
+                searchResults: searchResult.SearchResults,
+                sources: searchResult.Sources,
+                documents: pageResult.Documents,
+                citations: pageResult.Citations,
+                searchLatency: searchResult.LatencyMilliseconds,
+                retrievalLatency: pageResult.LatencyMilliseconds,
+                searchCost: searchResult.CostMicrounits);
         }
 
         var evidencePacket = BuildResearchEvidencePacket(
