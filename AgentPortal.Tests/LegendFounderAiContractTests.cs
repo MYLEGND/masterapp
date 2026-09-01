@@ -1190,7 +1190,8 @@ public sealed class LegendFounderAiContractTests
         Assert.Contains("Deploy immutable merged production tree", workflow, StringComparison.Ordinal);
         Assert.Contains("verify-legend-native:", workflow, StringComparison.Ordinal);
         Assert.Contains("Download exact tested binaries", workflow, StringComparison.Ordinal);
-        Assert.Contains("ProductionReadOnlyEightPromptNativeDiagnostic", workflow, StringComparison.Ordinal);
+        Assert.Contains("ProductionReadOnlyNativeProofMatrix", workflow, StringComparison.Ordinal);
+        Assert.Contains("LEGEND_PRODUCTION_PROOF_MATRIX_VERSION: lai-027-029-v1", workflow, StringComparison.Ordinal);
         Assert.DoesNotContain("verify-legend-convergence:", workflow, StringComparison.Ordinal);
         Assert.DoesNotContain("LegendProductionConvergenceGate", workflow, StringComparison.Ordinal);
         Assert.DoesNotContain("push:", workflow, StringComparison.Ordinal);
@@ -1198,7 +1199,7 @@ public sealed class LegendFounderAiContractTests
     }
 
     [Fact]
-    public void ProductionDeploymentWorkflow_ExcludesLongRunningConvergenceAndUsesFocusedNativeProof()
+    public void ProductionDeploymentWorkflow_ExcludesReplayAndUsesOneBoundedNativeProofMatrix()
     {
         var workflow = File.ReadAllText(
             Path.Combine(AppContext.BaseDirectory, "agentportal-production-deploy.yml"));
@@ -1209,9 +1210,35 @@ public sealed class LegendFounderAiContractTests
         Assert.Contains("- deploy", verify, StringComparison.Ordinal);
         Assert.Contains("Download exact tested binaries", verify, StringComparison.Ordinal);
         Assert.Contains("./tested/AgentPortal.Tests.dll", verify, StringComparison.Ordinal);
-        Assert.Contains("ProductionReadOnlyEightPromptNativeDiagnostic", verify, StringComparison.Ordinal);
+        Assert.Contains("ProductionReadOnlyNativeProofMatrix", verify, StringComparison.Ordinal);
+        Assert.Contains("FullyQualifiedName=$testName", verify, StringComparison.Ordinal);
+        Assert.Contains("LEGEND_PRODUCTION_PROOF_REQUIRED: 'true'", verify, StringComparison.Ordinal);
+        Assert.Contains("Required SQL proof reported zero executed matrix cases.", verify, StringComparison.Ordinal);
+        Assert.Contains("$executedTests -ne 1", verify, StringComparison.Ordinal);
+        Assert.Contains("$matrixCases -lt 1", verify, StringComparison.Ordinal);
+        Assert.Contains("legend-production-matrix-result.json", verify, StringComparison.Ordinal);
+        Assert.Contains("ProductionWriteCommandCount", verify, StringComparison.Ordinal);
+        Assert.Contains("ProviderClientCount", verify, StringComparison.Ordinal);
         Assert.DoesNotContain("LegendProductionConvergenceGate", workflow, StringComparison.Ordinal);
         Assert.DoesNotContain("verify-legend-convergence:", workflow, StringComparison.Ordinal);
+        Assert.DoesNotContain("run_full_shadow", verify, StringComparison.Ordinal);
+        Assert.DoesNotContain("live replay", verify, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void ProductionDeploymentWorkflow_BindsProofArtifactToCandidateTreeAndDeployedSha()
+    {
+        var workflow = File.ReadAllText(
+            Path.Combine(AppContext.BaseDirectory, "agentportal-production-deploy.yml"));
+
+        Assert.Contains("candidate_sha: ${{ steps.tree.outputs.candidate_sha }}", workflow, StringComparison.Ordinal);
+        Assert.Contains("deployed_sha: ${{ steps.identity.outputs.deployed_sha }}", workflow, StringComparison.Ordinal);
+        Assert.Contains("CandidateSha = $candidateSha", workflow, StringComparison.Ordinal);
+        Assert.Contains("CandidateTree = $candidateTree", workflow, StringComparison.Ordinal);
+        Assert.Contains("DeployedSha = $deployedSha", workflow, StringComparison.Ordinal);
+        Assert.Contains("if ($deployedSha -ne $mergeSha)", workflow, StringComparison.Ordinal);
+        Assert.Contains("legend-production-proof-${{ needs.deploy.outputs.deployed_sha }}-${{ github.run_id }}", workflow, StringComparison.Ordinal);
+        Assert.Contains("legend-production-proof-identity.json", workflow, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -1266,7 +1293,7 @@ public sealed class LegendFounderAiContractTests
     }
 
     [Fact]
-    public void ProductionReadOnlyDiagnosticWorkflow_CannotPushOrCommitToProduction()
+    public void ProductionReadOnlyDiagnosticWorkflow_IsExplicitlyNonAuthoritativeAndCannotMutateProduction()
     {
         var workflow = File.ReadAllText(
             Path.Combine(AppContext.BaseDirectory, "legend-production-readonly-diagnostic.yml"));
@@ -1274,7 +1301,13 @@ public sealed class LegendFounderAiContractTests
         Assert.Contains("contents: read", workflow, StringComparison.Ordinal);
         Assert.Contains("timeout-minutes: 30", workflow, StringComparison.Ordinal);
         Assert.Contains("cancel-in-progress: true", workflow, StringComparison.Ordinal);
-        Assert.Contains("ProductionReadOnlyEightPromptNativeDiagnostic", workflow, StringComparison.Ordinal);
+        Assert.Contains("ProductionReadOnlyNativeProofMatrix", workflow, StringComparison.Ordinal);
+        Assert.Contains("Authority: non-authoritative", workflow, StringComparison.Ordinal);
+        Assert.Contains("DeployedSha: unavailable", workflow, StringComparison.Ordinal);
+        Assert.Contains("production proof lives only in agentportal-production-deploy.yml", workflow, StringComparison.Ordinal);
+        Assert.Contains("$executedTests -ne 1", workflow, StringComparison.Ordinal);
+        Assert.Contains("$matrixCases -lt 1", workflow, StringComparison.Ordinal);
+        Assert.Contains("legend-production-matrix-result.json", workflow, StringComparison.Ordinal);
         Assert.Contains(
             "Production read-only diagnostic was not completed successfully.",
             workflow,

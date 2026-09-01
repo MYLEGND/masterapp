@@ -33,6 +33,7 @@ env:
   PUBLISH_DIR: ${{ github.workspace }}\publish\agentportal
   ARTIFACT_NAME: agentportal-production-candidate-${{ github.run_id }}
   TEST_ARTIFACT_NAME: agentportal-tested-binaries-${{ github.run_id }}
+  LEGEND_PRODUCTION_PROOF_MATRIX_VERSION: lai-027-029-v1
 
 jobs:
   # Keep this job name stable: it is the protected production required check.
@@ -111,8 +112,8 @@ jobs:
             echo "::error::The failed phase-seed restart regression was not discovered."
             exit 1
           fi
-          if ! grep -q "ProductionReadOnlyEightPromptNativeDiagnostic" test-discovery.log; then
-            echo "::error::The production native-only Founder conversation regression was not discovered."
+          if ! grep -q "ProductionReadOnlyNativeProofMatrix" test-discovery.log; then
+            echo "::error::The bounded production native proof matrix was not discovered."
             exit 1
           fi
 
@@ -229,6 +230,7 @@ jobs:
       contents: read
     outputs:
       tested_tree: ${{ steps.tree.outputs.tested_tree }}
+      candidate_sha: ${{ steps.tree.outputs.candidate_sha }}
 
     steps:
       - name: Checkout exact validated merge candidate
@@ -241,8 +243,11 @@ jobs:
         id: tree
         shell: pwsh
         run: |
+          $candidateSha = (git rev-parse HEAD).Trim()
           $tree = (git rev-parse 'HEAD^{tree}').Trim()
+          if ($candidateSha -notmatch '^[0-9a-f]{40}$') { throw 'Unable to resolve the exact validated candidate SHA.' }
           if ([string]::IsNullOrWhiteSpace($tree)) { throw 'Unable to resolve validated tree identity.' }
+          "candidate_sha=$candidateSha" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
           "tested_tree=$tree" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
 
       - name: Set up .NET
@@ -441,6 +446,8 @@ jobs:
     permissions:
       contents: read
       id-token: write
+    outputs:
+      deployed_sha: ${{ steps.identity.outputs.deployed_sha }}
 
     steps:
       - name: Download exact validated deployment artifact
@@ -463,8 +470,17 @@ jobs:
           slot-name: Production
           package: ./package
 
+      - name: Bind deployed artifact to immutable production SHA
+        id: identity
+        shell: pwsh
+        run: |
+          $deployedSha = '${{ needs.merge.outputs.merge_sha }}'
+          if ($deployedSha -notmatch '^[0-9a-f]{40}$') { throw 'The deployed production SHA is unavailable or malformed.' }
+          "deployed_sha=$deployedSha" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
   verify-legend-native:
     needs:
+      - build
       - merge
       - deploy
     runs-on: ubuntu-latest
@@ -574,6 +590,28 @@ jobs:
             "OpenAI__LegendFounderAiModel=$openAiModel" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           }
 
+      - name: Bind production proof identity to exact candidate and deployed SHAs
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force diagnostics | Out-Null
+          $candidateSha = '${{ needs.build.outputs.candidate_sha }}'
+          $deployedSha = '${{ needs.deploy.outputs.deployed_sha }}'
+          $mergeSha = '${{ needs.merge.outputs.merge_sha }}'
+          $candidateTree = '${{ needs.build.outputs.tested_tree }}'
+          foreach ($identity in @($candidateSha, $deployedSha, $mergeSha, $candidateTree)) {
+            if ($identity -notmatch '^[0-9a-f]{40}$') { throw 'A required immutable production proof identity is unavailable or malformed.' }
+          }
+          if ($candidateSha -ne '${{ github.sha }}') { throw 'Downloaded tested binaries are not bound to the exact workflow candidate SHA.' }
+          if ($deployedSha -ne $mergeSha) { throw 'The deployed SHA differs from the immutable production merge SHA.' }
+          [ordered]@{
+            Authority = 'agentportal-production-deploy.yml/verify-legend-native'
+            MatrixVersion = '${{ env.LEGEND_PRODUCTION_PROOF_MATRIX_VERSION }}'
+            CandidateSha = $candidateSha
+            CandidateTree = $candidateTree
+            DeployedSha = $deployedSha
+            RunId = '${{ github.run_id }}'
+          } | ConvertTo-Json | Set-Content -Path diagnostics/legend-production-proof-identity.json -Encoding utf8
+
       - name: Verify provider accepts complete Founder tool catalog without execution
         shell: pwsh
         env:
@@ -583,24 +621,85 @@ jobs:
           dotnet test './tested/AgentPortal.Tests.dll' --filter 'FullyQualifiedName~ProviderAcceptanceCanary_LiveProviderAcceptsCompleteZeroWriteCatalog' --logger 'console;verbosity=detailed' 2>&1 | Tee-Object -FilePath diagnostics/legend-founder-tool-provider-canary.txt
           if ($LASTEXITCODE -ne 0) { throw 'The provider rejected the complete serialized Founder tool catalog.' }
 
-      - name: Verify production Founder chat uses canonical native inference only
+      - name: Verify bounded production Founder native proof matrix
+        id: native
         shell: pwsh
         env:
-          LEGEND_PRODUCTION_READONLY_EXPECT_NATIVE: 'true'
+          LEGEND_PRODUCTION_PROOF_REQUIRED: 'true'
+          LEGEND_PRODUCTION_PROOF_MATRIX_VERSION: ${{ env.LEGEND_PRODUCTION_PROOF_MATRIX_VERSION }}
+          LEGEND_PRODUCTION_PROOF_RESULT_PATH: diagnostics/legend-production-matrix-result.json
           OPENAI_API_KEY: ''
           OpenAI__ApiKey: ''
         run: |
           New-Item -ItemType Directory -Force diagnostics | Out-Null
-          dotnet test './tested/AgentPortal.Tests.dll' --filter 'FullyQualifiedName~ProductionReadOnlyEightPromptNativeDiagnostic' --logger 'console;verbosity=detailed' 2>&1 | Tee-Object -FilePath diagnostics/legend-production-native-only-gate.txt
-          if ($LASTEXITCODE -ne 0) { throw 'LEGEND native-only production conversation gate failed.' }
+          $testName = 'AgentPortal.Tests.LegendFounderCurriculumSqlServerE2ETests.ProductionReadOnlyNativeProofMatrix'
+          $filter = "FullyQualifiedName=$testName"
+          $matrixResultPath = 'diagnostics/legend-production-matrix-result.json'
+          if (Test-Path $matrixResultPath) { throw 'A stale SQL proof result exists before matrix execution.' }
+          dotnet test './tested/AgentPortal.Tests.dll' --list-tests --filter $filter 2>&1 | Tee-Object -FilePath diagnostics/legend-production-proof-discovery.txt
+          if ($LASTEXITCODE -ne 0) { throw 'LEGEND production proof test discovery failed.' }
+          $discovery = Get-Content diagnostics/legend-production-proof-discovery.txt -Raw
+          $discovered = [regex]::Matches($discovery, '(?m)^\s*' + [regex]::Escape($testName) + '\s*$').Count
+          if ($discovered -ne 1) { throw "The exact LEGEND production proof matrix was discovered $discovered times; required count is one." }
 
-      - name: Upload Founder provider and native-only verification transcripts
+          dotnet test './tested/AgentPortal.Tests.dll' --filter $filter --results-directory diagnostics --logger 'trx;LogFileName=legend-production-native-proof.trx' --logger 'console;verbosity=detailed' 2>&1 | Tee-Object -FilePath diagnostics/legend-production-native-proof.txt
+          $testExit = $LASTEXITCODE
+          $executedTests = 0
+          $passedTests = 0
+          $failedTests = 0
+          $matrixCases = 0
+          $trxPath = 'diagnostics/legend-production-native-proof.trx'
+          if (Test-Path $trxPath) {
+            [xml]$trx = Get-Content $trxPath -Raw
+            $counters = $trx.TestRun.ResultSummary.Counters
+            if ($null -ne $counters) {
+              $executedTests = [int]$counters.executed
+              $passedTests = [int]$counters.passed
+              $failedTests = [int]$counters.failed
+            }
+          }
+          if (Test-Path $matrixResultPath) {
+            $matrixResult = Get-Content $matrixResultPath -Raw | ConvertFrom-Json
+            if ($matrixResult.MatrixVersion -ne '${{ env.LEGEND_PRODUCTION_PROOF_MATRIX_VERSION }}') { throw 'The SQL proof result used an unexpected matrix version.' }
+            if ($matrixResult.Status -ne 'passed') { throw 'The SQL proof result did not report a passed matrix.' }
+            if ([int]$matrixResult.ProviderClientCount -ne 0) { throw 'The native-only SQL proof created a provider client.' }
+            if ([int]$matrixResult.ProductionWriteCommandCount -ne 0) { throw 'The SQL proof reported a production write command.' }
+            $matrixCases = [int]$matrixResult.ExecutedCases
+          }
+          "executed_tests=$executedTests" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "passed_tests=$passedTests" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "failed_tests=$failedTests" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "matrix_cases=$matrixCases" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          if ($testExit -ne 0) { throw 'LEGEND bounded production native proof matrix failed.' }
+          if ($executedTests -ne 1 -or $passedTests -ne 1 -or $failedTests -ne 0) { throw "Required SQL proof execution was incomplete: executed=$executedTests; passed=$passedTests; failed=$failedTests." }
+          if ($matrixCases -lt 1) { throw 'Required SQL proof reported zero executed matrix cases.' }
+
+      - name: Finalize exact production proof manifest
+        if: always()
+        shell: pwsh
+        run: |
+          $path = 'diagnostics/legend-production-proof-identity.json'
+          if (-not (Test-Path $path)) { throw 'The exact production proof identity manifest is missing.' }
+          $identity = Get-Content $path -Raw | ConvertFrom-Json
+          [ordered]@{
+            Authority = $identity.Authority
+            MatrixVersion = $identity.MatrixVersion
+            CandidateSha = $identity.CandidateSha
+            CandidateTree = $identity.CandidateTree
+            DeployedSha = $identity.DeployedSha
+            RunId = $identity.RunId
+            ExecutionOutcome = '${{ steps.native.outcome }}'
+            ExecutedTests = '${{ steps.native.outputs.executed_tests }}'
+            PassedTests = '${{ steps.native.outputs.passed_tests }}'
+            FailedTests = '${{ steps.native.outputs.failed_tests }}'
+            MatrixCases = '${{ steps.native.outputs.matrix_cases }}'
+          } | ConvertTo-Json | Set-Content -Path $path -Encoding utf8
+
+      - name: Upload exact Founder production proof artifact
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: legend-production-verification-${{ github.run_id }}
-          path: |
-            diagnostics/legend-founder-tool-provider-canary.txt
-            diagnostics/legend-production-native-only-gate.txt
+          name: legend-production-proof-${{ needs.deploy.outputs.deployed_sha }}-${{ github.run_id }}
+          path: diagnostics
           if-no-files-found: error
           retention-days: 7
