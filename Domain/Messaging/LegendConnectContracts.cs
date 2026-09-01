@@ -2213,7 +2213,7 @@ public static class LegendConnectResearchContracts
     public const int MaximumPageBytes = 262_144;
     public const int MaximumRedirects = 3;
     public const int RequestTimeoutSeconds = 10;
-    public const int TotalResearchDeadlineSeconds = 30;
+    public const int TotalResearchDeadlineSeconds = 60;
 }
 
 /// <summary>
