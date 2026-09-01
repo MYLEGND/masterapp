@@ -68,6 +68,60 @@ public sealed class LegendConnectResearchTransportSecurityTests
     }
 
     [Fact]
+    public async Task CrossOriginRedirect_CannotInheritSourceOrCitationAuthority()
+    {
+        var ordinal = 0;
+        var handler = new RecordingHandler((_, _) => Task.FromResult(
+            ordinal++ == 0
+                ? Redirect("https://unrelated.example/evidence")
+                : Response("text/plain", "bounded external observation")));
+        var request = Request("https://official.example/record");
+        var claimedAuthority = Assert.Single(request.Sources) with
+        {
+            Publisher = "Official publisher",
+            SourceClass = LegendConnectResearchSourceClass.PrimaryOfficialRecord,
+            PublishedUtc = DateTime.UtcNow.AddDays(-1),
+            Author = "Official author",
+            UpdatedUtc = DateTime.UtcNow,
+            EffectiveUtc = DateTime.UtcNow,
+            MethodologyAvailable = true,
+            ProvenanceComplete = true,
+            LineageKind = LegendConnectResearchSourceLineageKind.Original,
+            OriginalSourceIdentity = "claimed-original",
+            CommonOriginIdentity = "claimed-origin",
+            CitationTargetSourceIdentities = ["claimed-target"],
+            AuthorityScopes = [LegendConnectResearchAuthorityScope.GeneralRecord],
+            IsControllingRecord = true
+        };
+
+        var result = await CreateRetriever(handler).RetrieveAsync(request with
+        {
+            Sources = [claimedAuthority]
+        });
+
+        Assert.True(result.Succeeded);
+        var source = Assert.Single(result.Sources);
+        Assert.Equal("https://unrelated.example/evidence", source.CanonicalUri);
+        Assert.Equal(source.CanonicalUri, source.Title);
+        Assert.Equal(LegendConnectResearchSourceClass.UnknownSource, source.SourceClass);
+        Assert.Null(source.Publisher);
+        Assert.Null(source.Author);
+        Assert.Null(source.PublishedUtc);
+        Assert.Null(source.UpdatedUtc);
+        Assert.Null(source.EffectiveUtc);
+        Assert.False(source.MethodologyAvailable);
+        Assert.False(source.ProvenanceComplete);
+        Assert.Equal(LegendConnectResearchSourceLineageKind.Unknown, source.LineageKind);
+        Assert.Null(source.OriginalSourceIdentity);
+        Assert.Null(source.CommonOriginIdentity);
+        Assert.Empty(source.CitationTargetSourceIdentities!);
+        Assert.Empty(source.AuthorityScopes!);
+        Assert.False(source.IsControllingRecord);
+        Assert.Null(Assert.Single(result.SearchResults).Snippet);
+        Assert.Equal(source.CanonicalUri, Assert.Single(result.Citations).Title);
+    }
+
+    [Fact]
     public async Task OversizedContent_IsRejectedBeforeMaterialization()
     {
         var content = new ByteArrayContent(

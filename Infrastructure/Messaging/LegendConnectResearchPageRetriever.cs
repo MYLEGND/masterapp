@@ -143,9 +143,12 @@ internal sealed class LegendConnectResearchPageRetriever
             var citationIdentity = LegendLanguageIdentity.TextHash(
                 "research-citation|v3|" + documentIdentity);
             var retrievedUtc = attempt.Receipt.CompletedUtc;
-            var title = LegendConnectResearchExternalDataPolicy.SanitizeDisplayMetadata(source.Title, 500) ??
-                        attempt.FinalCanonicalUri;
-            sources.Add(source with
+            var sameOrigin = IsSameOrigin(candidate.CanonicalUri!, attempt.FinalCanonicalUri);
+            var title = sameOrigin
+                ? LegendConnectResearchExternalDataPolicy.SanitizeDisplayMetadata(source.Title, 500) ??
+                  attempt.FinalCanonicalUri
+                : attempt.FinalCanonicalUri;
+            var retrievedSource = source with
             {
                 SourceIdentity = sourceIdentity,
                 CanonicalUri = attempt.FinalCanonicalUri,
@@ -153,13 +156,39 @@ internal sealed class LegendConnectResearchPageRetriever
                 RetrievedUtc = retrievedUtc,
                 DocumentLanguageCode = normalizedDocumentLanguage,
                 IsUntrustedExternalData = true
-            });
+            };
+            if (!sameOrigin)
+            {
+                // A redirect destination is a different source. It may remain a useful
+                // external observation, but authority metadata supplied for the requested
+                // origin cannot follow it and become evidence or citation authority.
+                retrievedSource = retrievedSource with
+                {
+                    Publisher = null,
+                    SourceClass = LegendConnectResearchSourceClass.UnknownSource,
+                    PublishedUtc = null,
+                    Author = null,
+                    UpdatedUtc = null,
+                    EffectiveUtc = null,
+                    MethodologyAvailable = false,
+                    ProvenanceComplete = false,
+                    LineageKind = LegendConnectResearchSourceLineageKind.Unknown,
+                    OriginalSourceIdentity = null,
+                    CommonOriginIdentity = null,
+                    CitationTargetSourceIdentities = [],
+                    AuthorityScopes = [],
+                    IsControllingRecord = false
+                };
+            }
+            sources.Add(retrievedSource);
             results.Add(candidate.Result with
             {
                 SearchResultIdentity = LegendLanguageIdentity.TextHash(
                     "research-result|v3|" + candidate.Result.QueryIdentity + "|" + sourceIdentity),
                 SourceIdentity = sourceIdentity,
+                Title = title,
                 CanonicalUri = attempt.FinalCanonicalUri,
+                Snippet = sameOrigin ? candidate.Result.Snippet : null,
                 DocumentLanguageCode = normalizedDocumentLanguage,
                 IsUntrustedExternalData = true
             });
@@ -402,6 +431,13 @@ internal sealed class LegendConnectResearchPageRetriever
         HttpStatusCode.SeeOther or
         HttpStatusCode.TemporaryRedirect or
         HttpStatusCode.PermanentRedirect;
+
+    private static bool IsSameOrigin(string requestedCanonicalUri, string finalCanonicalUri) =>
+        Uri.TryCreate(requestedCanonicalUri, UriKind.Absolute, out var requested) &&
+        Uri.TryCreate(finalCanonicalUri, UriKind.Absolute, out var final) &&
+        string.Equals(requested.Scheme, final.Scheme, StringComparison.OrdinalIgnoreCase) &&
+        string.Equals(requested.IdnHost, final.IdnHost, StringComparison.OrdinalIgnoreCase) &&
+        requested.Port == final.Port;
 
     private static async Task<byte[]?> ReadBoundedBytesAsync(
         HttpContent content,
