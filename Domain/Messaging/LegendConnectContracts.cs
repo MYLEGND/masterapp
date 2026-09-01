@@ -39,6 +39,14 @@ public interface ILegendLanguageRegistry
         string? language,
         CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Resolves an already-registered enabled language without provisioning
+    /// baseline rows. Zero-write serving paths use this lookup.
+    /// </summary>
+    Task<string?> NormalizeEnabledTranslationLanguageReadOnlyAsync(
+        string? language,
+        CancellationToken cancellationToken = default);
+
     Task<LegendLanguageDefinitionSnapshot?> GetLanguageAsync(
         string? language,
         CancellationToken cancellationToken = default);
@@ -1139,7 +1147,8 @@ public sealed record LegendConnectBoundedSearchQuery(
     int Ordinal,
     string Query,
     string SourceLanguageCode,
-    int MaximumResults);
+    int MaximumResults,
+    string? QueryLanguageCode = null);
 
 public sealed record LegendConnectResearchRequest(
     Guid RequestId,
@@ -1164,7 +1173,9 @@ public sealed record LegendConnectResearchSourceIdentity(
     string? Publisher,
     string SourceClass,
     DateTime? PublishedUtc,
-    DateTime RetrievedUtc);
+    DateTime RetrievedUtc,
+    string? DocumentLanguageCode = null,
+    bool IsUntrustedExternalData = true);
 
 public sealed record LegendConnectSearchResult(
     string SearchResultIdentity,
@@ -1173,7 +1184,10 @@ public sealed record LegendConnectSearchResult(
     string SourceIdentity,
     string Title,
     string CanonicalUri,
-    string? Snippet);
+    string? Snippet,
+    string? QueryLanguageCode = null,
+    string? DocumentLanguageCode = null,
+    bool IsUntrustedExternalData = true);
 
 public sealed record LegendConnectRetrievedDocument(
     string DocumentIdentity,
@@ -1183,7 +1197,13 @@ public sealed record LegendConnectRetrievedDocument(
     string ContentHash,
     DateTime RetrievedUtc,
     bool RetrievalSucceeded,
-    string? FailureReason);
+    string? FailureReason,
+    string? DocumentLanguageCode = null,
+    string? ContentType = null,
+    int RedirectCount = 0,
+    long ReturnedBytes = 0,
+    bool IsUntrustedExternalData = true,
+    bool ContainsInstructionLikeContent = false);
 
 public sealed record LegendConnectCitation(
     string CitationIdentity,
@@ -1191,7 +1211,66 @@ public sealed record LegendConnectCitation(
     string DocumentIdentity,
     string Title,
     string CanonicalUri,
-    DateTime RetrievedUtc);
+    DateTime RetrievedUtc,
+    string? DocumentLanguageCode = null,
+    bool IsUntrustedExternalData = true);
+
+public sealed record LegendConnectResearchSearchQueryReceipt(
+    string ReceiptIdentity,
+    string QueryIdentity,
+    string Query,
+    string QueryLanguageCode,
+    DateTime ExecutedUtc,
+    string Transport,
+    string Provider,
+    long LatencyMilliseconds,
+    long? CostMicrounits,
+    string CostState,
+    bool IsReadOnly,
+    bool ZeroWrite,
+    bool Succeeded = true,
+    string? FailureReason = null);
+
+public sealed record LegendConnectResearchPageReceipt(
+    string ReceiptIdentity,
+    string RequestedCanonicalUri,
+    string? FinalCanonicalUri,
+    DateTime RequestedUtc,
+    DateTime CompletedUtc,
+    string Transport,
+    string Provider,
+    int RequestCount,
+    int RedirectCount,
+    int? StatusCode,
+    string? ContentType,
+    long ReturnedBytes,
+    long LatencyMilliseconds,
+    long? CostMicrounits,
+    string CostState,
+    bool Succeeded,
+    string? FailureReason,
+    bool IsReadOnly,
+    bool ZeroWrite);
+
+public sealed record LegendConnectResearchTranslationReceipt(
+    string ReceiptIdentity,
+    string SourceLanguageCode,
+    string TargetLanguageCode,
+    string Transport,
+    string InputIdentity,
+    string OutputIdentity,
+    DateTime ObservedUtc,
+    string State);
+
+public sealed record LegendConnectResearchLanguageLineage(
+    string UserLanguageCode,
+    IReadOnlyList<string> QueryLanguageCodes,
+    IReadOnlyList<string> DocumentLanguageCodes,
+    string EvidenceLanguageCode,
+    string FinalResponseLanguageCode,
+    IReadOnlyList<LegendConnectResearchTranslationReceipt> TranslationReceipts,
+    string FinalPresentationState = "EvidenceStatementsRequestedInUserLanguage",
+    string? FinalPresentationTransport = null);
 
 public sealed record LegendConnectClaimEvidence(
     string EvidenceIdentity,
@@ -1226,7 +1305,10 @@ public sealed record LegendConnectResearchSession(
     long LatencyMilliseconds,
     long? CostMicrounits,
     string CompletionState,
-    string? FailureReason);
+    string? FailureReason,
+    IReadOnlyList<LegendConnectResearchSearchQueryReceipt>? SearchQueryReceipts = null,
+    IReadOnlyList<LegendConnectResearchPageReceipt>? PageReceipts = null,
+    LegendConnectResearchLanguageLineage? LanguageLineage = null);
 
 public sealed record LegendConnectResearchConclusion(
     string ConclusionIdentity,
@@ -1251,7 +1333,8 @@ public sealed record LegendConnectResearchUnresolvedConflictResult(
 public sealed record LegendConnectResearchFailureResult(
     string ReasonCode,
     string PresentedText,
-    bool Retryable);
+    bool Retryable,
+    string? DiagnosticDetail = null);
 
 /// <summary>
 /// Complete, zero-write lineage for one research outcome. External evidence is
@@ -1286,7 +1369,11 @@ public sealed record LegendConnectResearchProvenance(
     string? AuthorizationCorrelationId,
     bool IsReadOnly,
     bool ZeroWrite,
-    string Provenance);
+    string Provenance,
+    string? SearchProvider = null,
+    IReadOnlyList<string>? SearchQueryReceiptIdentities = null,
+    IReadOnlyList<string>? PageReceiptIdentities = null,
+    LegendConnectResearchLanguageLineage? LanguageLineage = null);
 
 public sealed record LegendConnectResearchOutcome(
     LegendConnectResearchOutcomeState State,
@@ -1307,41 +1394,100 @@ public sealed record LegendConnectResearchOutcome(
         "LEGEND could not establish a research outcome.";
 }
 
-public sealed record LegendConnectInternetResearchTransportRequest(
+public sealed record LegendConnectResearchClaimCandidate(
+    string ClaimIdentity,
+    string Statement,
+    IReadOnlyList<string> CanonicalUris,
+    DateTime? ObservedUtc,
+    string EvidenceLanguageCode,
+    bool IsUntrustedExternalData);
+
+public sealed record LegendConnectResearchSearchTransportRequest(
     Guid SessionId,
-    string Question,
-    string SourceLanguageCode,
+    string UserLanguageCode,
     IReadOnlyList<LegendConnectBoundedSearchQuery> Queries,
     int MaximumResults,
-    int MaximumDocuments,
-    int MaximumClaims,
-    int MaximumDocumentCharacters,
-    string? InternalAnswer,
-    string? InternalReasonCode);
+    int MaximumClaims);
 
-public sealed record LegendConnectInternetResearchTransportResult(
+public sealed record LegendConnectResearchSearchTransportResult(
     bool Succeeded,
     string Transport,
+    string Provider,
     string? ModelVersion,
     string SettingsIdentity,
     IReadOnlyList<LegendConnectBoundedSearchQuery> ExecutedQueries,
+    IReadOnlyList<LegendConnectResearchSearchQueryReceipt> QueryReceipts,
+    IReadOnlyList<LegendConnectSearchResult> SearchResults,
+    IReadOnlyList<LegendConnectResearchSourceIdentity> Sources,
+    IReadOnlyList<LegendConnectResearchClaimCandidate> ClaimCandidates,
+    IReadOnlyList<LegendConnectResearchClaimCandidate> ContradictionCandidates,
+    long LatencyMilliseconds,
+    long? CostMicrounits,
+    string? FailureReason,
+    bool Retryable);
+
+public interface ILegendConnectResearchSearchTransport
+{
+    Task<LegendConnectResearchSearchTransportResult> SearchAsync(
+        LegendConnectResearchSearchTransportRequest request,
+        CancellationToken cancellationToken = default);
+}
+
+public sealed record LegendConnectResearchPageRetrievalRequest(
+    Guid SessionId,
+    string UserLanguageCode,
+    IReadOnlyList<LegendConnectSearchResult> SearchResults,
+    IReadOnlyList<LegendConnectResearchSourceIdentity> Sources,
+    int MaximumDocuments,
+    int MaximumDocumentCharacters,
+    int MaximumTotalCharacters,
+    DateTime DeadlineUtc);
+
+public sealed record LegendConnectRetrievedPageLineage(
+    string RequestedCanonicalUri,
+    string FinalCanonicalUri,
+    string SourceIdentity,
+    string DocumentIdentity,
+    string CitationIdentity);
+
+public sealed record LegendConnectResearchPageRetrievalResult(
+    bool Succeeded,
+    string Transport,
+    string SettingsIdentity,
+    IReadOnlyList<LegendConnectSearchResult> SearchResults,
+    IReadOnlyList<LegendConnectResearchSourceIdentity> Sources,
+    IReadOnlyList<LegendConnectRetrievedDocument> Documents,
+    IReadOnlyList<LegendConnectCitation> Citations,
+    IReadOnlyList<LegendConnectRetrievedPageLineage> Lineage,
+    IReadOnlyList<LegendConnectResearchPageReceipt> Receipts,
+    long LatencyMilliseconds,
+    string? FailureReason,
+    bool Retryable);
+
+public interface ILegendConnectResearchPageRetriever
+{
+    Task<LegendConnectResearchPageRetrievalResult> RetrieveAsync(
+        LegendConnectResearchPageRetrievalRequest request,
+        CancellationToken cancellationToken = default);
+}
+
+public sealed record LegendConnectResearchEvidencePacket(
+    string Transport,
+    string SearchProvider,
+    string? ModelVersion,
+    string SettingsIdentity,
+    IReadOnlyList<LegendConnectBoundedSearchQuery> ExecutedQueries,
+    IReadOnlyList<LegendConnectResearchSearchQueryReceipt> SearchQueryReceipts,
+    IReadOnlyList<LegendConnectResearchPageReceipt> PageReceipts,
     IReadOnlyList<LegendConnectSearchResult> SearchResults,
     IReadOnlyList<LegendConnectResearchSourceIdentity> Sources,
     IReadOnlyList<LegendConnectRetrievedDocument> Documents,
     IReadOnlyList<LegendConnectClaimEvidence> ClaimEvidence,
     IReadOnlyList<LegendConnectContradictingEvidence> ContradictingEvidence,
     IReadOnlyList<LegendConnectCitation> Citations,
+    LegendConnectResearchLanguageLineage LanguageLineage,
     long LatencyMilliseconds,
-    long? CostMicrounits,
-    string? FailureReason,
-    bool Retryable);
-
-public interface ILegendConnectInternetResearchTransport
-{
-    Task<LegendConnectInternetResearchTransportResult> SearchAsync(
-        LegendConnectInternetResearchTransportRequest request,
-        CancellationToken cancellationToken = default);
-}
+    long? CostMicrounits);
 
 public static class LegendConnectResearchContracts
 {
@@ -1354,6 +1500,11 @@ public static class LegendConnectResearchContracts
     public const int MaximumDocuments = 6;
     public const int MaximumClaims = 12;
     public const int MaximumDocumentCharacters = 4_000;
+    public const int MaximumTotalDocumentCharacters = MaximumDocuments * MaximumDocumentCharacters;
+    public const int MaximumPageBytes = 262_144;
+    public const int MaximumRedirects = 3;
+    public const int RequestTimeoutSeconds = 10;
+    public const int TotalResearchDeadlineSeconds = 30;
 }
 
 /// <summary>

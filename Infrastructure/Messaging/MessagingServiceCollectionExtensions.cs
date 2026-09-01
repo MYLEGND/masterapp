@@ -64,7 +64,8 @@ public static class MessagingServiceCollectionExtensions
                 provider.GetRequiredService<IConfiguration>()));
         services.AddScoped<ILegendConnectModelEvaluationBackend, OpenAiLegendConnectModelEvaluationBackend>();
         services.AddScoped<ILegendConnectActiveModelInference, LegendConnectActiveModelInference>();
-        services.AddScoped<ILegendConnectInternetResearchTransport, OpenAiLegendConnectInternetResearchTransport>();
+        services.AddScoped<ILegendConnectResearchSearchTransport, LegendConnectConfiguredReadOnlySearchTransport>();
+        services.AddScoped<ILegendConnectResearchPageRetriever, LegendConnectResearchPageRetriever>();
         services.AddScoped<LegendConnectModelPromotionService>(provider =>
             new LegendConnectModelPromotionService(
                 provider.GetRequiredService<Infrastructure.Data.MasterAppDbContext>(),
@@ -97,12 +98,22 @@ public static class MessagingServiceCollectionExtensions
                 TimeSpan.FromSeconds(
                     teacherTimeoutSeconds);
         });
-        services.AddHttpClient("LegendInternetResearch", client =>
+        services.AddHttpClient("LegendInternetResearchSearch", client =>
         {
-            // The outer Founder request budget remains authoritative. This
-            // client adds a narrower transport ceiling and performs no writes.
-            client.Timeout = TimeSpan.FromSeconds(45);
-        });
+            // The outer governed research deadline remains authoritative.
+            client.Timeout = TimeSpan.FromSeconds(
+                LegendConnectResearchContracts.TotalResearchDeadlineSeconds);
+        })
+        .ConfigurePrimaryHttpMessageHandler(() =>
+            LegendConnectResearchNetworkPolicy.CreatePublicReadOnlyHandler());
+        services.AddHttpClient(LegendConnectResearchPageRetriever.ClientName, client =>
+        {
+            // Per-request and total deadlines are linked inside the retriever.
+            client.Timeout = Timeout.InfiniteTimeSpan;
+        })
+        .ConfigurePrimaryHttpMessageHandler(() =>
+            LegendConnectResearchNetworkPolicy.CreatePublicReadOnlyHandler())
+        .SetHandlerLifetime(Timeout.InfiniteTimeSpan);
         services.AddHttpClient("AzureTranslator", client =>
         {
             // Provider failures must never hold up message delivery.

@@ -319,13 +319,6 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
         }
         else if (state == LegendResearchEvidenceAssessmentState.UnresolvedConflict)
         {
-            builder.AppendLine(
-                string.Equals(
-                    reasonCode,
-                    "internal_conflict_requires_discriminating_lineage",
-                    StringComparison.Ordinal)
-                        ? "LEGEND found external evidence, but the existing internal conflict still lacks complete discriminating lineage and remains unresolved."
-                        : "LEGEND found materially conflicting external evidence and cannot resolve it without discriminating evidence.");
             foreach (var statement in claims.Select(item => item.Statement)
                          .Concat(contradictions.Select(item => item.Statement))
                          .Where(item => !string.IsNullOrWhiteSpace(item))
@@ -334,16 +327,16 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
             {
                 builder.Append("- ").AppendLine(statement.Trim());
             }
+            builder.Append('[').Append(reasonCode).Append(']');
         }
         else
         {
-            builder.Append(
-                "LEGEND could not establish enough independently sourced, completely cited evidence to answer this request.");
+            builder.Append('[').Append(reasonCode).Append(']');
         }
 
         if (orderedCitations.Length > 0)
         {
-            builder.AppendLine().AppendLine("Sources:");
+            builder.AppendLine();
             for (var index = 0; index < orderedCitations.Length; index++)
             {
                 var citation = orderedCitations[index];
@@ -354,7 +347,7 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
         }
 
         if (builder.Length == 0)
-            builder.Append("LEGEND research ended without a presentable result. Reason=").Append(reasonCode).Append('.');
+            builder.Append('[').Append(reasonCode).Append(']');
         return builder.ToString().Trim();
     }
 

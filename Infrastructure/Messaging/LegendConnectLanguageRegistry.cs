@@ -27,6 +27,16 @@ internal sealed class LegendLanguageRegistry : ILegendLanguageRegistry
         CancellationToken cancellationToken = default) =>
         (await GetLanguageAsync(language, cancellationToken))?.Code;
 
+    public async Task<string?> NormalizeEnabledTranslationLanguageReadOnlyAsync(
+        string? language,
+        CancellationToken cancellationToken = default) =>
+        (await ResolveEnabledLanguageAsync(
+            language,
+            requireTranslation: true,
+            requireLearning: false,
+            cancellationToken,
+            provisionBaseline: false))?.Code;
+
     public async Task<LegendLanguageDefinitionSnapshot?> GetLanguageAsync(
         string? language,
         CancellationToken cancellationToken = default) =>
@@ -50,13 +60,15 @@ internal sealed class LegendLanguageRegistry : ILegendLanguageRegistry
         string? language,
         bool requireTranslation,
         bool requireLearning,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool provisionBaseline = true)
     {
         var candidate = language?.Trim();
         if (string.IsNullOrWhiteSpace(candidate))
             return null;
 
-        await EnsureBaselineAsync(cancellationToken);
+        if (provisionBaseline)
+            await EnsureBaselineAsync(cancellationToken);
         var hasNormalizedCode = LegendLanguageIdentity.TryNormalize(candidate, out var normalized);
         var baseCode = hasNormalizedCode ? LegendLanguageIdentity.BaseCode(normalized) : string.Empty;
         var definition = await _db.Set<LegendLanguageDefinition>()
