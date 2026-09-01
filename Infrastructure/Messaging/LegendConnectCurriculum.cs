@@ -4163,6 +4163,37 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
     }
 
     /// <summary>
+    /// Resolves an exact active Founder text unit through the existing unique
+    /// (language, normalized-hash) index before expanding lexical occurrences.
+    /// Dense common-token evidence must never make an exact governed endpoint
+    /// unreachable merely because its individual words occur in more than the
+    /// bounded lexical candidate set. This method supplies source candidates
+    /// only; the unchanged meaning, transition, contradiction, evidence and
+    /// realization authorities still decide whether the endpoint can serve.
+    /// </summary>
+    private async Task<IReadOnlyList<Guid>>
+        LoadExactActiveFounderSemanticTextUnitIdsAsync(
+            string language,
+            string normalizedInput,
+            CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(normalizedInput))
+            return [];
+
+        var normalizedHash = LegendLanguageIdentity.TextHash(normalizedInput);
+        return await _db.Set<LegendLanguageTextUnit>()
+            .AsNoTracking()
+            .Where(unit =>
+                unit.LanguageCode == language &&
+                unit.NormalizedHash == normalizedHash &&
+                unit.IsTrainingEligible &&
+                unit.Provenance == LegendConnectKnowledgeProvenance.FounderApproved)
+            .Select(unit => unit.Id)
+            .Take(2)
+            .ToArrayAsync(cancellationToken);
+    }
+
+    /// <summary>
     /// Uses the existing semantic analyser with the additional authority scope
     /// required by conversational serving: an anchor must originate from a
     /// currently governed transition source example. Result-side curriculum
@@ -4645,23 +4676,35 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
         // token of their controlled span. Start from the exact lexemes present
         // in this request so inference never materializes every supported
         // anchor for an entire language before doing an in-memory comparison.
-        var inputLexemeHashes = tokens
-            .Select(item => item.NormalizedHash)
-            .Distinct(StringComparer.Ordinal)
-            .ToArray();
-
-        var indexedTextUnits = await LoadIndexedSemanticTextUnitIdsAsync(
-            languageCode,
-            inputLexemeHashes,
-            cancellationToken);
-        if (indexedTextUnits.BoundExceeded)
+        var exactTextUnitIds =
+            await LoadExactActiveFounderSemanticTextUnitIdsAsync(
+                languageCode,
+                normalizedInput,
+                cancellationToken);
+        IndexedSemanticTextUnitRetrieval indexedTextUnits;
+        if (exactTextUnitIds.Count > 0)
         {
-            return new(
-                false,
-                [],
-                [],
-                tokens.Select(item => item.NormalizedText).ToArray(),
-                "meaning_graph_retrieval_bound_exceeded");
+            indexedTextUnits = new(exactTextUnitIds, false);
+        }
+        else
+        {
+            var inputLexemeHashes = tokens
+                .Select(item => item.NormalizedHash)
+                .Distinct(StringComparer.Ordinal)
+                .ToArray();
+            indexedTextUnits = await LoadIndexedSemanticTextUnitIdsAsync(
+                languageCode,
+                inputLexemeHashes,
+                cancellationToken);
+            if (indexedTextUnits.BoundExceeded)
+            {
+                return new(
+                    false,
+                    [],
+                    [],
+                    tokens.Select(item => item.NormalizedText).ToArray(),
+                    "meaning_graph_retrieval_bound_exceeded");
+            }
         }
         if (indexedTextUnits.TextUnitIds.Count == 0)
         {

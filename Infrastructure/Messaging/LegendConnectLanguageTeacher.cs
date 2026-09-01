@@ -809,6 +809,7 @@ Return only the requested structured result.
         var key =
             (_configuration[
                 ConfigurationPrefix + "ApiKey"] ??
+             _configuration["OpenAI:ApiKey"] ??
              Environment.GetEnvironmentVariable(
                  "OPENAI_API_KEY") ??
              string.Empty)
@@ -817,6 +818,8 @@ Return only the requested structured result.
             ? string.Empty
             : (_configuration[
                 ConfigurationPrefix + modelKey] ??
+               _configuration["OpenAI:LegendFounderAiModel"] ??
+               _configuration["OpenAI:Model"] ??
                string.Empty)
                 .Trim();
         var schema = string.Equals(

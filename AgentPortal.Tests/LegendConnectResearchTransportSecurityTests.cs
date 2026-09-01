@@ -146,6 +146,49 @@ public sealed class LegendConnectResearchTransportSecurityTests
     }
 
     [Fact]
+    public async Task FailedCandidatePages_AreSkippedUntilDocumentBudgetIsFilled()
+    {
+        var handler = new RecordingHandler((request, _) =>
+        {
+            var path = request.RequestUri!.AbsolutePath;
+            if (path == "/oversized")
+            {
+                var oversized = new ByteArrayContent(
+                    new byte[LegendConnectResearchContracts.MaximumPageBytes + 1]);
+                oversized.Headers.ContentType = new MediaTypeHeaderValue("text/plain");
+                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = oversized
+                });
+            }
+
+            if (path == "/unavailable")
+                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.NotFound));
+
+            return Task.FromResult(Response("text/plain", "admissible replacement evidence"));
+        });
+        var request = Request(
+            "https://example.com/oversized",
+            "https://example.com/unavailable",
+            "https://example.com/replacement") with
+        {
+            MaximumDocuments = 1
+        };
+
+        var result = await CreateRetriever(handler).RetrieveAsync(request);
+
+        Assert.True(result.Succeeded, result.FailureReason);
+        Assert.Equal(3, handler.Requests.Count);
+        Assert.Equal(3, result.Receipts.Count);
+        var document = Assert.Single(result.Documents);
+        Assert.Equal("https://example.com/replacement", document.CanonicalUri);
+        Assert.Contains(result.Receipts, receipt =>
+            receipt.FailureReason == "internet_research_page_content_oversized");
+        Assert.Contains(result.Receipts, receipt =>
+            receipt.FailureReason == "internet_research_page_http_failed");
+    }
+
+    [Fact]
     public async Task UnsupportedMimeTypeAndFileAttachment_AreRejected()
     {
         var unsupported = new RecordingHandler((_, _) => Task.FromResult(Response(
