@@ -30,12 +30,6 @@ internal sealed class LegendFounderToolAuthority
         "strict"
     ];
 
-    private static readonly string[] RequiredWebSearchToolProperties =
-    [
-        "type",
-        "search_context_size"
-    ];
-
     private readonly FounderLegendConnectService _legend;
     private readonly IFounderSoftwareRemediationService? _softwareRemediation;
     private readonly HashSet<string> _consumedMutationAuthorizations =
@@ -45,7 +39,8 @@ internal sealed class LegendFounderToolAuthority
     private static readonly JsonSerializerOptions JsonOptions =
         new(JsonSerializerDefaults.Web)
         {
-            DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
+            DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+            Converters = { new JsonStringEnumConverter() }
         };
 
     internal LegendFounderToolAuthority(
@@ -72,7 +67,7 @@ internal sealed class LegendFounderToolAuthority
 
     private static bool IsGovernedEvidenceTool(string name) =>
         IsReadOnlyFounderTool(name) &&
-        !string.Equals(name, "legend_capabilities", StringComparison.Ordinal);
+        name is not "legend_capabilities" and not "legend_research_internet";
 
     // This is a classification inside the one executable registry, not a
     // second registry. Native binding is restricted to bounded LEGEND data
@@ -85,6 +80,7 @@ internal sealed class LegendFounderToolAuthority
             "legend_translation_quality" or
             "legend_target_realizations" or
             "legend_search_retained_knowledge" or
+            "legend_research_internet" or
             "legend_metric_detail" or
             "legend_language_state";
 
@@ -150,6 +146,127 @@ internal sealed class LegendFounderToolAuthority
             out var receiptReason)
                 ? new(true, "read_only_content_binding_receipt_governed", receipt)
                 : new(false, receiptReason, null);
+    }
+
+    /// <summary>
+    /// The single authorization boundary for canonical internet research.
+    /// Public research is authenticated, bounded, read-only and zero-write.
+    /// Every other access class consumes the exact existing one-request
+    /// Founder authorization before the operations authority can execute it.
+    /// </summary>
+    internal async Task<LegendConnectResearchOutcome> ResearchAsync(
+        ClaimsPrincipal founder,
+        string question,
+        string sourceLanguageCode,
+        LegendConnectNativeInferenceSnapshot? internalInference,
+        FounderAiMutationAuthorization? restrictedAuthorization,
+        CancellationToken cancellationToken)
+    {
+        var decision = internalInference?.ResearchDecision ??
+            await _legend.DecideResearchNeededAsync(
+                founder,
+                question,
+                sourceLanguageCode,
+                internalInference,
+                cancellationToken);
+        var requestId = Guid.NewGuid();
+        if (!decision.ResearchRequired)
+        {
+            return ResearchFailure(
+                requestId,
+                decision,
+                "research_not_authorized_by_serving_decision",
+                decision.InternalKnowledgeAvailable
+                    ? "LEGEND did not use the internet because existing governed knowledge answers this request."
+                    : "LEGEND did not use the internet because the governed decision found no research trigger.",
+                decision.InternalKnowledgeAvailable
+                    ? LegendConnectResearchEvidenceOrigin.InternalKnowledge
+                    : LegendConnectResearchEvidenceOrigin.UnresolvedEvidence);
+        }
+
+        LegendConnectResearchAuthorization authorization;
+        if (decision.AccessClass == LegendConnectResearchAccessClass.PublicReadOnly)
+        {
+            await _legend.EnsureFounderAuthorizedAsync(
+                founder,
+                cancellationToken);
+            authorization = new LegendConnectResearchAuthorization(
+                true,
+                LegendConnectResearchContracts.PublicAuthorizationProvenance,
+                null,
+                decision.AccessClass,
+                true,
+                true);
+        }
+        else
+        {
+            var authorizationFailure =
+                await TryConsumeMutationAuthorizationAsync(
+                    founder,
+                    restrictedAuthorization,
+                    cancellationToken);
+            if (authorizationFailure is not null)
+            {
+                return ResearchFailure(
+                    requestId,
+                    decision,
+                    ReadFailureCode(
+                        authorizationFailure,
+                        "research_restricted_authorization_required"),
+                    "LEGEND did not execute restricted research because the exact existing Founder authorization was absent, invalid, or already consumed.",
+                    LegendConnectResearchEvidenceOrigin.UnresolvedEvidence);
+            }
+
+            authorization = new LegendConnectResearchAuthorization(
+                true,
+                LegendConnectResearchContracts.RestrictedAuthorizationProvenance,
+                restrictedAuthorization!.CorrelationId,
+                decision.AccessClass,
+                true,
+                true);
+        }
+
+        var normalizedQuestion = question.Trim();
+        if (normalizedQuestion.Length >
+            LegendConnectResearchContracts.MaximumQueryCharacters)
+        {
+            normalizedQuestion = normalizedQuestion[
+                ..LegendConnectResearchContracts.MaximumQueryCharacters];
+        }
+        var queryIdentity = LegendLanguageIdentity.TextHash(
+            "legend-research-query|v1|" +
+            decision.SourceLanguageCode + "|" +
+            normalizedQuestion);
+        var request = new LegendConnectResearchRequest(
+            requestId,
+            normalizedQuestion,
+            decision,
+            [
+                new LegendConnectBoundedSearchQuery(
+                    queryIdentity,
+                    1,
+                    normalizedQuestion,
+                    decision.SourceLanguageCode,
+                    LegendConnectResearchContracts.MaximumResults)
+            ],
+            LegendConnectResearchContracts.MaximumResults,
+            LegendConnectResearchContracts.MaximumDocuments,
+            LegendConnectResearchContracts.MaximumClaims,
+            LegendConnectResearchContracts.MaximumDocumentCharacters,
+            decision.Need == LegendConnectResearchNeed.NamedExternalDocumentOrSource
+                ? 1
+                : 2,
+            authorization,
+            internalInference is { Supported: true }
+                ? BoundResearchInternalAnswer(internalInference.Answer)
+                : null,
+            internalInference?.ReasonCode,
+            internalInference?.EvidenceCount ?? 0,
+            DateTime.UtcNow);
+        return await _legend.ExecuteResearchAsync(
+            founder,
+            request,
+            cancellationToken);
     }
 
 
@@ -455,6 +572,31 @@ internal sealed class LegendFounderToolAuthority
 
                 return SerializeUnbounded(
                     snapshot);
+            }
+
+            case "legend_research_internet":
+            {
+                using var arguments = JsonDocument.Parse(call.Arguments);
+                var question = ReadRequiredString(
+                    arguments.RootElement,
+                    "question");
+                var sourceLanguage = ReadRequiredString(
+                    arguments.RootElement,
+                    "source_language");
+                if (string.IsNullOrWhiteSpace(question) ||
+                    string.IsNullOrWhiteSpace(sourceLanguage))
+                {
+                    return """{"error":"research_question_and_language_required"}""";
+                }
+
+                return SerializeUnbounded(
+                    await ResearchAsync(
+                        founder,
+                        question,
+                        sourceLanguage,
+                        internalInference: null,
+                        call.MutationAuthorization,
+                        cancellationToken));
             }
 
             case "legend_submit_machine_learning_candidate":
@@ -955,6 +1097,105 @@ internal sealed class LegendFounderToolAuthority
             },
             JsonOptions);
 
+    private static LegendConnectResearchOutcome ResearchFailure(
+        Guid requestId,
+        LegendConnectResearchNeededDecision decision,
+        string reasonCode,
+        string detail,
+        LegendConnectResearchEvidenceOrigin origin)
+    {
+        var now = DateTime.UtcNow;
+        var sessionId = Guid.NewGuid();
+        var session = new LegendConnectResearchSession(
+            sessionId,
+            requestId,
+            now,
+            now,
+            [],
+            [],
+            [],
+            [],
+            [],
+            [],
+            [],
+            0,
+            null,
+            "Failure",
+            reasonCode);
+        var provenance = new LegendConnectResearchProvenance(
+            requestId,
+            sessionId,
+            decision.ReasonCode,
+            decision.SourceLanguageCode,
+            LegendLanguageIdentity.TextHash(string.Empty),
+            now,
+            origin,
+            null,
+            0,
+            "Unavailable",
+            null,
+            "Unavailable",
+            [],
+            [],
+            [],
+            [],
+            [],
+            [],
+            now,
+            now,
+            0,
+            null,
+            "Unavailable",
+            "Unavailable",
+            null,
+            true,
+            true,
+            LegendConnectResearchContracts.Provenance);
+        return new LegendConnectResearchOutcome(
+            LegendConnectResearchOutcomeState.Failure,
+            origin,
+            decision,
+            session,
+            null,
+            null,
+            null,
+            new LegendConnectResearchFailureResult(
+                reasonCode,
+                detail,
+                false),
+            provenance);
+    }
+
+    private static string ReadFailureCode(
+        string json,
+        string fallback)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(json);
+            var root = document.RootElement;
+            return root.TryGetProperty("error", out var error) &&
+                   error.ValueKind == JsonValueKind.String &&
+                   !string.IsNullOrWhiteSpace(error.GetString())
+                ? error.GetString()!
+                : fallback;
+        }
+        catch (JsonException)
+        {
+            return fallback;
+        }
+    }
+
+    private static string? BoundResearchInternalAnswer(string? value)
+    {
+        var normalized = value?.Trim();
+        if (string.IsNullOrWhiteSpace(normalized))
+            return null;
+        return normalized.Length <= 8_000
+            ? normalized
+            : normalized[..8_000];
+    }
+
     private static bool TryResolveFounderFunctionParameters(
         string name,
         out JsonElement parameters)
@@ -1361,13 +1602,19 @@ internal sealed class LegendFounderToolAuthority
                 string.Equals(name, "legend_prepare_software_repair", StringComparison.Ordinal);
             var canMergeExactApprovedRepair =
                 string.Equals(name, "legend_release_approved_repair", StringComparison.Ordinal);
+            var conditionallyRestrictedResearch =
+                string.Equals(name, "legend_research_internet", StringComparison.Ordinal);
             capabilities.Add(new
             {
                 name,
                 description,
-                access = readOnly ? "founder_governed_read" : "founder_governed_mutation",
+                access = conditionallyRestrictedResearch
+                    ? "founder_governed_public_read_or_exact_authorized_restricted_read"
+                    : readOnly ? "founder_governed_read" : "founder_governed_mutation",
                 sourceOfTruth = "BuildFounderTools",
                 requiresExplicitFounderCommand = !readOnly,
+                restrictedClassRequiresExistingAuthorization = conditionallyRestrictedResearch,
+                zeroWrite = conditionallyRestrictedResearch,
                 canOverrideAuthorities = false,
                 canModifyRepository = canPrepareBoundedRepair,
                 canCreateIsolatedRepairBranch = canPrepareBoundedRepair,
@@ -1386,11 +1633,6 @@ internal sealed class LegendFounderToolAuthority
     {
         IReadOnlyList<object> tools =
         [
-            new
-            {
-                type = "web_search",
-                search_context_size = "medium"
-            },
             new
             {
                 type = "function",
@@ -1611,6 +1853,39 @@ internal sealed class LegendFounderToolAuthority
                         "query",
                         "source_language",
                         "target_language"
+                    },
+                    additionalProperties = false
+                },
+                strict = true
+            },
+            new
+            {
+                type = "function",
+                name = "legend_research_internet",
+                description =
+                    "Request canonical bounded internet research only for current or time-sensitive information, explicit verification, a named external document/source, or an actual governed knowledge gap. The existing LEGEND serving authority decides whether research is needed; the existing Founder tool authority authorizes the access class. Public research is read-only and zero-write. Sensitive, authenticated, private, restricted, or mutation-capable requests fail closed without exact request-level Founder authorization, and unavailable private/authenticated transports remain unavailable even after authorization. This tool never replaces LEGEND operational tools and never writes external evidence into retained knowledge.",
+                parameters = new
+                {
+                    type = "object",
+                    properties = new
+                    {
+                        question = new
+                        {
+                            type = "string",
+                            minLength = 1,
+                            maxLength = LegendConnectResearchContracts.MaximumQueryCharacters
+                        },
+                        source_language = new
+                        {
+                            type = "string",
+                            minLength = 2,
+                            maxLength = 40
+                        }
+                    },
+                    required = new[]
+                    {
+                        "question",
+                        "source_language"
                     },
                     additionalProperties = false
                 },
@@ -2162,24 +2437,6 @@ internal sealed class LegendFounderToolAuthority
             }
 
             var toolType = typeElement.GetString();
-            if (string.Equals(toolType, "web_search", StringComparison.Ordinal))
-            {
-                ValidateClosedToolObject(
-                    tool,
-                    path,
-                    RequiredWebSearchToolProperties,
-                    errors);
-                if (tool.TryGetProperty("search_context_size", out var searchContext) &&
-                    (searchContext.ValueKind != JsonValueKind.String ||
-                     searchContext.GetString() is not ("low" or "medium" or "high")))
-                {
-                    errors.Add(
-                        $"{path}.search_context_size: expected low, medium, or high.");
-                }
-
-                continue;
-            }
-
             if (!string.Equals(toolType, "function", StringComparison.Ordinal))
             {
                 errors.Add($"{path}.type: unsupported provider tool type '{toolType}'.");

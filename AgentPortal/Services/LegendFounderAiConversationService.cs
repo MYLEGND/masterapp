@@ -68,7 +68,8 @@ public sealed class LegendFounderAiConversationService
     private static readonly JsonSerializerOptions JsonOptions =
         new(JsonSerializerDefaults.Web)
         {
-            DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
+            DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+            Converters = { new JsonStringEnumConverter() }
         };
 
     public LegendFounderAiConversationService(
@@ -242,6 +243,7 @@ public sealed class LegendFounderAiConversationService
 
         LegendConnectNativeInferenceSnapshot? nativeInference = null;
         string? nativeFailureDetail = null;
+        string? governedSourceLanguageCode = null;
 
         if (ShouldAttemptNativeInference(mode))
         {
@@ -267,6 +269,7 @@ public sealed class LegendFounderAiConversationService
             }
 
             var sourceLanguageCode = sourceLanguage.LanguageCode!;
+            governedSourceLanguageCode = sourceLanguageCode;
             var nativeStarted = Stopwatch.GetTimestamp();
             await ReportProgressAsync(
                 progress,
@@ -363,6 +366,109 @@ public sealed class LegendFounderAiConversationService
                         Stopwatch.GetElapsedTime(nativeStarted).TotalMilliseconds));
             }
 
+            if (nativeInference?.ResearchDecision is
+                {
+                    ResearchRequired: true
+                } researchDecision)
+            {
+                if (request.NativeOnly)
+                {
+                    return new LegendFounderAiChatResponse(
+                        true,
+                        mode,
+                        "LEGEND identified that this request requires external research, but native-only isolation blocked every internet operation. " +
+                        $"ResearchReason={researchDecision.ReasonCode}; EvidenceOrigin=UnresolvedEvidence.",
+                        null,
+                        ResponseAuthority: "SystemDiagnostic",
+                        Stage: "native_only_research_blocked",
+                        Reason: researchDecision.ReasonCode,
+                        EvidenceOrigin: LegendConnectResearchEvidenceOrigin.UnresolvedEvidence);
+                }
+
+                var remainingResearchBudget =
+                    TimeSpan.FromSeconds(_timeoutSeconds) -
+                    executionClock.Elapsed;
+                using var researchBudget =
+                    CancellationTokenSource.CreateLinkedTokenSource(
+                        effectiveToken);
+                researchBudget.CancelAfter(
+                    ResolveReadOnlyToolBudget(
+                        remainingResearchBudget));
+                await ReportProgressAsync(
+                    progress,
+                    new LegendFounderAiProgressEvent(
+                        "research",
+                        "LEGEND identified a governed external-research requirement and is collecting bounded, cited, zero-write evidence."),
+                    effectiveToken);
+                LegendConnectResearchOutcome researchOutcome;
+                try
+                {
+                    researchOutcome = await _toolAuthority.ResearchAsync(
+                        founder,
+                        conversation[^1].Content ?? string.Empty,
+                        governedSourceLanguageCode!,
+                        nativeInference,
+                        request.FounderCommandConfirmed
+                            ? new FounderAiMutationAuthorization(
+                                Guid.NewGuid().ToString("N"))
+                            : null,
+                        researchBudget.Token);
+                }
+                catch (OperationCanceledException)
+                    when (!effectiveToken.IsCancellationRequested)
+                {
+                    return LegendFounderAiChatResponse.ModeFailure(
+                        mode,
+                        "LEGEND could not complete the bounded external research before its read-only tool window ended. EvidenceOrigin=UnresolvedEvidence.",
+                        "timeout",
+                        "research",
+                        "research_budget_exhausted");
+                }
+                var researchSucceeded = researchOutcome.State !=
+                    LegendConnectResearchOutcomeState.Failure;
+                return new LegendFounderAiChatResponse(
+                    researchSucceeded,
+                    mode,
+                    researchSucceeded
+                        ? researchOutcome.PresentedText
+                        : null,
+                    researchSucceeded
+                        ? null
+                        : researchOutcome.PresentedText,
+                    researchSucceeded ? null : "research_failure",
+                    ResponseAuthority:
+                        researchOutcome.State == LegendConnectResearchOutcomeState.Conclusion
+                            ? "LegendAi"
+                            : "SystemDiagnostic",
+                    Stage: researchOutcome.State switch
+                    {
+                        LegendConnectResearchOutcomeState.Conclusion =>
+                            "research_response",
+                        LegendConnectResearchOutcomeState.InsufficientEvidence =>
+                            "research_insufficient_evidence",
+                        LegendConnectResearchOutcomeState.UnresolvedConflict =>
+                            "research_unresolved_conflict",
+                        _ => "research_failure"
+                    },
+                    Reason: researchOutcome.State switch
+                    {
+                        LegendConnectResearchOutcomeState.InsufficientEvidence =>
+                            researchOutcome.InsufficientEvidence?.ReasonCode,
+                        LegendConnectResearchOutcomeState.UnresolvedConflict =>
+                            researchOutcome.UnresolvedConflict?.ReasonCode,
+                        LegendConnectResearchOutcomeState.Failure =>
+                            researchOutcome.Failure?.ReasonCode,
+                        _ => researchDecision.ReasonCode
+                    },
+                    ModelAssistanceState: nativeInference.ModelAssistance?.State,
+                    ModelAssistanceReason: nativeInference.ModelAssistance?.ReasonCode,
+                    ModelVersion: nativeInference.ModelAssistance?.ModelVersion,
+                    ModelTrainingRunId: nativeInference.ModelAssistance?.ModelTrainingRunId,
+                    ModelProvenance: nativeInference.ModelAssistance?.Provenance,
+                    EvidenceOrigin: researchOutcome.EvidenceOrigin,
+                    ResearchOutcome: researchOutcome);
+            }
+
             if (nativeInference is { Supported: true } &&
                 !string.IsNullOrWhiteSpace(nativeInference.Answer))
             {
@@ -399,7 +505,8 @@ public sealed class LegendFounderAiConversationService
                     ModelAssistanceReason: nativeInference.ModelAssistance?.ReasonCode,
                     ModelVersion: nativeInference.ModelAssistance?.ModelVersion,
                     ModelTrainingRunId: nativeInference.ModelAssistance?.ModelTrainingRunId,
-                    ModelProvenance: nativeInference.ModelAssistance?.Provenance);
+                    ModelProvenance: nativeInference.ModelAssistance?.Provenance,
+                    EvidenceOrigin: LegendConnectResearchEvidenceOrigin.InternalKnowledge);
             }
         }
 
@@ -602,6 +709,7 @@ public sealed class LegendFounderAiConversationService
             string? learningMutationReceipt = null;
 
             var accumulatedProviderAnswer = string.Empty;
+            LegendConnectResearchOutcome? providerResearchOutcome = null;
 
             for (var round = 0; round < maximumToolRounds; round++)
             {
@@ -805,7 +913,10 @@ public sealed class LegendFounderAiConversationService
                                 learningMutationReceipt),
                             null,
                             ResponseAuthority: "OpenAITeacher",
-                            Stage: "provider_response");
+                            Stage: "provider_response",
+                            EvidenceOrigin: providerResearchOutcome?.EvidenceOrigin ??
+                                LegendConnectResearchEvidenceOrigin.UnresolvedEvidence,
+                            ResearchOutcome: providerResearchOutcome);
                     }
 
                     return LegendFounderAiChatResponse.ModeFailure(
@@ -895,7 +1006,10 @@ public sealed class LegendFounderAiConversationService
                             learningMutationReceipt),
                         null,
                         ResponseAuthority: "OpenAITeacher",
-                        Stage: "provider_response");
+                        Stage: "provider_response",
+                        EvidenceOrigin: providerResearchOutcome?.EvidenceOrigin ??
+                            LegendConnectResearchEvidenceOrigin.UnresolvedEvidence,
+                        ResearchOutcome: providerResearchOutcome);
                 }
 
                 await ReportProgressAsync(
@@ -942,6 +1056,17 @@ public sealed class LegendFounderAiConversationService
                             ResolveReadOnlyToolBudget(remaining),
                             toolOutputBudget,
                             effectiveToken);
+
+                    if (string.Equals(
+                            call.Name,
+                            "legend_research_internet",
+                            StringComparison.Ordinal) &&
+                        TryReadResearchOutcome(
+                            toolOutput,
+                            out var completedResearch))
+                    {
+                        providerResearchOutcome = completedResearch;
+                    }
 
                     if (_toolAuthority.IsReadOnly(call.Name))
                     {
@@ -1722,6 +1847,11 @@ public sealed class LegendFounderAiConversationService
                             document.RootElement,
                             "query"),
 
+                    "legend_research_internet" =>
+                        ReadRequiredString(
+                            document.RootElement,
+                            "question"),
+
                     "legend_submit_machine_learning_candidate" =>
                         ReadRequiredString(
                             document.RootElement,
@@ -1780,6 +1910,9 @@ public sealed class LegendFounderAiConversationService
 
             "legend_search_retained_knowledge" =>
                 $"Searching retained LEGEND language evidence{subject}.",
+
+            "legend_research_internet" =>
+                "Conducting bounded, zero-write external research through the canonical LEGEND research authority.",
 
             "legend_submit_machine_learning_candidate" =>
                 $"Submitting one bounded MachineProposed family through the existing governed lifecycle{subject}.",
@@ -1910,7 +2043,15 @@ public sealed class LegendFounderAiConversationService
         {
             var output = await _toolAuthority.ExecuteAsync(
                 founder,
-                call,
+                string.Equals(
+                    call.Name,
+                    "legend_research_internet",
+                    StringComparison.Ordinal)
+                        ? call with
+                        {
+                            MutationAuthorization = mutationAuthorization
+                        }
+                        : call,
                 mode,
                 toolBudget.Token);
             return BoundSerializedOutput(output, outputBudgetCharacters);
@@ -2181,6 +2322,42 @@ public sealed class LegendFounderAiConversationService
         }
     }
 
+    private static bool TryReadResearchOutcome(
+        string output,
+        out LegendConnectResearchOutcome? outcome)
+    {
+        outcome = null;
+        if (string.IsNullOrWhiteSpace(output))
+            return false;
+
+        try
+        {
+            var parsed = JsonSerializer.Deserialize<LegendConnectResearchOutcome>(
+                output,
+                JsonOptions);
+            if (parsed is null ||
+                parsed.Session.SessionId == Guid.Empty ||
+                parsed.Provenance.SessionId != parsed.Session.SessionId ||
+                parsed.Provenance.RequestId != parsed.Session.RequestId ||
+                !parsed.Provenance.IsReadOnly ||
+                !parsed.Provenance.ZeroWrite ||
+                !string.Equals(
+                    parsed.Provenance.Provenance,
+                    LegendConnectResearchContracts.Provenance,
+                    StringComparison.Ordinal))
+            {
+                return false;
+            }
+
+            outcome = parsed;
+            return true;
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
+    }
+
     private static bool IsLearningMutationTool(string toolName) =>
         toolName is
             "legend_submit_machine_learning_candidate" or
@@ -2262,7 +2439,9 @@ CRITICAL GOVERNANCE:
 - If you are uncertain which inspection capabilities exist, call legend_capabilities and then continue with the relevant evidence tools. Capability discovery alone is not evidence that the requested system state was inspected.
 - A failure in one read authority must not end a broad inspection. Preserve that tool's structured failure, continue every independent governed read that can still execute, and distinguish successful evidence from unavailable evidence in the final answer.
 - For broad architecture/training/knowledge diagnostics, inspect enough independent evidence categories to support the requested claims rather than stopping after one tool call.
-- Native OpenAI web search is available for current external research, verification, trusted linguistic references, standards, documentation and other information that is not already established by LEGEND.
+- The only internet-research capability is legend_research_internet. It is a typed, bounded, zero-write LEGEND lifecycle; never assume native provider web search is available.
+- Call legend_research_internet only for current or time-sensitive information, explicit verification, a named external document/source, stale or conflicting internal evidence, or an actual external factual gap. Unfamiliar wording alone is not a research trigger.
+- The existing LEGEND serving authority, not the conversational model, makes the final research-needed decision. Sensitive, authenticated, private, restricted, or mutation-capable research remains behind the existing exact Founder authorization and may still fail when no admissible read-only transport exists.
 - When external research is materially useful, prefer authoritative primary sources, official documentation, recognized linguistic institutions, standards bodies, universities and other high-quality sources over low-authority summaries.
 - External web research is evidence for reasoning; it does not become canonical LEGEND knowledge merely because OpenAI found it.
 - Never use external web search as a substitute for governed LEGEND tools when the question concerns current LEGEND database state, retained evidence, training state, readiness, provider consumption or internal system facts.
@@ -3306,7 +3485,10 @@ public sealed record LegendFounderAiChatResponse(
     string? ModelAssistanceReason = null,
     string? ModelVersion = null,
     Guid? ModelTrainingRunId = null,
-    string? ModelProvenance = null)
+    string? ModelProvenance = null,
+    LegendConnectResearchEvidenceOrigin EvidenceOrigin =
+        LegendConnectResearchEvidenceOrigin.UnresolvedEvidence,
+    LegendConnectResearchOutcome? ResearchOutcome = null)
 {
     public static LegendFounderAiChatResponse Failure(
         string error,

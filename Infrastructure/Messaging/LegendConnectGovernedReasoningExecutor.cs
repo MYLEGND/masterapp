@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using Domain.Messaging;
 
 namespace Infrastructure.Messaging;
 
@@ -123,6 +124,157 @@ internal static class LegendConnectGovernedReasoningExecutor
 
     internal static bool IsExecutableOperatorIdentity(string? identity) =>
         ResolveMode(identity) is not null;
+
+    /// <summary>
+    /// Applies the executor's existing fail-closed evidence semantics to one
+    /// bounded external research packet. Retrieval rank is intentionally
+    /// absent: a fuzzy search score can find a candidate but can never
+    /// authorize a claim. Every admissible claim must close a complete
+    /// source/document/citation lineage, and any evidence-level contradiction
+    /// remains unresolved rather than being silently ranked away.
+    /// </summary>
+    internal static LegendResearchEvidenceAssessment AssessResearchEvidence(
+        IReadOnlyList<LegendConnectResearchSourceIdentity> sources,
+        IReadOnlyList<LegendConnectRetrievedDocument> documents,
+        IReadOnlyList<LegendConnectCitation> citations,
+        IReadOnlyList<LegendConnectClaimEvidence> claims,
+        IReadOnlyList<LegendConnectContradictingEvidence> contradictions,
+        int minimumIndependentSources)
+    {
+        var boundedMinimum = Math.Clamp(minimumIndependentSources, 1, 3);
+        var sourceById = sources
+            .Where(item => !string.IsNullOrWhiteSpace(item.SourceIdentity))
+            .GroupBy(item => item.SourceIdentity, StringComparer.Ordinal)
+            .Where(group => group.Count() == 1)
+            .ToDictionary(group => group.Key, group => group.Single(), StringComparer.Ordinal);
+        var documentById = documents
+            .Where(item => item.RetrievalSucceeded && !string.IsNullOrWhiteSpace(item.DocumentIdentity))
+            .GroupBy(item => item.DocumentIdentity, StringComparer.Ordinal)
+            .Where(group => group.Count() == 1)
+            .ToDictionary(group => group.Key, group => group.Single(), StringComparer.Ordinal);
+        var citationById = citations
+            .Where(item => !string.IsNullOrWhiteSpace(item.CitationIdentity))
+            .GroupBy(item => item.CitationIdentity, StringComparer.Ordinal)
+            .Where(group => group.Count() == 1)
+            .ToDictionary(group => group.Key, group => group.Single(), StringComparer.Ordinal);
+
+        bool HasCompleteLineage(
+            string sourceIdentity,
+            string documentIdentity,
+            string citationIdentity)
+        {
+            if (!sourceById.TryGetValue(sourceIdentity, out var source) ||
+                !documentById.TryGetValue(documentIdentity, out var document) ||
+                !citationById.TryGetValue(citationIdentity, out var citation))
+            {
+                return false;
+            }
+
+            return string.Equals(document.SourceIdentity, sourceIdentity, StringComparison.Ordinal) &&
+                   string.Equals(citation.SourceIdentity, sourceIdentity, StringComparison.Ordinal) &&
+                   string.Equals(citation.DocumentIdentity, documentIdentity, StringComparison.Ordinal) &&
+                   string.Equals(document.CanonicalUri, source.CanonicalUri, StringComparison.Ordinal) &&
+                   string.Equals(citation.CanonicalUri, source.CanonicalUri, StringComparison.Ordinal);
+        }
+
+        var admissibleClaims = claims
+            .Where(item =>
+                !string.IsNullOrWhiteSpace(item.EvidenceIdentity) &&
+                !string.IsNullOrWhiteSpace(item.ClaimIdentity) &&
+                !string.IsNullOrWhiteSpace(item.Statement) &&
+                HasCompleteLineage(
+                    item.SourceIdentity,
+                    item.DocumentIdentity,
+                    item.CitationIdentity))
+            .GroupBy(item => item.EvidenceIdentity, StringComparer.Ordinal)
+            .Where(group => group.Count() == 1)
+            .Select(group => group.Single())
+            .OrderBy(item => item.ClaimIdentity, StringComparer.Ordinal)
+            .ThenBy(item => item.SourceIdentity, StringComparer.Ordinal)
+            .ToArray();
+        var admissibleContradictions = contradictions
+            .Where(item =>
+                !string.IsNullOrWhiteSpace(item.EvidenceIdentity) &&
+                !string.IsNullOrWhiteSpace(item.ClaimIdentity) &&
+                !string.IsNullOrWhiteSpace(item.Statement) &&
+                HasCompleteLineage(
+                    item.SourceIdentity,
+                    item.DocumentIdentity,
+                    item.CitationIdentity))
+            .GroupBy(item => item.EvidenceIdentity, StringComparer.Ordinal)
+            .Where(group => group.Count() == 1)
+            .Select(group => group.Single())
+            .OrderBy(item => item.ClaimIdentity, StringComparer.Ordinal)
+            .ThenBy(item => item.SourceIdentity, StringComparer.Ordinal)
+            .ToArray();
+
+        var explicitConflictingClaimIdentities = admissibleContradictions
+            .Select(item => item.ClaimIdentity)
+            .Intersect(
+                admissibleClaims.Select(item => item.ClaimIdentity),
+                StringComparer.Ordinal)
+            .ToArray();
+        var implicitConflictingClaimIdentities = admissibleClaims
+            .GroupBy(item => item.ClaimIdentity, StringComparer.Ordinal)
+            .Where(group => group
+                .Select(item => item.Statement.Trim())
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .Count() > 1)
+            .Select(group => group.Key);
+        var conflictingClaimIdentities = explicitConflictingClaimIdentities
+            .Concat(implicitConflictingClaimIdentities)
+            .Distinct(StringComparer.Ordinal)
+            .OrderBy(item => item, StringComparer.Ordinal)
+            .ToArray();
+        if (conflictingClaimIdentities.Length > 0)
+        {
+            return new LegendResearchEvidenceAssessment(
+                LegendResearchEvidenceAssessmentState.UnresolvedConflict,
+                admissibleClaims,
+                admissibleContradictions,
+                admissibleClaims.Select(item => item.SourceIdentity)
+                    .Concat(admissibleContradictions.Select(item => item.SourceIdentity))
+                    .Distinct(StringComparer.Ordinal)
+                    .Count(),
+                boundedMinimum,
+                "research_evidence_conflict_unresolved");
+        }
+
+        var supportedClaims = admissibleClaims
+            .GroupBy(item => item.ClaimIdentity, StringComparer.Ordinal)
+            .Where(group =>
+                group.Select(item => item.SourceIdentity)
+                    .Distinct(StringComparer.Ordinal)
+                    .Count() >= boundedMinimum)
+            .SelectMany(group => group)
+            .ToArray();
+        var independentSources = supportedClaims
+            .Select(item => item.SourceIdentity)
+            .Distinct(StringComparer.Ordinal)
+            .Count();
+        if (supportedClaims.Length == 0)
+        {
+            return new LegendResearchEvidenceAssessment(
+                LegendResearchEvidenceAssessmentState.InsufficientEvidence,
+                admissibleClaims,
+                admissibleContradictions,
+                admissibleClaims.Select(item => item.SourceIdentity)
+                    .Distinct(StringComparer.Ordinal)
+                    .Count(),
+                boundedMinimum,
+                admissibleClaims.Length == 0
+                    ? "research_claim_lineage_incomplete"
+                    : "research_independent_sources_insufficient");
+        }
+
+        return new LegendResearchEvidenceAssessment(
+            LegendResearchEvidenceAssessmentState.Conclusion,
+            supportedClaims,
+            admissibleContradictions,
+            independentSources,
+            boundedMinimum,
+            "research_claims_governed");
+    }
 
     internal static LegendGovernedReasoningExecution Derive(
         IReadOnlyDictionary<string, string> initialValues,
@@ -2031,3 +2183,18 @@ internal sealed record LegendGovernedReasoningExecution(
 {
     internal static readonly LegendGovernedReasoningExecution Empty = new(false, false, false, [], []);
 }
+
+internal enum LegendResearchEvidenceAssessmentState
+{
+    Conclusion,
+    InsufficientEvidence,
+    UnresolvedConflict
+}
+
+internal sealed record LegendResearchEvidenceAssessment(
+    LegendResearchEvidenceAssessmentState State,
+    IReadOnlyList<LegendConnectClaimEvidence> Claims,
+    IReadOnlyList<LegendConnectContradictingEvidence> Contradictions,
+    int IndependentSourceCount,
+    int RequiredIndependentSourceCount,
+    string ReasonCode);

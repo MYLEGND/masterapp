@@ -1071,6 +1071,291 @@ public static class LegendConnectReadOnlyContentBindingContracts
     public const int MaximumAgeSeconds = 300;
 }
 
+public enum LegendConnectResearchNeed
+{
+    ExistingGovernedKnowledge,
+    CurrentOrTimeSensitiveInformation,
+    ExplicitVerificationRequest,
+    NamedExternalDocumentOrSource,
+    InternalKnowledgeGap,
+    StaleInternalEvidence,
+    ConflictingInternalEvidence,
+    NotResearchable
+}
+
+public enum LegendConnectResearchAccessClass
+{
+    PublicReadOnly,
+    SensitiveReadOnly,
+    AuthenticatedReadOnly,
+    PrivateReadOnly,
+    RestrictedReadOnly,
+    MutationCapable
+}
+
+public enum LegendConnectResearchEvidenceOrigin
+{
+    InternalKnowledge,
+    ExternalResearch,
+    Combined,
+    UnresolvedEvidence
+}
+
+public enum LegendConnectResearchOutcomeState
+{
+    Conclusion,
+    InsufficientEvidence,
+    UnresolvedConflict,
+    Failure
+}
+
+/// <summary>
+/// The canonical decision made at the existing LEGEND serving boundary before
+/// any internet operation is authorized. Unknown wording alone is never a
+/// positive decision; the reason identifies the exact governed trigger.
+/// </summary>
+public sealed record LegendConnectResearchNeededDecision(
+    bool ResearchRequired,
+    LegendConnectResearchNeed Need,
+    string ReasonCode,
+    LegendConnectResearchAccessClass AccessClass,
+    string SourceLanguageCode,
+    bool InternalKnowledgeAvailable,
+    bool InternalEvidenceStale,
+    bool InternalEvidenceConflicted,
+    string? NamedSource,
+    DateTime DecidedUtc);
+
+public sealed record LegendConnectResearchAuthorization(
+    bool FounderAuthorized,
+    string AuthorizationProvenance,
+    string? AuthorizationCorrelationId,
+    LegendConnectResearchAccessClass AccessClass,
+    bool IsReadOnly,
+    bool ZeroWrite);
+
+public sealed record LegendConnectBoundedSearchQuery(
+    string QueryIdentity,
+    int Ordinal,
+    string Query,
+    string SourceLanguageCode,
+    int MaximumResults);
+
+public sealed record LegendConnectResearchRequest(
+    Guid RequestId,
+    string Question,
+    LegendConnectResearchNeededDecision Decision,
+    IReadOnlyList<LegendConnectBoundedSearchQuery> Queries,
+    int MaximumResults,
+    int MaximumDocuments,
+    int MaximumClaims,
+    int MaximumDocumentCharacters,
+    int MinimumIndependentSources,
+    LegendConnectResearchAuthorization Authorization,
+    string? InternalAnswer,
+    string? InternalReasonCode,
+    int InternalEvidenceCount,
+    DateTime RequestedUtc);
+
+public sealed record LegendConnectResearchSourceIdentity(
+    string SourceIdentity,
+    string CanonicalUri,
+    string Title,
+    string? Publisher,
+    string SourceClass,
+    DateTime? PublishedUtc,
+    DateTime RetrievedUtc);
+
+public sealed record LegendConnectSearchResult(
+    string SearchResultIdentity,
+    string QueryIdentity,
+    int Rank,
+    string SourceIdentity,
+    string Title,
+    string CanonicalUri,
+    string? Snippet);
+
+public sealed record LegendConnectRetrievedDocument(
+    string DocumentIdentity,
+    string SourceIdentity,
+    string CanonicalUri,
+    string ContentExcerpt,
+    string ContentHash,
+    DateTime RetrievedUtc,
+    bool RetrievalSucceeded,
+    string? FailureReason);
+
+public sealed record LegendConnectCitation(
+    string CitationIdentity,
+    string SourceIdentity,
+    string DocumentIdentity,
+    string Title,
+    string CanonicalUri,
+    DateTime RetrievedUtc);
+
+public sealed record LegendConnectClaimEvidence(
+    string EvidenceIdentity,
+    string ClaimIdentity,
+    string Statement,
+    string SourceIdentity,
+    string DocumentIdentity,
+    string CitationIdentity,
+    DateTime? ObservedUtc);
+
+public sealed record LegendConnectContradictingEvidence(
+    string EvidenceIdentity,
+    string ClaimIdentity,
+    string Statement,
+    string SourceIdentity,
+    string DocumentIdentity,
+    string CitationIdentity,
+    DateTime? ObservedUtc);
+
+public sealed record LegendConnectResearchSession(
+    Guid SessionId,
+    Guid RequestId,
+    DateTime StartedUtc,
+    DateTime CompletedUtc,
+    IReadOnlyList<LegendConnectBoundedSearchQuery> Queries,
+    IReadOnlyList<LegendConnectSearchResult> SearchResults,
+    IReadOnlyList<LegendConnectResearchSourceIdentity> Sources,
+    IReadOnlyList<LegendConnectRetrievedDocument> Documents,
+    IReadOnlyList<LegendConnectClaimEvidence> ClaimEvidence,
+    IReadOnlyList<LegendConnectContradictingEvidence> ContradictingEvidence,
+    IReadOnlyList<LegendConnectCitation> Citations,
+    long LatencyMilliseconds,
+    long? CostMicrounits,
+    string CompletionState,
+    string? FailureReason);
+
+public sealed record LegendConnectResearchConclusion(
+    string ConclusionIdentity,
+    string PresentedText,
+    IReadOnlyList<LegendConnectClaimEvidence> SupportedClaims,
+    IReadOnlyList<LegendConnectCitation> Citations);
+
+public sealed record LegendConnectResearchInsufficientEvidenceResult(
+    string ReasonCode,
+    string PresentedText,
+    int AdmissibleClaimCount,
+    int IndependentSourceCount,
+    int RequiredIndependentSourceCount);
+
+public sealed record LegendConnectResearchUnresolvedConflictResult(
+    string ReasonCode,
+    string PresentedText,
+    IReadOnlyList<LegendConnectClaimEvidence> ClaimEvidence,
+    IReadOnlyList<LegendConnectContradictingEvidence> ContradictingEvidence,
+    IReadOnlyList<LegendConnectCitation> Citations);
+
+public sealed record LegendConnectResearchFailureResult(
+    string ReasonCode,
+    string PresentedText,
+    bool Retryable);
+
+/// <summary>
+/// Complete, zero-write lineage for one research outcome. External evidence is
+/// never converted into FounderApproved, canonical, learned, or serving
+/// knowledge by appearing in this receipt.
+/// </summary>
+public sealed record LegendConnectResearchProvenance(
+    Guid RequestId,
+    Guid SessionId,
+    string DecisionReasonCode,
+    string SourceLanguageCode,
+    string QuestionHash,
+    DateTime RequestedUtc,
+    LegendConnectResearchEvidenceOrigin EvidenceOrigin,
+    string? InternalReasonCode,
+    int InternalEvidenceCount,
+    string Transport,
+    string? ModelVersion,
+    string SettingsIdentity,
+    IReadOnlyList<string> QueryIdentities,
+    IReadOnlyList<string> SourceIdentities,
+    IReadOnlyList<string> DocumentIdentities,
+    IReadOnlyList<string> ClaimEvidenceIdentities,
+    IReadOnlyList<string> ContradictingEvidenceIdentities,
+    IReadOnlyList<string> CitationIdentities,
+    DateTime StartedUtc,
+    DateTime CompletedUtc,
+    long LatencyMilliseconds,
+    long? CostMicrounits,
+    string CostState,
+    string AuthorizationProvenance,
+    string? AuthorizationCorrelationId,
+    bool IsReadOnly,
+    bool ZeroWrite,
+    string Provenance);
+
+public sealed record LegendConnectResearchOutcome(
+    LegendConnectResearchOutcomeState State,
+    LegendConnectResearchEvidenceOrigin EvidenceOrigin,
+    LegendConnectResearchNeededDecision Decision,
+    LegendConnectResearchSession Session,
+    LegendConnectResearchConclusion? Conclusion,
+    LegendConnectResearchInsufficientEvidenceResult? InsufficientEvidence,
+    LegendConnectResearchUnresolvedConflictResult? UnresolvedConflict,
+    LegendConnectResearchFailureResult? Failure,
+    LegendConnectResearchProvenance Provenance)
+{
+    public string PresentedText =>
+        Conclusion?.PresentedText ??
+        InsufficientEvidence?.PresentedText ??
+        UnresolvedConflict?.PresentedText ??
+        Failure?.PresentedText ??
+        "LEGEND could not establish a research outcome.";
+}
+
+public sealed record LegendConnectInternetResearchTransportRequest(
+    Guid SessionId,
+    string Question,
+    string SourceLanguageCode,
+    IReadOnlyList<LegendConnectBoundedSearchQuery> Queries,
+    int MaximumResults,
+    int MaximumDocuments,
+    int MaximumClaims,
+    int MaximumDocumentCharacters,
+    string? InternalAnswer,
+    string? InternalReasonCode);
+
+public sealed record LegendConnectInternetResearchTransportResult(
+    bool Succeeded,
+    string Transport,
+    string? ModelVersion,
+    string SettingsIdentity,
+    IReadOnlyList<LegendConnectBoundedSearchQuery> ExecutedQueries,
+    IReadOnlyList<LegendConnectSearchResult> SearchResults,
+    IReadOnlyList<LegendConnectResearchSourceIdentity> Sources,
+    IReadOnlyList<LegendConnectRetrievedDocument> Documents,
+    IReadOnlyList<LegendConnectClaimEvidence> ClaimEvidence,
+    IReadOnlyList<LegendConnectContradictingEvidence> ContradictingEvidence,
+    IReadOnlyList<LegendConnectCitation> Citations,
+    long LatencyMilliseconds,
+    long? CostMicrounits,
+    string? FailureReason,
+    bool Retryable);
+
+public interface ILegendConnectInternetResearchTransport
+{
+    Task<LegendConnectInternetResearchTransportResult> SearchAsync(
+        LegendConnectInternetResearchTransportRequest request,
+        CancellationToken cancellationToken = default);
+}
+
+public static class LegendConnectResearchContracts
+{
+    public const string Provenance = "FounderAuthorizedGovernedInternetResearch";
+    public const string PublicAuthorizationProvenance = "FounderAuthenticatedPublicReadOnly";
+    public const string RestrictedAuthorizationProvenance = "FounderExplicitRequestAuthorization";
+    public const int MaximumQueries = 3;
+    public const int MaximumQueryCharacters = 500;
+    public const int MaximumResults = 8;
+    public const int MaximumDocuments = 6;
+    public const int MaximumClaims = 12;
+    public const int MaximumDocumentCharacters = 4_000;
+}
+
 /// <summary>
 /// Read-only serving provenance for an optional evaluated and promoted model
 /// candidate.  The model is an articulation participant only: this receipt
@@ -1110,7 +1395,8 @@ public sealed record LegendConnectNativeInferenceSnapshot(
     string ArticulationMode = "Unavailable",
     LegendConnectReadOnlyContentBindingRequest? ReadOnlyContentRequest = null,
     IReadOnlyList<LegendConnectReadOnlyContentBindingReceipt>? ContentBindingProvenance = null,
-    LegendConnectNativeModelAssistanceSnapshot? ModelAssistance = null);
+    LegendConnectNativeModelAssistanceSnapshot? ModelAssistance = null,
+    LegendConnectResearchNeededDecision? ResearchDecision = null);
 
 /// <summary>
 /// The sole read/write authority for Legend Connect operations. Presentation
@@ -1188,6 +1474,16 @@ public interface ILegendConnectOperations
         string? sourceLanguageCode = null,
         string? targetLanguageCode = null,
         int take = 12,
+        CancellationToken cancellationToken = default);
+
+    Task<LegendConnectResearchNeededDecision> DecideResearchNeededAsync(
+        string input,
+        string sourceLanguageCode,
+        LegendConnectNativeInferenceSnapshot? internalInference,
+        CancellationToken cancellationToken = default);
+
+    Task<LegendConnectResearchOutcome> ExecuteResearchAsync(
+        LegendConnectResearchRequest request,
         CancellationToken cancellationToken = default);
 
     /// <summary>

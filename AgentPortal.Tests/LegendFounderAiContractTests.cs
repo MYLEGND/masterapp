@@ -434,7 +434,7 @@ public sealed class LegendFounderAiContractTests
 
 
     [Fact]
-    public void FounderTools_IncludeNativeWebResearchWithoutReplacingGovernedTools()
+    public void FounderTools_ExposeOneGovernedResearchFunctionAndNoRawProviderSearch()
     {
         var buildTools =
             typeof(LegendFounderToolAuthority)
@@ -461,14 +461,23 @@ public sealed class LegendFounderAiContractTests
                 .EnumerateArray()
                 .ToArray();
 
+        Assert.DoesNotContain(
+            toolArray,
+            tool =>
+                tool.TryGetProperty(
+                    "type",
+                    out var type) &&
+                type.GetString() ==
+                    "web_search");
+
         Assert.Single(
             toolArray.Where(
                 tool =>
                     tool.TryGetProperty(
-                        "type",
-                        out var type) &&
-                    type.GetString() ==
-                        "web_search"));
+                        "name",
+                        out var name) &&
+                    name.GetString() ==
+                        "legend_research_internet"));
 
         Assert.Contains(
             toolArray,

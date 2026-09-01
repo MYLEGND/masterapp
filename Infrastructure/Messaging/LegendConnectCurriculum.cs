@@ -276,6 +276,89 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
     }
 
     /// <summary>
+    /// Presents a research evidence decision through the existing LEGEND
+    /// presentation authority. It does not select claims, retrieve sources,
+    /// learn text, or turn external material into canonical knowledge.
+    /// </summary>
+    internal static string PresentResearchEvidence(
+        LegendResearchEvidenceAssessmentState state,
+        IReadOnlyList<LegendConnectClaimEvidence> claims,
+        IReadOnlyList<LegendConnectContradictingEvidence> contradictions,
+        IReadOnlyList<LegendConnectCitation> citations,
+        string reasonCode)
+    {
+        var orderedCitations = citations
+            .GroupBy(item => item.CitationIdentity, StringComparer.Ordinal)
+            .Select(group => group.First())
+            .OrderBy(item => item.CitationIdentity, StringComparer.Ordinal)
+            .ToArray();
+        var citationNumbers = orderedCitations
+            .Select((item, index) => new { item.CitationIdentity, Number = index + 1 })
+            .ToDictionary(item => item.CitationIdentity, item => item.Number, StringComparer.Ordinal);
+
+        var builder = new StringBuilder();
+        if (state == LegendResearchEvidenceAssessmentState.Conclusion)
+        {
+            foreach (var claim in claims
+                         .GroupBy(item => item.ClaimIdentity, StringComparer.Ordinal)
+                         .OrderBy(group => group.Key, StringComparer.Ordinal))
+            {
+                var representative = claim.First();
+                var markers = claim
+                    .Where(item => citationNumbers.ContainsKey(item.CitationIdentity))
+                    .Select(item => citationNumbers[item.CitationIdentity])
+                    .Distinct()
+                    .OrderBy(item => item)
+                    .Select(item => $"[{item}]");
+                builder.Append(representative.Statement.Trim());
+                var markerText = string.Join(string.Empty, markers);
+                if (markerText.Length > 0)
+                    builder.Append(' ').Append(markerText);
+                builder.AppendLine();
+            }
+        }
+        else if (state == LegendResearchEvidenceAssessmentState.UnresolvedConflict)
+        {
+            builder.AppendLine(
+                string.Equals(
+                    reasonCode,
+                    "internal_conflict_requires_discriminating_lineage",
+                    StringComparison.Ordinal)
+                        ? "LEGEND found external evidence, but the existing internal conflict still lacks complete discriminating lineage and remains unresolved."
+                        : "LEGEND found materially conflicting external evidence and cannot resolve it without discriminating evidence.");
+            foreach (var statement in claims.Select(item => item.Statement)
+                         .Concat(contradictions.Select(item => item.Statement))
+                         .Where(item => !string.IsNullOrWhiteSpace(item))
+                         .Distinct(StringComparer.Ordinal)
+                         .OrderBy(item => item, StringComparer.Ordinal))
+            {
+                builder.Append("- ").AppendLine(statement.Trim());
+            }
+        }
+        else
+        {
+            builder.Append(
+                "LEGEND could not establish enough independently sourced, completely cited evidence to answer this request.");
+        }
+
+        if (orderedCitations.Length > 0)
+        {
+            builder.AppendLine().AppendLine("Sources:");
+            for (var index = 0; index < orderedCitations.Length; index++)
+            {
+                var citation = orderedCitations[index];
+                builder.Append('[').Append(index + 1).Append("] ")
+                    .Append(citation.Title.Trim()).Append(" — ")
+                    .AppendLine(citation.CanonicalUri);
+            }
+        }
+
+        if (builder.Length == 0)
+            builder.Append("LEGEND research ended without a presentable result. Reason=").Append(reasonCode).Append('.');
+        return builder.ToString().Trim();
+    }
+
+    /// <summary>
     /// Phase-5 autonomous admission of one Phase-4 SystemValidatedMachine
     /// proposal. The existing proposal row owns the durable admission lease;
     /// this service remains the sole curriculum authority.

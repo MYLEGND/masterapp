@@ -64,6 +64,7 @@ public static class MessagingServiceCollectionExtensions
                 provider.GetRequiredService<IConfiguration>()));
         services.AddScoped<ILegendConnectModelEvaluationBackend, OpenAiLegendConnectModelEvaluationBackend>();
         services.AddScoped<ILegendConnectActiveModelInference, LegendConnectActiveModelInference>();
+        services.AddScoped<ILegendConnectInternetResearchTransport, OpenAiLegendConnectInternetResearchTransport>();
         services.AddScoped<LegendConnectModelPromotionService>(provider =>
             new LegendConnectModelPromotionService(
                 provider.GetRequiredService<Infrastructure.Data.MasterAppDbContext>(),
@@ -95,6 +96,12 @@ public static class MessagingServiceCollectionExtensions
             client.Timeout =
                 TimeSpan.FromSeconds(
                     teacherTimeoutSeconds);
+        });
+        services.AddHttpClient("LegendInternetResearch", client =>
+        {
+            // The outer Founder request budget remains authoritative. This
+            // client adds a narrower transport ceiling and performs no writes.
+            client.Timeout = TimeSpan.FromSeconds(45);
         });
         services.AddHttpClient("AzureTranslator", client =>
         {

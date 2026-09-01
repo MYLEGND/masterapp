@@ -227,6 +227,33 @@ public sealed class FounderLegendConnectService
                 cancellationToken);
     }
 
+    internal async Task<LegendConnectResearchNeededDecision>
+        DecideResearchNeededAsync(
+            ClaimsPrincipal user,
+            string input,
+            string sourceLanguageCode,
+            LegendConnectNativeInferenceSnapshot? internalInference,
+            CancellationToken cancellationToken = default)
+    {
+        _ = await ResolveFounderActorAsync(user, cancellationToken);
+        return await _operations.DecideResearchNeededAsync(
+            input,
+            sourceLanguageCode,
+            internalInference,
+            cancellationToken);
+    }
+
+    internal async Task<LegendConnectResearchOutcome> ExecuteResearchAsync(
+        ClaimsPrincipal user,
+        LegendConnectResearchRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        _ = await ResolveFounderActorAsync(user, cancellationToken);
+        return await _operations.ExecuteResearchAsync(
+            request,
+            cancellationToken);
+    }
+
     public async Task<LegendConnectNativeInferenceSnapshot>
         TryInferConversationWithDiscourseAsync(
             ClaimsPrincipal user,
