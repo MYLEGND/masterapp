@@ -186,10 +186,9 @@ public class MasterAppDbContext : DbContext
         var unboundedTextColumnType = isSqlServer ? "nvarchar(max)" : "TEXT";
 
         // Durable orchestration only for large Founder curriculum manifests.
-        // This table contains no language authority. It exists so accepted
-        // manifests survive request completion, cancellation, and process
-        // recycle while the existing curriculum authority processes one
-        // bounded family at a time.
+        // It exists so accepted single-language manifests survive request
+        // completion, cancellation, and process recycle while the existing
+        // curriculum authority processes one bounded family at a time.
         modelBuilder.Entity<LegendCurriculumManifestWorkItem>(entity =>
         {
             entity.ToTable("LegendCurriculumManifestWorkItems");
@@ -197,6 +196,10 @@ public class MasterAppDbContext : DbContext
 
             entity.Property(item => item.FounderUserId)
                 .HasMaxLength(256)
+                .IsRequired();
+
+            entity.Property(item => item.SourceLanguageCode)
+                .HasMaxLength(32)
                 .IsRequired();
 
             entity.Property(item => item.ManifestHash)
@@ -248,7 +251,7 @@ public class MasterAppDbContext : DbContext
                     item.CreatedUtc
                 })
                 .HasDatabaseName("IX_LegendCurriculumManifestWorkItems_Processing");
-            entity.HasIndex(item => item.CreatedUtc)
+            entity.HasIndex(item => new { item.SourceLanguageCode, item.CreatedUtc })
                 .HasDatabaseName("IX_LegendCurriculumManifestWorkItems_FounderStatus");
         });
 

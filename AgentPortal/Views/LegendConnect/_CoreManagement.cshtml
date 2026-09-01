@@ -127,7 +127,7 @@
     </form>
 
     <details class="legend-connect-disclosure legend-connect-disclosure--curriculum">
-        <summary class="legend-connect-disclosure-summary"><span><span class="dashboard-section-title">Teach advanced English conversation intelligence</span></span><span class="legend-connect-disclosure-status">Curriculum</span></summary>
+        <summary class="legend-connect-disclosure-summary"><span><span class="dashboard-section-title">Teach advanced conversation intelligence</span></span><span class="legend-connect-disclosure-status">Curriculum</span></summary>
         <div class="legend-connect-disclosure-body">
             <p class="dashboard-section-copy">
                 Train reusable meaning, realization, composition, and discourse—not canned sentences. A manifest may contain many explicit semantic families; every family remains independently language-isolated, evidence-backed, contradiction-aware, and production-gated.
@@ -135,7 +135,7 @@
             <div class="dashboard-search-panel" role="note" aria-label="Advanced curriculum authoring rules">
                 <strong>Founder authoring standard</strong>
                 <p class="dashboard-section-copy">
-                    Use <code>@@family family.key | Semantic category</code>, then 2–100 distinct controlled English examples, then <code>@@end</code>. Build deliberate contrasts across conversation function, intent, polarity, tense/aspect, modality, mood, certainty, register, discourse role, condition, reference, and clause behavior. When meaning is visibly realized in the utterance, also identify exact surface components such as <code>agent=you</code>, <code>predicate=send</code>, <code>object=the document</code>, <code>time_expression=tomorrow</code>, <code>modal_marker=would</code>, or a multi-word <code>phrase=give up</code>. Stable dimensions and exact phrases let the existing structural authority accumulate reusable evidence instead of memorizing sentence shells.
+                    Select one enabled source language for the complete manifest, then use <code>@@family family.key | Semantic category</code>, 2–100 distinct controlled examples in that language, and <code>@@end</code>. Build deliberate contrasts across conversation function, intent, polarity, tense/aspect, modality, mood, certainty, register, discourse role, condition, reference, and clause behavior. When meaning is visibly realized in the utterance, also identify exact surface components such as <code>agent=you</code>, <code>predicate=send</code>, <code>object=the document</code>, <code>time_expression=tomorrow</code>, <code>modal_marker=would</code>, or a multi-word <code>phrase=give up</code>. Stable dimensions and exact phrases let the existing structural authority accumulate reusable evidence instead of memorizing sentence shells.
                 </p>
                 <p class="dashboard-section-copy">
                     Model real interaction: openings, questions and answers, acknowledgment, clarification, repair, requests, offers, permissions, commitments, refusals, agreement and disagreement, negotiation, scheduling, causality, conditions, reference/coreference, embedded clauses, reported speech, idioms, lexical senses, politeness, topic shifts, interruption recovery, summaries, and closings. Vary vocabulary, participants, predicates, objects, sentence length, and context so support comes from independent evidence. Do not label slang, sarcasm, dialect, humor, or culturally specific pragmatics as universal unless the family deliberately scopes that distinction.
@@ -147,8 +147,18 @@
             <form method="post" asp-action="SubmitCurriculum" class="dashboard-search-panel">
                 @Html.AntiForgeryToken()
                 <div class="dashboard-form-grid">
+                    <label class="dashboard-form-field">
+                        <span>Source language</span>
+                        <select name="SourceLanguageCode" required>
+                            <option value="">Select an enabled language</option>
+                            @foreach (var language in dashboard.Languages.Where(item => item.IsEnabled))
+                            {
+                                <option value="@language.LanguageCode">@language.DisplayName (@language.LanguageCode)</option>
+                            }
+                        </select>
+                    </label>
                     <label class="dashboard-form-field dashboard-form-field--wide">
-                        <span>English semantic curriculum manifest</span>
+                        <span>Single-language semantic curriculum manifest</span>
                         <textarea name="Manifest" required maxlength="120000" spellcheck="false"
                             placeholder="@@family conversation.request.action | Action request&#10;Could you send the document today? | function=request; intent=request_action; mood=interrogative; register=polite; agent=you; predicate=send; object=the document; time_expression=today; modal_marker=Could&#10;Please send the document today. | function=request; intent=request_action; mood=imperative; register=polite; agent=you; predicate=send; object=the document; time_expression=today&#10;Send the document today. | function=request; intent=request_action; mood=imperative; register=direct; agent=you; predicate=send; object=the document; time_expression=today&#10;@@end&#10;&#10;@@family conversation.clarification.repair | Clarification and repair&#10;What do you mean by that? | function=clarification_request; intent=clarify_meaning; mood=interrogative; agent=you&#10;I mean the meeting tomorrow. | function=clarification_response; intent=clarify_meaning; mood=declarative; agent=I; object=the meeting; time_expression=tomorrow&#10;Do you mean the meeting tomorrow? | function=confirmation_request; intent=confirm_understanding; mood=interrogative; agent=you; object=the meeting; time_expression=tomorrow&#10;No, I mean the call tomorrow. | function=correction; intent=correct_misunderstanding; polarity=negative; mood=declarative; agent=I; object=the call; time_expression=tomorrow&#10;@@end&#10;&#10;@@family conversation.condition.commitment | Conditional commitment&#10;If you call, I will answer. | function=commitment; intent=conditional_commitment; condition_type=real; condition_marker=If; agent=I; predicate=answer; modal_marker=will&#10;If you send the address, I will come. | function=commitment; intent=conditional_commitment; condition_type=real; condition_marker=If; agent=I; predicate=come; object=the address; modal_marker=will&#10;If you called, I would answer. | function=hypothetical_commitment; intent=conditional_commitment; condition_type=hypothetical; condition_marker=If; agent=I; predicate=answer; modal_marker=would&#10;@@end"></textarea>
                         <small>

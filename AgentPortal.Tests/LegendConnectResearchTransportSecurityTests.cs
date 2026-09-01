@@ -280,6 +280,91 @@ public sealed class LegendConnectResearchTransportSecurityTests
     }
 
     [Fact]
+    public async Task SameOriginStructuredMetadata_SuppliesExplicitPublicationAndUpdateTimestamps()
+    {
+        const string html = """
+            <html><head>
+              <meta property="article:published_time" content="2026-08-30T09:15:00-04:00">
+              <script type="application/ld+json">
+              {
+                "@type": "NewsArticle",
+                "datePublished": "2026-08-30T13:15:00Z",
+                "dateModified": "2026-08-31T16:45:00Z"
+              }
+              </script>
+            </head><body><p>Official dated evidence.</p></body></html>
+            """;
+        var result = await CreateRetriever(new RecordingHandler((_, _) =>
+            Task.FromResult(Response("text/html", html))))
+            .RetrieveAsync(Request("https://example.com/dated-record"));
+
+        Assert.True(result.Succeeded, result.FailureReason);
+        var source = Assert.Single(result.Sources);
+        Assert.Equal(new DateTime(2026, 8, 30, 13, 15, 0, DateTimeKind.Utc), source.PublishedUtc);
+        Assert.Equal(new DateTime(2026, 8, 31, 16, 45, 0, DateTimeKind.Utc), source.UpdatedUtc);
+    }
+
+    [Fact]
+    public async Task HttpLastModified_IsUpdateEvidenceButNeverInventsPublicationTimestamp()
+    {
+        var response = Response("text/plain", "Official record without a publication declaration.");
+        response.Content.Headers.LastModified = new DateTimeOffset(
+            2026, 8, 31, 18, 0, 0, TimeSpan.Zero);
+        var result = await CreateRetriever(new RecordingHandler((_, _) => Task.FromResult(response)))
+            .RetrieveAsync(Request("https://example.com/last-modified"));
+
+        var source = Assert.Single(result.Sources);
+        Assert.Null(source.PublishedUtc);
+        Assert.Equal(new DateTime(2026, 8, 31, 18, 0, 0, DateTimeKind.Utc), source.UpdatedUtc);
+    }
+
+    [Fact]
+    public async Task AmbiguousOrTimezoneFreePageDates_AreNotPromotedToEvidenceMetadata()
+    {
+        const string html = """
+            <html><head>
+              <meta property="article:published_time" content="2026-08-30T09:15:00Z">
+              <meta property="article:published_time" content="2026-08-31T09:15:00Z">
+              <meta property="article:modified_time" content="2026-08-31T10:00:00">
+              <meta property="article:modified_time" content="2026-08-31T11:00:00Z">
+              <meta property="article:modified_time" content="2026-08-31T12:00:00Z">
+              <meta name="date" content="2026-08-29T12:00:00Z">
+            </head><body><time datetime="2026-08-28T08:00:00Z">A generic date</time></body></html>
+            """;
+        var response = Response("text/html", html);
+        response.Content.Headers.LastModified = new DateTimeOffset(
+            2026, 8, 31, 18, 0, 0, TimeSpan.Zero);
+        var result = await CreateRetriever(new RecordingHandler((_, _) => Task.FromResult(response)))
+            .RetrieveAsync(Request("https://example.com/ambiguous-dates"));
+
+        var source = Assert.Single(result.Sources);
+        Assert.Null(source.PublishedUtc);
+        Assert.Null(source.UpdatedUtc);
+    }
+
+    [Fact]
+    public async Task CrossOriginRedirect_ClearsTimestampsExtractedFromDestinationPage()
+    {
+        var ordinal = 0;
+        const string html = """
+            <meta property="article:published_time" content="2026-08-30T09:15:00Z">
+            <meta property="article:modified_time" content="2026-08-31T09:15:00Z">
+            <p>Destination evidence.</p>
+            """;
+        var handler = new RecordingHandler((_, _) => Task.FromResult(
+            ordinal++ == 0
+                ? Redirect("https://unrelated.example/dated-evidence")
+                : Response("text/html", html)));
+
+        var result = await CreateRetriever(handler).RetrieveAsync(
+            Request("https://official.example/record"));
+
+        var source = Assert.Single(result.Sources);
+        Assert.Null(source.PublishedUtc);
+        Assert.Null(source.UpdatedUtc);
+    }
+
+    [Fact]
     public void QueryAndPageBudgets_FailClosedOutsideCanonicalBounds()
     {
         var overBudgetResults = Enumerable.Range(

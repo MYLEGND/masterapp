@@ -531,6 +531,31 @@ jobs:
           } while ((Get-Date).ToUniversalTime() -lt $deadline)
           throw 'The deployed AgentPortal did not become ready within five minutes.'
 
+      - name: Verify unauthenticated SignalR negotiate challenges
+        shell: pwsh
+        run: |
+          function Assert-NegotiateChallenge {
+            param(
+              [Parameter(Mandatory = $true)][string]$Name,
+              [Parameter(Mandatory = $true)][string]$Uri,
+              [Parameter(Mandatory = $true)][string]$ExpectedStatus
+            )
+
+            $status = & curl --silent --show-error --output /dev/null --write-out '%{http_code}' --max-time 20 --request POST $Uri
+            if ($LASTEXITCODE -ne 0) {
+              throw "$Name negotiate probe could not reach the deployed application."
+            }
+            if ($status -match '^5') {
+              throw "$Name negotiate returned server failure HTTP $status."
+            }
+            if ($status -ne $ExpectedStatus) {
+              throw "$Name negotiate returned HTTP $status; expected unauthenticated challenge HTTP $ExpectedStatus."
+            }
+          }
+
+          Assert-NegotiateChallenge -Name 'LiveSync' -Uri 'https://portal.mylegnd.com/livesync/negotiate?negotiateVersion=1' -ExpectedStatus '302'
+          Assert-NegotiateChallenge -Name 'Messaging' -Uri 'https://portal.mylegnd.com/messaginghub/negotiate?negotiateVersion=1' -ExpectedStatus '401'
+
       - name: Resolve production read-only and provider-canary authorities
         shell: pwsh
         env:

@@ -28,7 +28,7 @@ public sealed class LegendConnectSystemValidatedMachineCurriculumTests
 
         for (var index = 1; index <= 3; index++)
         {
-            var submitted = await curriculum.SubmitFounderEnglishBatchAsync(
+            var submitted = await curriculum.SubmitFounderBatchAsync(
                 new LegendConnectCurriculumBatchSubmission(
                     $"machine.native.primitives.{index}",
                     "Founder-controlled native semantic primitives",

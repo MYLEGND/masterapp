@@ -16,6 +16,136 @@ namespace AgentPortal.Tests;
 public sealed class LegendConnectCurriculumTests
 {
     [Fact]
+    public async Task FounderCurriculumBatch_UsesExplicitNonEnglishLanguage_IsIdempotentAndIsolated()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var configuration = Configuration();
+        var registry = new LegendLanguageRegistry(db, configuration);
+        var corpus = new LegendConnectCorpusService(db, registry, NullLogger<LegendConnectCorpusService>.Instance);
+        var curriculum = new LegendConnectCurriculumService(db, registry, corpus);
+
+        var first = await curriculum.SubmitFounderBatchAsync(
+            Batch("possession.multilingual"),
+            sourceLanguageCode: "ES");
+        var duplicate = await curriculum.SubmitFounderBatchAsync(
+            Batch("possession.multilingual"),
+            sourceLanguageCode: "es");
+
+        Assert.True(first.Succeeded, first.Message);
+        Assert.False(first.DuplicatePrevented);
+        Assert.True(duplicate.Succeeded, duplicate.Message);
+        Assert.True(duplicate.DuplicatePrevented);
+        Assert.Equal(4, await db.LegendLanguageTextUnits.CountAsync(item => item.LanguageCode == "es"));
+        Assert.Equal(4, await db.LegendCurriculumExamples.CountAsync(item => item.LanguageCode == "es"));
+        Assert.Empty(await db.LegendLanguageTextUnits.Where(item => item.LanguageCode == "en").ToListAsync());
+        Assert.Empty(await db.LegendCurriculumExamples.Where(item => item.LanguageCode == "en").ToListAsync());
+        Assert.All(await db.LegendLanguageStructuralEvidence.ToListAsync(), item =>
+            Assert.Equal("es", item.LanguageCode));
+        Assert.All(await db.LegendCorpusCandidates.ToListAsync(), item =>
+            Assert.Equal("es", item.SourceLanguageCode));
+        Assert.DoesNotContain(await db.LegendCurriculumExamples.ToListAsync(), item =>
+            item.Provenance == LegendConnectKnowledgeProvenance.ProviderDerived);
+    }
+
+    [Fact]
+    public async Task FounderCurriculumManifest_NormalizesExplicitLanguageAndKeepsReceiptIdentityPerLanguage()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var configuration = Configuration();
+        var registry = new LegendLanguageRegistry(db, configuration);
+        var corpus = new LegendConnectCorpusService(db, registry, NullLogger<LegendConnectCorpusService>.Instance);
+        var curriculum = new LegendConnectCurriculumService(db, registry, corpus);
+        var operations = new LegendConnectOperations(db, registry, corpus, configuration, curriculum: curriculum);
+        var family = ConversationBatch(
+            "conversation.language.isolation",
+            "Language isolation",
+            ("Hola.", "greeting"),
+            ("Buenos días.", "greeting"));
+
+        var spanish = new LegendConnectCurriculumManifestSubmission([family], null, "ES");
+        var first = await operations.SubmitFounderCurriculumManifestAsync("founder-test", spanish);
+        var duplicate = await operations.SubmitFounderCurriculumManifestAsync("founder-test", spanish);
+        var english = await operations.SubmitFounderCurriculumManifestAsync(
+            "founder-test",
+            new LegendConnectCurriculumManifestSubmission([family], null, "en"));
+
+        Assert.True(first.Succeeded, first.Message);
+        Assert.True(duplicate.Succeeded, duplicate.Message);
+        Assert.True(duplicate.DuplicatePrevented);
+        Assert.True(english.Succeeded, english.Message);
+        var receipts = await db.LegendCurriculumManifestWorkItems.OrderBy(item => item.SourceLanguageCode).ToListAsync();
+        Assert.Equal(2, receipts.Count);
+        Assert.Equal(new[] { "en", "es" }, receipts.Select(item => item.SourceLanguageCode));
+        Assert.Equal(2, receipts.Select(item => item.Id).Distinct().Count());
+        Assert.Contains(await db.LegendConnectKnowledgeAuditEntries.ToListAsync(), item =>
+            item.Action == "FounderCurriculumManifestAccepted" && item.LanguageCode == "es");
+    }
+
+    [Fact]
+    public async Task FounderCurriculumManifest_RejectsMissingLanguageWithoutEnglishFallback()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var configuration = Configuration();
+        var registry = new LegendLanguageRegistry(db, configuration);
+        var corpus = new LegendConnectCorpusService(db, registry, NullLogger<LegendConnectCorpusService>.Instance);
+        var curriculum = new LegendConnectCurriculumService(db, registry, corpus);
+        var operations = new LegendConnectOperations(db, registry, corpus, configuration, curriculum: curriculum);
+
+        var result = await operations.SubmitFounderCurriculumManifestAsync(
+            "founder-test",
+            new LegendConnectCurriculumManifestSubmission(
+                [ConversationBatch("conversation.no.fallback", "No fallback", ("Hola.", "greeting"), ("Saludos.", "greeting"))],
+                null,
+                string.Empty));
+
+        Assert.False(result.Succeeded);
+        Assert.Equal("source_language_training_unavailable", result.ErrorCode);
+        Assert.Empty(await db.LegendCurriculumManifestWorkItems.ToListAsync());
+        Assert.Empty(await db.LegendLanguageTextUnits.ToListAsync());
+    }
+
+    [Fact]
+    public async Task FounderCurriculumManifest_RejectsTranslationOnlyLanguageBeforeMutation()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var configuration = Configuration();
+        var registry = new LegendLanguageRegistry(db, configuration);
+        _ = await registry.ListEnabledTranslationLanguagesAsync();
+        var spanish = await db.LegendLanguageDefinitions.SingleAsync(item =>
+            item.LanguageCode == "es");
+        spanish.IsLearningEnabled = false;
+        await db.SaveChangesAsync();
+
+        var corpus = new LegendConnectCorpusService(
+            db,
+            registry,
+            NullLogger<LegendConnectCorpusService>.Instance);
+        var curriculum = new LegendConnectCurriculumService(db, registry, corpus);
+        var operations = new LegendConnectOperations(
+            db,
+            registry,
+            corpus,
+            configuration,
+            curriculum: curriculum);
+
+        var result = await operations.SubmitFounderCurriculumManifestAsync(
+            "founder-test",
+            new LegendConnectCurriculumManifestSubmission(
+                [ConversationBatch(
+                    "conversation.translation-only",
+                    "Translation only",
+                    ("Hola.", "greeting"),
+                    ("Saludos.", "greeting"))],
+                null,
+                "es"));
+
+        Assert.False(result.Succeeded);
+        Assert.Equal("source_language_training_unavailable", result.ErrorCode);
+        Assert.Empty(await db.LegendCurriculumManifestWorkItems.ToListAsync());
+        Assert.Empty(await db.LegendLanguageTextUnits.ToListAsync());
+    }
+
+    [Fact]
     public async Task FounderEnglishCurriculum_CreatesFamilyEnglishEvidenceAndIsIdempotent()
     {
         await using var db = ControllerTestHelpers.BuildDb();
@@ -24,8 +154,8 @@ public sealed class LegendConnectCurriculumTests
         var corpus = new LegendConnectCorpusService(db, registry, NullLogger<LegendConnectCorpusService>.Instance);
         var curriculum = new LegendConnectCurriculumService(db, registry, corpus);
 
-        var first = await curriculum.SubmitFounderEnglishBatchAsync(Batch("possession.basic"));
-        var second = await curriculum.SubmitFounderEnglishBatchAsync(Batch("possession.basic"));
+        var first = await curriculum.SubmitFounderBatchAsync(Batch("possession.basic"));
+        var second = await curriculum.SubmitFounderBatchAsync(Batch("possession.basic"));
 
         Assert.True(first.Succeeded, first.Message);
         Assert.False(first.DuplicatePrevented);
@@ -58,7 +188,7 @@ public sealed class LegendConnectCurriculumTests
         var registry = new LegendLanguageRegistry(db, configuration);
         var corpus = new LegendConnectCorpusService(db, registry, NullLogger<LegendConnectCorpusService>.Instance);
         var curriculum = new LegendConnectCurriculumService(db, registry, corpus);
-        var submitted = await curriculum.SubmitFounderEnglishBatchAsync(Batch("possession.basic"));
+        var submitted = await curriculum.SubmitFounderBatchAsync(Batch("possession.basic"));
         Assert.True(submitted.Succeeded, submitted.Message);
 
         await ProcessQueuedCurriculumAsync(db, configuration, registry, corpus, curriculum, new ShapePreservingProvider());
@@ -134,7 +264,7 @@ public sealed class LegendConnectCurriculumTests
         var registry = new LegendLanguageRegistry(db, configuration);
         var corpus = new LegendConnectCorpusService(db, registry, NullLogger<LegendConnectCorpusService>.Instance);
         var curriculum = new LegendConnectCurriculumService(db, registry, corpus);
-        var submitted = await curriculum.SubmitFounderEnglishBatchAsync(Batch("possession.contradiction"));
+        var submitted = await curriculum.SubmitFounderBatchAsync(Batch("possession.contradiction"));
         Assert.True(submitted.Succeeded, submitted.Message);
 
         await ProcessQueuedCurriculumAsync(db, configuration, registry, corpus, curriculum, new ContradictoryShapeProvider());
@@ -207,7 +337,7 @@ public sealed class LegendConnectCurriculumTests
                     "Conversation clarification",
                     ("What do you mean?", "clarification_request"),
                     ("Can you explain that?", "clarification_request"))
-            ]));
+            ], null, "en"));
 
         Assert.True(result.Succeeded, result.Message);
         Assert.Contains("durably queued", result.Message ?? string.Empty, StringComparison.OrdinalIgnoreCase);
@@ -262,7 +392,7 @@ public sealed class LegendConnectCurriculumTests
             [
                 ConversationBatch("durable.manifest.opening", "Opening", ("Blue lantern.", "opening"), ("Amber lantern.", "opening")),
                 ConversationBatch("durable.manifest.repair", "Repair", ("Please clarify.", "clarification"), ("Could you repeat that?", "clarification"))
-            ]));
+            ], null, "en"));
         Assert.True(accepted.Succeeded, accepted.Message);
 
         Assert.Equal(1, await processor.SeedDurableFamilyWorkAsync(
@@ -378,7 +508,7 @@ public sealed class LegendConnectCurriculumTests
                     "Submission visibility",
                     ("Please clarify the schedule.", "clarification_request"),
                     ("Could you clarify the schedule?", "clarification_request"))
-            ]));
+            ], null, "en"));
         Assert.True(manifest.Succeeded, manifest.Message);
 
         var queuedPage = await operations.GetFounderSectionPageAsync(
@@ -495,7 +625,7 @@ public sealed class LegendConnectCurriculumTests
                     "conversation.invalid.single",
                     "Invalid single example",
                     ("Only one example.", "statement"))
-            ]));
+            ], null, "en"));
 
         Assert.False(result.Succeeded);
         Assert.Equal("invalid_curriculum_examples", result.ErrorCode);
@@ -525,7 +655,7 @@ public sealed class LegendConnectCurriculumTests
 
         var result = await operations.SubmitFounderCurriculumManifestAsync(
             "founder-test",
-            new LegendConnectCurriculumManifestSubmission([oversized]));
+            new LegendConnectCurriculumManifestSubmission([oversized], null, "en"));
 
         Assert.False(result.Succeeded);
         Assert.Equal("invalid_curriculum_examples", result.ErrorCode);
@@ -554,7 +684,7 @@ public sealed class LegendConnectCurriculumTests
             configuration,
             curriculum: curriculum);
 
-        var first = await curriculum.SubmitFounderEnglishBatchAsync(
+        var first = await curriculum.SubmitFounderBatchAsync(
             ConversationBatch(
                 "conversation.greeting.basic",
                 "Conversation greeting",
@@ -594,7 +724,7 @@ public sealed class LegendConnectCurriculumTests
                     "Conversation greeting — additional opening variation",
                     ("Hey.", "greeting"),
                     ("Hey there.", "greeting"))
-            ]));
+            ], null, "en"));
 
         Assert.True(result.Succeeded, result.Message);
         Assert.False(result.DuplicatePrevented);
@@ -726,10 +856,10 @@ public sealed class LegendConnectCurriculumTests
 
         var result = await operations.SubmitFounderCurriculumManifestAsync(
             "founder-scale",
-            new LegendConnectCurriculumManifestSubmission(families));
+            new LegendConnectCurriculumManifestSubmission(families, null, "en"));
 
         Assert.True(result.Succeeded, result.Message);
-        Assert.Equal(719, result.EnglishExampleCount);
+        Assert.Equal(719, result.SourceExampleCount);
         Assert.Empty(await db.LegendCurriculumFamilies.ToListAsync());
         Assert.Empty(await db.LegendCurriculumExamples.ToListAsync());
         Assert.Empty(await db.LegendLanguageTextUnits.ToListAsync());
@@ -757,7 +887,7 @@ public sealed class LegendConnectCurriculumTests
                 "Retry safety",
                 ("Please try again.", "retry"),
                 ("Let's try again.", "retry"))
-        ]);
+        ], null, "en");
 
         var first = await operations.SubmitFounderCurriculumManifestAsync("founder-test", manifest);
         var second = await operations.SubmitFounderCurriculumManifestAsync("founder-test", manifest);
@@ -792,7 +922,7 @@ public sealed class LegendConnectCurriculumTests
                 "Recoverable durable receipt",
                 ("Please repeat that.", "repeat"),
                 ("Could you repeat that?", "repeat"))
-        ]);
+        ], null, "en");
 
         Assert.True((await operations.SubmitFounderCurriculumManifestAsync("founder-test", manifest)).Succeeded);
         var receipt = Assert.Single(await db.Set<LegendCurriculumManifestWorkItem>().ToListAsync());
@@ -841,7 +971,7 @@ public sealed class LegendConnectCurriculumTests
                 "Terminal durable receipt",
                 ("Please try once more.", "retry"),
                 ("Could you try again?", "retry"))
-        ]);
+        ], null, "en");
 
         Assert.True((await operations.SubmitFounderCurriculumManifestAsync("founder-test", submission)).Succeeded);
         var manifest = Assert.Single(await db.Set<LegendCurriculumManifestWorkItem>().ToListAsync());
@@ -908,7 +1038,7 @@ public sealed class LegendConnectCurriculumTests
                 "Resume second",
                 ("Can you repeat that?", "repeat"),
                 ("Could you say that again?", "repeat"))
-        ]);
+        ], null, "en");
 
         Assert.True((await operations.SubmitFounderCurriculumManifestAsync("founder-test", manifest)).Succeeded);
         Assert.Equal(1, await processor.ProcessPendingAsync(1));

@@ -34,7 +34,7 @@ public sealed class LegendConnectMeaningGraphTests
 
         for (var family = 1; family <= 3; family++)
         {
-            var submitted = await curriculum.SubmitFounderEnglishBatchAsync(
+            var submitted = await curriculum.SubmitFounderBatchAsync(
                 Family(family));
             Assert.True(submitted.Succeeded, submitted.Message);
         }
@@ -69,7 +69,7 @@ public sealed class LegendConnectMeaningGraphTests
         var before = await CountsAsync(db);
         for (var family = 1; family <= 3; family++)
         {
-            var replayed = await curriculum.SubmitFounderEnglishBatchAsync(Family(family));
+            var replayed = await curriculum.SubmitFounderBatchAsync(Family(family));
             Assert.True(replayed.Succeeded, replayed.Message);
             Assert.True(replayed.DuplicatePrevented);
         }
@@ -87,7 +87,7 @@ public sealed class LegendConnectMeaningGraphTests
         // must not require a fake second node or relation.
         for (var family = 1; family <= 3; family++)
         {
-            var submitted = await curriculum.SubmitFounderEnglishBatchAsync(
+            var submitted = await curriculum.SubmitFounderBatchAsync(
                 new LegendConnectCurriculumBatchSubmission(
                     $"meaning.atomic.greeting.{family}",
                     "Independent Founder greeting meaning",
@@ -182,7 +182,7 @@ public sealed class LegendConnectMeaningGraphTests
         await using var db = ControllerTestHelpers.BuildDb();
         var curriculum = CreateCurriculum(db);
 
-        var rejected = await curriculum.SubmitFounderEnglishBatchAsync(
+        var rejected = await curriculum.SubmitFounderBatchAsync(
             new LegendConnectCurriculumBatchSubmission(
                 "meaning.graph.invalid.endpoint",
                 "Invalid explicit graph must fail closed",
@@ -218,7 +218,7 @@ public sealed class LegendConnectMeaningGraphTests
         Assert.Equal(0, await db.LegendLanguageMeaningRelationEvidence.CountAsync());
         Assert.Equal(0, await db.LegendLanguageMeaningRelations.CountAsync());
 
-        var ordinary = await curriculum.SubmitFounderEnglishBatchAsync(
+        var ordinary = await curriculum.SubmitFounderBatchAsync(
             new LegendConnectCurriculumBatchSubmission(
                 "meaning.graph.no-implicit-adjacency",
                 "Lexical sequence is not a semantic relation",
@@ -251,7 +251,7 @@ public sealed class LegendConnectMeaningGraphTests
         await using var db = ControllerTestHelpers.BuildDb();
         var curriculum = CreateCurriculum(db);
 
-        var submitted = await curriculum.SubmitFounderEnglishBatchAsync(
+        var submitted = await curriculum.SubmitFounderBatchAsync(
             new LegendConnectCurriculumBatchSubmission(
                 "meaning.graph.repeated.roles",
                 "Founder-declared repeated role evidence",
@@ -349,6 +349,7 @@ public sealed class LegendConnectMeaningGraphTests
                 ControllerTestHelpers.BuildUser(founderId),
                 new FounderLegendConnectCurriculumInput
                 {
+                    SourceLanguageCode = "en",
                     Manifest = """
                         @family meaning.graph.manifest | Explicit meaning graph
                         Please explain the option. | predicate=explain; request_target=option; utterance_kind=request
@@ -417,7 +418,7 @@ public sealed class LegendConnectMeaningGraphTests
 
         for (var family = 1; family <= 3; family++)
         {
-            var submitted = await curriculum.SubmitFounderEnglishBatchAsync(Family(family));
+            var submitted = await curriculum.SubmitFounderBatchAsync(Family(family));
             Assert.True(submitted.Succeeded, submitted.Message);
         }
 
@@ -442,7 +443,7 @@ public sealed class LegendConnectMeaningGraphTests
         var before = await CountsAsync(db);
         for (var family = 1; family <= 3; family++)
         {
-            var replayed = await curriculum.SubmitFounderEnglishBatchAsync(Family(family));
+            var replayed = await curriculum.SubmitFounderBatchAsync(Family(family));
             Assert.True(replayed.Succeeded, replayed.Message);
             Assert.True(replayed.DuplicatePrevented);
         }
@@ -468,7 +469,7 @@ public sealed class LegendConnectMeaningGraphTests
         await using var db = ControllerTestHelpers.BuildDb();
         var curriculum = CreateCurriculum(db);
         for (var family = 1; family <= 3; family++)
-            Assert.True((await curriculum.SubmitFounderEnglishBatchAsync(Family(family))).Succeeded);
+            Assert.True((await curriculum.SubmitFounderBatchAsync(Family(family))).Succeeded);
 
         // Model an already-canonical Phase-1 graph at a subsequent evaluator
         // version: derived abstractions are absent, but no Founder evidence is
@@ -521,7 +522,7 @@ public sealed class LegendConnectMeaningGraphTests
         await using var db = ControllerTestHelpers.BuildDb();
         var curriculum = CreateCurriculum(db);
         for (var family = 1; family <= 3; family++)
-            Assert.True((await curriculum.SubmitFounderEnglishBatchAsync(Family(family))).Succeeded);
+            Assert.True((await curriculum.SubmitFounderBatchAsync(Family(family))).Succeeded);
 
         const string heldOut = "Could you explain the option clearly today?";
         Assert.False(await db.LegendLanguageTextUnits.AnyAsync(item => item.Text == heldOut));

@@ -30,7 +30,7 @@ public sealed class LegendConnectSemanticSpanGroundingTests
 
         for (var family = 1; family <= 3; family++)
         {
-            var submitted = await fixture.Curriculum.SubmitFounderEnglishBatchAsync(
+            var submitted = await fixture.Curriculum.SubmitFounderBatchAsync(
                 RichResponsePlanFamily(family, "neutral", "acknowledgement"));
             Assert.True(submitted.Succeeded, submitted.Message);
         }
@@ -59,7 +59,7 @@ public sealed class LegendConnectSemanticSpanGroundingTests
         await using var db = ControllerTestHelpers.BuildDb();
         var fixture = CreateFixture(db);
 
-        var submitted = await fixture.Curriculum.SubmitFounderEnglishBatchAsync(
+        var submitted = await fixture.Curriculum.SubmitFounderBatchAsync(
             RichResponsePlanFamily(21, "neutral", "broad_acknowledgement"));
         Assert.True(submitted.Succeeded, submitted.Message);
 
@@ -86,13 +86,13 @@ public sealed class LegendConnectSemanticSpanGroundingTests
         await using var db = ControllerTestHelpers.BuildDb();
         var fixture = CreateFixture(db);
 
-        var broad = await fixture.Curriculum.SubmitFounderEnglishBatchAsync(
+        var broad = await fixture.Curriculum.SubmitFounderBatchAsync(
             RichResponsePlanFamily(20, "neutral", "broad_dismissal"));
         Assert.True(broad.Succeeded, broad.Message);
 
         for (var family = 4; family <= 6; family++)
         {
-            var higher = await fixture.Curriculum.SubmitFounderEnglishBatchAsync(
+            var higher = await fixture.Curriculum.SubmitFounderBatchAsync(
                 RichResponsePlanFamily(family, "formal", "higher_standard_acknowledgement"));
             Assert.True(higher.Succeeded, higher.Message);
         }
@@ -120,7 +120,7 @@ public sealed class LegendConnectSemanticSpanGroundingTests
 
         for (var support = 1; support <= 3; support++)
         {
-            var submitted = await fixture.Curriculum.SubmitFounderEnglishBatchAsync(
+            var submitted = await fixture.Curriculum.SubmitFounderBatchAsync(
                 ReadOnlyContentBindingFamily(support));
             Assert.True(submitted.Succeeded, submitted.Message);
         }
@@ -179,7 +179,7 @@ public sealed class LegendConnectSemanticSpanGroundingTests
 
         for (var support = 1; support <= 3; support++)
         {
-            var submitted = await fixture.Curriculum.SubmitFounderEnglishBatchAsync(
+            var submitted = await fixture.Curriculum.SubmitFounderBatchAsync(
                 ReadOnlyContentBindingFamily(support));
             Assert.True(submitted.Succeeded, submitted.Message);
         }
@@ -233,7 +233,7 @@ public sealed class LegendConnectSemanticSpanGroundingTests
 
         for (var support = 1; support <= 3; support++)
         {
-            var submitted = await fixture.Curriculum.SubmitFounderEnglishBatchAsync(
+            var submitted = await fixture.Curriculum.SubmitFounderBatchAsync(
                 PresentationConstraintFamily(
                     "exact-three",
                     support,
@@ -268,7 +268,7 @@ public sealed class LegendConnectSemanticSpanGroundingTests
         const string unmetRequest = "Apply an unproven three-sentence presentation.";
         for (var support = 1; support <= 3; support++)
         {
-            var submitted = await fixture.Curriculum.SubmitFounderEnglishBatchAsync(
+            var submitted = await fixture.Curriculum.SubmitFounderBatchAsync(
                 PresentationConstraintFamily(
                     "exact-three-unmet",
                     support,
@@ -320,7 +320,7 @@ public sealed class LegendConnectSemanticSpanGroundingTests
             var sentenceCount = item.Response.Count(character => character == '.');
             for (var support = 1; support <= 3; support++)
             {
-                var submitted = await fixture.Curriculum.SubmitFounderEnglishBatchAsync(
+                var submitted = await fixture.Curriculum.SubmitFounderBatchAsync(
                     PresentationConstraintFamily(
                         $"{item.Audience}-{item.Expertise}",
                         support,
@@ -377,7 +377,7 @@ public sealed class LegendConnectSemanticSpanGroundingTests
             var sentenceCount = item.Response.Count(character => character == '.');
             for (var support = 1; support <= 3; support++)
             {
-                var submitted = await fixture.Curriculum.SubmitFounderEnglishBatchAsync(
+                var submitted = await fixture.Curriculum.SubmitFounderBatchAsync(
                     PresentationConstraintFamily(
                         item.Length,
                         support,
@@ -435,7 +435,7 @@ public sealed class LegendConnectSemanticSpanGroundingTests
         {
             for (var support = 1; support <= 3; support++)
             {
-                var submitted = await fixture.Curriculum.SubmitFounderEnglishBatchAsync(
+                var submitted = await fixture.Curriculum.SubmitFounderBatchAsync(
                     PresentationConstraintFamily(
                         item.Tone,
                         support,
@@ -478,7 +478,7 @@ public sealed class LegendConnectSemanticSpanGroundingTests
 
         for (var support = 1; support <= 3; support++)
         {
-            var submitted = await fixture.Curriculum.SubmitFounderEnglishBatchAsync(
+            var submitted = await fixture.Curriculum.SubmitFounderBatchAsync(
                 PresentationConstraintFamily(
                     "conflict",
                     support,
@@ -519,7 +519,7 @@ public sealed class LegendConnectSemanticSpanGroundingTests
 
         for (var support = 1; support <= 3; support++)
         {
-            var empathetic = await fixture.Curriculum.SubmitFounderEnglishBatchAsync(
+            var empathetic = await fixture.Curriculum.SubmitFounderBatchAsync(
                 PresentationConstraintFamily(
                     "evidence-empathetic",
                     support,
@@ -532,7 +532,7 @@ public sealed class LegendConnectSemanticSpanGroundingTests
                     2,
                     "sentence_sequence"));
             Assert.True(empathetic.Succeeded, empathetic.Message);
-            var neutral = await fixture.Curriculum.SubmitFounderEnglishBatchAsync(
+            var neutral = await fixture.Curriculum.SubmitFounderBatchAsync(
                 PresentationConstraintFamily(
                     "evidence-neutral",
                     support,
@@ -605,7 +605,7 @@ public sealed class LegendConnectSemanticSpanGroundingTests
 
         for (var family = 1; family <= 3; family++)
         {
-            var submitted = await fixture.Curriculum.SubmitFounderEnglishBatchAsync(
+            var submitted = await fixture.Curriculum.SubmitFounderBatchAsync(
                 OriginalArticulationFamily(family));
             Assert.True(submitted.Succeeded, submitted.Message);
         }
@@ -649,7 +649,7 @@ public sealed class LegendConnectSemanticSpanGroundingTests
 
         for (var support = 1; support <= 3; support++)
         {
-            var submitted = await fixture.Curriculum.SubmitFounderEnglishBatchAsync(
+            var submitted = await fixture.Curriculum.SubmitFounderBatchAsync(
                 RealizationLineageFamily("selected", support));
             Assert.True(submitted.Succeeded, submitted.Message);
         }
@@ -675,10 +675,10 @@ public sealed class LegendConnectSemanticSpanGroundingTests
 
         for (var support = 1; support <= 3; support++)
         {
-            var selected = await fixture.Curriculum.SubmitFounderEnglishBatchAsync(
+            var selected = await fixture.Curriculum.SubmitFounderBatchAsync(
                 RealizationLineageFamily("selected", support));
             Assert.True(selected.Succeeded, selected.Message);
-            var unrelated = await fixture.Curriculum.SubmitFounderEnglishBatchAsync(
+            var unrelated = await fixture.Curriculum.SubmitFounderBatchAsync(
                 RealizationLineageFamily("unrelated", support));
             Assert.True(unrelated.Succeeded, unrelated.Message);
         }
@@ -704,10 +704,10 @@ public sealed class LegendConnectSemanticSpanGroundingTests
 
         for (var support = 1; support <= 3; support++)
         {
-            var source = await fixture.Curriculum.SubmitFounderEnglishBatchAsync(
+            var source = await fixture.Curriculum.SubmitFounderBatchAsync(
                 RealizationTransferSourceFamily(support));
             Assert.True(source.Succeeded, source.Message);
-            var result = await fixture.Curriculum.SubmitFounderEnglishBatchAsync(
+            var result = await fixture.Curriculum.SubmitFounderBatchAsync(
                 RealizationTransferResultFamily(support));
             Assert.True(result.Succeeded, result.Message);
             await fixture.Curriculum.PersistFounderCrossExampleSemanticRelationAsync(
@@ -717,7 +717,7 @@ public sealed class LegendConnectSemanticSpanGroundingTests
                     $"realization-transfer-result-{support}"),
                 LegendConnectLanguageIntelligenceEvaluatorVersion.Current);
 
-            var unrelated = await fixture.Curriculum.SubmitFounderEnglishBatchAsync(
+            var unrelated = await fixture.Curriculum.SubmitFounderBatchAsync(
                 RealizationTransferUnrelatedFamily(support));
             Assert.True(unrelated.Succeeded, unrelated.Message);
         }
@@ -744,9 +744,9 @@ public sealed class LegendConnectSemanticSpanGroundingTests
 
         for (var support = 1; support <= 3; support++)
         {
-            Assert.True((await fixture.Curriculum.SubmitFounderEnglishBatchAsync(
+            Assert.True((await fixture.Curriculum.SubmitFounderBatchAsync(
                 RealizationLineageFamily("selected", support))).Succeeded);
-            Assert.True((await fixture.Curriculum.SubmitFounderEnglishBatchAsync(
+            Assert.True((await fixture.Curriculum.SubmitFounderBatchAsync(
                 RealizationLineageFamily("unrelated", support))).Succeeded);
         }
 
@@ -796,7 +796,7 @@ public sealed class LegendConnectSemanticSpanGroundingTests
 
         for (var family = 1; family <= 3; family++)
         {
-            var submitted = await fixture.Curriculum.SubmitFounderEnglishBatchAsync(
+            var submitted = await fixture.Curriculum.SubmitFounderBatchAsync(
                 RepeatedSemanticSlotArticulationFamily(family));
             Assert.True(submitted.Succeeded, submitted.Message);
         }
@@ -841,7 +841,7 @@ public sealed class LegendConnectSemanticSpanGroundingTests
 
         for (var family = 1; family <= 3; family++)
         {
-            var submitted = await fixture.Curriculum.SubmitFounderEnglishBatchAsync(
+            var submitted = await fixture.Curriculum.SubmitFounderBatchAsync(
                 WholeSpanArticulationFamily(family));
             Assert.True(submitted.Succeeded, submitted.Message);
         }
@@ -879,10 +879,10 @@ public sealed class LegendConnectSemanticSpanGroundingTests
 
         for (var family = 1; family <= 3; family++)
         {
-            var response = await fixture.Curriculum.SubmitFounderEnglishBatchAsync(
+            var response = await fixture.Curriculum.SubmitFounderBatchAsync(
                 WholeSpanArticulationFamily(family));
             Assert.True(response.Succeeded, response.Message);
-            var subspan = await fixture.Curriculum.SubmitFounderEnglishBatchAsync(
+            var subspan = await fixture.Curriculum.SubmitFounderBatchAsync(
                 ContainedSubspanFamily(family));
             Assert.True(subspan.Succeeded, subspan.Message);
         }
@@ -913,10 +913,10 @@ public sealed class LegendConnectSemanticSpanGroundingTests
 
         for (var family = 1; family <= 3; family++)
         {
-            var opening = await fixture.Curriculum.SubmitFounderEnglishBatchAsync(
+            var opening = await fixture.Curriculum.SubmitFounderBatchAsync(
                 WholeSpanArticulationFamily(family));
             Assert.True(opening.Succeeded, opening.Message);
-            var competing = await fixture.Curriculum.SubmitFounderEnglishBatchAsync(
+            var competing = await fixture.Curriculum.SubmitFounderBatchAsync(
                 CompetingWholeSpanFamily(family));
             Assert.True(competing.Succeeded, competing.Message);
         }
@@ -937,10 +937,10 @@ public sealed class LegendConnectSemanticSpanGroundingTests
 
         for (var family = 1; family <= 3; family++)
         {
-            var exact = await fixture.Curriculum.SubmitFounderEnglishBatchAsync(
+            var exact = await fixture.Curriculum.SubmitFounderBatchAsync(
                 ExactCoherentGraphFamily(family));
             Assert.True(exact.Succeeded, exact.Message);
-            var conflicting = await fixture.Curriculum.SubmitFounderEnglishBatchAsync(
+            var conflicting = await fixture.Curriculum.SubmitFounderBatchAsync(
                 ConflictingReusableGraphFamily(family));
             Assert.True(conflicting.Succeeded, conflicting.Message);
         }
@@ -973,10 +973,10 @@ public sealed class LegendConnectSemanticSpanGroundingTests
 
         for (var family = 1; family <= 3; family++)
         {
-            var canonical = await fixture.Curriculum.SubmitFounderEnglishBatchAsync(
+            var canonical = await fixture.Curriculum.SubmitFounderBatchAsync(
                 ExactAtomicEndpointFamily(family));
             Assert.True(canonical.Succeeded, canonical.Message);
-            var dense = await fixture.Curriculum.SubmitFounderEnglishBatchAsync(
+            var dense = await fixture.Curriculum.SubmitFounderBatchAsync(
                 ExactDenseConnectedGraphFamily(family));
             Assert.True(dense.Succeeded, dense.Message);
         }
@@ -1010,7 +1010,7 @@ public sealed class LegendConnectSemanticSpanGroundingTests
 
         for (var family = 1; family <= 3; family++)
         {
-            var submitted = await fixture.Curriculum.SubmitFounderEnglishBatchAsync(
+            var submitted = await fixture.Curriculum.SubmitFounderBatchAsync(
                 ExactAtomicEndpointFamily(family));
             Assert.True(submitted.Succeeded, submitted.Message);
         }
@@ -1061,7 +1061,7 @@ public sealed class LegendConnectSemanticSpanGroundingTests
 
         for (var family = 1; family <= 3; family++)
         {
-            var exact = await fixture.Curriculum.SubmitFounderEnglishBatchAsync(
+            var exact = await fixture.Curriculum.SubmitFounderBatchAsync(
                 SelectorOrderingFamily(
                     "exact",
                     family,
@@ -1070,7 +1070,7 @@ public sealed class LegendConnectSemanticSpanGroundingTests
                     "handoff_diagnostic_response"));
             Assert.True(exact.Succeeded, exact.Message);
 
-            var projected = await fixture.Curriculum.SubmitFounderEnglishBatchAsync(
+            var projected = await fixture.Curriculum.SubmitFounderBatchAsync(
                 SelectorOrderingFamily(
                     "projected",
                     family,
@@ -1101,7 +1101,7 @@ public sealed class LegendConnectSemanticSpanGroundingTests
 
         for (var family = 1; family <= 3; family++)
         {
-            var exact = await fixture.Curriculum.SubmitFounderEnglishBatchAsync(
+            var exact = await fixture.Curriculum.SubmitFounderBatchAsync(
                 SelectorOrderingFamily(
                     "contradicted-exact",
                     family,
@@ -1110,7 +1110,7 @@ public sealed class LegendConnectSemanticSpanGroundingTests
                     "exact_handoff_response"));
             Assert.True(exact.Succeeded, exact.Message);
 
-            var projected = await fixture.Curriculum.SubmitFounderEnglishBatchAsync(
+            var projected = await fixture.Curriculum.SubmitFounderBatchAsync(
                 SelectorOrderingFamily(
                     "contradiction-projection",
                     family,
@@ -1148,7 +1148,7 @@ public sealed class LegendConnectSemanticSpanGroundingTests
 
         for (var family = 1; family <= 3; family++)
         {
-            var first = await fixture.Curriculum.SubmitFounderEnglishBatchAsync(
+            var first = await fixture.Curriculum.SubmitFounderBatchAsync(
                 SelectorOrderingFamily(
                     "multiple-first",
                     family,
@@ -1157,7 +1157,7 @@ public sealed class LegendConnectSemanticSpanGroundingTests
                     "first_handoff_response"));
             Assert.True(first.Succeeded, first.Message);
 
-            var second = await fixture.Curriculum.SubmitFounderEnglishBatchAsync(
+            var second = await fixture.Curriculum.SubmitFounderBatchAsync(
                 SelectorOrderingFamily(
                     "multiple-second",
                     family,
@@ -1184,7 +1184,7 @@ public sealed class LegendConnectSemanticSpanGroundingTests
         await using var db = ControllerTestHelpers.BuildDb();
         var fixture = CreateFixture(db);
 
-        var broad = await fixture.Curriculum.SubmitFounderEnglishBatchAsync(
+        var broad = await fixture.Curriculum.SubmitFounderBatchAsync(
             SelectorOrderingFamily(
                 "broad",
                 1,
@@ -1195,7 +1195,7 @@ public sealed class LegendConnectSemanticSpanGroundingTests
 
         for (var family = 1; family <= 3; family++)
         {
-            var higher = await fixture.Curriculum.SubmitFounderEnglishBatchAsync(
+            var higher = await fixture.Curriculum.SubmitFounderBatchAsync(
                 SelectorOrderingFamily(
                     "higher",
                     family,
@@ -1226,7 +1226,7 @@ public sealed class LegendConnectSemanticSpanGroundingTests
 
         for (var family = 1; family <= 3; family++)
         {
-            var exact = await fixture.Curriculum.SubmitFounderEnglishBatchAsync(
+            var exact = await fixture.Curriculum.SubmitFounderBatchAsync(
                 SelectorOrderingFamily(
                     "unseen-guard",
                     family,
@@ -1253,7 +1253,7 @@ public sealed class LegendConnectSemanticSpanGroundingTests
 
         for (var family = 1; family <= 3; family++)
         {
-            var submitted = await fixture.Curriculum.SubmitFounderEnglishBatchAsync(
+            var submitted = await fixture.Curriculum.SubmitFounderBatchAsync(
                 CompetingHypothesesTestDesignFamily(family));
             Assert.True(submitted.Succeeded, submitted.Message);
         }
@@ -1342,7 +1342,7 @@ public sealed class LegendConnectSemanticSpanGroundingTests
         var fixture = CreateFixture(db);
         for (var family = 1; family <= 3; family++)
         {
-            Assert.True((await fixture.Curriculum.SubmitFounderEnglishBatchAsync(
+            Assert.True((await fixture.Curriculum.SubmitFounderBatchAsync(
                 CompetingHypothesesTestDesignFamily(family))).Succeeded);
         }
 
@@ -1371,6 +1371,29 @@ public sealed class LegendConnectSemanticSpanGroundingTests
                 CharacterOffset = 0,
                 CharacterLength = "keep".Length
             }));
+        var anchorOwner = await db.LegendLanguageMeaningNodeEvidence
+            .AsNoTracking()
+            .Where(item => item.LanguageCode == "en")
+            .Select(item => new { item.CurriculumFamilyId, item.CurriculumExampleId })
+            .FirstAsync();
+        db.LegendLanguageCompositionalAnchors.AddRange(fillerUnits.Select((unit, index) =>
+            new LegendLanguageCompositionalAnchor
+            {
+                LanguageCode = "en",
+                TextUnitId = unit.Id,
+                LexemeId = keepLexeme.Id,
+                ComponentStartTokenIndex = 0,
+                ComponentLength = 1,
+                CurriculumFamilyId = anchorOwner.CurriculumFamilyId,
+                CurriculumExampleId = anchorOwner.CurriculumExampleId,
+                Dimension = "unindexed_control",
+                Value = $"unindexed_{index}",
+                SemanticSignature = LegendLanguageIdentity.TextHash(
+                    $"unindexed_control|{index}"),
+                AnchorSignature = LegendLanguageIdentity.TextHash(
+                    $"unindexed-anchor|{index}"),
+                Provenance = LegendConnectKnowledgeProvenance.FounderApproved
+            }));
         await db.SaveChangesAsync();
 
         var graph = await fixture.Operations.AnalyzeReusableMeaningGraphAsync(
@@ -1389,13 +1412,55 @@ public sealed class LegendConnectSemanticSpanGroundingTests
     }
 
     [Fact]
+    public async Task HeldOutComposition_IgnoresDenseServeableAnchorsWhenMatchedLexemeIsOutsideGovernedSpan()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var fixture = CreateFixture(db);
+        for (var family = 1; family <= 3; family++)
+        {
+            Assert.True((await fixture.Curriculum.SubmitFounderBatchAsync(
+                CompetingHypothesesTestDesignFamily(family))).Succeeded);
+        }
+
+        await AddDenseKeepMeaningEvidenceAsync(db, occurrenceWithinAnchorSpan: false);
+
+        var graph = await fixture.Operations.AnalyzeReusableMeaningGraphAsync(
+            "Keep both hypotheses; plan an experiment.");
+
+        Assert.True(graph.IsComposed, graph.ReasonCode);
+        Assert.Equal(2, graph.Nodes.Count);
+        Assert.Single(graph.Relations);
+        Assert.Equal(
+            new[] { "design_discriminating_test", "retain_competing_hypotheses" },
+            graph.Nodes.Select(item => item.SemanticValue).OrderBy(item => item).ToArray());
+    }
+
+    [Fact]
+    public async Task DenseServeableAnchorsInsideGovernedSpan_StillFailClosedAtRetrievalBound()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var fixture = CreateFixture(db);
+        Assert.True((await fixture.Curriculum.SubmitFounderBatchAsync(
+            CompetingHypothesesTestDesignFamily(1))).Succeeded);
+
+        await AddDenseKeepMeaningEvidenceAsync(db, occurrenceWithinAnchorSpan: true);
+
+        var graph = await fixture.Operations.AnalyzeReusableMeaningGraphAsync("Keep novel.");
+
+        Assert.False(graph.IsComposed);
+        Assert.Equal("meaning_graph_retrieval_bound_exceeded", graph.ReasonCode);
+        Assert.Empty(graph.Nodes);
+        Assert.Empty(graph.Relations);
+    }
+
+    [Fact]
     public async Task ControlledSurfaceVariations_DoNotUseSubstringOrNearNeighborMatching()
     {
         await using var db = ControllerTestHelpers.BuildDb();
         var fixture = CreateFixture(db);
         for (var family = 1; family <= 3; family++)
         {
-            Assert.True((await fixture.Curriculum.SubmitFounderEnglishBatchAsync(
+            Assert.True((await fixture.Curriculum.SubmitFounderBatchAsync(
                 CompetingHypothesesTestDesignFamily(family))).Succeeded);
         }
 
@@ -1415,9 +1480,9 @@ public sealed class LegendConnectSemanticSpanGroundingTests
         var fixture = CreateFixture(db);
         for (var family = 1; family <= 3; family++)
         {
-            Assert.True((await fixture.Curriculum.SubmitFounderEnglishBatchAsync(
+            Assert.True((await fixture.Curriculum.SubmitFounderBatchAsync(
                 CompetingHypothesesTestDesignFamily(family))).Succeeded);
-            Assert.True((await fixture.Curriculum.SubmitFounderEnglishBatchAsync(
+            Assert.True((await fixture.Curriculum.SubmitFounderBatchAsync(
                 PrematureHypothesisSelectionFamily(family))).Succeeded);
         }
 
@@ -1446,10 +1511,10 @@ public sealed class LegendConnectSemanticSpanGroundingTests
         var fixture = CreateFixture(db);
         for (var family = 1; family <= 3; family++)
         {
-            Assert.True((await fixture.Curriculum.SubmitFounderEnglishBatchAsync(
+            Assert.True((await fixture.Curriculum.SubmitFounderBatchAsync(
                 CompetingHypothesesTestDesignFamily(family))).Succeeded);
         }
-        Assert.True((await fixture.Curriculum.SubmitFounderEnglishBatchAsync(
+        Assert.True((await fixture.Curriculum.SubmitFounderBatchAsync(
             UnrelatedDispatchSurfaceFamily())).Succeeded);
 
         // Both spans resolve to mature primitives, and the primitive pair has
@@ -1479,11 +1544,11 @@ public sealed class LegendConnectSemanticSpanGroundingTests
 
         for (var family = 1; family <= 3; family++)
         {
-            var neutral = await fixture.Curriculum.SubmitFounderEnglishBatchAsync(
+            var neutral = await fixture.Curriculum.SubmitFounderBatchAsync(
                 RichResponsePlanFamily(family, "neutral", "acknowledgement"));
             Assert.True(neutral.Succeeded, neutral.Message);
 
-            var formal = await fixture.Curriculum.SubmitFounderEnglishBatchAsync(
+            var formal = await fixture.Curriculum.SubmitFounderBatchAsync(
                 RichResponsePlanFamily(family + 3, "formal", "formal_acknowledgement"));
             Assert.True(formal.Succeeded, formal.Message);
         }
@@ -1512,12 +1577,12 @@ public sealed class LegendConnectSemanticSpanGroundingTests
         await using var db = ControllerTestHelpers.BuildDb();
         var fixture = CreateFixture(db);
 
-        var source = await fixture.Curriculum.SubmitFounderEnglishBatchAsync(
+        var source = await fixture.Curriculum.SubmitFounderBatchAsync(
             ProjectionIdentitySourceFamily(subject, descriptor));
         Assert.True(source.Succeeded, source.Message);
         for (var support = 1; support <= 3; support++)
         {
-            var contaminant = await fixture.Curriculum.SubmitFounderEnglishBatchAsync(
+            var contaminant = await fixture.Curriculum.SubmitFounderBatchAsync(
                 ProjectionCollisionFamily(subject, unrelatedFamily, support));
             Assert.True(contaminant.Succeeded, contaminant.Message);
         }
@@ -1547,7 +1612,7 @@ public sealed class LegendConnectSemanticSpanGroundingTests
         await using var db = ControllerTestHelpers.BuildDb();
         var fixture = CreateFixture(db);
 
-        var submitted = await fixture.Curriculum.SubmitFounderEnglishBatchAsync(
+        var submitted = await fixture.Curriculum.SubmitFounderBatchAsync(
             SameFamilyProjectionFamily());
         Assert.True(submitted.Succeeded, submitted.Message);
 
@@ -1567,7 +1632,7 @@ public sealed class LegendConnectSemanticSpanGroundingTests
         await using var db = ControllerTestHelpers.BuildDb();
         var fixture = CreateFixture(db);
 
-        var submitted = await fixture.Curriculum.SubmitFounderEnglishBatchAsync(
+        var submitted = await fixture.Curriculum.SubmitFounderBatchAsync(
             SameFamilyProjectionFamily());
         Assert.True(submitted.Succeeded, submitted.Message);
 
@@ -1606,10 +1671,10 @@ public sealed class LegendConnectSemanticSpanGroundingTests
 
         for (var support = 1; support <= 3; support++)
         {
-            var source = await fixture.Curriculum.SubmitFounderEnglishBatchAsync(
+            var source = await fixture.Curriculum.SubmitFounderBatchAsync(
                 ExplicitTransferSourceFamily(support));
             Assert.True(source.Succeeded, source.Message);
-            var result = await fixture.Curriculum.SubmitFounderEnglishBatchAsync(
+            var result = await fixture.Curriculum.SubmitFounderBatchAsync(
                 ExplicitTransferResultFamily(support));
             Assert.True(result.Succeeded, result.Message);
             await fixture.Curriculum.PersistFounderCrossExampleSemanticRelationAsync(
@@ -1645,10 +1710,10 @@ public sealed class LegendConnectSemanticSpanGroundingTests
 
         for (var support = 1; support <= 2; support++)
         {
-            var source = await fixture.Curriculum.SubmitFounderEnglishBatchAsync(
+            var source = await fixture.Curriculum.SubmitFounderBatchAsync(
                 ExplicitTransferSourceFamily(support));
             Assert.True(source.Succeeded, source.Message);
-            var result = await fixture.Curriculum.SubmitFounderEnglishBatchAsync(
+            var result = await fixture.Curriculum.SubmitFounderBatchAsync(
                 ExplicitTransferResultFamily(support));
             Assert.True(result.Succeeded, result.Message);
             await fixture.Curriculum.PersistFounderCrossExampleSemanticRelationAsync(
@@ -1679,7 +1744,7 @@ public sealed class LegendConnectSemanticSpanGroundingTests
         // result text is supplied to or asserted from the planner.
         for (var family = 1; family <= 3; family++)
         {
-            var submitted = await fixture.Curriculum.SubmitFounderEnglishBatchAsync(
+            var submitted = await fixture.Curriculum.SubmitFounderBatchAsync(
                 ResponsePlanFamily(family));
             Assert.True(submitted.Succeeded, submitted.Message);
         }
@@ -1724,7 +1789,7 @@ public sealed class LegendConnectSemanticSpanGroundingTests
         var fixture = CreateFixture(db);
         for (var family = 1; family <= 3; family++)
         {
-            var submitted = await fixture.Curriculum.SubmitFounderEnglishBatchAsync(
+            var submitted = await fixture.Curriculum.SubmitFounderBatchAsync(
                 ResponsePlanPolarityFamily(family));
             Assert.True(submitted.Succeeded, submitted.Message);
         }
@@ -1751,7 +1816,7 @@ public sealed class LegendConnectSemanticSpanGroundingTests
         var fixture = CreateFixture(db);
         for (var family = 1; family <= 3; family++)
         {
-            var submitted = await fixture.Curriculum.SubmitFounderEnglishBatchAsync(
+            var submitted = await fixture.Curriculum.SubmitFounderBatchAsync(
                 ResponsePlanFamily(family));
             Assert.True(submitted.Succeeded, submitted.Message);
         }
@@ -1897,7 +1962,7 @@ public sealed class LegendConnectSemanticSpanGroundingTests
 
         for (var family = 1; family <= 3; family++)
         {
-            var unsupported = await fixture.Curriculum.SubmitFounderEnglishBatchAsync(
+            var unsupported = await fixture.Curriculum.SubmitFounderBatchAsync(
                 ResponsePlanNoTransitionFamily(family));
             Assert.True(unsupported.Succeeded, unsupported.Message);
         }
@@ -1909,7 +1974,7 @@ public sealed class LegendConnectSemanticSpanGroundingTests
 
         for (var family = 1; family <= 3; family++)
         {
-            var supported = await fixture.Curriculum.SubmitFounderEnglishBatchAsync(
+            var supported = await fixture.Curriculum.SubmitFounderBatchAsync(
                 ResponsePlanFamily(family));
             Assert.True(supported.Succeeded, supported.Message);
         }
@@ -1941,7 +2006,7 @@ public sealed class LegendConnectSemanticSpanGroundingTests
 
         var submitted =
             await fixture.Curriculum
-                .SubmitFounderEnglishBatchAsync(batch);
+                .SubmitFounderBatchAsync(batch);
 
         Assert.True(
             submitted.Succeeded,
@@ -2020,7 +2085,7 @@ public sealed class LegendConnectSemanticSpanGroundingTests
 
         var submitted =
             await fixture.Curriculum
-                .SubmitFounderEnglishBatchAsync(
+                .SubmitFounderBatchAsync(
                     GreetingBatch(
                         "grounding.greeting.second-surface"));
 
@@ -2085,7 +2150,7 @@ public sealed class LegendConnectSemanticSpanGroundingTests
 
         var submitted =
             await fixture.Curriculum
-                .SubmitFounderEnglishBatchAsync(batch);
+                .SubmitFounderBatchAsync(batch);
 
         Assert.True(
             submitted.Succeeded,
@@ -2193,7 +2258,7 @@ public sealed class LegendConnectSemanticSpanGroundingTests
 
         var result =
             await fixture.Curriculum
-                .SubmitFounderEnglishBatchAsync(batch);
+                .SubmitFounderBatchAsync(batch);
 
         Assert.False(result.Succeeded);
 
@@ -2282,7 +2347,7 @@ public sealed class LegendConnectSemanticSpanGroundingTests
 
         var result =
             await fixture.Curriculum
-                .SubmitFounderEnglishBatchAsync(batch);
+                .SubmitFounderBatchAsync(batch);
 
         Assert.False(result.Succeeded);
 
@@ -2303,7 +2368,7 @@ public sealed class LegendConnectSemanticSpanGroundingTests
 
         var first =
             await fixture.Curriculum
-                .SubmitFounderEnglishBatchAsync(batch);
+                .SubmitFounderBatchAsync(batch);
 
         Assert.True(
             first.Succeeded,
@@ -2434,7 +2499,7 @@ public sealed class LegendConnectSemanticSpanGroundingTests
                 ]);
 
             var accepted = await fixture.Curriculum
-                .SubmitFounderEnglishBatchAsync(submission);
+                .SubmitFounderBatchAsync(submission);
             Assert.True(accepted.Succeeded, accepted.Message);
         }
 
@@ -2548,7 +2613,7 @@ public sealed class LegendConnectSemanticSpanGroundingTests
                     new LegendConnectSemanticFrameSubmission(sourceFrame),
                     new LegendConnectSemanticFrameSubmission(resultFrame))
             ]);
-        var accepted = await fixture.Curriculum.SubmitFounderEnglishBatchAsync(batch);
+        var accepted = await fixture.Curriculum.SubmitFounderBatchAsync(batch);
         Assert.True(accepted.Succeeded, accepted.Message);
 
         var transitionSignature = await db.LegendSemanticTransitionEvidence
@@ -3229,6 +3294,90 @@ public sealed class LegendConnectSemanticSpanGroundingTests
                 {
                     ["conversation_function"] = "test_design_guidance"
                 }))]);
+    }
+
+    private static async Task AddDenseKeepMeaningEvidenceAsync(
+        MasterAppDbContext db,
+        bool occurrenceWithinAnchorSpan)
+    {
+        var owner = await db.LegendLanguageMeaningNodeEvidence
+            .AsNoTracking()
+            .Where(item => item.LanguageCode == "en")
+            .Select(item => new { item.CurriculumFamilyId, item.CurriculumExampleId })
+            .FirstAsync();
+        var keepLexeme = await db.LegendLanguageLexemes.SingleAsync(item =>
+            item.LanguageCode == "en" &&
+            item.NormalizedHash == LegendLanguageIdentity.TextHash("keep"));
+
+        for (var index = 0; index < 513; index++)
+        {
+            var text = $"keep unrelated semantic observation {index}";
+            var textUnit = new LegendLanguageTextUnit
+            {
+                LanguageCode = "en",
+                StoragePartition = "test-dense-qualified-semantic-retrieval",
+                NormalizedHash = LegendLanguageIdentity.TextHash(text),
+                Text = text,
+                Provenance = LegendConnectKnowledgeProvenance.FounderApproved,
+                IsTrainingEligible = true
+            };
+            var signature = LegendLanguageIdentity.TextHash(
+                $"dense_retrieval_control|{occurrenceWithinAnchorSpan}|{index}");
+            var anchor = new LegendLanguageCompositionalAnchor
+            {
+                LanguageCode = "en",
+                TextUnitId = textUnit.Id,
+                LexemeId = keepLexeme.Id,
+                ComponentStartTokenIndex = occurrenceWithinAnchorSpan ? 0 : 1,
+                ComponentLength = occurrenceWithinAnchorSpan ? 1 : 3,
+                CurriculumFamilyId = owner.CurriculumFamilyId,
+                CurriculumExampleId = owner.CurriculumExampleId,
+                Dimension = "dense_retrieval_control",
+                Value = $"control_{index}",
+                SemanticSignature = signature,
+                AnchorSignature = LegendLanguageIdentity.TextHash(
+                    $"dense-retrieval-anchor|{occurrenceWithinAnchorSpan}|{index}"),
+                Provenance = LegendConnectKnowledgeProvenance.FounderApproved
+            };
+            db.LegendLanguageTextUnits.Add(textUnit);
+            db.LegendLanguageLexicalOccurrences.Add(new LegendLanguageLexicalOccurrence
+            {
+                TextUnitId = textUnit.Id,
+                LexemeId = keepLexeme.Id,
+                TokenIndex = 0,
+                CharacterOffset = 0,
+                CharacterLength = "keep".Length
+            });
+            db.LegendLanguageCompositionalAnchors.Add(anchor);
+            db.LegendLanguageMeaningNodeEvidence.Add(new LegendLanguageMeaningNodeEvidence
+            {
+                LanguageCode = "en",
+                CurriculumFamilyId = owner.CurriculumFamilyId,
+                CurriculumExampleId = owner.CurriculumExampleId,
+                CompositionalAnchorId = anchor.Id,
+                NodeKey = $"dense-retrieval-control-{index}",
+                SemanticSignature = signature,
+                SemanticDimension = "dense_retrieval_control",
+                SemanticValue = $"control_{index}",
+                Provenance = LegendConnectKnowledgeProvenance.FounderApproved
+            });
+            db.LegendLanguageMeaningPrimitives.Add(new LegendLanguageMeaningPrimitive
+            {
+                LanguageCode = "en",
+                SemanticSignature = signature,
+                SemanticDimension = "dense_retrieval_control",
+                SemanticValue = $"control_{index}",
+                MaturityState = "Validated",
+                SupportCount = 1,
+                IndependentSourceCount = 1,
+                HumanVerifiedSupportCount = 1,
+                Confidence = 1m,
+                IsProductionEligible = true,
+                Provenance = LegendConnectKnowledgeProvenance.FounderApproved
+            });
+        }
+
+        await db.SaveChangesAsync();
     }
 
     private static LegendConnectCurriculumBatchSubmission

@@ -415,7 +415,8 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
         string sourceLanguageCode,
         LegendConnectNativeInferenceSnapshot? internalInference,
         DateTime decidedUtc,
-        bool languageGoverned = true)
+        bool languageGoverned = true,
+        LegendConnectDiscourseStateSnapshot? discourseState = null)
     {
         var question = (input ?? string.Empty).Trim();
         var normalized = question.ToLowerInvariant();
@@ -521,6 +522,22 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
                 true,
                 LegendConnectResearchNeed.ExplicitVerificationRequest,
                 "explicit_verification_requires_research");
+        }
+
+        // A governed reference binding on the current user turn proves that
+        // the request depends on conversation-scoped semantic state. Public
+        // research cannot supply authority for that state. Apply this before
+        // time-sensitive and external-knowledge-gap classification so words
+        // such as "which" or "now" cannot turn a discourse reference into an
+        // unrelated internet request. An unresolved governed reference is
+        // equally conversation-scoped and must remain on the conversational
+        // fail-closed/escalation path rather than be researched externally.
+        if (HasCurrentTurnDiscourseAuthority(discourseState))
+        {
+            return Decision(
+                false,
+                LegendConnectResearchNeed.NotResearchable,
+                "conversation_context_is_not_external_research");
         }
 
         if (ContainsResearchSignal(
@@ -1348,7 +1365,8 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
             WithResearchDecision(
                 input ?? string.Empty,
                 sourceLanguageCode,
-                inference);
+                inference,
+                discourseState);
         if (string.IsNullOrWhiteSpace(LegendLanguageIdentity.NormalizeText(input ?? string.Empty)))
             return Finish(NativeInferenceUnsupported("invalid_input"));
 
@@ -1639,15 +1657,27 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
     private static LegendConnectNativeInferenceSnapshot WithResearchDecision(
         string input,
         string sourceLanguageCode,
-        LegendConnectNativeInferenceSnapshot inference) =>
+        LegendConnectNativeInferenceSnapshot inference,
+        LegendConnectDiscourseStateSnapshot? discourseState = null) =>
         inference with
         {
             ResearchDecision = DecideResearchNeeded(
                 input,
                 sourceLanguageCode,
                 inference,
-                DateTime.UtcNow)
+                DateTime.UtcNow,
+                discourseState: discourseState)
         };
+
+    private static bool HasCurrentTurnDiscourseAuthority(
+        LegendConnectDiscourseStateSnapshot? discourseState)
+    {
+        var currentTurn = discourseState?.Turns.LastOrDefault();
+        return currentTurn is { Role: "user", Bindings.Count: > 0 } &&
+            currentTurn.Bindings.Any(binding =>
+                binding.ResolutionState is "bound" or "unresolved" &&
+                !string.IsNullOrWhiteSpace(binding.SelectorSemanticSignature));
+    }
 
     private static LegendConnectResearchAccessClass ClassifyResearchAccess(
         string normalized)
@@ -4782,14 +4812,28 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
                 null, null, 0, 0);
         }
 
+        var sourceDefinition = await _registry.GetEnabledLearningLanguageAsync(
+            submission.SourceLanguageCode,
+            cancellationToken);
+        if (sourceDefinition is null)
+        {
+            return new LegendConnectCurriculumSubmissionResult(
+                false, false, "source_language_training_unavailable",
+                "Select one explicitly enabled source language for the complete curriculum manifest.",
+                null, null, 0, 0);
+        }
+        var sourceLanguage = sourceDefinition.Code;
+
         // Manifest-wide preflight remains synchronous and mutation-free.
         // One invalid family or cross-example semantic declaration rejects the
         // complete manifest before durable acceptance. Expensive learning does
         // not run inside the HTTP request.
-        var manifestValidation = await Curriculum.PreflightFounderEnglishManifestAsync(
+        var manifestValidation = await Curriculum.PreflightFounderManifestAsync(
             new LegendConnectCurriculumManifestSubmission(
                 families,
-                submission.CrossExampleSemanticRelationships),
+                submission.CrossExampleSemanticRelationships,
+                sourceLanguage),
+            sourceLanguage,
             cancellationToken);
         if (manifestValidation is not null)
             return manifestValidation;
@@ -4801,7 +4845,8 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
         var payload = JsonSerializer.Serialize(
             new LegendConnectCurriculumManifestSubmission(
                 families,
-                submission.CrossExampleSemanticRelationships));
+                submission.CrossExampleSemanticRelationships,
+                sourceLanguage));
         var manifestHash = Convert.ToHexString(
             SHA256.HashData(Encoding.UTF8.GetBytes(payload))).ToLowerInvariant();
         var workIdentityBytes = SHA256.HashData(
@@ -4853,6 +4898,7 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
         {
             Id = workId,
             FounderUserId = founder,
+            SourceLanguageCode = sourceLanguage,
             ManifestHash = manifestHash,
             PayloadJson = payload,
             FamilyCount = families.Length,
@@ -4873,7 +4919,7 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
             FounderUserId = founder,
             Action = "FounderCurriculumManifestAccepted",
             Result = "Accepted",
-            LanguageCode = "en",
+            LanguageCode = sourceLanguage,
             Detail = Bound(
                 $"Manifest {manifestHash[..12]} accepted: {families.Length} families / {exampleCount} examples. " +
                 "Full learning executes through the existing curriculum authority in bounded background work.",
@@ -4899,7 +4945,7 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
         // curriculum submission. No HTTP path may mutate a family directly.
         return await SubmitFounderCurriculumManifestAsync(
             founderUserId,
-            new LegendConnectCurriculumManifestSubmission([submission], []),
+            new LegendConnectCurriculumManifestSubmission([submission], [], "en"),
             cancellationToken);
     }
 
@@ -5311,9 +5357,9 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
             .ToListAsync(cancellationToken);
 
         var manifest = Array.Empty<LegendCurriculumManifestWorkItem>();
-        if (string.Equals(language, "en", StringComparison.OrdinalIgnoreCase))
         {
-            var manifestQuery = _db.Set<LegendCurriculumManifestWorkItem>().AsNoTracking();
+            var manifestQuery = _db.Set<LegendCurriculumManifestWorkItem>().AsNoTracking()
+                .Where(item => item.SourceLanguageCode == language);
             if (search is not null)
             {
                 manifestQuery = manifestQuery.Where(item => item.ProcessingState.ToLower().Contains(search) ||
@@ -5872,7 +5918,7 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
             item.Id,
             "Semantic manifest",
             1,
-            "en",
+            item.SourceLanguageCode,
             item.CreatedUtc,
             $"{item.ExampleCount:N0} declared examples",
             null,

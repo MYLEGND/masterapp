@@ -315,10 +315,9 @@ builder.Services.AddRateLimiter(options =>
     // identity-or-IP partition uses the shared partition-key helper.
     options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(context =>
     {
-        var path = context.Request.Path.Value ?? "";
-        // Allow SignalR hubs/websockets without limiting
-        if (path.StartsWith("/livesync", StringComparison.OrdinalIgnoreCase) ||
-            path.StartsWith("/leadbridgehub", StringComparison.OrdinalIgnoreCase))
+        // Allow every mapped SignalR hub and its negotiate/transport routes
+        // without consuming the ordinary HTTP request partition.
+        if (RealtimeHubRateLimitAuthority.IsHubPath(context.Request.Path))
         {
             return RateLimitPartition.GetNoLimiter("hub");
         }

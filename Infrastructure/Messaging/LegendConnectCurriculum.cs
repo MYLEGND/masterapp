@@ -1795,21 +1795,24 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
     /// so a multi-family Founder manifest can be validated completely before
     /// the first family is written.
     /// </summary>
-    internal async Task<LegendConnectCurriculumSubmissionResult?> PreflightFounderEnglishBatchAsync(
+    internal async Task<LegendConnectCurriculumSubmissionResult?> PreflightFounderBatchAsync(
         LegendConnectCurriculumBatchSubmission submission,
+        string sourceLanguageCode,
         CancellationToken cancellationToken = default)
     {
         var familyKey = NormalizeFamilyKey(submission.FamilyKey);
         var examples = NormalizeExamples(submission.Examples);
         var semanticTransitions = NormalizeSemanticTransitions(submission.SemanticTransitions);
         var semanticSpanGroundings = NormalizeSemanticSpanGroundings(submission.SemanticSpanGroundings);
-        var english = await _languages.NormalizeEnabledTranslationLanguageAsync("en", cancellationToken);
-        if (english is null || !string.Equals(english, "en", StringComparison.OrdinalIgnoreCase))
-            return Rejected("english_training_unavailable", "English must be an enabled direct Founder training language.", familyKey);
+        var sourceDefinition = await _languages.GetEnabledLearningLanguageAsync(
+            sourceLanguageCode,
+            cancellationToken);
+        if (sourceDefinition is null)
+            return Rejected("source_language_training_unavailable", "The manifest source language must be an explicitly enabled direct Founder training language.", familyKey);
         if (familyKey is null)
             return Rejected("invalid_curriculum_family", "Use a concise semantic family key such as conversation.greeting.basic.", null);
         if (examples is null)
-            return Rejected("invalid_curriculum_examples", "A structured curriculum family requires 2–100 distinct English examples with controlled variations.", familyKey);
+            return Rejected("invalid_curriculum_examples", "A structured curriculum family requires 2–100 distinct examples in its declared source language with controlled variations.", familyKey);
         if (semanticTransitions is null)
             return Rejected(
                 "invalid_semantic_transition",
@@ -1881,8 +1884,9 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
     /// this same immutable manifest; neither surface text nor family order is
     /// used to create a response relationship.
     /// </summary>
-    internal async Task<LegendConnectCurriculumSubmissionResult?> PreflightFounderEnglishManifestAsync(
+    internal async Task<LegendConnectCurriculumSubmissionResult?> PreflightFounderManifestAsync(
         LegendConnectCurriculumManifestSubmission submission,
+        string sourceLanguageCode,
         CancellationToken cancellationToken = default)
     {
         var families = submission.Families?.ToArray() ?? [];
@@ -1893,7 +1897,7 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
             StringComparer.Ordinal);
         foreach (var family in families)
         {
-            var validation = await PreflightFounderEnglishBatchAsync(family, cancellationToken);
+            var validation = await PreflightFounderBatchAsync(family, sourceLanguageCode, cancellationToken);
             if (validation is not null)
                 return validation;
 
@@ -1917,7 +1921,7 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
         // work so a malformed later submission cannot partially mutate valid
         // family evidence and fail only when its relation work is reached.
         var semanticExampleIdentities = declaredExamples.Keys
-            .Select(FounderSemanticExampleIdentity)
+            .Select(item => FounderSemanticExampleIdentity(sourceLanguageCode, item))
             .ToArray();
         if (semanticExampleIdentities.Length > 0)
         {
@@ -1938,7 +1942,7 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
             ).ToListAsync(cancellationToken);
             foreach (var item in declaredExamples)
             {
-                var identity = FounderSemanticExampleIdentity(item.Key);
+                var identity = FounderSemanticExampleIdentity(sourceLanguageCode, item.Key);
                 var textHash = LegendLanguageIdentity.TextHash(item.Value.Example.Text);
                 if (existing.Any(row =>
                     string.Equals(row.SemanticExampleIdentity, identity, StringComparison.Ordinal) &&
@@ -1979,11 +1983,12 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
         return null;
     }
 
-    public async Task<LegendConnectCurriculumSubmissionResult> SubmitFounderEnglishBatchAsync(
+    public async Task<LegendConnectCurriculumSubmissionResult> SubmitFounderBatchAsync(
         LegendConnectCurriculumBatchSubmission submission,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        string sourceLanguageCode = "en")
     {
-        var validation = await PreflightFounderEnglishBatchAsync(submission, cancellationToken);
+        var validation = await PreflightFounderBatchAsync(submission, sourceLanguageCode, cancellationToken);
         if (validation is not null)
             return validation;
 
@@ -1991,7 +1996,9 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
         var examples = NormalizeExamples(submission.Examples)!;
         var semanticTransitions = NormalizeSemanticTransitions(submission.SemanticTransitions)!;
         var semanticSpanGroundings = NormalizeSemanticSpanGroundings(submission.SemanticSpanGroundings)!;
-        const string english = "en";
+        var sourceLanguage = (await _languages.GetEnabledLearningLanguageAsync(
+            sourceLanguageCode,
+            cancellationToken))!.Code;
         var newlyCreatedSourceTextUnitIds = new HashSet<Guid>();
         var newlyCreatedSourceExampleIds = new HashSet<Guid>();
         var sourceTextUnitsById = new Dictionary<Guid, LegendLanguageTextUnit>();
@@ -2027,12 +2034,12 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
         {
             var textHash = LegendLanguageIdentity.TextHash(example.Text);
             var textUnit = await _db.Set<LegendLanguageTextUnit>()
-                .SingleOrDefaultAsync(item => item.LanguageCode == english && item.NormalizedHash == textHash, cancellationToken);
+                .SingleOrDefaultAsync(item => item.LanguageCode == sourceLanguage && item.NormalizedHash == textHash, cancellationToken);
             if (textUnit is null)
             {
                 var submitted = await _corpus.SubmitApprovedKnowledgeAsync(
                     new LegendConnectKnowledgeSubmission(
-                        english,
+                        sourceLanguage,
                         example.Text,
                         null,
                         null,
@@ -2043,12 +2050,12 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
                     cancellationToken,
                     queueFounderExpansion: false);
                 if (!submitted.Succeeded && !submitted.DuplicatePrevented)
-                    return Rejected(submitted.ErrorCode ?? "curriculum_source_rejected", submitted.Message ?? "The English curriculum example could not be retained.", familyKey);
+                    return Rejected(submitted.ErrorCode ?? "curriculum_source_rejected", submitted.Message ?? "The curriculum example could not be retained in its declared source language.", familyKey);
 
                 textUnit = submitted.SourceTextUnitId is { } textUnitId
                     ? await _db.Set<LegendLanguageTextUnit>().SingleAsync(item => item.Id == textUnitId, cancellationToken)
                     : await _db.Set<LegendLanguageTextUnit>().SingleAsync(item =>
-                        item.LanguageCode == english && item.NormalizedHash == textHash, cancellationToken);
+                        item.LanguageCode == sourceLanguage && item.NormalizedHash == textHash, cancellationToken);
                 newlyCreatedSourceTextUnitIds.Add(textUnit.Id);
                 createdSourceCount++;
             }
@@ -2072,13 +2079,14 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
             var curriculumExample = await GetOrCreateExampleAsync(
                 family,
                 textUnit,
-                english,
+                sourceLanguage,
                 derivedFromCurriculumExampleId: null,
                 cancellationToken);
             if (_db.Entry(curriculumExample).State == EntityState.Added)
                 newlyCreatedSourceExampleIds.Add(curriculumExample.Id);
             await EnsureFounderSemanticExampleIdentityAsync(
                 curriculumExample,
+                sourceLanguage,
                 example.SemanticExampleKey,
                 cancellationToken);
             await EnsureVariationsAsync(curriculumExample, example.Variations, cancellationToken);
@@ -2103,7 +2111,7 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
                 null,
                 newlyCreatedSourceTextUnitIds.Contains(item.TextUnitId)))
             .ToList();
-        await EnsureLanguageLexicalObservationsAsync(structuredSourceInputs, english, cancellationToken);
+        await EnsureLanguageLexicalObservationsAsync(structuredSourceInputs, sourceLanguage, cancellationToken);
         var sourceTextUnitIds = sourceExamples.Select(item => item.TextUnitId).ToHashSet();
         var expectedLexicalOccurrenceCount = sourceTextUnitsById.Values
             .Where(item => sourceTextUnitIds.Contains(item.Id))
@@ -2124,7 +2132,7 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
         await AttachExplicitFounderSemanticAnchorsAsync(
             family,
             sourceExamples,
-            english,
+            sourceLanguage,
             semanticTransitions,
             semanticSpanGroundings,
             sourceTextUnitsById,
@@ -2143,7 +2151,7 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
             family,
             sourceExamples,
             examples,
-            english,
+            sourceLanguage,
             cancellationToken);
         // Co-realization is a derived relation between two explicit meaning
         // graphs. It must run only after the canonical graphs have been
@@ -2152,7 +2160,7 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
         await AttachFounderCoRealizedSemanticAnchorsAsync(
             family,
             sourceExamples,
-            english,
+            sourceLanguage,
             sourceTextUnitsById,
             knownVariationsByExample,
             cancellationToken);
@@ -2160,7 +2168,7 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
             family,
             sourceExamples,
             semanticTransitions,
-            english,
+            sourceLanguage,
             knownVariationsByExample,
             newlyCreatedSourceExampleIds,
             provenance: LegendConnectKnowledgeProvenance.FounderApproved,
@@ -2176,7 +2184,7 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
         // create a competing evidence path.
         await ReconcileFounderApprovedSourceEvidenceAsync(
             family.Id,
-            english,
+            sourceLanguage,
             cancellationToken);
 
         // This is the existing expansion authority. It is idempotent by source
@@ -2194,7 +2202,7 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
             await AttachExistingExpansionsAsync(sourceExample, sourceUnit, cancellationToken);
         }
 
-        // A new Founder family has just established its entire active English
+        // A new Founder family has just established its entire active source-language
         // source set in an owned durable evaluation transaction. Reusing that
         // exact canonical set avoids a second broad read of CurriculumExamples
         // while independent family workers still hold their own writes.
@@ -2209,11 +2217,11 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
         var knownAnalysisAnchors = knownNewFamilyExamples is not null
             ? BuildTrackedExplicitControlledAnchorsByExample(
                 sourceExamples.Select(item => item.Id).ToArray(),
-                english)
+                sourceLanguage)
             : null;
         await AnalyzeFamilyLanguageAsync(
             family.Id,
-            english,
+            sourceLanguage,
             pairKey: null,
             cancellationToken,
             knownNewFamilyExamples,
@@ -2221,14 +2229,14 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
             knownAnalysisAnchors,
             sourceIdentitiesKnownNew: knownNewFamilyExamples is not null);
         var targetExpansionCount = await _db.Set<LegendCurriculumExample>()
-            .CountAsync(item => item.CurriculumFamilyId == family.Id && item.LanguageCode != english, cancellationToken);
+            .CountAsync(item => item.CurriculumFamilyId == family.Id && item.LanguageCode != sourceLanguage, cancellationToken);
         return new LegendConnectCurriculumSubmissionResult(
             true,
             createdSourceCount == 0,
             null,
             createdSourceCount == 0
-                ? "The curriculum family already matched canonical English entries; no duplicate learning confidence was created."
-                : "Founder English curriculum was saved and queued through the existing Azure expansion pipeline.",
+                ? $"The curriculum family already matched canonical {sourceLanguage} entries; no duplicate learning confidence was created."
+                : $"Founder {sourceLanguage} curriculum was saved and queued through the existing governed expansion pipeline.",
             family.FamilyKey,
             family.Id,
             sourceExamples.Select(item => item.Id).Distinct().Count(),
@@ -2237,19 +2245,22 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
 
     /// <summary>
     /// Establishes the existing canonical language-pair rows that monolingual
-    /// Founder English evidence may need for ordinary expansion.  Manifest
+    /// Founder source-language evidence may need for ordinary expansion. Manifest
     /// workers call this once before independent family claims begin: a
     /// language-pair row is a shared canonical dependency, whereas families
     /// are otherwise independent.  This does not interpret curriculum,
     /// create evidence, or queue a second processing path.
     /// </summary>
-    internal async Task EnsureFounderEnglishExpansionPairsAsync(
+    internal async Task EnsureFounderExpansionPairsAsync(
+        string sourceLanguageCode,
         CancellationToken cancellationToken = default)
     {
-        const string english = "en";
-        var source = await _languages.NormalizeEnabledTranslationLanguageAsync(english, cancellationToken);
-        if (source is null)
+        var sourceDefinition = await _languages.GetEnabledLearningLanguageAsync(
+            sourceLanguageCode,
+            cancellationToken);
+        if (sourceDefinition is null)
             return;
+        var source = sourceDefinition.Code;
 
         var targets = await _languages.ListEnabledTranslationLanguagesAsync(cancellationToken);
         foreach (var target in targets
@@ -2269,6 +2280,7 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
     /// </summary>
     internal async Task EnsureFounderManifestLexicalPrerequisitesAsync(
         IReadOnlyCollection<LegendConnectCurriculumBatchSubmission> families,
+        string sourceLanguageCode,
         CancellationToken cancellationToken = default)
     {
         var components = families
@@ -2280,10 +2292,9 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
         if (components.Length == 0)
             return;
 
-        const string english = "en";
         var admitted = await LegendConnectCanonicalCurriculumPersistence.AdmitLexemesAsync(
             _db,
-            english,
+            sourceLanguageCode,
             components.Select(item => new LegendCanonicalLexemeAdmission(
                 item.NormalizedHash,
                 item.NormalizedText,
@@ -4130,20 +4141,23 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
             cancellationToken);
 
     /// <summary>
-    /// Resolves only active, serveable Founder meaning units containing exact
-    /// observed lexemes from the current request.  The former query bounded
-    /// raw lexical occurrences before proving that a text unit had any active
-    /// meaning evidence.  Dense common words could therefore spend the entire
-    /// budget on unrelated or structurally incomplete rows and prevent the
-    /// governed graph from seeing its real candidates.  Qualification and
-    /// relevance ordering now happen in the same indexed query; downstream
-    /// graph, relation, contradiction and transition gates remain unchanged.
+    /// Resolves active Founder semantic units whose governed component span
+    /// contains an exact observed lexeme from the request.
+    /// A common word elsewhere in a text unit is not evidence that the unit's
+    /// semantic anchor can ground that word.  Reusable-meaning callers also
+    /// require the active governed node and primitive that their downstream
+    /// projection consumes; anchor-only structural callers retain their
+    /// existing evidence boundary. Applying those same caller-specific gates
+    /// before the fixed retrieval boundary prevents unrelated rows from
+    /// exhausting it while retaining the bound for genuinely dense,
+    /// potentially ambiguous semantic evidence.
     /// </summary>
     private async Task<IndexedSemanticTextUnitRetrieval>
         LoadIndexedSemanticTextUnitIdsAsync(
             string language,
             IReadOnlyCollection<string> inputLexemeHashes,
-            CancellationToken cancellationToken)
+            CancellationToken cancellationToken,
+            bool requireReusableMeaningEvidence = false)
     {
         if (inputLexemeHashes.Count == 0)
             return IndexedSemanticTextUnitRetrieval.Empty;
@@ -4166,7 +4180,24 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
                 anchor.SupersededUtc == null &&
                 anchor.Provenance == LegendConnectKnowledgeProvenance.FounderApproved &&
                 anchor.ComponentStartTokenIndex != null &&
-                anchor.ComponentLength > 0
+                anchor.ComponentLength > 0 &&
+                occurrence.TokenIndex >= anchor.ComponentStartTokenIndex &&
+                occurrence.TokenIndex < anchor.ComponentStartTokenIndex + anchor.ComponentLength &&
+                (!requireReusableMeaningEvidence ||
+                 _db.Set<LegendLanguageMeaningNodeEvidence>().Any(node =>
+                     node.CompositionalAnchorId == anchor.Id &&
+                     node.LanguageCode == language &&
+                     node.SupersededUtc == null &&
+                     node.Provenance == LegendConnectKnowledgeProvenance.FounderApproved &&
+                     _db.Set<LegendLanguageMeaningPrimitive>().Any(primitive =>
+                         primitive.LanguageCode == node.LanguageCode &&
+                         primitive.SemanticSignature == node.SemanticSignature &&
+                         primitive.SupersededUtc == null &&
+                         primitive.Provenance == LegendConnectKnowledgeProvenance.FounderApproved &&
+                         primitive.MaturityState != "Contradicted" &&
+                         primitive.ContradictionCount == 0 &&
+                         primitive.IndependentSourceCount >= 1 &&
+                         primitive.HumanVerifiedSupportCount >= 1)))
             group lexeme by occurrence.TextUnitId into candidate
             orderby candidate.Select(item => item.NormalizedHash).Distinct().Count() descending,
                 candidate.Key
@@ -4713,7 +4744,8 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
             indexedTextUnits = await LoadIndexedSemanticTextUnitIdsAsync(
                 languageCode,
                 inputLexemeHashes,
-                cancellationToken);
+                cancellationToken,
+                requireReusableMeaningEvidence: true);
             if (indexedTextUnits.BoundExceeded)
             {
                 return new(
@@ -12372,14 +12404,14 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
     /// </summary>
     private async Task EnsureFounderSemanticExampleIdentityAsync(
         LegendCurriculumExample curriculumExample,
+        string languageCode,
         string? semanticExampleKey,
         CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(semanticExampleKey))
             return;
 
-        var identity = LegendLanguageIdentity.TextHash(
-            "founder-semantic-example|v1|" + semanticExampleKey);
+        var identity = FounderSemanticExampleIdentity(languageCode, semanticExampleKey);
         if (string.IsNullOrWhiteSpace(curriculumExample.SemanticExampleIdentity))
         {
             var existing = await _db.Set<LegendCurriculumExample>().AsNoTracking()
@@ -15556,7 +15588,8 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
     internal async Task PersistFounderCrossExampleSemanticRelationAsync(
         LegendConnectCrossExampleSemanticRelationshipSubmission declaration,
         int evaluatorVersion,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        string sourceLanguageCode = "en")
     {
         var sourceKey = NormalizeDimension(declaration.SourceSemanticExampleKey)
             ?? throw new InvalidOperationException("The Founder cross-example source identity is invalid.");
@@ -15567,15 +15600,15 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
         if (string.Equals(sourceKey, resultKey, StringComparison.Ordinal))
             throw new InvalidOperationException("A Founder cross-example relationship requires distinct semantic examples.");
 
-        var sourceIdentity = FounderSemanticExampleIdentity(sourceKey);
-        var resultIdentity = FounderSemanticExampleIdentity(resultKey);
+        var sourceIdentity = FounderSemanticExampleIdentity(sourceLanguageCode, sourceKey);
+        var resultIdentity = FounderSemanticExampleIdentity(sourceLanguageCode, resultKey);
         var examples = await (
             from example in _db.Set<LegendCurriculumExample>()
             join family in _db.Set<LegendCurriculumFamily>() on example.CurriculumFamilyId equals family.Id
             join unit in _db.Set<LegendLanguageTextUnit>() on example.TextUnitId equals unit.Id
             where (example.SemanticExampleIdentity == sourceIdentity ||
                    example.SemanticExampleIdentity == resultIdentity) &&
-                example.LanguageCode == "en" && example.DerivedFromCurriculumExampleId == null &&
+                example.LanguageCode == sourceLanguageCode && example.DerivedFromCurriculumExampleId == null &&
                 example.SupersededUtc == null &&
                 example.Provenance == LegendConnectKnowledgeProvenance.FounderApproved &&
                 family.Provenance == LegendConnectKnowledgeProvenance.FounderApproved &&
@@ -15734,9 +15767,6 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
         string languageCode,
         CancellationToken cancellationToken)
     {
-        if (!string.Equals(languageCode, "en", StringComparison.Ordinal))
-            return;
-
         var relationRows = await _db.Set<LegendFounderSemanticExampleRelationEvidence>().AsNoTracking()
             .Where(item => item.SupersededUtc == null && item.LanguageCode == languageCode &&
                 item.Provenance == LegendConnectKnowledgeProvenance.FounderApproved &&
@@ -16092,8 +16122,13 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
                 }))));
     }
 
-    private static string FounderSemanticExampleIdentity(string semanticExampleKey) =>
-        LegendLanguageIdentity.TextHash("founder-semantic-example|v1|" + semanticExampleKey);
+    private static string FounderSemanticExampleIdentity(string languageCode, string semanticExampleKey) =>
+        string.Equals(languageCode, "en", StringComparison.OrdinalIgnoreCase)
+            // Preserve the canonical identity of already-retained English
+            // declarations while scoping every newly supported language.
+            ? LegendLanguageIdentity.TextHash("founder-semantic-example|v1|" + semanticExampleKey)
+            : LegendLanguageIdentity.TextHash(
+                "founder-semantic-example|v2|" + languageCode.Trim().ToLowerInvariant() + "|" + semanticExampleKey);
 
     private static string StructuralRelationFrameDimension(
         string relationKind,

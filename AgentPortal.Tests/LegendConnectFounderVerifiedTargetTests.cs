@@ -188,7 +188,7 @@ public sealed class LegendConnectFounderVerifiedTargetTests
     {
         await using var db = ControllerTestHelpers.BuildDb();
         var fixture = CreateFixture(db);
-        var curriculum = await fixture.Curriculum.SubmitFounderEnglishBatchAsync(new LegendConnectCurriculumBatchSubmission(
+        var curriculum = await fixture.Curriculum.SubmitFounderBatchAsync(new LegendConnectCurriculumBatchSubmission(
             "verified.targets.structural",
             "Controlled variation",
             [

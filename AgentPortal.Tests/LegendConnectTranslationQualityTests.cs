@@ -379,10 +379,10 @@ public sealed class LegendConnectTranslationQualityTests
     {
         await using var db = ControllerTestHelpers.BuildDb();
         var fixture = CreateFixture(db);
-        var first = await fixture.Curriculum.SubmitFounderEnglishBatchAsync(CurriculumBatch(
+        var first = await fixture.Curriculum.SubmitFounderBatchAsync(CurriculumBatch(
             ("I work.", "first", "work"),
             ("She works.", "third", "works")));
-        var second = await fixture.Curriculum.SubmitFounderEnglishBatchAsync(CurriculumBatch(
+        var second = await fixture.Curriculum.SubmitFounderBatchAsync(CurriculumBatch(
             ("I walk.", "first", "walk"),
             ("She walks.", "third", "walks")));
 

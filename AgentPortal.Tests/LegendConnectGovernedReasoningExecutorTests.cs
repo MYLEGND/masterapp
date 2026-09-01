@@ -1391,7 +1391,7 @@ public sealed class LegendConnectGovernedReasoningExecutorTests
         };
         for (var support = 1; support <= 3; support++)
         {
-            var submitted = await curriculum.SubmitFounderEnglishBatchAsync(
+            var submitted = await curriculum.SubmitFounderBatchAsync(
                 EpistemicSurfaceFamily(support, storedResponses[support - 1]));
             Assert.True(submitted.Succeeded, submitted.Message);
             await curriculum.PersistFounderCrossExampleSemanticRelationAsync(
@@ -1558,7 +1558,7 @@ public sealed class LegendConnectGovernedReasoningExecutorTests
 
         for (var support = 1; support <= 3; support++)
         {
-            var submitted = await curriculum.SubmitFounderEnglishBatchAsync(
+            var submitted = await curriculum.SubmitFounderBatchAsync(
                 DeductionSurfaceFamily(support));
             Assert.True(submitted.Succeeded, submitted.Message);
             await curriculum.PersistFounderCrossExampleSemanticRelationAsync(
@@ -1619,11 +1619,11 @@ public sealed class LegendConnectGovernedReasoningExecutorTests
 
         for (var support = 1; support <= 3; support++)
         {
-            Assert.True((await curriculum.SubmitFounderEnglishBatchAsync(
+            Assert.True((await curriculum.SubmitFounderBatchAsync(
                 StateFamily(support, "observed", "The problem is observed.", "observed"))).Succeeded);
-            Assert.True((await curriculum.SubmitFounderEnglishBatchAsync(
+            Assert.True((await curriculum.SubmitFounderBatchAsync(
                 StateFamily(support, "diagnosed", "The problem is diagnosed.", "diagnosed"))).Succeeded);
-            Assert.True((await curriculum.SubmitFounderEnglishBatchAsync(
+            Assert.True((await curriculum.SubmitFounderBatchAsync(
                 StateFamily(support, "resolved", "The problem is resolved.", "resolved"))).Succeeded);
         }
 
@@ -1651,7 +1651,7 @@ public sealed class LegendConnectGovernedReasoningExecutorTests
         };
         for (var support = 1; support <= 3; support++)
         {
-            var submitted = await curriculum.SubmitFounderEnglishBatchAsync(
+            var submitted = await curriculum.SubmitFounderBatchAsync(
                 ResponseFamily(support, storedResponses[support - 1]));
             Assert.True(submitted.Succeeded, submitted.Message);
         }
@@ -1729,7 +1729,7 @@ public sealed class LegendConnectGovernedReasoningExecutorTests
 
         for (var support = 1; support <= 3; support++)
         {
-            var submitted = await curriculum.SubmitFounderEnglishBatchAsync(
+            var submitted = await curriculum.SubmitFounderBatchAsync(
                 NonExecutableReasoningRelationFamily(support));
             Assert.True(submitted.Succeeded, submitted.Message);
             await curriculum.PersistFounderCrossExampleSemanticRelationAsync(

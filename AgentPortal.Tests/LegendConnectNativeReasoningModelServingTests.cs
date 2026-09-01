@@ -242,7 +242,7 @@ public sealed class LegendConnectNativeReasoningModelServingTests
     private static async Task SeedGovernedTransitionAsync(
         LegendConnectCurriculumService curriculum)
     {
-        var submitted = await curriculum.SubmitFounderEnglishBatchAsync(
+        var submitted = await curriculum.SubmitFounderBatchAsync(
             new LegendConnectCurriculumBatchSubmission(
                 "response.model-serving.reasoning",
                 "Founder-governed symbolic authority before model realization",

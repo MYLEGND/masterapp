@@ -26,7 +26,7 @@ public sealed class LegendConnectAutonomousLanguageUnderstandingTests
     {
         await using var db = ControllerTestHelpers.BuildDb();
         var fixture = CreateFixture(db, futureLanguageOnly: true);
-        var submitted = await fixture.Curriculum.SubmitFounderEnglishBatchAsync(new LegendConnectCurriculumBatchSubmission(
+        var submitted = await fixture.Curriculum.SubmitFounderBatchAsync(new LegendConnectCurriculumBatchSubmission(
             "semantic.components",
             "Controlled semantic preservation",
             [
@@ -80,7 +80,7 @@ public sealed class LegendConnectAutonomousLanguageUnderstandingTests
     {
         await using var db = ControllerTestHelpers.BuildDb();
         var fixture = CreateFixture(db, futureLanguageOnly: true);
-        var submitted = await fixture.Curriculum.SubmitFounderEnglishBatchAsync(Batch("historical.provider"));
+        var submitted = await fixture.Curriculum.SubmitFounderBatchAsync(Batch("historical.provider"));
         Assert.True(submitted.Succeeded, submitted.Message);
         var source = await db.LegendLanguageTextUnits.SingleAsync(item => item.Text == "I form one.");
         var pair = Assert.IsType<LegendLanguagePairSnapshot>(
@@ -139,7 +139,7 @@ public sealed class LegendConnectAutonomousLanguageUnderstandingTests
     {
         await using var db = ControllerTestHelpers.BuildDb();
         var fixture = CreateFixture(db, futureLanguageOnly: true);
-        var submitted = await fixture.Curriculum.SubmitFounderEnglishBatchAsync(Batch("future.independent"));
+        var submitted = await fixture.Curriculum.SubmitFounderBatchAsync(Batch("future.independent"));
         Assert.True(submitted.Succeeded, submitted.Message);
         var sourceUnits = await db.LegendLanguageTextUnits
             .Where(item => item.LanguageCode == "en" && item.Text.StartsWith("I form") || item.Text.StartsWith("She form"))
@@ -196,7 +196,7 @@ public sealed class LegendConnectAutonomousLanguageUnderstandingTests
     {
         await using var db = ControllerTestHelpers.BuildDb();
         var fixture = CreateFixture(db, futureLanguageOnly: true);
-        var submitted = await fixture.Curriculum.SubmitFounderEnglishBatchAsync(Batch("correction.recalculation"));
+        var submitted = await fixture.Curriculum.SubmitFounderBatchAsync(Batch("correction.recalculation"));
         Assert.True(submitted.Succeeded, submitted.Message);
         var pair = Assert.IsType<LegendLanguagePairSnapshot>(
             await fixture.Registry.GetOrCreateEnabledPairAsync("en", "x-test"));
@@ -271,7 +271,7 @@ public sealed class LegendConnectAutonomousLanguageUnderstandingTests
                 ])
         };
         foreach (var submission in submissions)
-            Assert.True((await fixture.Curriculum.SubmitFounderEnglishBatchAsync(submission)).Succeeded);
+            Assert.True((await fixture.Curriculum.SubmitFounderBatchAsync(submission)).Succeeded);
 
         var pattern = await db.LegendLanguageStructuralPatterns.SingleAsync(item =>
             item.PairKey == string.Empty && item.LanguageCode == "en" &&
@@ -319,19 +319,19 @@ public sealed class LegendConnectAutonomousLanguageUnderstandingTests
     {
         await using var db = ControllerTestHelpers.BuildDb();
         var fixture = CreateFixture(db);
-        var first = await fixture.Curriculum.SubmitFounderEnglishBatchAsync(new LegendConnectCurriculumBatchSubmission(
+        var first = await fixture.Curriculum.SubmitFounderBatchAsync(new LegendConnectCurriculumBatchSubmission(
             "lexical.watch.timepiece", null,
             [
                 new LegendConnectCurriculumExampleSubmission("I watch time.", LexicalVariations("timepiece", "watch")),
                 new LegendConnectCurriculumExampleSubmission("She watches time.", LexicalVariations("timepiece", "watches"))
             ]));
-        var second = await fixture.Curriculum.SubmitFounderEnglishBatchAsync(new LegendConnectCurriculumBatchSubmission(
+        var second = await fixture.Curriculum.SubmitFounderBatchAsync(new LegendConnectCurriculumBatchSubmission(
             "lexical.watch.observe", null,
             [
                 new LegendConnectCurriculumExampleSubmission("I watch birds.", LexicalVariations("observe", "watch")),
                 new LegendConnectCurriculumExampleSubmission("She watches birds.", LexicalVariations("observe", "watches"))
             ]));
-        var phrase = await fixture.Curriculum.SubmitFounderEnglishBatchAsync(new LegendConnectCurriculumBatchSubmission(
+        var phrase = await fixture.Curriculum.SubmitFounderBatchAsync(new LegendConnectCurriculumBatchSubmission(
             "lexical.phrase.give-up", null,
             [
                 new LegendConnectCurriculumExampleSubmission("I will give up.", LexicalVariations("abandon", "give up")),

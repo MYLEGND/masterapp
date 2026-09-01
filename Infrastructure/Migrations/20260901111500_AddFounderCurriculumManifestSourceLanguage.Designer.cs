@@ -4,6 +4,7 @@ using Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace Infrastructure.Migrations
 {
     [DbContext(typeof(MasterAppDbContext))]
-    partial class MasterAppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260901111500_AddFounderCurriculumManifestSourceLanguage")]
+    partial class AddFounderCurriculumManifestSourceLanguage
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -5466,12 +5469,12 @@ namespace Infrastructure.Migrations
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
-                    b.Property<string>("SourceLanguageCode")
+                    b.Property<string>("ProcessingState")
                         .IsRequired()
                         .HasMaxLength(32)
                         .HasColumnType("nvarchar(32)");
 
-                    b.Property<string>("ProcessingState")
+                    b.Property<string>("SourceLanguageCode")
                         .IsRequired()
                         .HasMaxLength(32)
                         .HasColumnType("nvarchar(32)");
@@ -5484,12 +5487,12 @@ namespace Infrastructure.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("SourceLanguageCode", "CreatedUtc")
-                        .HasDatabaseName("IX_LegendCurriculumManifestWorkItems_FounderStatus");
-
                     b.HasIndex("FounderUserId", "ManifestHash")
                         .IsUnique()
                         .HasDatabaseName("IX_LegendCurriculumManifestWorkItems_Identity");
+
+                    b.HasIndex("SourceLanguageCode", "CreatedUtc")
+                        .HasDatabaseName("IX_LegendCurriculumManifestWorkItems_FounderStatus");
 
                     b.HasIndex("ProcessingState", "LeaseExpiresUtc", "CreatedUtc")
                         .HasDatabaseName("IX_LegendCurriculumManifestWorkItems_Processing");
@@ -5925,11 +5928,11 @@ namespace Infrastructure.Migrations
                         .IsUnique()
                         .HasDatabaseName("IX_LegendHistoricalReevaluationWorkItems_Identity");
 
-                    b.HasIndex("EvaluatorVersion", "Phase", "WorkKind", "SubjectId", "SubjectScope")
-                        .HasDatabaseName("IX_LegendHistoricalReevaluationWorkItems_SubjectLookup");
-
                     b.HasIndex("EvaluatorVersion", "Phase", "ProcessingState", "LeaseExpiresUtc", "CreatedUtc")
                         .HasDatabaseName("IX_LegendHistoricalReevaluationWorkItems_Claim");
+
+                    b.HasIndex("EvaluatorVersion", "Phase", "WorkKind", "SubjectId", "SubjectScope")
+                        .HasDatabaseName("IX_LegendHistoricalReevaluationWorkItems_SubjectLookup");
 
                     b.ToTable("LegendHistoricalReevaluationWorkItems", (string)null);
                 });
@@ -8659,19 +8662,19 @@ namespace Infrastructure.Migrations
                     b.Property<long>("GroupUniqueTargetReuseCount")
                         .HasColumnType("bigint");
 
+                    b.Property<long>("PromotedTranslationModelCharactersAvoided")
+                        .HasColumnType("bigint");
+
                     b.Property<long>("ProviderBillableCharacters")
                         .HasColumnType("bigint");
 
                     b.Property<long>("ProviderFailureCount")
                         .HasColumnType("bigint");
 
-                    b.Property<long>("ProviderOperationCount")
-                        .HasColumnType("bigint");
-
-                    b.Property<long>("PromotedTranslationModelCharactersAvoided")
-                        .HasColumnType("bigint");
-
                     b.Property<long>("ProviderObservationCharactersAvoided")
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("ProviderOperationCount")
                         .HasColumnType("bigint");
 
                     b.Property<long>("QuotaDeniedRequestCount")
@@ -8813,19 +8816,19 @@ namespace Infrastructure.Migrations
                     b.Property<DateOnly>("PeriodStart")
                         .HasColumnType("date");
 
+                    b.Property<long>("PromotedTranslationModelCharactersAvoided")
+                        .HasColumnType("bigint");
+
                     b.Property<long>("ProviderBillableCharacters")
                         .HasColumnType("bigint");
 
                     b.Property<long>("ProviderFailureCount")
                         .HasColumnType("bigint");
 
-                    b.Property<long>("ProviderOperationCount")
-                        .HasColumnType("bigint");
-
-                    b.Property<long>("PromotedTranslationModelCharactersAvoided")
-                        .HasColumnType("bigint");
-
                     b.Property<long>("ProviderObservationCharactersAvoided")
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("ProviderOperationCount")
                         .HasColumnType("bigint");
 
                     b.Property<long>("QuotaDeniedRequestCount")

@@ -29,7 +29,7 @@ public sealed class LegendConnectStructuralSemanticAnchorRepairTests
         var fixture = CreateFixture(db);
 
         foreach (var batch in ControlledBatches())
-            Assert.True((await fixture.Curriculum.SubmitFounderEnglishBatchAsync(batch)).Succeeded);
+            Assert.True((await fixture.Curriculum.SubmitFounderBatchAsync(batch)).Succeeded);
 
         var relationship = await db.LegendLanguageStructuralRelationships.SingleAsync(item =>
             item.PairKey == string.Empty && item.LanguageCode == "en" &&
@@ -134,7 +134,7 @@ public sealed class LegendConnectStructuralSemanticAnchorRepairTests
         await using var currentDb = ControllerTestHelpers.BuildDb();
         var current = CreateFixture(currentDb);
         foreach (var batch in ControlledBatches())
-            Assert.True((await current.Curriculum.SubmitFounderEnglishBatchAsync(batch)).Succeeded);
+            Assert.True((await current.Curriculum.SubmitFounderBatchAsync(batch)).Succeeded);
         var currentRelationship = await currentDb.LegendLanguageStructuralRelationships.SingleAsync(item =>
             item.PairKey == string.Empty && item.LanguageCode == "en" &&
             item.VariationDimension == "state" && item.SupersededUtc == null);

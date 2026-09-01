@@ -12,6 +12,13 @@ namespace AgentPortal.Services;
 /// </summary>
 public sealed class FounderLegendConnectService
 {
+    // Operational diagnostics must leave enough of the Founder's minimum
+    // read-only tool window for serialization and provider synthesis. Each
+    // existing authority is therefore observed independently and may report a
+    // partial result instead of consuming the entire request budget.
+    private static readonly TimeSpan OperationalDiagnosticStageBudget =
+        TimeSpan.FromSeconds(3);
+
     private readonly ILegendConnectOperations _operations;
     private readonly AgentProfileAccessResolver _agentProfiles;
     private readonly ITranslationEntitlementAuthority? _entitlements;
@@ -501,20 +508,122 @@ public sealed class FounderLegendConnectService
             CancellationToken cancellationToken = default)
     {
         _ = await ResolveFounderActorAsync(user, cancellationToken);
-        var runtimePolicy = _runtimePolicy is null
-            ? new LegendConnectRuntimePolicySnapshot(
-                false, 0, 0, 0, false, true, "Shadow", 0.98m,
-                null, null, DateTime.MinValue)
-            : await _runtimePolicy.GetEffectiveAsync(cancellationToken);
+        var unavailablePolicy = new LegendConnectRuntimePolicySnapshot(
+            false, 0, 0, 0, false, true, "Shadow", 0.98m,
+            null, null, DateTime.MinValue);
+        var unavailableReadiness = new LegendConnectProductionReadinessSnapshot(
+            "BLOCKED",
+            false,
+            "Production readiness is unavailable in this bounded operational diagnostic.",
+            [], 0, 0, 0, 0, 0);
+        var unavailableCapacity = UnavailableProviderCapacity(
+            "Provider capacity is unavailable in this bounded operational diagnostic.");
+
+        var policy = _runtimePolicy is null
+            ? FounderLegendOperationalDiagnosticRead<LegendConnectRuntimePolicySnapshot>
+                .Unavailable(
+                    "runtime_policy",
+                    unavailablePolicy,
+                    "Legend Connect runtime policy authority is not registered.")
+            : await ReadOperationalDiagnosticStageAsync(
+                "runtime_policy",
+                unavailablePolicy,
+                token => _runtimePolicy.GetEffectiveAsync(token),
+                cancellationToken);
         var readiness = _runtimePolicy is null
-            ? new LegendConnectProductionReadinessSnapshot(
-                "BLOCKED",
-                false,
-                "Legend Connect runtime policy authority is unavailable.",
-                [], 0, 0, 0, 0, 0)
-            : await _runtimePolicy.GetReadinessAsync(cancellationToken);
-        var capacity = await _operations.GetProviderCapacityAsync(cancellationToken);
-        return new(runtimePolicy, readiness, capacity);
+            ? FounderLegendOperationalDiagnosticRead<LegendConnectProductionReadinessSnapshot>
+                .Unavailable(
+                    "production_readiness",
+                    unavailableReadiness,
+                    "Legend Connect runtime policy authority is not registered.")
+            : await ReadOperationalDiagnosticStageAsync(
+                "production_readiness",
+                unavailableReadiness,
+                token => _runtimePolicy.GetReadinessAsync(token),
+                cancellationToken);
+        var capacity = await ReadOperationalDiagnosticStageAsync(
+            "provider_capacity",
+            unavailableCapacity,
+            token => _operations.GetProviderCapacityAsync(token),
+            cancellationToken);
+
+        return new(
+            policy.Value,
+            readiness.Value,
+            capacity.Value,
+            [policy.Stage, readiness.Stage, capacity.Stage]);
+    }
+
+    private static async Task<FounderLegendOperationalDiagnosticRead<T>>
+        ReadOperationalDiagnosticStageAsync<T>(
+            string name,
+            T fallback,
+            Func<CancellationToken, Task<T>> read,
+            CancellationToken cancellationToken)
+    {
+        using var stageBudget =
+            CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        stageBudget.CancelAfter(OperationalDiagnosticStageBudget);
+
+        try
+        {
+            return FounderLegendOperationalDiagnosticRead<T>.Available(
+                name,
+                await read(stageBudget.Token));
+        }
+        catch (OperationCanceledException)
+            when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (OperationCanceledException)
+        {
+            return FounderLegendOperationalDiagnosticRead<T>.TimedOut(
+                name,
+                fallback,
+                OperationalDiagnosticStageBudget);
+        }
+        catch (Exception)
+        {
+            // Diagnostics are an observation surface. A failed observation is
+            // reported as such and must not suppress the other authorities.
+            return FounderLegendOperationalDiagnosticRead<T>.Failed(
+                name,
+                fallback);
+        }
+    }
+
+    private static LegendConnectProviderCapacitySnapshot
+        UnavailableProviderCapacity(string detail)
+    {
+        var now = DateTime.UtcNow;
+        var periodStart = new DateOnly(now.Year, now.Month, 1);
+        return new LegendConnectProviderCapacitySnapshot(
+            "AzureTranslator",
+            false,
+            "Unavailable",
+            null,
+            null,
+            null,
+            periodStart,
+            periodStart.AddMonths(1).AddDays(-1),
+            null,
+            0,
+            0,
+            null,
+            null,
+            null,
+            60,
+            now.AddHours(-1),
+            now,
+            null,
+            0,
+            0,
+            null,
+            null,
+            null,
+            now,
+            detail);
     }
 
     /// <summary>
@@ -1387,7 +1496,8 @@ public sealed class FounderLegendConnectService
 
         submission = new LegendConnectCurriculumManifestSubmission(
             families,
-            crossExampleRelationships);
+            crossExampleRelationships,
+            input.SourceLanguageCode);
         return true;
     }
 
@@ -1720,7 +1830,50 @@ public sealed class FounderLegendConnectService
 internal sealed record FounderLegendOperationalDiagnosticsSnapshot(
     LegendConnectRuntimePolicySnapshot RuntimePolicy,
     LegendConnectProductionReadinessSnapshot ProductionReadiness,
-    LegendConnectProviderCapacitySnapshot ProviderCapacity);
+    LegendConnectProviderCapacitySnapshot ProviderCapacity,
+    IReadOnlyList<FounderLegendOperationalDiagnosticStage> Stages);
+
+internal sealed record FounderLegendOperationalDiagnosticStage(
+    string Name,
+    string State,
+    string Detail);
+
+internal sealed record FounderLegendOperationalDiagnosticRead<T>(
+    T Value,
+    FounderLegendOperationalDiagnosticStage Stage)
+{
+    public static FounderLegendOperationalDiagnosticRead<T> Available(
+        string name,
+        T value) =>
+        new(value, new(name, "available", "The canonical authority completed."));
+
+    public static FounderLegendOperationalDiagnosticRead<T> Unavailable(
+        string name,
+        T fallback,
+        string detail) =>
+        new(fallback, new(name, "unavailable", detail));
+
+    public static FounderLegendOperationalDiagnosticRead<T> TimedOut(
+        string name,
+        T fallback,
+        TimeSpan budget) =>
+        new(
+            fallback,
+            new(
+                name,
+                "timed_out",
+                $"The canonical authority exceeded its {budget.TotalSeconds:F0}-second diagnostic stage budget."));
+
+    public static FounderLegendOperationalDiagnosticRead<T> Failed(
+        string name,
+        T fallback) =>
+        new(
+            fallback,
+            new(
+                name,
+                "failed",
+                "The canonical authority failed while producing this diagnostic stage."));
+}
 
 internal sealed record FounderLegendLanguageDiagnosticSnapshot(
     LegendConnectLanguageKnowledgeSnapshot? Knowledge,
