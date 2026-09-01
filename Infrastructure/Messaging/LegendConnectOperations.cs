@@ -527,7 +527,8 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
                 normalized,
                 "current ", "currently ", "latest ", "today", "right now",
                 "as of ", "recent ", "this week", "this month", "this year",
-                "up-to-date", "up to date"))
+                "up-to-date", "up to date") &&
+            IsExternalFactualQuestion(normalized))
         {
             return Decision(
                 true,
@@ -1604,6 +1605,7 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
         LegendSemanticTransitionInference inference) =>
         inference.Reasons.FirstOrDefault() is
             "meaning_graph_component_unknown" or
+            "meaning_graph_retrieval_bound_exceeded" or
             "meaning_graph_relation_unproven" or
             "semantic_transition_not_supported";
 
@@ -1684,9 +1686,6 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
         {
             return false;
         }
-
-        if (normalized.EndsWith('?'))
-            return true;
 
         return new[]
         {

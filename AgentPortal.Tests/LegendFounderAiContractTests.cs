@@ -1206,6 +1206,9 @@ public sealed class LegendFounderAiContractTests
         Assert.DoesNotContain("run: ./scripts/db.sh validate\n", workflow, StringComparison.Ordinal);
         Assert.Contains("Merge exact validated PR head", workflow, StringComparison.Ordinal);
         Assert.Contains("Deploy immutable merged production tree", workflow, StringComparison.Ordinal);
+        Assert.Contains("Bind runtime provenance to immutable production SHA", workflow, StringComparison.Ordinal);
+        Assert.Contains("LegendConnect__Research__CodeSha=$deployedSha", workflow, StringComparison.Ordinal);
+        Assert.Contains("LegendConnect__ModelEvaluation__CodeSha=$deployedSha", workflow, StringComparison.Ordinal);
         Assert.Contains("verify-legend-native:", workflow, StringComparison.Ordinal);
         Assert.Contains("Download exact tested binaries", workflow, StringComparison.Ordinal);
         Assert.Contains("ProductionReadOnlyNativeProofMatrix", workflow, StringComparison.Ordinal);

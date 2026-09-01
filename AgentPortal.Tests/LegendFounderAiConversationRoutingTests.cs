@@ -74,6 +74,7 @@ public sealed class LegendFounderAiConversationRoutingTests
 
     [Theory]
     [InlineData("meaning_graph_component_unknown", true)]
+    [InlineData("meaning_graph_retrieval_bound_exceeded", true)]
     [InlineData("meaning_graph_relation_unproven", true)]
     [InlineData("semantic_transition_not_supported", true)]
     [InlineData("ambiguous_composed_meaning", false)]

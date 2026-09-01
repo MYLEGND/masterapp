@@ -463,6 +463,14 @@ jobs:
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
+      - name: Bind runtime provenance to immutable production SHA
+        shell: pwsh
+        run: |
+          $deployedSha = '${{ needs.merge.outputs.merge_sha }}'
+          if ($deployedSha -notmatch '^[0-9a-f]{40}$') { throw 'The immutable production SHA is unavailable or malformed.' }
+          az webapp config appsettings set --resource-group '${{ env.AZURE_RESOURCE_GROUP }}' --name '${{ env.AZURE_WEBAPP_NAME }}' --settings "LegendConnect__Research__CodeSha=$deployedSha" "LegendConnect__ModelEvaluation__CodeSha=$deployedSha" --output none
+          if ($LASTEXITCODE -ne 0) { throw 'Unable to bind LEGEND runtime provenance to the immutable production SHA.' }
+
       - name: Deploy immutable merged production tree
         uses: azure/webapps-deploy@v3
         with:

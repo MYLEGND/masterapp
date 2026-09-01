@@ -1003,6 +1003,57 @@ public sealed class LegendConnectSemanticSpanGroundingTests
     }
 
     [Fact]
+    public async Task ExactFounderEndpoint_PrecedesDenseCommonLexemeExpansionBound()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var fixture = CreateFixture(db);
+
+        for (var family = 1; family <= 3; family++)
+        {
+            var submitted = await fixture.Curriculum.SubmitFounderEnglishBatchAsync(
+                ExactAtomicEndpointFamily(family));
+            Assert.True(submitted.Succeeded, submitted.Message);
+        }
+
+        var reviewLexeme = await db.LegendLanguageLexemes.SingleAsync(item =>
+            item.LanguageCode == "en" &&
+            item.NormalizedHash == LegendLanguageIdentity.TextHash("review"));
+        var fillerUnits = Enumerable.Range(0, 512)
+            .Select(index => new LegendLanguageTextUnit
+            {
+                LanguageCode = "en",
+                StoragePartition = "test-dense-common-lexeme",
+                NormalizedHash = LegendLanguageIdentity.TextHash(
+                    $"review unrelated filler {index}"),
+                Text = $"review unrelated filler {index}",
+                Provenance = LegendConnectKnowledgeProvenance.FounderApproved,
+                IsTrainingEligible = true
+            })
+            .ToArray();
+        db.LegendLanguageTextUnits.AddRange(fillerUnits);
+        db.LegendLanguageLexicalOccurrences.AddRange(fillerUnits.Select(unit =>
+            new LegendLanguageLexicalOccurrence
+            {
+                TextUnitId = unit.Id,
+                LexemeId = reviewLexeme.Id,
+                TokenIndex = 0,
+                CharacterOffset = 0,
+                CharacterLength = "review".Length
+            }));
+        await db.SaveChangesAsync();
+
+        var native = await fixture.Operations.TryInferConversationWithDiscourseAsync(
+            "Review the cost.",
+            [],
+            new LegendConnectDiscourseStateSnapshot([]));
+
+        Assert.True(native.Supported, native.ReasonCode);
+        Assert.Equal("semantic_transition_governed_composed", native.ReasonCode);
+        Assert.Equal("HigherStandard", native.EvidenceStandard);
+        Assert.False(native.RequiresEscalation);
+    }
+
+    [Fact]
     public async Task ExactEndpoint_PrecedesConflictingBroadProjectedResultFrames()
     {
         await using var db = ControllerTestHelpers.BuildDb();

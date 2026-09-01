@@ -76,7 +76,6 @@ internal sealed class LegendConnectResearchPageRetriever
             .Where(item => item.CanonicalUri is not null && sourcesByUri.ContainsKey(item.CanonicalUri))
             .GroupBy(item => item.CanonicalUri!, StringComparer.Ordinal)
             .Select(group => group.First())
-            .Take(request.MaximumDocuments)
             .ToArray();
         if (candidates.Length == 0)
             return Failure("internet_research_no_public_page_candidates");
@@ -99,7 +98,8 @@ internal sealed class LegendConnectResearchPageRetriever
         foreach (var candidate in candidates)
         {
             if (DateTime.UtcNow >= request.DeadlineUtc ||
-                returnedCharacters >= request.MaximumTotalCharacters)
+                returnedCharacters >= request.MaximumTotalCharacters ||
+                documents.Count >= request.MaximumDocuments)
                 break;
             var source = sourcesByUri[candidate.CanonicalUri!];
             PageAttempt attempt;

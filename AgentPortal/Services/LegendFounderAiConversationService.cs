@@ -3180,17 +3180,11 @@ Never upgrade an unresolved, rejected or contradicted record merely because it a
             "canonical", "retained knowledge", "retained evidence",
             "governed inspection", "current authority",
             "curriculum", "train legend", "training status",
-            "model readiness", "readiness", "alignment", "provenance",
-            "evidence", "system state", "system status", "metrics", "metric",
-            "provider capacity", "azure", "corpus", "production",
+            "model readiness", "system state", "system status",
+            "provider capacity", "production deployment",
             "deployment", "repository", "github", "pull request",
-            "branch", "commit", "workflow", "ci", "coverage",
-            "architecture", "database", "data model", "schema", "configuration",
-            "config", "observability", "logs", "logging", "telemetry", "trace",
-            "prompt", "system prompt", "routing", "fallback", "tool registry",
-            "tooling", "permission", "retrieval", "memory", "ingestion", "index",
-            "embedding", "evaluation", "validator", "critic", "promotion",
-            "learning pipeline", "reasoning", "respond", "reuse knowledge"
+            "branch", "commit", "workflow", "tool registry",
+            "machineproposed", "machine proposed"
         };
 
         if (explicitGovernedSignals.Any(signal =>
@@ -3199,13 +3193,41 @@ Never upgrade an unresolved, rejected or contradicted record merely because it a
             return true;
         }
 
+        // General words such as "evidence", "reasoning", "respond", and
+        // "prompt" also describe ordinary subject matter. They must not turn
+        // OpenAI Direct into a mandatory LEGEND tool inspection. Operational
+        // vocabulary requires an explicit LEGEND/system subject.
+        var operationalSignals = new[]
+        {
+            "readiness", "alignment", "provenance", "metrics", "metric",
+            "azure", "corpus", "production", "ci", "coverage",
+            "architecture", "database", "data model", "schema", "configuration",
+            "config", "observability", "logs", "logging", "telemetry", "trace",
+            "system prompt", "routing", "fallback",
+            "tooling", "permission", "retrieval", "memory", "ingestion", "index",
+            "embedding", "evaluation", "validator", "critic", "promotion",
+            "learning pipeline", "reuse knowledge"
+        };
+
+        var operationalSubjects = new[]
+        {
+            "legend", "our system", "our database", "our model",
+            "our provider", "our deployment", "our repository"
+        };
+
+        if (operationalSignals.Any(signal =>
+                text.Contains(signal, StringComparison.Ordinal)) &&
+            operationalSubjects.Any(subject =>
+                text.Contains(subject, StringComparison.Ordinal)))
+            return true;
+
         var currentStateSignals = new[]
         {
             "current", "currently", "latest", "today",
             "right now", "update", "how many", "count", "status"
         };
 
-        var legendSubjects = new[]
+        var currentStateSubjects = new[]
         {
             "legend", "language", "learning", "knowledge",
             "model", "provider", "translation", "haitian creole"
@@ -3213,7 +3235,7 @@ Never upgrade an unresolved, rejected or contradicted record merely because it a
 
         return currentStateSignals.Any(signal =>
                    text.Contains(signal, StringComparison.Ordinal)) &&
-               legendSubjects.Any(subject =>
+               currentStateSubjects.Any(subject =>
                    text.Contains(subject, StringComparison.Ordinal));
     }
 

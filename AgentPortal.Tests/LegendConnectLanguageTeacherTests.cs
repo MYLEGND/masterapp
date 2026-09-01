@@ -46,6 +46,31 @@ public sealed class LegendConnectLanguageTeacherTests
         Assert.Equal(0, handler.RequestCount);
     }
 
+    [Fact]
+    public void SharedOpenAiProviderConfiguration_ActivatesBothRoleSpecificBoundaries()
+    {
+        var handler = new StubHttpMessageHandler();
+        var teacher = CreateTeacher(
+            handler,
+            new Dictionary<string, string?>
+            {
+                ["OpenAI:ApiKey"] = "shared-provider-key",
+                ["OpenAI:LegendFounderAiModel"] = "shared-provider-model"
+            });
+
+        var teacherPreflight = teacher.Preflight(
+            LegendLanguageTeacherRole.Teacher);
+        var criticPreflight = teacher.Preflight(
+            LegendLanguageTeacherRole.Critic);
+
+        Assert.True(teacherPreflight.IsReady, teacherPreflight.FailureCode);
+        Assert.True(criticPreflight.IsReady, criticPreflight.FailureCode);
+        Assert.NotEqual(
+            teacherPreflight.ConfigurationFingerprint,
+            criticPreflight.ConfigurationFingerprint);
+        Assert.Equal(0, handler.RequestCount);
+    }
+
     [Theory]
     [InlineData(401, "language_teacher_authentication_failed")]
     [InlineData(403, "language_teacher_authentication_failed")]

@@ -107,6 +107,44 @@ public sealed class LegendConnectGovernedInternetResearchTests
     }
 
     [Fact]
+    public void Decision_TemporalWordInSupportedConversation_DoesNotOverrideNativeAuthority()
+    {
+        var decision = Decide(
+            "Hello—how are you today?",
+            new LegendConnectNativeInferenceSnapshot(
+                true,
+                1m,
+                "I am ready to help.",
+                "semantic_transition_governed_composed",
+                3,
+                "Governed conversation evidence selected.",
+                false));
+
+        Assert.False(decision.ResearchRequired);
+        Assert.Equal(
+            LegendConnectResearchNeed.ExistingGovernedKnowledge,
+            decision.Need);
+        Assert.Equal(
+            "existing_governed_knowledge_answers_request",
+            decision.ReasonCode);
+    }
+
+    [Theory]
+    [InlineData("Hello—how are you today?")]
+    [InlineData("Hola, ¿cómo estás hoy?")]
+    [InlineData("Bonjour, comment allez-vous aujourd’hui ?")]
+    public void Decision_UnsupportedConversationQuestion_DoesNotInventResearchAuthority(
+        string question)
+    {
+        var decision = Decide(question, Unsupported());
+
+        Assert.False(decision.ResearchRequired);
+        Assert.Equal(
+            "unfamiliar_wording_is_not_research_authority",
+            decision.ReasonCode);
+    }
+
+    [Fact]
     public void Decision_DoesNotSearchMerelyBecauseWordingIsUnfamiliar()
     {
         var decision = Decide(

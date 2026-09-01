@@ -13,6 +13,7 @@ public sealed class LegendFounderAiInspectionRegressionTests
     [InlineData("Hi")]
     [InlineData("Tell me a joke.")]
     [InlineData("Explain how transformers work.")]
+    [InlineData("Explain in two sentences why independent evidence matters when resolving contradictory claims.")]
     [InlineData("Help me think through a product idea.")]
     public void CasualTeacherConversation_DoesNotForceLegendInspection(string text)
     {
