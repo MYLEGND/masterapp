@@ -429,6 +429,7 @@ internal sealed class LegendFounderToolAuthority
                     diagnostics.RuntimePolicy,
                     diagnostics.ProductionReadiness,
                     diagnostics.ProviderCapacity,
+                    diagnostics.Stages,
                     acquisitionContract = new
                     {
                         queueAuthority = "LegendCorpusCandidate",
@@ -873,6 +874,12 @@ internal sealed class LegendFounderToolAuthority
                 using var arguments =
                     JsonDocument.Parse(call.Arguments);
 
+                var sourceLanguage = ReadRequiredString(
+                    arguments.RootElement,
+                    "source_language_code");
+                if (string.IsNullOrWhiteSpace(sourceLanguage))
+                    return """{"error":"source_language_required"}""";
+
                 var familiesElement =
                     arguments.RootElement.GetProperty(
                         "families");
@@ -984,7 +991,9 @@ internal sealed class LegendFounderToolAuthority
                     await _legend.QueueFounderCurriculumAsync(
                         founder,
                         new LegendConnectCurriculumManifestSubmission(
-                            families),
+                            families,
+                            null,
+                            sourceLanguage),
                         cancellationToken);
 
                 return SerializeUnbounded(result);
@@ -2149,6 +2158,12 @@ internal sealed class LegendFounderToolAuthority
                     type = "object",
                     properties = new
                     {
+                        source_language_code = new
+                        {
+                            type = "string",
+                            minLength = 2,
+                            maxLength = 32
+                        },
                         families = new
                         {
                             type = "array",
@@ -2241,7 +2256,7 @@ internal sealed class LegendFounderToolAuthority
                             }
                         }
                     },
-                    required = new[] { "families" },
+                    required = new[] { "source_language_code", "families" },
                     additionalProperties = false
                 },
                 strict = true

@@ -292,7 +292,7 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
 
             var accepted =
                 await curriculum
-                    .SubmitFounderEnglishBatchAsync(batch);
+                    .SubmitFounderBatchAsync(batch);
 
             Assert.True(
                 accepted.Succeeded,
@@ -611,6 +611,55 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
     }
 
     [Fact]
+    public void ProductionNativeProofResultContract_PreservesIndependentFixtureAndExecutionFailures()
+    {
+        var results = new[]
+        {
+            ProductionNativeProofResult.FailedFixture(
+                "fixture-audience",
+                "audience_constraints",
+                "fixture missing"),
+            ProductionNativeProofResult.PassedCase(
+                "exact-endpoint",
+                "exact_endpoint",
+                expectedNative: true,
+                nativeSupported: true,
+                reasonCode: "exact_endpoint",
+                evidenceCount: 1,
+                responseAuthority: "LegendAi",
+                stage: "native_response",
+                providerClientCount: 0,
+                elapsedMilliseconds: 1),
+            ProductionNativeProofResult.FailedCase(
+                "held-out",
+                "held_out_paraphrase",
+                expectedNative: true,
+                failure: "relation unproven",
+                providerClientCount: 0,
+                elapsedMilliseconds: 2)
+        };
+
+        var json = JsonSerializer.Serialize(new
+        {
+            Status = results.All(item => item.Status == "passed") ? "passed" : "failed",
+            ExecutedCases = results.Count(item => item.Phase == "execution"),
+            FailedCases = results.Count(item => item.Status == "failed"),
+            CaseResults = results
+        });
+        using var document = JsonDocument.Parse(json);
+        var root = document.RootElement;
+
+        Assert.Equal("failed", root.GetProperty("Status").GetString());
+        Assert.Equal(2, root.GetProperty("ExecutedCases").GetInt32());
+        Assert.Equal(2, root.GetProperty("FailedCases").GetInt32());
+        var serializedResults = root.GetProperty("CaseResults");
+        Assert.Equal(3, serializedResults.GetArrayLength());
+        Assert.Equal("fixture", serializedResults[0].GetProperty("Phase").GetString());
+        Assert.Equal("execution", serializedResults[1].GetProperty("Phase").GetString());
+        Assert.Equal("execution", serializedResults[2].GetProperty("Phase").GetString());
+    }
+
+    [Fact]
     public async Task ProductionReadOnlyNativeProofMatrix()
     {
         const string matrixVersion = "lai-027-029-v1";
@@ -706,9 +755,7 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
                 registry,
                 ControllerTestHelpers.BuildTranslationService());
 
-            async Task<string> RequireReasoningSourceAsync(
-                string category,
-                string operatorPrefix)
+            async Task<string?> FindReasoningSourceAsync(string operatorPrefix)
             {
                 var text = await (
                     from relation in db.LegendFounderSemanticExampleRelationEvidence.AsNoTracking()
@@ -729,11 +776,44 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
                         unit.Provenance == LegendConnectKnowledgeProvenance.FounderApproved
                     orderby relation.RelationshipSemanticIdentity, unit.NormalizedHash
                     select unit.Text).FirstOrDefaultAsync();
-                Assert.False(
-                    string.IsNullOrWhiteSpace(text),
-                    $"The production matrix has no active Founder-governed {category} source for operator prefix '{operatorPrefix}'.");
-                return text!;
+                return string.IsNullOrWhiteSpace(text) ? null : text;
             }
+
+            var fixtureFailures = new List<ProductionNativeProofResult>();
+
+            async Task<string?> FindReasoningFixtureAsync(
+                string reference,
+                string category,
+                string operatorPrefix)
+            {
+                var source = await FindReasoningSourceAsync(operatorPrefix);
+                if (source is null)
+                {
+                    fixtureFailures.Add(ProductionNativeProofResult.FailedFixture(
+                        reference,
+                        category,
+                        $"The production matrix has no active Founder-governed {category} source for operator prefix '{operatorPrefix}'."));
+                }
+
+                return source;
+            }
+
+            var deductionSource = await FindReasoningFixtureAsync(
+                "fixture-governed-deduction",
+                "deduction",
+                "reasoning.deduction.");
+            var uncertaintySource = await FindReasoningFixtureAsync(
+                "fixture-governed-uncertainty",
+                "uncertainty",
+                "reasoning.epistemic.");
+            var diagnosisSource = await FindReasoningFixtureAsync(
+                "fixture-governed-diagnosis",
+                "diagnosis",
+                "reasoning.causal-diagnostic.");
+            var planningSource = await FindReasoningFixtureAsync(
+                "fixture-governed-planning",
+                "planning",
+                "reasoning.constrained-planning.");
 
             var audienceConstraintSource = await (
                 from transition in db.LegendSemanticTransitionEvidence.AsNoTracking()
@@ -756,9 +836,13 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
                     resultVariation.Dimension == "response_audience"
                 orderby resultVariation.Value, sourceUnit.NormalizedHash
                 select sourceUnit.Text).FirstOrDefaultAsync();
-            Assert.False(
-                string.IsNullOrWhiteSpace(audienceConstraintSource),
-                "The production matrix has no active Founder-governed audience-constrained response source.");
+            if (string.IsNullOrWhiteSpace(audienceConstraintSource))
+            {
+                fixtureFailures.Add(ProductionNativeProofResult.FailedFixture(
+                    "fixture-governed-audience-constraints",
+                    "audience_constraints",
+                    "The production matrix has no active Founder-governed audience-constrained response source."));
+            }
 
             var matrix = new List<ProductionNativeProofCase>
             {
@@ -804,26 +888,6 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
                     "cross_family_negative",
                     "capacity shortage"),
                 ProductionNativeProofCase.Positive(
-                    "governed-deduction",
-                    "deduction",
-                    await RequireReasoningSourceAsync("deduction", "reasoning.deduction.")),
-                ProductionNativeProofCase.Positive(
-                    "governed-uncertainty",
-                    "uncertainty",
-                    await RequireReasoningSourceAsync("uncertainty", "reasoning.epistemic.")),
-                ProductionNativeProofCase.Positive(
-                    "governed-diagnosis",
-                    "diagnosis",
-                    await RequireReasoningSourceAsync("diagnosis", "reasoning.causal-diagnostic.")),
-                ProductionNativeProofCase.Positive(
-                    "governed-planning",
-                    "planning",
-                    await RequireReasoningSourceAsync("planning", "reasoning.constrained-planning.")),
-                ProductionNativeProofCase.Positive(
-                    "governed-audience-constraints",
-                    "audience_constraints",
-                    audienceConstraintSource!),
-                ProductionNativeProofCase.Positive(
                     "declared-language-normalization",
                     "language_routing",
                     "Hello.",
@@ -835,6 +899,41 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
                     "native_only_isolation",
                     "Uncatalogued zephyr request.")
             };
+            if (deductionSource is not null)
+            {
+                matrix.Add(ProductionNativeProofCase.Positive(
+                    "governed-deduction",
+                    "deduction",
+                    deductionSource));
+            }
+            if (uncertaintySource is not null)
+            {
+                matrix.Add(ProductionNativeProofCase.Positive(
+                    "governed-uncertainty",
+                    "uncertainty",
+                    uncertaintySource));
+            }
+            if (diagnosisSource is not null)
+            {
+                matrix.Add(ProductionNativeProofCase.Positive(
+                    "governed-diagnosis",
+                    "diagnosis",
+                    diagnosisSource));
+            }
+            if (planningSource is not null)
+            {
+                matrix.Add(ProductionNativeProofCase.Positive(
+                    "governed-planning",
+                    "planning",
+                    planningSource));
+            }
+            if (!string.IsNullOrWhiteSpace(audienceConstraintSource))
+            {
+                matrix.Add(ProductionNativeProofCase.Positive(
+                    "governed-audience-constraints",
+                    "audience_constraints",
+                    audienceConstraintSource));
+            }
 
             var requiredCategories = new[]
             {
@@ -850,12 +949,28 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
                 "language_routing",
                 "native_only_isolation"
             };
-            Assert.Equal(
-                requiredCategories.OrderBy(item => item, StringComparer.Ordinal),
-                matrix.Select(item => item.Category)
-                    .Distinct(StringComparer.Ordinal)
-                    .OrderBy(item => item, StringComparer.Ordinal));
-            Assert.InRange(matrix.Count, requiredCategories.Length, 16);
+            var results = new List<ProductionNativeProofResult>(fixtureFailures);
+            var representedCategories = matrix.Select(item => item.Category)
+                .Concat(fixtureFailures.Select(item => item.Category))
+                .Distinct(StringComparer.Ordinal)
+                .OrderBy(item => item, StringComparer.Ordinal)
+                .ToArray();
+            if (!requiredCategories.OrderBy(item => item, StringComparer.Ordinal)
+                .SequenceEqual(representedCategories, StringComparer.Ordinal))
+            {
+                results.Add(ProductionNativeProofResult.FailedFixture(
+                    "matrix-category-contract",
+                    "matrix_definition",
+                    "The production matrix does not represent every required category exactly once or more."));
+            }
+            if (matrix.Count + fixtureFailures.Count < requiredCategories.Length ||
+                matrix.Count + fixtureFailures.Count > 16)
+            {
+                results.Add(ProductionNativeProofResult.FailedFixture(
+                    "matrix-size-contract",
+                    "matrix_definition",
+                    $"The production matrix contains {matrix.Count + fixtureFailures.Count} executable or fixture-failure cases; expected {requiredCategories.Length} through 16."));
+            }
 
             _output.WriteLine("============================================================");
             _output.WriteLine("LEGEND® PRODUCTION ZERO-WRITE NATIVE PROOF MATRIX");
@@ -864,6 +979,13 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
             _output.WriteLine(
                 "PRODUCTION PROOF MATRIX CATEGORIES: " +
                 string.Join(",", requiredCategories));
+            foreach (var fixtureFailure in fixtureFailures)
+            {
+                _output.WriteLine(
+                    $"MATRIX CASE FAILED: reference={fixtureFailure.Reference}; " +
+                    $"category={fixtureFailure.Category}; phase=fixture; " +
+                    $"failure={fixtureFailure.Failure}; provider_clients=0; elapsed_ms=0");
+            }
 
             var executed = 0;
             var nativePasses = 0;
@@ -871,19 +993,22 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
             foreach (var proofCase in matrix)
             {
                 var caseStarted = Stopwatch.GetTimestamp();
-                var currentPrompt = proofCase.Messages[^1].Content!;
-                var normalizedPrompt = LegendLanguageIdentity.NormalizeText(currentPrompt);
-                if (proofCase.MustBeHeldOut)
+                executed++;
+                try
                 {
-                    Assert.False(await db.LegendLanguageTextUnits
+                    var currentPrompt = proofCase.Messages[^1].Content!;
+                    var normalizedPrompt = LegendLanguageIdentity.NormalizeText(currentPrompt);
+                    if (proofCase.MustBeHeldOut)
+                    {
+                        Assert.False(await db.LegendLanguageTextUnits
                             .AsNoTracking()
                             .AnyAsync(item =>
                                 item.LanguageCode == proofCase.NativeSourceLanguageCode &&
                                 item.Text == normalizedPrompt &&
                                 item.IsTrainingEligible &&
                                 item.Provenance == LegendConnectKnowledgeProvenance.FounderApproved),
-                        $"Matrix case '{proofCase.Reference}' is no longer held out.");
-                }
+                            $"Matrix case '{proofCase.Reference}' is no longer held out.");
+                    }
 
                 if (proofCase.Category == "exact_endpoint")
                 {
@@ -978,7 +1103,6 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
                         Messages = proofCase.Messages
                     });
 
-                executed++;
                 Assert.Equal(providerCallsBefore, factory.CreateClientCalls);
                 if (proofCase.ExpectNative)
                 {
@@ -1012,6 +1136,18 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
                     negativePasses++;
                 }
 
+                results.Add(ProductionNativeProofResult.PassedCase(
+                    proofCase.Reference,
+                    proofCase.Category,
+                    proofCase.ExpectNative,
+                    native.Supported,
+                    native.ReasonCode,
+                    native.EvidenceCount,
+                    reply.ResponseAuthority,
+                    reply.Stage,
+                    factory.CreateClientCalls,
+                    Stopwatch.GetElapsedTime(caseStarted).TotalMilliseconds));
+
                 _output.WriteLine(
                     $"MATRIX CASE: reference={proofCase.Reference}; " +
                     $"category={proofCase.Category}; expected_native={proofCase.ExpectNative}; " +
@@ -1019,12 +1155,53 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
                     $"evidence={native.EvidenceCount}; authority={reply.ResponseAuthority}; " +
                     $"stage={reply.Stage}; provider_clients={factory.CreateClientCalls}; " +
                     $"elapsed_ms={Stopwatch.GetElapsedTime(caseStarted).TotalMilliseconds:0}");
+                }
+                catch (Exception exception)
+                {
+                    var elapsedMilliseconds = Stopwatch.GetElapsedTime(caseStarted).TotalMilliseconds;
+                    results.Add(ProductionNativeProofResult.FailedCase(
+                        proofCase.Reference,
+                        proofCase.Category,
+                        proofCase.ExpectNative,
+                        exception.Message,
+                        factory.CreateClientCalls,
+                        elapsedMilliseconds));
+                    _output.WriteLine(
+                        $"MATRIX CASE FAILED: reference={proofCase.Reference}; " +
+                        $"category={proofCase.Category}; expected_native={proofCase.ExpectNative}; " +
+                        $"failure={exception.Message}; provider_clients={factory.CreateClientCalls}; " +
+                        $"elapsed_ms={elapsedMilliseconds:0}");
+                }
             }
 
-            Assert.Equal(matrix.Count, executed);
-            Assert.True(nativePasses > 0);
-            Assert.True(negativePasses > 0);
-            Assert.Equal(0, factory.CreateClientCalls);
+            if (executed != matrix.Count)
+            {
+                results.Add(ProductionNativeProofResult.FailedFixture(
+                    "matrix-execution-count",
+                    "matrix_summary",
+                    $"The matrix attempted {executed} of {matrix.Count} executable cases."));
+            }
+            if (nativePasses == 0)
+            {
+                results.Add(ProductionNativeProofResult.FailedFixture(
+                    "matrix-native-pass-count",
+                    "matrix_summary",
+                    "The production matrix produced no positive native pass."));
+            }
+            if (negativePasses == 0)
+            {
+                results.Add(ProductionNativeProofResult.FailedFixture(
+                    "matrix-negative-pass-count",
+                    "matrix_summary",
+                    "The production matrix produced no negative isolation pass."));
+            }
+            if (factory.CreateClientCalls != 0)
+            {
+                results.Add(ProductionNativeProofResult.FailedFixture(
+                    "matrix-provider-isolation",
+                    "matrix_summary",
+                    $"The native-only production matrix created {factory.CreateClientCalls} provider clients."));
+            }
             _output.WriteLine($"PRODUCTION PROOF MATRIX CASES EXECUTED: {executed}");
             _output.WriteLine($"PRODUCTION PROOF MATRIX NATIVE PASSES: {nativePasses}");
             _output.WriteLine($"PRODUCTION PROOF MATRIX NEGATIVE PASSES: {negativePasses}");
@@ -1045,16 +1222,30 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
                         new
                         {
                             MatrixVersion = matrixVersion,
-                            Status = "passed",
+                            Status = results.All(item => item.Status == "passed")
+                                ? "passed"
+                                : "failed",
                             ExecutedCases = executed,
+                            TotalCases = results.Count,
+                            FailedCases = results.Count(item => item.Status == "failed"),
                             NativePasses = nativePasses,
                             NegativePasses = negativePasses,
                             ProviderClientCount = factory.CreateClientCalls,
                             ProductionWriteCommandCount = 0,
-                            Categories = requiredCategories
+                            Categories = requiredCategories,
+                            CaseResults = results
                         },
                         new JsonSerializerOptions { WriteIndented = true }));
             }
+
+            var failures = results
+                .Where(item => item.Status == "failed")
+                .Select(item => $"{item.Reference}: {item.Failure}")
+                .ToArray();
+            Assert.True(
+                failures.Length == 0,
+                "The production native proof matrix completed with independent failures: " +
+                string.Join(" | ", failures));
         }
         finally
         {
@@ -2976,6 +3167,89 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
                 "en",
                 [new LegendFounderAiChatMessage("user", prompt)],
                 false);
+    }
+
+    private sealed record ProductionNativeProofResult(
+        string Reference,
+        string Category,
+        string Phase,
+        string Status,
+        string? Failure,
+        bool? ExpectedNative,
+        bool? NativeSupported,
+        string? ReasonCode,
+        int? EvidenceCount,
+        string? ResponseAuthority,
+        string? Stage,
+        int ProviderClientCount,
+        double ElapsedMilliseconds)
+    {
+        internal static ProductionNativeProofResult FailedFixture(
+            string reference,
+            string category,
+            string failure) =>
+            new(
+                reference,
+                category,
+                "fixture",
+                "failed",
+                failure,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                0,
+                0);
+
+        internal static ProductionNativeProofResult PassedCase(
+            string reference,
+            string category,
+            bool expectedNative,
+            bool nativeSupported,
+            string? reasonCode,
+            int evidenceCount,
+            string? responseAuthority,
+            string? stage,
+            int providerClientCount,
+            double elapsedMilliseconds) =>
+            new(
+                reference,
+                category,
+                "execution",
+                "passed",
+                null,
+                expectedNative,
+                nativeSupported,
+                reasonCode,
+                evidenceCount,
+                responseAuthority,
+                stage,
+                providerClientCount,
+                elapsedMilliseconds);
+
+        internal static ProductionNativeProofResult FailedCase(
+            string reference,
+            string category,
+            bool expectedNative,
+            string failure,
+            int providerClientCount,
+            double elapsedMilliseconds) =>
+            new(
+                reference,
+                category,
+                "execution",
+                "failed",
+                failure,
+                expectedNative,
+                null,
+                null,
+                null,
+                null,
+                null,
+                providerClientCount,
+                elapsedMilliseconds);
     }
 
     private static async Task<ShadowCorpusCounts> ReadShadowCountsAsync(

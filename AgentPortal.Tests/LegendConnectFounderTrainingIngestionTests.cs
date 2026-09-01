@@ -158,7 +158,7 @@ public sealed class LegendConnectFounderTrainingIngestionTests
                     "surface_phrase")
             ]);
 
-        var accepted = await curriculum.SubmitFounderEnglishBatchAsync(submission);
+        var accepted = await curriculum.SubmitFounderBatchAsync(submission);
         Assert.True(accepted.Succeeded, accepted.Message);
 
         var responseUnitId = await db.LegendLanguageTextUnits
@@ -206,7 +206,7 @@ public sealed class LegendConnectFounderTrainingIngestionTests
         await db.SaveChangesAsync();
         db.ChangeTracker.Clear();
 
-        var reprocessed = await curriculum.SubmitFounderEnglishBatchAsync(submission);
+        var reprocessed = await curriculum.SubmitFounderBatchAsync(submission);
         Assert.True(reprocessed.Succeeded, reprocessed.Message);
         Assert.True(await db.LegendLanguageTextUnits
             .Where(item => item.Id == responseUnitId)
@@ -558,10 +558,10 @@ public sealed class LegendConnectFounderTrainingIngestionTests
         var corpus = new LegendConnectCorpusService(db, registry, NullLogger<LegendConnectCorpusService>.Instance);
         var curriculum = new LegendConnectCurriculumService(db, registry, corpus);
 
-        var first = await curriculum.SubmitFounderEnglishBatchAsync(FamilyBatch(
+        var first = await curriculum.SubmitFounderBatchAsync(FamilyBatch(
             ("I work.", "first", "work"),
             ("She works.", "third", "works")));
-        var second = await curriculum.SubmitFounderEnglishBatchAsync(FamilyBatch(
+        var second = await curriculum.SubmitFounderBatchAsync(FamilyBatch(
             ("I walk.", "first", "walk"),
             ("She walks.", "third", "walks")));
 
@@ -584,7 +584,7 @@ public sealed class LegendConnectFounderTrainingIngestionTests
         Assert.True(supportedBeforeContradiction.SupportCount >= 2);
         Assert.Equal(0, supportedBeforeContradiction.ContradictionCount);
 
-        var third = await curriculum.SubmitFounderEnglishBatchAsync(FamilyBatch(
+        var third = await curriculum.SubmitFounderBatchAsync(FamilyBatch(
             ("I speak.", "first", "speak"),
             ("She speaks.", "third", "speaks")));
 
@@ -618,7 +618,7 @@ public sealed class LegendConnectFounderTrainingIngestionTests
                 })
             ]);
 
-        var result = await curriculum.SubmitFounderEnglishBatchAsync(submission);
+        var result = await curriculum.SubmitFounderBatchAsync(submission);
 
         Assert.True(result.Succeeded, result.Message);
         Assert.Equal(2, await db.LegendLanguageCompositionalAnchors.CountAsync(item =>

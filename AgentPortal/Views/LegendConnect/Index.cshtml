@@ -582,7 +582,7 @@
             <summary>
                 <span>
                     <small>ADVANCED CURRICULUM</small>
-                    <strong>Teach English conversation intelligence</strong>
+                    <strong>Teach conversation intelligence</strong>
                 </span>
                 <span class="lc-tag">Curriculum</span>
             </summary>
@@ -600,7 +600,18 @@
                     @Html.AntiForgeryToken()
 
                     <label class="lc-field">
-                        <span>English semantic curriculum manifest</span>
+                        <span>Source language</span>
+                        <select name="SourceLanguageCode" required>
+                            <option value="">Select an enabled language</option>
+                            @foreach (var language in shell.Languages)
+                            {
+                                <option value="@language.LanguageCode">@language.DisplayName (@language.LanguageCode)</option>
+                            }
+                        </select>
+                    </label>
+
+                    <label class="lc-field">
+                        <span>Single-language semantic curriculum manifest</span>
 
                         <textarea name="Manifest"
                                   required

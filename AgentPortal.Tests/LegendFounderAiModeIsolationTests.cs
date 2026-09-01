@@ -548,6 +548,108 @@ public sealed class LegendFounderAiModeIsolationTests
     }
 
     [Fact]
+    public async Task OperationalDiagnostics_ReturnsPartialCanonicalSnapshot_WhenOneStageTimesOut()
+    {
+        using var founderEnvironment = new FounderEnvironmentScope();
+        await using var db = ControllerTestHelpers.BuildDb();
+        var founder = await AddFounderProfileAsync(db);
+        var operations = new Mock<ILegendConnectOperations>(MockBehavior.Strict);
+        var runtime = new Mock<ILegendConnectRuntimePolicyAuthority>(MockBehavior.Strict);
+        runtime
+            .Setup(authority => authority.GetEffectiveAsync(
+                It.IsAny<CancellationToken>()))
+            .Returns(async (CancellationToken token) =>
+            {
+                Assert.True(token.CanBeCanceled);
+                await Task.Delay(Timeout.InfiniteTimeSpan, token);
+                return RuntimePolicy();
+            });
+        runtime
+            .Setup(authority => authority.GetReadinessAsync(
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new LegendConnectProductionReadinessSnapshot(
+                "READY",
+                true,
+                "Canonical readiness completed.",
+                [],
+                1,
+                1,
+                0,
+                0,
+                0));
+        operations
+            .Setup(operation => operation.GetProviderCapacityAsync(
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(ProviderCapacity());
+        var authority = new LegendFounderToolAuthority(
+            new FounderLegendConnectService(
+                operations.Object,
+                new AgentProfileAccessResolver(db),
+                runtimePolicy: runtime.Object),
+            null);
+
+        var output = await authority.ExecuteAsync(
+            founder,
+            new FounderAiToolCall(
+                "diagnostic-call",
+                "legend_operational_diagnostics",
+                "{}"),
+            "teacher",
+            CancellationToken.None);
+
+        using var document = JsonDocument.Parse(output);
+        var root = document.RootElement;
+        Assert.Equal("READY", root.GetProperty("productionReadiness").GetProperty("state").GetString());
+        Assert.Equal("Synchronized", root.GetProperty("providerCapacity").GetProperty("status").GetString());
+        var stages = root.GetProperty("stages").EnumerateArray().ToArray();
+        Assert.Equal(3, stages.Length);
+        Assert.Equal("timed_out", stages[0].GetProperty("state").GetString());
+        Assert.Equal("available", stages[1].GetProperty("state").GetString());
+        Assert.Equal("available", stages[2].GetProperty("state").GetString());
+        runtime.VerifyAll();
+        operations.VerifyAll();
+    }
+
+    [Fact]
+    public async Task OperationalDiagnostics_ReportsStageFailure_AndContinuesRemainingAuthorities()
+    {
+        using var founderEnvironment = new FounderEnvironmentScope();
+        await using var db = ControllerTestHelpers.BuildDb();
+        var founder = await AddFounderProfileAsync(db);
+        var operations = new Mock<ILegendConnectOperations>(MockBehavior.Strict);
+        var runtime = new Mock<ILegendConnectRuntimePolicyAuthority>(MockBehavior.Strict);
+        runtime
+            .Setup(authority => authority.GetEffectiveAsync(
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(RuntimePolicy());
+        runtime
+            .Setup(authority => authority.GetReadinessAsync(
+                It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("test-only readiness failure"));
+        operations
+            .Setup(operation => operation.GetProviderCapacityAsync(
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(ProviderCapacity());
+        var legend = new FounderLegendConnectService(
+            operations.Object,
+            new AgentProfileAccessResolver(db),
+            runtimePolicy: runtime.Object);
+
+        var snapshot = await legend.GetOperationalDiagnosticsAsync(founder);
+
+        Assert.Equal("Active", snapshot.RuntimePolicy.ContextualCompositionMode);
+        Assert.Equal("BLOCKED", snapshot.ProductionReadiness.State);
+        Assert.Equal("Synchronized", snapshot.ProviderCapacity.Status);
+        Assert.Collection(
+            snapshot.Stages,
+            stage => Assert.Equal("available", stage.State),
+            stage => Assert.Equal("failed", stage.State),
+            stage => Assert.Equal("available", stage.State));
+        runtime.VerifyAll();
+        operations.VerifyAll();
+    }
+
+    [Fact]
     public async Task NativeReadOnlyContentBinding_RejectsUnavailableAndNonPermittedTools()
     {
         await using var db = ControllerTestHelpers.BuildDb();
@@ -1597,6 +1699,52 @@ public sealed class LegendFounderAiModeIsolationTests
                 null,
                 null,
                 null));
+
+    private static LegendConnectRuntimePolicySnapshot RuntimePolicy() =>
+        new(
+            true,
+            2_000_000,
+            200_000,
+            1_000_000,
+            true,
+            true,
+            "Active",
+            0.98m,
+            DateTime.UtcNow,
+            DateTime.UtcNow,
+            DateTime.UtcNow);
+
+    private static LegendConnectProviderCapacitySnapshot ProviderCapacity()
+    {
+        var now = DateTime.UtcNow;
+        var periodStart = new DateOnly(now.Year, now.Month, 1);
+        return new LegendConnectProviderCapacitySnapshot(
+            "AzureTranslator",
+            true,
+            "Synchronized",
+            "translator-test",
+            "resource-test",
+            "S1",
+            periodStart,
+            periodStart.AddMonths(1).AddDays(-1),
+            2_000_000,
+            100,
+            0,
+            1_999_900,
+            200_000,
+            1_000_000,
+            60,
+            now.AddHours(-1),
+            now,
+            2_000_000,
+            100,
+            0,
+            1_999_900,
+            200_000,
+            1_000_000,
+            now,
+            "Canonical provider capacity completed.");
+    }
 
     private static LegendConnectReadOnlyContentBindingRequest ReadOnlyContentRequest() =>
         new(

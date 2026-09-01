@@ -222,13 +222,14 @@ public sealed class FounderLegendConnectTargetRealizationReviewInput
 }
 
 /// <summary>
-/// Founder form transport for an explicit multi-family English curriculum manifest.
+/// Founder form transport for an explicit single-language, multi-family curriculum manifest.
 /// Family boundaries are declared by the Founder; the presentation layer never
 /// guesses, merges, or silently splits semantic families. Core validation and
 /// persistence remain owned by the existing Legend Connect curriculum authority.
 /// </summary>
 public sealed class FounderLegendConnectCurriculumInput
 {
+    public string SourceLanguageCode { get; set; } = string.Empty;
     public string Manifest { get; set; } = string.Empty;
 }
 

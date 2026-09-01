@@ -283,7 +283,7 @@ public sealed class LegendConnectDiscourseReferenceBindingTests
             var curriculum = CreateCurriculum(setup);
             for (var family = 1; family <= 3; family++)
             {
-                var result = await curriculum.SubmitFounderEnglishBatchAsync(ReferenceFamily(family));
+                var result = await curriculum.SubmitFounderBatchAsync(ReferenceFamily(family));
                 Assert.True(result.Succeeded, result.Message);
             }
 
@@ -457,7 +457,9 @@ public sealed class LegendConnectDiscourseReferenceBindingTests
             var accepted = await operations.SubmitFounderCurriculumManifestAsync(
                 actor,
                 new LegendConnectCurriculumManifestSubmission(
-                    Enumerable.Range(1, 3).Select(ResponsePlanReferenceFamily).ToArray()));
+                    Enumerable.Range(1, 3).Select(ResponsePlanReferenceFamily).ToArray(),
+                    null,
+                    "en"));
             Assert.True(accepted.Succeeded, accepted.Message);
             var processor = new LegendConnectCurriculumManifestProcessor(
                 setup, curriculum, durable, NullLogger<LegendConnectCurriculumManifestProcessor>.Instance);
@@ -617,7 +619,7 @@ public sealed class LegendConnectDiscourseReferenceBindingTests
         var curriculum = CreateCurriculum(db);
         for (var family = 1; family <= 3; family++)
         {
-            var submitted = await curriculum.SubmitFounderEnglishBatchAsync(
+            var submitted = await curriculum.SubmitFounderBatchAsync(
                 EarlyBindingReferenceFamily(family));
             Assert.True(submitted.Succeeded, submitted.Message);
         }

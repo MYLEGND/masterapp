@@ -28,7 +28,7 @@ public sealed class LegendConnectCrossExampleStructuralLearningTests
         var operations = new LegendConnectOperations(
             db, fixture.Registry, fixture.Corpus, fixture.Configuration, curriculum: fixture.Curriculum);
         foreach (var batch in ControlledAgentBatches())
-            Assert.True((await fixture.Curriculum.SubmitFounderEnglishBatchAsync(batch)).Succeeded);
+            Assert.True((await fixture.Curriculum.SubmitFounderBatchAsync(batch)).Succeeded);
 
         var relationship = await db.LegendLanguageStructuralRelationships.SingleAsync(item =>
             item.PairKey == string.Empty && item.LanguageCode == "en" &&
@@ -116,7 +116,7 @@ public sealed class LegendConnectCrossExampleStructuralLearningTests
                 ])
         };
         foreach (var batch in batches)
-            Assert.True((await fixture.Curriculum.SubmitFounderEnglishBatchAsync(batch)).Succeeded);
+            Assert.True((await fixture.Curriculum.SubmitFounderBatchAsync(batch)).Succeeded);
 
         var relationship = await db.LegendLanguageStructuralRelationships.SingleAsync(item =>
             item.PairKey == string.Empty && item.LanguageCode == "en" && item.VariationDimension == "agent");
@@ -147,7 +147,7 @@ public sealed class LegendConnectCrossExampleStructuralLearningTests
                     new LegendConnectCurriculumExampleSubmission("They carefully review reports.", AgentFrame("They", "review", "reports"))
                 ])
         })
-            Assert.True((await fixture.Curriculum.SubmitFounderEnglishBatchAsync(batch)).Succeeded);
+            Assert.True((await fixture.Curriculum.SubmitFounderBatchAsync(batch)).Succeeded);
 
         var prior = await db.LegendLanguageStructuralRelationships.SingleAsync(item => item.VariationDimension == "agent");
         var priorEvidence = await db.LegendLanguageStructuralEvidence
@@ -218,7 +218,7 @@ public sealed class LegendConnectCrossExampleStructuralLearningTests
         await using var db = ControllerTestHelpers.BuildDb();
         var fixture = CreateFixture(db);
         foreach (var batch in ControlledAgentBatches().Take(2))
-            Assert.True((await fixture.Curriculum.SubmitFounderEnglishBatchAsync(batch)).Succeeded);
+            Assert.True((await fixture.Curriculum.SubmitFounderBatchAsync(batch)).Succeeded);
 
         var relationship = await db.LegendLanguageStructuralRelationships.SingleAsync();
         Assert.Equal(2, relationship.SupportCount);
@@ -243,8 +243,8 @@ public sealed class LegendConnectCrossExampleStructuralLearningTests
         await using var db = ControllerTestHelpers.BuildDb();
         var fixture = CreateFixture(db);
         foreach (var batch in ControlledAgentBatches().Take(2))
-            Assert.True((await fixture.Curriculum.SubmitFounderEnglishBatchAsync(batch)).Succeeded);
-        Assert.True((await fixture.Curriculum.SubmitFounderEnglishBatchAsync(new LegendConnectCurriculumBatchSubmission(
+            Assert.True((await fixture.Curriculum.SubmitFounderBatchAsync(batch)).Succeeded);
+        Assert.True((await fixture.Curriculum.SubmitFounderBatchAsync(new LegendConnectCurriculumBatchSubmission(
             "agent.layout.conflict", "Controlled component layout",
             [
                 new LegendConnectCurriculumExampleSubmission("Reports I inspect.", AgentFrame("I", "inspect", "reports")),
@@ -270,7 +270,7 @@ public sealed class LegendConnectCrossExampleStructuralLearningTests
         await using var db = ControllerTestHelpers.BuildDb();
         var fixture = CreateFixture(db);
         foreach (var batch in ControlledAgentBatches())
-            Assert.True((await fixture.Curriculum.SubmitFounderEnglishBatchAsync(batch)).Succeeded);
+            Assert.True((await fixture.Curriculum.SubmitFounderBatchAsync(batch)).Succeeded);
 
         var relationship = await db.LegendLanguageStructuralRelationships.SingleAsync();
         var retiringEvidence = await db.LegendLanguageStructuralEvidence
@@ -320,7 +320,7 @@ public sealed class LegendConnectCrossExampleStructuralLearningTests
                 ])
         };
         foreach (var batch in batches)
-            Assert.True((await fixture.Curriculum.SubmitFounderEnglishBatchAsync(batch)).Succeeded);
+            Assert.True((await fixture.Curriculum.SubmitFounderBatchAsync(batch)).Succeeded);
 
         Assert.Empty(await db.LegendLanguageStructuralRelationships.ToListAsync());
         Assert.NotEmpty(await db.LegendLanguageStructuralEvidence.ToListAsync());
@@ -356,7 +356,7 @@ public sealed class LegendConnectCrossExampleStructuralLearningTests
         var operations = new LegendConnectOperations(
             db, fixture.Registry, fixture.Corpus, fixture.Configuration, curriculum: fixture.Curriculum);
         foreach (var batch in ControlledAgentBatches())
-            Assert.True((await fixture.Curriculum.SubmitFounderEnglishBatchAsync(batch)).Succeeded);
+            Assert.True((await fixture.Curriculum.SubmitFounderBatchAsync(batch)).Succeeded);
 
         var firstTargets = new Dictionary<string, string>
         {
@@ -428,7 +428,7 @@ public sealed class LegendConnectCrossExampleStructuralLearningTests
                 new LegendConnectCurriculumExampleSubmission("Reports you audit.", AgentFrame("you", "audit", "reports"))
             ]);
         var conflictFamily = Assert.IsType<LegendConnectCurriculumSubmissionResult>(
-            await fixture.Curriculum.SubmitFounderEnglishBatchAsync(conflictingBatch));
+            await fixture.Curriculum.SubmitFounderBatchAsync(conflictingBatch));
         Assert.True(conflictFamily.Succeeded, conflictFamily.Message);
         var conflictLeftSourceId = await db.LegendLanguageTextUnits
             .Where(item => item.LanguageCode == "en" && item.Text == "Reports I audit.")

@@ -1,7 +1,9 @@
 using System.Diagnostics;
+using System.Globalization;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 using Domain.Messaging;
 
@@ -37,7 +39,7 @@ internal sealed class LegendConnectResearchPageRetriever
         var clock = Stopwatch.StartNew();
         var settingsIdentity = LegendLanguageIdentity.TextHash(string.Join(
             '|',
-            "legend-canonical-page-retrieval:v1",
+            "legend-canonical-page-retrieval:v2",
             "methods:GET",
             "schemes:http,https",
             "redirects:" + LegendConnectResearchContracts.MaximumRedirects,
@@ -155,6 +157,8 @@ internal sealed class LegendConnectResearchPageRetriever
                 Title = title,
                 RetrievedUtc = retrievedUtc,
                 DocumentLanguageCode = normalizedDocumentLanguage,
+                PublishedUtc = attempt.PublishedUtc ?? source.PublishedUtc,
+                UpdatedUtc = attempt.UpdatedUtc ?? source.UpdatedUtc,
                 IsUntrustedExternalData = true
             };
             if (!sameOrigin)
@@ -370,6 +374,10 @@ internal sealed class LegendConnectResearchPageRetriever
                     return Failure("internet_research_page_content_oversized", statusCode, contentType);
                 var encoding = ResolveEncoding(response.Content.Headers.ContentType?.CharSet);
                 var rawText = encoding.GetString(bytes);
+                var pageTimestamps = LegendConnectResearchPageMetadata.Extract(
+                    rawText,
+                    contentType!,
+                    response.Content.Headers.LastModified);
                 var plainText = LegendConnectResearchPageText.ExtractUntrustedText(rawText, contentType!);
                 var characterLimit = Math.Min(maximumDocumentCharacters, remainingTotalCharacters);
                 if (plainText.Length > characterLimit)
@@ -409,6 +417,8 @@ internal sealed class LegendConnectResearchPageRetriever
                     contentHash,
                     contentType,
                     documentLanguage,
+                    pageTimestamps.PublishedUtc,
+                    pageTimestamps.UpdatedUtc,
                     receipt,
                     false);
             }
@@ -479,6 +489,8 @@ internal sealed class LegendConnectResearchPageRetriever
         string? ContentHash,
         string? ContentType,
         string? DocumentLanguageCode,
+        DateTime? PublishedUtc,
+        DateTime? UpdatedUtc,
         LegendConnectResearchPageReceipt Receipt,
         bool RequestTimedOut)
     {
@@ -503,6 +515,8 @@ internal sealed class LegendConnectResearchPageRetriever
                 null,
                 null,
                 contentType,
+                null,
+                null,
                 null,
                 new LegendConnectResearchPageReceipt(
                     LegendLanguageIdentity.TextHash(
@@ -529,6 +543,231 @@ internal sealed class LegendConnectResearchPageRetriever
         }
     }
 }
+
+/// <summary>
+/// Extracts only explicit publication and update timestamps declared by the
+/// retrieved same-origin representation. Ambiguous, conflicting, timezone-free,
+/// or generic page dates are deliberately ignored rather than inferred.
+/// </summary>
+internal static class LegendConnectResearchPageMetadata
+{
+    private const int MaximumStructuredDataScripts = 32;
+    private const int MaximumTimestampCandidates = 64;
+    private static readonly TimeSpan RegexTimeout = TimeSpan.FromMilliseconds(250);
+    private static readonly Regex MetaTag = new(
+        "<meta\\b[^>]*>",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant,
+        RegexTimeout);
+    private static readonly Regex TimeTag = new(
+        "<time\\b[^>]*>",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant,
+        RegexTimeout);
+    private static readonly Regex Attribute = new(
+        "(?<name>[A-Za-z_:][-A-Za-z0-9_:.]*)\\s*=\\s*(?:\"(?<value>[^\"]*)\"|'(?<value>[^']*)'|(?<value>[^\\s>]+))",
+        RegexOptions.CultureInvariant,
+        RegexTimeout);
+    private static readonly Regex JsonLdScript = new(
+        "<script\\b(?=[^>]*\\btype\\s*=\\s*(?:\"application/ld\\+json\"|'application/ld\\+json'|application/ld\\+json))[^>]*>(?<json>.*?)</script\\s*>",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Singleline,
+        RegexTimeout);
+    private static readonly Regex ExplicitTimezone = new(
+        "(?:Z|[+-]\\d{2}:?\\d{2}|GMT|UTC)\\s*$",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant,
+        RegexTimeout);
+
+    private static readonly HashSet<string> PublishedMetadataNames = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "article:published_time",
+        "og:published_time",
+        "datepublished",
+        "date_published",
+        "publication_date",
+        "publishdate",
+        "dcterms.created",
+        "dcterms.issued"
+    };
+
+    private static readonly HashSet<string> UpdatedMetadataNames = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "article:modified_time",
+        "og:updated_time",
+        "datemodified",
+        "date_modified",
+        "modified_date",
+        "lastmodified",
+        "dcterms.modified"
+    };
+
+    internal static LegendConnectResearchPageTimestamps Extract(
+        string rawText,
+        string contentType,
+        DateTimeOffset? lastModified)
+    {
+        if (!contentType.Equals("text/html", StringComparison.OrdinalIgnoreCase) &&
+            !contentType.Equals("application/xhtml+xml", StringComparison.OrdinalIgnoreCase))
+        {
+            return new(null, lastModified?.UtcDateTime);
+        }
+
+        try
+        {
+            var published = new List<DateTime>();
+            var updated = new List<DateTime>();
+            CollectElementMetadata(rawText, MetaTag, published, updated);
+            CollectElementMetadata(rawText, TimeTag, published, updated);
+            CollectJsonLdMetadata(rawText, published, updated);
+
+            var publishedUtc = ResolveUnambiguous(published);
+            var updatedUtc = ResolveUnambiguous(updated);
+            return new(
+                publishedUtc.Value,
+                updatedUtc.HasCandidates ? updatedUtc.Value : lastModified?.UtcDateTime);
+        }
+        catch (RegexMatchTimeoutException)
+        {
+            return new(null, lastModified?.UtcDateTime);
+        }
+    }
+
+    private static void CollectElementMetadata(
+        string html,
+        Regex elementPattern,
+        ICollection<DateTime> published,
+        ICollection<DateTime> updated)
+    {
+        foreach (Match match in elementPattern.Matches(html))
+        {
+            var attributes = ReadAttributes(match.Value);
+            if (!attributes.TryGetValue("content", out var value) &&
+                !attributes.TryGetValue("datetime", out value))
+                continue;
+            if (!TryParseExplicitUtc(value, out var timestamp))
+                continue;
+
+            var metadataName = attributes.TryGetValue("property", out var property)
+                ? property
+                : attributes.TryGetValue("name", out var name)
+                    ? name
+                    : attributes.TryGetValue("itemprop", out var itemprop)
+                        ? itemprop
+                        : null;
+            if (metadataName is null)
+                continue;
+            if (PublishedMetadataNames.Contains(metadataName))
+                AddBounded(published, timestamp);
+            else if (UpdatedMetadataNames.Contains(metadataName))
+                AddBounded(updated, timestamp);
+        }
+    }
+
+    private static Dictionary<string, string> ReadAttributes(string element)
+    {
+        var attributes = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (Match attribute in Attribute.Matches(element))
+        {
+            var name = attribute.Groups["name"].Value;
+            if (!attributes.ContainsKey(name))
+                attributes[name] = WebUtility.HtmlDecode(attribute.Groups["value"].Value).Trim();
+        }
+        return attributes;
+    }
+
+    private static void CollectJsonLdMetadata(
+        string html,
+        ICollection<DateTime> published,
+        ICollection<DateTime> updated)
+    {
+        var scriptCount = 0;
+        foreach (Match match in JsonLdScript.Matches(html))
+        {
+            if (++scriptCount > MaximumStructuredDataScripts)
+                break;
+            try
+            {
+                using var document = JsonDocument.Parse(match.Groups["json"].Value, new JsonDocumentOptions
+                {
+                    MaxDepth = 32,
+                    CommentHandling = JsonCommentHandling.Skip,
+                    AllowTrailingCommas = true
+                });
+                CollectJsonLdElement(document.RootElement, published, updated);
+            }
+            catch (JsonException)
+            {
+                // Malformed untrusted structured data is not evidence metadata.
+            }
+        }
+    }
+
+    private static void CollectJsonLdElement(
+        JsonElement element,
+        ICollection<DateTime> published,
+        ICollection<DateTime> updated)
+    {
+        if (published.Count + updated.Count >= MaximumTimestampCandidates)
+            return;
+        if (element.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var item in element.EnumerateArray())
+                CollectJsonLdElement(item, published, updated);
+            return;
+        }
+        if (element.ValueKind != JsonValueKind.Object)
+            return;
+
+        foreach (var property in element.EnumerateObject())
+        {
+            if (property.NameEquals("datePublished"))
+                CollectJsonTimestamp(property.Value, published);
+            else if (property.NameEquals("dateModified"))
+                CollectJsonTimestamp(property.Value, updated);
+            else if (property.NameEquals("@graph") || property.NameEquals("mainEntity"))
+                CollectJsonLdElement(property.Value, published, updated);
+        }
+    }
+
+    private static void CollectJsonTimestamp(JsonElement value, ICollection<DateTime> destination)
+    {
+        if (value.ValueKind == JsonValueKind.String &&
+            TryParseExplicitUtc(value.GetString(), out var timestamp))
+            AddBounded(destination, timestamp);
+    }
+
+    private static void AddBounded(ICollection<DateTime> destination, DateTime timestamp)
+    {
+        if (destination.Count < MaximumTimestampCandidates)
+            destination.Add(timestamp);
+    }
+
+    private static TimestampResolution ResolveUnambiguous(IEnumerable<DateTime> candidates)
+    {
+        var values = candidates.Select(value => value.ToUniversalTime()).Distinct().Take(2).ToArray();
+        return new(values.Length == 1 ? values[0] : null, values.Length > 0);
+    }
+
+    private static bool TryParseExplicitUtc(string? value, out DateTime timestamp)
+    {
+        timestamp = default;
+        if (string.IsNullOrWhiteSpace(value) ||
+            value.Length > 100 ||
+            !ExplicitTimezone.IsMatch(value))
+            return false;
+        if (!DateTimeOffset.TryParse(
+                value,
+                CultureInfo.InvariantCulture,
+                DateTimeStyles.AllowWhiteSpaces,
+                out var parsed))
+            return false;
+        timestamp = parsed.UtcDateTime;
+        return true;
+    }
+
+    private readonly record struct TimestampResolution(DateTime? Value, bool HasCandidates);
+}
+
+internal sealed record LegendConnectResearchPageTimestamps(
+    DateTime? PublishedUtc,
+    DateTime? UpdatedUtc);
 
 /// <summary>
 /// URL and socket policy shared by search-candidate validation and the single

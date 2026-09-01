@@ -156,7 +156,7 @@ public sealed class LegendConnectCompositionalUnderstandingTests
             ]);
 
         var submitted =
-            await fixture.Curriculum.SubmitFounderEnglishBatchAsync(
+            await fixture.Curriculum.SubmitFounderBatchAsync(
                 competingRole);
 
         Assert.True(submitted.Succeeded, submitted.Message);
@@ -697,7 +697,7 @@ public sealed class LegendConnectCompositionalUnderstandingTests
             examples);
 
         var submitted =
-            await fixture.Curriculum.SubmitFounderEnglishBatchAsync(batch);
+            await fixture.Curriculum.SubmitFounderBatchAsync(batch);
 
         Assert.True(submitted.Succeeded, submitted.Message);
 
@@ -836,7 +836,7 @@ public sealed class LegendConnectCompositionalUnderstandingTests
             Source("I", "affirmative", "audit", "reports"),
             Source("You", "affirmative", "audit", "reports")
         ]);
-        Assert.True((await fixture.Curriculum.SubmitFounderEnglishBatchAsync(batch)).Succeeded);
+        Assert.True((await fixture.Curriculum.SubmitFounderBatchAsync(batch)).Succeeded);
         var leftSource = SourceText("I", "affirmative", "audit", "reports");
         var rightSource = SourceText("You", "affirmative", "audit", "reports");
         var leftId = await fixture.Db.LegendLanguageTextUnits.Where(item => item.Text == leftSource).Select(item => item.Id).SingleAsync();
@@ -1062,7 +1062,7 @@ public sealed class LegendConnectCompositionalUnderstandingTests
 
         var submitted =
             await fixture.Curriculum
-                .SubmitFounderEnglishBatchAsync(fusion);
+                .SubmitFounderBatchAsync(fusion);
 
         Assert.True(submitted.Succeeded, submitted.Message);
 

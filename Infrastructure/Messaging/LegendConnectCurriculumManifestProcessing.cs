@@ -199,11 +199,16 @@ internal sealed class LegendConnectCurriculumManifestProcessor
         if (manifests.Count > 0)
         {
             // Language-pair identity is shared by otherwise independent
-            // English families. Establish it through the existing registry
+            // source-language families. Establish it through the existing registry
             // before durable parallel ownership begins, so workers never
             // contend to manufacture the same canonical pair under their
             // long-lived canonical-mutation transactions.
-            await _curriculum.EnsureFounderEnglishExpansionPairsAsync(cancellationToken);
+            foreach (var sourceLanguage in manifests
+                         .Select(item => item.SourceLanguageCode)
+                         .Distinct(StringComparer.OrdinalIgnoreCase))
+            {
+                await _curriculum.EnsureFounderExpansionPairsAsync(sourceLanguage, cancellationToken);
+            }
         }
         var seeded = 0;
         foreach (var manifest in manifests)
@@ -221,7 +226,14 @@ internal sealed class LegendConnectCurriculumManifestProcessor
 
             var families = payload?.Families?.ToArray() ?? [];
             if (families.Length != manifest.FamilyCount || families.Length == 0 ||
-                families.Any(item => string.IsNullOrWhiteSpace(item.FamilyKey)))
+                families.Any(item => string.IsNullOrWhiteSpace(item.FamilyKey)) ||
+                !(string.Equals(payload?.SourceLanguageCode, manifest.SourceLanguageCode, StringComparison.OrdinalIgnoreCase) ||
+                  // Rows accepted before source-language manifests existed are
+                  // schema-migrated as English. This is durable compatibility,
+                  // never a fallback for a new request (the intake authority
+                  // rejects an omitted language before acceptance).
+                  (string.IsNullOrWhiteSpace(payload?.SourceLanguageCode) &&
+                   string.Equals(manifest.SourceLanguageCode, "en", StringComparison.OrdinalIgnoreCase))))
             {
                 await MarkFailedAsync(manifest.Id, "curriculum_manifest_payload_mismatch",
                     "The durable manifest payload no longer matches its accepted family count.", cancellationToken);
@@ -229,7 +241,10 @@ internal sealed class LegendConnectCurriculumManifestProcessor
             }
             var semanticRelationships = payload?.CrossExampleSemanticRelationships?.ToArray() ?? [];
 
-            await _curriculum.EnsureFounderManifestLexicalPrerequisitesAsync(families, cancellationToken);
+            await _curriculum.EnsureFounderManifestLexicalPrerequisitesAsync(
+                families,
+                manifest.SourceLanguageCode,
+                cancellationToken);
 
             // The parent manifest is a projection of durable child work.
             // Do not reopen a completed receipt merely because its projection
@@ -240,7 +255,7 @@ internal sealed class LegendConnectCurriculumManifestProcessor
             var familyWorkChanged = await durableWork.SeedFounderManifestFamiliesAsync(
                 evaluatorVersion,
                 manifest.Id,
-                BuildFamilyWorkSeeds(families),
+                BuildFamilyWorkSeeds(families, manifest.SourceLanguageCode),
                 cancellationToken);
             var relationshipWorkChanged = await durableWork.SeedFounderManifestSemanticRelationsAsync(
                 evaluatorVersion,
@@ -254,7 +269,7 @@ internal sealed class LegendConnectCurriculumManifestProcessor
                 ledgerWorkChanged = await durableWork.SeedFounderManifestDerivationLedgersAsync(
                     evaluatorVersion,
                     manifest.Id,
-                    BuildFamilyWorkSeeds(families),
+                    BuildFamilyWorkSeeds(families, manifest.SourceLanguageCode),
                     cancellationToken);
             }
             if (parentChanged || familyWorkChanged || relationshipWorkChanged || ledgerWorkChanged)
@@ -272,7 +287,8 @@ internal sealed class LegendConnectCurriculumManifestProcessor
     }
 
     private static IReadOnlyList<LegendFounderManifestFamilyWorkSeed> BuildFamilyWorkSeeds(
-        IReadOnlyList<LegendConnectCurriculumBatchSubmission> families)
+        IReadOnlyList<LegendConnectCurriculumBatchSubmission> families,
+        string sourceLanguageCode)
     {
         // This is not curriculum interpretation: each identity is an exact,
         // normalized Founder-declared dimension/value already accepted by the
@@ -311,8 +327,8 @@ internal sealed class LegendConnectCurriculumManifestProcessor
                     // before any family begins its owned mutation transaction.
                     // All genuinely independent families retain individual
                     // lanes and keep the configured worker parallelism.
-                    ? "founder-curriculum-semantic-collision:en"
-                    : $"founder-curriculum-family:{family.FamilyKey.Trim().ToLowerInvariant()}",
+                    ? $"founder-curriculum-semantic-collision:{sourceLanguageCode}"
+                    : $"founder-curriculum-family:{sourceLanguageCode}:{family.FamilyKey.Trim().ToLowerInvariant()}",
                 // This is deliberately distinct from the phase-local
                 // dependency lane. It is the one stable ownership fence that
                 // SourceFamilies replay and normal Founder intake share for
@@ -336,7 +352,10 @@ internal sealed class LegendConnectCurriculumManifestProcessor
             throw new InvalidOperationException("The leased Founder curriculum family does not match its retained manifest.");
 
         var family = families[familyIndex];
-        var result = await _curriculum.SubmitFounderEnglishBatchAsync(family, cancellationToken);
+        var result = await _curriculum.SubmitFounderBatchAsync(
+            family,
+            cancellationToken,
+            manifest.SourceLanguageCode);
         if (!result.Succeeded)
             throw new InvalidOperationException(
                 $"{result.ErrorCode ?? "curriculum_family_processing_rejected"}: " +
@@ -348,7 +367,7 @@ internal sealed class LegendConnectCurriculumManifestProcessor
             FounderUserId = manifest.FounderUserId,
             Action = "FounderCurriculumFamilyProcessed",
             Result = result.DuplicatePrevented ? "CanonicalReuse" : "Succeeded",
-            LanguageCode = "en",
+            LanguageCode = manifest.SourceLanguageCode,
             Detail = Truncate(
                 $"Manifest {manifest.ManifestHash[..12]} family {familyIndex + 1}/{manifest.FamilyCount}: {family.FamilyKey}. " +
                 $"Evaluator v{manifest.TargetLanguageIntelligenceEvaluatorVersion}. " +
@@ -413,14 +432,15 @@ internal sealed class LegendConnectCurriculumManifestProcessor
         await _curriculum.PersistFounderCrossExampleSemanticRelationAsync(
             relationships[relationshipIndex],
             evaluatorVersion,
-            cancellationToken);
+            cancellationToken,
+            manifest.SourceLanguageCode);
         _db.Set<LegendConnectKnowledgeAuditEntry>().Add(new LegendConnectKnowledgeAuditEntry
         {
             Id = Guid.NewGuid(),
             FounderUserId = manifest.FounderUserId,
             Action = "FounderCrossExampleSemanticRelationProcessed",
             Result = "Succeeded",
-            LanguageCode = "en",
+            LanguageCode = manifest.SourceLanguageCode,
             Detail = Truncate(
                 $"Manifest {manifest.ManifestHash[..12]} semantic relationship {relationshipIndex + 1}/{relationships.Length}. " +
                 $"Evaluator v{evaluatorVersion} projected through the governed transition authority.",

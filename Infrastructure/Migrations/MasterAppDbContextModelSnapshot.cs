@@ -5466,6 +5466,11 @@ namespace Infrastructure.Migrations
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<string>("SourceLanguageCode")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
+
                     b.Property<string>("ProcessingState")
                         .IsRequired()
                         .HasMaxLength(32)
@@ -5479,7 +5484,7 @@ namespace Infrastructure.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("CreatedUtc")
+                    b.HasIndex("SourceLanguageCode", "CreatedUtc")
                         .HasDatabaseName("IX_LegendCurriculumManifestWorkItems_FounderStatus");
 
                     b.HasIndex("FounderUserId", "ManifestHash")

@@ -59,6 +59,87 @@ public sealed class LegendConnectGovernedInternetResearchTests
             decision.ReasonCode);
     }
 
+    [Fact]
+    public void Decision_CurrentOptionQuestionAfterCorrection_UsesGovernedDiscourseInsteadOfResearch()
+    {
+        var alpha = new LegendConnectUtteranceMeaningNode(
+            "choice-alpha",
+            "choice",
+            "alpha",
+            0,
+            1,
+            3);
+        var corrected = new LegendConnectDiscourseReferenceBindingSnapshot(
+            "bound",
+            "discourse_reference_bound",
+            "choice",
+            alpha.SemanticSignature,
+            alpha.SemanticValue,
+            1,
+            0,
+            true,
+            "selector-first-option",
+            "ordinal-choice-rule");
+        var current = corrected with
+        {
+            ReplacesActiveBinding = false,
+            SelectorSemanticSignature = "selector-which-option"
+        };
+        var discourseState = new LegendConnectDiscourseStateSnapshot(
+        [
+            new LegendConnectDiscourseTurnStateSnapshot(
+                1,
+                "user",
+                true,
+                [alpha],
+                [],
+                []),
+            new LegendConnectDiscourseTurnStateSnapshot(
+                2,
+                "user",
+                true,
+                [],
+                [],
+                [corrected]),
+            new LegendConnectDiscourseTurnStateSnapshot(
+                3,
+                "user",
+                true,
+                [],
+                [],
+                [current])
+        ]);
+
+        var decision = LegendConnectOperations.DecideResearchNeeded(
+            "Which option is reliable now?",
+            "en",
+            Unsupported(),
+            DecisionUtc,
+            discourseState: discourseState);
+
+        Assert.False(decision.ResearchRequired);
+        Assert.Equal(LegendConnectResearchNeed.NotResearchable, decision.Need);
+        Assert.Equal(
+            "conversation_context_is_not_external_research",
+            decision.ReasonCode);
+    }
+
+    [Fact]
+    public void Decision_CurrentExternalQuestionWithoutDiscourseStillRequiresResearch()
+    {
+        var decision = LegendConnectOperations.DecideResearchNeeded(
+            "Which public policy is reliable right now?",
+            "en",
+            Unsupported(),
+            DecisionUtc,
+            discourseState: new LegendConnectDiscourseStateSnapshot([]));
+
+        Assert.True(decision.ResearchRequired);
+        Assert.Equal(
+            LegendConnectResearchNeed.CurrentOrTimeSensitiveInformation,
+            decision.Need);
+    }
+
     [Theory]
     [InlineData(
         "stale_internal_evidence",

@@ -77,7 +77,7 @@ public sealed class LegendConnectHistoricalReevaluationVersioningTests
 
         foreach (var familyKey in new[] { "version.one", "version.two", "version.three" })
         {
-            var submitted = await curriculum.SubmitFounderEnglishBatchAsync(new LegendConnectCurriculumBatchSubmission(
+            var submitted = await curriculum.SubmitFounderBatchAsync(new LegendConnectCurriculumBatchSubmission(
                 familyKey,
                 "Versioned historical evidence",
                 [
@@ -192,7 +192,7 @@ public sealed class LegendConnectHistoricalReevaluationVersioningTests
             db, registry, corpus, configuration, runtimePolicy: runtime,
             curriculum: curriculum, intelligence: intelligence);
 
-        var submitted = await curriculum.SubmitFounderEnglishBatchAsync(new LegendConnectCurriculumBatchSubmission(
+        var submitted = await curriculum.SubmitFounderBatchAsync(new LegendConnectCurriculumBatchSubmission(
             "dependency.frontier", "Controlled historical evidence",
             [
                 new LegendConnectCurriculumExampleSubmission(

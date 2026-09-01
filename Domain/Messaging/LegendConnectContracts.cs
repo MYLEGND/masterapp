@@ -286,7 +286,8 @@ public sealed record LegendConnectCurriculumBatchSubmission(
 /// </summary>
 public sealed record LegendConnectCurriculumManifestSubmission(
     IReadOnlyList<LegendConnectCurriculumBatchSubmission> Families,
-    IReadOnlyList<LegendConnectCrossExampleSemanticRelationshipSubmission>? CrossExampleSemanticRelationships = null);
+    IReadOnlyList<LegendConnectCrossExampleSemanticRelationshipSubmission>? CrossExampleSemanticRelationships,
+    string SourceLanguageCode);
 
 public sealed record LegendConnectCurriculumSubmissionResult(
     bool Succeeded,
@@ -295,7 +296,7 @@ public sealed record LegendConnectCurriculumSubmissionResult(
     string? Message,
     string? FamilyKey,
     Guid? CurriculumFamilyId,
-    int EnglishExampleCount,
+    int SourceExampleCount,
     int TargetExpansionCount);
 
 public sealed record LegendConnectLanguageHealthSnapshot(

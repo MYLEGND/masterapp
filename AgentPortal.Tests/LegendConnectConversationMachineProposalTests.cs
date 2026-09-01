@@ -632,7 +632,7 @@ public sealed class LegendConnectConversationMachineProposalTests
         var familyIds = new List<Guid>();
         for (var index = 1; index <= 3; index++)
         {
-            var result = await curriculum.SubmitFounderEnglishBatchAsync(
+            var result = await curriculum.SubmitFounderBatchAsync(
                 new LegendConnectCurriculumBatchSubmission(
                     $"lai013.governed.primitives.{index}",
                     "Founder-governed primitives for same-language proposal admission.",

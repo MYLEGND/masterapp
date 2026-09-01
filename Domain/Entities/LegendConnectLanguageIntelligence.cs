@@ -1347,6 +1347,7 @@ public sealed class LegendCurriculumManifestWorkItem
 {
     public Guid Id { get; set; }
     public string FounderUserId { get; set; } = string.Empty;
+    public string SourceLanguageCode { get; set; } = string.Empty;
     public string ManifestHash { get; set; } = string.Empty;
     public string PayloadJson { get; set; } = string.Empty;
     public int FamilyCount { get; set; }
