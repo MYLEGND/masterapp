@@ -144,7 +144,8 @@ internal sealed record LegendSemanticTransitionInference(
     int EvidenceCount,
     IReadOnlyList<string> Reasons,
     LegendConnectReadOnlyContentBindingRequest? ReadOnlyContentRequest = null,
-    IReadOnlyList<LegendConnectReadOnlyContentBindingReceipt>? ContentBindingProvenance = null)
+    IReadOnlyList<LegendConnectReadOnlyContentBindingReceipt>? ContentBindingProvenance = null,
+    LegendConnectResponsePresentationConstraintsSnapshot? PresentationConstraints = null)
 {
     internal const string Supported = "Supported";
     internal const string InsufficientEvidence = "InsufficientEvidence";
@@ -152,6 +153,15 @@ internal sealed record LegendSemanticTransitionInference(
     internal const string Contradicted = "Contradicted";
     internal const string ReadOnlyContentRequired = "ReadOnlyContentRequired";
 }
+
+/// <summary>
+/// Result returned by the existing curriculum presentation authority after it
+/// has realized and citation-validated one governed research response.
+/// </summary>
+internal sealed record LegendResearchPresentationResult(
+    bool Succeeded,
+    string ReasonCode,
+    LegendConnectResearchPresentation Presentation);
 
 /// <summary>
 /// One target realization resolved from existing verified directional
@@ -280,76 +290,818 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
     /// presentation authority. It does not select claims, retrieve sources,
     /// learn text, or turn external material into canonical knowledge.
     /// </summary>
-    internal static string PresentResearchEvidence(
+    internal static bool AreGovernedPresentationConstraintsValid(
+        LegendConnectResponsePresentationConstraintsSnapshot? constraints)
+    {
+        if (constraints is null)
+            return true;
+        var dimensions = new Dictionary<string, string>(StringComparer.Ordinal);
+        void Add(string dimension, string? value)
+        {
+            if (!string.IsNullOrWhiteSpace(value))
+                dimensions[dimension] = value;
+        }
+        Add(ResponseAudienceDimension, constraints.Audience);
+        Add(ResponseExpertiseDimension, constraints.Expertise);
+        Add(ResponseToneDimension, constraints.Tone);
+        Add(ResponseLengthDimension, constraints.Length);
+        Add(
+            ResponseSentenceCountDimension,
+            constraints.SentenceCount?.ToString(CultureInfo.InvariantCulture));
+        Add(ResponseStructureDimension, constraints.Structure);
+        return TryResolveGovernedPresentationConstraints(
+                   dimensions,
+                   out var governed,
+                   out _,
+                   out _) &&
+               governed == constraints;
+    }
+
+    internal static LegendResearchPresentationResult PresentResearchEvidence(
         LegendResearchEvidenceAssessmentState state,
+        LegendConnectResearchEvidenceOrigin evidenceOrigin,
+        string researchQuestion,
+        string? internalAnswer,
+        IReadOnlyList<LegendConnectResearchMaterialClaimEvidence> materialEvidence,
         IReadOnlyList<LegendConnectResearchMaterialClaimEvidence> claims,
         IReadOnlyList<LegendConnectResearchMaterialClaimEvidence> contradictions,
+        IReadOnlyList<LegendConnectResearchClaimResolution> resolutions,
+        IReadOnlyList<LegendConnectResearchSourceIdentity> sources,
+        IReadOnlyList<LegendConnectRetrievedDocument> documents,
         IReadOnlyList<LegendConnectCitation> citations,
-        string reasonCode)
+        LegendConnectResearchLanguageLineage languageLineage,
+        LegendConnectResponsePresentationConstraintsSnapshot? presentationConstraints,
+        string reasonCode,
+        DateTime validatedUtc)
     {
-        var orderedCitations = citations
-            .GroupBy(item => item.CitationIdentity, StringComparer.Ordinal)
-            .Select(group => group.First())
-            .OrderBy(item => item.CitationIdentity, StringComparer.Ordinal)
+        ArgumentNullException.ThrowIfNull(materialEvidence);
+        ArgumentException.ThrowIfNullOrWhiteSpace(researchQuestion);
+        ArgumentNullException.ThrowIfNull(claims);
+        ArgumentNullException.ThrowIfNull(contradictions);
+        ArgumentNullException.ThrowIfNull(resolutions);
+        ArgumentNullException.ThrowIfNull(sources);
+        ArgumentNullException.ThrowIfNull(documents);
+        ArgumentNullException.ThrowIfNull(citations);
+        ArgumentNullException.ThrowIfNull(languageLineage);
+
+        var rejectionReasons = new SortedSet<string>(StringComparer.Ordinal);
+        Dictionary<string, T> UniqueByIdentity<T>(
+            IEnumerable<T> values,
+            Func<T, string> identity,
+            string duplicateReason)
+        {
+            var result = new Dictionary<string, T>(StringComparer.Ordinal);
+            foreach (var value in values)
+            {
+                var key = identity(value);
+                if (string.IsNullOrWhiteSpace(key) || !result.TryAdd(key, value))
+                    rejectionReasons.Add(duplicateReason);
+            }
+            return result;
+        }
+
+        var sourceById = UniqueByIdentity(
+            sources,
+            item => item.SourceIdentity,
+            "research_citation_source_identity_missing_or_duplicate");
+        var documentById = UniqueByIdentity(
+            documents,
+            item => item.DocumentIdentity,
+            "research_citation_document_identity_missing_or_duplicate");
+        var citationById = UniqueByIdentity(
+            citations,
+            item => item.CitationIdentity,
+            "research_citation_identity_missing_or_duplicate");
+        var resolutionByClaim = UniqueByIdentity(
+            resolutions,
+            item => item.NormalizedClaimIdentity,
+            "research_claim_resolution_missing_or_duplicate");
+
+        var userLanguageValid = LegendLanguageIdentity.TryNormalize(
+            languageLineage.UserLanguageCode,
+            out var userLanguageCode);
+        var finalLanguageValid = LegendLanguageIdentity.TryNormalize(
+            languageLineage.FinalResponseLanguageCode,
+            out var finalResponseLanguageCode);
+        if (!userLanguageValid ||
+            !finalLanguageValid ||
+            !string.Equals(
+                userLanguageCode,
+                finalResponseLanguageCode,
+                StringComparison.OrdinalIgnoreCase))
+        {
+            rejectionReasons.Add("research_presentation_language_lineage_invalid");
+            userLanguageCode = languageLineage.UserLanguageCode;
+            finalResponseLanguageCode = languageLineage.FinalResponseLanguageCode;
+        }
+
+        var selectedEvidence = (state switch
+        {
+            LegendResearchEvidenceAssessmentState.Conclusion => claims,
+            LegendResearchEvidenceAssessmentState.UnresolvedConflict =>
+                claims.Concat(contradictions).ToArray(),
+            _ => materialEvidence
+        })
+            .GroupBy(item => item.EvidenceIdentity, StringComparer.Ordinal)
+            .Select(group =>
+            {
+                if (group.Count() != 1)
+                    rejectionReasons.Add("research_material_evidence_identity_duplicate");
+                return group.First();
+            })
+            .OrderBy(item => item.NormalizedClaimIdentity, StringComparer.Ordinal)
+            .ThenBy(item => item.Statement, StringComparer.Ordinal)
+            .ThenBy(item => item.EvidenceIdentity, StringComparer.Ordinal)
             .ToArray();
-        var citationNumbers = orderedCitations
-            .Select((item, index) => new { item.CitationIdentity, Number = index + 1 })
-            .ToDictionary(item => item.CitationIdentity, item => item.Number, StringComparer.Ordinal);
+
+        if (state == LegendResearchEvidenceAssessmentState.Conclusion &&
+            selectedEvidence.Length == 0)
+        {
+            rejectionReasons.Add("research_conclusion_material_evidence_missing");
+        }
+        if (state == LegendResearchEvidenceAssessmentState.UnresolvedConflict &&
+            (claims.Count == 0 || contradictions.Count == 0))
+        {
+            rejectionReasons.Add("research_unresolved_conflict_two_sided_evidence_missing");
+        }
+
+        foreach (var evidence in selectedEvidence)
+        {
+            ValidateResearchMaterialCitation(
+                evidence,
+                sourceById,
+                documentById,
+                citationById,
+                resolutionByClaim,
+                languageLineage,
+                finalResponseLanguageCode,
+                validatedUtc,
+                rejectionReasons);
+        }
+
+        var consultedSources = new List<LegendConnectResearchConsultedSource>();
+        foreach (var document in documents.OrderBy(
+                     item => item.DocumentIdentity,
+                     StringComparer.Ordinal))
+        {
+            if (!sourceById.TryGetValue(document.SourceIdentity, out var source))
+            {
+                rejectionReasons.Add("research_consulted_source_identity_unknown");
+                continue;
+            }
+            if (!ResearchUrisEqual(source.CanonicalUri, document.CanonicalUri) ||
+                !ResearchDateTimesEqual(source.RetrievedUtc, document.RetrievedUtc))
+            {
+                rejectionReasons.Add("research_consulted_source_provenance_mismatch");
+            }
+            consultedSources.Add(new LegendConnectResearchConsultedSource(
+                source.SourceIdentity,
+                document.DocumentIdentity,
+                source.Title,
+                source.CanonicalUri,
+                source.SourceClass,
+                source.PublishedUtc,
+                source.UpdatedUtc,
+                source.EffectiveUtc,
+                document.RetrievedUtc,
+                document.DocumentLanguageCode,
+                document.RetrievalSucceeded,
+                document.FailureReason,
+                selectedEvidence.Any(item =>
+                    string.Equals(
+                        item.DocumentIdentity,
+                        document.DocumentIdentity,
+                        StringComparison.Ordinal))));
+        }
+
+        var orderedCitationIdentities = selectedEvidence
+            .Select(item => item.CitationIdentity)
+            .Distinct(StringComparer.Ordinal)
+            .OrderBy(item => item, StringComparer.Ordinal)
+            .ToArray();
+        var citationOrdinals = orderedCitationIdentities
+            .Select((identity, index) => (identity, ordinal: index + 1))
+            .ToDictionary(item => item.identity, item => item.ordinal, StringComparer.Ordinal);
+        var statements = new List<LegendConnectResearchResponseStatement>();
+
+        if (!string.IsNullOrWhiteSpace(internalAnswer))
+        {
+            var internalText = internalAnswer.Trim();
+            statements.Add(new LegendConnectResearchResponseStatement(
+                LegendLanguageIdentity.TextHash(
+                    "research-response-internal|v1|" + internalText),
+                LegendConnectResearchResponseStatementKind.GovernedInternalKnowledge,
+                internalText,
+                null,
+                [],
+                [],
+                "GovernedInternalKnowledge",
+                []));
+        }
+
+        var inlineCitations = new List<LegendConnectResearchInlineCitation>();
+        foreach (var group in selectedEvidence
+                     .GroupBy(item => (
+                         item.NormalizedClaimIdentity,
+                         Statement: item.Statement.Trim(),
+                         item.Relationship))
+                     .OrderBy(item => item.Key.NormalizedClaimIdentity, StringComparer.Ordinal)
+                     .ThenBy(item => item.Key.Statement, StringComparer.Ordinal))
+        {
+            var groupEvidence = group.ToArray();
+            var resolvedState = ResolveResearchClaimPresentationState(
+                groupEvidence,
+                resolutionByClaim);
+            var kind = ResearchStatementKind(resolvedState, group.Key.Relationship);
+            var ordinals = groupEvidence
+                .Select(item => citationOrdinals[item.CitationIdentity])
+                .Distinct()
+                .OrderBy(item => item)
+                .ToArray();
+            var statementIdentity = LegendLanguageIdentity.TextHash(string.Join(
+                '|',
+                "research-response-statement|v1",
+                group.Key.NormalizedClaimIdentity,
+                kind,
+                group.Key.Statement,
+                string.Join(',', groupEvidence.Select(item => item.EvidenceIdentity)
+                    .OrderBy(item => item, StringComparer.Ordinal))));
+            statements.Add(new LegendConnectResearchResponseStatement(
+                statementIdentity,
+                kind,
+                group.Key.Statement,
+                group.Key.NormalizedClaimIdentity,
+                groupEvidence.Select(item => item.EvidenceIdentity)
+                    .OrderBy(item => item, StringComparer.Ordinal)
+                    .ToArray(),
+                ordinals,
+                resolvedState.ToString(),
+                groupEvidence.Select(item => item.TranslationLineage)
+                    .Distinct()
+                    .ToArray()));
+
+            foreach (var citationGroup in groupEvidence
+                         .GroupBy(item => item.CitationIdentity, StringComparer.Ordinal)
+                         .OrderBy(item => citationOrdinals[item.Key]))
+            {
+                var citationEvidence = citationGroup.ToArray();
+                inlineCitations.Add(new LegendConnectResearchInlineCitation(
+                    citationOrdinals[citationGroup.Key],
+                    citationGroup.Key,
+                    group.Key.NormalizedClaimIdentity,
+                    citationEvidence.Select(item => item.EvidenceIdentity)
+                        .OrderBy(item => item, StringComparer.Ordinal)
+                        .ToArray(),
+                    citationEvidence[0].SourceIdentity,
+                    citationEvidence[0].DocumentIdentity,
+                    citationEvidence.Select(item => item.Passage.LocationIdentity)
+                        .Distinct(StringComparer.Ordinal)
+                        .OrderBy(item => item, StringComparer.Ordinal)
+                        .ToArray()));
+            }
+        }
+
+        LegendConnectResearchUncertaintyArticulation? uncertainty = null;
+        if (state != LegendResearchEvidenceAssessmentState.Conclusion)
+        {
+            var resolvingEvidence = ResearchResolvingEvidence(
+                selectedEvidence,
+                resolutions);
+            uncertainty = new LegendConnectResearchUncertaintyArticulation(
+                statements.Where(item => item.Kind is
+                        LegendConnectResearchResponseStatementKind.GovernedInternalKnowledge or
+                        LegendConnectResearchResponseStatementKind.ExternallyVerifiedFact)
+                    .Select(item => item.StatementIdentity)
+                    .ToArray(),
+                statements.Where(item =>
+                        item.NormalizedClaimIdentity is not null &&
+                        item.Kind != LegendConnectResearchResponseStatementKind.GovernedInternalKnowledge &&
+                        item.Kind != LegendConnectResearchResponseStatementKind.ExternallyVerifiedFact)
+                    .Select(item => item.NormalizedClaimIdentity!)
+                    .Distinct(StringComparer.Ordinal)
+                    .OrderBy(item => item, StringComparer.Ordinal)
+                    .ToArray(),
+                researchQuestion.Trim(),
+                reasonCode,
+                resolvingEvidence,
+                resolutions.Any(item => item.RequiresDiscriminatingEvidence));
+            statements.Add(new LegendConnectResearchResponseStatement(
+                LegendLanguageIdentity.TextHash(
+                    "research-response-unresolved|v1|" + reasonCode + "|" + resolvingEvidence),
+                state == LegendResearchEvidenceAssessmentState.UnresolvedConflict
+                    ? LegendConnectResearchResponseStatementKind.UnresolvedConflict
+                    : LegendConnectResearchResponseStatementKind.Uncertainty,
+                researchQuestion.Trim(),
+                null,
+                [],
+                [],
+                resolvingEvidence.ToString(),
+                []));
+        }
+
+        foreach (var statement in statements.Where(item =>
+                     item.NormalizedClaimIdentity is not null))
+        {
+            if (statement.CitationOrdinals.Count == 0 ||
+                statement.MaterialEvidenceIdentities.Count == 0)
+            {
+                rejectionReasons.Add("research_response_material_claim_citation_missing");
+            }
+            var bindings = inlineCitations.Where(item =>
+                    item.NormalizedClaimIdentity == statement.NormalizedClaimIdentity &&
+                    statement.CitationOrdinals.Contains(item.Ordinal))
+                .ToArray();
+            if (bindings.SelectMany(item => item.MaterialEvidenceIdentities)
+                    .ToHashSet(StringComparer.Ordinal)
+                    .SetEquals(statement.MaterialEvidenceIdentities) == false)
+            {
+                rejectionReasons.Add("research_response_citation_attached_to_wrong_claim");
+            }
+        }
+
+        var measurableSurface = string.Join(
+            ' ',
+            statements.Where(item => item.NormalizedClaimIdentity is not null ||
+                                     item.Kind == LegendConnectResearchResponseStatementKind.GovernedInternalKnowledge)
+                .Select(item => item.Text));
+        if (!MatchesGovernedPresentationSurface(
+                measurableSurface,
+                presentationConstraints))
+        {
+            rejectionReasons.Add("research_presentation_constraints_unmet");
+        }
+        if (selectedEvidence.Length > 0 &&
+            presentationConstraints is not null &&
+            (presentationConstraints.Audience is not null ||
+             presentationConstraints.Expertise is not null ||
+             presentationConstraints.Tone is not null))
+        {
+            rejectionReasons.Add(
+                "research_presentation_constraints_require_governed_articulation");
+        }
+
+        var validation = new LegendConnectResearchCitationValidationReceipt(
+            rejectionReasons.Count == 0,
+            LegendConnectResearchContracts.CitationPresentationPolicy,
+            rejectionReasons.ToArray(),
+            selectedEvidence.Length,
+            inlineCitations.Count,
+            NormalizeResearchUtc(validatedUtc));
+        if (!validation.Succeeded)
+        {
+            var rejectedPresentation = new LegendConnectResearchPresentation(
+                "LEGEND_RESEARCH_RESPONSE_REJECTED[" +
+                rejectionReasons.First() + "]",
+                userLanguageCode,
+                finalResponseLanguageCode,
+                LegendConnectResearchEvidenceOrigin.UnresolvedEvidence,
+                presentationConstraints,
+                [],
+                [],
+                consultedSources,
+                uncertainty,
+                validation);
+            return new LegendResearchPresentationResult(
+                false,
+                rejectionReasons.First(),
+                rejectedPresentation);
+        }
 
         var builder = new StringBuilder();
-        if (state == LegendResearchEvidenceAssessmentState.Conclusion)
+        foreach (var statement in statements)
         {
-            foreach (var claim in claims
-                         .GroupBy(item => item.NormalizedClaimIdentity, StringComparer.Ordinal)
-                         .OrderBy(group => group.Key, StringComparer.Ordinal))
-            {
-                var representative = claim.First();
-                var markers = claim
-                    .Where(item => citationNumbers.ContainsKey(item.CitationIdentity))
-                    .Select(item => citationNumbers[item.CitationIdentity])
-                    .Distinct()
-                    .OrderBy(item => item)
-                    .Select(item => $"[{item}]");
-                builder.Append(representative.Statement.Trim());
-                var markerText = string.Join(string.Empty, markers);
-                if (markerText.Length > 0)
-                    builder.Append(' ').Append(markerText);
-                builder.AppendLine();
-            }
-        }
-        else if (state == LegendResearchEvidenceAssessmentState.UnresolvedConflict)
-        {
-            foreach (var statement in claims.Select(item => item.Statement)
-                         .Concat(contradictions.Select(item => item.Statement))
-                         .Where(item => !string.IsNullOrWhiteSpace(item))
-                         .Distinct(StringComparer.Ordinal)
-                         .OrderBy(item => item, StringComparer.Ordinal))
-            {
-                builder.Append("- ").AppendLine(statement.Trim());
-            }
-            builder.Append('[').Append(reasonCode).Append(']');
-        }
-        else
-        {
-            builder.Append('[').Append(reasonCode).Append(']');
-        }
-
-        if (orderedCitations.Length > 0)
-        {
+            builder.Append(ResearchStatementMarker(statement.Kind)).Append(' ')
+                .Append(statement.Text.Trim());
+            foreach (var ordinal in statement.CitationOrdinals)
+                builder.Append(" [").Append(ordinal).Append(']');
             builder.AppendLine();
-            for (var index = 0; index < orderedCitations.Length; index++)
+        }
+        if (uncertainty is not null)
+        {
+            builder.Append("↔ [")
+                .Append(uncertainty.ReasonCode)
+                .Append("; resolving-evidence=")
+                .Append(uncertainty.ResolvingEvidence)
+                .AppendLine("]");
+        }
+        foreach (var citationIdentity in orderedCitationIdentities)
+        {
+            var citation = citationById[citationIdentity];
+            var citedEvidence = selectedEvidence.Where(item =>
+                    string.Equals(
+                        item.CitationIdentity,
+                        citationIdentity,
+                        StringComparison.Ordinal))
+                .ToArray();
+            builder.Append('[').Append(citationOrdinals[citationIdentity]).Append("] ")
+                .Append(citation.Title.Trim()).Append(" — ")
+                .AppendLine(citation.CanonicalUri);
+            foreach (var passage in citedEvidence
+                         .Select(item => item.Passage)
+                         .DistinctBy(item => item.LocationIdentity)
+                         .OrderBy(item => item.StartCharacterOffset))
             {
-                var citation = orderedCitations[index];
-                builder.Append('[').Append(index + 1).Append("] ")
-                    .Append(citation.Title.Trim()).Append(" — ")
-                    .AppendLine(citation.CanonicalUri);
+                builder.Append("    “").Append(passage.ExactPassage).AppendLine("”");
             }
         }
 
-        if (builder.Length == 0)
-            builder.Append('[').Append(reasonCode).Append(']');
-        return builder.ToString().Trim();
+        var presentation = new LegendConnectResearchPresentation(
+            builder.ToString().Trim(),
+            userLanguageCode,
+            finalResponseLanguageCode,
+            evidenceOrigin,
+            presentationConstraints,
+            statements,
+            inlineCitations,
+            consultedSources,
+            uncertainty,
+            validation);
+        return new LegendResearchPresentationResult(
+            true,
+            "research_response_citations_governed",
+            presentation);
     }
+
+    private static void ValidateResearchMaterialCitation(
+        LegendConnectResearchMaterialClaimEvidence evidence,
+        IReadOnlyDictionary<string, LegendConnectResearchSourceIdentity> sourceById,
+        IReadOnlyDictionary<string, LegendConnectRetrievedDocument> documentById,
+        IReadOnlyDictionary<string, LegendConnectCitation> citationById,
+        IReadOnlyDictionary<string, LegendConnectResearchClaimResolution> resolutionByClaim,
+        LegendConnectResearchLanguageLineage languageLineage,
+        string finalResponseLanguageCode,
+        DateTime validatedUtc,
+        ISet<string> rejectionReasons)
+    {
+        if (string.IsNullOrWhiteSpace(evidence.NormalizedClaimIdentity) ||
+            string.IsNullOrWhiteSpace(evidence.Statement) ||
+            !sourceById.TryGetValue(evidence.SourceIdentity, out var source) ||
+            !documentById.TryGetValue(evidence.DocumentIdentity, out var document) ||
+            !citationById.TryGetValue(evidence.CitationIdentity, out var citation))
+        {
+            rejectionReasons.Add("research_response_citation_or_retrieved_source_missing");
+            return;
+        }
+
+        if (!document.RetrievalSucceeded ||
+            !string.Equals(
+                source.SourceIdentity,
+                LegendConnectResearchExternalDataPolicy.SourceIdentityForUri(
+                    source.CanonicalUri),
+                StringComparison.Ordinal) ||
+            !string.Equals(
+                document.DocumentIdentity,
+                LegendLanguageIdentity.TextHash(
+                    "research-document|v3|" + source.SourceIdentity + "|" +
+                    document.ContentHash),
+                StringComparison.Ordinal) ||
+            !string.Equals(
+                citation.CitationIdentity,
+                LegendLanguageIdentity.TextHash(
+                    "research-citation|v3|" + document.DocumentIdentity),
+                StringComparison.Ordinal) ||
+            !string.Equals(document.SourceIdentity, source.SourceIdentity, StringComparison.Ordinal) ||
+            !string.Equals(citation.SourceIdentity, source.SourceIdentity, StringComparison.Ordinal) ||
+            !string.Equals(citation.DocumentIdentity, document.DocumentIdentity, StringComparison.Ordinal) ||
+            evidence.SourceClass != source.SourceClass ||
+            !ResearchUrisEqual(source.CanonicalUri, document.CanonicalUri) ||
+            !ResearchUrisEqual(source.CanonicalUri, citation.CanonicalUri) ||
+            !string.Equals(source.Title.Trim(), citation.Title.Trim(), StringComparison.Ordinal) ||
+            !ResearchDateTimesEqual(source.RetrievedUtc, document.RetrievedUtc) ||
+            !ResearchDateTimesEqual(document.RetrievedUtc, citation.RetrievedUtc) ||
+            source.PublishedUtc is null ||
+            !ResearchDateTimesEqual(source.PublishedUtc.Value, evidence.PublishedUtc) ||
+            !ResearchDateTimesEqual(document.RetrievedUtc, evidence.RetrievedUtc))
+        {
+            rejectionReasons.Add("research_response_citation_source_metadata_fabricated_or_mismatched");
+        }
+
+        var passage = evidence.Passage;
+        var passageWithinDocument =
+            string.Equals(
+                passage.DocumentIdentity,
+                document.DocumentIdentity,
+                StringComparison.Ordinal) &&
+            passage.StartCharacterOffset >= 0 &&
+            passage.CharacterLength > 0 &&
+            passage.StartCharacterOffset <= document.ContentExcerpt.Length - passage.CharacterLength;
+        var exactPassage = passageWithinDocument
+            ? document.ContentExcerpt.Substring(
+                passage.StartCharacterOffset,
+                passage.CharacterLength)
+            : null;
+        var passageHash = exactPassage is null
+            ? null
+            : LegendLanguageIdentity.TextHash(exactPassage);
+        var locationIdentity = exactPassage is null || passageHash is null
+            ? null
+            : LegendLanguageIdentity.TextHash(string.Join(
+                '|',
+                "research-passage-location|v1",
+                document.DocumentIdentity,
+                passage.StartCharacterOffset,
+                passage.CharacterLength,
+                passageHash));
+        if (exactPassage is null ||
+            !string.Equals(exactPassage, passage.ExactPassage, StringComparison.Ordinal) ||
+            !string.Equals(passageHash, passage.PassageHash, StringComparison.Ordinal) ||
+            !string.Equals(locationIdentity, passage.LocationIdentity, StringComparison.Ordinal) ||
+            !string.Equals(
+                document.ContentHash,
+                LegendLanguageIdentity.TextHash(document.ContentExcerpt),
+                StringComparison.Ordinal))
+        {
+            rejectionReasons.Add("research_response_citation_passage_fabricated_or_mismatched");
+        }
+
+        var provenance = evidence.Provenance;
+        var expectedMaterialIdentity = LegendLanguageIdentity.TextHash(string.Join(
+            '|',
+            "research-material-claim|v1",
+            evidence.NormalizedClaimIdentity,
+            source.SourceIdentity,
+            passage.LocationIdentity,
+            provenance.ProposalIdentity,
+            evidence.Relationship == LegendConnectResearchEvidenceRelationship.Contradiction));
+        if (!string.Equals(
+                evidence.EvidenceIdentity,
+                expectedMaterialIdentity,
+                StringComparison.Ordinal) ||
+            !string.Equals(provenance.SourceIdentity, source.SourceIdentity, StringComparison.Ordinal) ||
+            !string.Equals(provenance.DocumentIdentity, document.DocumentIdentity, StringComparison.Ordinal) ||
+            !string.Equals(provenance.CitationIdentity, citation.CitationIdentity, StringComparison.Ordinal) ||
+            !string.Equals(provenance.PassageLocationIdentity, passage.LocationIdentity, StringComparison.Ordinal) ||
+            !string.Equals(provenance.SourceContentHash, document.ContentHash, StringComparison.Ordinal) ||
+            !string.Equals(
+                provenance.StatementHash,
+                LegendLanguageIdentity.TextHash(evidence.Statement),
+                StringComparison.Ordinal) ||
+            !string.Equals(
+                provenance.PolicyIdentity,
+                LegendConnectResearchContracts.ClaimEvidencePolicy,
+                StringComparison.Ordinal) ||
+            !provenance.SourceValidated ||
+            !provenance.DocumentValidated ||
+            !provenance.PassageValidated ||
+            !provenance.TimestampsValidated ||
+            !provenance.ZeroWrite ||
+            NormalizeResearchUtc(provenance.ValidatedUtc) > NormalizeResearchUtc(validatedUtc))
+        {
+            rejectionReasons.Add("research_response_material_evidence_provenance_invalid");
+        }
+
+        if (LegendConnectResearchExternalDataPolicy.IsPotentialInstruction(source.Title) ||
+            LegendConnectResearchExternalDataPolicy.IsPotentialInstruction(evidence.Statement) ||
+            LegendConnectResearchExternalDataPolicy.IsPotentialInstruction(passage.ExactPassage))
+        {
+            rejectionReasons.Add("research_response_untrusted_instruction_material_rejected");
+        }
+
+        if (!evidence.TranslationLineage.TranslationApplied &&
+            !LegendLanguageIdentity.NormalizeText(passage.ExactPassage)
+                .Contains(
+                    LegendLanguageIdentity.NormalizeText(evidence.Statement),
+                    StringComparison.OrdinalIgnoreCase))
+        {
+            rejectionReasons.Add("research_response_citation_does_not_support_claim");
+        }
+
+        LegendConnectResearchTranslationReceipt[] matchingTranslationReceipts =
+            evidence.TranslationLineage.TranslationReceiptIdentity is null
+                ? Array.Empty<LegendConnectResearchTranslationReceipt>()
+                : languageLineage.TranslationReceipts.Where(item =>
+                    string.Equals(
+                        item.ReceiptIdentity,
+                        evidence.TranslationLineage.TranslationReceiptIdentity,
+                        StringComparison.Ordinal))
+                    .Take(2)
+                    .ToArray();
+        if (matchingTranslationReceipts.Length > 1)
+            rejectionReasons.Add("research_response_translation_receipt_duplicate");
+        var translationReceipt = matchingTranslationReceipts.SingleOrDefault();
+        if (!string.Equals(
+                evidence.TranslationLineage.DocumentLanguageCode,
+                document.DocumentLanguageCode,
+                StringComparison.OrdinalIgnoreCase) ||
+            !string.Equals(
+                evidence.TranslationLineage.FinalResponseLanguageCode,
+                finalResponseLanguageCode,
+                StringComparison.OrdinalIgnoreCase) ||
+            !string.Equals(
+                evidence.TranslationLineage.EvidenceLanguageCode,
+                finalResponseLanguageCode,
+                StringComparison.OrdinalIgnoreCase) ||
+            (evidence.TranslationLineage.TranslationApplied &&
+             (!evidence.TranslationLineage.GovernedTranslationValidated ||
+              string.IsNullOrWhiteSpace(
+                  evidence.TranslationLineage.TranslationReceiptIdentity) ||
+              translationReceipt is null ||
+              !string.Equals(
+                  translationReceipt.SourceLanguageCode,
+                  document.DocumentLanguageCode,
+                  StringComparison.OrdinalIgnoreCase) ||
+              !string.Equals(
+                  translationReceipt.TargetLanguageCode,
+                  finalResponseLanguageCode,
+                  StringComparison.OrdinalIgnoreCase) ||
+              !string.Equals(
+                  translationReceipt.InputIdentity,
+                  document.ContentHash,
+                  StringComparison.Ordinal) ||
+              string.IsNullOrWhiteSpace(translationReceipt.OutputIdentity) ||
+              !string.Equals(
+                  translationReceipt.State,
+                  "GovernedTranslationValidated",
+                  StringComparison.Ordinal) ||
+              translationReceipt.ValidatedProposalIdentities?.Contains(
+                  evidence.Provenance.ProposalIdentity,
+                  StringComparer.Ordinal) != true)))
+        {
+            rejectionReasons.Add("research_response_translation_lineage_invalid");
+        }
+
+        var numericTokens = ResearchNumericTokens(evidence.Statement);
+        if (numericTokens.Any(token =>
+                !ResearchNumericTokens(passage.ExactPassage).Contains(
+                    token,
+                    StringComparer.Ordinal)))
+        {
+            rejectionReasons.Add("research_response_numerical_precision_unsupported");
+        }
+
+        var resolvedState = resolutionByClaim.TryGetValue(
+            evidence.NormalizedClaimIdentity,
+            out var resolution)
+                ? resolution.State
+                : evidence.VerificationState;
+        if (resolution is null ||
+            !resolution.MaterialEvidenceIdentities.Contains(
+                evidence.EvidenceIdentity,
+                StringComparer.Ordinal))
+        {
+            rejectionReasons.Add("research_response_citation_attached_to_wrong_claim");
+        }
+        if (source.SourceClass == LegendConnectResearchSourceClass.Aggregator &&
+            resolvedState is
+                LegendConnectResearchClaimVerificationState.VerifiedByControllingEvidence or
+                LegendConnectResearchClaimVerificationState.SupportedByIndependentlyCorroboratedEvidence or
+                LegendConnectResearchClaimVerificationState.ReasonedInferenceFromEvidence)
+        {
+            rejectionReasons.Add("research_response_aggregator_citation_laundering_rejected");
+        }
+        if (evidence.Freshness == LegendConnectResearchFreshnessState.Stale &&
+            evidence.Subject == LegendConnectResearchClaimSubject.CurrentEvent &&
+            resolvedState is not LegendConnectResearchClaimVerificationState.Stale and not
+                LegendConnectResearchClaimVerificationState.InsufficientEvidence)
+        {
+            rejectionReasons.Add("research_response_stale_citation_used_for_current_claim");
+        }
+        if (ResearchStatementKind(resolvedState, evidence.Relationship) ==
+                LegendConnectResearchResponseStatementKind.ExternallyVerifiedFact &&
+            evidence.Freshness is
+                (LegendConnectResearchFreshnessState.Stale or
+                 LegendConnectResearchFreshnessState.Undated or
+                 LegendConnectResearchFreshnessState.ConflictingTimestamps))
+        {
+            rejectionReasons.Add("research_response_certainty_unsupported");
+        }
+    }
+
+    private static LegendConnectResearchClaimVerificationState
+        ResolveResearchClaimPresentationState(
+            IReadOnlyList<LegendConnectResearchMaterialClaimEvidence> evidence,
+            IReadOnlyDictionary<string, LegendConnectResearchClaimResolution> resolutions)
+    {
+        var normalizedClaimIdentity = evidence[0].NormalizedClaimIdentity;
+        if (resolutions.TryGetValue(normalizedClaimIdentity, out var resolution))
+            return resolution.State;
+        return evidence.Select(item => item.VerificationState)
+            .OrderByDescending(ResearchVerificationRiskRank)
+            .First();
+    }
+
+    private static int ResearchVerificationRiskRank(
+        LegendConnectResearchClaimVerificationState state) =>
+        state switch
+        {
+            LegendConnectResearchClaimVerificationState.UnresolvedConflict => 8,
+            LegendConnectResearchClaimVerificationState.Disputed => 7,
+            LegendConnectResearchClaimVerificationState.InsufficientEvidence => 6,
+            LegendConnectResearchClaimVerificationState.Stale => 5,
+            LegendConnectResearchClaimVerificationState.SourceReportedButNotIndependentlyVerified => 4,
+            LegendConnectResearchClaimVerificationState.ReasonedInferenceFromEvidence => 3,
+            LegendConnectResearchClaimVerificationState.SupportedByIndependentlyCorroboratedEvidence => 2,
+            LegendConnectResearchClaimVerificationState.VerifiedByControllingEvidence => 1,
+            _ => 9
+        };
+
+    private static LegendConnectResearchResponseStatementKind ResearchStatementKind(
+        LegendConnectResearchClaimVerificationState state,
+        LegendConnectResearchEvidenceRelationship relationship)
+    {
+        return state switch
+        {
+            LegendConnectResearchClaimVerificationState.VerifiedByControllingEvidence or
+            LegendConnectResearchClaimVerificationState.SupportedByIndependentlyCorroboratedEvidence =>
+                relationship == LegendConnectResearchEvidenceRelationship.Contradiction
+                    ? LegendConnectResearchResponseStatementKind.Contradiction
+                    : LegendConnectResearchResponseStatementKind.ExternallyVerifiedFact,
+            LegendConnectResearchClaimVerificationState.SourceReportedButNotIndependentlyVerified =>
+                LegendConnectResearchResponseStatementKind.SourceReportedAssertion,
+            LegendConnectResearchClaimVerificationState.ReasonedInferenceFromEvidence =>
+                LegendConnectResearchResponseStatementKind.LegendReasoningOrInference,
+            LegendConnectResearchClaimVerificationState.Disputed =>
+                LegendConnectResearchResponseStatementKind.Contradiction,
+            LegendConnectResearchClaimVerificationState.UnresolvedConflict =>
+                relationship == LegendConnectResearchEvidenceRelationship.Contradiction
+                    ? LegendConnectResearchResponseStatementKind.Contradiction
+                    : LegendConnectResearchResponseStatementKind.UnresolvedConflict,
+            _ => LegendConnectResearchResponseStatementKind.Uncertainty
+        };
+    }
+
+    private static LegendConnectResearchResolvingEvidenceKind ResearchResolvingEvidence(
+        IReadOnlyList<LegendConnectResearchMaterialClaimEvidence> evidence,
+        IReadOnlyList<LegendConnectResearchClaimResolution> resolutions)
+    {
+        if (evidence.Any(item => !string.IsNullOrWhiteSpace(item.CorrectsSourceIdentity)))
+            return LegendConnectResearchResolvingEvidenceKind.CorrectionOrAdjudication;
+        if (evidence.Any(item => item.Freshness == LegendConnectResearchFreshnessState.Stale))
+            return LegendConnectResearchResolvingEvidenceKind.FreshEvidence;
+        if (resolutions.Any(item => item.RequiresDiscriminatingEvidence) ||
+            evidence.Any(item => item.VerificationState is
+                LegendConnectResearchClaimVerificationState.Disputed or
+                LegendConnectResearchClaimVerificationState.UnresolvedConflict))
+        {
+            return LegendConnectResearchResolvingEvidenceKind.DiscriminatingEvidence;
+        }
+        if (evidence.Any(item =>
+                item.SourceClass == LegendConnectResearchSourceClass.Aggregator ||
+                item.VerificationState ==
+                    LegendConnectResearchClaimVerificationState.SourceReportedButNotIndependentlyVerified))
+        {
+            return LegendConnectResearchResolvingEvidenceKind.IndependentCorroboration;
+        }
+        if (evidence.Any(item => item.EvidenceStandardRank < 2))
+            return LegendConnectResearchResolvingEvidenceKind.HigherAuthorityEvidence;
+        return LegendConnectResearchResolvingEvidenceKind.DirectClaimSupportingEvidence;
+    }
+
+    private static string ResearchStatementMarker(
+        LegendConnectResearchResponseStatementKind kind) =>
+        kind switch
+        {
+            LegendConnectResearchResponseStatementKind.GovernedInternalKnowledge => "◆",
+            LegendConnectResearchResponseStatementKind.ExternallyVerifiedFact => "✓",
+            LegendConnectResearchResponseStatementKind.SourceReportedAssertion => "◊",
+            LegendConnectResearchResponseStatementKind.LegendReasoningOrInference => "∴",
+            LegendConnectResearchResponseStatementKind.Uncertainty => "?",
+            LegendConnectResearchResponseStatementKind.Contradiction => "↯",
+            LegendConnectResearchResponseStatementKind.UnresolvedConflict => "↔",
+            _ => "?"
+        };
+
+    private static IReadOnlyList<string> ResearchNumericTokens(string value)
+    {
+        var tokens = new List<string>();
+        var builder = new StringBuilder();
+        foreach (var character in value)
+        {
+            if (char.IsDigit(character) ||
+                (builder.Length > 0 && character is '.' or ',' or '%' or '-'))
+            {
+                builder.Append(character);
+                continue;
+            }
+            if (builder.Length > 0)
+            {
+                tokens.Add(builder.ToString().TrimEnd('.', ',', '%', '-'));
+                builder.Clear();
+            }
+        }
+        if (builder.Length > 0)
+            tokens.Add(builder.ToString().TrimEnd('.', ',', '%', '-'));
+        return tokens.Where(item => item.Length > 0).ToArray();
+    }
+
+    private static bool ResearchUrisEqual(string left, string right)
+    {
+        var normalizedLeft = LegendConnectResearchNetworkPolicy.NormalizePublicHttpUri(left);
+        var normalizedRight = LegendConnectResearchNetworkPolicy.NormalizePublicHttpUri(right);
+        return normalizedLeft is not null &&
+               string.Equals(normalizedLeft, normalizedRight, StringComparison.Ordinal);
+    }
+
+    private static bool ResearchDateTimesEqual(DateTime left, DateTime right) =>
+        NormalizeResearchUtc(left) == NormalizeResearchUtc(right);
+
+    private static DateTime NormalizeResearchUtc(DateTime value) =>
+        value.Kind switch
+        {
+            DateTimeKind.Utc => value,
+            DateTimeKind.Local => value.ToUniversalTime(),
+            _ => DateTime.SpecifyKind(value, DateTimeKind.Utc)
+        };
 
     /// <summary>
     /// Phase-5 autonomous admission of one Phase-4 SystemValidatedMachine
@@ -4346,6 +5098,23 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
                 ? SemanticTransitionAmbiguous(realization.Reason)
                 : SemanticTransitionInsufficient(realization.Reason);
         }
+        if (!TryInstantiateResponsePlanFrame(
+                candidate.ResultFrame,
+                candidate.Bindings,
+                out var realizedDimensions,
+                out _))
+        {
+            return SemanticTransitionInsufficient(
+                "result_presentation_frame_unavailable");
+        }
+        if (!TryResolveGovernedPresentationConstraints(
+                realizedDimensions,
+                out var realizedPresentationConstraints,
+                out var realizedPresentationReason,
+                out _))
+        {
+            return SemanticTransitionInsufficient(realizedPresentationReason);
+        }
 
         return new LegendSemanticTransitionInference(
             LegendSemanticTransitionInference.Supported,
@@ -4368,7 +5137,8 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
                     : "canonical_governed_endpoint_articulation"
             ],
             null,
-            content.ReadOnlyContentReceipts);
+            content.ReadOnlyContentReceipts,
+            realizedPresentationConstraints);
     }
 
     internal async Task<LegendConnectResponseMeaningPlanResult> TryPlanResponseMeaningAsync(

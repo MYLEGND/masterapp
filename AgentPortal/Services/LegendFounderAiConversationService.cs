@@ -424,49 +424,10 @@ public sealed class LegendFounderAiConversationService
                         "research",
                         "research_budget_exhausted");
                 }
-                var researchSucceeded = researchOutcome.State !=
-                    LegendConnectResearchOutcomeState.Failure;
-                return new LegendFounderAiChatResponse(
-                    researchSucceeded,
+                return ResearchChatResponse(
                     mode,
-                    researchSucceeded
-                        ? researchOutcome.PresentedText
-                        : null,
-                    researchSucceeded
-                        ? null
-                        : researchOutcome.PresentedText,
-                    researchSucceeded ? null : "research_failure",
-                    ResponseAuthority:
-                        researchOutcome.State == LegendConnectResearchOutcomeState.Conclusion
-                            ? "LegendAi"
-                            : "SystemDiagnostic",
-                    Stage: researchOutcome.State switch
-                    {
-                        LegendConnectResearchOutcomeState.Conclusion =>
-                            "research_response",
-                        LegendConnectResearchOutcomeState.InsufficientEvidence =>
-                            "research_insufficient_evidence",
-                        LegendConnectResearchOutcomeState.UnresolvedConflict =>
-                            "research_unresolved_conflict",
-                        _ => "research_failure"
-                    },
-                    Reason: researchOutcome.State switch
-                    {
-                        LegendConnectResearchOutcomeState.InsufficientEvidence =>
-                            researchOutcome.InsufficientEvidence?.ReasonCode,
-                        LegendConnectResearchOutcomeState.UnresolvedConflict =>
-                            researchOutcome.UnresolvedConflict?.ReasonCode,
-                        LegendConnectResearchOutcomeState.Failure =>
-                            researchOutcome.Failure?.ReasonCode,
-                        _ => researchDecision.ReasonCode
-                    },
-                    ModelAssistanceState: nativeInference.ModelAssistance?.State,
-                    ModelAssistanceReason: nativeInference.ModelAssistance?.ReasonCode,
-                    ModelVersion: nativeInference.ModelAssistance?.ModelVersion,
-                    ModelTrainingRunId: nativeInference.ModelAssistance?.ModelTrainingRunId,
-                    ModelProvenance: nativeInference.ModelAssistance?.Provenance,
-                    EvidenceOrigin: researchOutcome.EvidenceOrigin,
-                    ResearchOutcome: researchOutcome);
+                    researchOutcome,
+                    nativeInference.ModelAssistance);
             }
 
             if (nativeInference is { Supported: true } &&
@@ -709,8 +670,6 @@ public sealed class LegendFounderAiConversationService
             string? learningMutationReceipt = null;
 
             var accumulatedProviderAnswer = string.Empty;
-            LegendConnectResearchOutcome? providerResearchOutcome = null;
-
             for (var round = 0; round < maximumToolRounds; round++)
             {
                 var remaining =
@@ -914,9 +873,8 @@ public sealed class LegendFounderAiConversationService
                             null,
                             ResponseAuthority: "OpenAITeacher",
                             Stage: "provider_response",
-                            EvidenceOrigin: providerResearchOutcome?.EvidenceOrigin ??
-                                LegendConnectResearchEvidenceOrigin.UnresolvedEvidence,
-                            ResearchOutcome: providerResearchOutcome);
+                            EvidenceOrigin:
+                                LegendConnectResearchEvidenceOrigin.UnresolvedEvidence);
                     }
 
                     return LegendFounderAiChatResponse.ModeFailure(
@@ -1007,9 +965,8 @@ public sealed class LegendFounderAiConversationService
                         null,
                         ResponseAuthority: "OpenAITeacher",
                         Stage: "provider_response",
-                        EvidenceOrigin: providerResearchOutcome?.EvidenceOrigin ??
-                            LegendConnectResearchEvidenceOrigin.UnresolvedEvidence,
-                        ResearchOutcome: providerResearchOutcome);
+                        EvidenceOrigin:
+                            LegendConnectResearchEvidenceOrigin.UnresolvedEvidence);
                 }
 
                 await ReportProgressAsync(
@@ -1060,12 +1017,23 @@ public sealed class LegendFounderAiConversationService
                     if (string.Equals(
                             call.Name,
                             "legend_research_internet",
-                            StringComparison.Ordinal) &&
-                        TryReadResearchOutcome(
-                            toolOutput,
-                            out var completedResearch))
+                            StringComparison.Ordinal))
                     {
-                        providerResearchOutcome = completedResearch;
+                        if (!TryReadResearchOutcome(
+                                toolOutput,
+                                out var completedResearch))
+                        {
+                            return LegendFounderAiChatResponse.ModeFailure(
+                                mode,
+                                "LEGEND rejected an incomplete or unvalidated governed research outcome.",
+                                "research_outcome_invalid",
+                                "research_failure",
+                                "research_citation_validation_missing");
+                        }
+                        return ResearchChatResponse(
+                            mode,
+                            completedResearch!,
+                            nativeInference.ModelAssistance);
                     }
 
                     if (_toolAuthority.IsReadOnly(call.Name))
@@ -2348,6 +2316,41 @@ public sealed class LegendFounderAiConversationService
             {
                 return false;
             }
+            if (parsed.State != LegendConnectResearchOutcomeState.Failure &&
+                (parsed.Presentation is null ||
+                 !parsed.Presentation.CitationValidation.Succeeded ||
+                 !string.Equals(
+                     parsed.Presentation.CitationValidation.PolicyIdentity,
+                     LegendConnectResearchContracts.CitationPresentationPolicy,
+                     StringComparison.Ordinal) ||
+                 !ResearchCitationReceiptsMatch(
+                     parsed.Session.CitationValidation,
+                     parsed.Presentation.CitationValidation) ||
+                 !ResearchCitationReceiptsMatch(
+                     parsed.Provenance.CitationValidation,
+                     parsed.Presentation.CitationValidation) ||
+                 !string.Equals(
+                     parsed.Provenance.CitationPresentationPolicyIdentity,
+                     LegendConnectResearchContracts.CitationPresentationPolicy,
+                     StringComparison.Ordinal) ||
+                 parsed.Presentation.EvidenceOrigin != parsed.EvidenceOrigin ||
+                 parsed.Session.LanguageLineage is null ||
+                 !string.Equals(
+                     parsed.Presentation.FinalResponseLanguageCode,
+                     parsed.Session.LanguageLineage.FinalResponseLanguageCode,
+                     StringComparison.OrdinalIgnoreCase) ||
+                 !string.Equals(
+                     parsed.Presentation.UserLanguageCode,
+                     parsed.Session.LanguageLineage.UserLanguageCode,
+                     StringComparison.OrdinalIgnoreCase) ||
+                 !string.Equals(
+                     parsed.PresentedText,
+                     parsed.Presentation.PresentedText,
+                     StringComparison.Ordinal) ||
+                 !HasCompleteResearchPresentationLineage(parsed)))
+            {
+                return false;
+            }
 
             outcome = parsed;
             return true;
@@ -2357,6 +2360,132 @@ public sealed class LegendFounderAiConversationService
             return false;
         }
     }
+
+    private static LegendFounderAiChatResponse ResearchChatResponse(
+        string mode,
+        LegendConnectResearchOutcome outcome,
+        LegendConnectNativeModelAssistanceSnapshot? modelAssistance)
+    {
+        var succeeded = outcome.State != LegendConnectResearchOutcomeState.Failure;
+        return new LegendFounderAiChatResponse(
+            succeeded,
+            mode,
+            succeeded ? outcome.PresentedText : null,
+            succeeded ? null : outcome.PresentedText,
+            succeeded ? null : "research_failure",
+            ResponseAuthority:
+                outcome.State == LegendConnectResearchOutcomeState.Conclusion
+                    ? "LegendAi"
+                    : "SystemDiagnostic",
+            Stage: outcome.State switch
+            {
+                LegendConnectResearchOutcomeState.Conclusion => "research_response",
+                LegendConnectResearchOutcomeState.InsufficientEvidence =>
+                    "research_insufficient_evidence",
+                LegendConnectResearchOutcomeState.UnresolvedConflict =>
+                    "research_unresolved_conflict",
+                _ => "research_failure"
+            },
+            Reason: outcome.State switch
+            {
+                LegendConnectResearchOutcomeState.InsufficientEvidence =>
+                    outcome.InsufficientEvidence?.ReasonCode,
+                LegendConnectResearchOutcomeState.UnresolvedConflict =>
+                    outcome.UnresolvedConflict?.ReasonCode,
+                LegendConnectResearchOutcomeState.Failure =>
+                    outcome.Failure?.ReasonCode,
+                _ => outcome.Decision.ReasonCode
+            },
+            ModelAssistanceState: modelAssistance?.State,
+            ModelAssistanceReason: modelAssistance?.ReasonCode,
+            ModelVersion: modelAssistance?.ModelVersion,
+            ModelTrainingRunId: modelAssistance?.ModelTrainingRunId,
+            ModelProvenance: modelAssistance?.Provenance,
+            EvidenceOrigin: outcome.EvidenceOrigin,
+            ResearchOutcome: outcome);
+    }
+
+    private static bool HasCompleteResearchPresentationLineage(
+        LegendConnectResearchOutcome outcome)
+    {
+        var presentation = outcome.Presentation!;
+        var sessionMaterialIds = (outcome.Session.MaterialClaimEvidence ?? [])
+            .Select(item => item.EvidenceIdentity)
+            .ToHashSet(StringComparer.Ordinal);
+        var sessionCitationIds = outcome.Session.Citations
+            .Select(item => item.CitationIdentity)
+            .ToHashSet(StringComparer.Ordinal);
+        var sessionDocumentIds = outcome.Session.Documents
+            .Select(item => item.DocumentIdentity)
+            .ToHashSet(StringComparer.Ordinal);
+        var sessionSourceIds = outcome.Session.Sources
+            .Select(item => item.SourceIdentity)
+            .ToHashSet(StringComparer.Ordinal);
+        if (presentation.ConsultedSources.Count != sessionDocumentIds.Count ||
+            !presentation.ConsultedSources.Select(item => item.DocumentIdentity)
+                .ToHashSet(StringComparer.Ordinal)
+                .SetEquals(sessionDocumentIds) ||
+            presentation.ConsultedSources.Any(item =>
+                !sessionSourceIds.Contains(item.SourceIdentity)))
+        {
+            return false;
+        }
+
+        var ordinalCitationPairs = presentation.InlineCitations
+            .Select(item => (item.Ordinal, item.CitationIdentity))
+            .Distinct()
+            .ToArray();
+        if (ordinalCitationPairs.Any(item =>
+                item.Ordinal < 1 ||
+                !sessionCitationIds.Contains(item.CitationIdentity)) ||
+            ordinalCitationPairs.GroupBy(item => item.Ordinal)
+                .Any(group => group.Select(item => item.CitationIdentity)
+                    .Distinct(StringComparer.Ordinal).Count() != 1) ||
+            ordinalCitationPairs.GroupBy(item => item.CitationIdentity, StringComparer.Ordinal)
+                .Any(group => group.Select(item => item.Ordinal).Distinct().Count() != 1))
+        {
+            return false;
+        }
+
+        foreach (var statement in presentation.Statements.Where(item =>
+                     item.NormalizedClaimIdentity is not null))
+        {
+            if (statement.MaterialEvidenceIdentities.Count == 0 ||
+                statement.CitationOrdinals.Count == 0 ||
+                statement.MaterialEvidenceIdentities.Any(item =>
+                    !sessionMaterialIds.Contains(item)) ||
+                statement.CitationOrdinals.Any(ordinal =>
+                    !ordinalCitationPairs.Any(item => item.Ordinal == ordinal)))
+            {
+                return false;
+            }
+        }
+
+        IReadOnlyList<LegendConnectCitation> terminalCitations = outcome.State switch
+        {
+            LegendConnectResearchOutcomeState.Conclusion =>
+                outcome.Conclusion?.Citations ?? [],
+            LegendConnectResearchOutcomeState.UnresolvedConflict =>
+                outcome.UnresolvedConflict?.Citations ?? [],
+            LegendConnectResearchOutcomeState.InsufficientEvidence =>
+                outcome.InsufficientEvidence?.Citations ?? [],
+            _ => []
+        };
+        return terminalCitations.Select(item => item.CitationIdentity)
+            .ToHashSet(StringComparer.Ordinal)
+            .SetEquals(ordinalCitationPairs.Select(item => item.CitationIdentity));
+    }
+
+    private static bool ResearchCitationReceiptsMatch(
+        LegendConnectResearchCitationValidationReceipt? left,
+        LegendConnectResearchCitationValidationReceipt right) =>
+        left is not null &&
+        left.Succeeded == right.Succeeded &&
+        string.Equals(left.PolicyIdentity, right.PolicyIdentity, StringComparison.Ordinal) &&
+        left.MaterialClaimCount == right.MaterialClaimCount &&
+        left.InlineCitationCount == right.InlineCitationCount &&
+        left.ValidatedUtc == right.ValidatedUtc &&
+        left.RejectionReasons.SequenceEqual(right.RejectionReasons, StringComparer.Ordinal);
 
     private static bool IsLearningMutationTool(string toolName) =>
         toolName is

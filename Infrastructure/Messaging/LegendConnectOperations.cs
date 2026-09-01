@@ -872,41 +872,71 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
             assessment.MaterialEvidence,
             assessment.ClaimResolutions,
             LegendConnectResearchContracts.ClaimEvidencePolicy);
+        var presentationResult = LegendConnectCurriculumService.PresentResearchEvidence(
+            effectiveAssessmentState,
+            evidenceOrigin,
+            request.Question,
+            request.InternalAnswer,
+            assessment.MaterialEvidence,
+            assessment.Claims,
+            assessment.Contradictions,
+            assessment.ClaimResolutions,
+            evidencePacket.Sources,
+            evidencePacket.Documents,
+            evidencePacket.Citations,
+            evidencePacket.LanguageLineage,
+            request.PresentationConstraints,
+            effectiveReasonCode,
+            completed);
+        session = session with
+        {
+            CitationValidation = presentationResult.Presentation.CitationValidation,
+            CompletionState = presentationResult.Succeeded
+                ? session.CompletionState
+                : "Failure",
+            FailureReason = presentationResult.Succeeded
+                ? session.FailureReason
+                : presentationResult.ReasonCode
+        };
         var provenance = BuildResearchProvenance(
             request,
             session,
-            evidenceOrigin,
+            presentationResult.Succeeded
+                ? evidenceOrigin
+                : LegendConnectResearchEvidenceOrigin.UnresolvedEvidence,
             evidencePacket.Transport,
             evidencePacket.ModelVersion,
             evidencePacket.SettingsIdentity,
             evidencePacket.SearchProvider);
-        var presentedCitationIdentities = effectiveAssessmentState switch
-        {
-            LegendResearchEvidenceAssessmentState.Conclusion =>
-                assessment.Claims.Select(item => item.CitationIdentity),
-            LegendResearchEvidenceAssessmentState.UnresolvedConflict =>
-                assessment.Claims.Select(item => item.CitationIdentity)
-                    .Concat(assessment.Contradictions.Select(item => item.CitationIdentity)),
-            _ => Enumerable.Empty<string>()
-        };
-        var presentedCitationSet = presentedCitationIdentities.ToHashSet(StringComparer.Ordinal);
+        var admittedCitationSet = presentationResult.Presentation.InlineCitations
+            .Select(item => item.CitationIdentity)
+            .ToHashSet(StringComparer.Ordinal);
         var admittedCitations = evidencePacket.Citations
-            .Where(item => presentedCitationSet.Contains(item.CitationIdentity))
+            .Where(item => admittedCitationSet.Contains(item.CitationIdentity))
             .ToArray();
-        var presented = LegendConnectCurriculumService.PresentResearchEvidence(
-            effectiveAssessmentState,
-            assessment.Claims,
-            assessment.Contradictions,
-            admittedCitations,
-            effectiveReasonCode);
+        var presented = presentationResult.Presentation.PresentedText;
+
+        if (!presentationResult.Succeeded)
+        {
+            return new LegendConnectResearchOutcome(
+                LegendConnectResearchOutcomeState.Failure,
+                LegendConnectResearchEvidenceOrigin.UnresolvedEvidence,
+                request.Decision,
+                session,
+                null,
+                null,
+                null,
+                new LegendConnectResearchFailureResult(
+                    presentationResult.ReasonCode,
+                    presented,
+                    false,
+                    "The existing LEGEND presentation authority rejected the research response because its exact claim/citation/passage or presentation binding was invalid."),
+                provenance,
+                presentationResult.Presentation);
+        }
 
         if (effectiveAssessmentState == LegendResearchEvidenceAssessmentState.Conclusion)
         {
-            if (!string.IsNullOrWhiteSpace(request.InternalAnswer))
-            {
-                presented = request.InternalAnswer.Trim() +
-                    "\n\n" + presented;
-            }
             var conclusion = new LegendConnectResearchConclusion(
                 LegendLanguageIdentity.TextHash(
                     "research-conclusion|v1|" +
@@ -923,7 +953,8 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
                 null,
                 null,
                 null,
-                provenance);
+                provenance,
+                presentationResult.Presentation);
         }
 
         if (effectiveAssessmentState == LegendResearchEvidenceAssessmentState.UnresolvedConflict)
@@ -942,7 +973,8 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
                     assessment.Contradictions,
                     admittedCitations),
                 null,
-                provenance);
+                provenance,
+                presentationResult.Presentation);
         }
 
         return new LegendConnectResearchOutcome(
@@ -956,13 +988,15 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
                 presented,
                 assessment.Claims.Count,
                 assessment.IndependentSourceCount,
-                assessment.RequiredIndependentSourceCount),
+                assessment.RequiredIndependentSourceCount,
+                admittedCitations),
             null,
             null,
             provenance with
             {
                 EvidenceOrigin = LegendConnectResearchEvidenceOrigin.UnresolvedEvidence
-            });
+            },
+            presentationResult.Presentation);
     }
 
     public Task<LegendConnectNativeInferenceSnapshot>
@@ -1070,7 +1104,8 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
                 evidenceStandard,
                 articulationMode,
                 null,
-                composed.ContentBindingProvenance);
+                composed.ContentBindingProvenance,
+                PresentationConstraints: composed.PresentationConstraints);
 
             var served = await TryApplyPromotedReasoningModelAsync(
                 input ?? string.Empty,
@@ -1425,7 +1460,9 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
             !request.Authorization.FounderAuthorized ||
             !request.Authorization.IsReadOnly ||
             !request.Authorization.ZeroWrite ||
-            request.Authorization.AccessClass != request.Decision.AccessClass)
+            request.Authorization.AccessClass != request.Decision.AccessClass ||
+            !LegendConnectCurriculumService.AreGovernedPresentationConstraintsValid(
+                request.PresentationConstraints))
         {
             failureReason = "research_request_invalid";
             return false;
@@ -1963,7 +2000,11 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
             session.EvidenceAdmissibility,
             session.MaterialClaimEvidence?.Select(item => item.EvidenceIdentity).ToArray() ?? [],
             session.ClaimResolutions,
-            session.ClaimEvidencePolicyIdentity);
+            session.ClaimEvidencePolicyIdentity,
+            session.CitationValidation,
+            session.CitationValidation is null
+                ? null
+                : LegendConnectResearchContracts.CitationPresentationPolicy);
 
     /// <summary>
     /// Observational Stage 4 boundary. It deliberately returns governed result

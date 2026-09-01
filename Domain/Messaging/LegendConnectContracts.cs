@@ -1164,7 +1164,8 @@ public sealed record LegendConnectResearchRequest(
     string? InternalAnswer,
     string? InternalReasonCode,
     int InternalEvidenceCount,
-    DateTime RequestedUtc);
+    DateTime RequestedUtc,
+    LegendConnectResponsePresentationConstraintsSnapshot? PresentationConstraints = null);
 
 public enum LegendConnectResearchSourceClass
 {
@@ -1316,7 +1317,8 @@ public sealed record LegendConnectResearchMaterialClaimProvenance(
     bool DocumentValidated,
     bool PassageValidated,
     bool TimestampsValidated,
-    bool ZeroWrite);
+    bool ZeroWrite,
+    string? StatementHash = null);
 
 public sealed record LegendConnectResearchMaterialClaimEvidence(
     string EvidenceIdentity,
@@ -1355,6 +1357,106 @@ public sealed record LegendConnectResearchClaimResolution(
     IReadOnlyList<string> IndependentSourceLineages,
     string? SelectedStatement,
     bool RequiresDiscriminatingEvidence);
+
+/// <summary>
+/// The semantic role of one realized research statement. These roles are
+/// carried as typed response evidence so presentation cannot blur source
+/// assertions, verified facts, LEGEND inferences, or unresolved states.
+/// </summary>
+public enum LegendConnectResearchResponseStatementKind
+{
+    GovernedInternalKnowledge,
+    ExternallyVerifiedFact,
+    SourceReportedAssertion,
+    LegendReasoningOrInference,
+    Uncertainty,
+    Contradiction,
+    UnresolvedConflict
+}
+
+public enum LegendConnectResearchResolvingEvidenceKind
+{
+    FreshEvidence,
+    DirectClaimSupportingEvidence,
+    IndependentCorroboration,
+    DiscriminatingEvidence,
+    HigherAuthorityEvidence,
+    CorrectionOrAdjudication
+}
+
+/// <summary>
+/// An inline marker bound to the exact material evidence and bounded passage
+/// that support one response statement. It is not a document-level citation.
+/// </summary>
+public sealed record LegendConnectResearchInlineCitation(
+    int Ordinal,
+    string CitationIdentity,
+    string NormalizedClaimIdentity,
+    IReadOnlyList<string> MaterialEvidenceIdentities,
+    string SourceIdentity,
+    string DocumentIdentity,
+    IReadOnlyList<string> PassageLocationIdentities);
+
+/// <summary>
+/// One source actually consulted during the bounded session. This complete
+/// list remains separate from the smaller set cited inline.
+/// </summary>
+public sealed record LegendConnectResearchConsultedSource(
+    string SourceIdentity,
+    string DocumentIdentity,
+    string Title,
+    string CanonicalUri,
+    LegendConnectResearchSourceClass SourceClass,
+    DateTime? PublishedUtc,
+    DateTime? UpdatedUtc,
+    DateTime? EffectiveUtc,
+    DateTime RetrievedUtc,
+    string? DocumentLanguageCode,
+    bool RetrievalSucceeded,
+    string? RetrievalFailureReason,
+    bool CitedInline);
+
+public sealed record LegendConnectResearchResponseStatement(
+    string StatementIdentity,
+    LegendConnectResearchResponseStatementKind Kind,
+    string Text,
+    string? NormalizedClaimIdentity,
+    IReadOnlyList<string> MaterialEvidenceIdentities,
+    IReadOnlyList<int> CitationOrdinals,
+    string EvidenceState,
+    IReadOnlyList<LegendConnectResearchClaimTranslationLineage> TranslationLineage);
+
+public sealed record LegendConnectResearchUncertaintyArticulation(
+    IReadOnlyList<string> EstablishedStatementIdentities,
+    IReadOnlyList<string> UnresolvedClaimIdentities,
+    string UnresolvedQuestion,
+    string ReasonCode,
+    LegendConnectResearchResolvingEvidenceKind ResolvingEvidence,
+    bool RequiresDiscriminatingEvidence);
+
+/// <summary>
+/// Fail-closed receipt produced by the existing response presentation
+/// authority after verifying every external claim/citation/passage binding.
+/// </summary>
+public sealed record LegendConnectResearchCitationValidationReceipt(
+    bool Succeeded,
+    string PolicyIdentity,
+    IReadOnlyList<string> RejectionReasons,
+    int MaterialClaimCount,
+    int InlineCitationCount,
+    DateTime ValidatedUtc);
+
+public sealed record LegendConnectResearchPresentation(
+    string PresentedText,
+    string UserLanguageCode,
+    string FinalResponseLanguageCode,
+    LegendConnectResearchEvidenceOrigin EvidenceOrigin,
+    LegendConnectResponsePresentationConstraintsSnapshot? PresentationConstraints,
+    IReadOnlyList<LegendConnectResearchResponseStatement> Statements,
+    IReadOnlyList<LegendConnectResearchInlineCitation> InlineCitations,
+    IReadOnlyList<LegendConnectResearchConsultedSource> ConsultedSources,
+    LegendConnectResearchUncertaintyArticulation? Uncertainty,
+    LegendConnectResearchCitationValidationReceipt CitationValidation);
 
 public sealed record LegendConnectResearchEvidenceAdmissibility(
     string EvidenceIdentity,
@@ -1562,7 +1664,8 @@ public sealed record LegendConnectResearchSession(
     IReadOnlyList<LegendConnectResearchEvidenceAdmissibility>? EvidenceAdmissibility = null,
     IReadOnlyList<LegendConnectResearchMaterialClaimEvidence>? MaterialClaimEvidence = null,
     IReadOnlyList<LegendConnectResearchClaimResolution>? ClaimResolutions = null,
-    string? ClaimEvidencePolicyIdentity = null);
+    string? ClaimEvidencePolicyIdentity = null,
+    LegendConnectResearchCitationValidationReceipt? CitationValidation = null);
 
 public sealed record LegendConnectResearchConclusion(
     string ConclusionIdentity,
@@ -1575,7 +1678,8 @@ public sealed record LegendConnectResearchInsufficientEvidenceResult(
     string PresentedText,
     int AdmissibleClaimCount,
     int IndependentSourceCount,
-    int RequiredIndependentSourceCount);
+    int RequiredIndependentSourceCount,
+    IReadOnlyList<LegendConnectCitation>? Citations = null);
 
 public sealed record LegendConnectResearchUnresolvedConflictResult(
     string ReasonCode,
@@ -1632,7 +1736,9 @@ public sealed record LegendConnectResearchProvenance(
     IReadOnlyList<LegendConnectResearchEvidenceAdmissibility>? EvidenceAdmissibility = null,
     IReadOnlyList<string>? MaterialClaimEvidenceIdentities = null,
     IReadOnlyList<LegendConnectResearchClaimResolution>? ClaimResolutions = null,
-    string? ClaimEvidencePolicyIdentity = null);
+    string? ClaimEvidencePolicyIdentity = null,
+    LegendConnectResearchCitationValidationReceipt? CitationValidation = null,
+    string? CitationPresentationPolicyIdentity = null);
 
 public sealed record LegendConnectResearchOutcome(
     LegendConnectResearchOutcomeState State,
@@ -1643,9 +1749,11 @@ public sealed record LegendConnectResearchOutcome(
     LegendConnectResearchInsufficientEvidenceResult? InsufficientEvidence,
     LegendConnectResearchUnresolvedConflictResult? UnresolvedConflict,
     LegendConnectResearchFailureResult? Failure,
-    LegendConnectResearchProvenance Provenance)
+    LegendConnectResearchProvenance Provenance,
+    LegendConnectResearchPresentation? Presentation = null)
 {
     public string PresentedText =>
+        Presentation?.PresentedText ??
         Conclusion?.PresentedText ??
         InsufficientEvidence?.PresentedText ??
         UnresolvedConflict?.PresentedText ??
@@ -1765,6 +1873,8 @@ public static class LegendConnectResearchContracts
         "LegendResearchSourceAuthorityAndEvidenceAdmissibility:v1";
     public const string ClaimEvidencePolicy =
         "LegendResearchBoundedClaimEvidence:v1";
+    public const string CitationPresentationPolicy =
+        "LegendResearchCitationAndPresentation:v1";
     public const string PublicAuthorizationProvenance = "FounderAuthenticatedPublicReadOnly";
     public const string RestrictedAuthorizationProvenance = "FounderExplicitRequestAuthorization";
     public const int MaximumQueries = 3;
@@ -1820,7 +1930,8 @@ public sealed record LegendConnectNativeInferenceSnapshot(
     LegendConnectReadOnlyContentBindingRequest? ReadOnlyContentRequest = null,
     IReadOnlyList<LegendConnectReadOnlyContentBindingReceipt>? ContentBindingProvenance = null,
     LegendConnectNativeModelAssistanceSnapshot? ModelAssistance = null,
-    LegendConnectResearchNeededDecision? ResearchDecision = null);
+    LegendConnectResearchNeededDecision? ResearchDecision = null,
+    LegendConnectResponsePresentationConstraintsSnapshot? PresentationConstraints = null);
 
 /// <summary>
 /// The sole read/write authority for Legend Connect operations. Presentation

@@ -262,7 +262,8 @@ internal sealed class LegendFounderToolAuthority
                 : null,
             internalInference?.ReasonCode,
             internalInference?.EvidenceCount ?? 0,
-            DateTime.UtcNow);
+            DateTime.UtcNow,
+            internalInference?.PresentationConstraints);
         return await _legend.ExecuteResearchAsync(
             founder,
             request,
