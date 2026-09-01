@@ -206,6 +206,7 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
     private const int MaximumGovernedResponseSentences = 8;
     private const int MaximumConciseResponseComponents = 24;
     private const int MinimumDetailedResponseComponents = 25;
+    private const int MaximumSemanticInputComponents = 24;
     private const int MaximumIndexedSemanticTextUnits = 512;
     private const int MaximumIndexedSemanticAnchors = 4096;
     private const int MaximumSemanticTransitionFamilies =
@@ -4159,40 +4160,77 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
             CancellationToken cancellationToken,
             bool requireReusableMeaningEvidence = false)
     {
-        if (inputLexemeHashes.Count == 0)
+        if (inputLexemeHashes.Count is < 1 or > MaximumSemanticInputComponents)
             return IndexedSemanticAnchorRetrieval.Empty;
 
+        var requestLexemes = inputLexemeHashes
+            .GroupBy(item => item, StringComparer.Ordinal)
+            .Select(group => new { Hash = group.Key, Count = group.Count() })
+            .ToArray();
+        IQueryable<IndexedSemanticAnchorLexemeMatch>? indexedMatches = null;
+        foreach (var requestLexeme in requestLexemes)
+        {
+            var requestHash = requestLexeme.Hash;
+            var requestCount = requestLexeme.Count;
+            var matchesForLexeme =
+                from lexeme in _db.Set<LegendLanguageLexeme>().AsNoTracking()
+                join occurrence in _db.Set<LegendLanguageLexicalOccurrence>().AsNoTracking()
+                    on lexeme.Id equals occurrence.LexemeId
+                join unit in _db.Set<LegendLanguageTextUnit>().AsNoTracking()
+                    on occurrence.TextUnitId equals unit.Id
+                join anchor in _db.Set<LegendLanguageCompositionalAnchor>().AsNoTracking()
+                    on unit.Id equals anchor.TextUnitId
+                where lexeme.LanguageCode == language &&
+                    lexeme.NormalizedHash == requestHash &&
+                    occurrence.SupersededUtc == null &&
+                    unit.LanguageCode == language &&
+                    unit.IsTrainingEligible &&
+                    unit.Provenance == LegendConnectKnowledgeProvenance.FounderApproved &&
+                    anchor.LanguageCode == language &&
+                    anchor.SupersededUtc == null &&
+                    anchor.Provenance == LegendConnectKnowledgeProvenance.FounderApproved &&
+                    anchor.ComponentStartTokenIndex != null &&
+                    anchor.ComponentStartTokenIndex >= 0 &&
+                    anchor.ComponentLength > 0 &&
+                    anchor.ComponentLength <= inputLexemeHashes.Count &&
+                    occurrence.TokenIndex >= anchor.ComponentStartTokenIndex &&
+                    occurrence.TokenIndex < anchor.ComponentStartTokenIndex + anchor.ComponentLength
+                group occurrence by new
+                {
+                    AnchorId = anchor.Id,
+                    ComponentLength = anchor.ComponentLength!.Value
+                }
+                into matched
+                where matched.Count() <= requestCount
+                select new IndexedSemanticAnchorLexemeMatch
+                {
+                    AnchorId = matched.Key.AnchorId,
+                    ComponentLength = matched.Key.ComponentLength,
+                    MatchedOccurrenceCount = matched.Count()
+                };
+
+            indexedMatches = indexedMatches is null
+                ? matchesForLexeme
+                : indexedMatches.Concat(matchesForLexeme);
+        }
+
+        // Each request hash is counted once, then UNION ALL is aggregated once
+        // per anchor. The unique (TextUnitId, TokenIndex) invariant means a
+        // length-L span can contain at most L active occurrences. A matched
+        // sum of L therefore proves that every position exists and that no
+        // occurrence uses a hash outside this request. The per-hash HAVING
+        // above independently proves request multiplicity. This preserves the
+        // full compatibility gate without correlated span probes or a global
+        // COUNT(DISTINCT) sort ahead of the fixed retrieval boundary.
         var candidateQuery =
-            from lexeme in _db.Set<LegendLanguageLexeme>().AsNoTracking()
-            join occurrence in _db.Set<LegendLanguageLexicalOccurrence>().AsNoTracking()
-                on lexeme.Id equals occurrence.LexemeId
-            join unit in _db.Set<LegendLanguageTextUnit>().AsNoTracking()
-                on occurrence.TextUnitId equals unit.Id
-            join anchor in _db.Set<LegendLanguageCompositionalAnchor>().AsNoTracking()
-                on unit.Id equals anchor.TextUnitId
-            where lexeme.LanguageCode == language &&
-                inputLexemeHashes.Contains(lexeme.NormalizedHash) &&
-                occurrence.SupersededUtc == null &&
-                unit.LanguageCode == language &&
-                unit.IsTrainingEligible &&
-                unit.Provenance == LegendConnectKnowledgeProvenance.FounderApproved &&
-                anchor.LanguageCode == language &&
-                anchor.SupersededUtc == null &&
-                anchor.Provenance == LegendConnectKnowledgeProvenance.FounderApproved &&
-                anchor.ComponentStartTokenIndex != null &&
-                anchor.ComponentLength > 0 &&
-                anchor.ComponentLength <= inputLexemeHashes.Count &&
-                _db.Set<LegendLanguageLexicalOccurrence>().Count(spanOccurrence =>
-                    spanOccurrence.TextUnitId == anchor.TextUnitId &&
-                    spanOccurrence.SupersededUtc == null &&
-                    spanOccurrence.TokenIndex >= anchor.ComponentStartTokenIndex &&
-                    spanOccurrence.TokenIndex < anchor.ComponentStartTokenIndex + anchor.ComponentLength) ==
-                    anchor.ComponentLength &&
-                occurrence.TokenIndex >= anchor.ComponentStartTokenIndex &&
-                occurrence.TokenIndex < anchor.ComponentStartTokenIndex + anchor.ComponentLength &&
+            from matched in indexedMatches!
+            group matched by new { matched.AnchorId, matched.ComponentLength }
+            into candidate
+            where candidate.Sum(item => item.MatchedOccurrenceCount) ==
+                candidate.Key.ComponentLength &&
                 (!requireReusableMeaningEvidence ||
                  _db.Set<LegendLanguageMeaningNodeEvidence>().Any(node =>
-                     node.CompositionalAnchorId == anchor.Id &&
+                     node.CompositionalAnchorId == candidate.Key.AnchorId &&
                      node.LanguageCode == language &&
                      node.SupersededUtc == null &&
                      node.Provenance == LegendConnectKnowledgeProvenance.FounderApproved &&
@@ -4204,50 +4242,9 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
                          primitive.MaturityState != "Contradicted" &&
                          primitive.ContradictionCount == 0 &&
                          primitive.IndependentSourceCount >= 1 &&
-                         primitive.HumanVerifiedSupportCount >= 1))) &&
-                // A matching common token is only an index entry point.  The
-                // complete governed anchor span must be lexically compatible
-                // with this request before it is allowed to consume the fixed
-                // retrieval budget. Exact order and contiguity remain the
-                // downstream meaning authority's responsibility.
-                !_db.Set<LegendLanguageLexicalOccurrence>().Any(spanOccurrence =>
-                    spanOccurrence.TextUnitId == anchor.TextUnitId &&
-                    spanOccurrence.SupersededUtc == null &&
-                    spanOccurrence.TokenIndex >= anchor.ComponentStartTokenIndex &&
-                    spanOccurrence.TokenIndex < anchor.ComponentStartTokenIndex + anchor.ComponentLength &&
-                    !_db.Set<LegendLanguageLexeme>().Any(spanLexeme =>
-                        spanLexeme.Id == spanOccurrence.LexemeId &&
-                        spanLexeme.LanguageCode == language &&
-                        inputLexemeHashes.Contains(spanLexeme.NormalizedHash)))
-            group lexeme by anchor.Id into candidate
-            orderby candidate.Select(item => item.NormalizedHash).Distinct().Count() descending,
-                candidate.Key
-            select candidate.Key;
-
-        // The request collection intentionally retains duplicates. Apply one
-        // constant, translatable correlated count per request lexeme so a
-        // governed span cannot consume more occurrences of a token than the
-        // request actually contains.
-        foreach (var requestLexeme in inputLexemeHashes
-                     .GroupBy(item => item, StringComparer.Ordinal)
-                     .Select(group => new { Hash = group.Key, Count = group.Count() }))
-        {
-            var requestHash = requestLexeme.Hash;
-            var requestCount = requestLexeme.Count;
-            candidateQuery = candidateQuery.Where(anchorId =>
-                (from countedAnchor in _db.Set<LegendLanguageCompositionalAnchor>()
-                 join countedOccurrence in _db.Set<LegendLanguageLexicalOccurrence>()
-                     on countedAnchor.TextUnitId equals countedOccurrence.TextUnitId
-                 join countedLexeme in _db.Set<LegendLanguageLexeme>()
-                     on countedOccurrence.LexemeId equals countedLexeme.Id
-                 where countedAnchor.Id == anchorId &&
-                     countedOccurrence.SupersededUtc == null &&
-                     countedOccurrence.TokenIndex >= countedAnchor.ComponentStartTokenIndex &&
-                     countedOccurrence.TokenIndex < countedAnchor.ComponentStartTokenIndex + countedAnchor.ComponentLength &&
-                     countedLexeme.LanguageCode == language &&
-                     countedLexeme.NormalizedHash == requestHash
-                 select countedOccurrence.Id).Count() <= requestCount);
-        }
+                         primitive.HumanVerifiedSupportCount >= 1)))
+            orderby candidate.Key.AnchorId
+            select candidate.Key.AnchorId;
 
         var rows = await candidateQuery
             .Take(MaximumIndexedSemanticTextUnits + 1)
@@ -4788,6 +4785,15 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
         }
         else
         {
+            if (tokens.Count > MaximumSemanticInputComponents)
+            {
+                return new(
+                    false,
+                    [],
+                    [],
+                    tokens.Select(item => item.NormalizedText).ToArray(),
+                    "meaning_graph_input_invalid");
+            }
             var inputLexemeHashes = tokens
                 .Select(item => item.NormalizedHash)
                 .ToArray();
@@ -14860,6 +14866,13 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
     {
         internal static readonly IndexedSemanticAnchorRetrieval Empty = new([], false);
         internal static readonly IndexedSemanticAnchorRetrieval Bounded = new([], true);
+    }
+
+    private sealed class IndexedSemanticAnchorLexemeMatch
+    {
+        public Guid AnchorId { get; init; }
+        public int ComponentLength { get; init; }
+        public int MatchedOccurrenceCount { get; init; }
     }
 
     private sealed record SemanticTransitionObservation(

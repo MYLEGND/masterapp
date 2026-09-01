@@ -636,7 +636,11 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
                 expectedNative: true,
                 failure: "relation unproven",
                 providerClientCount: 0,
-                elapsedMilliseconds: 2)
+                elapsedMilliseconds: 2),
+            ProductionNativeProofResult.FailedInfrastructurePreflight(
+                "discourse",
+                "discourse",
+                new TimeoutException("bounded preflight timeout"))
         };
 
         var json = JsonSerializer.Serialize(new
@@ -651,12 +655,15 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
 
         Assert.Equal("failed", root.GetProperty("Status").GetString());
         Assert.Equal(2, root.GetProperty("ExecutedCases").GetInt32());
-        Assert.Equal(2, root.GetProperty("FailedCases").GetInt32());
+        Assert.Equal(3, root.GetProperty("FailedCases").GetInt32());
         var serializedResults = root.GetProperty("CaseResults");
-        Assert.Equal(3, serializedResults.GetArrayLength());
+        Assert.Equal(4, serializedResults.GetArrayLength());
         Assert.Equal("fixture", serializedResults[0].GetProperty("Phase").GetString());
         Assert.Equal("execution", serializedResults[1].GetProperty("Phase").GetString());
         Assert.Equal("execution", serializedResults[2].GetProperty("Phase").GetString());
+        Assert.Equal("preflight", serializedResults[3].GetProperty("Phase").GetString());
+        Assert.Equal("infrastructure", serializedResults[3].GetProperty("FailureKind").GetString());
+        Assert.Equal("operation_timeout", serializedResults[3].GetProperty("FailureCode").GetString());
     }
 
     [Fact]
@@ -855,13 +862,27 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
             }
 
             var fixtureFailures = new List<ProductionNativeProofResult>();
+            var preflightFailures = new List<ProductionNativeProofResult>();
 
             async Task<string?> FindReasoningFixtureAsync(
                 string reference,
                 string category,
                 string operatorPrefix)
             {
-                var source = await FindReasoningSourceAsync(operatorPrefix);
+                string? source;
+                try
+                {
+                    source = await FindReasoningSourceAsync(operatorPrefix);
+                }
+                catch (Exception exception)
+                {
+                    preflightFailures.Add(
+                        ProductionNativeProofResult.FailedInfrastructurePreflight(
+                            reference,
+                            category,
+                            exception));
+                    return null;
+                }
                 if (source is null)
                 {
                     fixtureFailures.Add(ProductionNativeProofResult.FailedFixture(
@@ -890,33 +911,49 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
                 "planning",
                 "reasoning.constrained-planning.");
 
-            var audienceConstraintSource = await (
-                from transition in db.LegendSemanticTransitionEvidence.AsNoTracking()
-                join source in db.LegendCurriculumExamples.AsNoTracking()
-                    on transition.SourceCurriculumExampleId equals source.Id
-                join sourceUnit in db.LegendLanguageTextUnits.AsNoTracking()
-                    on source.TextUnitId equals sourceUnit.Id
-                join resultVariation in db.LegendCurriculumExampleVariations.AsNoTracking()
-                    on transition.ResultCurriculumExampleId equals resultVariation.CurriculumExampleId
-                where transition.SupersededUtc == null &&
-                    transition.ContributionState == "Supported" &&
-                    transition.IsHumanVerifiedSupport &&
-                    transition.Provenance == LegendConnectKnowledgeProvenance.FounderApproved &&
-                    transition.SourceLanguageCode == "en" &&
-                    transition.ResultLanguageCode == "en" &&
-                    source.SupersededUtc == null &&
-                    source.Provenance == LegendConnectKnowledgeProvenance.FounderApproved &&
-                    sourceUnit.IsTrainingEligible &&
-                    sourceUnit.Provenance == LegendConnectKnowledgeProvenance.FounderApproved &&
-                    resultVariation.Dimension == "response_audience"
-                orderby resultVariation.Value, sourceUnit.NormalizedHash
-                select sourceUnit.Text).FirstOrDefaultAsync();
+            string? audienceConstraintSource = null;
+            try
+            {
+                audienceConstraintSource = await (
+                    from transition in db.LegendSemanticTransitionEvidence.AsNoTracking()
+                    join source in db.LegendCurriculumExamples.AsNoTracking()
+                        on transition.SourceCurriculumExampleId equals source.Id
+                    join sourceUnit in db.LegendLanguageTextUnits.AsNoTracking()
+                        on source.TextUnitId equals sourceUnit.Id
+                    join resultVariation in db.LegendCurriculumExampleVariations.AsNoTracking()
+                        on transition.ResultCurriculumExampleId equals resultVariation.CurriculumExampleId
+                    where transition.SupersededUtc == null &&
+                        transition.ContributionState == "Supported" &&
+                        transition.IsHumanVerifiedSupport &&
+                        transition.Provenance == LegendConnectKnowledgeProvenance.FounderApproved &&
+                        transition.SourceLanguageCode == "en" &&
+                        transition.ResultLanguageCode == "en" &&
+                        source.SupersededUtc == null &&
+                        source.Provenance == LegendConnectKnowledgeProvenance.FounderApproved &&
+                        sourceUnit.IsTrainingEligible &&
+                        sourceUnit.Provenance == LegendConnectKnowledgeProvenance.FounderApproved &&
+                        resultVariation.Dimension == "response_audience"
+                    orderby resultVariation.Value, sourceUnit.NormalizedHash
+                    select sourceUnit.Text).FirstOrDefaultAsync();
+            }
+            catch (Exception exception)
+            {
+                preflightFailures.Add(
+                    ProductionNativeProofResult.FailedInfrastructurePreflight(
+                        "fixture-governed-audience-constraints",
+                        "audience_constraints",
+                        exception));
+            }
             if (string.IsNullOrWhiteSpace(audienceConstraintSource))
             {
-                fixtureFailures.Add(ProductionNativeProofResult.FailedFixture(
-                    "fixture-governed-audience-constraints",
-                    "audience_constraints",
-                    "The production matrix has no active Founder-governed audience-constrained response source."));
+                if (!preflightFailures.Any(item =>
+                        item.Reference == "fixture-governed-audience-constraints"))
+                {
+                    fixtureFailures.Add(ProductionNativeProofResult.FailedFixture(
+                        "fixture-governed-audience-constraints",
+                        "audience_constraints",
+                        "The production matrix has no active Founder-governed audience-constrained response source."));
+                }
             }
 
             var heldOutCases = new[]
@@ -998,9 +1035,22 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
             };
             foreach (var heldOutCase in heldOutCases)
             {
-                var failure = await MeaningFixtureFailureAsync(
-                    heldOutCase,
-                    requireMultipleNodes: false);
+                string? failure;
+                try
+                {
+                    failure = await MeaningFixtureFailureAsync(
+                        heldOutCase,
+                        requireMultipleNodes: false);
+                }
+                catch (Exception exception)
+                {
+                    preflightFailures.Add(
+                        ProductionNativeProofResult.FailedInfrastructurePreflight(
+                            heldOutCase.Reference,
+                            heldOutCase.Category,
+                            exception));
+                    continue;
+                }
                 if (failure is null)
                     matrix.Add(heldOutCase);
                 else
@@ -1011,9 +1061,22 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
             }
             foreach (var crossFamilyCase in crossFamilyCases)
             {
-                var failure = await MeaningFixtureFailureAsync(
-                    crossFamilyCase,
-                    requireMultipleNodes: true);
+                string? failure;
+                try
+                {
+                    failure = await MeaningFixtureFailureAsync(
+                        crossFamilyCase,
+                        requireMultipleNodes: true);
+                }
+                catch (Exception exception)
+                {
+                    preflightFailures.Add(
+                        ProductionNativeProofResult.FailedInfrastructurePreflight(
+                            crossFamilyCase.Reference,
+                            crossFamilyCase.Category,
+                            exception));
+                    continue;
+                }
                 if (failure is null)
                     matrix.Add(crossFamilyCase);
                 else
@@ -1023,67 +1086,81 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
                         failure));
             }
 
-            var discourseFailure = await MeaningFixtureFailureAsync(
-                discourseCase,
-                requireMultipleNodes: false);
-            if (discourseFailure is null)
+            string? discourseFailure = null;
+            var discoursePreflightCompleted = true;
+            try
             {
-                var selectorGraph = await founderLegend.AnalyzeReusableMeaningGraphAsync(
-                    founder,
-                    discourseCase.Messages[^1].Content!,
-                    discourseCase.NativeSourceLanguageCode);
-                var rules = await operations.GetProductionDiscourseReferenceRulesAsync(
-                    discourseCase.NativeSourceLanguageCode,
-                    selectorGraph.Nodes.Select(item => item.SemanticSignature)
-                        .Distinct(StringComparer.Ordinal)
-                        .ToArray());
-                if (rules.Count != 1)
+                discourseFailure = await MeaningFixtureFailureAsync(
+                    discourseCase,
+                    requireMultipleNodes: false);
+                if (discourseFailure is null)
                 {
-                    discourseFailure = rules.Count == 0
-                        ? "The production fixture has no active production-eligible discourse-reference rule for the governed selector."
-                        : "The production fixture has ambiguous production-eligible discourse-reference rules for the governed selector.";
-                }
-                else
-                {
-                    var preflightConversationId = Guid.NewGuid();
-                    foreach (var message in discourseCase.Messages)
-                    {
-                        var graph = await founderLegend.AnalyzeReusableMeaningGraphAsync(
-                            founder,
-                            message.Content ?? string.Empty,
-                            discourseCase.NativeSourceLanguageCode);
-                        await discourse.RecordObservationAsync(
-                            founder,
-                            preflightConversationId.ToString(),
-                            message.Role ?? string.Empty,
-                            graph,
-                            sourceLanguageCode: discourseCase.NativeSourceLanguageCode);
-                    }
-                    var preflightState = await discourse.GetStateAsync(
+                    var selectorGraph = await founderLegend.AnalyzeReusableMeaningGraphAsync(
                         founder,
-                        preflightConversationId.ToString());
-                    var selectorBindings = preflightState?.Turns.LastOrDefault()?.Bindings ?? [];
-                    if (!selectorBindings.Any(item => item.ResolutionState == "bound"))
+                        discourseCase.Messages[^1].Content!,
+                        discourseCase.NativeSourceLanguageCode);
+                    var rules = await operations.GetProductionDiscourseReferenceRulesAsync(
+                        discourseCase.NativeSourceLanguageCode,
+                        selectorGraph.Nodes.Select(item => item.SemanticSignature)
+                            .Distinct(StringComparer.Ordinal)
+                            .ToArray());
+                    if (rules.Count != 1)
                     {
-                        var reasons = selectorBindings.Count == 0
-                            ? "no governed binding was produced"
-                            : string.Join(",", selectorBindings.Select(item => item.ReasonCode)
-                                .Distinct(StringComparer.Ordinal));
-                        discourseFailure =
-                            $"The production fixture has the discourse selector rule but the canonical discourse-state authority could not bind its prior entity prerequisites: {reasons}.";
+                        discourseFailure = rules.Count == 0
+                            ? "The production fixture has no active production-eligible discourse-reference rule for the governed selector."
+                            : "The production fixture has ambiguous production-eligible discourse-reference rules for the governed selector.";
+                    }
+                    else
+                    {
+                        var preflightConversationId = Guid.NewGuid();
+                        foreach (var message in discourseCase.Messages)
+                        {
+                            var graph = await founderLegend.AnalyzeReusableMeaningGraphAsync(
+                                founder,
+                                message.Content ?? string.Empty,
+                                discourseCase.NativeSourceLanguageCode);
+                            await discourse.RecordObservationAsync(
+                                founder,
+                                preflightConversationId.ToString(),
+                                message.Role ?? string.Empty,
+                                graph,
+                                sourceLanguageCode: discourseCase.NativeSourceLanguageCode);
+                        }
+                        var preflightState = await discourse.GetStateAsync(
+                            founder,
+                            preflightConversationId.ToString());
+                        var selectorBindings = preflightState?.Turns.LastOrDefault()?.Bindings ?? [];
+                        if (!selectorBindings.Any(item => item.ResolutionState == "bound"))
+                        {
+                            var reasons = selectorBindings.Count == 0
+                                ? "no governed binding was produced"
+                                : string.Join(",", selectorBindings.Select(item => item.ReasonCode)
+                                    .Distinct(StringComparer.Ordinal));
+                            discourseFailure =
+                                $"The production fixture has the discourse selector rule but the canonical discourse-state authority could not bind its prior entity prerequisites: {reasons}.";
+                        }
                     }
                 }
             }
-            if (discourseFailure is null)
+            catch (Exception exception)
+            {
+                discoursePreflightCompleted = false;
+                preflightFailures.Add(
+                    ProductionNativeProofResult.FailedInfrastructurePreflight(
+                        discourseCase.Reference,
+                        discourseCase.Category,
+                        exception));
+            }
+            if (discoursePreflightCompleted && discourseFailure is null)
             {
                 matrix.Add(discourseCase);
             }
-            else
+            else if (discoursePreflightCompleted)
             {
                 fixtureFailures.Add(ProductionNativeProofResult.FailedFixture(
                     "fixture-" + discourseCase.Reference,
                     discourseCase.Category,
-                    discourseFailure));
+                    discourseFailure!));
             }
             if (deductionSource is not null)
             {
@@ -1136,8 +1213,10 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
                 "native_only_isolation"
             };
             var results = new List<ProductionNativeProofResult>(fixtureFailures);
+            results.AddRange(preflightFailures);
             var representedCategories = matrix.Select(item => item.Category)
                 .Concat(fixtureFailures.Select(item => item.Category))
+                .Concat(preflightFailures.Select(item => item.Category))
                 .Distinct(StringComparer.Ordinal)
                 .OrderBy(item => item, StringComparer.Ordinal)
                 .ToArray();
@@ -1149,13 +1228,13 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
                     "matrix_definition",
                     "The production matrix does not represent every required category exactly once or more."));
             }
-            if (matrix.Count + fixtureFailures.Count < requiredCategories.Length ||
-                matrix.Count + fixtureFailures.Count > 16)
+            if (matrix.Count + fixtureFailures.Count + preflightFailures.Count < requiredCategories.Length ||
+                matrix.Count + fixtureFailures.Count + preflightFailures.Count > 16)
             {
                 results.Add(ProductionNativeProofResult.FailedFixture(
                     "matrix-size-contract",
                     "matrix_definition",
-                    $"The production matrix contains {matrix.Count + fixtureFailures.Count} executable or fixture-failure cases; expected {requiredCategories.Length} through 16."));
+                    $"The production matrix contains {matrix.Count + fixtureFailures.Count + preflightFailures.Count} executable or preflight-result cases; expected {requiredCategories.Length} through 16."));
             }
 
             _output.WriteLine("============================================================");
@@ -1172,8 +1251,16 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
                     $"category={fixtureFailure.Category}; phase=fixture; " +
                     $"failure={fixtureFailure.Failure}; provider_clients=0; elapsed_ms=0");
             }
+            foreach (var preflightFailure in preflightFailures)
+            {
+                _output.WriteLine(
+                    $"MATRIX CASE FAILED: reference={preflightFailure.Reference}; " +
+                    $"category={preflightFailure.Category}; phase=preflight; " +
+                    $"failure_code={preflightFailure.FailureCode}; " +
+                    $"failure={preflightFailure.Failure}; provider_clients=0; elapsed_ms=0");
+            }
 
-            var executed = 0;
+            var executed = preflightFailures.Count;
             var nativePasses = 0;
             var negativePasses = 0;
             async Task RecordDiscourseMessagesAsync(
@@ -3435,6 +3522,8 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
         string Phase,
         string Status,
         string? Failure,
+        string? FailureKind,
+        string? FailureCode,
         bool? ExpectedNative,
         bool? NativeSupported,
         string? ReasonCode,
@@ -3454,6 +3543,8 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
                 "fixture",
                 "failed",
                 failure,
+                "governed_content",
+                "fixture_missing",
                 null,
                 null,
                 null,
@@ -3480,6 +3571,8 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
                 "execution",
                 "passed",
                 null,
+                null,
+                null,
                 expectedNative,
                 nativeSupported,
                 reasonCode,
@@ -3502,6 +3595,8 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
                 "execution",
                 "failed",
                 failure,
+                "case_execution",
+                "execution_failed",
                 expectedNative,
                 null,
                 null,
@@ -3510,6 +3605,36 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
                 null,
                 providerClientCount,
                 elapsedMilliseconds);
+
+        internal static ProductionNativeProofResult FailedInfrastructurePreflight(
+            string reference,
+            string category,
+            Exception exception)
+        {
+            var failureCode = exception switch
+            {
+                SqlException { Number: -2 } => "sql_command_timeout",
+                TimeoutException => "operation_timeout",
+                SqlException => "sql_failure",
+                _ => "preflight_failure"
+            };
+            return new(
+                reference,
+                category,
+                "preflight",
+                "failed",
+                $"The production proof preflight failed with {exception.GetType().Name}.",
+                "infrastructure",
+                failureCode,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                0,
+                0);
+        }
     }
 
     private static async Task<ShadowCorpusCounts> ReadShadowCountsAsync(
