@@ -829,7 +829,8 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
                 evidencePacket.Citations,
                 evidencePacket.ClaimEvidence,
                 evidencePacket.ContradictingEvidence,
-                request.MinimumIndependentSources);
+                request.MinimumIndependentSources,
+                completed);
         var unresolvedInternalConflict =
             request.Decision.Need ==
                 LegendConnectResearchNeed.ConflictingInternalEvidence &&
@@ -864,7 +865,9 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
             null,
             evidencePacket.SearchQueryReceipts,
             evidencePacket.PageReceipts,
-            evidencePacket.LanguageLineage);
+            evidencePacket.LanguageLineage,
+            LegendConnectResearchEvidenceAdmissibilityPolicy.PolicyIdentity,
+            assessment.Admissibility);
         var provenance = BuildResearchProvenance(
             request,
             session,
@@ -873,11 +876,24 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
             evidencePacket.ModelVersion,
             evidencePacket.SettingsIdentity,
             evidencePacket.SearchProvider);
+        var presentedCitationIdentities = effectiveAssessmentState switch
+        {
+            LegendResearchEvidenceAssessmentState.Conclusion =>
+                assessment.Claims.Select(item => item.CitationIdentity),
+            LegendResearchEvidenceAssessmentState.UnresolvedConflict =>
+                assessment.Claims.Select(item => item.CitationIdentity)
+                    .Concat(assessment.Contradictions.Select(item => item.CitationIdentity)),
+            _ => Enumerable.Empty<string>()
+        };
+        var presentedCitationSet = presentedCitationIdentities.ToHashSet(StringComparer.Ordinal);
+        var admittedCitations = evidencePacket.Citations
+            .Where(item => presentedCitationSet.Contains(item.CitationIdentity))
+            .ToArray();
         var presented = LegendConnectCurriculumService.PresentResearchEvidence(
             effectiveAssessmentState,
             assessment.Claims,
             assessment.Contradictions,
-            evidencePacket.Citations,
+            admittedCitations,
             effectiveReasonCode);
 
         if (effectiveAssessmentState == LegendResearchEvidenceAssessmentState.Conclusion)
@@ -893,7 +909,7 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
                     string.Join('|', assessment.Claims.Select(item => item.EvidenceIdentity))),
                 presented,
                 assessment.Claims,
-                evidencePacket.Citations);
+                admittedCitations);
             return new LegendConnectResearchOutcome(
                 LegendConnectResearchOutcomeState.Conclusion,
                 evidenceOrigin,
@@ -920,7 +936,7 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
                     presented,
                     assessment.Claims,
                     assessment.Contradictions,
-                    evidencePacket.Citations),
+                    admittedCitations),
                 null,
                 provenance);
         }
@@ -1573,7 +1589,13 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
                     artifact.SourceIdentity,
                     artifact.DocumentIdentity,
                     artifact.CitationIdentity,
-                    candidate.ObservedUtc));
+                    candidate.ObservedUtc,
+                    candidate.Subject,
+                    candidate.StatementKind,
+                    candidate.Support,
+                    candidate.RequiredAuthorityScope,
+                    candidate.AsOfUtc,
+                    candidate.SupportingExcerpt));
                 if (claims.Count >= request.MaximumClaims)
                     break;
             }
@@ -1597,7 +1619,13 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
                     artifact.SourceIdentity,
                     artifact.DocumentIdentity,
                     artifact.CitationIdentity,
-                    candidate.ObservedUtc));
+                    candidate.ObservedUtc,
+                    candidate.Subject,
+                    candidate.StatementKind,
+                    candidate.Support,
+                    candidate.RequiredAuthorityScope,
+                    candidate.AsOfUtc,
+                    candidate.SupportingExcerpt));
                 if (contradictions.Count >= request.MaximumClaims)
                     break;
             }
@@ -1866,7 +1894,9 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
             searchProvider,
             session.SearchQueryReceipts?.Select(item => item.ReceiptIdentity).ToArray() ?? [],
             session.PageReceipts?.Select(item => item.ReceiptIdentity).ToArray() ?? [],
-            session.LanguageLineage);
+            session.LanguageLineage,
+            session.EvidencePolicyIdentity,
+            session.EvidenceAdmissibility);
 
     /// <summary>
     /// Observational Stage 4 boundary. It deliberately returns governed result

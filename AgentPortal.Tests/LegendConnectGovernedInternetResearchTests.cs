@@ -274,7 +274,7 @@ public sealed class LegendConnectGovernedInternetResearchTests
             LegendResearchEvidenceAssessmentState.InsufficientEvidence,
             assessment.State);
         Assert.Equal(
-            "research_independent_sources_insufficient",
+            "research_evidence_standard_unmet",
             assessment.ReasonCode);
     }
 
@@ -289,7 +289,8 @@ public sealed class LegendConnectGovernedInternetResearchTests
             packet.Sources[1].SourceIdentity,
             packet.Documents[1].DocumentIdentity,
             packet.Citations[1].CitationIdentity,
-            DecisionUtc);
+            DecisionUtc,
+            SupportingExcerpt: "Direct evidence two.");
         var assessment =
             LegendConnectGovernedReasoningExecutor.AssessResearchEvidence(
                 packet.Sources,
@@ -385,17 +386,25 @@ public sealed class LegendConnectGovernedInternetResearchTests
             "https://one.example/evidence",
             "Source One",
             "Publisher One",
-            "Primary",
+            LegendConnectResearchSourceClass.PrimaryOfficialRecord,
             DecisionUtc,
-            DecisionUtc);
+            DecisionUtc,
+            Author: "Record Custodian One",
+            ProvenanceComplete: true,
+            LineageKind: LegendConnectResearchSourceLineageKind.Original,
+            AuthorityScopes: [LegendConnectResearchAuthorityScope.GeneralRecord]);
         var sourceTwo = new LegendConnectResearchSourceIdentity(
             "source-2",
             "https://two.example/evidence",
             "Source Two",
             "Publisher Two",
-            "Primary",
+            LegendConnectResearchSourceClass.PrimaryOfficialRecord,
             DecisionUtc,
-            DecisionUtc);
+            DecisionUtc,
+            Author: "Record Custodian Two",
+            ProvenanceComplete: true,
+            LineageKind: LegendConnectResearchSourceLineageKind.Original,
+            AuthorityScopes: [LegendConnectResearchAuthorityScope.GeneralRecord]);
         var documentOne = new LegendConnectRetrievedDocument(
             "document-1",
             sourceOne.SourceIdentity,
@@ -440,7 +449,8 @@ public sealed class LegendConnectGovernedInternetResearchTests
                     sourceOne.SourceIdentity,
                     documentOne.DocumentIdentity,
                     citationOne.CitationIdentity,
-                    DecisionUtc),
+                    DecisionUtc,
+                    SupportingExcerpt: "Direct evidence one."),
                 new LegendConnectClaimEvidence(
                     "evidence-2",
                     "claim-1",
@@ -448,7 +458,8 @@ public sealed class LegendConnectGovernedInternetResearchTests
                     sourceTwo.SourceIdentity,
                     documentTwo.DocumentIdentity,
                     citationTwo.CitationIdentity,
-                    DecisionUtc)
+                    DecisionUtc,
+                    SupportingExcerpt: "Direct evidence two.")
             ]);
     }
 

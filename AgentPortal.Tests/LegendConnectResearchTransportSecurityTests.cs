@@ -404,7 +404,7 @@ public sealed class LegendConnectResearchTransportSecurityTests
             item.CanonicalUri,
             item.Title,
             null,
-            "External",
+            LegendConnectResearchSourceClass.UnknownSource,
             null,
             DateTime.UtcNow,
             null,

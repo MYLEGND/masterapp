@@ -136,8 +136,8 @@ internal sealed class LegendConnectResearchPageRetriever
             var normalizedDocumentLanguage = await NormalizeDocumentLanguageAsync(
                 attempt.DocumentLanguageCode ?? source.DocumentLanguageCode,
                 deadlineCancellation.Token);
-            var sourceIdentity = LegendLanguageIdentity.TextHash(
-                "research-source|v3|" + attempt.FinalCanonicalUri);
+            var sourceIdentity = LegendConnectResearchExternalDataPolicy.SourceIdentityForUri(
+                attempt.FinalCanonicalUri);
             var documentIdentity = LegendLanguageIdentity.TextHash(
                 "research-document|v3|" + sourceIdentity + "|" + attempt.ContentHash);
             var citationIdentity = LegendLanguageIdentity.TextHash(

@@ -1166,16 +1166,126 @@ public sealed record LegendConnectResearchRequest(
     int InternalEvidenceCount,
     DateTime RequestedUtc);
 
+public enum LegendConnectResearchSourceClass
+{
+    PrimaryOfficialRecord,
+    LegislatureRegulatorCourtOrGovernmentAuthority,
+    PeerReviewedOriginalResearch,
+    SystematicReviewOrRecognizedScientificMedicalAuthority,
+    RegulatoryFilingOrAuditedFinancialReport,
+    OfficialProductOrTechnicalDocumentation,
+    FirstPartyCompanyStatement,
+    IndependentProfessionalReporting,
+    IndependentSecondaryAnalysis,
+    Aggregator,
+    OpinionOrCommentary,
+    UserGeneratedContent,
+    AnonymousOrUnverifiableContent,
+    UnknownSource
+}
+
+public enum LegendConnectResearchClaimSubject
+{
+    General,
+    Legal,
+    Medical,
+    Scientific,
+    Financial,
+    Security,
+    CurrentEvent,
+    Product,
+    Operational,
+    Historical
+}
+
+public enum LegendConnectResearchStatementKind
+{
+    Fact,
+    SourceAssertion,
+    Analysis,
+    Opinion,
+    Inference,
+    FirsthandExperience,
+    PublicSentiment,
+    PublishedStatement
+}
+
+public enum LegendConnectResearchEvidenceSupport
+{
+    Direct,
+    CitationChain,
+    Observation
+}
+
+public enum LegendConnectResearchSourceLineageKind
+{
+    Original,
+    Independent,
+    Copied,
+    Syndicated,
+    PressReleaseDerived,
+    CommonOrigin,
+    Unknown
+}
+
+public enum LegendConnectResearchAuthorityScope
+{
+    GeneralRecord,
+    OwnPublishedPolicy,
+    ControllingLegalRecord,
+    MedicalScientificEvidence,
+    RegulatoryFinancialDisclosure,
+    OfficialProductTechnicalDocumentation,
+    OwnProductOrService,
+    OwnOperations,
+    SecurityRecord,
+    CurrentEventRecord,
+    HistoricalRecord
+}
+
+public enum LegendConnectResearchEvidenceDisposition
+{
+    ControllingEvidence,
+    CorroboratingEvidence,
+    ObservationOnly,
+    Rejected
+}
+
+public sealed record LegendConnectResearchEvidenceAdmissibility(
+    string EvidenceIdentity,
+    string ClaimIdentity,
+    string SourceIdentity,
+    LegendConnectResearchClaimSubject Subject,
+    LegendConnectResearchSourceClass SourceClass,
+    LegendConnectResearchEvidenceDisposition Disposition,
+    string ReasonCode,
+    string IndependentLineageIdentity,
+    bool ContradictingEvidence,
+    DateTime AssessedUtc,
+    string PolicyIdentity);
+
 public sealed record LegendConnectResearchSourceIdentity(
     string SourceIdentity,
     string CanonicalUri,
     string Title,
     string? Publisher,
-    string SourceClass,
+    LegendConnectResearchSourceClass SourceClass,
     DateTime? PublishedUtc,
     DateTime RetrievedUtc,
     string? DocumentLanguageCode = null,
-    bool IsUntrustedExternalData = true);
+    bool IsUntrustedExternalData = true,
+    string? Author = null,
+    DateTime? UpdatedUtc = null,
+    DateTime? EffectiveUtc = null,
+    bool MethodologyAvailable = false,
+    bool ProvenanceComplete = false,
+    LegendConnectResearchSourceLineageKind LineageKind =
+        LegendConnectResearchSourceLineageKind.Unknown,
+    string? OriginalSourceIdentity = null,
+    string? CommonOriginIdentity = null,
+    IReadOnlyList<string>? CitationTargetSourceIdentities = null,
+    IReadOnlyList<LegendConnectResearchAuthorityScope>? AuthorityScopes = null,
+    bool IsControllingRecord = false);
 
 public sealed record LegendConnectSearchResult(
     string SearchResultIdentity,
@@ -1279,7 +1389,14 @@ public sealed record LegendConnectClaimEvidence(
     string SourceIdentity,
     string DocumentIdentity,
     string CitationIdentity,
-    DateTime? ObservedUtc);
+    DateTime? ObservedUtc,
+    LegendConnectResearchClaimSubject Subject = LegendConnectResearchClaimSubject.General,
+    LegendConnectResearchStatementKind StatementKind = LegendConnectResearchStatementKind.Fact,
+    LegendConnectResearchEvidenceSupport Support = LegendConnectResearchEvidenceSupport.Direct,
+    LegendConnectResearchAuthorityScope RequiredAuthorityScope =
+        LegendConnectResearchAuthorityScope.GeneralRecord,
+    DateTime? AsOfUtc = null,
+    string? SupportingExcerpt = null);
 
 public sealed record LegendConnectContradictingEvidence(
     string EvidenceIdentity,
@@ -1288,7 +1405,14 @@ public sealed record LegendConnectContradictingEvidence(
     string SourceIdentity,
     string DocumentIdentity,
     string CitationIdentity,
-    DateTime? ObservedUtc);
+    DateTime? ObservedUtc,
+    LegendConnectResearchClaimSubject Subject = LegendConnectResearchClaimSubject.General,
+    LegendConnectResearchStatementKind StatementKind = LegendConnectResearchStatementKind.Fact,
+    LegendConnectResearchEvidenceSupport Support = LegendConnectResearchEvidenceSupport.Direct,
+    LegendConnectResearchAuthorityScope RequiredAuthorityScope =
+        LegendConnectResearchAuthorityScope.GeneralRecord,
+    DateTime? AsOfUtc = null,
+    string? SupportingExcerpt = null);
 
 public sealed record LegendConnectResearchSession(
     Guid SessionId,
@@ -1308,7 +1432,9 @@ public sealed record LegendConnectResearchSession(
     string? FailureReason,
     IReadOnlyList<LegendConnectResearchSearchQueryReceipt>? SearchQueryReceipts = null,
     IReadOnlyList<LegendConnectResearchPageReceipt>? PageReceipts = null,
-    LegendConnectResearchLanguageLineage? LanguageLineage = null);
+    LegendConnectResearchLanguageLineage? LanguageLineage = null,
+    string? EvidencePolicyIdentity = null,
+    IReadOnlyList<LegendConnectResearchEvidenceAdmissibility>? EvidenceAdmissibility = null);
 
 public sealed record LegendConnectResearchConclusion(
     string ConclusionIdentity,
@@ -1373,7 +1499,9 @@ public sealed record LegendConnectResearchProvenance(
     string? SearchProvider = null,
     IReadOnlyList<string>? SearchQueryReceiptIdentities = null,
     IReadOnlyList<string>? PageReceiptIdentities = null,
-    LegendConnectResearchLanguageLineage? LanguageLineage = null);
+    LegendConnectResearchLanguageLineage? LanguageLineage = null,
+    string? EvidencePolicyIdentity = null,
+    IReadOnlyList<LegendConnectResearchEvidenceAdmissibility>? EvidenceAdmissibility = null);
 
 public sealed record LegendConnectResearchOutcome(
     LegendConnectResearchOutcomeState State,
@@ -1400,7 +1528,14 @@ public sealed record LegendConnectResearchClaimCandidate(
     IReadOnlyList<string> CanonicalUris,
     DateTime? ObservedUtc,
     string EvidenceLanguageCode,
-    bool IsUntrustedExternalData);
+    bool IsUntrustedExternalData,
+    LegendConnectResearchClaimSubject Subject = LegendConnectResearchClaimSubject.General,
+    LegendConnectResearchStatementKind StatementKind = LegendConnectResearchStatementKind.Fact,
+    LegendConnectResearchEvidenceSupport Support = LegendConnectResearchEvidenceSupport.Direct,
+    LegendConnectResearchAuthorityScope RequiredAuthorityScope =
+        LegendConnectResearchAuthorityScope.GeneralRecord,
+    DateTime? AsOfUtc = null,
+    string? SupportingExcerpt = null);
 
 public sealed record LegendConnectResearchSearchTransportRequest(
     Guid SessionId,
@@ -1492,6 +1627,8 @@ public sealed record LegendConnectResearchEvidencePacket(
 public static class LegendConnectResearchContracts
 {
     public const string Provenance = "FounderAuthorizedGovernedInternetResearch";
+    public const string EvidenceAdmissibilityPolicy =
+        "LegendResearchSourceAuthorityAndEvidenceAdmissibility:v1";
     public const string PublicAuthorizationProvenance = "FounderAuthenticatedPublicReadOnly";
     public const string RestrictedAuthorizationProvenance = "FounderExplicitRequestAuthorization";
     public const int MaximumQueries = 3;
