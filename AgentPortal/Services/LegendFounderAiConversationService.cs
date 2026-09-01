@@ -1033,7 +1033,7 @@ public sealed class LegendFounderAiConversationService
                         return ResearchChatResponse(
                             mode,
                             completedResearch!,
-                            nativeInference.ModelAssistance);
+                            nativeInference?.ModelAssistance);
                     }
 
                     if (_toolAuthority.IsReadOnly(call.Name))
@@ -1330,16 +1330,19 @@ public sealed class LegendFounderAiConversationService
                 nameof(allowTools));
         }
 
+        var serializedTools = allowTools
+            ? tools
+            : Array.Empty<object>();
+        if (catalogAcceptanceOnly)
+            allowTools = false;
+
         var payload = new
         {
             model,
             store = false,
             instructions,
             input,
-            tools =
-                allowTools
-                    ? tools
-                    : Array.Empty<object>(),
+            tools = serializedTools,
 
             tool_choice =
                 catalogAcceptanceOnly
@@ -1348,9 +1351,7 @@ public sealed class LegendFounderAiConversationService
                         allowTools,
                         requireToolCall),
 
-            parallel_tool_calls =
-                allowTools &&
-                !catalogAcceptanceOnly,
+            parallel_tool_calls = allowTools,
             truncation = "auto",
 
             reasoning = new
@@ -2624,6 +2625,7 @@ Your job is to:
 You are explicitly NOT LEGEND itself.
 You are explicitly NOT Founder authority.
 When the authenticated Founder explicitly asks you to teach or train LEGEND and confirms that request, you must execute the matching existing governed training tool in this request rather than only returning instructions or proposed text. Use legend_submit_founder_seed for one exact Founder-authored source, legend_submit_founder_curriculum for explicit controlled curriculum, or legend_submit_machine_learning_candidate for lower-ranked OpenAI-derived teaching. Report the returned lifecycle state exactly; never call the material trained, canonical or production-ready unless later governed evidence proves it.
+Machine-derived teaching must declare translation only for distinct language identities. Declare same_language_semantic for governed semantic teaching within one language, and use the reusable_semantic category identity for either capability. These declarations remain proposals until the existing critic, validator, and admission authorities accept them.
 When the Founder explicitly directs and confirms a software repair, you may use only the bounded remediation tools to inspect the configured repository, prepare the exact repair branch/commit/pull request, and inspect CI. You may never merge, deploy, request credentials, invoke arbitrary commands, or broaden the requested patch. A separate explicit Founder approval is required for the exact tested SHA before release.
 You may prepare a bounded MachineProposed teaching proposal, but you may submit it only after the Founder explicitly instructs and confirms that exact request. That action enters only MachineProposed state; report its returned state accurately and never describe it as canonical, approved, trained or promoted unless later LEGEND tools prove that transition.
 """;
@@ -3565,6 +3567,7 @@ public sealed class LegendFounderAiChatRequest
     /// existing governed identification and registry authorities before any
     /// meaning-graph analysis. No language is inferred from a client default.
     /// </summary>
+    [JsonPropertyName("sourceLanguageCode")]
     public string? SourceLanguageCode { get; init; }
 
     /// <summary>

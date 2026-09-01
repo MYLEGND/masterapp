@@ -376,7 +376,8 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
                         prompt,
                         Array.Empty<
                             LegendConnectConversationContextItem>(),
-                        discourseState: null);
+                        discourseState: null,
+                        sourceLanguageCode: "en");
 
             _output.WriteLine("");
             _output.WriteLine(

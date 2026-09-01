@@ -230,7 +230,7 @@ internal sealed class LegendConnectTrainingDatasetCompiler
                     weight,
                     SplitGroupIdentities: splitGroups.ForAlignment(
                         item.Source,
-                        item.Target))));
+                        item.Target)));
         }
     }
 
@@ -317,7 +317,7 @@ internal sealed class LegendConnectTrainingDatasetCompiler
                         item.SourceExample,
                         item.SourceUnit,
                         item.TargetExample,
-                        item.TargetUnit))));
+                        item.TargetUnit)));
         }
     }
 
@@ -444,7 +444,7 @@ internal sealed class LegendConnectTrainingDatasetCompiler
                         item.SourceExample,
                         item.SourceUnit,
                         item.ResultExample,
-                        item.ResultUnit))));
+                        item.ResultUnit)));
         }
 
         if (!includeGovernedReasoning)
@@ -561,7 +561,7 @@ internal sealed class LegendConnectTrainingDatasetCompiler
                             second.SourceExample,
                             second.SourceUnit,
                             second.ResultExample,
-                            second.ResultUnit))));
+                            second.ResultUnit)));
             }
         }
     }

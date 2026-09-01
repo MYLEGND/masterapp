@@ -425,16 +425,24 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
             Supported: true,
             Answer: not null
         };
-        var reasonText = string.Join(
-            " ",
-            internalInference?.ReasonCode ?? string.Empty,
-            internalInference?.AuthoritySummary ?? string.Empty).ToLowerInvariant();
+        var reasonCode = (internalInference?.ReasonCode ?? string.Empty)
+            .ToLowerInvariant();
+        var authoritySummary = (internalInference?.AuthoritySummary ?? string.Empty)
+            .ToLowerInvariant();
         var stale = ContainsResearchSignal(
-            reasonText,
-            "stale", "expired", "outdated", "superseded evidence");
+                reasonCode,
+                "stale", "expired", "outdated", "superseded") ||
+            ContainsResearchSignal(
+                authoritySummary,
+                "stale evidence", "expired evidence", "outdated evidence",
+                "superseded evidence");
         var conflicted = ContainsResearchSignal(
-            reasonText,
-            "conflict", "contradict", "unresolved evidence");
+                reasonCode,
+                "conflict", "contradict", "unresolved_evidence") ||
+            ContainsResearchSignal(
+                authoritySummary,
+                "unresolved conflict", "conflicting evidence",
+                "contradictory evidence", "retained contradiction");
         var namedSource = TryIdentifyNamedExternalSource(question);
 
         LegendConnectResearchNeededDecision Decision(
@@ -1457,8 +1465,9 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
                         symbolic.ArticulationMode),
                     cancellationToken);
 
+        var generatedText = generated.Text;
         if (!generated.Succeeded ||
-            string.IsNullOrWhiteSpace(generated.Text))
+            string.IsNullOrWhiteSpace(generatedText))
         {
             var unavailable = string.Equals(
                 generated.ErrorCode,
@@ -1491,7 +1500,7 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
         if (!await Curriculum.IsGovernedEquivalentRealizationAsync(
                 governedSourceLanguage,
                 symbolic.Answer,
-                generated.Text,
+                generatedText,
                 cancellationToken))
         {
             return symbolic with

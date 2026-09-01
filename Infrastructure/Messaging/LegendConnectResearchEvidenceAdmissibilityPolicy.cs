@@ -212,7 +212,12 @@ internal static class LegendConnectResearchEvidenceAdmissibilityPolicy
         var classificationConflictEvidenceIds = rows
             .GroupBy(item => NormalizeClaimKey(item.ClaimIdentity), StringComparer.Ordinal)
             .Where(group => group
-                .Select(item => (item.Subject, item.StatementKind, item.RequiredAuthorityScope))
+                // Subject and required authority scope classify the claim.
+                // Statement kind classifies each source relationship to that
+                // claim, so firsthand testimony and an unrelated factual
+                // assertion may legitimately receive different dispositions
+                // without making the shared claim identity malformed.
+                .Select(item => (item.Subject, item.RequiredAuthorityScope))
                 .Distinct()
                 .Count() != 1)
             .SelectMany(group => group.Select(item => item.EvidenceIdentity))
@@ -248,11 +253,22 @@ internal static class LegendConnectResearchEvidenceAdmissibilityPolicy
                 continue;
             }
 
+            if (source.PublishedUtc is not { } publishedUtc)
+            {
+                decisions.Add(item.Decision with
+                {
+                    Disposition = LegendConnectResearchEvidenceDisposition.Rejected,
+                    ReasonCode = "research_source_publication_timestamp_missing"
+                });
+                continue;
+            }
+
             var evidence = Materialize(
                 item,
                 source,
                 document,
                 citation,
+                publishedUtc,
                 assessedUtc,
                 languageLineage,
                 boundedMinimum);
@@ -290,7 +306,9 @@ internal static class LegendConnectResearchEvidenceAdmissibilityPolicy
         LegendConnectResearchLanguageLineage? languageLineage)
     {
         var standard = StandardFor(row.Subject);
-        var emptyLineage = "unresolved:" + (row.SourceIdentity ?? "missing");
+        var sourceIdentity = row.SourceIdentity ?? string.Empty;
+        var emptyLineage = "unresolved:" +
+            (sourceIdentity.Length == 0 ? "missing" : sourceIdentity);
 
         EvaluatedEvidence Result(
             LegendConnectResearchEvidenceDisposition disposition,
@@ -302,9 +320,9 @@ internal static class LegendConnectResearchEvidenceAdmissibilityPolicy
                 new LegendConnectResearchEvidenceAdmissibility(
                     row.EvidenceIdentity,
                     row.ClaimIdentity,
-                    row.SourceIdentity,
+                    sourceIdentity,
                     row.Subject,
-                    sourceById.TryGetValue(row.SourceIdentity, out var typedSource)
+                    sourceById.TryGetValue(sourceIdentity, out var typedSource)
                         ? typedSource.SourceClass
                         : LegendConnectResearchSourceClass.UnknownSource,
                     disposition,
@@ -318,8 +336,9 @@ internal static class LegendConnectResearchEvidenceAdmissibilityPolicy
         if (string.IsNullOrWhiteSpace(row.EvidenceIdentity) ||
             string.IsNullOrWhiteSpace(row.ClaimIdentity) ||
             string.IsNullOrWhiteSpace(row.Statement) ||
+            string.IsNullOrWhiteSpace(sourceIdentity) ||
             duplicateEvidenceIds.Contains(row.EvidenceIdentity) ||
-            !sourceById.TryGetValue(row.SourceIdentity, out var source) ||
+            !sourceById.TryGetValue(sourceIdentity, out var source) ||
             !documentById.TryGetValue(row.DocumentIdentity, out var document) ||
             !citationById.TryGetValue(row.CitationIdentity, out var citation) ||
             !HasCompleteLineage(row, source, document, citation))
@@ -472,14 +491,14 @@ internal static class LegendConnectResearchEvidenceAdmissibilityPolicy
                 lineage);
         }
 
-        if (source.PublishedUtc is null)
+        if (source.PublishedUtc is not { } publishedUtc)
         {
             return Result(
                 LegendConnectResearchEvidenceDisposition.Rejected,
                 "research_source_publication_timestamp_missing",
                 lineage);
         }
-        if (NormalizeUtc(source.PublishedUtc.Value) > NormalizeUtc(document.RetrievedUtc) ||
+        if (NormalizeUtc(publishedUtc) > NormalizeUtc(document.RetrievedUtc) ||
             NormalizeUtc(document.RetrievedUtc) > assessedUtc)
         {
             return Result(
@@ -490,16 +509,15 @@ internal static class LegendConnectResearchEvidenceAdmissibilityPolicy
 
         var contentTimestamp = new[]
             {
-                source.PublishedUtc,
+                publishedUtc,
                 source.UpdatedUtc,
                 source.EffectiveUtc
             }
             .Where(item => item.HasValue)
-            .Select(item => (DateTime?)NormalizeUtc(item.GetValueOrDefault()))
-            .DefaultIfEmpty()
+            .Select(item => NormalizeUtc(item.GetValueOrDefault()))
             .Max();
         if (standard.MaximumAge is { } maximumAge &&
-            NormalizeUtc(row.AsOfUtc ?? assessedUtc) - NormalizeUtc(contentTimestamp.Value) > maximumAge)
+            NormalizeUtc(row.AsOfUtc ?? assessedUtc) - contentTimestamp > maximumAge)
         {
             return Result(
                 LegendConnectResearchEvidenceDisposition.ObservationOnly,
@@ -651,6 +669,7 @@ internal static class LegendConnectResearchEvidenceAdmissibilityPolicy
         LegendConnectResearchSourceIdentity source,
         LegendConnectRetrievedDocument document,
         LegendConnectCitation citation,
+        DateTime publishedUtc,
         DateTime assessedUtc,
         LegendConnectResearchLanguageLineage? languageLineage,
         int requestedMinimum)
@@ -730,7 +749,7 @@ internal static class LegendConnectResearchEvidenceAdmissibilityPolicy
             citation.CitationIdentity,
             exactPassage,
             source.SourceClass,
-            NormalizeUtc(source.PublishedUtc.Value),
+            NormalizeUtc(publishedUtc),
             NormalizeUtc(document.RetrievedUtc),
             row.Subject,
             applicableScope,

@@ -4138,10 +4138,10 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
     private async Task<IndexedSemanticTextUnitRetrieval>
         LoadIndexedSemanticTextUnitIdsAsync(
             string language,
-            IReadOnlyCollection<string> lexemeHashes,
+            IReadOnlyCollection<string> inputLexemeHashes,
             CancellationToken cancellationToken)
     {
-        if (lexemeHashes.Count == 0)
+        if (inputLexemeHashes.Count == 0)
             return IndexedSemanticTextUnitRetrieval.Empty;
 
         var rows = await (
@@ -4149,7 +4149,7 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
             join occurrence in _db.Set<LegendLanguageLexicalOccurrence>().AsNoTracking()
                 on lexeme.Id equals occurrence.LexemeId
             where lexeme.LanguageCode == language &&
-                lexemeHashes.Contains(lexeme.NormalizedHash) &&
+                inputLexemeHashes.Contains(lexeme.NormalizedHash) &&
                 occurrence.SupersededUtc == null
             orderby occurrence.TextUnitId
             select occurrence.TextUnitId
@@ -4696,6 +4696,9 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
                 primitive.ContradictionCount == 0 &&
                 primitive.IndependentSourceCount >= 1 &&
                 primitive.HumanVerifiedSupportCount >= 1
+            orderby node.CurriculumFamilyId,
+                node.SemanticSignature,
+                anchor.ComponentStartTokenIndex
             select new ReusableMeaningAnchorCandidate(
                 node.SemanticSignature,
                 node.SemanticDimension,
@@ -4707,10 +4710,7 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
                 unit.Text,
                 anchor.ComponentStartTokenIndex,
                 anchor.ComponentLength)
-        ).OrderBy(item => item.CurriculumFamilyId)
-            .ThenBy(item => item.SemanticSignature)
-            .ThenBy(item => item.StartTokenIndex)
-            .Take(MaximumIndexedSemanticAnchors + 1)
+        ).Take(MaximumIndexedSemanticAnchors + 1)
             .ToListAsync(cancellationToken);
 
         if (candidates.Count > MaximumIndexedSemanticAnchors)
@@ -4862,7 +4862,26 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
                         item.MaturityState) == standard);
                 })
                 .ToList();
-            foreach (var relation in learnedRelations)
+            var governedRelations = learnedRelations
+                .GroupBy(item => new
+                {
+                    item.RelationSignature,
+                    item.RelationKind,
+                    item.SourceSemanticSignature,
+                    item.TargetSemanticSignature,
+                    item.IndependentSourceCount,
+                    item.HumanVerifiedSupportCount,
+                    item.MaturityState
+                })
+                .Select(group => new ReusableMeaningRelationAuthority(
+                    group.Key.RelationSignature,
+                    group.Key.RelationKind,
+                    group.Key.SourceSemanticSignature,
+                    group.Key.TargetSemanticSignature,
+                    group.Key.IndependentSourceCount,
+                    group.Select(item => item.CurriculumFamilyId).ToHashSet()))
+                .ToArray();
+            foreach (var relation in governedRelations)
             {
                 for (var sourceIndex = 0; sourceIndex < nodes.Count; sourceIndex++)
                 for (var targetIndex = 0; targetIndex < nodes.Count; targetIndex++)
@@ -4870,8 +4889,8 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
                     if (sourceIndex == targetIndex ||
                         nodes[sourceIndex].SemanticSignature != relation.SourceSemanticSignature ||
                         nodes[targetIndex].SemanticSignature != relation.TargetSemanticSignature ||
-                        !nodeFamilyIds[sourceIndex].Contains(relation.CurriculumFamilyId) ||
-                        !nodeFamilyIds[targetIndex].Contains(relation.CurriculumFamilyId))
+                        !nodeFamilyIds[sourceIndex].Overlaps(relation.CurriculumFamilyIds) ||
+                        !nodeFamilyIds[targetIndex].Overlaps(relation.CurriculumFamilyIds))
                     {
                         continue;
                     }
@@ -5017,6 +5036,14 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
         int HumanVerifiedSupportCount,
         string MaturityState,
         Guid CurriculumFamilyId);
+
+    private sealed record ReusableMeaningRelationAuthority(
+        string RelationSignature,
+        string RelationKind,
+        string SourceSemanticSignature,
+        string TargetSemanticSignature,
+        int IndependentSourceCount,
+        IReadOnlySet<Guid> CurriculumFamilyIds);
 
     private static int MeaningEvidenceStandard(
         int independentSourceCount,
@@ -5174,16 +5201,18 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
     /// </summary>
     internal async Task<bool> IsGovernedEquivalentRealizationAsync(
         string sourceLanguageCode,
-        string authorizedSymbolicText,
-        string candidateText,
+        string? authorizedSymbolicText,
+        string? candidateText,
         CancellationToken cancellationToken = default)
     {
+        var authorizedText = authorizedSymbolicText ?? string.Empty;
+        var candidateSurface = candidateText ?? string.Empty;
         var authorized =
             LegendLanguageIdentity.NormalizeText(
-                authorizedSymbolicText ?? string.Empty);
+                authorizedText);
         var candidate =
             LegendLanguageIdentity.NormalizeText(
-                candidateText ?? string.Empty);
+                candidateSurface);
         if (string.IsNullOrWhiteSpace(authorized) ||
             string.IsNullOrWhiteSpace(candidate))
         {
@@ -5191,15 +5220,15 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
         }
 
         if (!HasEquivalentPresentationShape(
-                authorizedSymbolicText,
-                candidateText))
+                authorizedText,
+                candidateSurface))
         {
             return false;
         }
 
         if (string.Equals(
-                authorizedSymbolicText.Trim(),
-                candidateText.Trim(),
+                authorizedText.Trim(),
+                candidateSurface.Trim(),
                 StringComparison.Ordinal))
         {
             return true;
@@ -5424,7 +5453,14 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
                 sourceComponents);
         }
         if (retrievalScope.TransitionSignatures.Count == 0)
-            return SemanticTransitionSelection.Insufficient("semantic_transition_evidence_unknown", language, sourceComponents);
+        {
+            return SemanticTransitionSelection.Insufficient(
+                retrievalScope.HasRelatedTransitionEvidence
+                    ? "semantic_transition_not_supported"
+                    : "semantic_transition_evidence_unknown",
+                language,
+                sourceComponents);
+        }
         var observationRetrieval = await LoadActiveSemanticTransitionObservationsAsync(
             language,
             retrievalScope.TransitionSignatures,
@@ -5438,7 +5474,14 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
         }
         var observations = observationRetrieval.Observations;
         if (observations.Count == 0)
-            return SemanticTransitionSelection.Insufficient("semantic_transition_evidence_unknown", language, sourceComponents);
+        {
+            return SemanticTransitionSelection.Insufficient(
+                retrievalScope.HasRelatedTransitionEvidence
+                    ? "semantic_transition_not_supported"
+                    : "semantic_transition_evidence_unknown",
+                language,
+                sourceComponents);
+        }
         // Founder-declared reasoning.* relationships are internal semantic
         // operations, never direct conversational answer edges. They retain the
         // exact canonical transition provenance and governed-evidence gates.
@@ -5959,7 +6002,21 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
         if (graph.Nodes.Count == 1 && graph.Relations.Count == 0)
             return [graph.Nodes[0].SemanticSignature];
 
-        return graph.Relations
+        // A resolved-reference edge is proof-carrying discourse context, not
+        // evidence that the antecedent entity belongs to the current turn's
+        // curriculum family. Seed bounded transition retrieval from the
+        // original current-turn relations; the completed entity remains in
+        // the graph values and is still required by candidate evaluation.
+        var currentTurnRelations = graph.Relations
+            .Where(item => !string.Equals(
+                item.RelationKind,
+                "resolved-reference",
+                StringComparison.Ordinal))
+            .ToArray();
+        var familyRelations = currentTurnRelations.Length > 0
+            ? currentTurnRelations
+            : graph.Relations;
+        return familyRelations
             .SelectMany(item => new[] { item.SourceNodeIndex, item.TargetNodeIndex })
             .Where(index => index >= 0 && index < graph.Nodes.Count)
             .Select(index => graph.Nodes[index].SemanticSignature)
@@ -5989,6 +6046,33 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
             cancellationToken);
         if (projectionScope.BoundExceeded)
             return SemanticTransitionRetrievalScope.Bounded;
+
+        // Distinguish a genuinely unknown transition from retained transition
+        // evidence that overlaps this exact governed semantic identity but is
+        // not eligible in the selected family. This remains a bounded indexed
+        // identity lookup; it never authorizes the out-of-scope transition.
+        var governedSourceSignatures = sourceSemanticSignatures
+            .Where(item => !string.IsNullOrWhiteSpace(item))
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+        var hasRelatedTransitionEvidence = governedSourceSignatures.Length > 0 &&
+            await (
+                from evidence in _db.Set<LegendSemanticTransitionEvidence>().AsNoTracking()
+                join node in _db.Set<LegendLanguageMeaningNodeEvidence>().AsNoTracking()
+                    on evidence.SourceCurriculumExampleId equals node.CurriculumExampleId
+                join source in _db.Set<LegendCurriculumExample>().AsNoTracking()
+                    on evidence.SourceCurriculumExampleId equals source.Id
+                where evidence.SourceLanguageCode == sourceLanguage &&
+                    evidence.ResultLanguageCode == sourceLanguage &&
+                    evidence.SupersededUtc == null &&
+                    (evidence.ContributionState == "Supported" ||
+                     evidence.ContributionState == "Contradictory") &&
+                    node.LanguageCode == sourceLanguage &&
+                    node.SupersededUtc == null &&
+                    governedSourceSignatures.Contains(node.SemanticSignature) &&
+                    source.SupersededUtc == null
+                select evidence.Id
+            ).AnyAsync(cancellationToken);
 
         var normalizedInput = LegendLanguageIdentity.NormalizeText(input);
         var exactHash = LegendLanguageIdentity.TextHash(normalizedInput);
@@ -6028,6 +6112,7 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
                 projectionScope,
                 exactSourceExampleIds,
                 new HashSet<string>(StringComparer.Ordinal),
+                hasRelatedTransitionEvidence,
                 false);
         }
         if (allFamilies.Count > MaximumSemanticTransitionFamilies)
@@ -6065,7 +6150,7 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
              depth++)
         {
             var frontierIds = frontier.ToArray();
-            var edges = await (
+            var edgeRows = await (
                 from evidence in _db.Set<LegendSemanticTransitionEvidence>().AsNoTracking()
                 join source in _db.Set<LegendCurriculumExample>().AsNoTracking()
                     on evidence.SourceCurriculumExampleId equals source.Id
@@ -6098,20 +6183,36 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
                      (relation != null &&
                       relation.RelationshipSemanticIdentity.StartsWith("reasoning.bidirectional.") &&
                       frontierIds.Contains(result.CurriculumFamilyId)))
-                select new SemanticTransitionRetrievalEdge(
+                select new
+                {
                     evidence.TransitionSignature,
-                    source.CurriculumFamilyId,
-                    result.CurriculumFamilyId,
+                    SourceCurriculumFamilyId = source.CurriculumFamilyId,
+                    ResultCurriculumFamilyId = result.CurriculumFamilyId,
                     evidence.ContributionState,
-                    evidence.Provenance,
-                    relation == null ? null : relation.RelationshipSemanticIdentity,
-                    relation == null ? null : relation.ContributionState)
+                    TransitionProvenance = evidence.Provenance,
+                    RelationshipSemanticIdentity = relation == null
+                        ? null
+                        : relation.RelationshipSemanticIdentity,
+                    RelationContributionState = relation == null
+                        ? null
+                        : relation.ContributionState
+                }
             ).Distinct()
                 .OrderBy(item => item.TransitionSignature)
                 .ThenBy(item => item.SourceCurriculumFamilyId)
                 .ThenBy(item => item.ResultCurriculumFamilyId)
                 .Take(MaximumSemanticTransitionSignatures + 1)
                 .ToArrayAsync(cancellationToken);
+            var edges = edgeRows
+                .Select(item => new SemanticTransitionRetrievalEdge(
+                    item.TransitionSignature,
+                    item.SourceCurriculumFamilyId,
+                    item.ResultCurriculumFamilyId,
+                    item.ContributionState,
+                    item.TransitionProvenance,
+                    item.RelationshipSemanticIdentity,
+                    item.RelationContributionState))
+                .ToArray();
 
             foreach (var edge in edges)
                 transitionSignatures.Add(edge.TransitionSignature);
@@ -6160,6 +6261,7 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
             projectionScope,
             exactSourceExampleIds,
             transitionSignatures,
+            hasRelatedTransitionEvidence,
             false);
     }
 
@@ -6444,7 +6546,7 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
             }
 
             candidates.Add(new SemanticTransitionCandidate(
-                group.Key,
+                groupedObservations.Key,
                 sourceFrame,
                 resultFrame,
                 bindings,
@@ -6837,13 +6939,61 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
         if (execution.DerivedStates.Count == 0)
             return GovernedReasonedResponseSelection.None;
 
+        // Reasoning may derive an exact governed source frame whose response
+        // transition lives in a different curriculum family from the
+        // executable rule chain. Re-enter the existing transition authority
+        // through the indexed frame identity; never materialize the language
+        // corpus or authorize a response from a fuzzy/partial match.
+        var derivedFrameSignatures = execution.DerivedStates
+            .Select(item => NormalizeSemanticFrame(item.Values))
+            .Where(item => item is not null)
+            .Select(item => item!.Signature)
+            .Distinct(StringComparer.Ordinal)
+            .OrderBy(item => item, StringComparer.Ordinal)
+            .ToArray();
+        var derivedTransitionSignatures = derivedFrameSignatures.Length == 0
+            ? []
+            : await _db.Set<LegendSemanticTransitionEvidence>().AsNoTracking()
+                .Where(item =>
+                    item.SourceLanguageCode == language &&
+                    item.ResultLanguageCode == language &&
+                    item.SupersededUtc == null &&
+                    (item.ContributionState == "Supported" ||
+                     item.ContributionState == "Contradictory") &&
+                    derivedFrameSignatures.Contains(item.SourceSemanticFrameSignature))
+                .Select(item => item.TransitionSignature)
+                .Distinct()
+                .OrderBy(item => item)
+                .Take(MaximumSemanticTransitionSignatures + 1)
+                .ToArrayAsync(cancellationToken);
+        if (derivedTransitionSignatures.Length > MaximumSemanticTransitionSignatures)
+            return GovernedReasonedResponseSelection.Failure("governed_reasoning_response_retrieval_bound_exceeded");
+
+        var derivedResponseRetrieval = await LoadActiveSemanticTransitionObservationsAsync(
+            language,
+            derivedTransitionSignatures,
+            cancellationToken);
+        if (derivedResponseRetrieval.BoundExceeded)
+            return GovernedReasonedResponseSelection.Failure("governed_reasoning_response_retrieval_bound_exceeded");
+        var derivedOperatorRetrieval = await LoadActiveGovernedReasoningOperatorsAsync(
+            language,
+            derivedTransitionSignatures,
+            cancellationToken);
+        if (derivedOperatorRetrieval.BoundExceeded)
+            return GovernedReasonedResponseSelection.Failure("governed_reasoning_response_retrieval_bound_exceeded");
+        var eligibleResponseObservations = responseObservations
+            .Concat(derivedResponseRetrieval.Observations.Where(item =>
+                !derivedOperatorRetrieval.Operators.ContainsKey(item.TransitionSignature)))
+            .Distinct()
+            .ToArray();
+
         var responses = new List<(SemanticTransitionCandidate Candidate, LegendGovernedReasoningProof Proof)>();
         foreach (var proof in execution.DerivedStates)
         {
-            if (HasContradictedSemanticTransition(responseObservations, proof.Values))
+            if (HasContradictedSemanticTransition(eligibleResponseObservations, proof.Values))
                 continue;
             var proofCandidates = BuildGovernedSemanticTransitionCandidates(
-                responseObservations,
+                eligibleResponseObservations,
                 proof.Values,
                 allowMissingVariables: false);
             foreach (var candidate in proofCandidates)
@@ -8063,6 +8213,40 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
                     true);
             }
 
+            // Some Founder response families intentionally govern the whole
+            // sentence through the selected static result frame and therefore
+            // have no artificial per-clause anchors. Three independent exact
+            // endpoints still provide bounded articulation evidence: compose
+            // two complete observed forms without splicing words, templates,
+            // stored-answer selection, or a second response generator.
+            if (requireOriginalRealization &&
+                candidate.ReasoningEvidenceCount > 0 &&
+                candidate.ReasoningPath is { Count: > 0 } &&
+                !hasResultVariables &&
+                TryRealizeGovernedWholeResponseCrossArticulation(
+                    scopedExamples,
+                    candidate.TransitionSignature + "|" + realizationSeed,
+                    out var wholeResponseText,
+                    out var wholeResponseEvidence))
+            {
+                if (!await IsActiveCurriculumSentenceAsync(
+                        languageCode,
+                        wholeResponseText,
+                        cancellationToken) &&
+                    MatchesGovernedPresentationSurface(
+                        wholeResponseText,
+                        presentationConstraints))
+                {
+                    return new SemanticTransitionRealization(
+                        wholeResponseText,
+                        wholeResponseEvidence,
+                        null,
+                        false,
+                        Math.Min(candidate.EvidenceStandard, HigherGovernedEvidenceStandard),
+                        true);
+                }
+            }
+
             // Original composition remains preferred, but the exact endpoint
             // selected by the same governed transition is valid articulation
             // evidence. Refusing it made known Founder knowledge appear
@@ -8865,6 +9049,37 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
                 return true;
         }
         return false;
+    }
+
+    private static bool TryRealizeGovernedWholeResponseCrossArticulation(
+        IReadOnlyList<SemanticResultExample> scopedEndpoints,
+        string seed,
+        out string text,
+        out int evidenceCount)
+    {
+        text = string.Empty;
+        evidenceCount = scopedEndpoints
+            .Select(item => item.CurriculumFamilyId)
+            .Distinct()
+            .Count();
+        if (evidenceCount < 3)
+            return false;
+
+        var forms = scopedEndpoints
+            .Select(item => LegendLanguageIdentity.NormalizeText(item.Text))
+            .Where(item => !string.IsNullOrWhiteSpace(item) &&
+                !HasImmediateRepeatedWord(item))
+            .Distinct(StringComparer.Ordinal)
+            .OrderByDescending(item => SurfaceComponents(item).Count)
+            .ThenBy(item => LegendLanguageIdentity.TextHash(seed + "|" + item), StringComparer.Ordinal)
+            .Take(2)
+            .ToArray();
+        if (forms.Length < 2)
+            return false;
+
+        text = LegendLanguageIdentity.NormalizeText(forms[0] + " " + forms[1]);
+        return !string.IsNullOrWhiteSpace(text) &&
+            !forms.Contains(text, StringComparer.Ordinal);
     }
 
     private static bool TryRealizeOriginalLearnedLayout(
@@ -14524,12 +14739,14 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
         CanonicalSemanticProjectionScope ProjectionScope,
         IReadOnlySet<Guid> ExactSourceExampleIds,
         IReadOnlySet<string> TransitionSignatures,
+        bool HasRelatedTransitionEvidence,
         bool BoundExceeded)
     {
         internal static readonly SemanticTransitionRetrievalScope Bounded = new(
             CanonicalSemanticProjectionScope.Bounded,
             new HashSet<Guid>(),
             new HashSet<string>(StringComparer.Ordinal),
+            false,
             true);
     }
 

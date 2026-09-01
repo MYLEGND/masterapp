@@ -1,5 +1,3 @@
-using Infrastructure.Data;
-using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
@@ -11,8 +9,6 @@ namespace Infrastructure.Migrations;
 /// reuse in both privacy-safe usage authorities. Neither column represents
 /// Founder-chat reasoning or native coverage inferred from provider work.
 /// </summary>
-[DbContext(typeof(MasterAppDbContext))]
-[Migration("20260831090000_ReconcileLegendTranslationServingStages")]
 public sealed partial class ReconcileLegendTranslationServingStages : Migration
 {
     protected override void Up(MigrationBuilder migrationBuilder)

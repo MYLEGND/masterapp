@@ -67,7 +67,8 @@ internal sealed class LegendFounderToolAuthority
 
     private static bool IsGovernedEvidenceTool(string name) =>
         IsReadOnlyFounderTool(name) &&
-        name is not "legend_capabilities" and not "legend_research_internet";
+        !string.Equals(name, "legend_capabilities", StringComparison.Ordinal) &&
+        !string.Equals(name, "legend_research_internet", StringComparison.Ordinal);
 
     // This is a classification inside the one executable registry, not a
     // second registry. Native binding is restricted to bounded LEGEND data
@@ -2816,8 +2817,10 @@ internal sealed class LegendFounderToolAuthority
         var minimum = 0;
         var maximum = 0;
         var minimumValid = !hasMinimum ||
+            minimumElement.ValueKind == JsonValueKind.Number &&
             minimumElement.TryGetInt32(out minimum) && minimum >= 0;
         var maximumValid = !hasMaximum ||
+            maximumElement.ValueKind == JsonValueKind.Number &&
             maximumElement.TryGetInt32(out maximum) && maximum >= 0;
 
         if (!minimumValid)
@@ -2992,7 +2995,17 @@ internal sealed class LegendFounderToolAuthority
         out LegendConnectSemanticFrameSubmission frame)
     {
         frame = null!;
-        if (!root.TryGetProperty(propertyName, out var element) ||
+        if (root.ValueKind != JsonValueKind.Object)
+            return false;
+
+        var rootProperties = root.EnumerateObject().ToArray();
+        if (rootProperties.Length is < 1 or > 2 ||
+            rootProperties.Any(property =>
+                property.Name is not ("source" or "result")) ||
+            rootProperties.Select(property => property.Name)
+                .Distinct(StringComparer.Ordinal)
+                .Count() != rootProperties.Length ||
+            !root.TryGetProperty(propertyName, out var element) ||
             element.ValueKind != JsonValueKind.Object)
         {
             return false;

@@ -14,6 +14,7 @@ using AgentPortal.Security;
 using AgentPortal.Services;
 using Domain.Entities;
 using Domain.Messaging;
+using Infrastructure.Messaging;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;

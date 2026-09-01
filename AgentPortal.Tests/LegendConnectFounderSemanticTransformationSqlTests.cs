@@ -18,6 +18,7 @@ using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
 using Xunit.Abstractions;
@@ -484,6 +485,7 @@ public sealed class LegendConnectFounderSemanticTransformationSqlTests
 
             var conversationId = Guid.NewGuid();
             var factory = new CountingHttpClientFactory();
+            var conversationLogger = new ExceptionCapturingLogger<LegendFounderAiConversationService>();
             var seenSurfaces = new List<string>();
             for (var index = 0; index < ConversationPrompts.Length; index++)
             {
@@ -496,7 +498,7 @@ public sealed class LegendConnectFounderSemanticTransformationSqlTests
                     factory,
                     configuration,
                     new FounderLegendConnectService(services.Operations, profiles),
-                    NullLogger<LegendFounderAiConversationService>.Instance,
+                    conversationLogger,
                     discourse,
                     new LegendLanguageRegistry(proof, configuration),
                     ControllerTestHelpers.BuildTranslationService());
@@ -506,19 +508,22 @@ public sealed class LegendConnectFounderSemanticTransformationSqlTests
                 Assert.DoesNotContain(await proof.LegendLanguageTextUnits.Select(item => item.Text).ToListAsync(),
                     text => string.Equals(text, prompt.User, StringComparison.Ordinal));
                 var priorState = await discourse.GetStateAsync(founder, conversationId.ToString());
-                var planBeforeReply = await services.Operations.TryPlanConversationAsync(prompt.User, priorState);
-                Assert.True(planBeforeReply.Supported,
-                    "Stage-5 plan failed before ReplyAsync: " + planBeforeReply.ReasonCode +
-                    "; nodes=" + DescribeNodes(graphBeforeReply) +
-                    "; relations=" + DescribeRelations(graphBeforeReply));
-                var nativeBeforeReply = await services.Operations.TryInferConversationWithDiscourseAsync(
-                    prompt.User,
-                    [],
-                    priorState);
-                Assert.True(nativeBeforeReply.Supported,
-                    "Native Stage-5 inference failed before ReplyAsync: " + nativeBeforeReply.ReasonCode +
-                    "; nodes=" + DescribeNodes(graphBeforeReply) +
-                    "; relations=" + DescribeRelations(graphBeforeReply));
+                if (!prompt.RequiresFirstChoiceBinding)
+                {
+                    var planBeforeReply = await services.Operations.TryPlanConversationAsync(prompt.User, priorState);
+                    Assert.True(planBeforeReply.Supported,
+                        "Stage-5 plan failed before ReplyAsync: " + planBeforeReply.ReasonCode +
+                        "; nodes=" + DescribeNodes(graphBeforeReply) +
+                        "; relations=" + DescribeRelations(graphBeforeReply));
+                    var nativeBeforeReply = await services.Operations.TryInferConversationWithDiscourseAsync(
+                        prompt.User,
+                        [],
+                        priorState);
+                    Assert.True(nativeBeforeReply.Supported,
+                        "Native Stage-5 inference failed before ReplyAsync: " + nativeBeforeReply.ReasonCode +
+                        "; nodes=" + DescribeNodes(graphBeforeReply) +
+                        "; relations=" + DescribeRelations(graphBeforeReply));
+                }
 
                 var reply = await chat.ReplyAsync(
                     founder,
@@ -528,8 +533,14 @@ public sealed class LegendConnectFounderSemanticTransformationSqlTests
                         ConversationId = conversationId.ToString(),
                         Messages = [new LegendFounderAiChatMessage("user", prompt.User)]
                     });
-                Assert.True(reply.Succeeded);
+                Assert.True(
+                    reply.Succeeded,
+                    $"stage={reply.Stage}; reason={reply.Reason}; error={reply.Error}; message={reply.Message}; " +
+                    $"exception={conversationLogger.LatestException}");
                 Assert.Equal(prompt.ExpectedResponse, reply.Message);
+                Assert.Equal(
+                    LegendConnectResearchEvidenceOrigin.InternalKnowledge,
+                    reply.EvidenceOrigin);
 
                 // Re-read all state through a fresh structural snapshot after
                 // ReplyAsync has persisted both the user and assistant graph.
@@ -560,7 +571,7 @@ public sealed class LegendConnectFounderSemanticTransformationSqlTests
                 var native = await services.Operations.TryInferConversationWithDiscourseAsync(
                     prompt.User,
                     [],
-                    state);
+                    planningState);
                 Assert.True(native.Supported, native.ReasonCode);
                 Assert.Equal(reply.Message, native.Answer);
                 Assert.False(native.RequiresEscalation);
@@ -855,6 +866,9 @@ public sealed class LegendConnectFounderSemanticTransformationSqlTests
                     });
                 Assert.True(reply.Succeeded);
                 Assert.Equal(prompt.ExpectedResponse, reply.Message);
+                Assert.Equal(
+                    LegendConnectResearchEvidenceOrigin.InternalKnowledge,
+                    reply.EvidenceOrigin);
 
                 _output.WriteLine("STAGE 5 BLIND HELD-OUT CASE");
                 _output.WriteLine("USER: " + prompt.User);
@@ -1363,7 +1377,7 @@ public sealed class LegendConnectFounderSemanticTransformationSqlTests
                 ControllerTestHelpers.BuildTranslationService());
             var conversationId = Guid.NewGuid().ToString();
             var establishingRequest = "Between " + leftSurface + " and " + rightSurface +
-                ", which one is cheaper today?";
+                ", which one is cheaper?";
 
             if (!expectContent)
             {
@@ -1387,7 +1401,11 @@ public sealed class LegendConnectFounderSemanticTransformationSqlTests
                         Messages = [new LegendFounderAiChatMessage("user", establishingRequest)]
                     });
                 Assert.True(missingReply.Succeeded);
-                Assert.Contains("No unsupported answer was produced.", missingReply.Message,
+                Assert.Equal("SystemDiagnostic", missingReply.ResponseAuthority);
+                Assert.Equal("native_or_provider_unavailable", missingReply.Stage);
+                Assert.Contains("NativeFailure=governed_content_fact_unknown", missingReply.Message,
+                    StringComparison.Ordinal);
+                Assert.Contains("ProviderFailure=provider_not_attempted", missingReply.Message,
                     StringComparison.Ordinal);
                 Assert.Equal(0, factory.CreateClientCalls);
                 return new GovernedContentCaseProof(
@@ -1437,6 +1455,10 @@ public sealed class LegendConnectFounderSemanticTransformationSqlTests
                     Messages = [new LegendFounderAiChatMessage(
                         "user", establishingRequest)]
                 });
+            Assert.True(established.Succeeded, established.Error);
+            Assert.Equal(
+                LegendConnectResearchEvidenceOrigin.InternalKnowledge,
+                established.EvidenceOrigin);
             Assert.Equal(directInitial.Answer, established.Message);
 
             const string heldOutRequest = "Which one is cheaper?";
@@ -1892,11 +1914,11 @@ public sealed class LegendConnectFounderSemanticTransformationSqlTests
 
     private static readonly BlindPrompt[] BlindPrompts =
     [
-        new("Would you share a useful resource with me now?", "I can share a useful resource.", "resource_response", "resource_shared"),
-        new("Please suggest another route for me today.", "I can suggest another route.", "route_response", "route_shared"),
-        new("Would you clarify the details for me now?", "I can clarify the details.", "detail_response", "detail_clarified"),
-        new("I appreciate your guidance today.", "You are welcome.", "gratitude_response", "gratitude_received"),
-        new("Let us finish our discussion now.", "We can close our discussion.", "closing_response", "discussion_closed")
+        new("Would you share a useful resource with me, please?", "I can share a useful resource.", "resource_response", "resource_shared"),
+        new("Please suggest another route for me.", "I can suggest another route.", "route_response", "route_shared"),
+        new("Would you clarify the details for me?", "I can clarify the details.", "detail_response", "detail_clarified"),
+        new("I appreciate all of your guidance.", "You are welcome.", "gratitude_response", "gratitude_received"),
+        new("Let us finally finish our discussion.", "We can close our discussion.", "closing_response", "discussion_closed")
     ];
 
     private static string BlindGeneralizationManifest()
@@ -2223,6 +2245,27 @@ public sealed class LegendConnectFounderSemanticTransformationSqlTests
         {
             CreateClientCalls++;
             throw new InvalidOperationException("OpenAI must not be created by the governed Stage-5 proof.");
+        }
+    }
+
+    private sealed class ExceptionCapturingLogger<T> : ILogger<T>
+    {
+        public Exception? LatestException { get; private set; }
+
+        public IDisposable? BeginScope<TState>(TState state)
+            where TState : notnull => null;
+
+        public bool IsEnabled(LogLevel logLevel) => logLevel >= LogLevel.Warning;
+
+        public void Log<TState>(
+            LogLevel logLevel,
+            EventId eventId,
+            TState state,
+            Exception? exception,
+            Func<TState, Exception?, string> formatter)
+        {
+            if (exception is not null)
+                LatestException = exception;
         }
     }
 

@@ -273,15 +273,15 @@ internal static class LegendConnectGovernedReasoningExecutor
             .ToArray();
         if (current.Length == 0)
         {
-            var state = evidence.Any(item => item.Freshness == LegendConnectResearchFreshnessState.Stale)
+            var unavailableState = evidence.Any(item => item.Freshness == LegendConnectResearchFreshnessState.Stale)
                 ? LegendConnectResearchClaimVerificationState.Stale
                 : LegendConnectResearchClaimVerificationState.InsufficientEvidence;
             return ClaimGroup(
                 normalizedClaimIdentity,
                 evidence,
                 [],
-                state,
-                state == LegendConnectResearchClaimVerificationState.Stale
+                unavailableState,
+                unavailableState == LegendConnectResearchClaimVerificationState.Stale
                     ? "research_claim_evidence_stale"
                     : "research_claim_evidence_insufficient",
                 "Unavailable",
@@ -583,7 +583,7 @@ internal static class LegendConnectGovernedReasoningExecutor
     internal static LegendGovernedReasoningExecution Derive(
         IReadOnlyDictionary<string, string> initialValues,
         IReadOnlyList<LegendGovernedReasoningRule> rules,
-        IReadOnlySet<Guid> initialSemanticFamilyIds)
+        IReadOnlyCollection<Guid> initialSemanticFamilyIds)
     {
         if (initialValues.Count == 0 || rules.Count == 0)
             return LegendGovernedReasoningExecution.Empty;

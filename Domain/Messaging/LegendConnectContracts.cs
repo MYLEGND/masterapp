@@ -809,8 +809,8 @@ public sealed record LegendConnectMachineTeachingSubmission(
     decimal Confidence,
     IReadOnlyList<LegendConnectMachineTeachingExampleSubmission> Examples,
     IReadOnlyList<LegendConnectSemanticTransitionSubmission>? SemanticTransitions = null,
-    string CapabilityIdentity = TranslationCapability,
-    string CategoryIdentity = ReusableSemanticCategory,
+    string CapabilityIdentity = LegendConnectMachineTeachingSubmission.TranslationCapability,
+    string CategoryIdentity = LegendConnectMachineTeachingSubmission.ReusableSemanticCategory,
     LegendConnectMachineObservationOrigin ObservationOrigin =
         LegendConnectMachineObservationOrigin.ConversationObservation,
     LegendConnectResearchRetentionLineage? ResearchObservationLineage = null)
@@ -1875,7 +1875,7 @@ public static class LegendConnectResearchRetentionContracts
             outcome.Conclusion?.ConclusionIdentity ?? outcome.State.ToString(),
             outcome.State,
             outcome.EvidenceOrigin,
-            outcome.Conclusion?.MaterialClaims ?? [],
+            outcome.Conclusion?.SupportedClaims ?? [],
             outcome.Conclusion?.Citations ?? [],
             outcome.Session.CitationValidation,
             outcome.Provenance.AuthorizationProvenance,
@@ -1960,7 +1960,7 @@ public static class LegendConnectResearchRetentionContracts
             lineage.CitationValidation.MaterialClaimCount != lineage.MaterialClaims.Count ||
             lineage.CitationValidation.InlineCitationCount < 1 ||
             !HasValidResearchAuthorization(lineage) ||
-            !IsLowerHex(lineage.ObservationIdentity, 64) ||
+            !IsCanonicalTextHash(lineage.ObservationIdentity) ||
             !IsLowerHex(lineage.CodeSha, 40) ||
             !IsLowerHex(lineage.ConfigurationIdentity, 64))
         {
@@ -1994,8 +1994,8 @@ public static class LegendConnectResearchRetentionContracts
                 !string.Equals(citation.DocumentIdentity, item.DocumentIdentity, StringComparison.Ordinal) ||
                 !string.Equals(item.Passage.DocumentIdentity, item.DocumentIdentity, StringComparison.Ordinal) ||
                 !string.Equals(item.Passage.LocationIdentity, item.Provenance.PassageLocationIdentity, StringComparison.Ordinal) ||
-                !IsLowerHex(item.Passage.PassageHash, 64) ||
-                !IsLowerHex(item.Provenance.SourceContentHash, 64) ||
+                !IsCanonicalTextHash(item.Passage.PassageHash) ||
+                !IsCanonicalTextHash(item.Provenance.SourceContentHash) ||
                 !string.Equals(item.Provenance.SourceIdentity, item.SourceIdentity, StringComparison.Ordinal) ||
                 !string.Equals(item.Provenance.DocumentIdentity, item.DocumentIdentity, StringComparison.Ordinal) ||
                 !string.Equals(item.Provenance.CitationIdentity, item.CitationIdentity, StringComparison.Ordinal) ||
@@ -2031,7 +2031,7 @@ public static class LegendConnectResearchRetentionContracts
             outcome.EvidenceOrigin is not (
                 LegendConnectResearchEvidenceOrigin.ExternalResearch or
                 LegendConnectResearchEvidenceOrigin.Combined) ||
-            outcome.Conclusion.MaterialClaims is not { Count: >= 2 and <= 8 } claims ||
+            outcome.Conclusion.SupportedClaims is not { Count: >= 2 and <= 8 } claims ||
             outcome.Session.CitationValidation is not { Succeeded: true } validation ||
             !IsLowerHex(outcome.Provenance.CodeSha, 40) ||
             !IsLowerHex(outcome.Provenance.ConfigurationIdentity, 64))
@@ -2060,6 +2060,10 @@ public static class LegendConnectResearchRetentionContracts
     private static bool IsLowerHex(string? value, int length) =>
         value is not null && value.Length == length && value.All(character =>
             character is >= '0' and <= '9' or >= 'a' and <= 'f');
+
+    private static bool IsCanonicalTextHash(string? value) =>
+        value is { Length: 64 } && value.All(character =>
+            character is >= '0' and <= '9' or >= 'A' and <= 'F');
 
     private static bool HasValidResearchAuthorization(
         LegendConnectResearchRetentionLineage lineage) =>

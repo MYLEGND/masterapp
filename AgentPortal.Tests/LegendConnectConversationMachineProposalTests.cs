@@ -36,7 +36,8 @@ public sealed class LegendConnectConversationMachineProposalTests
         Assert.NotNull(result.ProposalId);
         Assert.False(result.ProposalAlreadyExisted);
 
-        var candidate = await fixture.Db.LegendCorpusCandidates.SingleAsync();
+        var candidate = await fixture.Db.LegendCorpusCandidates.SingleAsync(
+            item => item.Id == result.CorpusCandidateId);
         Assert.Equal("en", candidate.SourceLanguageCode);
         Assert.Equal("en", candidate.TargetLanguageCode);
         Assert.Equal(
@@ -147,8 +148,10 @@ public sealed class LegendConnectConversationMachineProposalTests
 
         Assert.True(result.Succeeded, result.Message);
         Assert.Equal("AwaitingCritic", result.State);
-        var candidate = await fixture.Db.LegendCorpusCandidates.SingleAsync();
-        var proposal = await fixture.Db.LegendLanguageTeacherProposals.SingleAsync();
+        var candidate = await fixture.Db.LegendCorpusCandidates.SingleAsync(
+            item => item.Id == result.CorpusCandidateId);
+        var proposal = await fixture.Db.LegendLanguageTeacherProposals.SingleAsync(
+            item => item.Id == result.ProposalId);
         Assert.Equal("ExternalObservation", candidate.Provenance);
         Assert.False(candidate.IsApproved);
         Assert.Equal("MachineProposed", proposal.Provenance);
@@ -299,8 +302,10 @@ public sealed class LegendConnectConversationMachineProposalTests
             SameLanguageSubmission());
 
         Assert.True(result.Succeeded, result.Message);
-        var candidate = await fixture.Db.LegendCorpusCandidates.SingleAsync();
-        var proposal = await fixture.Db.LegendLanguageTeacherProposals.SingleAsync();
+        var candidate = await fixture.Db.LegendCorpusCandidates.SingleAsync(
+            item => item.Id == result.CorpusCandidateId);
+        var proposal = await fixture.Db.LegendLanguageTeacherProposals.SingleAsync(
+            item => item.Id == result.ProposalId);
         Assert.False(candidate.IsApproved);
         Assert.Equal("MachineProposed", proposal.Provenance);
         Assert.False(proposal.CriticApproved);

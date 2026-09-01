@@ -5,6 +5,7 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Domain.Entities;
+using Domain.Messaging;
 using Infrastructure.Data;
 using Infrastructure.Messaging;
 using Microsoft.EntityFrameworkCore;
@@ -595,6 +596,12 @@ public sealed class LegendConnectCanonicalNoveltyValidationTests
         LegendLanguageTeacherFamilyProposal family) :
         ILegendConnectLanguageTeacher
     {
+        public LegendLanguageTeacherConfigurationPreflight Preflight(
+            string role) =>
+            LegendLanguageTeacherConfigurationPreflight.Ready(
+                role,
+                "test-approved-teacher");
+
         public Task<LegendLanguageTeacherProposalResult> ProposeAsync(
             LegendLanguageTeacherProposalRequest request,
             CancellationToken cancellationToken = default) =>

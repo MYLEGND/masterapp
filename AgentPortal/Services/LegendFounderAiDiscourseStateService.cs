@@ -327,6 +327,18 @@ public sealed class LegendFounderAiDiscourseStateService
                 })
                 .Select(group => group.First())
                 .ToArray();
+            var replacementOrdinalCandidates = candidates
+                .OrderBy(item => item.Turn.SequenceNumber)
+                .ThenBy(item => item.Node.StartTokenIndex)
+                .ThenBy(item => item.NodeIndex)
+                .GroupBy(item => new
+                {
+                    item.Node.SemanticSignature,
+                    item.Node.SemanticDimension,
+                    item.Node.SemanticValue
+                })
+                .Select(group => group.First())
+                .ToArray();
             var activeBinding = ResolveActiveDiscourseBindingCandidate(
                 priorTurns,
                 rule);
@@ -339,6 +351,10 @@ public sealed class LegendFounderAiDiscourseStateService
 
             DiscourseEntityCandidate? selected = rule.ResolutionMode switch
             {
+                "ordinal" when rule.ReplacesActiveBinding &&
+                    rule.SelectionRank is > 0 &&
+                    replacementOrdinalCandidates.Length >= rule.SelectionRank.Value =>
+                    replacementOrdinalCandidates[rule.SelectionRank.Value - 1],
                 "ordinal" when rule.SelectionRank is > 0 &&
                     latestTurnCandidates.Length >= rule.SelectionRank.Value =>
                     latestTurnCandidates[rule.SelectionRank.Value - 1],

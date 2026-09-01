@@ -708,7 +708,7 @@ internal sealed class LegendConnectTranslationRouter : IAccountScopedTranslation
                     pairKey);
             }
         }
-        if (enabledPair is not null && _intelligence is not null)
+        if (enabledPair is not null && _intelligence is not null && source is not null)
         {
             try
             {

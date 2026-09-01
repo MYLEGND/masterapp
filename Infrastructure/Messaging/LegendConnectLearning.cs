@@ -2358,7 +2358,8 @@ internal sealed class LegendConnectAutonomousLearningService
             NormalizeMachineTeachingField(
                 submission.CategoryIdentity,
                 40);
-        if (!string.Equals(
+        if (categoryIdentity is null ||
+            !string.Equals(
                 categoryIdentity,
                 LegendConnectMachineTeachingSubmission.ReusableSemanticCategory,
                 StringComparison.Ordinal))
@@ -2367,14 +2368,15 @@ internal sealed class LegendConnectAutonomousLearningService
                 "machine_teaching_category_not_reusable",
                 "Machine teaching accepts only explicitly classified reusable semantic knowledge, never personal or transient facts.");
         }
-        if (!string.Equals(
-                capabilityIdentity,
-                LegendConnectMachineTeachingSubmission.TranslationCapability,
-                StringComparison.Ordinal) &&
-            !string.Equals(
-                capabilityIdentity,
-                LegendConnectMachineTeachingSubmission.SameLanguageSemanticCapability,
-                StringComparison.Ordinal))
+        if (capabilityIdentity is null ||
+            (!string.Equals(
+                 capabilityIdentity,
+                 LegendConnectMachineTeachingSubmission.TranslationCapability,
+                 StringComparison.Ordinal) &&
+             !string.Equals(
+                 capabilityIdentity,
+                 LegendConnectMachineTeachingSubmission.SameLanguageSemanticCapability,
+                 StringComparison.Ordinal)))
         {
             return MachineTeachingFailure(
                 "machine_teaching_capability_invalid",

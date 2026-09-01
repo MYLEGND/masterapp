@@ -10,6 +10,7 @@ using Domain.Billing;
 using AgentPortal.Services.Tracking;
 using AgentPortal.Hubs;
 using Infrastructure.Data;
+using Domain.Messaging;
 using Infrastructure.Identity;
 using Infrastructure.Households;
 using Infrastructure.Mobile;
