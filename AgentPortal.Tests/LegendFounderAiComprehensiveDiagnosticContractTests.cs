@@ -100,8 +100,10 @@ public sealed class LegendFounderAiComprehensiveDiagnosticContractTests
 
         Assert.Contains("inputLexemeHashes", source, StringComparison.Ordinal);
         Assert.Contains("join lexeme in _db.Set<LegendLanguageLexeme>()", source, StringComparison.Ordinal);
-        Assert.Contains("inputLexemeHashes.Contains(lexeme.NormalizedHash)", source, StringComparison.Ordinal);
+        Assert.Contains("lexeme.NormalizedHash == requestHash", source, StringComparison.Ordinal);
+        Assert.Contains("candidate.Sum(item => item.MatchedOccurrenceCount)", source, StringComparison.Ordinal);
         Assert.Contains("anchor.ComponentStartTokenIndex != null", source, StringComparison.Ordinal);
+        Assert.Contains("anchor.ComponentStartTokenIndex >= 0", source, StringComparison.Ordinal);
     }
 
     private static string ReadService() =>

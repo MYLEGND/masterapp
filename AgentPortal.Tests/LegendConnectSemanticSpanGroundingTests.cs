@@ -1495,6 +1495,40 @@ public sealed class LegendConnectSemanticSpanGroundingTests
     }
 
     [Fact]
+    public async Task IndexedMeaningGraph_RejectsNonExactInputsAboveSemanticComponentBound()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var fixture = CreateFixture(db);
+        var input = string.Join(" ", Enumerable.Range(0, 25).Select(index => $"novel{index}"));
+
+        var graph = await fixture.Operations.AnalyzeReusableMeaningGraphAsync(input);
+
+        Assert.False(graph.IsComposed);
+        Assert.Equal("meaning_graph_input_invalid", graph.ReasonCode);
+        Assert.Empty(graph.Nodes);
+        Assert.Empty(graph.Relations);
+    }
+
+    [Fact]
+    public async Task NegativeStartAnchors_CannotConsumeSemanticRetrievalBoundary()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var fixture = CreateFixture(db);
+        Assert.True((await fixture.Curriculum.SubmitFounderBatchAsync(
+            CompetingHypothesesTestDesignFamily(1))).Succeeded);
+        await AddDenseKeepMeaningEvidenceAsync(
+            db,
+            occurrenceWithinAnchorSpan: true,
+            componentStartOverride: -1);
+
+        var graph = await fixture.Operations.AnalyzeReusableMeaningGraphAsync("Keep novel.");
+
+        Assert.False(graph.IsComposed);
+        Assert.Equal("meaning_graph_component_unknown", graph.ReasonCode);
+        Assert.NotEqual("meaning_graph_retrieval_bound_exceeded", graph.ReasonCode);
+    }
+
+    [Fact]
     public async Task CurrentInputCoordinates_DetermineEvidenceDominanceAfterSurfaceProjection()
     {
         await using var db = ControllerTestHelpers.BuildDb();
@@ -3380,7 +3414,8 @@ public sealed class LegendConnectSemanticSpanGroundingTests
 
     private static async Task AddDenseKeepMeaningEvidenceAsync(
         MasterAppDbContext db,
-        bool occurrenceWithinAnchorSpan)
+        bool occurrenceWithinAnchorSpan,
+        int? componentStartOverride = null)
     {
         var owner = await db.LegendLanguageMeaningNodeEvidence
             .AsNoTracking()
@@ -3393,6 +3428,7 @@ public sealed class LegendConnectSemanticSpanGroundingTests
 
         for (var index = 0; index < 513; index++)
         {
+            var hasNegativeStart = componentStartOverride is < 0;
             var text = $"keep unrelated semantic observation {index}";
             var textUnit = new LegendLanguageTextUnit
             {
@@ -3410,8 +3446,11 @@ public sealed class LegendConnectSemanticSpanGroundingTests
                 LanguageCode = "en",
                 TextUnitId = textUnit.Id,
                 LexemeId = keepLexeme.Id,
-                ComponentStartTokenIndex = occurrenceWithinAnchorSpan ? 0 : 1,
-                ComponentLength = occurrenceWithinAnchorSpan ? 1 : 3,
+                ComponentStartTokenIndex = componentStartOverride ??
+                    (occurrenceWithinAnchorSpan ? 0 : 1),
+                ComponentLength = hasNegativeStart
+                    ? 1
+                    : occurrenceWithinAnchorSpan ? 1 : 3,
                 CurriculumFamilyId = owner.CurriculumFamilyId,
                 CurriculumExampleId = owner.CurriculumExampleId,
                 Dimension = "dense_retrieval_control",
@@ -3426,7 +3465,7 @@ public sealed class LegendConnectSemanticSpanGroundingTests
             {
                 TextUnitId = textUnit.Id,
                 LexemeId = keepLexeme.Id,
-                TokenIndex = 0,
+                TokenIndex = hasNegativeStart ? -1 : 0,
                 CharacterOffset = 0,
                 CharacterLength = "keep".Length
             });
