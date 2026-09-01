@@ -291,7 +291,7 @@ public sealed class LegendConnectResearchTransportSecurityTests
             Assert.DoesNotContain("internal_legend_reason", payload, StringComparison.Ordinal);
             Assert.Contains("bounded public evidence query", payload, StringComparison.Ordinal);
             Assert.Contains("query string verbatim", payload, StringComparison.Ordinal);
-            Assert.Contains("claim statement must itself be an exact factual span", payload, StringComparison.Ordinal);
+            Assert.Contains("character-for-character identical copies", payload, StringComparison.Ordinal);
             Assert.Contains("explicitly stated release date", payload, StringComparison.Ordinal);
             Assert.Contains("exact controlling primary record for the claim", payload, StringComparison.Ordinal);
             return new HttpResponseMessage(HttpStatusCode.BadRequest);
