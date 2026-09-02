@@ -128,7 +128,11 @@ val bundleLegendBrandArtwork by tasks.registering(Sync::class) {
     into(legendBrandAssets)
 }
 
-/** Android packages the exact iOS AppIcon source; no second launcher artwork is retained. */
+/**
+ * Android packages the exact iOS AppIcon source as the artwork layer for its
+ * adaptive icon. The adaptive wrapper prevents launchers from shrinking the
+ * full square inside a second platform-generated circle.
+ */
 val bundleLegendLauncherArtwork by tasks.registering(Sync::class) {
     from(sharedLegendAppIcon) {
         rename { "ic_legend_launcher.png" }

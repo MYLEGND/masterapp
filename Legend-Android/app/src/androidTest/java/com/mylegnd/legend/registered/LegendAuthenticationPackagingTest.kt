@@ -1,6 +1,7 @@
 package com.mylegnd.legend.registered
 
 import android.content.pm.PackageManager
+import android.graphics.drawable.AdaptiveIconDrawable
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import org.json.JSONObject
@@ -45,10 +46,16 @@ class LegendAuthenticationPackagingTest {
     }
 
     @Test
-    fun launcherResourceIsTheGeneratedPngArtworkRatherThanTheLegacyVector() {
+    fun launcherUsesAdaptiveIconWithTheGeneratedIosOwnedArtwork() {
+        val applicationInfo = context.packageManager.getApplicationInfo(context.packageName, 0)
+        val installedIcon = context.packageManager.getApplicationIcon(applicationInfo)
         val pngSignature = context.resources.openRawResource(R.drawable.ic_legend_launcher)
             .use { it.readNBytes(8) }
 
+        assertTrue(
+            "The launcher must receive an adaptive icon instead of shrinking legacy square artwork.",
+            installedIcon is AdaptiveIconDrawable,
+        )
         assertArrayEquals(
             byteArrayOf(-119, 80, 78, 71, 13, 10, 26, 10),
             pngSignature,

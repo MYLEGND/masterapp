@@ -12,8 +12,9 @@
         android:allowBackup="false"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:fullBackupContent="@xml/backup_rules"
-        android:icon="@drawable/ic_legend_launcher"
+        android:icon="@mipmap/ic_legend_launcher"
         android:label="@string/app_name"
+        android:roundIcon="@mipmap/ic_legend_launcher"
         android:supportsRtl="true"
         android:theme="@style/Theme.Legend">
 
@@ -22,7 +23,7 @@
             android:value="legend_activity" />
         <meta-data
             android:name="com.google.firebase.messaging.default_notification_icon"
-            android:resource="@drawable/ic_legend_launcher" />
+            android:resource="@drawable/ic_legend_notification" />
         <activity
             android:name=".MainActivity"
             android:exported="true">

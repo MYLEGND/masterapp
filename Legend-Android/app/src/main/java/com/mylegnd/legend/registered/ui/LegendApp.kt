@@ -59,6 +59,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.core.content.ContextCompat
+import androidx.core.view.WindowCompat
 import androidx.fragment.app.FragmentActivity
 import com.mylegnd.legend.registered.LegendContainer
 import com.mylegnd.legend.registered.LegendViewModelFactory
@@ -156,6 +157,44 @@ fun LegendRoot(sessionViewModel: SessionViewModel, container: LegendContainer) {
     }
 }
 
+/**
+ * Every LEGEND bottom sheet shares one edge-to-edge contract. Material keeps
+ * the sheet below the status bar while this content wrapper reserves the live
+ * gesture/navigation and keyboard areas for every screen and text scale.
+ */
+@Composable
+private fun ModalBottomSheet(
+    onDismissRequest: () -> Unit,
+    modifier: Modifier = Modifier,
+    sheetState: SheetState = rememberModalBottomSheetState(),
+    containerColor: androidx.compose.ui.graphics.Color = BottomSheetDefaults.ContainerColor,
+    contentColor: androidx.compose.ui.graphics.Color = contentColorFor(containerColor),
+    dragHandle: @Composable (() -> Unit)? = { BottomSheetDefaults.DragHandle() },
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    androidx.compose.material3.ModalBottomSheet(
+        onDismissRequest = onDismissRequest,
+        modifier = modifier,
+        sheetState = sheetState,
+        containerColor = containerColor,
+        contentColor = contentColor,
+        dragHandle = dragHandle,
+        contentWindowInsets = {
+            WindowInsets.safeDrawing.only(
+                WindowInsetsSides.Top + WindowInsetsSides.Horizontal,
+            )
+        },
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .navigationBarsPadding()
+                .imePadding(),
+            content = content,
+        )
+    }
+}
+
 @Composable
 private fun SignInScreen(
     onSignIn: (Activity) -> Unit,
@@ -163,49 +202,55 @@ private fun SignInScreen(
 ) {
     val activity = LocalActivity.current
     var appReviewOpen by remember { mutableStateOf(false) }
-    Column(
-        Modifier.fillMaxSize().background(LegendColors.Canvas).padding(horizontal = LegendSpacing.PageHorizontal, vertical = LegendSpacing.Lg),
+    LazyColumn(
+        modifier = Modifier.fillMaxSize().background(LegendColors.Canvas),
+        contentPadding = PaddingValues(horizontal = LegendSpacing.PageHorizontal, vertical = LegendSpacing.Lg),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Top,
+        verticalArrangement = Arrangement.spacedBy(LegendSpacing.Md),
     ) {
-        Spacer(Modifier.height(LegendSpacing.Xl))
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(LegendShapes.Card)
-                .background(LegendGradients.Hero)
-                .border(1.dp, LegendColors.Gold.copy(alpha = 0.56f), LegendShapes.Card)
-                .padding(LegendSpacing.Lg),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(LegendSpacing.Xs),
-        ) {
-            LegendBrandArtwork(size = 72.dp)
-            Text("LEGEND ACCOUNT", style = LegendTypography.Eyebrow, color = LegendColors.GoldBright)
-            Text("Secure sign in", style = LegendTypography.Title, color = LegendColors.OnNavy)
-            Text(
-                "Verify your Legend account to continue.",
-                style = LegendTypography.Supporting,
-                color = LegendColors.OnNavy.copy(alpha = 0.76f),
-            )
+        item { Spacer(Modifier.height(LegendSpacing.Xl)) }
+        item {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(LegendShapes.Card)
+                    .background(LegendGradients.Hero)
+                    .border(1.dp, LegendColors.Gold.copy(alpha = 0.56f), LegendShapes.Card)
+                    .padding(LegendSpacing.Lg),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(LegendSpacing.Xs),
+            ) {
+                LegendBrandArtwork(size = 72.dp)
+                Text("LEGEND ACCOUNT", style = LegendTypography.Eyebrow, color = LegendColors.GoldBright)
+                Text("Secure sign in", style = LegendTypography.Title, color = LegendColors.OnNavy)
+                Text(
+                    "Verify your Legend account to continue.",
+                    style = LegendTypography.Supporting,
+                    color = LegendColors.OnNavy.copy(alpha = 0.76f),
+                )
+            }
         }
-        Spacer(Modifier.height(LegendSpacing.Md))
-        LegendPrimaryButton("Sign in securely", modifier = Modifier.fillMaxWidth(), enabled = activity != null) {
-            activity?.let(onSignIn)
+        item {
+            LegendPrimaryButton("Sign in securely", modifier = Modifier.fillMaxWidth(), enabled = activity != null) {
+                activity?.let(onSignIn)
+            }
         }
-        TextButton(onClick = { appReviewOpen = true }) {
+        item { TextButton(onClick = { appReviewOpen = true }) {
             Text(
                 "App Review Sign In",
                 style = LegendTypography.Supporting,
                 color = LegendColors.NavyElevated,
             )
+        } }
+        item {
+            Text(
+                "Device authentication is optional and can be enabled after sign in in Profile settings.",
+                style = LegendTypography.Caption,
+                color = LegendColors.TextSecondary,
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                modifier = Modifier.padding(horizontal = LegendSpacing.Xl),
+            )
         }
-        Text(
-            "Device authentication is optional and can be enabled after sign in in Profile settings.",
-            style = LegendTypography.Caption,
-            color = LegendColors.TextSecondary,
-            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-            modifier = Modifier.padding(horizontal = LegendSpacing.Xl),
-        )
     }
     if (appReviewOpen) {
         AppReviewSignInDialog(
@@ -278,8 +323,10 @@ private fun LegendBrandArtwork(modifier: Modifier = Modifier, size: androidx.com
     AsyncImage(
         model = "file:///android_asset/legend-logo.png",
         contentDescription = "LEGEND®",
-        contentScale = androidx.compose.ui.layout.ContentScale.Fit,
-        modifier = modifier.size(size),
+        contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+        modifier = modifier
+            .size(size)
+            .clip(CircleShape),
     )
 }
 
@@ -289,42 +336,42 @@ private fun RoleSelectionScreen(
     select: (String) -> Unit,
     signOut: () -> Unit,
 ) {
-    Column(
-        Modifier.fillMaxSize().background(LegendColors.Canvas).padding(horizontal = LegendSpacing.PageHorizontal, vertical = LegendSpacing.Lg),
-        verticalArrangement = Arrangement.Top,
+    LazyColumn(
+        modifier = Modifier.fillMaxSize().background(LegendColors.Canvas),
+        contentPadding = PaddingValues(horizontal = LegendSpacing.PageHorizontal, vertical = LegendSpacing.Lg),
+        verticalArrangement = Arrangement.spacedBy(LegendSpacing.Xs),
     ) {
-        Spacer(Modifier.height(LegendSpacing.Xl))
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(LegendShapes.Card)
-                .background(LegendGradients.Hero)
-                .border(1.dp, LegendColors.Gold.copy(alpha = 0.56f), LegendShapes.Card)
-                .padding(LegendSpacing.Lg),
-            verticalArrangement = Arrangement.spacedBy(LegendSpacing.Xs),
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("LEGEND ACCOUNT", style = LegendTypography.Eyebrow, color = LegendColors.GoldBright, modifier = Modifier.weight(1f))
-                LegendBrandArtwork(size = 48.dp)
+        item { Spacer(Modifier.height(LegendSpacing.Xl)) }
+        item {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(LegendShapes.Card)
+                    .background(LegendGradients.Hero)
+                    .border(1.dp, LegendColors.Gold.copy(alpha = 0.56f), LegendShapes.Card)
+                    .padding(LegendSpacing.Lg),
+                verticalArrangement = Arrangement.spacedBy(LegendSpacing.Xs),
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("LEGEND ACCOUNT", style = LegendTypography.Eyebrow, color = LegendColors.GoldBright, modifier = Modifier.weight(1f))
+                    LegendBrandArtwork(size = 48.dp)
+                }
+                Text("Choose your experience", style = LegendTypography.Title, color = LegendColors.OnNavy)
+                Text(
+                    "Choose the account you want to use. Legend will reopen it next time.",
+                    style = LegendTypography.Supporting,
+                    color = LegendColors.OnNavy.copy(alpha = 0.76f),
+                )
             }
-            Text("Choose your experience", style = LegendTypography.Title, color = LegendColors.OnNavy)
-            Text(
-                "Choose the account you want to use. Legend will reopen it next time.",
-                style = LegendTypography.Supporting,
-                color = LegendColors.OnNavy.copy(alpha = 0.76f),
-            )
         }
-        Spacer(Modifier.height(LegendSpacing.Md))
-        Text("Available workspaces", style = LegendTypography.Section, color = LegendColors.TextPrimary)
-        Spacer(Modifier.height(LegendSpacing.Xs))
-        roles.forEach { role ->
+        item { Text("Available workspaces", style = LegendTypography.Section, color = LegendColors.TextPrimary) }
+        items(roles, key = { it }) { role ->
             Surface(
                 color = LegendColors.Surface,
                 shape = LegendShapes.Control,
                 shadowElevation = 3.dp,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(bottom = LegendSpacing.Xs)
                     .border(1.dp, LegendColors.Gold.copy(alpha = 0.48f), LegendShapes.Control)
                     .clickable { select(role) },
             ) {
@@ -349,17 +396,19 @@ private fun RoleSelectionScreen(
                 }
             }
         }
-        OutlinedButton(
-            onClick = signOut,
-            modifier = Modifier.fillMaxWidth().heightIn(min = 38.dp),
-            shape = LegendShapes.Compact,
-            colors = ButtonDefaults.outlinedButtonColors(contentColor = LegendColors.Error),
-            border = androidx.compose.foundation.BorderStroke(
-                1.dp,
-                LegendColors.Error.copy(alpha = 0.22f),
-            ),
-        ) {
-            Text("Sign out", style = LegendTypography.Supporting, fontWeight = FontWeight.SemiBold)
+        item {
+            OutlinedButton(
+                onClick = signOut,
+                modifier = Modifier.fillMaxWidth().heightIn(min = LegendSize.MinimumTapTarget),
+                shape = LegendShapes.Compact,
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = LegendColors.Error),
+                border = androidx.compose.foundation.BorderStroke(
+                    1.dp,
+                    LegendColors.Error.copy(alpha = 0.22f),
+                ),
+            ) {
+                Text("Sign out", style = LegendTypography.Supporting, fontWeight = FontWeight.SemiBold)
+            }
         }
     }
 }
@@ -428,6 +477,7 @@ private fun LegendPillNavigation(
         modifier = Modifier
             .fillMaxWidth()
             .background(LegendColors.Canvas)
+            .navigationBarsPadding()
             .padding(
                 start = LegendSpacing.Sm,
                 end = LegendSpacing.Sm,
@@ -453,6 +503,15 @@ private fun LegendPillNavigation(
                         Box(
                             modifier = Modifier
                                 .size(LegendSize.MinimumTapTarget)
+                                .then(
+                                    if (selected) {
+                                        Modifier
+                                            .border(2.dp, LegendColors.GoldBright, CircleShape)
+                                            .padding(2.dp)
+                                    } else {
+                                        Modifier
+                                    },
+                                )
                                 .combinedClickable(
                                     onClick = { select(tab) },
                                     onDoubleClick = {
@@ -705,6 +764,22 @@ private fun AuthenticatedShell(
     }
     val homeState by home.state.collectAsStateWithLifecycle()
     val founderAiState by founderAi.state.collectAsStateWithLifecycle()
+    val activity = LocalActivity.current
+    DisposableEffect(activity, tab) {
+        val window = activity?.window
+        val controller = window?.let { WindowCompat.getInsetsController(it, it.decorView) }
+        val previousLightStatusBars = controller?.isAppearanceLightStatusBars
+        val previousLightNavigationBars = controller?.isAppearanceLightNavigationBars
+        controller?.isAppearanceLightStatusBars =
+            !(tab == LegendTab.DISCOVER && LegendNavigationPolicy.DiscoverUsesNavySurface)
+        controller?.isAppearanceLightNavigationBars = true
+        onDispose {
+            if (controller != null) {
+                previousLightStatusBars?.let { controller.isAppearanceLightStatusBars = it }
+                previousLightNavigationBars?.let { controller.isAppearanceLightNavigationBars = it }
+            }
+        }
+    }
     LaunchedEffect(participantType) { container.fcmPushRegistration.registerForAuthenticatedActor(participantType) }
     LaunchedEffect(session.capabilities.isFounder, participantType) {
         if (session.capabilities.isFounder) founderAi.resolveAvailability()
@@ -778,7 +853,12 @@ private fun AuthenticatedShell(
         },
         containerColor = LegendColors.Canvas,
     ) { padding ->
-        Box(Modifier.padding(padding)) {
+        Box(
+            Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .consumeWindowInsets(padding),
+        ) {
             when (tab) {
                 LegendTab.HOME -> HomeScreen(
                     homeViewModel = home,
@@ -1763,16 +1843,17 @@ private fun AgentClientsScreen(
 
     if (leadsOpen) {
         ModalBottomSheet(onDismissRequest = { leadsOpen = false }) {
-            Column(
-                modifier = Modifier.fillMaxWidth().padding(LegendSpacing.Md),
+            LazyColumn(
+                modifier = Modifier.fillMaxWidth(),
+                contentPadding = PaddingValues(LegendSpacing.Md),
                 verticalArrangement = Arrangement.spacedBy(LegendSpacing.Sm),
             ) {
-                Text("Leads", style = LegendTypography.Title, color = LegendColors.TextPrimary)
+                item { Text("Leads", style = LegendTypography.Title, color = LegendColors.TextPrimary) }
                 when (val leadState = leads) {
                     is LoadState.Data -> if (leadState.value.isEmpty()) {
-                        LegendEmptyState("No leads", "Live CRM leads will appear here.")
+                        item { LegendEmptyState("No leads", "Live CRM leads will appear here.") }
                     } else {
-                        leadState.value.forEach { lead ->
+                        items(leadState.value, key = { it.leadId }) { lead ->
                             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                                 Column(Modifier.weight(1f)) {
                                     Text(lead.displayName, style = LegendTypography.BodyEmphasis, color = LegendColors.TextPrimary)
@@ -1782,10 +1863,10 @@ private fun AgentClientsScreen(
                             }
                         }
                     }
-                    is LoadState.Error -> LegendInlineRetry(leadState.message, agentWorkspaceViewModel::load)
-                    else -> LegendLoadingState()
+                    is LoadState.Error -> item { LegendInlineRetry(leadState.message, agentWorkspaceViewModel::load) }
+                    else -> item { LegendLoadingState() }
                 }
-                Spacer(Modifier.height(LegendSpacing.Md))
+                item { Spacer(Modifier.height(LegendSpacing.Md)) }
             }
         }
     }
@@ -1842,7 +1923,7 @@ private fun LegendAgentClientCreationPortal(
         ),
     ) {
         Surface(color = LegendColors.Canvas, modifier = Modifier.fillMaxSize()) {
-            Column(Modifier.fillMaxSize()) {
+            Column(Modifier.fillMaxSize().navigationBarsPadding()) {
                 Row(
                     modifier = Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = LegendSpacing.Md, vertical = LegendSpacing.Xs),
                     verticalAlignment = Alignment.CenterVertically,
@@ -1958,40 +2039,35 @@ private fun LegendHomeBrandBar(
     showsHomeActions: Boolean = true,
     usesDarkSurface: Boolean = false,
 ) {
-    Row(
+    Box(
         modifier = Modifier
             .fillMaxWidth()
             .heightIn(min = LegendSize.MinimumTapTarget)
             .background(if (usesDarkSurface) LegendColors.Midnight else LegendColors.Canvas)
             .statusBarsPadding()
             .padding(horizontal = LegendSpacing.Sm, vertical = LegendSpacing.Micro),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween,
     ) {
         if (showsHomeActions && create != null) {
             LegendHomeChromeButton(
                 icon = Icons.Default.Add,
                 description = "Create a LEGEND update",
                 onClick = create,
+                modifier = Modifier.align(Alignment.CenterStart),
             )
-        } else {
-            Spacer(Modifier.size(LegendSize.MinimumTapTarget))
         }
         Text(
             text = LegendNavigationPolicy.Brand,
             style = LegendTypography.Wordmark,
             color = if (usesDarkSurface) LegendColors.OnNavy else LegendColors.Navy,
+            maxLines = 1,
+            overflow = TextOverflow.Clip,
+            modifier = Modifier.align(Alignment.Center),
         )
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(LegendSpacing.Xs),
-        ) {
-            openFounderAi?.let { open ->
-                LegendFounderAiLauncherButton(onClick = open)
-            }
-            if (openFounderAi == null) {
-                Spacer(Modifier.size(LegendSize.MinimumTapTarget))
-            }
+        openFounderAi?.let { open ->
+            LegendFounderAiLauncherButton(
+                onClick = open,
+                modifier = Modifier.align(Alignment.CenterEnd),
+            )
         }
     }
 }
@@ -2000,10 +2076,11 @@ private fun LegendHomeBrandBar(
 private fun LegendHomeChromeButton(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     description: String,
+    modifier: Modifier = Modifier,
     onClick: () -> Unit,
 ) = IconButton(
     onClick = onClick,
-    modifier = Modifier
+    modifier = modifier
         .size(LegendSize.MinimumTapTarget)
         .clip(CircleShape)
         .background(LegendColors.Navy),
@@ -2156,7 +2233,7 @@ private fun LegendStoryRail(
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 modifier = Modifier
-                    .width(LegendSize.AvatarHero)
+                    .widthIn(min = LegendSize.AvatarHero, max = 112.dp)
                     .clickable(onClick = create),
             ) {
                 Box(contentAlignment = Alignment.BottomEnd) {
@@ -2182,13 +2259,20 @@ private fun LegendStoryRail(
                     }
                 }
                 Spacer(Modifier.height(LegendSpacing.Xs))
-                Text("Your story", style = LegendTypography.Label, color = LegendColors.TextPrimary, maxLines = 1)
+                Text(
+                    "Your story",
+                    style = LegendTypography.Label,
+                    color = LegendColors.TextPrimary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                )
             }
         }
         items(orderedAuthors, key = { "${it.identity.participantType}:${it.identity.userId}" }) { author ->
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
-                modifier = Modifier.width(LegendSize.AvatarHero),
+                modifier = Modifier.widthIn(min = LegendSize.AvatarHero, max = 112.dp),
             ) {
                 LegendProtectedAvatar(
                     avatar = author.avatar,
@@ -2244,8 +2328,8 @@ private fun LegendPromotedGroupCard(
         Spacer(Modifier.width(LegendSpacing.Sm))
         Column(Modifier.weight(1f)) {
             Text("FEATURED GROUP", style = LegendTypography.Eyebrow.copy(letterSpacing = 1.sp), color = LegendColors.GoldBright)
-            Text(group.subject, style = LegendTypography.Section, color = LegendColors.OnNavy, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text("Hosted by ${group.owner.displayName} · ${group.activeMemberCount} members", style = LegendTypography.Supporting, color = LegendColors.OnNavy.copy(alpha = 0.72f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(group.subject, style = LegendTypography.Section, color = LegendColors.OnNavy, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Text("Hosted by ${group.owner.displayName} · ${group.activeMemberCount} members", style = LegendTypography.Supporting, color = LegendColors.OnNavy.copy(alpha = 0.72f), maxLines = 2, overflow = TextOverflow.Ellipsis)
         }
         Spacer(Modifier.width(LegendSpacing.Xs))
         Button(
@@ -2300,15 +2384,16 @@ private fun DailyScriptureSheet(scripture: MobileDailyScripture, dismiss: () -> 
     onDismissRequest = dismiss,
     containerColor = LegendColors.Midnight,
 ) {
-    Column(
-        modifier = Modifier.fillMaxWidth().padding(LegendSpacing.Lg),
+    LazyColumn(
+        modifier = Modifier.fillMaxWidth(),
+        contentPadding = PaddingValues(LegendSpacing.Lg),
         verticalArrangement = Arrangement.spacedBy(LegendSpacing.Sm),
     ) {
-        Text("DAILY SCRIPTURE", style = LegendTypography.Eyebrow.copy(letterSpacing = 1.sp), color = LegendColors.GoldBright)
-        Text(scripture.reference, style = LegendTypography.Hero, color = LegendColors.OnNavy)
-        Text(scripture.passageText.ifBlank { scripture.text }, style = LegendTypography.Body, color = LegendColors.OnNavy.copy(alpha = 0.86f))
-        Text(scripture.translation, style = LegendTypography.Label, color = LegendColors.GoldBright)
-        LegendPrimaryButton("Close", onClick = dismiss)
+        item { Text("DAILY SCRIPTURE", style = LegendTypography.Eyebrow.copy(letterSpacing = 1.sp), color = LegendColors.GoldBright) }
+        item { Text(scripture.reference, style = LegendTypography.Hero, color = LegendColors.OnNavy) }
+        item { Text(scripture.passageText.ifBlank { scripture.text }, style = LegendTypography.Body, color = LegendColors.OnNavy.copy(alpha = 0.86f)) }
+        item { Text(scripture.translation, style = LegendTypography.Label, color = LegendColors.GoldBright) }
+        item { LegendPrimaryButton("Close", onClick = dismiss) }
     }
 }
 
@@ -3431,7 +3516,7 @@ private enum class SocialCollection {
     HACS;
 
     val label: String
-        get() = when (this) {
+        get() = if (this == STORIES) "Stories" else when (this) {
             POSTS -> "${LegendCopy.value("content.post")}s"
             STORIES -> "${LegendCopy.value("content.story")}s"
             HACS -> "${LegendCopy.value("content.hac")}s"
@@ -4611,17 +4696,25 @@ private fun LegendStoryViewer(
 ) {
     LaunchedEffect(story.id) { recordView() }
     ModalBottomSheet(onDismissRequest = dismiss, containerColor = LegendColors.Midnight) {
-        Column(Modifier.fillMaxWidth().padding(LegendSpacing.PageHorizontal), verticalArrangement = Arrangement.spacedBy(LegendSpacing.Sm)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                LegendProtectedAvatar(story.author.avatar, story.author.displayName, participantType, mediaRepository)
-                Spacer(Modifier.width(LegendSpacing.Sm))
-                Text(story.author.displayName, style = LegendTypography.CardTitle, color = LegendColors.OnNavy, modifier = Modifier.weight(1f))
-                IconButton(onClick = dismiss) { Icon(Icons.Default.Close, "Close story", tint = LegendColors.OnNavy) }
+        LazyColumn(
+            modifier = Modifier.fillMaxWidth(),
+            contentPadding = PaddingValues(horizontal = LegendSpacing.PageHorizontal, vertical = LegendSpacing.Sm),
+            verticalArrangement = Arrangement.spacedBy(LegendSpacing.Sm),
+        ) {
+            item {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    LegendProtectedAvatar(story.author.avatar, story.author.displayName, participantType, mediaRepository)
+                    Spacer(Modifier.width(LegendSpacing.Sm))
+                    Text(story.author.displayName, style = LegendTypography.CardTitle, color = LegendColors.OnNavy, modifier = Modifier.weight(1f))
+                    IconButton(onClick = dismiss) { Icon(Icons.Default.Close, "Close story", tint = LegendColors.OnNavy) }
+                }
             }
-            story.media.forEach { media ->
+            items(story.media, key = { it.id }) { media ->
                 LegendProtectedSocialMedia(media.id, media.mediaKind, participantType, mediaRepository, media.accessibilityText, Modifier.fillMaxWidth())
             }
-            if (story.body.isNotBlank()) Text(story.body, style = LegendTypography.Body, color = LegendColors.OnNavy)
+            if (story.body.isNotBlank()) {
+                item { Text(story.body, style = LegendTypography.Body, color = LegendColors.OnNavy) }
+            }
         }
     }
 }
@@ -4741,7 +4834,7 @@ private fun AccountScreen(
     val socialState by socialViewModel.state.collectAsStateWithLifecycle()
     val socialMetrics by socialViewModel.profileMetrics.collectAsStateWithLifecycle()
     val socialPosts by socialViewModel.profilePosts.collectAsStateWithLifecycle()
-    var financial by remember { mutableStateOf(false) }
+    var financialOutlook by remember { mutableStateOf<FinancialOutlookSelection?>(null) }
     var settingsOpen by remember { mutableStateOf(false) }
     var creatorInsightsOpen by remember { mutableStateOf(false) }
     var selectedContent by remember { mutableStateOf(SocialCollection.POSTS) }
@@ -4762,15 +4855,6 @@ private fun AccountScreen(
     val profilePagerState = rememberPagerState(pageCount = { 2 })
     val profilePagerScope = rememberCoroutineScope()
 
-    LaunchedEffect(financial) {
-        val destination = if (financial) 1 else 0
-        if (profilePagerState.currentPage != destination) {
-            profilePagerState.animateScrollToPage(destination)
-        }
-    }
-    LaunchedEffect(profilePagerState.currentPage) {
-        financial = profilePagerState.currentPage == 1
-    }
     BackHandler(enabled = profilePagerState.currentPage == 1) {
         profilePagerScope.launch { profilePagerState.animateScrollToPage(0) }
     }
@@ -4781,14 +4865,19 @@ private fun AccountScreen(
     ) { page ->
         if (page == 1) {
             FinancialReportingGate(
-                isActive = financial,
+                isActive = profilePagerState.currentPage == 1,
                 backToProfile = {
                     profilePagerScope.launch { profilePagerState.animateScrollToPage(0) }
                 },
             ) {
-                FinancialScreen(financialRepository, participantType) {
-                    profilePagerScope.launch { profilePagerState.animateScrollToPage(0) }
-                }
+                FinancialScreen(
+                    repository = financialRepository,
+                    participantType = participantType,
+                    openOutlook = { financialOutlook = it },
+                    back = {
+                        profilePagerScope.launch { profilePagerState.animateScrollToPage(0) }
+                    },
+                )
             }
         } else {
         when (profile) {
@@ -4829,7 +4918,7 @@ private fun AccountScreen(
                         item {
                             Button(
                                 onClick = { editing = account },
-                                modifier = Modifier.fillMaxWidth().height(LegendSize.ProfileControlHeight),
+                                modifier = Modifier.fillMaxWidth().heightIn(min = LegendSize.MinimumTapTarget),
                                 shape = LegendShapes.Control,
                                 colors = ButtonDefaults.buttonColors(containerColor = LegendColors.Navy, contentColor = LegendColors.OnNavy),
                             ) { Text("Edit profile", style = LegendTypography.BodyEmphasis) }
@@ -4969,7 +5058,6 @@ private fun AccountScreen(
                 creatorInsightsOpen = true
                 settingsOpen = false
             },
-            financial = { financial = true; settingsOpen = false },
             language = { languageAccount = it; settingsOpen = false },
             founderManagement = { founderManagement = true; settingsOpen = false },
             memberAuthority = { controlledResourceType = LegendFounderResource.LanguageTranslation; settingsOpen = false },
@@ -4982,6 +5070,12 @@ private fun AccountScreen(
             pause = viewModel::pauseAccount,
             deleteAccount = { deletePrompt = true; settingsOpen = false },
             signOut = signOut,
+        )
+    }
+    financialOutlook?.let { selection ->
+        FinancialOutlookDialog(
+            selection = selection,
+            dismiss = { financialOutlook = null },
         )
     }
 }
@@ -5124,7 +5218,14 @@ private fun LegendProfileIdentityCard(
                         }
                     }
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(account.displayName, style = LegendTypography.Title, color = LegendColors.TextPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(
+                            account.displayName,
+                            style = LegendTypography.Title,
+                            color = LegendColors.TextPrimary,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f, fill = false),
+                        )
                         if (account.isVerified) Icon(Icons.Default.Verified, "Verified", modifier = Modifier.padding(start = LegendSpacing.Xs).size(20.dp), tint = LegendColors.Verified)
                     }
                 }
@@ -5147,9 +5248,9 @@ private fun LegendProfileIdentityCard(
             if (account.isPhoneVisible) account.phone?.takeIf(String::isNotBlank)?.let { LegendProfileDetail(Icons.Default.Phone, it, LegendColors.TextSecondary) }
 
             Row(Modifier.fillMaxWidth().padding(top = LegendSpacing.Xs), horizontalArrangement = Arrangement.SpaceEvenly) {
-                LegendProfileMetric(hacCount, "Hacs")
-                LegendProfileMetric(metrics?.followingCount.orZero, "Following")
-                LegendProfileMetric(metrics?.followerCount.orZero, "Followers")
+                LegendProfileMetric(hacCount, "Hacs", Modifier.weight(1f))
+                LegendProfileMetric(metrics?.followingCount.orZero, "Following", Modifier.weight(1f))
+                LegendProfileMetric(metrics?.followerCount.orZero, "Followers", Modifier.weight(1f))
             }
         }
     }
@@ -5160,15 +5261,15 @@ private fun LegendProfileDetail(icon: androidx.compose.ui.graphics.vector.ImageV
     Row(verticalAlignment = Alignment.CenterVertically) {
         Icon(icon, null, tint = color, modifier = Modifier.size(18.dp))
         Spacer(Modifier.width(LegendSpacing.Xs))
-        Text(value, style = LegendTypography.Caption, color = color, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text(value, style = LegendTypography.Caption, color = color, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
     }
 }
 
 @Composable
-private fun LegendProfileMetric(value: Int, label: String) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+private fun LegendProfileMetric(value: Int, label: String, modifier: Modifier = Modifier) {
+    Column(modifier = modifier, horizontalAlignment = Alignment.CenterHorizontally) {
         Text(value.toString(), style = LegendTypography.Section, color = LegendColors.TextPrimary)
-        Text(label, style = LegendTypography.Caption, color = LegendColors.TextPrimary)
+        Text(label, style = LegendTypography.Caption, color = LegendColors.TextPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }
 
@@ -5186,24 +5287,32 @@ private fun LegendProfileContentSelector(selected: SocialCollection, select: (So
             val isSelected = option == selected
             TextButton(
                 onClick = { select(option) },
-                modifier = Modifier.weight(1f).height(LegendSize.ProfileControlHeight),
+                modifier = Modifier.weight(1f).heightIn(min = LegendSize.MinimumTapTarget),
                 shape = LegendShapes.Compact,
+                contentPadding = PaddingValues(horizontal = LegendSpacing.Tiny, vertical = LegendSpacing.Xs),
                 colors = ButtonDefaults.textButtonColors(
                     containerColor = if (isSelected) LegendColors.Navy else androidx.compose.ui.graphics.Color.Transparent,
                     contentColor = if (isSelected) LegendColors.OnNavy else LegendColors.Navy,
                 ),
             ) {
-                Icon(
-                    when (option) {
-                        SocialCollection.POSTS -> Icons.Default.GridView
-                        SocialCollection.HACS -> Icons.Default.VideoLibrary
-                        SocialCollection.STORIES -> Icons.Default.RadioButtonUnchecked
-                    },
-                    null,
-                    modifier = Modifier.size(18.dp),
-                )
-                Spacer(Modifier.width(LegendSpacing.Xs))
-                Text(option.label, style = LegendTypography.CardTitle)
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Icon(
+                        when (option) {
+                            SocialCollection.POSTS -> Icons.Default.GridView
+                            SocialCollection.HACS -> Icons.Default.VideoLibrary
+                            SocialCollection.STORIES -> Icons.Default.RadioButtonUnchecked
+                        },
+                        null,
+                        modifier = Modifier.size(18.dp),
+                    )
+                    Spacer(Modifier.height(LegendSpacing.Micro))
+                    Text(
+                        option.label,
+                        style = LegendTypography.Label,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
             }
         }
     }
@@ -5311,7 +5420,6 @@ private fun LegendAccountSettingsSheet(
     dismiss: () -> Unit,
     edit: (MobileAccountProfile) -> Unit,
     creatorInsights: () -> Unit,
-    financial: () -> Unit,
     language: (MobileAccountProfile) -> Unit,
     founderManagement: () -> Unit,
     memberAuthority: () -> Unit,
@@ -5340,8 +5448,7 @@ private fun LegendAccountSettingsSheet(
                 )
             }
             item { AccountSettingsRow("Edit profile", "Update your public profile, handle, and visibility", Icons.Default.Edit, click = { edit(account) }) }
-            item { AccountSettingsRow("Creator insights", "Review reach and engagement", Icons.Default.Insights, creatorInsights) }
-            item { AccountSettingsRow("Financial Intelligence", "Server-authoritative projections and priorities", Icons.Default.AccountBalance, financial) }
+            if (isFounder) item { AccountSettingsRow("Creator insights", "Review reach and engagement", Icons.Default.Insights, creatorInsights) }
             item { AccountSettingsRow("Language preferences", account.translationAccess?.preferredCommunicationLanguage ?: "No preferred communication language set", Icons.Default.Translate, { language(account) }, footnote = "Translation is server-only.") }
             if (isFounder) item { AccountSettingsRow("Founder management", "Server-authorized account archive and removal controls", Icons.Default.AdminPanelSettings, founderManagement) }
             if (isFounder) item { AccountSettingsRow("Member authority", "Grant or revoke founder-controlled LEGEND resources", Icons.Default.ManageAccounts, memberAuthority) }
@@ -5393,7 +5500,6 @@ private fun LegendAccountSettingsSheet(
                     }
                 }
             }
-            item { AccountSettingsRow("Security checkpoint", LegendCopy.value("account.securityCheckpoint"), Icons.Default.Security, click = {}) }
             item { AccountSettingsRow("Sign out", "Securely end this Android session", Icons.AutoMirrored.Filled.Logout, signOut) }
         }
     }
@@ -6269,14 +6375,18 @@ private fun FinancialReportingLockedScreen(
 }
 
 @Composable
-private fun FinancialScreen(repository: FinancialRepository, participantType: String, back: () -> Unit) {
+private fun FinancialScreen(
+    repository: FinancialRepository,
+    participantType: String,
+    openOutlook: (FinancialOutlookSelection) -> Unit,
+    back: () -> Unit,
+) {
     val viewModel: FinancialViewModel = viewModel(
         factory = LegendViewModelFactory { FinancialViewModel(repository, participantType) },
     )
     val state by viewModel.state.collectAsStateWithLifecycle()
     var route by remember { mutableStateOf(FinancialRoute.CashFlowLanding) }
     var detailDestination by remember { mutableStateOf<FinancialDetailDestination?>(null) }
-    var outlookDetail by remember { mutableStateOf<FinancialOutlookSelection?>(null) }
     LaunchedEffect(Unit) {
         var loadedDate = LocalDate.now()
         viewModel.load()
@@ -6289,7 +6399,7 @@ private fun FinancialScreen(repository: FinancialRepository, participantType: St
             }
         }
     }
-    BackHandler(enabled = route != FinancialRoute.CashFlowLanding && outlookDetail == null) {
+    BackHandler(enabled = route != FinancialRoute.CashFlowLanding) {
         when (route) {
             FinancialRoute.Detail -> {
                 detailDestination = null
@@ -6308,12 +6418,12 @@ private fun FinancialScreen(repository: FinancialRepository, participantType: St
                 when (destination) {
                     FinancialDetailDestination.CurrentOutlook -> {
                         snapshot.operatingSystem?.weekAtGlance?.let {
-                            outlookDetail = FinancialOutlookSelection.Week(it)
+                            openOutlook(FinancialOutlookSelection.Week(it))
                         }
                     }
                     FinancialDetailDestination.MonthlyOutlook -> {
                         snapshot.operatingSystem?.monthAtGlance?.let {
-                            outlookDetail = FinancialOutlookSelection.Month(it)
+                            openOutlook(FinancialOutlookSelection.Month(it))
                         }
                     }
                     else -> {
@@ -6329,12 +6439,12 @@ private fun FinancialScreen(repository: FinancialRepository, participantType: St
                     openFinancialIntelligence = { route = FinancialRoute.Intelligence },
                     openWeek = {
                         snapshot.operatingSystem?.weekAtGlance?.let {
-                            outlookDetail = FinancialOutlookSelection.Week(it)
+                            openOutlook(FinancialOutlookSelection.Week(it))
                         }
                     },
                     openMonth = {
                         snapshot.operatingSystem?.monthAtGlance?.let {
-                            outlookDetail = FinancialOutlookSelection.Month(it)
+                            openOutlook(FinancialOutlookSelection.Month(it))
                         }
                     },
                 )
@@ -6362,13 +6472,6 @@ private fun FinancialScreen(repository: FinancialRepository, participantType: St
                         )
                     }
                 }
-            }
-
-            outlookDetail?.let { selection ->
-                FinancialOutlookDialog(
-                    selection = selection,
-                    dismiss = { outlookDetail = null },
-                )
             }
         }
     }
@@ -6904,7 +7007,7 @@ private fun FinancialOutlookDialog(selection: FinancialOutlookSelection, dismiss
         Surface(color = LegendColors.Navy, modifier = Modifier.fillMaxSize()) {
             Box(Modifier.fillMaxSize().background(LegendGradients.FinancialSheet)) {
                 LazyColumn(
-                    modifier = Modifier.fillMaxSize().statusBarsPadding(),
+                    modifier = Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding(),
                     contentPadding = PaddingValues(horizontal = LegendSpacing.PageHorizontal, vertical = LegendSpacing.Md),
                     verticalArrangement = Arrangement.spacedBy(LegendSpacing.Sm),
                 ) {
