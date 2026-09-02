@@ -27,7 +27,11 @@ interface LegendApi {
     @GET("api/v1/mobile/founder/legend-ai/access") suspend fun founderAiAccess(@Header("X-Legend-Participant-Type") participantType: String): Response<FounderAiAccessResponse>
     @POST("api/v1/mobile/founder/legend-ai/chat") suspend fun founderAiChat(@Header("X-Legend-Participant-Type") participantType: String, @Header("X-Legend-Ai-Operation-Id") operationId: String, @Body request: FounderAiChatRequest): Response<FounderAiChatResponse>
     @GET("api/v1/mobile/home") suspend fun home(@Header("X-Legend-Participant-Type") participantType: String): Response<MobileHomeResponse>
-    @GET("api/v1/mobile/financial") suspend fun financial(@Header("X-Legend-Participant-Type") participantType: String): Response<FinancialSnapshot>
+    @GET("api/v1/mobile/financial") suspend fun financial(
+        @Header("X-Legend-Participant-Type") participantType: String,
+        @Header("X-Agent-TimeZone") timeZoneId: String,
+        @Header("X-Agent-TzOffset") timeZoneOffsetMinutes: String,
+    ): Response<FinancialSnapshot>
     @GET("api/v1/mobile/agent/clients") suspend fun agentClients(@Header("X-Legend-Participant-Type") participantType: String): Response<List<MobileAgentClient>>
     @GET("api/v1/mobile/agent/leads") suspend fun agentLeads(@Header("X-Legend-Participant-Type") participantType: String): Response<List<MobileAgentLead>>
     @POST("api/v1/mobile/agent/clients/portal-launch") suspend fun clientCreationPortalLaunch(@Header("X-Legend-Participant-Type") participantType: String, @Body request: EmptyRequest = EmptyRequest()): Response<MobileClientCreationPortalLaunch>
@@ -169,7 +173,9 @@ class LegendApiClient private constructor(val api: LegendApi, val httpClient: Ok
                     // caller-specified media preference while retaining JSON as the mobile
                     // default for every established API call.
                     if (incoming.header("Accept").isNullOrBlank()) header("Accept", "application/json")
-                }.header("X-Correlation-ID", UUID.randomUUID().toString()).apply {
+                }
+                    .header("X-Correlation-ID", UUID.randomUUID().toString())
+                    .apply {
                     if (!token.isNullOrBlank()) header("Authorization", "Bearer $token")
                 }.build()
                 chain.proceed(request)

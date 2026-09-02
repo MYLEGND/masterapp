@@ -47,7 +47,7 @@ class LegendFirebaseMessagingService : FirebaseMessagingService() {
         notificationManager().notify(
             message.data["notificationId"]?.hashCode() ?: message.messageId?.hashCode() ?: 0,
             NotificationCompat.Builder(this, CHANNEL)
-                .setSmallIcon(R.drawable.ic_legend_launcher)
+                .setSmallIcon(R.drawable.ic_legend_notification)
                 .setContentTitle(notification.title ?: "LEGEND®")
                 .setContentText(notification.body)
                 .setContentIntent(pendingIntent)

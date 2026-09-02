@@ -8292,6 +8292,14 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
                             new Date()
                         )
                         : undefined,
+                mobilePeriodProjection:
+                    !isBusinessExpenseLens &&
+                    expenseLensProjectionApi?.buildMobilePeriodProjection
+                        ? expenseLensProjectionApi.buildMobilePeriodProjection(
+                            latestExpenseLensProjection,
+                            new Date()
+                        )
+                        : undefined,
                 ...extraState
             };
         };
@@ -9472,7 +9480,10 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
             const projection = expenseLensProjectionApi.projectExpenseLensTimeline({
                 state: buildRawExpenseLensState(),
                 selectedMonthKey: requestedMonthKey,
-                asOfDate: debtState.asOfDate || new Date(),
+                // Debt's as-of date remains part of the normalized state and
+                // anchors its balance. Temporal status must follow today so
+                // the web projection and native current-period views agree.
+                asOfDate: new Date(),
                 horizonMonths: EL_TRACKER_MAX_FUTURE_MONTHS
             });
 

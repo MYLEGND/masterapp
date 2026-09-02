@@ -1,6 +1,7 @@
-using Infrastructure.Mobile;
-using Infrastructure.Messaging;
+using AgentPortal.Services;
 using Domain.Messaging;
+using Infrastructure.Messaging;
+using Infrastructure.Mobile;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -15,15 +16,18 @@ public sealed class MobileHomeController : MobileApiControllerBase
 {
     private readonly IMobileHomeService _home;
     private readonly IMessagingProfileImageResolver _profiles;
+    private readonly IAgentTimeZoneResolver _timeZones;
 
     public MobileHomeController(
         IMobileActorResolver actorResolver,
         IMobileHomeService home,
-        IMessagingProfileImageResolver profiles)
+        IMessagingProfileImageResolver profiles,
+        IAgentTimeZoneResolver timeZones)
         : base(actorResolver)
     {
         _home = home;
         _profiles = profiles;
+        _timeZones = timeZones;
     }
 
     [HttpGet("home")]
@@ -49,7 +53,14 @@ public sealed class MobileHomeController : MobileApiControllerBase
         if (resolved.Error is not null)
             return resolved.Error;
 
-        var result = await _home.GetFinancialAsync(resolved.Actor!, cancellationToken);
+        var currentDate = DateOnly.FromDateTime(
+            TimeZoneInfo.ConvertTimeFromUtc(
+                DateTime.UtcNow,
+                _timeZones.Resolve(HttpContext)));
+        var result = await _home.GetFinancialAsync(
+            resolved.Actor!,
+            currentDate,
+            cancellationToken);
         return result.Succeeded && result.Snapshot is not null
             ? Ok(result.Snapshot)
             : Error(

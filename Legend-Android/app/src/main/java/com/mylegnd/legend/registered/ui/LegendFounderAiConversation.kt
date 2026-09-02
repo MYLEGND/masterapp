@@ -88,11 +88,10 @@ fun LegendFounderAiLauncherButton(onClick: () -> Unit, modifier: Modifier = Modi
     IconButton(
         onClick = onClick,
         modifier = modifier
-            .size(LegendSize.CompactControlHeight)
-            .clip(CircleShape)
-            .background(LegendColors.Navy),
+            .size(LegendSize.MinimumTapTarget)
+            .clip(CircleShape),
     ) {
-        FounderAiMark(LegendSize.CompactControlHeight - LegendSpacing.Tiny)
+        FounderAiMark(LegendSize.MinimumTapTarget)
     }
 }
 

@@ -9,6 +9,7 @@
 
     const CURRENT_VERSION = 2;
     const MAX_PROJECTION_MONTHS = 120;
+    const MAX_MOBILE_PERIOD_MONTHS = 24;
 
     const normalizeFrequency = (value) => {
         const normalized = (value || "").toString().toLowerCase().replace(/[^a-z]/g, "");
@@ -1107,6 +1108,78 @@
         };
     };
 
+    /**
+     * Persists the canonical Expense Lens output by calendar period so native
+     * clients can resolve the real current week/month at request time. The
+     * server only selects from these web-authored snapshots; it never repeats
+     * Expense Lens arithmetic or substitutes a UI-selected month.
+     */
+    const buildMobilePeriodProjection = (projection, generatedValue = new Date()) => {
+        if (!projection || typeof projection !== "object" || !Array.isArray(projection.months)) {
+            return null;
+        }
+
+        const generatedDate = generatedValue instanceof Date
+            ? new Date(generatedValue)
+            : new Date();
+        const generatedUtc = Number.isNaN(generatedDate.getTime())
+            ? new Date().toISOString()
+            : generatedDate.toISOString();
+        const currentMonthKey = formatMonthKey(generatedDate);
+
+        const periods = projection.months
+            .filter((month) =>
+                compareMonthKeys(month?.monthKey, currentMonthKey) >= 0
+            )
+            .slice(0, MAX_MOBILE_PERIOD_MONTHS)
+            .map((month) => {
+                const monthKey = String(month?.monthKey || "");
+                const monthDate = parseMonthKey(monthKey);
+                if (!monthDate || !Array.isArray(month?.weeks)) return null;
+
+                const monthSnapshot = buildMobileMonthSnapshot(
+                    projection,
+                    monthDate
+                );
+                if (!monthSnapshot) return null;
+
+                const weekSnapshots = month.weeks
+                    .map((week) => {
+                        const weekDate = week?.startDate instanceof Date
+                            ? week.startDate
+                            : parseDate(week?.startDate || week?.startDateKey);
+                        return weekDate
+                            ? buildMobileWeekSnapshot(projection, weekDate)
+                            : null;
+                    })
+                    .filter(Boolean);
+
+                return {
+                    monthKey,
+                    monthSnapshot,
+                    weekSnapshots
+                };
+            })
+            .filter(Boolean);
+
+        if (periods.length === 0) return null;
+
+        return {
+            schemaVersion: 1,
+            generatedUtc,
+            sourceStateVersion: Math.round(
+                Number(projection.stateVersion) || CURRENT_VERSION
+            ),
+            projectionStartMonthKey: String(
+                periods[0].monthKey
+            ),
+            projectionEndMonthKey: String(
+                periods[periods.length - 1].monthKey
+            ),
+            periods
+        };
+    };
+
     const projectExpenseLensTimeline = (input = {}) => {
         const state = normalizeState(input.state || {});
         const today = todayDate(input.asOfDate || new Date());
@@ -1448,6 +1521,7 @@
     return {
         CURRENT_VERSION,
         MAX_PROJECTION_MONTHS,
+        MAX_MOBILE_PERIOD_MONTHS,
         normalizeFrequency,
         parseMoneyToCents,
         centsToDollars,
@@ -1466,6 +1540,7 @@
         summarizeExpenseCategories,
         buildMobileWeekSnapshot,
         buildMobileMonthSnapshot,
+        buildMobilePeriodProjection,
         projectExpenseLensTimeline
     };
 });

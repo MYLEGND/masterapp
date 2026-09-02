@@ -70,7 +70,9 @@ public sealed class AgentMobileExpenseLensBridgeTests
         Assert.Equal("ExpenseLens", persisted.ToolId);
 
         var mobile = await new MobileFinancialOperatingSystemProjectionService(db)
-            .ProjectAgentAsync(agentOid);
+            .ProjectAgentAsync(
+                agentOid,
+                new DateOnly(2026, 7, 29));
 
         Assert.Equal("Available", mobile.Projection.Status);
         var week = Assert.IsType<MobileFinancialWeekAtGlance>(mobile.WeekAtGlance);

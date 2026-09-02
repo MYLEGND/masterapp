@@ -3211,16 +3211,18 @@ private struct LegendFinancialProfilePanel: View {
     @ObservedObject private var store: MobileFinancialStore
     @ObservedObject private var bootstrap: LegendApplicationBootstrapCoordinator
     let openFinancialIntelligence: () -> Void
-    @State private var selectedOutlook: LegendFinancialOutlookSelection?
+    let openOutlook: (LegendFinancialOutlookSelection) -> Void
 
     init(
         store: MobileFinancialStore,
         bootstrap: LegendApplicationBootstrapCoordinator,
-        openFinancialIntelligence: @escaping () -> Void
+        openFinancialIntelligence: @escaping () -> Void,
+        openOutlook: @escaping (LegendFinancialOutlookSelection) -> Void
     ) {
         _store = ObservedObject(wrappedValue: store)
         _bootstrap = ObservedObject(wrappedValue: bootstrap)
         self.openFinancialIntelligence = openFinancialIntelligence
+        self.openOutlook = openOutlook
     }
 
     var body: some View {
@@ -3273,8 +3275,17 @@ private struct LegendFinancialProfilePanel: View {
         .task {
             await bootstrap.loadFinancialIntelligenceIfNeeded()
         }
-        .sheet(item: $selectedOutlook) { selection in
-            LegendFinancialOutlookSheet(selection: selection)
+        .onReceive(
+            NotificationCenter.default.publisher(
+                for: .NSCalendarDayChanged)
+        ) { _ in
+            Task { await bootstrap.refreshFinancial() }
+        }
+        .onReceive(
+            NotificationCenter.default.publisher(
+                for: .NSSystemTimeZoneDidChange)
+        ) { _ in
+            Task { await bootstrap.refreshFinancial() }
         }
     }
 
@@ -3325,7 +3336,7 @@ private struct LegendFinancialProfilePanel: View {
                             expenseCents: week.debitExpenseCents + week.creditExpenseCents,
                             endingCashCents: week.endingCashCents,
                             action: {
-                                selectedOutlook = .week(week)
+                                openOutlook(.week(week))
                             }
                         )
                     }
@@ -3341,7 +3352,7 @@ private struct LegendFinancialProfilePanel: View {
                             expenseCents: month.debitExpenseCents + month.creditExpenseCents,
                             endingCashCents: month.endingCashCents,
                             action: {
-                                selectedOutlook = .month(month)
+                                openOutlook(.month(month))
                             }
                         )
                     }
@@ -5792,6 +5803,7 @@ private struct LegendAccountView: View {
     @State private var editingHac: MobileSocialPost?
     @State private var deletionTarget: MobileSocialPost?
     @State private var profilePage = 0
+    @State private var selectedFinancialOutlook: LegendFinancialOutlookSelection?
     @State private var controlledResourceRequestFeedback: LegendRequestSubmissionFeedback?
     @State private var selectedProfilePhoto: PhotosPickerItem?
     private let financialReportingAccess = MobileFinancialReportingAccessAuthenticator()
@@ -5870,6 +5882,9 @@ private struct LegendAccountView: View {
                 post: post,
                 social: social,
                 onSaved: { editingHac = nil })
+        }
+        .sheet(item: $selectedFinancialOutlook) { selection in
+            LegendFinancialOutlookSheet(selection: selection)
         }
         .navigationDestination(
             isPresented: Binding(
@@ -6077,7 +6092,8 @@ private struct LegendAccountView: View {
                 LegendFinancialProfilePanel(
                     store: bootstrap.stores.financial,
                     bootstrap: bootstrap,
-                    openFinancialIntelligence: openFinancialIntelligence
+                    openFinancialIntelligence: openFinancialIntelligence,
+                    openOutlook: { selectedFinancialOutlook = $0 }
                 )
             }
             .tag(1)
@@ -6779,46 +6795,17 @@ private struct LegendAccountView: View {
                     }
 
                     LegendProfileSettingsSection(title: "Profile") {
-                        VStack(spacing: 0) {
-                            Button {
-                                isShowingSettings = false
-                                isEditing = true
-                            } label: {
-                                LegendProfileSettingsRow(
-                                    title: "Edit profile",
-                                    detail: "Name, bio, links, and privacy",
-                                    systemImage: "person.crop.circle",
-                                    showsChevron: true)
-                            }
-                            .buttonStyle(.plain)
-
-                            LegendProfileSettingsDivider()
-
-                            Button {
-                                profileSettingsPresentation = .creatorInsights
-                            } label: {
-                                LegendProfileSettingsRow(
-                                    title: "Creator insights",
-                                    detail: "Review reach and engagement",
-                                    systemImage: "chart.line.uptrend.xyaxis",
-                                    showsChevron: true)
-                            }
-                            .buttonStyle(.plain)
-
-                            LegendProfileSettingsDivider()
-
-                            Button {
-                                Task { await bootstrap.refreshProfile() }
-                                isShowingSettings = false
-                            } label: {
-                                LegendProfileSettingsRow(
-                                    title: "Refresh profile",
-                                    detail: "Check for the latest account details",
-                                    systemImage: "arrow.clockwise",
-                                    showsChevron: false)
-                            }
-                            .buttonStyle(.plain)
+                        Button {
+                            isShowingSettings = false
+                            isEditing = true
+                        } label: {
+                            LegendProfileSettingsRow(
+                                title: "Edit profile",
+                                detail: "Name, bio, links, and privacy",
+                                systemImage: "person.crop.circle",
+                                showsChevron: true)
                         }
+                        .buttonStyle(.plain)
                     }
 
                     if currentSession.actor.identity.participantType == .agent {
@@ -6839,6 +6826,66 @@ private struct LegendAccountView: View {
                                     showsChevron: true)
                             }
                             .buttonStyle(.plain)
+                        }
+
+                        LegendProfileSettingsSection(title: "Founder diagnostics") {
+                            VStack(spacing: 0) {
+                                Button {
+                                    profileSettingsPresentation = .creatorInsights
+                                } label: {
+                                    LegendProfileSettingsRow(
+                                        title: "Creator insights",
+                                        detail: "Review reach and engagement",
+                                        systemImage: "chart.line.uptrend.xyaxis",
+                                        showsChevron: true)
+                                }
+                                .buttonStyle(.plain)
+
+                                LegendProfileSettingsDivider()
+
+                                Button {
+                                    Task { await bootstrap.refreshProfile() }
+                                    isShowingSettings = false
+                                } label: {
+                                    LegendProfileSettingsRow(
+                                        title: "Refresh profile",
+                                        detail: "Check for the latest account details",
+                                        systemImage: "arrow.clockwise",
+                                        showsChevron: false)
+                                }
+                                .buttonStyle(.plain)
+
+                                LegendProfileSettingsDivider()
+
+                                LegendProfileSettingsRow(
+                                    title: "Security checkpoint",
+                                    detail: LegendSharedDesign.copy("account.securityCheckpoint"),
+                                    systemImage: "calendar.badge.exclamationmark",
+                                    showsChevron: false)
+
+                                LegendProfileSettingsDivider()
+
+                                LegendProfileSettingsRow(
+                                    title: "Token storage",
+                                    detail: "iOS Keychain",
+                                    systemImage: "key.fill",
+                                    showsChevron: false)
+
+                                LegendProfileSettingsDivider()
+
+                                Button {
+                                    profileSettingsPresentation = .pushNotificationStatus
+                                    pushNotifications.refreshNotificationAuthorizationStatus()
+                                    Task { await bootstrap.stores.notifications.refreshPushDiagnostic() }
+                                } label: {
+                                    LegendProfileSettingsRow(
+                                        title: "Push notification status",
+                                        detail: "Review this device's secure delivery state",
+                                        systemImage: "bell.badge",
+                                        showsChevron: true)
+                                }
+                                .buttonStyle(.plain)
+                            }
                         }
                     }
 
@@ -6874,14 +6921,6 @@ private struct LegendAccountView: View {
 
                     LegendProfileSettingsSection(title: "Privacy") {
                         VStack(spacing: 0) {
-                            LegendProfileSettingsRow(
-                                title: "Profile email",
-                                detail: "Shown only when you enable it",
-                                systemImage: "lock.shield",
-                                showsChevron: false)
-
-                            LegendProfileSettingsDivider()
-
                             LegendProfileSettingsToggleRow(
                                 title: "Private account",
                                 detail: "Only approved followers can view your posts",
@@ -6994,57 +7033,16 @@ private struct LegendAccountView: View {
                     }
 
                     LegendProfileSettingsSection(title: "Security") {
-                        VStack(spacing: 0) {
-                            LegendProfileSettingsRow(
-                                title: "Secure session",
-                                detail: "Protected",
-                                systemImage: "lock.shield.fill",
-                                showsChevron: false)
-
-                            LegendProfileSettingsDivider()
-
-                            LegendProfileSettingsToggleRow(
-                                title: "Face ID",
-                                detail: coordinator.isBiometricSignInAvailable
-                                    ? "Optional protection for this account on this device"
-                                    : "Face ID is not available on this device",
-                                systemImage: "faceid",
-                                isOn: biometricSignInBinding)
-                            .disabled(
-                                !coordinator.isBiometricSignInAvailable &&
-                                !coordinator.isBiometricSignInEnabled)
-
-                            LegendProfileSettingsDivider()
-
-                            LegendProfileSettingsRow(
-                                title: "Security checkpoint",
-                                detail: LegendSharedDesign.copy("account.securityCheckpoint"),
-                                systemImage: "calendar.badge.exclamationmark",
-                                showsChevron: false)
-
-                            LegendProfileSettingsDivider()
-
-                            LegendProfileSettingsRow(
-                                title: "Token storage",
-                                detail: "iOS Keychain",
-                                systemImage: "key.fill",
-                                showsChevron: false)
-
-                            LegendProfileSettingsDivider()
-
-                            Button {
-                                profileSettingsPresentation = .pushNotificationStatus
-                                pushNotifications.refreshNotificationAuthorizationStatus()
-                                Task { await bootstrap.stores.notifications.refreshPushDiagnostic() }
-                            } label: {
-                                LegendProfileSettingsRow(
-                                    title: "Push notification status",
-                                    detail: "Review this device's secure delivery state",
-                                    systemImage: "bell.badge",
-                                    showsChevron: true)
-                            }
-                            .buttonStyle(.plain)
-                        }
+                        LegendProfileSettingsToggleRow(
+                            title: "Face ID",
+                            detail: coordinator.isBiometricSignInAvailable
+                                ? "Optional protection for this account on this device"
+                                : "Face ID is not available on this device",
+                            systemImage: "faceid",
+                            isOn: biometricSignInBinding)
+                        .disabled(
+                            !coordinator.isBiometricSignInAvailable &&
+                            !coordinator.isBiometricSignInEnabled)
                     }
 
                     LegendProfileSettingsSection(title: "Account access") {

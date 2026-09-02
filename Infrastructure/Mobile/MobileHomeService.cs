@@ -16,7 +16,10 @@ public interface IMobileHomeService
 {
     Task<MobileHomeResult> GetHomeAsync(MobileResolvedActor actor, CancellationToken cancellationToken = default);
 
-    Task<MobileFinancialResult> GetFinancialAsync(MobileResolvedActor actor, CancellationToken cancellationToken = default);
+    Task<MobileFinancialResult> GetFinancialAsync(
+        MobileResolvedActor actor,
+        DateOnly currentDate,
+        CancellationToken cancellationToken = default);
 
     Task<MobileAgentClientsResult> GetAgentClientsAsync(MobileResolvedActor actor, CancellationToken cancellationToken = default);
 
@@ -82,6 +85,7 @@ public sealed class MobileHomeService : IMobileHomeService
 
     public async Task<MobileFinancialResult> GetFinancialAsync(
         MobileResolvedActor actor,
+        DateOnly currentDate,
         CancellationToken cancellationToken = default)
     {
         if (string.Equals(
@@ -89,7 +93,10 @@ public sealed class MobileHomeService : IMobileHomeService
                 MessagingParticipantTypes.Client,
                 StringComparison.Ordinal))
         {
-            return await GetClientFinancialAsync(actor, cancellationToken);
+            return await GetClientFinancialAsync(
+                actor,
+                currentDate,
+                cancellationToken);
         }
 
         if (string.Equals(
@@ -97,7 +104,10 @@ public sealed class MobileHomeService : IMobileHomeService
                 MessagingParticipantTypes.Agent,
                 StringComparison.Ordinal))
         {
-            return await GetAgentFinancialAsync(actor, cancellationToken);
+            return await GetAgentFinancialAsync(
+                actor,
+                currentDate,
+                cancellationToken);
         }
 
         return MobileFinancialResult.Unavailable(
@@ -107,6 +117,7 @@ public sealed class MobileHomeService : IMobileHomeService
 
     private async Task<MobileFinancialResult> GetClientFinancialAsync(
         MobileResolvedActor actor,
+        DateOnly currentDate,
         CancellationToken cancellationToken)
     {
         var financialScope = await _households.ResolveActiveAccessAsync(
@@ -169,6 +180,7 @@ public sealed class MobileHomeService : IMobileHomeService
 
         var operatingSystem = await _financialOperatingSystem.ProjectAsync(
             actor.ProfileId,
+            currentDate,
             cancellationToken);
 
         var intelligenceSummary = intelligence is null
@@ -208,6 +220,7 @@ public sealed class MobileHomeService : IMobileHomeService
 
     private async Task<MobileFinancialResult> GetAgentFinancialAsync(
         MobileResolvedActor actor,
+        DateOnly currentDate,
         CancellationToken cancellationToken)
     {
         var normalizedAgentUserId = actor.Actor.UserId.Trim().ToLowerInvariant();
@@ -234,6 +247,7 @@ public sealed class MobileHomeService : IMobileHomeService
 
         var operatingSystem = await _financialOperatingSystem.ProjectAgentAsync(
             actor.Actor.UserId,
+            currentDate,
             cancellationToken);
         var presentation = MobileFinancialPresentationEvaluator.Evaluate(
             position,
