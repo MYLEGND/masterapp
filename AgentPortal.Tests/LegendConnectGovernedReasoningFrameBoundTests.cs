@@ -9,6 +9,31 @@ namespace AgentPortal.Tests;
 public sealed class LegendConnectGovernedReasoningFrameBoundTests
 {
     [Fact]
+    public void Executor_RejectsFramesAboveTheSharedControlledGraphBound()
+    {
+        var family = Guid.NewGuid();
+        var oversizedSource = Enumerable.Range(
+                1,
+                LegendConnectGovernedReasoningExecutor.MaximumFrameDimensions + 1)
+            .ToDictionary(
+                index => $"coordinate_{index}",
+                index => $"value_{index}",
+                StringComparer.Ordinal);
+        var rule = Rule(
+            family,
+            "reasoning.forward.frame-bound",
+            oversizedSource,
+            Dimensions(("result", "controlled")));
+
+        var execution = LegendConnectGovernedReasoningExecutor.Derive(
+            oversizedSource,
+            [rule],
+            [family]);
+
+        Assert.Empty(execution.DerivedStates);
+    }
+
+    [Fact]
     public void Executor_AcceptsBoundedReasoningFramesWithStructuralGraphCoordinates()
     {
         var family = Guid.NewGuid();
