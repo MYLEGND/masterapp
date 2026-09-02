@@ -24,7 +24,9 @@ val legendProperties = Properties().apply {
         configuration.inputStream().use(::load)
     }
 }
-fun legendValue(name: String): String = legendProperties.getProperty(name)?.trim().orEmpty()
+fun legendValue(name: String): String = legendProperties.getProperty(name)?.trim().orEmpty().ifBlank {
+    providers.environmentVariable(name).orNull?.trim().orEmpty()
+}
 
 val legendApplicationId = "com.mylegnd.legend.registered"
 val legendDebugRuntimeRoot = layout.buildDirectory.dir("generated/legend-runtime/debug")
@@ -49,6 +51,13 @@ val sharedLegendAppIcon = rootProject.file(
 val legendBrandAssets = layout.buildDirectory.dir("generated/legend-brand/assets")
 val legendBrandRes = layout.buildDirectory.dir("generated/legend-brand/res")
 val productionMsalRedirectUri = legendValue("LEGEND_MSAL_REDIRECT_URI")
+val releaseSigningEnvironment = mapOf(
+    "keyStorePath" to providers.environmentVariable("LEGEND_ANDROID_KEYSTORE_PATH").orNull,
+    "keyStorePassword" to providers.environmentVariable("LEGEND_ANDROID_KEYSTORE_PASSWORD").orNull,
+    "keyAlias" to providers.environmentVariable("LEGEND_ANDROID_KEY_ALIAS").orNull,
+    "keyPassword" to providers.environmentVariable("LEGEND_ANDROID_KEY_PASSWORD").orNull,
+)
+val releaseSigningConfigured = releaseSigningEnvironment.values.all { !it.isNullOrBlank() }
 
 fun signingCertificateHash(keyStoreFile: File): String? = runCatching {
     val keyStore = KeyStore.getInstance("JKS")
@@ -83,36 +92,36 @@ val debugMsalSignatureHash = msalSignatureHash(debugMsalRedirectUri)
  * this work configuration-cache compatible: it owns only immutable input values and declared
  * output directories, rather than a build-script closure captured by a DefaultTask action.
  */
+val legendDebugRuntimeConfiguration = mapOf(
+    "apiBaseUrl" to legendValue("LEGEND_API_BASE_URL"),
+    "entraClientId" to legendValue("LEGEND_ENTRA_CLIENT_ID"),
+    "entraAuthority" to legendValue("LEGEND_ENTRA_AUTHORITY"),
+    "entraScope" to legendValue("LEGEND_ENTRA_SCOPE"),
+    "entraTenantId" to legendValue("LEGEND_ENTRA_TENANT_ID"),
+    "msalRedirectUri" to debugMsalRedirectUri,
+)
+
 val generateLegendDebugRuntimeConfiguration by tasks.registering(Sync::class) {
-    inputs.file(rootProject.file("legend.properties")).optional()
+    inputs.properties(legendDebugRuntimeConfiguration)
     from("src/main/legend-template")
     into(legendDebugRuntimeRoot)
-    expand(
-        mapOf(
-            "apiBaseUrl" to legendValue("LEGEND_API_BASE_URL"),
-            "entraClientId" to legendValue("LEGEND_ENTRA_CLIENT_ID"),
-            "entraAuthority" to legendValue("LEGEND_ENTRA_AUTHORITY"),
-            "entraScope" to legendValue("LEGEND_ENTRA_SCOPE"),
-            "entraTenantId" to legendValue("LEGEND_ENTRA_TENANT_ID"),
-            "msalRedirectUri" to debugMsalRedirectUri,
-        ),
-    )
+    expand(legendDebugRuntimeConfiguration)
 }
 
+val legendReleaseRuntimeConfiguration = mapOf(
+    "apiBaseUrl" to legendValue("LEGEND_API_BASE_URL"),
+    "entraClientId" to legendValue("LEGEND_ENTRA_CLIENT_ID"),
+    "entraAuthority" to legendValue("LEGEND_ENTRA_AUTHORITY"),
+    "entraScope" to legendValue("LEGEND_ENTRA_SCOPE"),
+    "entraTenantId" to legendValue("LEGEND_ENTRA_TENANT_ID"),
+    "msalRedirectUri" to productionMsalRedirectUri,
+)
+
 val generateLegendReleaseRuntimeConfiguration by tasks.registering(Sync::class) {
-    inputs.file(rootProject.file("legend.properties")).optional()
+    inputs.properties(legendReleaseRuntimeConfiguration)
     from("src/main/legend-template")
     into(legendReleaseRuntimeRoot)
-    expand(
-        mapOf(
-            "apiBaseUrl" to legendValue("LEGEND_API_BASE_URL"),
-            "entraClientId" to legendValue("LEGEND_ENTRA_CLIENT_ID"),
-            "entraAuthority" to legendValue("LEGEND_ENTRA_AUTHORITY"),
-            "entraScope" to legendValue("LEGEND_ENTRA_SCOPE"),
-            "entraTenantId" to legendValue("LEGEND_ENTRA_TENANT_ID"),
-            "msalRedirectUri" to productionMsalRedirectUri,
-        ),
-    )
+    expand(legendReleaseRuntimeConfiguration)
 }
 
 /** Bundles the single cross-platform design authority without copying it into Android source. */
@@ -155,6 +164,17 @@ android {
         manifestPlaceholders["msalSignatureHash"] = productionMsalSignatureHash
     }
 
+    signingConfigs {
+        if (releaseSigningConfigured) {
+            create("legendRelease") {
+                storeFile = file(requireNotNull(releaseSigningEnvironment["keyStorePath"]))
+                storePassword = requireNotNull(releaseSigningEnvironment["keyStorePassword"])
+                keyAlias = requireNotNull(releaseSigningEnvironment["keyAlias"])
+                keyPassword = requireNotNull(releaseSigningEnvironment["keyPassword"])
+            }
+        }
+    }
+
     buildTypes {
         debug {
             versionNameSuffix = "-debug"
@@ -163,6 +183,9 @@ android {
         release {
             isMinifyEnabled = true
             isShrinkResources = true
+            if (releaseSigningConfigured) {
+                signingConfig = signingConfigs.getByName("legendRelease")
+            }
             manifestPlaceholders["msalSignatureHash"] = productionMsalSignatureHash
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
