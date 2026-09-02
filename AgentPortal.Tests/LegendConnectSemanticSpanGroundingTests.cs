@@ -23,6 +23,38 @@ namespace AgentPortal.Tests;
 public sealed class LegendConnectSemanticSpanGroundingTests
 {
     [Fact]
+    public async Task FounderCurriculum_AcceptsReasoningFramesAboveTheLegacyTwelveDimensionLimit()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var fixture = CreateFixture(db);
+        var sourceFrame = Enumerable.Range(1, 13).ToDictionary(
+            index => $"reasoning_coordinate_{index}",
+            index => $"controlled_value_{index}",
+            StringComparer.Ordinal);
+        var resultFrame = new Dictionary<string, string>
+        {
+            ["conversation_function"] = "bounded_reasoning_response"
+        };
+        var submitted = await fixture.Curriculum.SubmitFounderBatchAsync(
+            new LegendConnectCurriculumBatchSubmission(
+                "reasoning.frame-bound.curriculum",
+                "Founder-controlled reasoning frame above the legacy twelve-coordinate limit",
+                [
+                    new LegendConnectCurriculumExampleSubmission(
+                        "Founder bounded reasoning source evidence.",
+                        sourceFrame),
+                    new LegendConnectCurriculumExampleSubmission(
+                        "Founder bounded reasoning result evidence.",
+                        resultFrame)
+                ],
+                [new LegendConnectSemanticTransitionSubmission(
+                    new LegendConnectSemanticFrameSubmission(sourceFrame),
+                    new LegendConnectSemanticFrameSubmission(resultFrame))]));
+
+        Assert.True(submitted.Succeeded, submitted.Message);
+    }
+
+    [Fact]
     public async Task ProductionConversation_UsesSelectedGovernedEndpoint_WhenOriginalCompositionIsUnavailable()
     {
         await using var db = ControllerTestHelpers.BuildDb();
