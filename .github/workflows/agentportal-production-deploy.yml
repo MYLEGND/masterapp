@@ -416,6 +416,7 @@ jobs:
           Write-Output "::add-mask::$connection"
           "ConnectionStrings__MasterAppDb=$connection" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           "EF_FORCE_SQLSERVER=true" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "EF_SQL_COMMAND_TIMEOUT_SECONDS=600" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           "DOTNET_ENVIRONMENT=Development" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           "ASPNETCORE_ENVIRONMENT=Development" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 

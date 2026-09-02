@@ -23,6 +23,7 @@ public sealed class MasterAppDbContextFactory : IDesignTimeDbContextFactory<Mast
         cs = NormalizeSqliteConnectionString(cs, basePath);
 
         var opts = new DbContextOptionsBuilder<MasterAppDbContext>();
+        var sqlCommandTimeoutSeconds = ResolveSqlServerCommandTimeoutSeconds();
 
         var forceSqlServer =
             string.Equals(
@@ -34,7 +35,7 @@ public sealed class MasterAppDbContextFactory : IDesignTimeDbContextFactory<Mast
         {
             opts.UseSqlServer(cs, sql =>
             {
-                sql.CommandTimeout(120);
+                sql.CommandTimeout(sqlCommandTimeoutSeconds);
             });
         }
         else if (IsSqliteConnectionString(cs))
@@ -48,7 +49,7 @@ public sealed class MasterAppDbContextFactory : IDesignTimeDbContextFactory<Mast
         {
             opts.UseSqlServer(cs, sql =>
             {
-                sql.CommandTimeout(120);
+                sql.CommandTimeout(sqlCommandTimeoutSeconds);
             });
         }
 
@@ -179,5 +180,18 @@ public sealed class MasterAppDbContextFactory : IDesignTimeDbContextFactory<Mast
 
         var fullPath = Path.GetFullPath(Path.Combine(basePath, rawPath));
         return $"{key}{fullPath}";
+    }
+
+    private static int ResolveSqlServerCommandTimeoutSeconds()
+    {
+        const int defaultTimeoutSeconds = 120;
+        const int minTimeoutSeconds = 30;
+        const int maxTimeoutSeconds = 1800;
+
+        var configured = Environment.GetEnvironmentVariable("EF_SQL_COMMAND_TIMEOUT_SECONDS");
+        if (!int.TryParse(configured, out var parsed))
+            return defaultTimeoutSeconds;
+
+        return Math.Clamp(parsed, minTimeoutSeconds, maxTimeoutSeconds);
     }
 }
