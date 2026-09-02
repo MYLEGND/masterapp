@@ -37,7 +37,13 @@ internal static class LegendConnectGovernedReasoningExecutor
     internal const int MaximumDepth = 12;
     internal const int MaximumStates = 512;
     internal const int MaximumRules = 4096;
-    internal const int MaximumFrameDimensions = 12;
+    // Meaning graphs already admit at most 24 controlled nodes. Reasoning
+    // frames must retain room for the declared semantic coordinates plus the
+    // proof-carrying structural relation coordinates derived from those
+    // graphs. A 12-coordinate cap made the 12-coordinate constrained-planning
+    // schema, and the 9-coordinate causal schema with its governed edges,
+    // impossible to persist through the canonical Founder curriculum path.
+    internal const int MaximumFrameDimensions = 24;
     internal const int MaximumRuleEvaluations = MaximumStates * MaximumRules;
     internal const int MaximumPlanningMinutes = 1440;
     internal const int MaximumPlanningResourceUnits = 1024;

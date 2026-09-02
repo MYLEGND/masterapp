@@ -15247,7 +15247,8 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
             var text = LegendLanguageIdentity.NormalizeText(example.Text);
             if (string.IsNullOrWhiteSpace(text) || text.Length > 10_000 || !hashes.Add(LegendLanguageIdentity.TextHash(text)))
                 return null;
-            if (example.Variations is null || example.Variations.Count == 0 || example.Variations.Count > 12)
+            if (example.Variations is null || example.Variations.Count == 0 ||
+                example.Variations.Count > LegendConnectGovernedReasoningExecutor.MaximumFrameDimensions)
                 return null;
 
             var variations = new Dictionary<string, string>(StringComparer.Ordinal);
@@ -15433,7 +15434,8 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
     private static NormalizedSemanticFrame? NormalizeSemanticFrame(
         IReadOnlyDictionary<string, string>? dimensions)
     {
-        if (dimensions is null || dimensions.Count is < 1 or > 12)
+        if (dimensions is null || dimensions.Count is < 1 or
+            > LegendConnectGovernedReasoningExecutor.MaximumFrameDimensions)
             return null;
 
         var normalized = new SortedDictionary<string, string>(StringComparer.Ordinal);
