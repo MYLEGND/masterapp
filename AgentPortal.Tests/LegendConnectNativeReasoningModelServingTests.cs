@@ -211,15 +211,74 @@ public sealed class LegendConnectNativeReasoningModelServingTests
     }
 
     [Fact]
-    public async Task UnsupportedSymbolicRequest_NeverInvokesQualifiedModel()
+    public async Task NovelGeneralRequest_UsesQualifiedPromotedLegendModel()
     {
         await using var db = ControllerTestHelpers.BuildDb();
         await SeedPromotedReasoningModelAsync(db, "Promoted");
-        var transport = FakeTransport.Success("invented answer");
+        var transport = FakeTransport.Success(
+            "The exact number cannot be determined from this conversation; inspect the dated conversion report.");
         var fixture = CreateFixture(db, transport);
 
         var result = await fixture.Operations.TryInferConversationWithDiscourseAsync(
-            "This surface has no governed meaning.",
+            "What was Project Zephyr's exact conversion rate last Tuesday? Do not estimate.",
+            [new LegendConnectConversationContextItem("user", "Use only established facts.")],
+            new LegendConnectDiscourseStateSnapshot([]));
+
+        Assert.True(result.Supported, result.ReasonCode);
+        Assert.Equal(
+            "The exact number cannot be determined from this conversation; inspect the dated conversion report.",
+            result.Answer);
+        Assert.Equal("active_reasoning_model_governed", result.ReasonCode);
+        Assert.Equal("EvaluatedPromotedModel", result.EvidenceStandard);
+        Assert.Equal("EvaluatedPromotedModelResponse", result.ArticulationMode);
+        Assert.Equal(1, transport.CallCount);
+        Assert.NotNull(transport.LastTask);
+        Assert.Equal(
+            "governed_reasoning_response_text_only",
+            transport.LastTask!.OutputContract);
+        Assert.Contains("Project Zephyr", transport.LastTask.Input, StringComparison.Ordinal);
+        Assert.Contains("Use only established facts", transport.LastTask.Input, StringComparison.Ordinal);
+        Assert.DoesNotContain("authorized_symbolic_answer", transport.LastTask.Input, StringComparison.Ordinal);
+        var assistance = Assert.IsType<LegendConnectNativeModelAssistanceSnapshot>(
+            result.ModelAssistance);
+        Assert.Equal("Applied", assistance.State);
+        Assert.Equal("active_reasoning_model_response_governed", assistance.ReasonCode);
+        Assert.Equal(
+            LegendConnectNativeModelAssistanceContracts.ResponseProvenance,
+            assistance.Provenance);
+    }
+
+    [Fact]
+    public async Task LongNovelRequest_UsesModelInsteadOfTreatingSymbolicSpanBoundAsInvalidUserInput()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        await SeedPromotedReasoningModelAsync(db, "Promoted");
+        var transport = FakeTransport.Success("A bounded three-step plan.");
+        var fixture = CreateFixture(db, transport);
+        var request = string.Join(' ', Enumerable.Repeat(
+            "consider owner evidence constraint timing risk and observable success signal",
+            8));
+
+        var result = await fixture.Operations.TryInferConversationWithDiscourseAsync(
+            request,
+            [],
+            new LegendConnectDiscourseStateSnapshot([]));
+
+        Assert.True(result.Supported, result.ReasonCode);
+        Assert.Equal("A bounded three-step plan.", result.Answer);
+        Assert.Equal("active_reasoning_model_governed", result.ReasonCode);
+        Assert.Equal(1, transport.CallCount);
+    }
+
+    [Fact]
+    public async Task NovelGeneralRequest_WithoutQualifiedModel_FailsClosed()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var transport = FakeTransport.Success("must not be served");
+        var fixture = CreateFixture(db, transport);
+
+        var result = await fixture.Operations.TryInferConversationWithDiscourseAsync(
+            "Explain a new operational scenario.",
             [],
             new LegendConnectDiscourseStateSnapshot([]));
 

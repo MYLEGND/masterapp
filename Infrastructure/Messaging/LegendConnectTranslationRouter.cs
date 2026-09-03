@@ -77,10 +77,11 @@ internal sealed record LegendConnectLockedServingEvaluationResult(
 internal sealed record LegendConnectGovernedReasoningCandidateRequest(
     string SourceLanguageCode,
     string FounderInput,
-    string AuthorizedSymbolicText,
+    string? AuthorizedSymbolicText,
     int EvidenceCount,
     string EvidenceStandard,
-    string ArticulationMode);
+    string ArticulationMode,
+    IReadOnlyList<LegendConnectConversationContextItem>? ConversationContext = null);
 
 internal interface ILegendConnectActiveModelInference
 {
@@ -277,13 +278,18 @@ internal sealed class LegendConnectActiveModelInference
         var result =
             await _transport.GenerateAsync(
                 promoted.ChallengerModelVersion!,
-                LegendModelTaskRequest.GovernedReasoningRealization(
-                    request.SourceLanguageCode,
-                    request.FounderInput,
-                    request.AuthorizedSymbolicText,
-                    request.EvidenceCount,
-                    request.EvidenceStandard,
-                    request.ArticulationMode),
+                request.AuthorizedSymbolicText is null
+                    ? LegendModelTaskRequest.GovernedReasoningResponse(
+                        request.SourceLanguageCode,
+                        request.FounderInput,
+                        request.ConversationContext ?? [])
+                    : LegendModelTaskRequest.GovernedReasoningRealization(
+                        request.SourceLanguageCode,
+                        request.FounderInput,
+                        request.AuthorizedSymbolicText,
+                        request.EvidenceCount,
+                        request.EvidenceStandard,
+                        request.ArticulationMode),
                 cancellationToken);
 
         if (!result.Succeeded)

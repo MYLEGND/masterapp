@@ -310,6 +310,31 @@ internal sealed record LegendModelTaskRequest(
             "governed_surface_candidate_text_only",
             sourceLanguageCode,
             sourceLanguageCode);
+
+    internal static LegendModelTaskRequest GovernedReasoningResponse(
+        string sourceLanguageCode,
+        string founderInput,
+        IReadOnlyList<LegendConnectConversationContextItem> conversationContext) =>
+        new(
+            LegendModelCapabilityKeys.GovernedReasoning,
+            "Answer the Founder's current request as the evaluated and promoted LEGEND reasoning model. " +
+            "Reason from facts supplied in the conversation and distinguish them from unavailable facts. " +
+            "When an exact fact is not established by the conversation, state that it cannot be determined and identify the evidence needed; never invent or estimate it. " +
+            "Follow stated constraints, preserve conversational corrections, and answer in the requested language and format. " +
+            "Do not claim to have called tools, inspected private or current data, performed an action, approved learning, or changed canonical evidence. " +
+            "Return only the answer to the current request.",
+            JsonSerializer.Serialize(new
+            {
+                conversation = conversationContext.Select(item => new
+                {
+                    role = item.Role,
+                    content = item.Content
+                }),
+                founder_input = founderInput
+            }),
+            "governed_reasoning_response_text_only",
+            sourceLanguageCode,
+            sourceLanguageCode);
 }
 
 internal sealed record LegendModelEvaluationJudgeRequest(

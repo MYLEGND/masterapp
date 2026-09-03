@@ -2381,10 +2381,10 @@ public sealed record LegendConnectResearchEvaluationMeasurements(
 }
 
 /// <summary>
-/// Read-only serving provenance for an optional evaluated and promoted model
-/// candidate.  The model is an articulation participant only: this receipt
-/// never represents canonical evidence, a contradiction decision, or a
-/// learning/promotion authority.
+/// Read-only serving provenance for an evaluated and promoted LEGEND model.
+/// The model may answer a general reasoning request or articulate an already
+/// authorized symbolic result. This receipt never represents canonical data,
+/// a contradiction decision, a tool action, or a learning/promotion authority.
 /// </summary>
 public sealed record LegendConnectNativeModelAssistanceSnapshot(
     string State,
@@ -2400,12 +2400,13 @@ public static class LegendConnectNativeModelAssistanceContracts
     public const string GovernedReasoningCapability = "governed.reasoning";
     public const string CandidateAttemptProvenance = "EvaluatedPromotedModelCandidateAttempt";
     public const string Provenance = "EvaluatedPromotedModelArticulation";
+    public const string ResponseProvenance = "EvaluatedPromotedModelResponse";
 }
 
 /// <summary>
 /// The governed result of one native LEGEND conversational inference attempt.
-/// A successful result is backed only by canonical, contradiction-free
-/// evidence; all other states explicitly require escalation.
+/// A successful result is backed by canonical contradiction-free evidence or
+/// by the exact evaluated and promoted LEGEND reasoning-model authority.
 /// </summary>
 public sealed record LegendConnectNativeInferenceSnapshot(
     bool Supported,
