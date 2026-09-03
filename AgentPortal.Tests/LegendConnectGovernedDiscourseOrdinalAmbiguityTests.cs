@@ -204,7 +204,9 @@ public sealed class LegendConnectGovernedDiscourseOrdinalAmbiguityTests
             var directPlan = await operations.TryPlanConversationAsync(
                 "No, I meant the first option.",
                 directState);
-            Assert.True(directPlan.Supported, directPlan.ReasonCode);
+            Assert.True(
+                directPlan.Supported,
+                $"{directPlan.ReasonCode}: {JsonSerializer.Serialize(directState)}");
             var directStructuredPlan = Assert.IsType<LegendConnectResponseMeaningPlanSnapshot>(
                 directPlan.Plan);
             var directBinding = Assert.Single(directStructuredPlan.ResolvedDiscourseBindings);
