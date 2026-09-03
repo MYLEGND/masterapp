@@ -505,23 +505,14 @@ public sealed class LegendFounderAiDiscourseStateService
         if (!rule.AllowedSourceRoles.Contains(sourceTurns[0].Role, StringComparer.Ordinal))
             return ActiveDiscourseBindingResolution.None;
 
-        var source = ActiveDiscourseEntityCandidates(sourceTurns[0])
-            .Where(item => item.NodeIndex == entityNodeIndex &&
-                string.Equals(
-                    item.Node.SemanticDimension,
-                    active.Binding.EntitySemanticDimension,
-                    StringComparison.Ordinal) &&
-                string.Equals(
-                    item.Node.SemanticSignature,
-                    active.Binding.EntitySemanticSignature,
-                    StringComparison.Ordinal) &&
-                string.Equals(
-                    item.Node.SemanticValue,
-                    active.Binding.EntitySemanticValue,
-                    StringComparison.Ordinal))
-            .ToArray();
-        return source.Length == 1
-            ? new(true, source[0])
+        var source = ResolveExactDiscourseEntityOccurrence(
+            sourceTurns[0],
+            entityNodeIndex,
+            active.Binding.EntitySemanticDimension,
+            active.Binding.EntitySemanticSignature,
+            active.Binding.EntitySemanticValue);
+        return source is not null
+            ? new(true, source)
             : ActiveDiscourseBindingResolution.Invalid;
     }
 
@@ -583,6 +574,29 @@ public sealed class LegendFounderAiDiscourseStateService
             1 => new(false, matches[0]),
             _ => CurrentTurnSupersededOccurrenceResolution.Ambiguous
         };
+    }
+
+    private static DiscourseEntityCandidate? ResolveExactDiscourseEntityOccurrence(
+        LegendFounderAiDiscourseTurn turn,
+        int nodeIndex,
+        string semanticDimension,
+        string semanticSignature,
+        string semanticValue)
+    {
+        var graph = DeserializeMeaning(turn.MeaningGraphJson);
+        if (!graph.IsComposed ||
+            nodeIndex < 0 ||
+            nodeIndex >= graph.Nodes.Count)
+        {
+            return null;
+        }
+
+        var node = graph.Nodes[nodeIndex];
+        return string.Equals(node.SemanticDimension, semanticDimension, StringComparison.Ordinal) &&
+            string.Equals(node.SemanticSignature, semanticSignature, StringComparison.Ordinal) &&
+            string.Equals(node.SemanticValue, semanticValue, StringComparison.Ordinal)
+                ? new DiscourseEntityCandidate(turn, node, nodeIndex)
+                : null;
     }
 
     private static IEnumerable<DiscourseEntityCandidate> ActiveDiscourseEntityCandidates(
@@ -767,22 +781,12 @@ public sealed class LegendFounderAiDiscourseStateService
             .ToArray();
         if (sourceTurns.Length != 1)
             return false;
-        var source = ActiveDiscourseEntityCandidates(sourceTurns[0])
-            .Where(item => item.NodeIndex == entityNodeIndex &&
-                string.Equals(
-                    item.Node.SemanticDimension,
-                    binding.EntitySemanticDimension,
-                    StringComparison.Ordinal) &&
-                string.Equals(
-                    item.Node.SemanticSignature,
-                    binding.EntitySemanticSignature,
-                    StringComparison.Ordinal) &&
-                string.Equals(
-                    item.Node.SemanticValue,
-                    binding.EntitySemanticValue,
-                    StringComparison.Ordinal))
-            .ToArray();
-        return source.Length == 1;
+        return ResolveExactDiscourseEntityOccurrence(
+            sourceTurns[0],
+            entityNodeIndex,
+            binding.EntitySemanticDimension,
+            binding.EntitySemanticSignature,
+            binding.EntitySemanticValue) is not null;
     }
 
     private static IReadOnlyList<LegendFounderAiDiscourseReferenceBinding> DeserializeBindings(
