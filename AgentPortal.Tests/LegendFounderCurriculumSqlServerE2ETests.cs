@@ -722,6 +722,133 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
     }
 
     [Fact]
+    public async Task ProductionReadOnlyCredentialHasNoMutationAuthority()
+    {
+        var started = Stopwatch.GetTimestamp();
+        var connectionString = Environment.GetEnvironmentVariable(
+            "LEGEND_PRODUCTION_READONLY_CONNECTION");
+        Assert.False(
+            string.IsNullOrWhiteSpace(connectionString),
+            "The required technically SELECT-only production credential is missing.");
+
+        var builder = new SqlConnectionStringBuilder(connectionString)
+        {
+            ApplicationName = "LEGEND SELECT-only authority preflight",
+            ApplicationIntent = ApplicationIntent.ReadOnly,
+            ConnectTimeout = 15
+        };
+        await using var connection = new SqlConnection(builder.ConnectionString);
+        using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        await connection.OpenAsync(deadline.Token);
+        await using var command = connection.CreateCommand();
+        command.CommandTimeout = 15;
+        command.CommandText = """
+            SELECT
+                CAST(HAS_PERMS_BY_NAME(DB_NAME(), 'DATABASE', 'SELECT') AS int),
+                CAST(HAS_PERMS_BY_NAME(DB_NAME(), 'DATABASE', 'INSERT') AS int),
+                CAST(HAS_PERMS_BY_NAME(DB_NAME(), 'DATABASE', 'UPDATE') AS int),
+                CAST(HAS_PERMS_BY_NAME(DB_NAME(), 'DATABASE', 'DELETE') AS int),
+                CAST(HAS_PERMS_BY_NAME(DB_NAME(), 'DATABASE', 'ALTER') AS int),
+                CAST(HAS_PERMS_BY_NAME(DB_NAME(), 'DATABASE', 'CONTROL') AS int),
+                CAST(HAS_PERMS_BY_NAME(DB_NAME(), 'DATABASE', 'CREATE TABLE') AS int),
+                CAST(HAS_PERMS_BY_NAME(DB_NAME(), 'DATABASE', 'CREATE PROCEDURE') AS int),
+                CAST(IS_ROLEMEMBER('db_owner') AS int),
+                CAST(IS_ROLEMEMBER('db_datawriter') AS int),
+                CAST(IS_ROLEMEMBER('db_ddladmin') AS int),
+                CAST(IS_SRVROLEMEMBER('sysadmin') AS int),
+                CAST(IS_SRVROLEMEMBER('dbcreator') AS int),
+                CAST(IS_SRVROLEMEMBER('securityadmin') AS int)
+            """;
+        await using var reader = await command.ExecuteReaderAsync(deadline.Token);
+        Assert.True(await reader.ReadAsync(deadline.Token));
+        Assert.False(reader.IsDBNull(0), "SELECT permission could not be assessed.");
+        Assert.Equal(1, reader.GetInt32(0));
+        for (var ordinal = 1; ordinal < reader.FieldCount; ordinal++)
+        {
+            Assert.False(reader.IsDBNull(ordinal), $"Permission/role value {ordinal} could not be assessed.");
+            Assert.Equal(0, reader.GetInt32(ordinal));
+        }
+
+        var resultPath = Environment.GetEnvironmentVariable(
+            "LEGEND_STAGE0_RESULT_PATH");
+        if (!string.IsNullOrWhiteSpace(resultPath))
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(
+                Path.GetFullPath(resultPath))!);
+            await File.WriteAllTextAsync(
+                resultPath,
+                JsonSerializer.Serialize(new
+                {
+                    Status = "passed",
+                    SelectPermission = true,
+                    MutationPermissions = 0,
+                    PrivilegedRoleMemberships = 0,
+                    ConnectionCount = 1,
+                    QueryCount = 1,
+                    ElapsedMilliseconds = Stopwatch.GetElapsedTime(started).TotalMilliseconds
+                }),
+                deadline.Token);
+        }
+    }
+
+    [Fact]
+    public async Task ProductionReadOnlyLiveCohortSmoke()
+    {
+        var started = Stopwatch.GetTimestamp();
+        var connectionString = Environment.GetEnvironmentVariable(
+            "LEGEND_PRODUCTION_READONLY_CONNECTION");
+        var founderId = Environment.GetEnvironmentVariable(
+            "LEGEND_PRODUCTION_READONLY_FOUNDER_OID");
+        Assert.False(string.IsNullOrWhiteSpace(connectionString));
+        Assert.False(string.IsNullOrWhiteSpace(founderId));
+
+        var builder = new SqlConnectionStringBuilder(connectionString)
+        {
+            ApplicationName = "LEGEND deterministic live cohort smoke",
+            ApplicationIntent = ApplicationIntent.ReadOnly,
+            ConnectTimeout = 15
+        };
+        var guard = new ReadOnlyLegendDbCommandInterceptor();
+        await using var db = new MasterAppDbContext(
+            new DbContextOptionsBuilder<MasterAppDbContext>()
+                .UseSqlServer(builder.ConnectionString, sql => sql.CommandTimeout(30))
+                .UseQueryTrackingBehavior(QueryTrackingBehavior.NoTracking)
+                .AddInterceptors(guard)
+                .Options);
+        using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(120));
+        var founderProfiles = await db.AgentProfiles.AsNoTracking().CountAsync(item =>
+            item.IsActive && item.AgentUserId != null &&
+            item.AgentUserId.ToLower() == founderId!.ToLower(), deadline.Token);
+        var activeExamples = await db.LegendCurriculumExamples.AsNoTracking().CountAsync(item =>
+            item.SupersededUtc == null &&
+            item.Provenance == LegendConnectKnowledgeProvenance.FounderApproved,
+            deadline.Token);
+        var activeTransitions = await db.LegendSemanticTransitionEvidence.AsNoTracking().CountAsync(item =>
+            item.SupersededUtc == null && item.ContributionState == "Supported" &&
+            item.Provenance == LegendConnectKnowledgeProvenance.FounderApproved,
+            deadline.Token);
+        Assert.Equal(1, founderProfiles);
+        Assert.True(activeExamples > 0);
+        Assert.True(activeTransitions > 0);
+
+        var resultPath = Environment.GetEnvironmentVariable("LEGEND_STAGE1_RESULT_PATH");
+        if (!string.IsNullOrWhiteSpace(resultPath))
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(resultPath))!);
+            await File.WriteAllTextAsync(resultPath, JsonSerializer.Serialize(new
+            {
+                Status = "passed",
+                FounderProfileCount = founderProfiles,
+                ActiveFounderExampleCount = activeExamples,
+                ActiveFounderTransitionCount = activeTransitions,
+                ConnectionCount = 1,
+                QueryCount = 3,
+                ElapsedMilliseconds = Stopwatch.GetElapsedTime(started).TotalMilliseconds
+            }), deadline.Token);
+        }
+    }
+
+    [Fact]
     public async Task ProductionReadOnlyNativeProofMatrix()
     {
         const string matrixVersion = "lai-027-029-v1";
@@ -1523,8 +1650,8 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
             _output.WriteLine($"PRODUCTION PROOF MATRIX CASES EXECUTED: {executed}");
             _output.WriteLine($"PRODUCTION PROOF MATRIX NATIVE PASSES: {nativePasses}");
             _output.WriteLine($"PRODUCTION PROOF MATRIX NEGATIVE PASSES: {negativePasses}");
-            _output.WriteLine("OPENAI HTTP CALLS: 0");
-            _output.WriteLine("PRODUCTION WRITE COMMANDS: 0");
+            _output.WriteLine($"OPENAI HTTP CALLS: {factory.SendCalls}");
+            _output.WriteLine($"PRODUCTION WRITE COMMANDS: {readOnlyGuard.ProductionWriteCommandCount}");
 
             var resultPath = Environment.GetEnvironmentVariable(
                 "LEGEND_PRODUCTION_PROOF_RESULT_PATH");
@@ -1549,7 +1676,9 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
                             NativePasses = nativePasses,
                             NegativePasses = negativePasses,
                             ProviderClientCount = factory.CreateClientCalls,
-                            ProductionWriteCommandCount = 0,
+                            ProviderHttpCallCount = factory.SendCalls,
+                            ProductionWriteCommandCount = readOnlyGuard.ProductionWriteCommandCount,
+                            SkippedCases = 0,
                             Categories = requiredCategories,
                             CaseResults = results
                         },
@@ -4257,18 +4386,22 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
     /// </summary>
     private sealed class ReadOnlyLegendDbCommandInterceptor : DbCommandInterceptor
     {
+        private int _productionWriteCommandCount;
+
+        public int ProductionWriteCommandCount => Volatile.Read(ref _productionWriteCommandCount);
+
         public override InterceptionResult<int> NonQueryExecuting(
             DbCommand command,
             CommandEventData eventData,
             InterceptionResult<int> result) =>
-            throw NewWriteBlocked(command);
+            throw NewWriteBlockedAndCount(command);
 
         public override ValueTask<InterceptionResult<int>> NonQueryExecutingAsync(
             DbCommand command,
             CommandEventData eventData,
             InterceptionResult<int> result,
             CancellationToken cancellationToken = default) =>
-            ValueTask.FromException<InterceptionResult<int>>(NewWriteBlocked(command));
+            ValueTask.FromException<InterceptionResult<int>>(NewWriteBlockedAndCount(command));
 
         public override InterceptionResult<DbDataReader> ReaderExecuting(
             DbCommand command,
@@ -4308,14 +4441,20 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
             return ValueTask.FromResult(result);
         }
 
-        private static void EnsureSelect(DbCommand command)
+        private void EnsureSelect(DbCommand command)
         {
             if (!command.CommandText.TrimStart().StartsWith(
                     "SELECT",
                     StringComparison.OrdinalIgnoreCase))
             {
-                throw NewWriteBlocked(command);
+                throw NewWriteBlockedAndCount(command);
             }
+        }
+
+        private InvalidOperationException NewWriteBlockedAndCount(DbCommand command)
+        {
+            Interlocked.Increment(ref _productionWriteCommandCount);
+            return NewWriteBlocked(command);
         }
 
         private static InvalidOperationException NewWriteBlocked(DbCommand command) =>
@@ -4352,11 +4491,12 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
     private sealed class CountingHttpClientFactory : IHttpClientFactory
     {
         public int CreateClientCalls { get; private set; }
+        public int SendCalls { get; private set; }
 
         public HttpClient CreateClient(string name)
         {
             CreateClientCalls++;
-            return new HttpClient(new NoNetworkHandler())
+            return new HttpClient(new NoNetworkHandler(() => SendCalls++))
             {
                 BaseAddress = new Uri("https://legend-e2e.invalid/")
             };
@@ -4365,9 +4505,16 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
 
     private sealed class NoNetworkHandler : HttpMessageHandler
     {
+        private readonly Action _onSend;
+
+        public NoNetworkHandler(Action onSend) => _onSend = onSend;
+
         protected override Task<HttpResponseMessage> SendAsync(
             HttpRequestMessage request,
-            System.Threading.CancellationToken cancellationToken) =>
+            System.Threading.CancellationToken cancellationToken)
+        {
+            _onSend();
             throw new InvalidOperationException("The OpenAI test client must not be used by native inference.");
+        }
     }
 }
