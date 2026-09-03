@@ -212,6 +212,13 @@ public sealed class LegendConnectGovernedDiscourseOrdinalAmbiguityTests
             Assert.Equal("choice", directBinding.EntitySemanticDimension);
             Assert.Equal("alpha", directBinding.EntitySemanticValue);
             Assert.True(directBinding.ReplacesActiveBinding);
+            Assert.True(directBinding.HasSupersededCurrentTurnEntity);
+            Assert.NotNull(directBinding.SupersededCurrentTurnNodeIndex);
+            Assert.Equal("choice", directBinding.SupersededCurrentTurnSemanticDimension);
+            Assert.NotNull(directBinding.SupersededCurrentTurnSemanticSignature);
+            Assert.NotNull(directBinding.SupersededCurrentTurnSemanticValue);
+            Assert.NotNull(directBinding.SupersededCurrentTurnNodeStartTokenIndex);
+            Assert.NotNull(directBinding.SupersededCurrentTurnNodeTokenLength);
 
             var directNative = await operations.TryInferConversationWithDiscourseAsync(
                 "No, I meant the first option.",

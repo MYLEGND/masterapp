@@ -427,6 +427,10 @@ public sealed class LegendFounderAiDiscourseStateService
             var currentTurnSupersededCandidates = rule.ReplacesActiveBinding
                 ? ActiveMeaningGraphEntityCandidates(meaning)
                     .Where(item =>
+                        ConnectedMeaningGraphNodeIndexes(
+                                meaning.Relations,
+                                selectorOccurrence.Index)
+                            .Contains(item.NodeIndex) &&
                         string.Equals(
                             item.Node.SemanticDimension,
                             rule.EntitySemanticDimension,
@@ -587,6 +591,32 @@ public sealed class LegendFounderAiDiscourseStateService
         }
         foreach (var nodeIndex in activeIndexes.OrderBy(item => item))
             yield return new MeaningGraphEntityCandidate(graph.Nodes[nodeIndex], nodeIndex);
+    }
+
+    private static HashSet<int> ConnectedMeaningGraphNodeIndexes(
+        IReadOnlyList<LegendConnectUtteranceMeaningRelation> relations,
+        int startIndex)
+    {
+        var connected = new HashSet<int> { startIndex };
+        var pending = new Queue<int>();
+        pending.Enqueue(startIndex);
+        while (pending.Count > 0)
+        {
+            var current = pending.Dequeue();
+            foreach (var neighbor in relations
+                         .Where(item =>
+                             item.SourceNodeIndex == current ||
+                             item.TargetNodeIndex == current)
+                         .Select(item =>
+                             item.SourceNodeIndex == current
+                                 ? item.TargetNodeIndex
+                                 : item.SourceNodeIndex))
+            {
+                if (connected.Add(neighbor))
+                    pending.Enqueue(neighbor);
+            }
+        }
+        return connected;
     }
 
     private static LegendFounderAiDiscourseReferenceBinding Unresolved(
