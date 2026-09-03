@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net.Http;
+using System.Reflection;
 using System.Threading.Tasks;
 using AgentPortal.Models;
 using AgentPortal.Services;
@@ -270,6 +271,112 @@ public sealed class LegendConnectGovernedDiscourseOrdinalAmbiguityTests
         }
     }
 
+    [Fact]
+    public void ReplacementPruning_RemovesOnlySelectorLocalSupersededOccurrence_AndPreservesOtherRelations()
+    {
+        var nodes = new[]
+        {
+            new LegendConnectUtteranceMeaningNode("compare", "conversation_function", "compare", 0, 1, 3),
+            new LegendConnectUtteranceMeaningNode("selector", "reference_selector", "ordinal_one", 1, 1, 3),
+            new LegendConnectUtteranceMeaningNode("one", "choice", "one", 2, 1, 3),
+            new LegendConnectUtteranceMeaningNode("two", "choice", "two", 3, 1, 3),
+            new LegendConnectUtteranceMeaningNode("note", "choice_note", "stable", 4, 1, 3)
+        };
+        var relations = new[]
+        {
+            new LegendConnectUtteranceMeaningRelation("r1", "references", 0, 1, 3),
+            new LegendConnectUtteranceMeaningRelation("r2", "describes", 0, 2, 3),
+            new LegendConnectUtteranceMeaningRelation("r3", "describes", 3, 4, 3)
+        };
+        var bindings = new[]
+        {
+            new LegendConnectDiscourseReferenceBindingSnapshot(
+                "bound",
+                "ok",
+                "choice",
+                "alpha",
+                "alpha",
+                1,
+                0,
+                true,
+                "selector",
+                "rule")
+        };
+
+        var result = InvokeReplacementPruning(nodes, relations, bindings);
+
+        Assert.True(result.Succeeded);
+        Assert.Equal(["compare", "selector", "two", "note"], result.Nodes.Select(item => item.SemanticSignature));
+        Assert.Equal(2, result.Relations.Count);
+        var preservedRelation = Assert.Single(result.Relations.Where(item => item.RelationKind == "describes"));
+        Assert.Equal("two", result.Nodes[preservedRelation.SourceNodeIndex].SemanticSignature);
+        Assert.Equal("note", result.Nodes[preservedRelation.TargetNodeIndex].SemanticSignature);
+    }
+
+    [Fact]
+    public void ReplacementPruning_FailsClosedForConflictingReplacementOrderPermutations()
+    {
+        var nodes = new[]
+        {
+            new LegendConnectUtteranceMeaningNode("compare_one", "conversation_function", "compare_one", 0, 1, 3),
+            new LegendConnectUtteranceMeaningNode("selector_one", "reference_selector", "ordinal_one", 1, 1, 3),
+            new LegendConnectUtteranceMeaningNode("one", "choice", "one", 2, 1, 3),
+            new LegendConnectUtteranceMeaningNode("compare_two", "conversation_function", "compare_two", 3, 1, 3),
+            new LegendConnectUtteranceMeaningNode("selector_two", "reference_selector", "ordinal_two", 4, 1, 3),
+            new LegendConnectUtteranceMeaningNode("two", "choice", "two", 5, 1, 3)
+        };
+        var relations = new[]
+        {
+            new LegendConnectUtteranceMeaningRelation("r1", "references", 0, 1, 3),
+            new LegendConnectUtteranceMeaningRelation("r2", "describes", 0, 2, 3),
+            new LegendConnectUtteranceMeaningRelation("r3", "references", 3, 4, 3),
+            new LegendConnectUtteranceMeaningRelation("r4", "describes", 3, 5, 3)
+        };
+        var firstOrder = new[]
+        {
+            new LegendConnectDiscourseReferenceBindingSnapshot("bound", "ok", "choice", "alpha", "alpha", 1, 0, true, "selector_one", "rule_one"),
+            new LegendConnectDiscourseReferenceBindingSnapshot("bound", "ok", "choice", "beta", "beta", 1, 1, true, "selector_two", "rule_two")
+        };
+        var reversedOrder = firstOrder.Reverse().ToArray();
+
+        Assert.False(InvokeReplacementPruning(nodes, relations, firstOrder).Succeeded);
+        Assert.False(InvokeReplacementPruning(nodes, relations, reversedOrder).Succeeded);
+    }
+
+    [Fact]
+    public void ReplacementPruning_FailsClosedWhenSelectorComponentContainsMultipleSupersededChoices()
+    {
+        var nodes = new[]
+        {
+            new LegendConnectUtteranceMeaningNode("compare", "conversation_function", "compare", 0, 1, 3),
+            new LegendConnectUtteranceMeaningNode("selector", "reference_selector", "ordinal_one", 1, 1, 3),
+            new LegendConnectUtteranceMeaningNode("one", "choice", "one", 2, 1, 3),
+            new LegendConnectUtteranceMeaningNode("two", "choice", "two", 3, 1, 3)
+        };
+        var relations = new[]
+        {
+            new LegendConnectUtteranceMeaningRelation("r1", "references", 0, 1, 3),
+            new LegendConnectUtteranceMeaningRelation("r2", "describes", 0, 2, 3),
+            new LegendConnectUtteranceMeaningRelation("r3", "describes", 0, 3, 3)
+        };
+        var bindings = new[]
+        {
+            new LegendConnectDiscourseReferenceBindingSnapshot(
+                "bound",
+                "ok",
+                "choice",
+                "alpha",
+                "alpha",
+                1,
+                0,
+                true,
+                "selector",
+                "rule")
+        };
+
+        Assert.False(InvokeReplacementPruning(nodes, relations, bindings).Succeeded);
+    }
+
     private static MasterAppDbContext CreateDb(
         string databaseName,
         InMemoryDatabaseRoot root)
@@ -491,6 +598,48 @@ public sealed class LegendConnectGovernedDiscourseOrdinalAmbiguityTests
             ["conversation_function"] = function,
             ["utterance_kind"] = "discourse"
         };
+
+    private static ReplacementPruningInvocationResult InvokeReplacementPruning(
+        IReadOnlyList<LegendConnectUtteranceMeaningNode> nodes,
+        IReadOnlyList<LegendConnectUtteranceMeaningRelation> relations,
+        IReadOnlyList<LegendConnectDiscourseReferenceBindingSnapshot> bindings)
+    {
+        var method = typeof(LegendConnectCurriculumService).GetMethod(
+            "TryPruneSupersededReplacementEntities",
+            BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.NotNull(method);
+
+        var arguments = new object?[]
+        {
+            nodes,
+            relations,
+            bindings,
+            null,
+            null,
+            null
+        };
+        var succeeded = Assert.IsType<bool>(method!.Invoke(null, arguments));
+        var prunedNodes = arguments[3] is List<LegendConnectUtteranceMeaningNode> nodeList
+            ? nodeList
+            : [];
+        var prunedRelations = arguments[4] is List<LegendConnectUtteranceMeaningRelation> relationList
+            ? relationList
+            : [];
+        var selectorRemap = arguments[5] is Dictionary<int, int> remap
+            ? remap
+            : [];
+        return new ReplacementPruningInvocationResult(
+            succeeded,
+            prunedNodes,
+            prunedRelations,
+            selectorRemap);
+    }
+
+    private sealed record ReplacementPruningInvocationResult(
+        bool Succeeded,
+        IReadOnlyList<LegendConnectUtteranceMeaningNode> Nodes,
+        IReadOnlyList<LegendConnectUtteranceMeaningRelation> Relations,
+        IReadOnlyDictionary<int, int> SelectorRemap);
 
     private sealed class CountingHttpClientFactory : IHttpClientFactory
     {
