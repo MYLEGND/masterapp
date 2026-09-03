@@ -979,7 +979,13 @@ public sealed record LegendConnectDiscourseReferenceBindingSnapshot(
     int? EntityNodeIndex,
     bool ReplacesActiveBinding,
     string SelectorSemanticSignature,
-    string? ReferenceRuleSignature);
+    string? ReferenceRuleSignature)
+{
+    public int? SupersededTurnSequence { get; init; }
+    public int? SupersededNodeIndex { get; init; }
+    public int? SupersededNodeStartTokenIndex { get; init; }
+    public int? SupersededNodeTokenLength { get; init; }
+}
 
 public sealed record LegendConnectDiscourseStateSnapshot(
     IReadOnlyList<LegendConnectDiscourseTurnStateSnapshot> Turns);

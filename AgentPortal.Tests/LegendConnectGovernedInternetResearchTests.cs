@@ -69,6 +69,18 @@ public sealed class LegendConnectGovernedInternetResearchTests
             0,
             1,
             3);
+        var correctionSelector = new LegendConnectUtteranceMeaningNode(
+            "selector-first-option",
+            "reference_selector",
+            "first",
+            1,
+            1,
+            3);
+        var currentSelector = correctionSelector with
+        {
+            SemanticSignature = "selector-which-option",
+            SemanticValue = "which"
+        };
         var corrected = new LegendConnectDiscourseReferenceBindingSnapshot(
             "bound",
             "discourse_reference_bound",
@@ -79,11 +91,21 @@ public sealed class LegendConnectGovernedInternetResearchTests
             0,
             true,
             "selector-first-option",
-            "ordinal-choice-rule");
+            "ordinal-choice-rule")
+        {
+            SupersededTurnSequence = 2,
+            SupersededNodeIndex = 0,
+            SupersededNodeStartTokenIndex = correctionSelector.StartTokenIndex,
+            SupersededNodeTokenLength = correctionSelector.TokenLength
+        };
         var current = corrected with
         {
             ReplacesActiveBinding = false,
-            SelectorSemanticSignature = "selector-which-option"
+            SelectorSemanticSignature = "selector-which-option",
+            SupersededTurnSequence = null,
+            SupersededNodeIndex = null,
+            SupersededNodeStartTokenIndex = null,
+            SupersededNodeTokenLength = null
         };
         var discourseState = new LegendConnectDiscourseStateSnapshot(
         [
@@ -98,14 +120,14 @@ public sealed class LegendConnectGovernedInternetResearchTests
                 2,
                 "user",
                 true,
-                [],
+                [correctionSelector],
                 [],
                 [corrected]),
             new LegendConnectDiscourseTurnStateSnapshot(
                 3,
                 "user",
                 true,
-                [],
+                [currentSelector],
                 [],
                 [current])
         ]);

@@ -332,8 +332,8 @@ public sealed class LegendConnectFounderSemanticTransformationSqlTests
         var connectionString = Environment.GetEnvironmentVariable(ConnectionVariable);
         if (string.IsNullOrWhiteSpace(connectionString))
         {
-            _output.WriteLine("Stage-5 conversation SQL proof was not selected; LEGEND_STAGE5_SQL_CONNECTION is required.");
-            return;
+            throw new InvalidOperationException(
+                "LEGEND_STAGE5_SQL_CONNECTION is required for the Stage-5 conversation SQL proof.");
         }
 
         var options = new DbContextOptionsBuilder<MasterAppDbContext>()
@@ -566,6 +566,18 @@ public sealed class LegendConnectFounderSemanticTransformationSqlTests
                             item.EntitySemanticDimension == "choice");
                     Assert.Equal("alpha", binding.EntitySemanticValue);
                     Assert.True(binding.ReplacesActiveBinding);
+                    var bindingTurn = Assert.Single(planningState.Turns.Where(item =>
+                        item.SequenceNumber == binding.SupersededTurnSequence));
+                    var nodeIndex = Assert.IsType<int>(binding.SupersededNodeIndex);
+                    Assert.Equal(
+                        binding.SelectorSemanticSignature,
+                        bindingTurn.Nodes[nodeIndex].SemanticSignature);
+                    Assert.Equal(
+                        binding.SupersededNodeStartTokenIndex,
+                        bindingTurn.Nodes[nodeIndex].StartTokenIndex);
+                    Assert.Equal(
+                        binding.SupersededNodeTokenLength,
+                        bindingTurn.Nodes[nodeIndex].TokenLength);
                 }
 
                 var native = await services.Operations.TryInferConversationWithDiscourseAsync(

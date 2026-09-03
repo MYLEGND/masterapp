@@ -110,6 +110,8 @@ public sealed class LegendFounderAiDiscourseStateService
 
         conversation.NextTurnSequence++;
         conversation.UpdatedUtc = DateTime.UtcNow;
+        var turnId = Guid.NewGuid();
+        var turnSequence = conversation.NextTurnSequence;
         var priorTurns = await _db.LegendFounderAiDiscourseTurns
             .Where(item => item.DiscourseConversationId == conversation.Id)
             .OrderBy(item => item.SequenceNumber)
@@ -118,13 +120,15 @@ public sealed class LegendFounderAiDiscourseStateService
             role,
             meaning,
             priorTurns,
+            turnId,
+            turnSequence,
             sourceLanguageCode,
             cancellationToken);
         _db.LegendFounderAiDiscourseTurns.Add(new LegendFounderAiDiscourseTurn
         {
-            Id = Guid.NewGuid(),
+            Id = turnId,
             DiscourseConversationId = conversation.Id,
-            SequenceNumber = conversation.NextTurnSequence,
+            SequenceNumber = turnSequence,
             Role = role,
             MeaningGraphJson = JsonSerializer.Serialize(ToPersistedMeaningGraph(meaning)),
             ResolvedBindingsJson = JsonSerializer.Serialize(bindings),
@@ -182,7 +186,7 @@ public sealed class LegendFounderAiDiscourseStateService
         var latest = await GetTurnsAsync(founderAgentUserId, conversationId, cancellationToken);
         return latest.Count == 0
             ? []
-            : DeserializeBindings(latest[^1].ResolvedBindingsJson);
+            : DeserializeAndValidateBindings(latest[^1], latest);
     }
 
     internal async Task<IReadOnlyList<LegendFounderAiDiscourseReferenceBinding>> GetActiveBindingsAsync(
@@ -192,9 +196,19 @@ public sealed class LegendFounderAiDiscourseStateService
     {
         var turns = await GetTurnsAsync(founderAgentUserId, conversationId, cancellationToken);
         var active = new Dictionary<string, LegendFounderAiDiscourseReferenceBinding>(StringComparer.Ordinal);
-        foreach (var binding in turns.SelectMany(item => DeserializeBindings(item.ResolvedBindingsJson))
-                     .Where(item => item.ResolutionState == "bound"))
+        foreach (var binding in turns.SelectMany(turn => DeserializeAndValidateBindings(turn, turns)))
         {
+            if (binding.ResolutionState != "bound")
+            {
+                if (IsReplacementAttempt(binding))
+                {
+                    if (string.IsNullOrWhiteSpace(binding.EntitySemanticDimension))
+                        active.Clear();
+                    else
+                        active.Remove(binding.EntitySemanticDimension);
+                }
+                continue;
+            }
             // A later governed binding is the current entity for that semantic
             // dimension; ReplaceActiveBinding records an explicit discourse
             // correction rather than changing resolution behavior by text.
@@ -231,7 +245,7 @@ public sealed class LegendFounderAiDiscourseStateService
                     graph.IsComposed,
                     graph.Nodes,
                     graph.Relations,
-                    DeserializeBindings(turn.ResolvedBindingsJson)
+                    DeserializeAndValidateBindings(turn, graph, turns)
                         .Select(binding => new LegendConnectDiscourseReferenceBindingSnapshot(
                             binding.ResolutionState,
                             binding.ReasonCode,
@@ -242,7 +256,13 @@ public sealed class LegendFounderAiDiscourseStateService
                             binding.EntityNodeIndex,
                             binding.ReplacesActiveBinding,
                             binding.SelectorSemanticSignature,
-                            binding.ReferenceRuleSignature))
+                            binding.ReferenceRuleSignature)
+                        {
+                            SupersededTurnSequence = binding.SupersededTurnSequence,
+                            SupersededNodeIndex = binding.SupersededNodeIndex,
+                            SupersededNodeStartTokenIndex = binding.SupersededNodeStartTokenIndex,
+                            SupersededNodeTokenLength = binding.SupersededNodeTokenLength
+                        })
                         .ToArray());
             }).ToArray());
     }
@@ -251,6 +271,8 @@ public sealed class LegendFounderAiDiscourseStateService
         string role,
         LegendConnectUtteranceMeaningGraphSnapshot meaning,
         IReadOnlyList<LegendFounderAiDiscourseTurn> priorTurns,
+        Guid turnId,
+        int turnSequence,
         string sourceLanguageCode,
         CancellationToken cancellationToken)
     {
@@ -270,8 +292,13 @@ public sealed class LegendFounderAiDiscourseStateService
             return [];
 
         var results = new List<LegendFounderAiDiscourseReferenceBinding>();
-        foreach (var selector in meaning.Nodes.OrderBy(item => item.StartTokenIndex).ThenBy(item => item.SemanticSignature))
+        foreach (var selectorOccurrence in meaning.Nodes
+                     .Select((node, index) => new { Node = node, Index = index })
+                     .OrderBy(item => item.Node.StartTokenIndex)
+                     .ThenBy(item => item.Node.SemanticSignature, StringComparer.Ordinal)
+                     .ThenBy(item => item.Index))
         {
+            var selector = selectorOccurrence.Node;
             var matching = rules.Where(item => item.SelectorSemanticSignature == selector.SemanticSignature)
                 .OrderBy(item => item.EntitySemanticDimension, StringComparer.Ordinal)
                 .ThenBy(item => item.ResolutionMode, StringComparer.Ordinal)
@@ -286,6 +313,12 @@ public sealed class LegendFounderAiDiscourseStateService
             }
 
             var rule = matching[0];
+            if (rule.ReplacesActiveBinding &&
+                !IsActiveMeaningGraphNode(meaning.Nodes, meaning.Relations, selectorOccurrence.Index))
+            {
+                results.Add(Unresolved(selector, rule, "reference_selector_occurrence_invalid"));
+                continue;
+            }
             var candidates = priorTurns
                 .Where(item => rule.AllowedSourceRoles.Contains(item.Role, StringComparer.Ordinal))
                 .OrderBy(item => item.SequenceNumber)
@@ -385,7 +418,12 @@ public sealed class LegendFounderAiDiscourseStateService
                 selected.Turn.SequenceNumber,
                 selected.NodeIndex,
                 rule.ReplacesActiveBinding,
-                rule.RuleSignature));
+                rule.RuleSignature,
+                rule.ReplacesActiveBinding ? turnId : null,
+                rule.ReplacesActiveBinding ? turnSequence : null,
+                rule.ReplacesActiveBinding ? selectorOccurrence.Index : null,
+                rule.ReplacesActiveBinding ? selector.StartTokenIndex : null,
+                rule.ReplacesActiveBinding ? selector.TokenLength : null));
         }
         return results;
     }
@@ -396,7 +434,7 @@ public sealed class LegendFounderAiDiscourseStateService
     {
         var active = priorTurns
             .OrderBy(item => item.SequenceNumber)
-            .SelectMany(turn => DeserializeBindings(turn.ResolvedBindingsJson)
+            .SelectMany(turn => DeserializeAndValidateBindings(turn, priorTurns)
                 .Select(item => new { Turn = turn, Binding = item }))
             .Where(item => item.Binding.ResolutionState == "bound" &&
                 string.Equals(
@@ -404,6 +442,35 @@ public sealed class LegendFounderAiDiscourseStateService
                     rule.EntitySemanticDimension,
                     StringComparison.Ordinal))
             .LastOrDefault();
+        var latestReplacementAttempt = priorTurns
+            .OrderBy(item => item.SequenceNumber)
+            .SelectMany(turn => DeserializeAndValidateBindings(turn, priorTurns)
+                .Select(item => new { Turn = turn, Binding = item }))
+            .Where(item =>
+                string.Equals(
+                    item.Binding.EntitySemanticDimension,
+                    rule.EntitySemanticDimension,
+                    StringComparison.Ordinal) &&
+                IsReplacementAttempt(item.Binding))
+            .LastOrDefault();
+        var latestMalformedState = priorTurns
+            .OrderBy(item => item.SequenceNumber)
+            .SelectMany(turn => DeserializeBindings(turn)
+                .Select(item => new { Turn = turn, Binding = item }))
+            .LastOrDefault(item => IsMalformedBindingState(item.Binding));
+        if (latestMalformedState is not null &&
+            (active is null ||
+             latestMalformedState.Turn.SequenceNumber > active.Turn.SequenceNumber))
+        {
+            return ActiveDiscourseBindingResolution.Invalid;
+        }
+        if (latestReplacementAttempt is not null &&
+            (active is null ||
+             latestReplacementAttempt.Turn.SequenceNumber > active.Turn.SequenceNumber) &&
+            latestReplacementAttempt.Binding.ResolutionState != "bound")
+        {
+            return ActiveDiscourseBindingResolution.Invalid;
+        }
         if (active is null)
             return ActiveDiscourseBindingResolution.None;
 
@@ -471,6 +538,25 @@ public sealed class LegendFounderAiDiscourseStateService
             yield return new DiscourseEntityCandidate(turn, graph.Nodes[nodeIndex], nodeIndex);
     }
 
+    private static bool IsActiveMeaningGraphNode(
+        IReadOnlyList<LegendConnectUtteranceMeaningNode> nodes,
+        IReadOnlyList<LegendConnectUtteranceMeaningRelation> relations,
+        int nodeIndex)
+    {
+        if (nodeIndex < 0 || nodeIndex >= nodes.Count)
+            return false;
+        if (nodes.Count == 1 && relations.Count == 0)
+            return true;
+        if (relations.Any(item =>
+                item.SourceNodeIndex < 0 || item.SourceNodeIndex >= nodes.Count ||
+                item.TargetNodeIndex < 0 || item.TargetNodeIndex >= nodes.Count))
+        {
+            return false;
+        }
+        return relations.Any(item =>
+            item.SourceNodeIndex == nodeIndex || item.TargetNodeIndex == nodeIndex);
+    }
+
     private static LegendFounderAiDiscourseReferenceBinding Unresolved(
         LegendConnectUtteranceMeaningNode selector,
         LegendConnectDiscourseReferenceRuleSnapshot? rule,
@@ -493,7 +579,19 @@ public sealed class LegendFounderAiDiscourseStateService
         try
         {
             var persisted = JsonSerializer.Deserialize<PersistedMeaningGraph>(json);
-            return persisted is null
+            return persisted is null ||
+                persisted.Nodes is null ||
+                persisted.Relations is null ||
+                persisted.Nodes.Any(item => item is null ||
+                    string.IsNullOrWhiteSpace(item.SemanticSignature) ||
+                    item.StartTokenIndex < 0 ||
+                    item.TokenLength <= 0) ||
+                persisted.Relations.Any(item => item is null ||
+                    string.IsNullOrWhiteSpace(item.RelationSignature) ||
+                    item.SourceNodeIndex < 0 ||
+                    item.SourceNodeIndex >= persisted.Nodes.Count ||
+                    item.TargetNodeIndex < 0 ||
+                    item.TargetNodeIndex >= persisted.Nodes.Count)
                 ? new LegendConnectUtteranceMeaningGraphSnapshot(false, [], [], [], "meaning_graph_state_invalid")
                 : new LegendConnectUtteranceMeaningGraphSnapshot(
                     persisted.IsComposed,
@@ -508,20 +606,176 @@ public sealed class LegendFounderAiDiscourseStateService
         }
     }
 
-    private static IReadOnlyList<LegendFounderAiDiscourseReferenceBinding> DeserializeBindings(string json)
+    private static IReadOnlyList<LegendFounderAiDiscourseReferenceBinding> DeserializeBindings(
+        LegendFounderAiDiscourseTurn turn) =>
+        DeserializeBindings(turn, DeserializeMeaning(turn.MeaningGraphJson));
+
+    private static IReadOnlyList<LegendFounderAiDiscourseReferenceBinding> DeserializeAndValidateBindings(
+        LegendFounderAiDiscourseTurn turn,
+        IReadOnlyList<LegendFounderAiDiscourseTurn> availableTurns) =>
+        DeserializeAndValidateBindings(turn, DeserializeMeaning(turn.MeaningGraphJson), availableTurns);
+
+    private static IReadOnlyList<LegendFounderAiDiscourseReferenceBinding> DeserializeAndValidateBindings(
+        LegendFounderAiDiscourseTurn turn,
+        LegendConnectUtteranceMeaningGraphSnapshot graph,
+        IReadOnlyList<LegendFounderAiDiscourseTurn> availableTurns) =>
+        DeserializeBindings(turn, graph)
+            .Select(binding =>
+                binding.ResolutionState != "bound" ||
+                IsBindingAntecedentValid(binding, turn, availableTurns)
+                    ? binding
+                    : InvalidateBinding(binding, "reference_antecedent_identity_invalid"))
+            .ToArray();
+
+    private static bool IsBindingAntecedentValid(
+        LegendFounderAiDiscourseReferenceBinding binding,
+        LegendFounderAiDiscourseTurn containingTurn,
+        IReadOnlyList<LegendFounderAiDiscourseTurn> availableTurns)
     {
+        if (string.IsNullOrWhiteSpace(binding.SelectorSemanticSignature) ||
+            string.IsNullOrWhiteSpace(binding.ReferenceRuleSignature) ||
+            string.IsNullOrWhiteSpace(binding.EntitySemanticDimension) ||
+            string.IsNullOrWhiteSpace(binding.EntitySemanticSignature) ||
+            binding.EntityTurnId is not Guid entityTurnId ||
+            binding.EntityTurnSequence is not int entityTurnSequence ||
+            binding.EntityNodeIndex is not int entityNodeIndex ||
+            entityTurnSequence >= containingTurn.SequenceNumber)
+        {
+            return false;
+        }
+
+        var sourceTurns = availableTurns.Where(item =>
+                item.Id == entityTurnId &&
+                item.SequenceNumber == entityTurnSequence)
+            .ToArray();
+        if (sourceTurns.Length != 1)
+            return false;
+        var source = ActiveDiscourseEntityCandidates(sourceTurns[0])
+            .Where(item => item.NodeIndex == entityNodeIndex &&
+                string.Equals(
+                    item.Node.SemanticDimension,
+                    binding.EntitySemanticDimension,
+                    StringComparison.Ordinal) &&
+                string.Equals(
+                    item.Node.SemanticSignature,
+                    binding.EntitySemanticSignature,
+                    StringComparison.Ordinal) &&
+                string.Equals(
+                    item.Node.SemanticValue,
+                    binding.EntitySemanticValue,
+                    StringComparison.Ordinal))
+            .ToArray();
+        return source.Length == 1;
+    }
+
+    private static IReadOnlyList<LegendFounderAiDiscourseReferenceBinding> DeserializeBindings(
+        LegendFounderAiDiscourseTurn turn,
+        LegendConnectUtteranceMeaningGraphSnapshot graph)
+    {
+        var json = turn.ResolvedBindingsJson;
         if (string.IsNullOrWhiteSpace(json))
             return [];
         try
         {
-            return JsonSerializer.Deserialize<IReadOnlyList<LegendFounderAiDiscourseReferenceBinding>>(json) ?? [];
+            var bindings =
+                JsonSerializer.Deserialize<IReadOnlyList<LegendFounderAiDiscourseReferenceBinding>>(json);
+            if (bindings is null)
+                return [MalformedBindingState()];
+            if (bindings.Any(item => item is null))
+                return [MalformedBindingState()];
+            var conflictingOccurrences = bindings
+                .Where(item => item.ResolutionState == "bound" && item.ReplacesActiveBinding)
+                .GroupBy(item => new
+                {
+                    item.SupersededTurnId,
+                    item.SupersededTurnSequence,
+                    item.SupersededNodeIndex
+                })
+                .Where(group => group.Count() > 1)
+                .Select(group => group.Key)
+                .ToHashSet();
+            return bindings.Select(binding =>
+            {
+                if (binding.ResolutionState != "bound" || !binding.ReplacesActiveBinding)
+                {
+                    var carriesReplacementIdentity =
+                        binding.SupersededTurnId is not null ||
+                        binding.SupersededTurnSequence is not null ||
+                        binding.SupersededNodeIndex is not null ||
+                        binding.SupersededNodeStartTokenIndex is not null ||
+                        binding.SupersededNodeTokenLength is not null;
+                    return binding.ResolutionState == "bound" && carriesReplacementIdentity
+                        ? InvalidateBinding(binding, "reference_replacement_occurrence_invalid")
+                        : binding;
+                }
+
+                var identity = new
+                {
+                    binding.SupersededTurnId,
+                    binding.SupersededTurnSequence,
+                    binding.SupersededNodeIndex
+                };
+                var isValid = binding.SupersededTurnId == turn.Id &&
+                    binding.SupersededTurnSequence == turn.SequenceNumber &&
+                    binding.SupersededNodeIndex is int nodeIndex &&
+                    nodeIndex >= 0 &&
+                    nodeIndex < graph.Nodes.Count &&
+                    !string.IsNullOrWhiteSpace(binding.SelectorSemanticSignature) &&
+                    !string.IsNullOrWhiteSpace(binding.ReferenceRuleSignature) &&
+                    string.Equals(
+                        graph.Nodes[nodeIndex].SemanticSignature,
+                        binding.SelectorSemanticSignature,
+                        StringComparison.Ordinal) &&
+                    graph.Nodes[nodeIndex].StartTokenIndex == binding.SupersededNodeStartTokenIndex &&
+                    graph.Nodes[nodeIndex].TokenLength == binding.SupersededNodeTokenLength &&
+                    !conflictingOccurrences.Contains(identity);
+                return isValid
+                    ? binding
+                    : InvalidateBinding(binding, "reference_replacement_occurrence_invalid");
+            }).ToArray();
         }
         catch (JsonException)
         {
             // A legacy malformed state record cannot become a reference source.
-            return [];
+            return [MalformedBindingState()];
         }
     }
+
+    private static LegendFounderAiDiscourseReferenceBinding InvalidateBinding(
+        LegendFounderAiDiscourseReferenceBinding binding,
+        string reasonCode) =>
+        binding with
+        {
+            ResolutionState = "unresolved",
+            ReasonCode = reasonCode
+        };
+
+    private static bool IsReplacementAttempt(
+        LegendFounderAiDiscourseReferenceBinding binding) =>
+        binding.ReplacesActiveBinding ||
+        binding.SupersededTurnId is not null ||
+        binding.SupersededTurnSequence is not null ||
+        binding.SupersededNodeIndex is not null ||
+        binding.SupersededNodeStartTokenIndex is not null ||
+        binding.SupersededNodeTokenLength is not null;
+
+    private static bool IsMalformedBindingState(
+        LegendFounderAiDiscourseReferenceBinding binding) =>
+        binding.ReasonCode == "reference_binding_state_invalid";
+
+    private static LegendFounderAiDiscourseReferenceBinding MalformedBindingState() =>
+        new(
+            "unresolved",
+            "reference_binding_state_invalid",
+            string.Empty,
+            string.Empty,
+            null,
+            null,
+            null,
+            null,
+            null,
+            true,
+            null);
 
     private static PersistedMeaningGraph ToPersistedMeaningGraph(
         LegendConnectUtteranceMeaningGraphSnapshot meaning) =>
@@ -570,4 +824,9 @@ internal sealed record LegendFounderAiDiscourseReferenceBinding(
     int? EntityTurnSequence,
     int? EntityNodeIndex,
     bool ReplacesActiveBinding,
-    string? ReferenceRuleSignature);
+    string? ReferenceRuleSignature,
+    Guid? SupersededTurnId = null,
+    int? SupersededTurnSequence = null,
+    int? SupersededNodeIndex = null,
+    int? SupersededNodeStartTokenIndex = null,
+    int? SupersededNodeTokenLength = null);
