@@ -1374,20 +1374,19 @@ public sealed class LegendFounderAiContractTests
             Path.Combine(AppContext.BaseDirectory, "legend-production-readonly-diagnostic.yml"));
 
         Assert.Contains("contents: read", workflow, StringComparison.Ordinal);
-        Assert.Contains("timeout-minutes: 30", workflow, StringComparison.Ordinal);
+        Assert.Contains("timeout-minutes: 20", workflow, StringComparison.Ordinal);
         Assert.Contains("cancel-in-progress: true", workflow, StringComparison.Ordinal);
-        Assert.Contains("ProductionReadOnlyNativeProofMatrix", workflow, StringComparison.Ordinal);
-        Assert.Contains("Authority: non-authoritative", workflow, StringComparison.Ordinal);
-        Assert.Contains("DeployedSha: unavailable", workflow, StringComparison.Ordinal);
-        Assert.Contains("production proof lives only in agentportal-production-deploy.yml", workflow, StringComparison.Ordinal);
-        Assert.Contains("$executedTests -ne 1", workflow, StringComparison.Ordinal);
-        Assert.Contains("$matrixCases -lt 1", workflow, StringComparison.Ordinal);
-        Assert.Contains("legend-production-matrix-result.json", workflow, StringComparison.Ordinal);
-        Assert.Contains(
-            "Production read-only diagnostic was not completed successfully.",
-            workflow,
-            StringComparison.Ordinal);
-        Assert.Contains("Upload sanitized diagnostic transcript", workflow, StringComparison.Ordinal);
+        Assert.Contains("scripts/run-legend-production-shadow.sh", workflow, StringComparison.Ordinal);
+        Assert.Contains("LEGEND_PRODUCTION_SELECT_ONLY_CONNECTION", workflow, StringComparison.Ordinal);
+        Assert.Contains("name: LEGEND-Production-ReadOnly-Validation", workflow, StringComparison.Ordinal);
+        Assert.DoesNotContain("name: Production\n", workflow, StringComparison.Ordinal);
+        Assert.Contains("LEGEND_DISABLE_PROVIDER_TRANSPORTS", workflow, StringComparison.Ordinal);
+        Assert.Contains("LEGEND_DISABLE_EXTERNAL_SIDE_EFFECTS", workflow, StringComparison.Ordinal);
+        Assert.Contains("timeout-minutes: 20", workflow, StringComparison.Ordinal);
+        Assert.Contains("Upload sanitized exact-SHA evidence", workflow, StringComparison.Ordinal);
+        Assert.DoesNotContain("azure/login", workflow, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("id-token: write", workflow, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("MasterAppDb", workflow, StringComparison.Ordinal);
         Assert.DoesNotContain("run_full_shadow:", workflow, StringComparison.Ordinal);
         Assert.DoesNotContain("runFullShadow", workflow, StringComparison.Ordinal);
         Assert.DoesNotContain("LegendProductionConvergenceGate", workflow, StringComparison.Ordinal);
@@ -1402,33 +1401,12 @@ public sealed class LegendFounderAiContractTests
         var workflow = File.ReadAllText(
             Path.Combine(AppContext.BaseDirectory, "legend-production-readonly-diagnostic.yml"));
 
-        var diagnosticStart = workflow.IndexOf("      - name: Run canonical production read-only diagnostics", StringComparison.Ordinal);
-        var transcriptStart = workflow.IndexOf("      - name: Assemble sanitized diagnostic transcript", StringComparison.Ordinal);
-        Assert.True(diagnosticStart >= 0);
-        Assert.True(transcriptStart > diagnosticStart);
-        var diagnostic = workflow[diagnosticStart..transcriptStart];
-
-        var capture = diagnostic.IndexOf("$matrixCases = [int]$matrixResult.ExecutedCases", StringComparison.Ordinal);
-        var publish = diagnostic.IndexOf("\"matrix_cases=$matrixCases\"", StringComparison.Ordinal);
-        Assert.True(capture >= 0);
-        Assert.True(publish > capture);
-        Assert.Contains("$matrixCases = $null", diagnostic, StringComparison.Ordinal);
-        Assert.DoesNotContain("$matrixCases = 0", diagnostic, StringComparison.Ordinal);
-        Assert.Contains("$matrixResultState = 'missing'", diagnostic, StringComparison.Ordinal);
-        Assert.Contains("$matrixResultState = 'malformed'", diagnostic, StringComparison.Ordinal);
-        Assert.Contains("matrix_total_cases=$matrixTotalCases", diagnostic, StringComparison.Ordinal);
-        Assert.Contains("matrix_failed_cases=$matrixFailedCases", diagnostic, StringComparison.Ordinal);
-        Assert.Contains("matrix_result_state=$matrixResultState", diagnostic, StringComparison.Ordinal);
-        Assert.Contains("provider_client_count=$providerClientCount", diagnostic, StringComparison.Ordinal);
-        Assert.Contains("production_write_command_count=$productionWriteCommandCount", diagnostic, StringComparison.Ordinal);
-        Assert.Contains(
-            "$matrixResultPath = $env:LEGEND_PRODUCTION_PROOF_RESULT_PATH",
-            diagnostic,
-            StringComparison.Ordinal);
-        Assert.Contains(
-            "LEGEND_PRODUCTION_PROOF_RESULT_PATH=$env:GITHUB_WORKSPACE/diagnostics/legend-production-matrix-result.json",
-            workflow,
-            StringComparison.Ordinal);
+        Assert.Contains("scripts/run-legend-production-shadow.sh", workflow, StringComparison.Ordinal);
+        Assert.Contains("summary.json", workflow, StringComparison.Ordinal);
+        Assert.Contains("providerHttpCallCount", workflow, StringComparison.Ordinal);
+        Assert.Contains("productionWriteCommandCount", workflow, StringComparison.Ordinal);
+        Assert.Contains("skippedCases", workflow, StringComparison.Ordinal);
+        Assert.Contains("totalWallMilliseconds", workflow, StringComparison.Ordinal);
     }
 
     [Fact]
