@@ -334,7 +334,10 @@ public sealed class LegendFounderAiContractTests
         Assert.Contains("nativeOnly: Bool", mobile, StringComparison.Ordinal);
         Assert.Contains("stop.fill", mobile, StringComparison.Ordinal);
         Assert.Contains("Keep OpenAI off for this direct LEGEND test.", mobile, StringComparison.Ordinal);
-        Assert.Contains("Toggle(\"Native-only\"", mobile, StringComparison.Ordinal);
+        Assert.Contains(
+            "Toggle(LegendLocalized(\"Native-only\")",
+            mobile,
+            StringComparison.Ordinal);
         Assert.Contains("responseAuthority", mobile, StringComparison.Ordinal);
         Assert.Contains("LegendNextColor.aiResponseRoyal", mobile, StringComparison.Ordinal);
         Assert.Contains("LegendAiIcon.imageset/legendai.png", androidBuild, StringComparison.Ordinal);
