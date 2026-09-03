@@ -661,9 +661,11 @@ public sealed class LegendFounderAiModeIsolationTests
             null);
 
         Assert.True(authority.IsNativeContentBindingRead("legend_translation_quality"));
+        Assert.True(authority.IsNativeContentBindingRead("legend_system_overview"));
+        Assert.True(authority.IsNativeContentBindingRead("legend_operational_diagnostics"));
+        Assert.True(authority.IsNativeContentBindingRead("legend_provider_capacity"));
         Assert.False(authority.IsNativeContentBindingRead("legend_submit_founder_curriculum"));
         Assert.False(authority.IsNativeContentBindingRead("legend_inspect_repository"));
-        Assert.False(authority.IsNativeContentBindingRead("legend_provider_capacity"));
 
         var unavailable = await authority.BindReadOnlyResultAsync(
             ControllerTestHelpers.BuildUser(),

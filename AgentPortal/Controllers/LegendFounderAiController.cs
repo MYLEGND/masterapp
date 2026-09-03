@@ -42,7 +42,7 @@ public sealed class LegendFounderAiController : Controller
         Response.Headers["X-Accel-Buffering"] = "no";
         HttpContext.Features.Get<IHttpResponseBodyFeature>()?.DisableBuffering();
 
-        var reader = _progress.Subscribe(operationId);
+        var reader = _progress.Subscribe(User, operationId);
         var started = Stopwatch.GetTimestamp();
         LegendFounderAiProgressEvent? last = null;
 
@@ -108,7 +108,7 @@ public sealed class LegendFounderAiController : Controller
                 operationId,
                 cancellationToken,
                 operationId.HasValue
-                    ? (update, token) => _progress.PublishAsync(operationId.Value, update, token)
+                    ? (update, token) => _progress.PublishAsync(User, operationId.Value, update, token)
                     : null);
 
             if (!result.Succeeded)
@@ -119,7 +119,7 @@ public sealed class LegendFounderAiController : Controller
         finally
         {
             if (operationId.HasValue)
-                _progress.Complete(operationId.Value);
+                _progress.Complete(User, operationId.Value);
         }
     }
 
@@ -239,7 +239,7 @@ public sealed class LegendFounderAiController : Controller
         finally
         {
             if (operationId.HasValue)
-                _progress.Complete(operationId.Value);
+                _progress.Complete(User, operationId.Value);
         }
     }
 

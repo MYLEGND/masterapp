@@ -1651,7 +1651,9 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
         inference.Reasons.FirstOrDefault() is
             "meaning_graph_component_unknown" or
             "meaning_graph_retrieval_bound_exceeded" or
+            "meaning_graph_processing_bound_exceeded" or
             "meaning_graph_relation_unproven" or
+            "semantic_transition_evidence_unknown" or
             "semantic_transition_not_supported";
 
     private static LegendConnectNativeInferenceSnapshot WithResearchDecision(

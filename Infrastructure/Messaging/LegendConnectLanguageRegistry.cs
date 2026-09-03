@@ -91,6 +91,14 @@ internal sealed class LegendLanguageRegistry : ILegendLanguageRegistry
         CancellationToken cancellationToken = default)
     {
         await EnsureBaselineAsync(cancellationToken);
+        return await ListEnabledTranslationLanguagesReadOnlyAsync(
+            cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<LegendLanguageDefinitionSnapshot>>
+        ListEnabledTranslationLanguagesReadOnlyAsync(
+            CancellationToken cancellationToken = default)
+    {
         return await _db.Set<LegendLanguageDefinition>()
             .AsNoTracking()
             .Where(item => item.IsEnabled && item.IsTranslationEnabled)

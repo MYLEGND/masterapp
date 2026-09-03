@@ -2380,7 +2380,7 @@ public sealed class LegendFounderAiConversationService
             succeeded ? null : "research_failure",
             ResponseAuthority:
                 outcome.State == LegendConnectResearchOutcomeState.Conclusion
-                    ? "LegendAi"
+                    ? "GovernedResearch"
                     : "SystemDiagnostic",
             Stage: outcome.State switch
             {
