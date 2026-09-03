@@ -76,6 +76,10 @@ internal sealed class LegendFounderToolAuthority
     // web-search, mutation, and capability-discovery tools.
     private static bool IsNativeContentBindingReadTool(string name) =>
         name is
+            "legend_software_remediation_status" or
+            "legend_system_overview" or
+            "legend_operational_diagnostics" or
+            "legend_provider_capacity" or
             "legend_language_knowledge" or
             "legend_pair_health" or
             "legend_translation_quality" or
@@ -107,9 +111,9 @@ internal sealed class LegendFounderToolAuthority
 
     /// <summary>
     /// Binds one scalar through the same Founder authorization and tool
-    /// executor used by provider calls. The selected semantic frame supplies
-    /// every input; native reasoning cannot choose a tool or inspect the full
-    /// output payload.
+    /// executor used by provider calls. The governed native response plan
+    /// supplies every input; neither a prompt-specific classifier nor the
+    /// presentation layer may choose a tool or inspect the full output payload.
     /// </summary>
     internal async Task<LegendConnectReadOnlyContentBindingResult>
         BindReadOnlyResultAsync(

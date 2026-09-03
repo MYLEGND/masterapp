@@ -296,7 +296,7 @@ end
     /\b(?:Currency|Percentage|Text|DualProtection)\(\s*#{LITERAL}\s*,\s*(#{LITERAL})/,
     /new MobileFinancialHealthGroup\(\s*#{LITERAL}\s*,\s*(#{LITERAL})/m
   ],
-  ROOT.join("Shared/Finance/LegendLivingBalanceSheetCalculator.cs") => [
+  ROOT.join("SHARED/Finance/LegendLivingBalanceSheetCalculator.cs") => [
     /\n\s*(#{LITERAL})\s*\n\s*\);/
   ]
 }.each do |path, patterns|
@@ -349,5 +349,12 @@ manifest = {
   "sourceLanguageCode" => "en",
   "entries" => ordered_entries
 }
-File.write(MANIFEST, JSON.pretty_generate(manifest) + "\n")
+serialized_manifest = JSON.pretty_generate(manifest)
+# Keep empty placeholder arrays in the repository's established multiline
+# form across Ruby JSON versions so regeneration changes only copy content.
+serialized_manifest.gsub!(
+  '"placeholders": []',
+  '"placeholders": [' + "\n\n" + '      ]'
+)
+File.write(MANIFEST, serialized_manifest + "\n")
 puts "Generated #{manifest['entries'].length} canonical application-copy entries."

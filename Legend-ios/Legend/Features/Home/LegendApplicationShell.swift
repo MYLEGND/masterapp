@@ -11702,8 +11702,12 @@ struct LegendFounderAiConversationView: View {
         switch message.responseAuthority {
         case "LegendAi":
             return "Legend® Ai"
+        case "GovernedResearch":
+            return "LEGEND governed research"
         case "OpenAITeacher":
             return "OpenAI"
+        case "SystemDiagnostic":
+            return "System diagnostic"
         default:
             return nil
         }

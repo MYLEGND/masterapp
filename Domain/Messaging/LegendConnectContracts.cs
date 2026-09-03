@@ -59,6 +59,11 @@ public interface ILegendLanguageRegistry
     Task<IReadOnlyList<LegendLanguageDefinitionSnapshot>> ListEnabledTranslationLanguagesAsync(
         CancellationToken cancellationToken = default);
 
+    Task<IReadOnlyList<LegendLanguageDefinitionSnapshot>>
+        ListEnabledTranslationLanguagesReadOnlyAsync(
+            CancellationToken cancellationToken = default) =>
+        ListEnabledTranslationLanguagesAsync(cancellationToken);
+
     /// <summary>
     /// Reads the existing directional serving eligibility without creating or
     /// enabling a pair. Production routing must never turn an unsupported pair

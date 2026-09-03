@@ -206,7 +206,9 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
     private const int MaximumGovernedResponseSentences = 8;
     private const int MaximumConciseResponseComponents = 24;
     private const int MinimumDetailedResponseComponents = 25;
-    private const int MaximumSemanticInputComponents = 24;
+    private const int MaximumSemanticInputComponents = 128;
+    private const int MaximumReusableMeaningAnchorComponents = 64;
+    private const int MaximumSemanticRequestComponents = 512;
     private const int MaximumIndexedSemanticTextUnits = 512;
     private const int MaximumIndexedSemanticAnchors = 4096;
     private const int MaximumSemanticTransitionFamilies =
@@ -4291,6 +4293,7 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
                     anchor.ComponentStartTokenIndex >= 0 &&
                     anchor.ComponentLength > 0 &&
                     anchor.ComponentLength <= inputLexemeHashes.Count &&
+                    anchor.ComponentLength <= MaximumReusableMeaningAnchorComponents &&
                     occurrence.TokenIndex >= anchor.ComponentStartTokenIndex &&
                     occurrence.TokenIndex < anchor.ComponentStartTokenIndex + anchor.ComponentLength
                 group occurrence by new
@@ -4351,6 +4354,68 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
         return rows.Length > MaximumIndexedSemanticTextUnits
             ? IndexedSemanticAnchorRetrieval.Bounded
             : new(rows, false);
+    }
+
+    /// <summary>
+    /// Applies the existing indexed semantic lookup across one complete
+    /// request. The SQL lookup remains bounded, while overlapping windows
+    /// guarantee that every reusable anchor within the governed 64-component
+    /// anchor contract is evaluated without classifying a longer utterance as
+    /// invalid. Exact governed endpoints retain their existing direct lookup.
+    /// </summary>
+    private async Task<IndexedSemanticAnchorRetrieval>
+        LoadIndexedSemanticAnchorIdsForRequestAsync(
+            string language,
+            IReadOnlyList<string> inputLexemeHashes,
+            CancellationToken cancellationToken,
+            bool requireReusableMeaningEvidence)
+    {
+        if (inputLexemeHashes.Count is < 1 or > MaximumSemanticRequestComponents)
+            return IndexedSemanticAnchorRetrieval.Empty;
+
+        if (inputLexemeHashes.Count <= MaximumSemanticInputComponents)
+        {
+            return await LoadIndexedSemanticAnchorIdsAsync(
+                language,
+                inputLexemeHashes,
+                cancellationToken,
+                requireReusableMeaningEvidence);
+        }
+
+        var anchorIds = new HashSet<Guid>();
+        var stride = MaximumReusableMeaningAnchorComponents;
+        for (var start = 0; start < inputLexemeHashes.Count; start += stride)
+        {
+            var windowStart = Math.Min(
+                start,
+                inputLexemeHashes.Count - MaximumSemanticInputComponents);
+            var window = inputLexemeHashes
+                .Skip(windowStart)
+                .Take(MaximumSemanticInputComponents)
+                .ToArray();
+            var indexed = await LoadIndexedSemanticAnchorIdsAsync(
+                language,
+                window,
+                cancellationToken,
+                requireReusableMeaningEvidence);
+            if (indexed.BoundExceeded)
+                return IndexedSemanticAnchorRetrieval.Bounded;
+
+            foreach (var anchorId in indexed.AnchorIds)
+            {
+                anchorIds.Add(anchorId);
+                if (anchorIds.Count > MaximumIndexedSemanticTextUnits)
+                    return IndexedSemanticAnchorRetrieval.Bounded;
+            }
+
+            if (windowStart + MaximumSemanticInputComponents >=
+                inputLexemeHashes.Count)
+            {
+                break;
+            }
+        }
+
+        return new(anchorIds.OrderBy(item => item).ToArray(), false);
     }
 
     /// <summary>
@@ -4883,19 +4948,19 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
         }
         else
         {
-            if (tokens.Count > MaximumSemanticInputComponents)
+            if (tokens.Count > MaximumSemanticRequestComponents)
             {
                 return new(
                     false,
                     [],
                     [],
                     tokens.Select(item => item.NormalizedText).ToArray(),
-                    "meaning_graph_input_invalid");
+                    "meaning_graph_processing_bound_exceeded");
             }
             var inputLexemeHashes = tokens
                 .Select(item => item.NormalizedHash)
                 .ToArray();
-            indexedAnchors = await LoadIndexedSemanticAnchorIdsAsync(
+            indexedAnchors = await LoadIndexedSemanticAnchorIdsForRequestAsync(
                 languageCode,
                 inputLexemeHashes,
                 cancellationToken,
