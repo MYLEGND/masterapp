@@ -566,6 +566,7 @@ public sealed class LegendConnectFounderSemanticTransformationSqlTests
                             item.EntitySemanticDimension == "choice");
                     Assert.Equal("alpha", binding.EntitySemanticValue);
                     Assert.True(binding.ReplacesActiveBinding);
+                    Assert.NotNull(binding.SupersededTurnId);
                     var bindingTurn = Assert.Single(planningState.Turns.Where(item =>
                         item.SequenceNumber == binding.SupersededTurnSequence));
                     var nodeIndex = Assert.IsType<int>(binding.SupersededNodeIndex);

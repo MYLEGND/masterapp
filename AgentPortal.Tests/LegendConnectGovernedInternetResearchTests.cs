@@ -81,6 +81,7 @@ public sealed class LegendConnectGovernedInternetResearchTests
             SemanticSignature = "selector-which-option",
             SemanticValue = "which"
         };
+        var correctionTurnId = Guid.NewGuid();
         var corrected = new LegendConnectDiscourseReferenceBindingSnapshot(
             "bound",
             "discourse_reference_bound",
@@ -93,6 +94,7 @@ public sealed class LegendConnectGovernedInternetResearchTests
             "selector-first-option",
             "ordinal-choice-rule")
         {
+            SupersededTurnId = correctionTurnId,
             SupersededTurnSequence = 2,
             SupersededNodeIndex = 0,
             SupersededNodeStartTokenIndex = correctionSelector.StartTokenIndex,

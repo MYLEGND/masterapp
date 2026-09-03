@@ -981,6 +981,7 @@ public sealed record LegendConnectDiscourseReferenceBindingSnapshot(
     string SelectorSemanticSignature,
     string? ReferenceRuleSignature)
 {
+    public Guid? SupersededTurnId { get; init; }
     public int? SupersededTurnSequence { get; init; }
     public int? SupersededNodeIndex { get; init; }
     public int? SupersededNodeStartTokenIndex { get; init; }
