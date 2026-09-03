@@ -6107,13 +6107,24 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
                 "discourse_reference_binding_invalid");
         }
 
-        var nodes = graph.Nodes.ToList();
-        var relations = graph.Relations.ToList();
+        if (!TryPruneSupersededReplacementEntities(
+                graph.Nodes,
+                graph.Relations,
+                currentTurn.Bindings,
+                out var nodes,
+                out var relations,
+                out var selectorRemap))
+        {
+            return DiscourseMeaningGraphCompletion.Failure(
+                graph,
+                "discourse_reference_binding_invalid");
+        }
+
         foreach (var selectorSignature in rules
                      .Select(item => item.SelectorSemanticSignature)
                      .Distinct(StringComparer.Ordinal))
         {
-            var selectorIndexes = nodes
+            var selectorIndexes = graph.Nodes
                 .Select((node, index) => new { node, index })
                 .Where(item => string.Equals(
                     item.node.SemanticSignature,
@@ -6207,7 +6218,7 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
                     "governed-discourse-reference-completion|v1|" +
                     rule.RuleSignature + "|" + entity.SemanticSignature),
                 "resolved-reference",
-                selectorIndexes[0],
+                selectorRemap[selectorIndexes[0]],
                 completedEntityIndex,
                 Math.Min(entity.IndependentSupportCount, rule.IndependentSupportCount));
             if (!relations.Contains(relation))
@@ -6220,6 +6231,91 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
             relations,
             graph.UnknownSurfaceComponents,
             "meaning_graph_discourse_completed"));
+    }
+
+    private static bool TryPruneSupersededReplacementEntities(
+        IReadOnlyList<LegendConnectUtteranceMeaningNode> nodes,
+        IReadOnlyList<LegendConnectUtteranceMeaningRelation> relations,
+        IReadOnlyList<LegendConnectDiscourseReferenceBindingSnapshot> bindings,
+        out List<LegendConnectUtteranceMeaningNode> prunedNodes,
+        out List<LegendConnectUtteranceMeaningRelation> prunedRelations,
+        out Dictionary<int, int> selectorRemap)
+    {
+        prunedNodes = nodes.ToList();
+        prunedRelations = relations.ToList();
+        selectorRemap = Enumerable.Range(0, nodes.Count)
+            .ToDictionary(index => index, index => index);
+
+        var replacements = bindings
+            .Where(item =>
+                item.ResolutionState == "bound" &&
+                item.ReplacesActiveBinding &&
+                !string.IsNullOrWhiteSpace(item.EntitySemanticDimension) &&
+                !string.IsNullOrWhiteSpace(item.EntitySemanticSignature) &&
+                !string.IsNullOrWhiteSpace(item.EntitySemanticValue))
+            .ToArray();
+        if (replacements.Length == 0)
+            return true;
+
+        var retainedByDimension = new Dictionary<string, (string Signature, string Value)>(StringComparer.Ordinal);
+        foreach (var binding in replacements)
+        {
+            var retained = (binding.EntitySemanticSignature!, binding.EntitySemanticValue!);
+            if (retainedByDimension.TryGetValue(binding.EntitySemanticDimension, out var existing) &&
+                (!string.Equals(existing.Signature, retained.Item1, StringComparison.Ordinal) ||
+                 !string.Equals(existing.Value, retained.Item2, StringComparison.Ordinal)))
+            {
+                return false;
+            }
+
+            retainedByDimension[binding.EntitySemanticDimension] = retained;
+        }
+
+        var removedIndexes = Enumerable.Range(0, nodes.Count)
+            .Where(index => false)
+            .ToHashSet();
+        foreach (var binding in replacements)
+        {
+            if (!binding.HasSupersededCurrentTurnEntity)
+                continue;
+            if (binding.SupersededCurrentTurnNodeIndex is not int candidateIndex ||
+                candidateIndex < 0 || candidateIndex >= nodes.Count)
+                return false;
+            var candidate = nodes[candidateIndex];
+            if (!string.Equals(candidate.SemanticSignature, binding.SupersededCurrentTurnSemanticSignature, StringComparison.Ordinal) ||
+                !string.Equals(candidate.SemanticDimension, binding.SupersededCurrentTurnSemanticDimension, StringComparison.Ordinal) ||
+                !string.Equals(candidate.SemanticValue, binding.SupersededCurrentTurnSemanticValue, StringComparison.Ordinal) ||
+                candidate.StartTokenIndex != binding.SupersededCurrentTurnNodeStartTokenIndex ||
+                candidate.TokenLength != binding.SupersededCurrentTurnNodeTokenLength ||
+                !string.Equals(candidate.SemanticDimension, binding.EntitySemanticDimension, StringComparison.Ordinal))
+                return false;
+            removedIndexes.Add(candidateIndex);
+        }
+
+        if (removedIndexes.Count == 0)
+            return true;
+
+        var retainedIndexes = Enumerable.Range(0, nodes.Count)
+            .Where(index => !removedIndexes.Contains(index))
+            .ToArray();
+        var remap = retainedIndexes
+            .Select((originalIndex, newIndex) => new { originalIndex, newIndex })
+            .ToDictionary(item => item.originalIndex, item => item.newIndex);
+        selectorRemap = remap;
+        prunedNodes = retainedIndexes
+            .Select(index => nodes[index])
+            .ToList();
+        prunedRelations = relations
+            .Where(item =>
+                !removedIndexes.Contains(item.SourceNodeIndex) &&
+                !removedIndexes.Contains(item.TargetNodeIndex))
+            .Select(item => item with
+            {
+                SourceNodeIndex = remap[item.SourceNodeIndex],
+                TargetNodeIndex = remap[item.TargetNodeIndex]
+            })
+            .ToList();
+        return true;
     }
 
     private static bool IsActiveDiscourseEntityNode(
