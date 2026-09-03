@@ -280,6 +280,125 @@ public sealed class LegendConnectGovernedDiscourseOrdinalAmbiguityTests
     }
 
     [Fact]
+    public async Task PersistedActiveOccurrence_RemainsBoundAcrossReloadWhenDetachedFromEveryRelation()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var actor = Guid.NewGuid().ToString("D");
+        var previousFounderOid = Environment.GetEnvironmentVariable("FOUNDER_OID");
+        Environment.SetEnvironmentVariable("FOUNDER_OID", actor);
+        db.AgentProfiles.Add(Profile(actor, "detached-active"));
+        await db.SaveChangesAsync();
+        try
+        {
+            var curriculum = CreateCurriculum(db);
+            for (var family = 1; family <= 3; family++)
+            {
+                var submitted = await curriculum.SubmitFounderBatchAsync(
+                    ProductionStyleChoiceFamily(family));
+                Assert.True(submitted.Succeeded, submitted.Message);
+            }
+
+            var operations = CreateOperations(db);
+            var founder = ControllerTestHelpers.BuildUser(actor);
+            var conversationId = Guid.NewGuid();
+            var discourse = new LegendFounderAiDiscourseStateService(
+                db,
+                new AgentProfileAccessResolver(db),
+                operations);
+            var sourceGraph = new LegendConnectUtteranceMeaningGraphSnapshot(
+                true,
+                [
+                    new LegendConnectUtteranceMeaningNode(
+                        "candidate-saffron", "choice", "saffron", 0, 1, 3),
+                    new LegendConnectUtteranceMeaningNode(
+                        "candidate-cobalt", "choice", "cobalt", 1, 1, 3),
+                    new LegendConnectUtteranceMeaningNode(
+                        "decision-context", "choice_note", "stable", 2, 1, 3)
+                ],
+                [
+                    new LegendConnectUtteranceMeaningRelation(
+                        "saffron-context", "described-as", 0, 2, 3),
+                    new LegendConnectUtteranceMeaningRelation(
+                        "cobalt-context", "described-as", 1, 2, 3)
+                ],
+                [],
+                "meaning_graph_observational_composed");
+            await discourse.RecordObservationAsync(
+                founder,
+                conversationId.ToString(),
+                "user",
+                sourceGraph);
+
+            var secondSelector = await operations.AnalyzeReusableMeaningGraphAsync(
+                "Compare the second one.");
+            Assert.True(secondSelector.IsComposed, secondSelector.ReasonCode);
+            await discourse.RecordObservationAsync(
+                founder,
+                conversationId.ToString(),
+                "user",
+                secondSelector);
+            var activeBeforeDetach = Assert.Single(
+                await discourse.GetLatestBindingsAsync(actor, conversationId));
+            Assert.Equal("bound", activeBeforeDetach.ResolutionState);
+            Assert.Equal("cobalt", activeBeforeDetach.EntitySemanticValue);
+            Assert.Equal(1, activeBeforeDetach.EntityNodeIndex);
+
+            var sourceTurn = await db.LegendFounderAiDiscourseTurns
+                .SingleAsync(item => item.SequenceNumber == 1);
+            var detachedRelations = sourceGraph.Relations
+                .Where(item => item.SourceNodeIndex != 1 && item.TargetNodeIndex != 1)
+                .ToArray();
+            Assert.DoesNotContain(detachedRelations, item =>
+                item.SourceNodeIndex == 1 || item.TargetNodeIndex == 1);
+            sourceTurn.MeaningGraphJson = JsonSerializer.Serialize(new
+            {
+                sourceGraph.IsComposed,
+                sourceGraph.Nodes,
+                Relations = detachedRelations,
+                sourceGraph.ReasonCode
+            });
+            await db.SaveChangesAsync();
+            db.ChangeTracker.Clear();
+
+            operations = CreateOperations(db);
+            discourse = new LegendFounderAiDiscourseStateService(
+                db,
+                new AgentProfileAccessResolver(db),
+                operations);
+            var activeAfterReload = Assert.Single(
+                await discourse.GetLatestBindingsAsync(actor, conversationId));
+            Assert.Equal("bound", activeAfterReload.ResolutionState);
+            Assert.Equal("cobalt", activeAfterReload.EntitySemanticValue);
+            Assert.Equal(1, activeAfterReload.EntityNodeIndex);
+
+            var correctionGraph = await operations.AnalyzeReusableMeaningGraphAsync(
+                "No, use the first one.");
+            Assert.True(correctionGraph.IsComposed, correctionGraph.ReasonCode);
+            await discourse.RecordObservationAsync(
+                founder,
+                conversationId.ToString(),
+                "user",
+                correctionGraph);
+            var state = Assert.IsType<LegendConnectDiscourseStateSnapshot>(
+                await discourse.GetStateAsync(founder, conversationId.ToString()));
+            var plan = await operations.TryPlanConversationAsync(
+                "No, use the first one.",
+                state);
+            Assert.True(plan.Supported, plan.ReasonCode);
+            var corrected = Assert.Single(plan.Plan!.ResolvedDiscourseBindings);
+            Assert.Equal("bound", corrected.ResolutionState);
+            Assert.Equal("saffron", corrected.EntitySemanticValue);
+            Assert.True(corrected.ReplacesActiveBinding);
+            Assert.Equal("cobalt", corrected.SupersededEntitySemanticValue);
+            Assert.Equal(1, corrected.SupersededNodeIndex);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("FOUNDER_OID", previousFounderOid);
+        }
+    }
+
+    [Fact]
     public void PersistedExactOccurrence_RemainsBoundAfterOnlyItsIncidentRelationsAreRemoved()
     {
         var sourceTurnId = Guid.NewGuid();
