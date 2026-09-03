@@ -495,6 +495,23 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
                     : "internal_legend_state_requires_governed_tools");
         }
 
+        // Tenant-owned operational records (clients, leads, policies, renewals,
+        // appointments, revenue) are authenticated governed resources. The
+        // public internet holds no authority over them, so such a request must
+        // stay on the governed read path even when internal evidence is
+        // currently unavailable, stale, or conflicting.
+        if (IsInternalOperationalDataQuestion(normalized))
+        {
+            return Decision(
+                false,
+                internalAvailable
+                    ? LegendConnectResearchNeed.ExistingGovernedKnowledge
+                    : LegendConnectResearchNeed.NotResearchable,
+                internalAvailable
+                    ? "existing_governed_knowledge_answers_request"
+                    : "internal_operational_data_requires_governed_tools");
+        }
+
         if (conflicted)
         {
             return Decision(
@@ -1443,7 +1460,15 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
         if (composed.State is LegendSemanticTransitionInference.Ambiguous or
             LegendSemanticTransitionInference.Contradicted)
         {
-            return Finish(NativeInferenceUnsupported(composed.Reasons.FirstOrDefault() ?? "semantic_transition_not_governed"));
+            // A contradiction is always a governed boundary. Ambiguity is only
+            // a governed boundary once governed evidence was actually
+            // selected: with zero selected evidence the authority never
+            // established a governed answer, so the request is an unavailable
+            // source meaning and remains eligible for the single existing
+            // escalation path owned by the conversation service.
+            return Finish(NativeInferenceUnsupported(
+                composed.Reasons.FirstOrDefault() ?? "semantic_transition_not_governed",
+                CanEscalateFromUnprovenSourceAmbiguity(composed)));
         }
         // V20.3: native Founder conversation inference is governed by the
         // reusable meaning-graph authority only.
@@ -1646,6 +1671,21 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
             null,
             null);
 
+    /// <summary>
+    /// A composed ambiguity is only a governed boundary once governed evidence
+    /// was actually selected. With zero selected evidence the authority never
+    /// established a governed answer, so the request is unavailable source
+    /// meaning and stays eligible for the single existing escalation path.
+    /// A contradiction is never escalatable.
+    /// </summary>
+    private static bool CanEscalateFromUnprovenSourceAmbiguity(
+        LegendSemanticTransitionInference inference) =>
+        string.Equals(
+            inference.State,
+            LegendSemanticTransitionInference.Ambiguous,
+            StringComparison.Ordinal) &&
+        inference.EvidenceCount <= 0;
+
     private static bool CanEscalateFromUnavailableComposedSource(
         LegendSemanticTransitionInference inference) =>
         inference.Reasons.FirstOrDefault() is
@@ -1654,7 +1694,12 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
             "meaning_graph_processing_bound_exceeded" or
             "meaning_graph_relation_unproven" or
             "semantic_transition_evidence_unknown" or
-            "semantic_transition_not_supported";
+            "semantic_transition_not_supported" or
+            // The discourse authority returned no conversation state at all.
+            // Nothing governed was resolved, refused, or contradicted, so this
+            // is an unavailable input rather than a governed boundary. An
+            // unresolved, mismatched, or invalid binding stays fail-closed.
+            "discourse_reference_state_unavailable";
 
     private static LegendConnectNativeInferenceSnapshot WithResearchDecision(
         string input,
@@ -1735,6 +1780,25 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
             "system state", "database", "readiness", "training state",
             "model state", "model version", "provider capacity", "coverage",
             "retained knowledge", "currently know", "current knowledge");
+
+    /// <summary>
+    /// Recognizes a request about operational records this deployment owns and
+    /// serves from authenticated governed resources. The classification needs
+    /// both an internal ownership marker and operational-record vocabulary so
+    /// ordinary subject matter never becomes an internal-data claim.
+    /// </summary>
+    internal static bool IsInternalOperationalDataQuestion(string normalized) =>
+        ContainsResearchSignal(
+            normalized,
+            "our ", "we ", "my ", "founder", "internal",
+            "in the portal", "in the system", "in the database",
+            "in our", "company-wide", "companywide") &&
+        ContainsResearchSignal(
+            normalized,
+            "client", "lead", "policy", "policies", "renewal",
+            "subscriber", "subscription", "appointment", "agent",
+            "commission", "premium", "pipeline", "book of business",
+            "revenue", "retention", "churn");
 
     private static bool IsExternalFactualQuestion(string normalized)
     {

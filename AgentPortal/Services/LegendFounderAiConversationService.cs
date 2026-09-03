@@ -84,7 +84,8 @@ public sealed class LegendFounderAiConversationService
         LegendFounderAiDiscourseStateService discourse,
         ILegendLanguageRegistry languages,
         ITranslationService translation,
-        IFounderSoftwareRemediationService? softwareRemediation = null)
+        IFounderSoftwareRemediationService? softwareRemediation = null,
+        FounderOperationalPortfolioService? operationalPortfolio = null)
     {
         _httpClientFactory = httpClientFactory;
         _configuration = configuration;
@@ -95,7 +96,8 @@ public sealed class LegendFounderAiConversationService
         _toolAuthority =
             new LegendFounderToolAuthority(
                 legend,
-                softwareRemediation);
+                softwareRemediation,
+                operationalPortfolio);
         _logger = logger;
 
         _timeoutSeconds =
@@ -264,16 +266,36 @@ public sealed class LegendFounderAiConversationService
                 effectiveToken);
             if (!sourceLanguage.Succeeded)
             {
-                return LegendFounderAiChatResponse.ModeFailure(
-                    mode,
-                    $"Legend® Ai could not identify a governed source language. SourceLanguageFailure={sourceLanguage.Reason}.",
-                    "language_identification",
-                    "source_language_identification",
+                // Native-only testing is an absolute boundary: an unusable
+                // governed source language fails closed with its exact reason.
+                // A provider-enabled conversation preserves the same failure
+                // and continues on the single existing escalation path instead
+                // of ending the request without any response authority.
+                if (request.NativeOnly)
+                {
+                    return LegendFounderAiChatResponse.ModeFailure(
+                        mode,
+                        $"Legend® Ai could not identify a governed source language. SourceLanguageFailure={sourceLanguage.Reason}.",
+                        "language_identification",
+                        "source_language_identification",
+                        sourceLanguage.Reason);
+                }
+
+                nativeFailureDetail =
+                    $"Governed source-language identification was unavailable. SourceLanguageFailure={sourceLanguage.Reason}.";
+                _logger.LogWarning(
+                    "LEGEND Founder AI source-language identification failed; preserving the failure and using the existing escalation path. Reason={Reason}",
                     sourceLanguage.Reason);
             }
+            else
+            {
+                governedSourceLanguageCode = sourceLanguage.LanguageCode!;
+            }
+        }
 
-            var sourceLanguageCode = sourceLanguage.LanguageCode!;
-            governedSourceLanguageCode = sourceLanguageCode;
+        if (governedSourceLanguageCode is not null)
+        {
+            var sourceLanguageCode = governedSourceLanguageCode;
             var nativeStarted = Stopwatch.GetTimestamp();
             await ReportProgressAsync(
                 progress,
@@ -655,9 +677,13 @@ public sealed class LegendFounderAiConversationService
             var successfulGovernedEvidenceTools =
                 new HashSet<string>(StringComparer.Ordinal);
 
+            // Retained-knowledge preload is a passive context read performed by
+            // this service, not an executed governed inspection. It can never
+            // satisfy a request whose answer depends on current governed state,
+            // and it must not withdraw the governed tool catalog from the
+            // escalated round.
             var governedInspectionCompleted =
-                !requiresGovernedInspection ||
-                preloadRetainedKnowledge;
+                !requiresGovernedInspection;
 
             var confirmedLearningMutationRequired =
                 request.FounderCommandConfirmed &&
@@ -3188,7 +3214,11 @@ Never upgrade an unresolved, rejected or contradicted record merely because it a
             "provider capacity", "production deployment",
             "deployment", "repository", "github", "pull request",
             "branch", "commit", "workflow", "tool registry",
-            "machineproposed", "machine proposed"
+            "machineproposed", "machine proposed",
+            // An explicit request to use a governed read capability is itself
+            // an inspection request, whatever the subject matter is.
+            "read-only", "read only", "governed tool", "governed read",
+            "use a tool", "use your tools", "tool call"
         };
 
         if (explicitGovernedSignals.Any(signal =>
@@ -3228,13 +3258,20 @@ Never upgrade an unresolved, rejected or contradicted record merely because it a
         var currentStateSignals = new[]
         {
             "current", "currently", "latest", "today",
-            "right now", "update", "how many", "count", "status"
+            "right now", "update", "how many", "count", "status",
+            "inspect", "look up", "pull up", "report on"
         };
 
         var currentStateSubjects = new[]
         {
             "legend", "language", "learning", "knowledge",
-            "model", "provider", "translation", "haitian creole"
+            "model", "provider", "translation", "haitian creole",
+            // Operational records this deployment owns are governed resources
+            // and are read through the registered tools, never from provider
+            // recollection or the public internet.
+            "client", "lead", "policy", "policies", "renewal",
+            "subscriber", "subscription", "appointment", "agent",
+            "commission", "premium", "pipeline", "revenue"
         };
 
         return currentStateSignals.Any(signal =>
