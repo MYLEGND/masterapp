@@ -579,10 +579,17 @@ public sealed class LegendFounderAiDiscourseStateService
     private static DiscourseEntityCandidate? ResolveExactDiscourseEntityOccurrence(
         LegendFounderAiDiscourseTurn turn,
         int nodeIndex,
-        string semanticDimension,
-        string semanticSignature,
-        string semanticValue)
+        string? semanticDimension,
+        string? semanticSignature,
+        string? semanticValue)
     {
+        if (string.IsNullOrWhiteSpace(semanticDimension) ||
+            string.IsNullOrWhiteSpace(semanticSignature) ||
+            string.IsNullOrWhiteSpace(semanticValue))
+        {
+            return null;
+        }
+
         var graph = DeserializeMeaning(turn.MeaningGraphJson);
         if (!graph.IsComposed ||
             nodeIndex < 0 ||
@@ -592,6 +599,13 @@ public sealed class LegendFounderAiDiscourseStateService
         }
 
         var node = graph.Nodes[nodeIndex];
+        if (string.IsNullOrWhiteSpace(node.SemanticDimension) ||
+            string.IsNullOrWhiteSpace(node.SemanticSignature) ||
+            string.IsNullOrWhiteSpace(node.SemanticValue))
+        {
+            return null;
+        }
+
         return string.Equals(node.SemanticDimension, semanticDimension, StringComparison.Ordinal) &&
             string.Equals(node.SemanticSignature, semanticSignature, StringComparison.Ordinal) &&
             string.Equals(node.SemanticValue, semanticValue, StringComparison.Ordinal)
