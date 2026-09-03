@@ -5466,12 +5466,12 @@ namespace Infrastructure.Migrations
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
-                    b.Property<string>("SourceLanguageCode")
+                    b.Property<string>("ProcessingState")
                         .IsRequired()
                         .HasMaxLength(32)
                         .HasColumnType("nvarchar(32)");
 
-                    b.Property<string>("ProcessingState")
+                    b.Property<string>("SourceLanguageCode")
                         .IsRequired()
                         .HasMaxLength(32)
                         .HasColumnType("nvarchar(32)");
@@ -5484,12 +5484,12 @@ namespace Infrastructure.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("SourceLanguageCode", "CreatedUtc")
-                        .HasDatabaseName("IX_LegendCurriculumManifestWorkItems_FounderStatus");
-
                     b.HasIndex("FounderUserId", "ManifestHash")
                         .IsUnique()
                         .HasDatabaseName("IX_LegendCurriculumManifestWorkItems_Identity");
+
+                    b.HasIndex("SourceLanguageCode", "CreatedUtc")
+                        .HasDatabaseName("IX_LegendCurriculumManifestWorkItems_FounderStatus");
 
                     b.HasIndex("ProcessingState", "LeaseExpiresUtc", "CreatedUtc")
                         .HasDatabaseName("IX_LegendCurriculumManifestWorkItems_Processing");
@@ -5925,11 +5925,11 @@ namespace Infrastructure.Migrations
                         .IsUnique()
                         .HasDatabaseName("IX_LegendHistoricalReevaluationWorkItems_Identity");
 
-                    b.HasIndex("EvaluatorVersion", "Phase", "WorkKind", "SubjectId", "SubjectScope")
-                        .HasDatabaseName("IX_LegendHistoricalReevaluationWorkItems_SubjectLookup");
-
                     b.HasIndex("EvaluatorVersion", "Phase", "ProcessingState", "LeaseExpiresUtc", "CreatedUtc")
                         .HasDatabaseName("IX_LegendHistoricalReevaluationWorkItems_Claim");
+
+                    b.HasIndex("EvaluatorVersion", "Phase", "WorkKind", "SubjectId", "SubjectScope")
+                        .HasDatabaseName("IX_LegendHistoricalReevaluationWorkItems_SubjectLookup");
 
                     b.ToTable("LegendHistoricalReevaluationWorkItems", (string)null);
                 });
@@ -8174,6 +8174,10 @@ namespace Infrastructure.Migrations
                         .HasMaxLength(72)
                         .HasColumnType("nvarchar(72)");
 
+                    b.Property<string>("PlaceholderContractHash")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
                     b.Property<string>("Provenance")
                         .IsRequired()
                         .HasMaxLength(80)
@@ -8188,13 +8192,37 @@ namespace Infrastructure.Migrations
                         .HasMaxLength(120)
                         .HasColumnType("nvarchar(120)");
 
+                    b.Property<string>("ProviderVersion")
+                        .HasMaxLength(80)
+                        .HasColumnType("nvarchar(80)");
+
                     b.Property<string>("QualityState")
                         .IsRequired()
                         .HasMaxLength(40)
                         .HasColumnType("nvarchar(40)");
 
+                    b.Property<string>("RetainedTranslationIdentity")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<string>("ReuseScope")
+                        .HasMaxLength(24)
+                        .HasColumnType("nvarchar(24)");
+
+                    b.Property<string>("ReuseScopeIdentityHash")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<string>("SourceContentRevision")
+                        .HasMaxLength(80)
+                        .HasColumnType("nvarchar(80)");
+
                     b.Property<Guid>("SourceTextUnitId")
                         .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("StableSourceContentId")
+                        .HasMaxLength(180)
+                        .HasColumnType("nvarchar(180)");
 
                     b.Property<Guid?>("SupersededByAlignmentId")
                         .HasColumnType("uniqueidentifier");
@@ -8205,10 +8233,18 @@ namespace Infrastructure.Migrations
                     b.Property<Guid>("TargetTextUnitId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<string>("TranslationContext")
+                        .HasMaxLength(180)
+                        .HasColumnType("nvarchar(180)");
+
                     b.Property<DateTime>("UpdatedUtc")
                         .HasColumnType("datetime2");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("RetainedTranslationIdentity")
+                        .IsUnique()
+                        .HasFilter("[RetainedTranslationIdentity] IS NOT NULL");
 
                     b.HasIndex("SourceTextUnitId");
 
@@ -8220,8 +8256,7 @@ namespace Infrastructure.Migrations
 
                     b.HasIndex("PairKey", "QualityState");
 
-                    b.HasIndex("PairKey", "SourceTextUnitId", "TargetTextUnitId")
-                        .IsUnique();
+                    b.HasIndex("PairKey", "SourceTextUnitId", "TargetTextUnitId");
 
                     b.ToTable("LegendTranslationAlignments", (string)null);
                 });
@@ -8659,19 +8694,19 @@ namespace Infrastructure.Migrations
                     b.Property<long>("GroupUniqueTargetReuseCount")
                         .HasColumnType("bigint");
 
+                    b.Property<long>("PromotedTranslationModelCharactersAvoided")
+                        .HasColumnType("bigint");
+
                     b.Property<long>("ProviderBillableCharacters")
                         .HasColumnType("bigint");
 
                     b.Property<long>("ProviderFailureCount")
                         .HasColumnType("bigint");
 
-                    b.Property<long>("ProviderOperationCount")
-                        .HasColumnType("bigint");
-
-                    b.Property<long>("PromotedTranslationModelCharactersAvoided")
-                        .HasColumnType("bigint");
-
                     b.Property<long>("ProviderObservationCharactersAvoided")
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("ProviderOperationCount")
                         .HasColumnType("bigint");
 
                     b.Property<long>("QuotaDeniedRequestCount")
@@ -8813,19 +8848,19 @@ namespace Infrastructure.Migrations
                     b.Property<DateOnly>("PeriodStart")
                         .HasColumnType("date");
 
+                    b.Property<long>("PromotedTranslationModelCharactersAvoided")
+                        .HasColumnType("bigint");
+
                     b.Property<long>("ProviderBillableCharacters")
                         .HasColumnType("bigint");
 
                     b.Property<long>("ProviderFailureCount")
                         .HasColumnType("bigint");
 
-                    b.Property<long>("ProviderOperationCount")
-                        .HasColumnType("bigint");
-
-                    b.Property<long>("PromotedTranslationModelCharactersAvoided")
-                        .HasColumnType("bigint");
-
                     b.Property<long>("ProviderObservationCharactersAvoided")
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("ProviderOperationCount")
                         .HasColumnType("bigint");
 
                     b.Property<long>("QuotaDeniedRequestCount")

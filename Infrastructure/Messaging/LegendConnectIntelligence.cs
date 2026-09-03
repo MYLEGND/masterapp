@@ -11,7 +11,42 @@ internal sealed record LegendTranslationMemoryMatch(
     string Text,
     decimal Confidence,
     string Provenance,
-    string QualityState);
+    string QualityState,
+    DateTime CreatedUtc = default);
+
+internal sealed record LegendRetainedTranslationMemoryMatch(
+    string Text,
+    string Provider,
+    string Provenance,
+    string QualityState,
+    DateTime CreatedUtc);
+
+internal sealed record LegendRetainedTranslationWrite(
+    string Identity,
+    string StableSourceContentId,
+    string SourceText,
+    string TargetText,
+    string SourceLanguageCode,
+    string TargetLanguageCode,
+    string SourceRevision,
+    string TranslationContext,
+    string PlaceholderContractHash,
+    string ReuseScope,
+    string ScopeIdentityHash,
+    string Provider,
+    string ProviderVersion);
+
+internal sealed record LegendTrustedTranslationLookup(
+    string Key,
+    string SourceLanguageCode,
+    string TargetLanguageCode,
+    string SourceText,
+    string StableSourceContentId,
+    string SourceRevision,
+    string TranslationContext,
+    string PlaceholderContractHash,
+    string ReuseScope,
+    string ScopeIdentityHash);
 
 internal sealed record LegendContextualTranslationSuggestion(string Text, decimal Confidence);
 
@@ -37,11 +72,83 @@ internal interface ILegendConnectTranslationIntelligence
         string text,
         CancellationToken cancellationToken = default);
 
+    Task<LegendTranslationMemoryMatch?> TryGetTrustedScopedMemoryAsync(
+        string sourceLanguageCode,
+        string targetLanguageCode,
+        string text,
+        string stableSourceContentId,
+        string sourceRevision,
+        string translationContext,
+        string placeholderContractHash,
+        string reuseScope,
+        string scopeIdentityHash,
+        CancellationToken cancellationToken = default);
+
+    async Task<IReadOnlyDictionary<string, LegendTranslationMemoryMatch>> TryGetTrustedScopedMemoriesAsync(
+        IReadOnlyList<LegendTrustedTranslationLookup> lookups,
+        CancellationToken cancellationToken = default)
+    {
+        var results = new Dictionary<string, LegendTranslationMemoryMatch>(StringComparer.Ordinal);
+        foreach (var lookup in lookups)
+        {
+            var match = await TryGetTrustedScopedMemoryAsync(
+                lookup.SourceLanguageCode,
+                lookup.TargetLanguageCode,
+                lookup.SourceText,
+                lookup.StableSourceContentId,
+                lookup.SourceRevision,
+                lookup.TranslationContext,
+                lookup.PlaceholderContractHash,
+                lookup.ReuseScope,
+                lookup.ScopeIdentityHash,
+                cancellationToken);
+            if (match is not null)
+                results[lookup.Key] = match;
+        }
+        return results;
+    }
+
     Task<LegendTranslationMemoryMatch?> TryGetReusableProviderObservationAsync(
         string sourceLanguageCode,
         string targetLanguageCode,
         string text,
         CancellationToken cancellationToken = default);
+
+    Task<LegendRetainedTranslationMemoryMatch?> TryGetRetainedTranslationAsync(
+        string identity,
+        CancellationToken cancellationToken = default);
+
+    async Task<IReadOnlyDictionary<string, LegendRetainedTranslationMemoryMatch>> TryGetRetainedTranslationsAsync(
+        IReadOnlyCollection<string> identities,
+        CancellationToken cancellationToken = default)
+    {
+        var results = new Dictionary<string, LegendRetainedTranslationMemoryMatch>(StringComparer.Ordinal);
+        foreach (var identity in identities)
+        {
+            var match = await TryGetRetainedTranslationAsync(identity, cancellationToken);
+            if (match is not null)
+                results[identity] = match;
+        }
+        return results;
+    }
+
+    Task InvalidateRetainedTranslationAsync(
+        string identity,
+        CancellationToken cancellationToken = default);
+
+    Task<LegendRetainedTranslationMemoryMatch> RetainProviderTranslationAsync(
+        LegendRetainedTranslationWrite write,
+        CancellationToken cancellationToken = default);
+
+    async Task<IReadOnlyList<LegendRetainedTranslationMemoryMatch>> RetainProviderTranslationsAsync(
+        IReadOnlyList<LegendRetainedTranslationWrite> writes,
+        CancellationToken cancellationToken = default)
+    {
+        var results = new List<LegendRetainedTranslationMemoryMatch>(writes.Count);
+        foreach (var write in writes)
+            results.Add(await RetainProviderTranslationAsync(write, cancellationToken));
+        return results;
+    }
 
     Task<LegendContextualTranslationSuggestion?> EvaluateContextAsync(
         string sourceLanguageCode,
@@ -160,6 +267,7 @@ internal sealed class LegendConnectTranslationIntelligence : ILegendConnectTrans
                 alignment.Provenance,
                 alignment.QualityState,
                 alignment.HumanVerified,
+                alignment.CreatedUtc,
                 alignment.Id
             }
         ).ToListAsync(cancellationToken);
@@ -210,7 +318,195 @@ internal sealed class LegendConnectTranslationIntelligence : ILegendConnectTrans
             match.Text,
             match.Confidence ?? (match.Text.Length > 0 ? 1m : 0m),
             match.Provenance,
-            match.QualityState);
+            match.QualityState,
+            match.CreatedUtc);
+    }
+
+    public async Task<LegendTranslationMemoryMatch?> TryGetTrustedScopedMemoryAsync(
+        string sourceLanguageCode,
+        string targetLanguageCode,
+        string text,
+        string stableSourceContentId,
+        string sourceRevision,
+        string translationContext,
+        string placeholderContractHash,
+        string reuseScope,
+        string scopeIdentityHash,
+        CancellationToken cancellationToken = default)
+    {
+        var hash = LegendLanguageIdentity.TextHash(text);
+        var pairKey = LegendLanguageIdentity.PairKey(
+            sourceLanguageCode,
+            targetLanguageCode);
+        var candidates = await (
+            from alignment in _db.Set<LegendTranslationAlignment>().AsNoTracking()
+            join source in _db.Set<LegendLanguageTextUnit>().AsNoTracking()
+                on alignment.SourceTextUnitId equals source.Id
+            join target in _db.Set<LegendLanguageTextUnit>().AsNoTracking()
+                on alignment.TargetTextUnitId equals target.Id
+            where alignment.PairKey == pairKey &&
+                  alignment.SupersededUtc == null &&
+                  alignment.StableSourceContentId == stableSourceContentId &&
+                  alignment.SourceContentRevision == sourceRevision &&
+                  alignment.TranslationContext == translationContext &&
+                  alignment.PlaceholderContractHash == placeholderContractHash &&
+                  alignment.ReuseScope == reuseScope &&
+                  alignment.ReuseScopeIdentityHash == scopeIdentityHash &&
+                  source.IsTrainingEligible &&
+                  target.IsTrainingEligible &&
+                  source.LanguageCode == sourceLanguageCode &&
+                  target.LanguageCode == targetLanguageCode &&
+                  source.NormalizedHash == hash &&
+                  (alignment.HumanVerified ||
+                   (alignment.Provenance == LegendConnectKnowledgeProvenance.SystemValidatedMachine &&
+                    alignment.QualityState == "SystemValidated" &&
+                    alignment.Confidence >= 0.98m) ||
+                   (alignment.Provenance == LegendConnectKnowledgeProvenance.ConsentedLiveTranslation &&
+                    alignment.QualityState == "ConsentedLive" &&
+                    alignment.Confidence >= 0.98m))
+            select new
+            {
+                target.Text,
+                alignment.Confidence,
+                alignment.Provenance,
+                alignment.QualityState,
+                alignment.HumanVerified,
+                alignment.CreatedUtc,
+                alignment.Id
+            }).ToListAsync(cancellationToken);
+
+        var eligible = candidates
+            .OrderByDescending(item => item.HumanVerified ? 4 :
+                item.QualityState == "SystemValidated" ? 3 :
+                item.Provenance == LegendConnectKnowledgeProvenance.ConsentedLiveTranslation ? 2 : 1)
+            .ThenByDescending(item => item.Confidence ?? 0m)
+            .ThenByDescending(item => item.Id)
+            .ToArray();
+        if (eligible.Length == 0)
+            return null;
+
+        var best = eligible[0];
+        var bestRank = best.HumanVerified ? 4 :
+            best.QualityState == "SystemValidated" ? 3 :
+            best.Provenance == LegendConnectKnowledgeProvenance.ConsentedLiveTranslation ? 2 : 1;
+        if (eligible.Where(item =>
+                (item.HumanVerified ? 4 :
+                 item.QualityState == "SystemValidated" ? 3 :
+                 item.Provenance == LegendConnectKnowledgeProvenance.ConsentedLiveTranslation ? 2 : 1) == bestRank)
+            .Select(item => item.Text)
+            .Distinct(StringComparer.Ordinal)
+            .Take(2)
+            .Count() != 1)
+            return null;
+
+        return new LegendTranslationMemoryMatch(
+            best.Text,
+            best.Confidence ?? 1m,
+            best.Provenance,
+            best.QualityState,
+            best.CreatedUtc);
+    }
+
+    public async Task<IReadOnlyDictionary<string, LegendTranslationMemoryMatch>> TryGetTrustedScopedMemoriesAsync(
+        IReadOnlyList<LegendTrustedTranslationLookup> lookups,
+        CancellationToken cancellationToken = default)
+    {
+        var results = new Dictionary<string, LegendTranslationMemoryMatch>(StringComparer.Ordinal);
+        foreach (var pairGroup in lookups.GroupBy(lookup =>
+                     LegendLanguageIdentity.PairKey(
+                         lookup.SourceLanguageCode,
+                         lookup.TargetLanguageCode),
+                     StringComparer.Ordinal))
+        {
+            foreach (var chunk in pairGroup.Chunk(400))
+            {
+                var sample = chunk[0];
+                var stableIds = chunk
+                    .Select(lookup => lookup.StableSourceContentId)
+                    .Distinct(StringComparer.Ordinal)
+                    .ToArray();
+                var candidates = await (
+                    from alignment in _db.Set<LegendTranslationAlignment>().AsNoTracking()
+                    join source in _db.Set<LegendLanguageTextUnit>().AsNoTracking()
+                        on alignment.SourceTextUnitId equals source.Id
+                    join target in _db.Set<LegendLanguageTextUnit>().AsNoTracking()
+                        on alignment.TargetTextUnitId equals target.Id
+                    where alignment.PairKey == pairGroup.Key &&
+                          alignment.SupersededUtc == null &&
+                          alignment.StableSourceContentId != null &&
+                          stableIds.Contains(alignment.StableSourceContentId) &&
+                          source.IsTrainingEligible &&
+                          target.IsTrainingEligible &&
+                          source.LanguageCode == sample.SourceLanguageCode &&
+                          target.LanguageCode == sample.TargetLanguageCode &&
+                          (alignment.HumanVerified ||
+                           (alignment.Provenance == LegendConnectKnowledgeProvenance.SystemValidatedMachine &&
+                            alignment.QualityState == "SystemValidated" &&
+                            alignment.Confidence >= 0.98m) ||
+                           (alignment.Provenance == LegendConnectKnowledgeProvenance.ConsentedLiveTranslation &&
+                            alignment.QualityState == "ConsentedLive" &&
+                            alignment.Confidence >= 0.98m))
+                    select new
+                    {
+                        alignment.StableSourceContentId,
+                        alignment.SourceContentRevision,
+                        alignment.TranslationContext,
+                        alignment.PlaceholderContractHash,
+                        alignment.ReuseScope,
+                        alignment.ReuseScopeIdentityHash,
+                        SourceHash = source.NormalizedHash,
+                        Text = target.Text,
+                        alignment.Confidence,
+                        alignment.Provenance,
+                        alignment.QualityState,
+                        alignment.HumanVerified,
+                        alignment.CreatedUtc,
+                        alignment.Id
+                    }).ToListAsync(cancellationToken);
+
+                foreach (var lookup in chunk)
+                {
+                    var sourceHash = LegendLanguageIdentity.TextHash(lookup.SourceText);
+                    var eligible = candidates
+                        .Where(item =>
+                            item.StableSourceContentId == lookup.StableSourceContentId &&
+                            item.SourceContentRevision == lookup.SourceRevision &&
+                            item.TranslationContext == lookup.TranslationContext &&
+                            item.PlaceholderContractHash == lookup.PlaceholderContractHash &&
+                            item.ReuseScope == lookup.ReuseScope &&
+                            item.ReuseScopeIdentityHash == lookup.ScopeIdentityHash &&
+                            item.SourceHash == sourceHash)
+                        .OrderByDescending(item => item.HumanVerified ? 4 :
+                            item.QualityState == "SystemValidated" ? 3 :
+                            item.Provenance == LegendConnectKnowledgeProvenance.ConsentedLiveTranslation ? 2 : 1)
+                        .ThenByDescending(item => item.Confidence ?? 0m)
+                        .ThenByDescending(item => item.Id)
+                        .ToArray();
+                    if (eligible.Length == 0)
+                        continue;
+                    var best = eligible[0];
+                    var bestRank = best.HumanVerified ? 4 :
+                        best.QualityState == "SystemValidated" ? 3 :
+                        best.Provenance == LegendConnectKnowledgeProvenance.ConsentedLiveTranslation ? 2 : 1;
+                    if (eligible.Where(item =>
+                            (item.HumanVerified ? 4 :
+                             item.QualityState == "SystemValidated" ? 3 :
+                             item.Provenance == LegendConnectKnowledgeProvenance.ConsentedLiveTranslation ? 2 : 1) == bestRank)
+                        .Select(item => item.Text)
+                        .Distinct(StringComparer.Ordinal)
+                        .Take(2)
+                        .Count() != 1)
+                        continue;
+                    results[lookup.Key] = new LegendTranslationMemoryMatch(
+                        best.Text,
+                        best.Confidence ?? 1m,
+                        best.Provenance,
+                        best.QualityState,
+                        best.CreatedUtc);
+                }
+            }
+        }
+        return results;
     }
 
     public async Task<LegendTranslationMemoryMatch?> TryGetReusableProviderObservationAsync(
@@ -231,6 +527,7 @@ internal sealed class LegendConnectTranslationIntelligence : ILegendConnectTrans
             join target in _db.Set<LegendLanguageTextUnit>().AsNoTracking()
                 on alignment.TargetTextUnitId equals target.Id
             where alignment.PairKey == pairKey &&
+                  alignment.RetainedTranslationIdentity == null &&
                   alignment.SupersededUtc == null &&
                   source.IsTrainingEligible &&
                   target.IsTrainingEligible &&
@@ -249,6 +546,7 @@ internal sealed class LegendConnectTranslationIntelligence : ILegendConnectTrans
                 alignment.Confidence,
                 alignment.Provenance,
                 alignment.QualityState,
+                alignment.CreatedUtc,
                 alignment.Id
             }
         ).ToListAsync(cancellationToken);
@@ -311,7 +609,353 @@ internal sealed class LegendConnectTranslationIntelligence : ILegendConnectTrans
             match.Confidence ??
                 (match.Text.Length > 0 ? 1m : 0m),
             match.Provenance,
-            match.QualityState);
+            match.QualityState,
+            match.CreatedUtc);
+    }
+
+    public async Task<LegendRetainedTranslationMemoryMatch?> TryGetRetainedTranslationAsync(
+        string identity,
+        CancellationToken cancellationToken = default)
+    {
+        var match = await (
+            from alignment in _db.Set<LegendTranslationAlignment>().AsNoTracking()
+            join target in _db.Set<LegendLanguageTextUnit>().AsNoTracking()
+                on alignment.TargetTextUnitId equals target.Id
+            where alignment.RetainedTranslationIdentity == identity &&
+                  alignment.SupersededUtc == null
+            select new LegendRetainedTranslationMemoryMatch(
+                target.Text,
+                alignment.Provider,
+                alignment.Provenance,
+                alignment.QualityState,
+                alignment.CreatedUtc)
+        ).SingleOrDefaultAsync(cancellationToken);
+
+        return match;
+    }
+
+    public async Task<IReadOnlyDictionary<string, LegendRetainedTranslationMemoryMatch>> TryGetRetainedTranslationsAsync(
+        IReadOnlyCollection<string> identities,
+        CancellationToken cancellationToken = default)
+    {
+        var results = new Dictionary<string, LegendRetainedTranslationMemoryMatch>(StringComparer.Ordinal);
+        foreach (var chunk in identities.Distinct(StringComparer.Ordinal).Chunk(500))
+        {
+            var matches = await (
+                from alignment in _db.Set<LegendTranslationAlignment>().AsNoTracking()
+                join target in _db.Set<LegendLanguageTextUnit>().AsNoTracking()
+                    on alignment.TargetTextUnitId equals target.Id
+                where alignment.RetainedTranslationIdentity != null &&
+                      chunk.Contains(alignment.RetainedTranslationIdentity) &&
+                      alignment.SupersededUtc == null
+                select new
+                {
+                    Identity = alignment.RetainedTranslationIdentity,
+                    Match = new LegendRetainedTranslationMemoryMatch(
+                        target.Text,
+                        alignment.Provider,
+                        alignment.Provenance,
+                        alignment.QualityState,
+                        alignment.CreatedUtc)
+                }).ToListAsync(cancellationToken);
+            foreach (var match in matches)
+                results[match.Identity!] = match.Match;
+        }
+        return results;
+    }
+
+    public async Task InvalidateRetainedTranslationAsync(
+        string identity,
+        CancellationToken cancellationToken = default)
+    {
+        var alignments = await _db.Set<LegendTranslationAlignment>()
+            .Where(item => item.RetainedTranslationIdentity == identity && item.SupersededUtc == null)
+            .ToListAsync(cancellationToken);
+        if (alignments.Count == 0)
+            return;
+        var now = DateTime.UtcNow;
+        foreach (var alignment in alignments)
+        {
+            alignment.QualityState = "Invalidated";
+            alignment.SupersededUtc = now;
+            alignment.UpdatedUtc = now;
+        }
+        await _db.SaveChangesAsync(cancellationToken);
+    }
+
+    public async Task<LegendRetainedTranslationMemoryMatch> RetainProviderTranslationAsync(
+        LegendRetainedTranslationWrite write,
+        CancellationToken cancellationToken = default)
+    {
+        var existing = await TryGetRetainedTranslationAsync(write.Identity, cancellationToken);
+        if (existing is not null)
+            return existing;
+
+        var sourceDefinition = await _db.Set<LegendLanguageDefinition>()
+            .AsNoTracking()
+            .SingleAsync(item =>
+                item.LanguageCode == write.SourceLanguageCode && item.IsEnabled,
+                cancellationToken);
+        var targetDefinition = await _db.Set<LegendLanguageDefinition>()
+            .AsNoTracking()
+            .SingleAsync(item =>
+                item.LanguageCode == write.TargetLanguageCode && item.IsEnabled,
+                cancellationToken);
+
+        var source = await GetOrCreateOperationalTextUnitAsync(
+            write.SourceLanguageCode,
+            sourceDefinition.StoragePartition,
+            write.SourceText,
+            "ApplicationSource",
+            cancellationToken);
+        var target = await GetOrCreateOperationalTextUnitAsync(
+            write.TargetLanguageCode,
+            targetDefinition.StoragePartition,
+            write.TargetText,
+            LegendConnectKnowledgeProvenance.ProviderDerived,
+            cancellationToken);
+
+        var now = DateTime.UtcNow;
+        var alignment = new LegendTranslationAlignment
+        {
+            Id = Guid.NewGuid(),
+            PairKey = LegendLanguageIdentity.PairKey(
+                write.SourceLanguageCode,
+                write.TargetLanguageCode),
+            SourceTextUnitId = source.Id,
+            TargetTextUnitId = target.Id,
+            Provider = write.Provider,
+            Provenance = LegendConnectKnowledgeProvenance.ProviderDerived,
+            ProviderModel = write.ProviderVersion,
+            ProviderVersion = write.ProviderVersion,
+            RetainedTranslationIdentity = write.Identity,
+            StableSourceContentId = write.StableSourceContentId,
+            SourceContentRevision = write.SourceRevision,
+            TranslationContext = write.TranslationContext,
+            PlaceholderContractHash = write.PlaceholderContractHash,
+            ReuseScope = write.ReuseScope,
+            ReuseScopeIdentityHash = write.ScopeIdentityHash,
+            QualityState = "Observation",
+            HumanVerified = false,
+            Confidence = null,
+            ObservationCount = 1,
+            CreatedUtc = now,
+            UpdatedUtc = now
+        };
+        _db.Set<LegendTranslationAlignment>().Add(alignment);
+
+        try
+        {
+            await _db.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateException)
+        {
+            _db.Entry(alignment).State = EntityState.Detached;
+            var concurrent = await TryGetRetainedTranslationAsync(write.Identity, cancellationToken);
+            if (concurrent is not null)
+                return concurrent;
+            throw;
+        }
+
+        return new LegendRetainedTranslationMemoryMatch(
+            write.TargetText,
+            write.Provider,
+            LegendConnectKnowledgeProvenance.ProviderDerived,
+            "Observation",
+            now);
+    }
+
+    public async Task<IReadOnlyList<LegendRetainedTranslationMemoryMatch>> RetainProviderTranslationsAsync(
+        IReadOnlyList<LegendRetainedTranslationWrite> writes,
+        CancellationToken cancellationToken = default)
+    {
+        if (writes.Count == 0)
+            return Array.Empty<LegendRetainedTranslationMemoryMatch>();
+
+        var uniqueWrites = writes
+            .GroupBy(write => write.Identity, StringComparer.Ordinal)
+            .Select(group => group.First())
+            .ToArray();
+        var identities = uniqueWrites.Select(write => write.Identity).ToArray();
+        var existing = await (
+            from alignment in _db.Set<LegendTranslationAlignment>().AsNoTracking()
+            join target in _db.Set<LegendLanguageTextUnit>().AsNoTracking()
+                on alignment.TargetTextUnitId equals target.Id
+            where alignment.RetainedTranslationIdentity != null &&
+                  identities.Contains(alignment.RetainedTranslationIdentity) &&
+                  alignment.SupersededUtc == null
+            select new
+            {
+                Identity = alignment.RetainedTranslationIdentity,
+                Match = new LegendRetainedTranslationMemoryMatch(
+                    target.Text,
+                    alignment.Provider,
+                    alignment.Provenance,
+                    alignment.QualityState,
+                    alignment.CreatedUtc)
+            })
+            .ToDictionaryAsync(
+                item => item.Identity!,
+                item => item.Match,
+                StringComparer.Ordinal,
+                cancellationToken);
+
+        var missing = uniqueWrites.Where(write => !existing.ContainsKey(write.Identity)).ToArray();
+        if (missing.Length > 0)
+        {
+            var languageCodes = missing
+                .SelectMany(write => new[] { write.SourceLanguageCode, write.TargetLanguageCode })
+                .Distinct(StringComparer.Ordinal)
+                .ToArray();
+            var definitions = await _db.Set<LegendLanguageDefinition>()
+                .AsNoTracking()
+                .Where(item => languageCodes.Contains(item.LanguageCode) && item.IsEnabled)
+                .ToDictionaryAsync(item => item.LanguageCode, StringComparer.Ordinal, cancellationToken);
+            if (definitions.Count != languageCodes.Length)
+                throw new InvalidOperationException("A retained translation language is unavailable.");
+
+            var unitKeys = missing.SelectMany(write => new[]
+                {
+                    (Language: write.SourceLanguageCode, Hash: LegendLanguageIdentity.TextHash(write.SourceText)),
+                    (Language: write.TargetLanguageCode, Hash: LegendLanguageIdentity.TextHash(write.TargetText))
+                })
+                .Distinct()
+                .ToArray();
+            var hashes = unitKeys.Select(item => item.Hash).Distinct(StringComparer.Ordinal).ToArray();
+            var units = await _db.Set<LegendLanguageTextUnit>()
+                .Where(item => languageCodes.Contains(item.LanguageCode) && hashes.Contains(item.NormalizedHash))
+                .ToListAsync(cancellationToken);
+            var unitByKey = units.ToDictionary(
+                item => (item.LanguageCode, item.NormalizedHash),
+                item => item);
+            var now = DateTime.UtcNow;
+
+            LegendLanguageTextUnit Unit(string language, string text, string provenance)
+            {
+                var key = (language, LegendLanguageIdentity.TextHash(text));
+                if (unitByKey.TryGetValue(key, out var unit))
+                {
+                    if (!string.Equals(unit.Text, text, StringComparison.Ordinal))
+                    {
+                        unit.Text = text;
+                        unit.UpdatedUtc = now;
+                    }
+                    return unit;
+                }
+                unit = new LegendLanguageTextUnit
+                {
+                    Id = Guid.NewGuid(),
+                    LanguageCode = language,
+                    StoragePartition = definitions[language].StoragePartition,
+                    NormalizedHash = key.Item2,
+                    Text = text,
+                    Provenance = provenance,
+                    IsTrainingEligible = false,
+                    CreatedUtc = now,
+                    UpdatedUtc = now
+                };
+                _db.Set<LegendLanguageTextUnit>().Add(unit);
+                unitByKey[key] = unit;
+                return unit;
+            }
+
+            foreach (var write in missing)
+            {
+                var source = Unit(write.SourceLanguageCode, write.SourceText, "ApplicationSource");
+                var target = Unit(
+                    write.TargetLanguageCode,
+                    write.TargetText,
+                    LegendConnectKnowledgeProvenance.ProviderDerived);
+                _db.Set<LegendTranslationAlignment>().Add(new LegendTranslationAlignment
+                {
+                    Id = Guid.NewGuid(),
+                    PairKey = LegendLanguageIdentity.PairKey(
+                        write.SourceLanguageCode,
+                        write.TargetLanguageCode),
+                    SourceTextUnitId = source.Id,
+                    TargetTextUnitId = target.Id,
+                    Provider = write.Provider,
+                    Provenance = LegendConnectKnowledgeProvenance.ProviderDerived,
+                    ProviderModel = write.ProviderVersion,
+                    ProviderVersion = write.ProviderVersion,
+                    RetainedTranslationIdentity = write.Identity,
+                    StableSourceContentId = write.StableSourceContentId,
+                    SourceContentRevision = write.SourceRevision,
+                    TranslationContext = write.TranslationContext,
+                    PlaceholderContractHash = write.PlaceholderContractHash,
+                    ReuseScope = write.ReuseScope,
+                    ReuseScopeIdentityHash = write.ScopeIdentityHash,
+                    QualityState = "Observation",
+                    HumanVerified = false,
+                    Confidence = null,
+                    ObservationCount = 1,
+                    CreatedUtc = now,
+                    UpdatedUtc = now
+                });
+                existing[write.Identity] = new LegendRetainedTranslationMemoryMatch(
+                    write.TargetText,
+                    write.Provider,
+                    LegendConnectKnowledgeProvenance.ProviderDerived,
+                    "Observation",
+                    now);
+            }
+
+            try
+            {
+                await _db.SaveChangesAsync(cancellationToken);
+            }
+            catch (DbUpdateException)
+            {
+                // A different server may have won one of the same unique
+                // identities or text units after our read. Re-read and use the
+                // idempotent single-write path for any remainder.
+                _db.ChangeTracker.Clear();
+                existing.Clear();
+                foreach (var write in uniqueWrites)
+                    existing[write.Identity] = await RetainProviderTranslationAsync(write, cancellationToken);
+            }
+        }
+
+        return writes.Select(write => existing[write.Identity]).ToArray();
+    }
+
+    private async Task<LegendLanguageTextUnit> GetOrCreateOperationalTextUnitAsync(
+        string languageCode,
+        string storagePartition,
+        string text,
+        string provenance,
+        CancellationToken cancellationToken)
+    {
+        var hash = LegendLanguageIdentity.TextHash(text);
+        var existing = await _db.Set<LegendLanguageTextUnit>()
+            .SingleOrDefaultAsync(item =>
+                item.LanguageCode == languageCode && item.NormalizedHash == hash,
+                cancellationToken);
+        if (existing is not null)
+        {
+            if (!string.Equals(existing.Text, text, StringComparison.Ordinal))
+            {
+                existing.Text = text;
+                existing.UpdatedUtc = DateTime.UtcNow;
+            }
+            return existing;
+        }
+
+        var now = DateTime.UtcNow;
+        var unit = new LegendLanguageTextUnit
+        {
+            Id = Guid.NewGuid(),
+            LanguageCode = languageCode,
+            StoragePartition = storagePartition,
+            NormalizedHash = hash,
+            Text = text,
+            Provenance = provenance,
+            IsTrainingEligible = false,
+            CreatedUtc = now,
+            UpdatedUtc = now
+        };
+        _db.Set<LegendLanguageTextUnit>().Add(unit);
+        return unit;
     }
 
     public async Task<LegendContextualTranslationSuggestion?> EvaluateContextAsync(

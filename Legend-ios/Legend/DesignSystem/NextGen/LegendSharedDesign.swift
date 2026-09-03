@@ -89,7 +89,7 @@ enum LegendSharedDesign {
     }
 
     static func copy(_ key: String) -> String {
-        required(specification.copy[key], named: "copy \(key)")
+        LegendLocalized(required(specification.copy[key], named: "copy \(key)"))
     }
 
     static func socialFormat(_ name: String) -> SocialFormatToken {
@@ -212,6 +212,263 @@ enum LegendSharedDesign {
         let dampingFraction: Double
         let blendDuration: Double?
     }
+}
+
+struct LegendApplicationLocalizedCopy: Codable, Equatable, Sendable {
+    let id: String
+    let source: String
+    let text: String
+    let context: String
+    let sourceRevision: String
+    let placeholders: [String]
+    let provider: String
+    let provenance: String
+    let validationState: String
+    let createdUtc: String
+    let reused: Bool
+    let failureCode: String?
+}
+
+struct LegendApplicationLocalizationCatalog: Codable, Equatable, Sendable {
+    let catalogVersion: String
+    let sourceLanguageCode: String
+    let languageCode: String
+    let locale: String
+    let generatedUtc: String
+    let isComplete: Bool
+    let entries: [LegendApplicationLocalizedCopy]
+}
+
+private struct LegendBundledApplicationCopyManifest: Decodable {
+    let catalogVersion: String
+    let sourceLanguageCode: String
+    let entries: [LegendBundledApplicationCopy]
+}
+
+private struct LegendBundledApplicationCopy: Decodable {
+    let id: String
+    let source: String
+    let context: String
+}
+
+private struct LegendLocalizationKey: Hashable {
+    let source: String
+    let context: String
+}
+
+/// Thread-safe presentation lookup installed only from the one bundled/server
+/// catalog contract. It never calls a provider and never stores a competing
+/// language preference.
+private enum LegendLocalizationRuntime {
+    static let visualContext = "visual interface copy"
+    static let accessibilityContext = "accessibility copy"
+    private static let lock = NSLock()
+    nonisolated(unsafe) private static var translations: [LegendLocalizationKey: String] = [:]
+    nonisolated(unsafe) private static var activeLocale = Locale(identifier: "en")
+
+    static func install(
+        _ values: [LegendLocalizationKey: String],
+        locale: Locale
+    ) {
+        lock.lock()
+        translations = values
+        activeLocale = locale
+        lock.unlock()
+    }
+
+    static func text(_ source: String, context: String) -> String {
+        lock.lock()
+        defer { lock.unlock() }
+        return translations[LegendLocalizationKey(source: source, context: context)] ?? source
+    }
+
+    static var locale: Locale {
+        lock.lock()
+        defer { lock.unlock() }
+        return activeLocale
+    }
+}
+
+func LegendLocalized(
+    _ source: String,
+    context: String = "visual interface copy"
+) -> String {
+    LegendLocalizationRuntime.text(source, context: context)
+}
+
+/// Locale formatting uses the same runtime catalog installation as copy.
+/// This exposes presentation locale only; it is not a second preference.
+func LegendActiveLocale() -> Locale {
+    LegendLocalizationRuntime.locale
+}
+
+func LegendLocalized(
+    _ source: String,
+    context: String,
+    arguments: [String: CustomStringConvertible]
+) -> String {
+    LegendLocalized(source, arguments: arguments, context: context)
+}
+
+func LegendLocalized(
+    _ source: String,
+    arguments: [String: CustomStringConvertible],
+    context: String = "visual interface copy"
+) -> String {
+    arguments.reduce(LegendLocalizationRuntime.text(source, context: context)) {
+        $0.replacingOccurrences(of: "{\($1.key)}", with: $1.value.description)
+    }
+}
+
+@MainActor
+final class LegendApplicationLocalization: ObservableObject {
+    @Published private(set) var activeActorKey: String?
+    @Published private(set) var languageCode = "en"
+    @Published private(set) var locale = Locale(identifier: "en")
+    @Published private(set) var revision = 0
+
+    private let sourceManifest: LegendBundledApplicationCopyManifest
+
+    init() {
+        guard let url = Bundle.main.url(
+            forResource: "legend-application-copy",
+            withExtension: "json"
+        ), let data = try? Data(contentsOf: url),
+           let manifest = try? JSONDecoder().decode(
+            LegendBundledApplicationCopyManifest.self,
+            from: data
+           ) else {
+            preconditionFailure("Missing or invalid canonical application-copy manifest.")
+        }
+        sourceManifest = manifest
+        installSource(actorKey: nil)
+    }
+
+    func isReady(for session: MobileSession) -> Bool {
+        activeActorKey == Self.actorKey(session)
+    }
+
+    func activate(
+        session: MobileSession,
+        coordinator: MobileSessionCoordinator,
+        launchCache: any LegendLaunchCaching
+    ) async {
+        let actorKey = Self.actorKey(session)
+        if let cachedData = launchCache.readPayload(.localization, actorKey: actorKey),
+           let cached = try? JSONDecoder.mobile.decode(
+            LegendApplicationLocalizationCatalog.self,
+            from: cachedData
+           ), isPresentable(cached), session.preferredLanguageCode == nil ||
+            cached.languageCode.caseInsensitiveCompare(session.preferredLanguageCode!) == .orderedSame {
+            apply(cached, actorKey: actorKey)
+        }
+
+        // First use must never hold the authenticated shell behind network or
+        // provider latency. Present one internally consistent source catalog
+        // until the complete preferred-language catalog is ready to swap in.
+        if activeActorKey != actorKey {
+            installSource(actorKey: actorKey)
+        }
+
+        do {
+            let catalog = try await coordinator.applicationLocalizationCatalog(
+                participantType: session.actor.identity.participantType)
+            guard isPresentable(catalog),
+                  session.preferredLanguageCode == nil ||
+                    catalog.languageCode.caseInsensitiveCompare(
+                        session.preferredLanguageCode!) == .orderedSame else {
+                if activeActorKey != actorKey { installSource(actorKey: actorKey) }
+                return
+            }
+            apply(catalog, actorKey: actorKey)
+            if let data = try? JSONEncoder.mobile.encode(catalog) {
+                launchCache.writePayload(data, kind: .localization, actorKey: actorKey)
+            }
+        } catch {
+            // Cached or packaged source copy already provides the fail-safe.
+        }
+    }
+
+    func clearPresentation() {
+        installSource(actorKey: nil)
+    }
+
+    func refresh(
+        session: MobileSession,
+        coordinator: MobileSessionCoordinator,
+        launchCache: any LegendLaunchCaching
+    ) async {
+        let actorKey = Self.actorKey(session)
+        do {
+            let catalog = try await coordinator.applicationLocalizationCatalog(
+                participantType: session.actor.identity.participantType)
+            guard isPresentable(catalog) else { return }
+            apply(catalog, actorKey: actorKey)
+            if let data = try? JSONEncoder.mobile.encode(catalog) {
+                launchCache.writePayload(data, kind: .localization, actorKey: actorKey)
+            }
+        } catch {
+            // Keep the last known complete catalog (or source fallback) active.
+        }
+    }
+
+    private func apply(
+        _ catalog: LegendApplicationLocalizationCatalog,
+        actorKey: String
+    ) {
+        let byID = Dictionary(uniqueKeysWithValues: catalog.entries.map { ($0.id, $0) })
+        let values = Dictionary(uniqueKeysWithValues: sourceManifest.entries.map { source in
+            let text = byID[source.id]?.text.trimmingCharacters(in: .whitespacesAndNewlines)
+            return (
+                LegendLocalizationKey(source: source.source, context: source.context),
+                text?.isEmpty == false ? text! : source.source
+            )
+        })
+        install(values, languageCode: catalog.locale, actorKey: actorKey)
+    }
+
+    private func isPresentable(
+        _ catalog: LegendApplicationLocalizationCatalog
+    ) -> Bool {
+        let expectedIDs = Set(sourceManifest.entries.map(\.id))
+        return catalog.catalogVersion == sourceManifest.catalogVersion &&
+            Set(catalog.entries.map(\.id)) == expectedIDs &&
+            !catalog.entries.contains { entry in
+                entry.failureCode != nil &&
+                    entry.failureCode != "approved_translation_unavailable"
+            }
+    }
+
+    private func installSource(actorKey: String?) {
+        install(
+            Dictionary(uniqueKeysWithValues: sourceManifest.entries.map {
+                (LegendLocalizationKey(source: $0.source, context: $0.context), $0.source)
+            }),
+            languageCode: sourceManifest.sourceLanguageCode,
+            actorKey: actorKey)
+    }
+
+    private func install(
+        _ values: [LegendLocalizationKey: String],
+        languageCode: String,
+        actorKey: String?
+    ) {
+        let resolvedLocale = Locale(identifier: languageCode.replacingOccurrences(of: "-", with: "_"))
+        LegendLocalizationRuntime.install(values, locale: resolvedLocale)
+        self.languageCode = languageCode
+        locale = resolvedLocale
+        activeActorKey = actorKey
+        revision += 1
+    }
+
+    private static func actorKey(_ session: MobileSession) -> String {
+        legendLaunchActorKey(session.actor.identity)
+    }
+}
+
+extension Notification.Name {
+    static let legendPreferredLanguageDidChange = Notification.Name(
+        "LegendPreferredLanguageDidChange")
 }
 
 private extension UIColor {

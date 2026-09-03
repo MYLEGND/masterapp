@@ -4,6 +4,7 @@ import android.content.Context
 import android.net.Uri
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.border
 import androidx.compose.ui.draw.clip
@@ -11,8 +12,10 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.size
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
@@ -21,6 +24,8 @@ import com.mylegnd.legend.registered.core.network.LegendApiClient
 import com.mylegnd.legend.registered.core.model.MobileAvatar
 import com.mylegnd.legend.registered.ui.LegendAvatar
 import com.mylegnd.legend.registered.core.design.LegendColors
+import com.mylegnd.legend.registered.core.design.LegendLocalizationRuntime
+import com.mylegnd.legend.registered.core.design.legendLocalized
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.Request
@@ -83,7 +88,7 @@ class AuthenticatedMediaRepository(private val context: Context, private val cli
     showControls: Boolean = true,
     loop: Boolean = false,
 ) {
-    val context = androidx.compose.ui.platform.LocalContext.current
+    val context = LocalContext.current
     val player = remember(file) {
         ExoPlayer.Builder(context).build().apply {
             setMediaItem(MediaItem.fromUri(Uri.fromFile(file)))
@@ -110,7 +115,7 @@ class AuthenticatedMediaRepository(private val context: Context, private val cli
 
 /** Native, temporary creator preview. The URI stays on-device until the user publishes through the existing social API. */
 @Composable fun LegendLocalVideoPreview(uri: Uri, modifier: Modifier = Modifier) {
-    val context = androidx.compose.ui.platform.LocalContext.current
+    val context = LocalContext.current
     val player = remember(uri) { ExoPlayer.Builder(context).build().apply { setMediaItem(MediaItem.fromUri(uri)); prepare() } }
     DisposableEffect(player) { onDispose { player.release() } }
     AndroidView(factory = { PlayerView(it).apply { this.player = player } }, modifier = modifier)
@@ -125,7 +130,7 @@ fun LegendProtectedSocialMedia(
     contentDescription: String?,
     modifier: Modifier = Modifier,
     contentScale: ContentScale = ContentScale.Fit,
-    videoHeight: androidx.compose.ui.unit.Dp? = 220.dp,
+    videoHeight: Dp? = 220.dp,
     autoPlayVideo: Boolean = false,
     showVideoControls: Boolean = true,
     loopVideo: Boolean = false,
@@ -155,7 +160,7 @@ fun LegendProtectedSocialMedia(
             modifier = modifier.fillMaxWidth(),
         )
         unavailable -> Unit
-        else -> androidx.compose.material3.LinearProgressIndicator(modifier = modifier.fillMaxWidth())
+        else -> LinearProgressIndicator(modifier = modifier.fillMaxWidth())
     }
 }
 
@@ -171,7 +176,7 @@ fun LegendProtectedAvatar(
     participantType: String,
     repository: AuthenticatedMediaRepository,
     modifier: Modifier = Modifier,
-    size: androidx.compose.ui.unit.Dp = 40.dp,
+    size: Dp = 40.dp,
 ) {
     var file by remember(avatar?.resourcePath) { mutableStateOf<File?>(null) }
     LaunchedEffect(avatar?.resourcePath, participantType) {
@@ -186,7 +191,11 @@ fun LegendProtectedAvatar(
     } else {
         AsyncImage(
             model = file,
-            contentDescription = "$displayName profile image",
+            contentDescription = legendLocalized(
+                "{name} profile image",
+                LegendLocalizationRuntime.AccessibilityContext,
+                mapOf("name" to displayName),
+            ),
             modifier = modifier
                 .size(size)
                 .clip(CircleShape)

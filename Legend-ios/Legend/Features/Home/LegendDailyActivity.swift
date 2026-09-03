@@ -14,10 +14,10 @@ enum LegendDailyActivitySource: String, CaseIterable, Hashable, Sendable {
 
     var title: String {
         switch self {
-        case .account: return "Account"
-        case .network: return "Network"
-        case .calendar: return "Calendar"
-        case .reminder: return "Reminders"
+        case .account: return LegendLocalized("Account")
+        case .network: return LegendLocalized("Network")
+        case .calendar: return LegendLocalized("Calendar")
+        case .reminder: return LegendLocalized("Reminders")
         }
     }
 
@@ -108,10 +108,10 @@ enum LegendDevicePlannerAuthorization: Equatable {
 
     var statusTitle: String {
         switch self {
-        case .notDetermined: return "Not connected"
-        case .authorized: return "Connected"
-        case .denied: return "Access denied"
-        case .restricted: return "Unavailable"
+        case .notDetermined: return LegendLocalized("Not connected")
+        case .authorized: return LegendLocalized("Connected")
+        case .denied: return LegendLocalized("Access denied")
+        case .restricted: return LegendLocalized("Unavailable")
         }
     }
 }
@@ -125,8 +125,8 @@ enum LegendDevicePlannerCapability: String, CaseIterable, Hashable, Sendable {
 
     var title: String {
         switch self {
-        case .calendar: return "Calendar"
-        case .reminders: return "Reminders"
+        case .calendar: return LegendLocalized("Calendar")
+        case .reminders: return LegendLocalized("Reminders")
         }
     }
 
@@ -153,8 +153,8 @@ enum LegendPlannerEntryKind: String, CaseIterable, Identifiable, Sendable {
 
     var title: String {
         switch self {
-        case .reminder: return "Reminder"
-        case .event: return "Event"
+        case .reminder: return LegendLocalized("Reminder")
+        case .event: return LegendLocalized("Event")
         }
     }
 
@@ -175,7 +175,15 @@ enum LegendPlannerRepeat: String, CaseIterable, Identifiable, Sendable {
 
     var id: String { rawValue }
 
-    var title: String { rawValue.capitalized }
+    var title: String {
+        switch self {
+        case .never: return LegendLocalized("Never")
+        case .daily: return LegendLocalized("Daily")
+        case .weekly: return LegendLocalized("Weekly")
+        case .monthly: return LegendLocalized("Monthly")
+        case .yearly: return LegendLocalized("Yearly")
+        }
+    }
 
     var eventKitRule: EKRecurrenceRule? {
         let frequency: EKRecurrenceFrequency
@@ -701,19 +709,23 @@ private enum LegendDevicePlannerError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .reminderNotFound:
-            return "The device reminder is no longer available."
+            return LegendLocalized("The device reminder is no longer available.")
         case .remindersDisconnected:
-            return "Connect device reminders before updating a reminder."
+            return LegendLocalized("Connect device reminders before updating a reminder.")
         case .plannerDisconnected(let capability):
-            return "Connect \(capability.title) before saving this item."
+            return LegendLocalized(
+                "Connect {capability} before saving this item.",
+                arguments: ["capability": capability.title])
         case .titleRequired:
-            return "Add a title before saving."
+            return LegendLocalized("Add a title before saving.")
         case .eventStartRequired:
-            return "Choose when this event starts."
+            return LegendLocalized("Choose when this event starts.")
         case .eventEndMustFollowStart:
-            return "The event must end after it starts."
+            return LegendLocalized("The event must end after it starts.")
         case .defaultCalendarUnavailable(let capability):
-            return "Choose or create a \(capability.title.lowercased()) list on this device, then try again."
+            return LegendLocalized(
+                "Choose or create a {capability} list on this device, then try again.",
+                arguments: ["capability": capability.title.lowercased(with: LegendActiveLocale())])
         }
     }
 }
@@ -870,7 +882,7 @@ final class LegendDailyActivityStore: ObservableObject {
                     identifier: reminderIdentifier,
                     completed: shouldComplete)
             } catch {
-                completionFailure = error.localizedDescription
+                completionFailure = LegendLocalized(error.localizedDescription)
                 return
             }
         }
@@ -1026,7 +1038,7 @@ struct LegendTodayActivitySummaryPill: View {
                     )
 
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("TODAY'S ACTIVITY")
+                    Text(LegendLocalized("TODAY'S ACTIVITY"))
                         .font(LegendNextTypography.eyebrow)
                         .tracking(0.8)
                         .foregroundStyle(LegendNextColor.goldBright)
@@ -1085,13 +1097,13 @@ struct LegendTodayActivitySummaryPill: View {
             )
         )
         .buttonStyle(.plain)
-        .accessibilityLabel("Open today's activity. \(summary)")
+        .accessibilityLabel(LegendLocalized("Open today's activity. {value1}", context: "accessibility copy", arguments: ["value1": String(describing: (summary))]))
     }
 
     private var categorySummary: some View {
         Group {
             if activity.categoryCounts.isEmpty {
-                Text("Your day is clear")
+                Text(LegendLocalized("Your day is clear"))
                     .foregroundStyle(.white.opacity(0.84))
             } else {
                 HStack(spacing: 5) {
@@ -1121,7 +1133,7 @@ struct LegendTodayActivitySummaryPill: View {
 
     private var summary: String {
         guard !activity.categoryCounts.isEmpty else {
-            return "Your day is clear"
+            return LegendLocalized("Your day is clear")
         }
 
         return activity.categoryCounts.prefix(3).map {
@@ -1144,11 +1156,13 @@ struct LegendDailyActivitySheet: View {
             LegendScrollView(tracksNavigationChrome: false) {
                 VStack(alignment: .leading, spacing: LegendNextSpacing.md) {
                     LegendNextSheetHeader(
-                        eyebrow: "Your Legend",
-                        title: showsPastDue ? "Past due" : "Today's activity",
+                        eyebrow: LegendLocalized("Your Legend"),
+                        title: showsPastDue ? LegendLocalized("Past due") : LegendLocalized("Today's activity"),
                         detail: showsPastDue
-                            ? "Incomplete items from before today."
-                            : Date().formatted(.dateTime.weekday(.wide).month(.wide).day()),
+                            ? LegendLocalized("Incomplete items from before today.")
+                            : Date().formatted(
+                                .dateTime.weekday(.wide).month(.wide).day()
+                                    .locale(LegendActiveLocale())),
                         dismiss: { dismiss() }
                     )
 
@@ -1163,10 +1177,10 @@ struct LegendDailyActivitySheet: View {
                     let items = showsPastDue ? activity.pastDue : activity.today
                     if items.isEmpty {
                         LegendNextEmptyState(
-                            title: showsPastDue ? "Nothing past due" : "Your day is clear",
+                            title: showsPastDue ? LegendLocalized("Nothing past due") : LegendLocalized("Your day is clear"),
                             message: showsPastDue
-                                ? "Completed or rescheduled activities will not appear here."
-                                : "Your connected calendar events and reminders will appear here.",
+                                ? LegendLocalized("Completed or rescheduled activities will not appear here.")
+                                : LegendLocalized("Your connected calendar events and reminders will appear here."),
                             systemImage: showsPastDue
                                 ? "checkmark.circle"
                                 : "sun.max")
@@ -1203,16 +1217,16 @@ struct LegendDailyActivitySheet: View {
             LegendPlannerEntryComposer(activity: activity)
         }
         .alert(
-            "Device planner unavailable",
+            LegendLocalized("Device planner unavailable"),
             isPresented: Binding(
                 get: { activity.plannerFailure != nil },
                 set: { if !$0 { activity.dismissPlannerFailure() } }
             ),
             actions: {
-                Button("OK", role: .cancel) { activity.dismissPlannerFailure() }
+                Button(LegendLocalized("OK"), role: .cancel) { activity.dismissPlannerFailure() }
             },
             message: {
-                Text(activity.plannerFailure ?? "Please try again.")
+                Text(activity.plannerFailure ?? LegendLocalized("Please try again."))
             }
         )
         .task {
@@ -1229,18 +1243,18 @@ struct LegendDailyActivitySheet: View {
         Button {
             isPresentingPlannerComposer = true
         } label: {
-            Label("Set reminder", systemImage: "plus.circle.fill")
+            Label(LegendLocalized("Set reminder"), systemImage: "plus.circle.fill")
         }
         .buttonStyle(LegendNextButtonStyle(kind: .primary))
-        .accessibilityHint("Create a reminder or calendar event on this device")
+        .accessibilityHint(LegendLocalized("Create a reminder or calendar event on this device", context: "accessibility copy"))
     }
 
     private var activityModePicker: some View {
         HStack(spacing: LegendNextSpacing.xs) {
-            modeButton(title: "Today", isSelected: !showsPastDue) {
+            modeButton(title: LegendLocalized("Today"), isSelected: !showsPastDue) {
                 showsPastDue = false
             }
-            modeButton(title: "Past due", isSelected: showsPastDue) {
+            modeButton(title: LegendLocalized("Past due"), isSelected: showsPastDue) {
                 showsPastDue = true
             }
             Spacer()
@@ -1272,13 +1286,13 @@ struct LegendDailyActivitySheet: View {
     private var activitySummary: some View {
         LegendNextSurface(style: .navy, padding: LegendNextSpacing.sm) {
             VStack(alignment: .leading, spacing: LegendNextSpacing.xs) {
-                Text("AT A GLANCE")
+                Text(LegendLocalized("AT A GLANCE"))
                     .font(LegendNextTypography.eyebrow)
                     .tracking(0.8)
                     .foregroundStyle(LegendNextColor.goldBright)
 
                 if activity.categoryCounts.isEmpty {
-                    Text("Nothing requires your attention right now.")
+                    Text(LegendLocalized("Nothing requires your attention right now."))
                         .font(LegendNextTypography.supporting)
                         .foregroundStyle(.white.opacity(0.80))
                 } else {
@@ -1300,24 +1314,24 @@ struct LegendDailyActivitySheet: View {
             VStack(alignment: .leading, spacing: LegendNextSpacing.sm) {
                 HStack(alignment: .firstTextBaseline) {
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("DEVICE PLANNER")
+                        Text(LegendLocalized("DEVICE PLANNER"))
                             .font(LegendNextTypography.eyebrow)
                             .tracking(0.8)
                             .foregroundStyle(LegendNextColor.gold)
-                        Text("Optional, private calendar and reminders connection")
+                        Text(LegendLocalized("Optional, private calendar and reminders connection"))
                             .font(LegendNextTypography.caption)
                             .foregroundStyle(LegendNextColor.textSecondary)
                     }
                     Spacer()
                 }
 
-                Text("Connect the calendar and reminders available on this phone. Apple, Google, Outlook, Exchange, and other device accounts stay local and are never sent to Legend.")
+                Text(LegendLocalized("Connect the calendar and reminders available on this phone. Apple, Google, Outlook, Exchange, and other device accounts stay local and are never sent to Legend."))
                     .font(LegendNextTypography.caption)
                     .foregroundStyle(LegendNextColor.textSecondary)
 
                 plannerAccessRow(
                     capability: .calendar,
-                    title: "Calendar",
+                    title: LegendLocalized("Calendar"),
                     symbol: "calendar",
                     authorization: activity.planner.calendarAuthorization,
                     isConnected: activity.planner.isConnected(.calendar),
@@ -1327,7 +1341,7 @@ struct LegendDailyActivitySheet: View {
                 )
                 plannerAccessRow(
                     capability: .reminders,
-                    title: "Reminders",
+                    title: LegendLocalized("Reminders"),
                     symbol: "checklist",
                     authorization: activity.planner.remindersAuthorization,
                     isConnected: activity.planner.isConnected(.reminders),
@@ -1372,23 +1386,23 @@ struct LegendDailyActivitySheet: View {
             Spacer()
 
             if isConnected {
-                Button("Disconnect", action: disconnect)
+                Button(LegendLocalized("Disconnect"), action: disconnect)
                     .buttonStyle(LegendNextButtonStyle(
                         kind: .secondary,
                         isFullWidth: false,
                         controlHeight: 34))
             } else if authorization == .denied {
-                Button("Settings", action: openSettings)
+                Button(LegendLocalized("Settings"), action: openSettings)
                     .buttonStyle(LegendNextButtonStyle(
                         kind: .secondary,
                         isFullWidth: false,
                         controlHeight: 34))
             } else if authorization == .restricted {
-                Text("Unavailable")
+                Text(LegendLocalized("Unavailable"))
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(LegendNextColor.textTertiary)
             } else {
-                Button("Connect", action: connect)
+                Button(LegendLocalized("Connect"), action: connect)
                     .buttonStyle(LegendNextButtonStyle(
                         kind: .secondary,
                         isFullWidth: false,
@@ -1402,8 +1416,8 @@ struct LegendDailyActivitySheet: View {
         authorization: LegendDevicePlannerAuthorization,
         isConnected: Bool
     ) -> String {
-        if isConnected { return "Connected" }
-        if authorization.isAuthorized { return "Not connected" }
+        if isConnected { return LegendLocalized("Connected") }
+        if authorization.isAuthorized { return LegendLocalized("Not connected") }
         return authorization.statusTitle
     }
 }
@@ -1423,15 +1437,15 @@ struct LegendInAppNotificationsSheet: View {
             LegendScrollView(tracksNavigationChrome: false) {
                 VStack(alignment: .leading, spacing: LegendNextSpacing.md) {
                     LegendNextSheetHeader(
-                        eyebrow: "Your Legend",
-                        title: "Notifications",
-                        detail: "Follows, reactions, comments, reposts, and account updates.",
+                        eyebrow: LegendLocalized("Your Legend"),
+                        title: LegendLocalized("Notifications"),
+                        detail: LegendLocalized("Follows, reactions, comments, reposts, and account updates."),
                         dismiss: { dismiss() }
                     )
 
                     LegendNextSurface(style: .navy, padding: LegendNextSpacing.sm) {
                         Label(
-                            "IN-APP ACTIVITY",
+                            LegendLocalized("IN-APP ACTIVITY"),
                             systemImage: "heart.fill"
                         )
                         .font(LegendNextTypography.eyebrow)
@@ -1441,8 +1455,8 @@ struct LegendInAppNotificationsSheet: View {
 
                     if activity.inAppNotifications.isEmpty {
                         LegendNextEmptyState(
-                            title: "You're all caught up",
-                            message: "New follows, reactions, comments, reposts, and account updates will appear here.",
+                            title: LegendLocalized("You're all caught up"),
+                            message: LegendLocalized("New follows, reactions, comments, reposts, and account updates will appear here."),
                             systemImage: "heart")
                     } else {
                         ForEach(activity.inAppNotifications) { notification in
@@ -1541,13 +1555,13 @@ private struct LegendPlannerEntryComposer: View {
             LegendScrollView(tracksNavigationChrome: false) {
                 VStack(alignment: .leading, spacing: LegendNextSpacing.md) {
                     LegendNextSheetHeader(
-                        eyebrow: "Today's activity",
-                        title: kind == .reminder ? "Set reminder" : "Add event",
+                        eyebrow: LegendLocalized("Today's activity"),
+                        title: kind == .reminder ? LegendLocalized("Set reminder") : LegendLocalized("Add event"),
                         detail: nil,
                         dismiss: { dismiss() }
                     )
 
-                    Picker("Item type", selection: $kind) {
+                    Picker(LegendLocalized("Item type"), selection: $kind) {
                         ForEach(LegendPlannerEntryKind.allCases) {
                             Text($0.title).tag($0)
                         }
@@ -1564,14 +1578,14 @@ private struct LegendPlannerEntryComposer: View {
                             sectionTitle("DETAILS")
 
                             plannerTextField(
-                                title: "Title",
+                                title: LegendLocalized("Title"),
                                 placeholder: kind == .reminder
-                                    ? "What do you need to remember?"
-                                    : "What is happening?",
+                                    ? LegendLocalized("What do you need to remember?")
+                                    : LegendLocalized("What is happening?"),
                                 text: $title)
 
                             VStack(alignment: .leading, spacing: LegendNextSpacing.micro) {
-                                Text("Notes")
+                                Text(LegendLocalized("Notes"))
                                     .font(.caption.weight(.semibold))
                                     .foregroundStyle(LegendNextColor.textSecondary)
                                 TextEditor(text: $notes)
@@ -1600,8 +1614,8 @@ private struct LegendPlannerEntryComposer: View {
                     }
 
                     Button(isSaving
-                           ? "Saving…"
-                           : kind == .reminder ? "Save reminder" : "Save event") {
+                           ? LegendLocalized("Saving…")
+                           : kind == .reminder ? LegendLocalized("Save reminder") : LegendLocalized("Save event")) {
                         save()
                     }
                     .buttonStyle(LegendNextButtonStyle(kind: .primary))
@@ -1623,7 +1637,7 @@ private struct LegendPlannerEntryComposer: View {
                 sectionTitle("WHEN")
 
                 if kind == .reminder {
-                    Toggle("Date", isOn: $includesDate)
+                    Toggle(LegendLocalized("Date"), isOn: $includesDate)
                         .tint(LegendNextColor.gold)
                     if includesDate {
                         DatePicker(
@@ -1631,7 +1645,7 @@ private struct LegendPlannerEntryComposer: View {
                             selection: $startDate,
                             displayedComponents: .date)
 
-                        Toggle("Time", isOn: $includesTime)
+                        Toggle(LegendLocalized("Time"), isOn: $includesTime)
                             .tint(LegendNextColor.gold)
                         if includesTime {
                             DatePicker(
@@ -1641,7 +1655,7 @@ private struct LegendPlannerEntryComposer: View {
                         }
                     }
                 } else {
-                    Toggle("All-day", isOn: $isAllDay)
+                    Toggle(LegendLocalized("All-day"), isOn: $isAllDay)
                         .tint(LegendNextColor.gold)
                     DatePicker(
                         "Starts",
@@ -1664,7 +1678,7 @@ private struct LegendPlannerEntryComposer: View {
             VStack(alignment: .leading, spacing: LegendNextSpacing.xs) {
                 sectionTitle("SCHEDULE")
 
-                Picker("Repeat", selection: $repeatRule) {
+                Picker(LegendLocalized("Repeat"), selection: $repeatRule) {
                     ForEach(LegendPlannerRepeat.allCases) {
                         Text($0.title).tag($0)
                     }
@@ -1672,25 +1686,25 @@ private struct LegendPlannerEntryComposer: View {
                 .pickerStyle(.menu)
 
                 if kind == .reminder {
-                    Picker("Priority", selection: $priority) {
-                        Text("None").tag(0)
-                        Text("Low").tag(1)
-                        Text("Medium").tag(5)
-                        Text("High").tag(9)
+                    Picker(LegendLocalized("Priority"), selection: $priority) {
+                        Text(LegendLocalized("None")).tag(0)
+                        Text(LegendLocalized("Low")).tag(1)
+                        Text(LegendLocalized("Medium")).tag(5)
+                        Text(LegendLocalized("High")).tag(9)
                     }
                     .pickerStyle(.menu)
                 }
 
-                Toggle(kind == .reminder ? "Remind me" : "Alert 15 minutes before", isOn: $alertsEnabled)
+                Toggle(kind == .reminder ? LegendLocalized("Remind me") : LegendLocalized("Alert 15 minutes before"), isOn: $alertsEnabled)
                     .tint(LegendNextColor.gold)
 
                 Divider()
                     .overlay(LegendNextColor.separator)
                     .padding(.vertical, LegendNextSpacing.micro)
 
-                sectionTitle(kind == .reminder ? "REMINDERS LIST" : "CALENDAR")
+                sectionTitle(kind == .reminder ? LegendLocalized("REMINDERS LIST") : LegendLocalized("CALENDAR"))
 
-                Picker(kind == .reminder ? "List" : "Calendar", selection: $selectedCalendarID) {
+                Picker(kind == .reminder ? LegendLocalized("List") : LegendLocalized("Calendar"), selection: $selectedCalendarID) {
                     Text(primaryDestinationTitle).tag(Optional<String>.none)
                     ForEach(availableCalendars) { calendar in
                         Text(calendar.title).tag(Optional(calendar.id))
@@ -1708,7 +1722,7 @@ private struct LegendPlannerEntryComposer: View {
     }
 
     private var primaryDestinationTitle: String {
-        kind == .reminder ? "Primary list" : "Primary calendar"
+        kind == .reminder ? LegendLocalized("Primary list") : LegendLocalized("Primary calendar")
     }
 
     private func sectionTitle(_ title: String) -> some View {
@@ -1760,7 +1774,7 @@ private struct LegendPlannerEntryComposer: View {
                 try await activity.createPlannerEntry(draft)
                 dismiss()
             } catch {
-                failureMessage = error.localizedDescription
+                failureMessage = LegendLocalized(error.localizedDescription)
             }
             isSaving = false
         }
@@ -1793,12 +1807,13 @@ private struct LegendDailyActivityRow: View {
     let openProfile: (() -> Void)?
     var usesRelativeTimestamp = false
 
-    private static let relativeDateFormatter: RelativeDateTimeFormatter = {
+    private static var relativeDateFormatter: RelativeDateTimeFormatter {
         let formatter = RelativeDateTimeFormatter()
         formatter.unitsStyle = .full
         formatter.dateTimeStyle = .numeric
+        formatter.locale = LegendActiveLocale()
         return formatter
-    }()
+    }
 
     private func relativeTimestamp(
         for date: Date
@@ -1822,7 +1837,7 @@ private struct LegendDailyActivityRow: View {
                                 .tracking(0.7)
                                 .foregroundStyle(toneColor)
                             if item.isPastDue {
-                                Text("PAST DUE")
+                                Text(LegendLocalized("PAST DUE"))
                                     .font(.caption2.weight(.bold))
                                     .foregroundStyle(LegendNextColor.danger)
                             }
@@ -1863,7 +1878,7 @@ private struct LegendDailyActivityRow: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel("Open \(item.title)")
+                .accessibilityLabel(LegendLocalized("Open {value1}", context: "accessibility copy", arguments: ["value1": String(describing: (item.title))]))
 
                 if item.isCompletable {
                     Button(action: toggleCompletion) {
@@ -1900,7 +1915,7 @@ private struct LegendDailyActivityRow: View {
                     size: 38)
             }
             .buttonStyle(.plain)
-            .accessibilityLabel("Open \(actor.displayName)'s profile")
+            .accessibilityLabel(LegendLocalized("Open {value1}'s profile", context: "accessibility copy", arguments: ["value1": String(describing: (actor.displayName))]))
         } else {
             Image(systemName: item.source.systemImage)
                 .font(.system(size: 16, weight: .semibold))
@@ -1933,7 +1948,7 @@ private struct LegendDailyActivityDetailView: View {
                 Button {
                     dismiss()
                 } label: {
-                    Label("Back to activity", systemImage: "chevron.left")
+                    Label(LegendLocalized("Back to activity"), systemImage: "chevron.left")
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(LegendNextColor.royal)
                 }
@@ -1959,7 +1974,8 @@ private struct LegendDailyActivityDetailView: View {
 
                         Label(
                             item.occurredAt.formatted(
-                                .dateTime.weekday(.wide).month(.wide).day().hour().minute()),
+                                .dateTime.weekday(.wide).month(.wide).day().hour().minute()
+                                    .locale(LegendActiveLocale())),
                             systemImage: "clock")
                             .font(LegendNextTypography.caption)
                             .foregroundStyle(LegendNextColor.textSecondary)

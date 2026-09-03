@@ -2,6 +2,8 @@ package com.mylegnd.legend.registered.core.network
 
 import com.mylegnd.legend.registered.core.model.*
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.Serializable
+import kotlinx.coroutines.runBlocking
 import okhttp3.Interceptor
 import okhttp3.OkHttpClient
 import okhttp3.MultipartBody
@@ -24,6 +26,7 @@ interface LegendApi {
     @POST("api/v1/mobile/review-session") suspend fun reviewSession(@Body request: MobileReviewSignInRequest): Response<MobileReviewTokenResponse>
     @GET("api/v1/mobile/session") suspend fun session(@Header("X-Legend-Participant-Type") participantType: String? = null): Response<MobileSessionResponse>
     @POST("api/v1/mobile/session/select-role") suspend fun selectRole(@Body request: SelectRoleRequest): Response<MobileRoleSelectionResponse>
+    @GET("api/v1/mobile/localization/catalog") suspend fun localizationCatalog(@Header("X-Legend-Participant-Type") participantType: String): Response<ApplicationLocalizationCatalog>
     @GET("api/v1/mobile/founder/legend-ai/access") suspend fun founderAiAccess(@Header("X-Legend-Participant-Type") participantType: String): Response<FounderAiAccessResponse>
     @POST("api/v1/mobile/founder/legend-ai/chat") suspend fun founderAiChat(@Header("X-Legend-Participant-Type") participantType: String, @Header("X-Legend-Ai-Operation-Id") operationId: String, @Body request: FounderAiChatRequest): Response<FounderAiChatResponse>
     @GET("api/v1/mobile/home") suspend fun home(@Header("X-Legend-Participant-Type") participantType: String): Response<MobileHomeResponse>
@@ -138,35 +141,35 @@ interface LegendApi {
     @POST("api/v1/mobile/community-safety/reports/{id}/resolution") suspend fun resolveCommunityReport(@Header("X-Legend-Participant-Type") participantType: String, @Path("id") id: String, @Body request: CommunitySafetyReportResolutionRequest): Response<Unit>
 }
 
-@kotlinx.serialization.Serializable data class EmptyRequest(val value: String? = null)
-@kotlinx.serialization.Serializable data class FcmDeviceTokenRequest(val deviceToken: String)
-@kotlinx.serialization.Serializable data class SocialViewRequest(val watchDurationSeconds: Double? = null, val watchCompletionPercentage: Double? = null, val storyInteractionType: String? = null)
-@kotlinx.serialization.Serializable data class SocialProfileVisitRequest(val targetUserId: String, val targetParticipantType: String, val sourcePostId: String? = null)
-@kotlinx.serialization.Serializable data class NotificationSnapshot(val badge: NotificationBadge, val notifications: List<NotificationItem> = emptyList())
-@kotlinx.serialization.Serializable data class NotificationBadge(val unreadCount: Int, val revision: Long, val updatedUtc: String)
-@kotlinx.serialization.Serializable data class NotificationItem(val id: String, val kind: String, val title: String, val detail: String, val conversationId: String? = null, val occurredUtc: String, val isRead: Boolean, val isCleared: Boolean)
-@kotlinx.serialization.Serializable data class JourneyDashboard(val profile: JourneyProfile? = null, val preferences: JourneyPreferences? = null, val recommendations: List<JourneyRecommendation> = emptyList(), val connections: List<JourneyConnection> = emptyList(), val requests: List<JourneyConnection> = emptyList(), val taxonomy: JourneyTaxonomy = JourneyTaxonomy())
-@kotlinx.serialization.Serializable data class JourneyProfile(val clientProfileId: String, val displayName: String, val introduction: String? = null, val lifeStages: List<String> = emptyList(), val locations: List<String> = emptyList(), val goals: List<String> = emptyList(), val interests: List<String> = emptyList(), val circleCodes: List<String> = emptyList(), val connectionTypes: List<String> = emptyList(), val communicationStyles: List<String> = emptyList(), val accountabilityFrequencies: List<String> = emptyList(), val avatar: MobileAvatar? = null)
-@kotlinx.serialization.Serializable data class JourneyPreferences(val consentAffirmed: Boolean, val isOptedIn: Boolean, val isDiscoverable: Boolean, val allowSuggestions: Boolean, val allowConnectionRequests: Boolean)
-@kotlinx.serialization.Serializable data class JourneyRecommendation(val profile: JourneyProfile, val explanation: String)
-@kotlinx.serialization.Serializable data class JourneyConnection(val id: String, val profile: JourneyProfile, val status: String, val connectionReason: String? = null, val introduction: String? = null, val createdUtc: String)
-@kotlinx.serialization.Serializable data class JourneyConnectionRequest(val targetClientProfileId: String, val connectionReason: String? = null, val introduction: String? = null)
-@kotlinx.serialization.Serializable data class JourneyConnectionResponse(val accept: Boolean)
-@kotlinx.serialization.Serializable data class JourneyProfileReportRequest(val category: String, val detail: String? = null)
-@kotlinx.serialization.Serializable data class JourneyTaxonomy(val goals: List<String> = emptyList(), val circles: List<String> = emptyList(), val lifeStages: List<String> = emptyList(), val locations: List<String> = emptyList(), val interests: List<String> = emptyList(), val connectionTypes: List<String> = emptyList(), val communicationStyles: List<String> = emptyList(), val accountabilityFrequencies: List<String> = emptyList())
-@kotlinx.serialization.Serializable data class JourneyProfileInput(val consentAffirmed: Boolean, val isOptedIn: Boolean, val isDiscoverable: Boolean, val allowSuggestions: Boolean, val allowConnectionRequests: Boolean, val introduction: String? = null, val lifeStages: List<String> = emptyList(), val locations: List<String> = emptyList(), val goals: List<String> = emptyList(), val interests: List<String> = emptyList(), val circleCodes: List<String> = emptyList(), val connectionTypes: List<String> = emptyList(), val communicationStyles: List<String> = emptyList(), val accountabilityFrequencies: List<String> = emptyList())
-@kotlinx.serialization.Serializable data class DiscoveryPage(val results: List<DiscoveryResult> = emptyList(), val totalCount: Int, val offset: Int, val pageSize: Int, val hasMore: Boolean, val sortMode: String, val scope: String)
-@kotlinx.serialization.Serializable data class DiscoveryResult(val clientProfileId: String, val identity: MobileIdentity, val displayName: String, val headline: String? = null, val location: String? = null, val goals: List<String> = emptyList(), val interests: List<String> = emptyList(), val circleCodes: List<String> = emptyList(), val compatibilityScore: Int, val matchExplanation: String? = null, val relationship: DiscoveryRelationship, val avatar: MobileAvatar? = null, val username: String? = null, val bio: String? = null, val website: String? = null, val publicEmail: String? = null, val publicPhone: String? = null, val isPrivate: Boolean = false, val isVerified: Boolean = false, val roleLabel: String? = null)
-@kotlinx.serialization.Serializable data class DiscoveryRelationship(val followedByCurrentActor: Boolean, val followRequestPending: Boolean, val followsCurrentActor: Boolean, val connectionStatus: String, val connectionId: String? = null, val canRequestConnection: Boolean, val canFollow: Boolean)
-@kotlinx.serialization.Serializable data class DiscoveryProfile(val summary: DiscoveryResult, val introduction: String? = null, val lifeStages: List<String> = emptyList(), val connectionTypes: List<String> = emptyList(), val contentVisibleToCurrentActor: Boolean, val followerCount: Int, val followingCount: Int, val postCount: Int, val reelCount: Int, val storyCount: Int)
-@kotlinx.serialization.Serializable data class CommunityBlockRequest(val targetUserId: String, val targetParticipantType: String)
-@kotlinx.serialization.Serializable data class CommunityReportRequest(val targetUserId: String, val targetParticipantType: String, val targetKind: String, val targetEntityId: String? = null, val category: String, val detail: String? = null)
+@Serializable data class EmptyRequest(val value: String? = null)
+@Serializable data class FcmDeviceTokenRequest(val deviceToken: String)
+@Serializable data class SocialViewRequest(val watchDurationSeconds: Double? = null, val watchCompletionPercentage: Double? = null, val storyInteractionType: String? = null)
+@Serializable data class SocialProfileVisitRequest(val targetUserId: String, val targetParticipantType: String, val sourcePostId: String? = null)
+@Serializable data class NotificationSnapshot(val badge: NotificationBadge, val notifications: List<NotificationItem> = emptyList())
+@Serializable data class NotificationBadge(val unreadCount: Int, val revision: Long, val updatedUtc: String)
+@Serializable data class NotificationItem(val id: String, val kind: String, val title: String, val detail: String, val conversationId: String? = null, val occurredUtc: String, val isRead: Boolean, val isCleared: Boolean)
+@Serializable data class JourneyDashboard(val profile: JourneyProfile? = null, val preferences: JourneyPreferences? = null, val recommendations: List<JourneyRecommendation> = emptyList(), val connections: List<JourneyConnection> = emptyList(), val requests: List<JourneyConnection> = emptyList(), val taxonomy: JourneyTaxonomy = JourneyTaxonomy())
+@Serializable data class JourneyProfile(val clientProfileId: String, val displayName: String, val introduction: String? = null, val lifeStages: List<String> = emptyList(), val locations: List<String> = emptyList(), val goals: List<String> = emptyList(), val interests: List<String> = emptyList(), val circleCodes: List<String> = emptyList(), val connectionTypes: List<String> = emptyList(), val communicationStyles: List<String> = emptyList(), val accountabilityFrequencies: List<String> = emptyList(), val avatar: MobileAvatar? = null)
+@Serializable data class JourneyPreferences(val consentAffirmed: Boolean, val isOptedIn: Boolean, val isDiscoverable: Boolean, val allowSuggestions: Boolean, val allowConnectionRequests: Boolean)
+@Serializable data class JourneyRecommendation(val profile: JourneyProfile, val explanation: String)
+@Serializable data class JourneyConnection(val id: String, val profile: JourneyProfile, val status: String, val connectionReason: String? = null, val introduction: String? = null, val createdUtc: String)
+@Serializable data class JourneyConnectionRequest(val targetClientProfileId: String, val connectionReason: String? = null, val introduction: String? = null)
+@Serializable data class JourneyConnectionResponse(val accept: Boolean)
+@Serializable data class JourneyProfileReportRequest(val category: String, val detail: String? = null)
+@Serializable data class JourneyTaxonomy(val goals: List<String> = emptyList(), val circles: List<String> = emptyList(), val lifeStages: List<String> = emptyList(), val locations: List<String> = emptyList(), val interests: List<String> = emptyList(), val connectionTypes: List<String> = emptyList(), val communicationStyles: List<String> = emptyList(), val accountabilityFrequencies: List<String> = emptyList())
+@Serializable data class JourneyProfileInput(val consentAffirmed: Boolean, val isOptedIn: Boolean, val isDiscoverable: Boolean, val allowSuggestions: Boolean, val allowConnectionRequests: Boolean, val introduction: String? = null, val lifeStages: List<String> = emptyList(), val locations: List<String> = emptyList(), val goals: List<String> = emptyList(), val interests: List<String> = emptyList(), val circleCodes: List<String> = emptyList(), val connectionTypes: List<String> = emptyList(), val communicationStyles: List<String> = emptyList(), val accountabilityFrequencies: List<String> = emptyList())
+@Serializable data class DiscoveryPage(val results: List<DiscoveryResult> = emptyList(), val totalCount: Int, val offset: Int, val pageSize: Int, val hasMore: Boolean, val sortMode: String, val scope: String)
+@Serializable data class DiscoveryResult(val clientProfileId: String, val identity: MobileIdentity, val displayName: String, val headline: String? = null, val location: String? = null, val goals: List<String> = emptyList(), val interests: List<String> = emptyList(), val circleCodes: List<String> = emptyList(), val compatibilityScore: Int, val matchExplanation: String? = null, val relationship: DiscoveryRelationship, val avatar: MobileAvatar? = null, val username: String? = null, val bio: String? = null, val website: String? = null, val publicEmail: String? = null, val publicPhone: String? = null, val isPrivate: Boolean = false, val isVerified: Boolean = false, val roleLabel: String? = null)
+@Serializable data class DiscoveryRelationship(val followedByCurrentActor: Boolean, val followRequestPending: Boolean, val followsCurrentActor: Boolean, val connectionStatus: String, val connectionId: String? = null, val canRequestConnection: Boolean, val canFollow: Boolean)
+@Serializable data class DiscoveryProfile(val summary: DiscoveryResult, val introduction: String? = null, val lifeStages: List<String> = emptyList(), val connectionTypes: List<String> = emptyList(), val contentVisibleToCurrentActor: Boolean, val followerCount: Int, val followingCount: Int, val postCount: Int, val reelCount: Int, val storyCount: Int)
+@Serializable data class CommunityBlockRequest(val targetUserId: String, val targetParticipantType: String)
+@Serializable data class CommunityReportRequest(val targetUserId: String, val targetParticipantType: String, val targetKind: String, val targetEntityId: String? = null, val category: String, val detail: String? = null)
 
 class LegendApiClient private constructor(val api: LegendApi, val httpClient: OkHttpClient, val baseUrl: String) {
     companion object {
         fun create(baseUrl: String, tokenProvider: AccessTokenProvider, json: Json = Json { ignoreUnknownKeys = true; explicitNulls = false }): LegendApiClient {
             val auth = Interceptor { chain ->
-                val token = kotlinx.coroutines.runBlocking { tokenProvider.accessToken() }
+                val token = runBlocking { tokenProvider.accessToken() }
                 val incoming = chain.request()
                 val request = incoming.newBuilder().apply {
                     // Streaming Founder-chat progress deliberately uses NDJSON. Preserve a

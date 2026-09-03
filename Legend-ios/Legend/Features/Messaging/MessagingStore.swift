@@ -483,7 +483,7 @@ final class MessagingStore: ObservableObject {
             } catch {
                 self.refreshFailure = self.failure(
                     for: error,
-                    title: "Earlier conversations unavailable")
+                    title: LegendLocalized("Earlier conversations unavailable"))
             }
         }
     }
@@ -550,7 +550,7 @@ final class MessagingStore: ObservableObject {
                     return
                 }
                 self.recipientState = .unavailable(
-                    self.failure(for: error, title: "Recipients unavailable")
+                    self.failure(for: error, title: LegendLocalized("Recipients unavailable"))
                 )
             }
         }
@@ -586,7 +586,7 @@ final class MessagingStore: ObservableObject {
                     _ = await self?.refresh()
                 }
             } catch {
-                sendFailure = failure(for: error, title: "Group not created")
+                sendFailure = failure(for: error, title: LegendLocalized("Group not created"))
             }
         }
     }
@@ -596,8 +596,8 @@ final class MessagingStore: ObservableObject {
     ) async -> MessagingControlledResourceRequestSubmission {
         guard !isSubmittingControlledResourceRequest else {
             return .failed(UserFacingFailure(
-                title: "Request already sending",
-                message: "Please wait for the current request to finish.",
+                title: LegendLocalized("Request already sending"),
+                message: LegendLocalized("Please wait for the current request to finish."),
                 correlationID: nil))
         }
 
@@ -616,7 +616,7 @@ final class MessagingStore: ObservableObject {
         } catch {
             let requestFailure = failure(
                 for: error,
-                title: "Request not sent")
+                title: LegendLocalized("Request not sent"))
             sendFailure = requestFailure
             return .failed(requestFailure)
         }
@@ -652,7 +652,7 @@ final class MessagingStore: ObservableObject {
                 search: search,
                 accessToken: try await accessTokenProvider())
         } catch {
-            sendFailure = failure(for: error, title: "Access directory unavailable")
+            sendFailure = failure(for: error, title: LegendLocalized("Access directory unavailable"))
             return nil
         }
     }
@@ -671,7 +671,7 @@ final class MessagingStore: ObservableObject {
                 scope: scope,
                 accessToken: try await accessTokenProvider())
         } catch {
-            sendFailure = failure(for: error, title: "Account directory unavailable")
+            sendFailure = failure(for: error, title: LegendLocalized("Account directory unavailable"))
             return nil
         }
     }
@@ -694,7 +694,7 @@ final class MessagingStore: ObservableObject {
             _ = await refresh()
             return result
         } catch {
-            sendFailure = failure(for: error, title: "Account removal not completed")
+            sendFailure = failure(for: error, title: LegendLocalized("Account removal not completed"))
             return nil
         }
     }
@@ -717,7 +717,7 @@ final class MessagingStore: ObservableObject {
             _ = await refresh()
             return result
         } catch {
-            sendFailure = failure(for: error, title: "Account removal not completed")
+            sendFailure = failure(for: error, title: LegendLocalized("Account removal not completed"))
             return nil
         }
     }
@@ -740,7 +740,7 @@ final class MessagingStore: ObservableObject {
             _ = await refresh()
             return result
         } catch {
-            sendFailure = failure(for: error, title: "Account erase not completed")
+            sendFailure = failure(for: error, title: LegendLocalized("Account erase not completed"))
             return nil
         }
     }
@@ -750,7 +750,7 @@ final class MessagingStore: ObservableObject {
             return try await api.communicationLanguages(
                 accessToken: try await accessTokenProvider())
         } catch {
-            sendFailure = failure(for: error, title: "Languages unavailable")
+            sendFailure = failure(for: error, title: LegendLocalized("Languages unavailable"))
             return nil
         }
     }
@@ -774,7 +774,7 @@ final class MessagingStore: ObservableObject {
             _ = await refresh()
             return true
         } catch {
-            sendFailure = failure(for: error, title: "Access not updated")
+            sendFailure = failure(for: error, title: LegendLocalized("Access not updated"))
             return false
         }
     }
@@ -803,7 +803,7 @@ final class MessagingStore: ObservableObject {
                     _ = await self?.refresh()
                 }
             } catch {
-                sendFailure = failure(for: error, title: "Member not added")
+                sendFailure = failure(for: error, title: LegendLocalized("Member not added"))
             }
         }
     }
@@ -868,7 +868,7 @@ final class MessagingStore: ObservableObject {
             } catch {
                 sendFailure = failure(
                     for: error,
-                    title: "Group not deleted")
+                    title: LegendLocalized("Group not deleted"))
             }
         }
     }
@@ -888,7 +888,7 @@ final class MessagingStore: ObservableObject {
                 presentConversation(conversation)
                 _ = await refresh()
             } catch {
-                sendFailure = failure(for: error, title: "Group promotion not updated")
+                sendFailure = failure(for: error, title: LegendLocalized("Group promotion not updated"))
             }
         }
     }
@@ -909,7 +909,7 @@ final class MessagingStore: ObservableObject {
             _ = await refresh()
             return true
         } catch {
-            sendFailure = failure(for: error, title: "Group not joined")
+            sendFailure = failure(for: error, title: LegendLocalized("Group not joined"))
             return false
         }
     }
@@ -942,7 +942,7 @@ final class MessagingStore: ObservableObject {
                     _ = await self?.refresh()
                 }
             } catch {
-                sendFailure = failure(for: error, title: "Group not updated")
+                sendFailure = failure(for: error, title: LegendLocalized("Group not updated"))
             }
         }
     }
@@ -971,7 +971,7 @@ final class MessagingStore: ObservableObject {
             _ = await refresh()
             return true
         } catch {
-            sendFailure = failure(for: error, title: "Verification not resolved")
+            sendFailure = failure(for: error, title: LegendLocalized("Verification not resolved"))
             return false
         }
     }
@@ -1016,7 +1016,7 @@ final class MessagingStore: ObservableObject {
                     _ = await self?.refresh()
                 }
             } catch {
-                sendFailure = failure(for: error, title: "Conversation not started")
+                sendFailure = failure(for: error, title: LegendLocalized("Conversation not started"))
             }
         }
     }
@@ -1055,7 +1055,7 @@ final class MessagingStore: ObservableObject {
             }
             return message
         } catch {
-            sendFailure = failure(for: error, title: "Message not sent")
+            sendFailure = failure(for: error, title: LegendLocalized("Message not sent"))
             diagnostics.record(
                 category: .messaging,
                 summary: "A native message could not be sent.",
@@ -1082,7 +1082,7 @@ final class MessagingStore: ObservableObject {
             append(attachment: uploaded, to: message.id)
             return uploaded
         } catch {
-            sendFailure = failure(for: error, title: "Attachment not sent")
+            sendFailure = failure(for: error, title: LegendLocalized("Attachment not sent"))
             return nil
         }
     }
@@ -1110,7 +1110,7 @@ final class MessagingStore: ObservableObject {
                         isMuted: conversation.isMuted)
                 }
             } catch {
-                sendFailure = failure(for: error, title: "Conversation not updated")
+                sendFailure = failure(for: error, title: LegendLocalized("Conversation not updated"))
             }
         }
     }
@@ -1138,7 +1138,7 @@ final class MessagingStore: ObservableObject {
                         isMuted: isMuted)
                 }
             } catch {
-                sendFailure = failure(for: error, title: "Conversation not updated")
+                sendFailure = failure(for: error, title: LegendLocalized("Conversation not updated"))
             }
         }
     }
@@ -1153,7 +1153,7 @@ final class MessagingStore: ObservableObject {
                 let remaining = conversations.filter { $0.id != conversationID }
                 state = .loaded(remaining)
             } catch {
-                sendFailure = failure(for: error, title: "Conversation not removed")
+                sendFailure = failure(for: error, title: LegendLocalized("Conversation not removed"))
             }
         }
     }
@@ -1180,7 +1180,7 @@ final class MessagingStore: ObservableObject {
                         verificationReview: original.verificationReview)
                 }
             } catch {
-                sendFailure = failure(for: error, title: "Message not unsent")
+                sendFailure = failure(for: error, title: LegendLocalized("Message not unsent"))
             }
         }
     }
@@ -1191,7 +1191,7 @@ final class MessagingStore: ObservableObject {
                 conversationID: conversationID,
                 accessToken: try await accessTokenProvider())
         } catch {
-            sendFailure = failure(for: error, title: "Calling unavailable")
+            sendFailure = failure(for: error, title: LegendLocalized("Calling unavailable"))
             return nil
         }
     }
@@ -1229,7 +1229,7 @@ final class MessagingStore: ObservableObject {
                     messages: mergedMessages,
                     hasOlderMessages: olderPage.hasOlderMessages))
             } catch {
-                sendFailure = failure(for: error, title: "Earlier messages unavailable")
+                sendFailure = failure(for: error, title: LegendLocalized("Earlier messages unavailable"))
             }
         }
     }
@@ -1440,8 +1440,8 @@ final class MessagingStore: ObservableObject {
         let task = Task { [weak self] in
             guard let self else {
                 return MobileStoreLoadResult.failed(UserFacingFailure(
-                    title: "Messages unavailable",
-                    message: "The messaging store is no longer available.",
+                    title: LegendLocalized("Messages unavailable"),
+                    message: LegendLocalized("The messaging store is no longer available."),
                     correlationID: nil))
             }
             return await self.executeConversationListRequest(
@@ -1474,7 +1474,7 @@ final class MessagingStore: ObservableObject {
             refreshFailure = nil
             return .loaded
         } catch {
-            let presentation = failure(for: error, title: "Messages unavailable")
+            let presentation = failure(for: error, title: LegendLocalized("Messages unavailable"))
             if preservingCachedValue {
                 refreshFailure = presentation
             } else {
@@ -1577,7 +1577,7 @@ final class MessagingStore: ObservableObject {
         if case MobileMessagingContractError.unavailable = error {
             return .unavailable("Secure mobile messaging is unavailable until the approved bearer API contract is configured.")
         }
-        let failure = failure(for: error, title: "Conversation unavailable")
+        let failure = failure(for: error, title: LegendLocalized("Conversation unavailable"))
         switch error as? MobileAPIError {
         case .unauthorized, .apiUnauthorized:
             return .unauthorized(failure)
@@ -1598,7 +1598,7 @@ final class MessagingStore: ObservableObject {
             correlationID: apiError?.correlationID)
         return UserFacingFailure(
             title: title,
-            message: error.localizedDescription,
+            message: LegendLocalized(error.localizedDescription),
             correlationID: apiError?.correlationID)
     }
 
@@ -1645,6 +1645,6 @@ private enum MobileMessagingRecipientError: LocalizedError {
     case clientNoLongerAvailable
 
     var errorDescription: String? {
-        "This CRM record is no longer an active client available for messaging."
+        LegendLocalized("This CRM record is no longer an active client available for messaging.")
     }
 }

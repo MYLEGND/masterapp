@@ -4,6 +4,8 @@ import android.app.Activity
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.mylegnd.legend.registered.core.auth.CachedLegendSession
+import com.mylegnd.legend.registered.core.auth.AuthenticationCancelledException
+import com.mylegnd.legend.registered.core.auth.AuthenticationConnectivityException
 import com.mylegnd.legend.registered.core.auth.LegendAuthClient
 import com.mylegnd.legend.registered.core.auth.LegendAuthenticatedAccount
 import com.mylegnd.legend.registered.core.auth.LegendBearerTokenAuthority
@@ -32,6 +34,7 @@ data class ActiveLegendSession(
     val capabilities: MobileCapabilities,
     val accountId: String,
     val signedInAccounts: List<SignedInLegendAccount>,
+    val preferredLanguageCode: String? = null,
 )
 
 sealed interface SessionState {
@@ -120,7 +123,12 @@ class SessionRepository(
 
     suspend fun selectRole(role: String): SessionState {
         val response = apiClient().api.selectRole(SelectRoleRequest(role)).legendBody()
-        return authenticated(response.actor, response.permittedParticipantTypes, response.capabilities ?: MobileCapabilities())
+        return authenticated(
+            response.actor,
+            response.permittedParticipantTypes,
+            response.capabilities ?: MobileCapabilities(),
+            response.preferredLanguageCode,
+        )
     }
 
     suspend fun switchSignedInAccount(accountId: String): SessionState {
@@ -156,10 +164,20 @@ class SessionRepository(
         if (!response.authenticated) return SessionState.SignedOut
         if (response.requiresParticipantSelection) return SessionState.RoleSelection(response.permittedParticipantTypes)
         val actor = response.actor ?: return SessionState.Failure("Legend could not resolve this account.", response.correlationId)
-        return authenticated(actor, response.permittedParticipantTypes, response.capabilities)
+        return authenticated(
+            actor,
+            response.permittedParticipantTypes,
+            response.capabilities,
+            response.preferredLanguageCode,
+        )
     }
 
-    private suspend fun authenticated(actor: MobileActor, roles: List<String>, capabilities: MobileCapabilities): SessionState {
+    private suspend fun authenticated(
+        actor: MobileActor,
+        roles: List<String>,
+        capabilities: MobileCapabilities,
+        preferredLanguageCode: String?,
+    ): SessionState {
         val existing = cache.read()
         val accountId = activeCredential?.id ?: existing?.accountId ?: actor.identity.userId
         val interactiveSignInUtc = activeInteractiveSignInUtc ?: existing?.interactiveSignInUtc
@@ -171,6 +189,7 @@ class SessionRepository(
                 cachedUtc = Instant.now().toString(),
                 accountId = accountId,
                 interactiveSignInUtc = interactiveSignInUtc,
+                preferredLanguageCode = preferredLanguageCode,
             )
         )
         val signedInAccounts = cache.accounts()
@@ -181,7 +200,14 @@ class SessionRepository(
                 }
             }
         return SessionState.Authenticated(
-            ActiveLegendSession(actor, roles, capabilities, accountId, signedInAccounts)
+            ActiveLegendSession(
+                actor,
+                roles,
+                capabilities,
+                accountId,
+                signedInAccounts,
+                preferredLanguageCode,
+            )
         )
     }
 }
@@ -198,7 +224,7 @@ class SessionViewModel(private val repository: SessionRepository) : ViewModel() 
     fun signIn(activity: Activity) = viewModelScope.launch {
         _state.value = SessionState.Authenticating
         _state.value = runCatching { repository.signIn(activity) }
-            .getOrElse { SessionState.Failure("Secure sign-in could not be completed.") }
+            .getOrElse(::signInFailure)
     }
 
     fun signInForAppReview(username: String, password: String) = viewModelScope.launch {
@@ -244,5 +270,13 @@ class SessionViewModel(private val repository: SessionRepository) : ViewModel() 
     fun signOut() = viewModelScope.launch {
         repository.signOut()
         _state.value = SessionState.SignedOut
+    }
+
+    private fun signInFailure(error: Throwable): SessionState = when (error) {
+        is AuthenticationCancelledException -> SessionState.SignedOut
+        is AuthenticationConnectivityException -> SessionState.Failure(
+            "Secure sign-in needs a working internet connection. Check the connection and try again.",
+        )
+        else -> SessionState.Failure("Secure sign-in could not be completed.")
     }
 }

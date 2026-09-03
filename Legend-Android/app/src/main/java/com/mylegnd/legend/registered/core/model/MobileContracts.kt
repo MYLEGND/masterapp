@@ -70,6 +70,32 @@ import kotlinx.serialization.Serializable
     @SerialName("requiresParticipantSelection") val requiresParticipantSelection: Boolean = false,
     val capabilities: MobileCapabilities,
     @SerialName("correlationId") val correlationId: String,
+    @SerialName("preferredLanguageCode") val preferredLanguageCode: String? = null,
+)
+
+@Serializable data class ApplicationLocalizedCopy(
+    val id: String,
+    val source: String,
+    val text: String,
+    val context: String,
+    @SerialName("sourceRevision") val sourceRevision: String,
+    val placeholders: List<String> = emptyList(),
+    val provider: String,
+    val provenance: String,
+    @SerialName("validationState") val validationState: String,
+    @SerialName("createdUtc") val createdUtc: String,
+    val reused: Boolean,
+    @SerialName("failureCode") val failureCode: String? = null,
+)
+
+@Serializable data class ApplicationLocalizationCatalog(
+    @SerialName("catalogVersion") val catalogVersion: String,
+    @SerialName("sourceLanguageCode") val sourceLanguageCode: String,
+    @SerialName("languageCode") val languageCode: String,
+    val locale: String,
+    @SerialName("generatedUtc") val generatedUtc: String,
+    @SerialName("isComplete") val isComplete: Boolean,
+    val entries: List<ApplicationLocalizedCopy>,
 )
 
 @Serializable data class SelectRoleRequest(@SerialName("participantType") val participantType: String)
@@ -83,6 +109,7 @@ import kotlinx.serialization.Serializable
     @SerialName("permittedParticipantTypes") val permittedParticipantTypes: List<String>,
     @SerialName("correlationId") val correlationId: String,
     val capabilities: MobileCapabilities? = null,
+    @SerialName("preferredLanguageCode") val preferredLanguageCode: String? = null,
 )
 
 @Serializable data class MobileHomeResponse(
@@ -298,7 +325,9 @@ internal object FinancialPresentationOrder {
 @Serializable data class ConversationCallOptions(@SerialName("conversationId") val conversationId: String, @SerialName("displayName") val displayName: String, @SerialName("phoneNumber") val phoneNumber: String? = null, @SerialName("faceTimeAddress") val faceTimeAddress: String? = null)
 
 @Serializable data class SocialSnapshot(
-    val stories: List<SocialPost> = emptyList(), val posts: List<SocialPost> = emptyList(), val hacs: List<SocialPost> = emptyList(),
+    val stories: List<SocialPost> = emptyList(),
+    val posts: List<SocialPost> = emptyList(),
+    @SerialName("hacs") val shortVideos: List<SocialPost> = emptyList(),
     val activity: List<SocialActivity> = emptyList(), @SerialName("activityCount") val activityCount: Int = 0,
     @SerialName("currentProfileMetrics") val currentProfileMetrics: SocialProfileMetrics? = null,
     @SerialName("creatorInsights") val creatorInsights: CreatorInsights? = null,

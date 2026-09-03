@@ -2,14 +2,18 @@
 
 package com.mylegnd.legend.registered.ui
 
+import android.annotation.SuppressLint
 import android.app.Activity
 import android.Manifest
+import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.net.Uri
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
+import android.webkit.WebResourceError
+import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.activity.compose.LocalActivity
@@ -19,6 +23,7 @@ import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
@@ -40,14 +45,21 @@ import androidx.compose.material.icons.automirrored.filled.TrendingUp
 import androidx.compose.material.icons.automirrored.filled.ShowChart
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
+import androidx.compose.material3.ModalBottomSheet as MaterialModalBottomSheet
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -59,6 +71,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.core.content.ContextCompat
+import androidx.core.net.toUri
 import androidx.core.view.WindowCompat
 import androidx.fragment.app.FragmentActivity
 import com.mylegnd.legend.registered.LegendContainer
@@ -74,6 +87,8 @@ import com.mylegnd.legend.registered.core.design.LegendSize
 import com.mylegnd.legend.registered.core.design.LegendSpacing
 import com.mylegnd.legend.registered.core.design.LegendSocialFormats
 import com.mylegnd.legend.registered.core.design.LegendTypography
+import com.mylegnd.legend.registered.core.design.LegendLocalizationRuntime
+import com.mylegnd.legend.registered.core.design.legendLocalized
 import com.mylegnd.legend.registered.core.model.*
 import com.mylegnd.legend.registered.core.media.AuthenticatedMediaRepository
 import com.mylegnd.legend.registered.core.media.LegendProtectedAvatar
@@ -101,11 +116,22 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import coil3.compose.AsyncImage
+import java.io.ByteArrayInputStream
 import java.time.LocalDate
+import java.time.LocalDateTime
+import java.time.OffsetDateTime
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import java.time.format.FormatStyle
+import java.text.NumberFormat
+import java.util.TimeZone
+import kotlin.time.Duration.Companion.milliseconds
+import kotlin.time.Duration.Companion.minutes
 
 @Composable
 fun LegendRoot(sessionViewModel: SessionViewModel, container: LegendContainer) {
     val state by sessionViewModel.state.collectAsStateWithLifecycle()
+    val localization by container.localization.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val activity = LocalActivity.current
     val notificationPermission = rememberLauncherForActivityResult(
@@ -120,10 +146,13 @@ fun LegendRoot(sessionViewModel: SessionViewModel, container: LegendContainer) {
             "This build is waiting for LEGEND® environment configuration before secure sign-in can begin.",
         )
 
-        SessionState.SignedOut -> SignInScreen(
-            onSignIn = sessionViewModel::signIn,
-            onAppReviewSignIn = sessionViewModel::signInForAppReview,
-        )
+        SessionState.SignedOut -> {
+            LaunchedEffect(Unit) { container.localization.clearPresentation() }
+            SignInScreen(
+                onSignIn = sessionViewModel::signIn,
+                onAppReviewSignIn = sessionViewModel::signInForAppReview,
+            )
+        }
         is SessionState.RoleSelection -> RoleSelectionScreen(
             roles = (state as SessionState.RoleSelection).roles,
             select = sessionViewModel::selectRole,
@@ -137,6 +166,17 @@ fun LegendRoot(sessionViewModel: SessionViewModel, container: LegendContainer) {
 
         is SessionState.Authenticated -> {
             val session = (state as SessionState.Authenticated).session
+            LaunchedEffect(
+                session.accountId,
+                session.actor.identity.participantType,
+                session.preferredLanguageCode,
+            ) {
+                container.localization.activate(
+                    session.accountId,
+                    session.actor.identity.participantType,
+                    session.preferredLanguageCode,
+                )
+            }
             LaunchedEffect(session.actor.identity.userId) {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
                     ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
@@ -144,15 +184,21 @@ fun LegendRoot(sessionViewModel: SessionViewModel, container: LegendContainer) {
                     notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
                 }
             }
-            AuthenticatedShell(
-                session = session,
-                container = container,
-                signOut = sessionViewModel::signOut,
-                switchRole = sessionViewModel::selectRole,
-                switchSignedInAccount = sessionViewModel::switchSignedInAccount,
-                addAccount = { activity?.let(sessionViewModel::addAccount) },
-                cycleAccount = sessionViewModel::cycleAccount,
-            )
+            if (localization.actorKey != session.accountId || !localization.isReady) {
+                LegendLoadingState()
+            } else {
+                key(localization.revision) {
+                    AuthenticatedShell(
+                        session = session,
+                        container = container,
+                        signOut = sessionViewModel::signOut,
+                        switchRole = sessionViewModel::selectRole,
+                        switchSignedInAccount = sessionViewModel::switchSignedInAccount,
+                        addAccount = { activity?.let(sessionViewModel::addAccount) },
+                        cycleAccount = sessionViewModel::cycleAccount,
+                    )
+                }
+            }
         }
     }
 }
@@ -167,12 +213,12 @@ private fun ModalBottomSheet(
     onDismissRequest: () -> Unit,
     modifier: Modifier = Modifier,
     sheetState: SheetState = rememberModalBottomSheetState(),
-    containerColor: androidx.compose.ui.graphics.Color = BottomSheetDefaults.ContainerColor,
-    contentColor: androidx.compose.ui.graphics.Color = contentColorFor(containerColor),
+    containerColor: Color = BottomSheetDefaults.ContainerColor,
+    contentColor: Color = contentColorFor(containerColor),
     dragHandle: @Composable (() -> Unit)? = { BottomSheetDefaults.DragHandle() },
     content: @Composable ColumnScope.() -> Unit,
 ) {
-    androidx.compose.material3.ModalBottomSheet(
+    MaterialModalBottomSheet(
         onDismissRequest = onDismissRequest,
         modifier = modifier,
         sheetState = sheetState,
@@ -201,9 +247,16 @@ private fun SignInScreen(
     onAppReviewSignIn: (String, String) -> Unit,
 ) {
     val activity = LocalActivity.current
-    var appReviewOpen by remember { mutableStateOf(false) }
+    var username by remember { mutableStateOf("") }
+    var password by remember { mutableStateOf("") }
+    var showsProvidedCredentials by remember { mutableStateOf(false) }
+    val normalizedUsername = username.trim()
+    val hasCompleteProvidedCredentials = normalizedUsername.isNotEmpty() && password.isNotEmpty()
     LazyColumn(
-        modifier = Modifier.fillMaxSize().background(LegendColors.Canvas),
+        modifier = Modifier
+            .fillMaxSize()
+            .background(LegendColors.Canvas)
+            .imePadding(),
         contentPadding = PaddingValues(horizontal = LegendSpacing.PageHorizontal, vertical = LegendSpacing.Lg),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(LegendSpacing.Md),
@@ -221,109 +274,139 @@ private fun SignInScreen(
                 verticalArrangement = Arrangement.spacedBy(LegendSpacing.Xs),
             ) {
                 LegendBrandArtwork(size = 72.dp)
-                Text("LEGEND ACCOUNT", style = LegendTypography.Eyebrow, color = LegendColors.GoldBright)
-                Text("Secure sign in", style = LegendTypography.Title, color = LegendColors.OnNavy)
+                Text(legendLocalized("LEGEND ACCOUNT"), style = LegendTypography.Eyebrow, color = LegendColors.GoldBright)
+                Text(legendLocalized("Secure sign in"), style = LegendTypography.Title, color = LegendColors.OnNavy)
                 Text(
-                    "Verify your Legend account to continue.",
+                    legendLocalized("Tap Sign in securely to continue with your Legend account."),
                     style = LegendTypography.Supporting,
                     color = LegendColors.OnNavy.copy(alpha = 0.76f),
+                    textAlign = TextAlign.Center,
                 )
             }
         }
         item {
-            LegendPrimaryButton("Sign in securely", modifier = Modifier.fillMaxWidth(), enabled = activity != null) {
-                activity?.let(onSignIn)
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(LegendShapes.Card)
+                    .background(LegendColors.Surface)
+                    .border(1.dp, LegendColors.Divider, LegendShapes.Card),
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable {
+                            showsProvidedCredentials = !showsProvidedCredentials
+                            if (!showsProvidedCredentials) {
+                                username = ""
+                                password = ""
+                            }
+                        }
+                        .padding(LegendSpacing.Md),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(LegendSpacing.Sm),
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            legendLocalized("Were you given sign-in credentials?"),
+                            style = LegendTypography.Supporting,
+                            color = LegendColors.TextPrimary,
+                        )
+                        Text(
+                            legendLocalized("Optional access method"),
+                            style = LegendTypography.Caption,
+                            color = LegendColors.TextSecondary,
+                        )
+                    }
+                    Icon(
+                        imageVector = if (showsProvidedCredentials) {
+                            Icons.Default.KeyboardArrowUp
+                        } else {
+                            Icons.Default.KeyboardArrowDown
+                        },
+                        contentDescription = if (showsProvidedCredentials) {
+                            "Hide provided credential fields"
+                        } else {
+                            "Show provided credential fields"
+                        },
+                        tint = LegendColors.NavyElevated,
+                    )
+                }
+                if (showsProvidedCredentials) {
+                    HorizontalDivider(color = LegendColors.Divider)
+                    Column(
+                        modifier = Modifier.padding(
+                            start = LegendSpacing.Md,
+                            top = LegendSpacing.Sm,
+                            end = LegendSpacing.Md,
+                            bottom = LegendSpacing.Md,
+                        ),
+                        verticalArrangement = Arrangement.spacedBy(LegendSpacing.Sm),
+                    ) {
+                        OutlinedTextField(
+                            value = username,
+                            onValueChange = { username = it },
+                            modifier = Modifier.fillMaxWidth(),
+                            label = { Text(legendLocalized("Username")) },
+                            singleLine = true,
+                            shape = LegendShapes.Control,
+                        )
+                        OutlinedTextField(
+                            value = password,
+                            onValueChange = { password = it },
+                            modifier = Modifier.fillMaxWidth(),
+                            label = { Text(legendLocalized("Password")) },
+                            singleLine = true,
+                            shape = LegendShapes.Control,
+                            visualTransformation = PasswordVisualTransformation(),
+                        )
+                        Text(
+                            legendLocalized("Enter the username and password you were provided, then use the same Sign in securely button below."),
+                            style = LegendTypography.Caption,
+                            color = LegendColors.TextSecondary,
+                        )
+                    }
+                }
             }
         }
-        item { TextButton(onClick = { appReviewOpen = true }) {
-            Text(
-                "App Review Sign In",
-                style = LegendTypography.Supporting,
-                color = LegendColors.NavyElevated,
-            )
-        } }
+        item {
+            LegendPrimaryButton(
+                "Sign in securely",
+                modifier = Modifier.fillMaxWidth(),
+                enabled = if (showsProvidedCredentials) {
+                    hasCompleteProvidedCredentials
+                } else {
+                    activity != null
+                },
+            ) {
+                if (showsProvidedCredentials && hasCompleteProvidedCredentials) {
+                    val submittedPassword = password
+                    password = ""
+                    onAppReviewSignIn(normalizedUsername, submittedPassword)
+                } else {
+                    activity?.let(onSignIn)
+                }
+            }
+        }
         item {
             Text(
-                "Device authentication is optional and can be enabled after sign in in Profile settings.",
+                legendLocalized("Device authentication is optional and can be enabled after sign in in Profile settings."),
                 style = LegendTypography.Caption,
                 color = LegendColors.TextSecondary,
-                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                textAlign = TextAlign.Center,
                 modifier = Modifier.padding(horizontal = LegendSpacing.Xl),
             )
         }
     }
-    if (appReviewOpen) {
-        AppReviewSignInDialog(
-            dismiss = { appReviewOpen = false },
-            submit = { username, password ->
-                appReviewOpen = false
-                onAppReviewSignIn(username, password)
-            },
-        )
-    }
 }
 
+/** Shared brand artwork bundled from the canonical iOS asset by Gradle. */
 @Composable
-private fun AppReviewSignInDialog(
-    dismiss: () -> Unit,
-    submit: (String, String) -> Unit,
-) {
-    var username by remember { mutableStateOf("") }
-    var password by remember { mutableStateOf("") }
-    AlertDialog(
-        onDismissRequest = {
-            password = ""
-            dismiss()
-        },
-        title = { Text("App Review Sign In", style = LegendTypography.Section) },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(LegendSpacing.Sm)) {
-                Text(
-                    "Use the review credentials provided in Google Play Console.",
-                    style = LegendTypography.Supporting,
-                    color = LegendColors.TextSecondary,
-                )
-                OutlinedTextField(
-                    value = username,
-                    onValueChange = { username = it },
-                    label = { Text("Username") },
-                    singleLine = true,
-                )
-                OutlinedTextField(
-                    value = password,
-                    onValueChange = { password = it },
-                    label = { Text("Password") },
-                    singleLine = true,
-                    visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
-                )
-            }
-        },
-        confirmButton = {
-            TextButton(
-                onClick = {
-                    val submittedPassword = password
-                    password = ""
-                    submit(username.trim(), submittedPassword)
-                },
-                enabled = username.isNotBlank() && password.isNotBlank(),
-            ) { Text("Sign In") }
-        },
-        dismissButton = {
-            TextButton(onClick = {
-                password = ""
-                dismiss()
-            }) { Text("Cancel") }
-        },
-    )
-}
-
-/** The same iOS-owned artwork bundled by Gradle; Android keeps no forked logo file. */
-@Composable
-private fun LegendBrandArtwork(modifier: Modifier = Modifier, size: androidx.compose.ui.unit.Dp = 96.dp) {
+private fun LegendBrandArtwork(modifier: Modifier = Modifier, size: Dp = 96.dp) {
     AsyncImage(
         model = "file:///android_asset/legend-logo.png",
-        contentDescription = "LEGEND®",
-        contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+        contentDescription = legendLocalized("LEGEND®", "accessibility copy"),
+        contentScale = ContentScale.Crop,
         modifier = modifier
             .size(size)
             .clip(CircleShape),
@@ -353,18 +436,18 @@ private fun RoleSelectionScreen(
                 verticalArrangement = Arrangement.spacedBy(LegendSpacing.Xs),
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("LEGEND ACCOUNT", style = LegendTypography.Eyebrow, color = LegendColors.GoldBright, modifier = Modifier.weight(1f))
+                    Text(legendLocalized("LEGEND ACCOUNT"), style = LegendTypography.Eyebrow, color = LegendColors.GoldBright, modifier = Modifier.weight(1f))
                     LegendBrandArtwork(size = 48.dp)
                 }
-                Text("Choose your experience", style = LegendTypography.Title, color = LegendColors.OnNavy)
+                Text(legendLocalized("Choose your experience"), style = LegendTypography.Title, color = LegendColors.OnNavy)
                 Text(
-                    "Choose the account you want to use. Legend will reopen it next time.",
+                    legendLocalized("Choose the account you want to use. Legend will reopen it next time."),
                     style = LegendTypography.Supporting,
                     color = LegendColors.OnNavy.copy(alpha = 0.76f),
                 )
             }
         }
-        item { Text("Available workspaces", style = LegendTypography.Section, color = LegendColors.TextPrimary) }
+        item { Text(legendLocalized("Available workspaces"), style = LegendTypography.Section, color = LegendColors.TextPrimary) }
         items(roles, key = { it }) { role ->
             Surface(
                 color = LegendColors.Surface,
@@ -391,7 +474,7 @@ private fun RoleSelectionScreen(
                         )
                     }
                     Spacer(Modifier.width(LegendSpacing.Sm))
-                    Text("Continue as $role", style = LegendTypography.BodyEmphasis, color = LegendColors.TextPrimary, modifier = Modifier.weight(1f))
+                    Text(legendLocalized("Continue as {role}", mapOf("role" to role)), style = LegendTypography.BodyEmphasis, color = LegendColors.TextPrimary, modifier = Modifier.weight(1f))
                     Icon(Icons.Default.ChevronRight, null, tint = LegendColors.Gold)
                 }
             }
@@ -402,12 +485,12 @@ private fun RoleSelectionScreen(
                 modifier = Modifier.fillMaxWidth().heightIn(min = LegendSize.MinimumTapTarget),
                 shape = LegendShapes.Compact,
                 colors = ButtonDefaults.outlinedButtonColors(contentColor = LegendColors.Error),
-                border = androidx.compose.foundation.BorderStroke(
+                border = BorderStroke(
                     1.dp,
                     LegendColors.Error.copy(alpha = 0.22f),
                 ),
             ) {
-                Text("Sign out", style = LegendTypography.Supporting, fontWeight = FontWeight.SemiBold)
+                Text(legendLocalized("Sign out"), style = LegendTypography.Supporting, fontWeight = FontWeight.SemiBold)
             }
         }
     }
@@ -616,8 +699,8 @@ private fun LegendAccountSwitcherSheet(
             verticalArrangement = Arrangement.spacedBy(LegendSpacing.Sm),
         ) {
             item {
-                Text("ACCOUNT", style = LegendTypography.Eyebrow, color = LegendColors.GoldBright)
-                Text("Switch account", style = LegendTypography.Title, color = LegendColors.OnNavy)
+                Text(legendLocalized("ACCOUNT"), style = LegendTypography.Eyebrow, color = LegendColors.GoldBright)
+                Text(legendLocalized("Switch account"), style = LegendTypography.Title, color = LegendColors.OnNavy)
             }
             item {
                 Surface(
@@ -627,7 +710,7 @@ private fun LegendAccountSwitcherSheet(
                 ) {
                     Column(Modifier.padding(LegendSpacing.Sm)) {
                         Text(accountName, style = LegendTypography.CardTitle, color = LegendColors.OnNavy)
-                        Text("Current $participantType workspace", style = LegendTypography.Supporting, color = LegendColors.GoldSoft)
+                        Text(legendLocalized("Current {workspace} workspace", mapOf("workspace" to participantType)), style = LegendTypography.Supporting, color = LegendColors.GoldSoft)
                     }
                 }
             }
@@ -637,11 +720,11 @@ private fun LegendAccountSwitcherSheet(
                     modifier = Modifier.fillMaxWidth().heightIn(min = LegendSize.ControlHeight),
                     shape = LegendShapes.Control,
                     colors = ButtonDefaults.outlinedButtonColors(contentColor = LegendColors.OnNavy),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, LegendColors.Gold.copy(alpha = 0.46f)),
+                    border = BorderStroke(1.dp, LegendColors.Gold.copy(alpha = 0.46f)),
                 ) {
                     Icon(if (role.equals("Agent", true)) Icons.Default.BusinessCenter else Icons.Default.Person, null)
                     Spacer(Modifier.width(LegendSpacing.Xs))
-                    Text("Continue as $role")
+                    Text(legendLocalized("Continue as {role}", mapOf("role" to role)))
                 }
             }
             items(
@@ -653,7 +736,7 @@ private fun LegendAccountSwitcherSheet(
                     modifier = Modifier.fillMaxWidth().heightIn(min = LegendSize.ControlHeight),
                     shape = LegendShapes.Control,
                     colors = ButtonDefaults.outlinedButtonColors(contentColor = LegendColors.OnNavy),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, LegendColors.Divider),
+                    border = BorderStroke(1.dp, LegendColors.Divider),
                 ) {
                     Icon(Icons.Default.AccountCircle, null)
                     Spacer(Modifier.width(LegendSpacing.Xs))
@@ -686,7 +769,7 @@ private fun LegendAccountSwitcherSheet(
                     style = LegendTypography.Caption,
                     color = LegendColors.GoldSoft,
                     modifier = Modifier.fillMaxWidth(),
-                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                    textAlign = TextAlign.Center,
                 )
             }
         }
@@ -916,6 +999,9 @@ private fun AuthenticatedShell(
                     currentAccountId = session.accountId,
                     switchSignedInAccount = switchSignedInAccount,
                     addAccount = addAccount,
+                    refreshLocalization = {
+                        container.localization.refresh(session.accountId, participantType)
+                    },
                     signOut = signOut,
                 )
             }
@@ -951,7 +1037,7 @@ private fun DiscoverScreen(viewModel: DiscoveryViewModel, socialViewModel: Socia
     var editingJourney by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { viewModel.load() }
     LaunchedEffect(query) {
-        kotlinx.coroutines.delay(120)
+        delay(120.milliseconds)
         viewModel.search(query)
     }
     when (page) {
@@ -970,9 +1056,9 @@ private fun DiscoverScreen(viewModel: DiscoveryViewModel, socialViewModel: Socia
                             value = query,
                             onValueChange = { query = it },
                             modifier = Modifier.weight(1f),
-                            placeholder = { Text(if (snapshot.scope == "OwnedClients") "Search clients and agents" else "Search people, goals, interests", color = LegendColors.OnNavy.copy(alpha = 0.66f)) },
+                            placeholder = { Text(if (snapshot.scope == "OwnedClients") legendLocalized("Search clients and agents") else legendLocalized("Search people, goals, interests"), color = LegendColors.OnNavy.copy(alpha = 0.66f)) },
                             leadingIcon = { Icon(Icons.Default.Search, null, tint = LegendColors.GoldBright) },
-                            trailingIcon = { if (query.isNotBlank()) IconButton(onClick = { query = "" }) { Icon(Icons.Default.Close, "Clear search", tint = LegendColors.OnNavy) } },
+                            trailingIcon = { if (query.isNotBlank()) IconButton(onClick = { query = "" }) { Icon(Icons.Default.Close, legendLocalized("Clear search", "accessibility copy"), tint = LegendColors.OnNavy) } },
                             singleLine = true,
                             shape = CircleShape,
                             colors = OutlinedTextFieldDefaults.colors(focusedContainerColor = LegendColors.Navy, unfocusedContainerColor = LegendColors.Navy, focusedTextColor = LegendColors.OnNavy, unfocusedTextColor = LegendColors.OnNavy, focusedBorderColor = LegendColors.NavyElevated, unfocusedBorderColor = LegendColors.NavyElevated),
@@ -990,7 +1076,15 @@ private fun DiscoverScreen(viewModel: DiscoveryViewModel, socialViewModel: Socia
                         disconnect = viewModel::disconnectJourneyConnection,
                     )
                 }
-                item { Text("${snapshot.totalCount} ${if (snapshot.totalCount == 1) "member" else "members"}${if (query.isBlank()) " in your LEGEND community" else " matching your search"}", style = LegendTypography.Supporting, color = LegendColors.OnNavy.copy(alpha = 0.72f)) }
+                item {
+                    val source = when {
+                        query.isNotBlank() && snapshot.totalCount == 1 -> "{count} member matching your search"
+                        query.isNotBlank() -> "{count} members matching your search"
+                        snapshot.totalCount == 1 -> "{count} member in your LEGEND community"
+                        else -> "{count} members in your LEGEND community"
+                    }
+                    Text(legendLocalized(source, mapOf("count" to snapshot.totalCount)), style = LegendTypography.Supporting, color = LegendColors.OnNavy.copy(alpha = 0.72f))
+                }
                 if (snapshot.results.isEmpty()) {
                     item { LegendDiscoverEmptyState(query) }
                 } else {
@@ -1003,7 +1097,7 @@ private fun DiscoverScreen(viewModel: DiscoveryViewModel, socialViewModel: Socia
                             safety = { safetyTarget = result },
                         )
                     }
-                    if (snapshot.hasMore) item { TextButton(onClick = viewModel::loadMore, modifier = Modifier.fillMaxWidth()) { Text("Load more members", color = LegendColors.GoldBright) } }
+                    if (snapshot.hasMore) item { TextButton(onClick = viewModel::loadMore, modifier = Modifier.fillMaxWidth()) { Text(legendLocalized("Load more members"), color = LegendColors.GoldBright) } }
                 }
             }
         }
@@ -1055,8 +1149,8 @@ private fun LegendDiscoverEmptyState(query: String) {
     Surface(color = LegendColors.Navy, shape = LegendShapes.Card, modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(LegendSpacing.Lg), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(LegendSpacing.Sm)) {
             Icon(Icons.Default.PersonSearch, null, tint = LegendColors.GoldBright, modifier = Modifier.size(32.dp))
-            Text(if (query.isBlank()) "No members yet" else "No members found", style = LegendTypography.Section, color = LegendColors.OnNavy)
-            Text(if (query.isBlank()) "Active LEGEND members and agents will appear here." else "Try another name, goal, interest, or location.", style = LegendTypography.Supporting, color = LegendColors.GoldSoft, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+            Text(if (query.isBlank()) legendLocalized("No members yet") else legendLocalized("No members found"), style = LegendTypography.Section, color = LegendColors.OnNavy)
+            Text(if (query.isBlank()) legendLocalized("Active LEGEND members and agents will appear here.") else legendLocalized("Try another name, goal, interest, or location."), style = LegendTypography.Supporting, color = LegendColors.GoldSoft, textAlign = TextAlign.Center)
         }
     }
 }
@@ -1071,8 +1165,8 @@ private fun LegendDiscoverResultCard(
 ) {
     val isAgent = result.identity.participantType.equals("Agent", ignoreCase = true)
     val detail = when {
-        result.relationship.followsCurrentActor && result.relationship.followedByCurrentActor -> "You follow each other"
-        result.relationship.followsCurrentActor -> "Follows you"
+        result.relationship.followsCurrentActor && result.relationship.followedByCurrentActor -> legendLocalized("You follow each other")
+        result.relationship.followsCurrentActor -> legendLocalized("Follows you")
         isAgent -> null
         else -> result.matchExplanation ?: result.headline ?: result.location
     }
@@ -1154,11 +1248,11 @@ private fun LegendDiscoveryProfileSheet(
                     Column(Modifier.weight(1f)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(author.displayName, style = LegendTypography.Section, color = LegendColors.TextPrimary)
-                            if (author.isVerified) Icon(Icons.Default.Verified, "Verified", modifier = Modifier.padding(start = LegendSpacing.Xs).size(18.dp), tint = LegendColors.Verified)
+                            if (author.isVerified) Icon(Icons.Default.Verified, legendLocalized("Verified", "accessibility copy"), modifier = Modifier.padding(start = LegendSpacing.Xs).size(18.dp), tint = LegendColors.Verified)
                         }
-                        Text(author.roleLabel ?: author.username?.let { "@$it" } ?: "LEGEND member", style = LegendTypography.Label, color = LegendColors.TextSecondary)
+                        Text(author.roleLabel ?: author.username?.let { "@$it" } ?: legendLocalized("LEGEND member"), style = LegendTypography.Label, color = LegendColors.TextSecondary)
                     }
-                    TextButton(onClick = dismiss) { Text("Done", color = LegendColors.Gold) }
+                    TextButton(onClick = dismiss) { Text(legendLocalized("Done"), color = LegendColors.Gold) }
                 }
             }
             when (state) {
@@ -1175,32 +1269,32 @@ private fun LegendDiscoveryProfileSheet(
                         }
                     }
                 }
-                is LoadState.Error -> item { Text(state.message, style = LegendTypography.Supporting, color = LegendColors.Error) }
+                is LoadState.Error -> item { Text(legendLocalized(state.message), style = LegendTypography.Supporting, color = LegendColors.Error) }
                 else -> item { LinearProgressIndicator(modifier = Modifier.fillMaxWidth(), color = LegendColors.Gold) }
             }
             item {
                 Row(horizontalArrangement = Arrangement.spacedBy(LegendSpacing.Xs), modifier = Modifier.fillMaxWidth()) {
-                    if (target.relationship.canFollow) OutlinedButton(onClick = { socialViewModel.toggleFollow(author) }, modifier = Modifier.weight(1f), shape = LegendShapes.Control) { Text(if (target.relationship.followedByCurrentActor) "Following" else if (target.relationship.followRequestPending) "Requested" else "Follow") }
+                    if (target.relationship.canFollow) OutlinedButton(onClick = { socialViewModel.toggleFollow(author) }, modifier = Modifier.weight(1f), shape = LegendShapes.Control) { Text(if (target.relationship.followedByCurrentActor) legendLocalized("Following") else if (target.relationship.followRequestPending) legendLocalized("Requested") else legendLocalized("Follow")) }
                     if (target.relationship.canRequestConnection && participantType.equals("Client", ignoreCase = true)) LegendPrimaryButton("Connect", modifier = Modifier.weight(1f), onClick = requestConnection)
-                    IconButton(onClick = safety, modifier = Modifier.background(LegendColors.SurfaceInset, CircleShape)) { Icon(Icons.Default.MoreHoriz, "Community safety", tint = LegendColors.TextSecondary) }
+                    IconButton(onClick = safety, modifier = Modifier.background(LegendColors.SurfaceInset, CircleShape)) { Icon(Icons.Default.MoreHoriz, legendLocalized("Community safety", "accessibility copy"), tint = LegendColors.TextSecondary) }
                 }
             }
             if (disconnectJourney != null || blockJourney != null || reportJourney != null) item {
                 LegendJourneySafetyActions(disconnectJourney, blockJourney, reportJourney)
             }
-            item { Text("Posts", style = LegendTypography.Section, color = LegendColors.TextPrimary) }
+            item { Text(legendLocalized("Posts"), style = LegendTypography.Section, color = LegendColors.TextPrimary) }
             when (socialPosts) {
                 LoadState.Idle, LoadState.Loading -> item { LegendLoadingState() }
-                is LoadState.Error -> item { Text((socialPosts as LoadState.Error).message, color = LegendColors.Error) }
+                is LoadState.Error -> item { Text(legendLocalized((socialPosts as LoadState.Error).message), color = LegendColors.Error) }
                 is LoadState.Data -> {
                     val posts = (socialPosts as LoadState.Data<List<SocialPost>>).value
-                    if (posts.isEmpty()) item { Text("No server-visible posts.", style = LegendTypography.Supporting, color = LegendColors.TextSecondary) }
+                    if (posts.isEmpty()) item { Text(legendLocalized("No server-visible posts."), style = LegendTypography.Supporting, color = LegendColors.TextSecondary) }
                     else items(posts, key = { it.id }) { post ->
                         LegendSocialPostCard(post, mediaRepository, participantType, false, null, { socialViewModel.react(post.id) }, { commentingPost = post }, { socialViewModel.toggleFollow(post) }, { socialViewModel.toggleSave(post.id) }, { socialViewModel.toggleRepost(post.id) })
                     }
                 }
             }
-            if (socialMetrics is LoadState.Data) item { Text("Server-authorized public profile", style = LegendTypography.Label, color = LegendColors.TextTertiary) }
+            if (socialMetrics is LoadState.Data) item { Text(legendLocalized("Server-authorized public profile"), style = LegendTypography.Label, color = LegendColors.TextTertiary) }
         }
     }
     commentingPost?.let { post ->
@@ -1220,31 +1314,31 @@ private fun CommunitySafetyDialog(
     var detail by remember { mutableStateOf("") }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(if (reporting) "Report ${target.displayName}" else "Safety actions") },
+        title = { Text(if (reporting) legendLocalized("Report {displayName}", mapOf("displayName" to target.displayName)) else legendLocalized("Safety actions")) },
         text = {
             if (reporting) {
                 Column(verticalArrangement = Arrangement.spacedBy(LegendSpacing.Xs)) {
-                    OutlinedTextField(category, { category = it }, label = { Text("Reason") }, modifier = Modifier.fillMaxWidth())
-                    OutlinedTextField(detail, { detail = it }, label = { Text("Details (optional)") }, modifier = Modifier.fillMaxWidth())
+                    OutlinedTextField(category, { category = it }, label = { Text(legendLocalized("Reason")) }, modifier = Modifier.fillMaxWidth())
+                    OutlinedTextField(detail, { detail = it }, label = { Text(legendLocalized("Details (optional)")) }, modifier = Modifier.fillMaxWidth())
                 }
             } else {
-                Text("LEGEND sends block and report decisions to the community-safety service for server enforcement.")
+                Text(legendLocalized("LEGEND sends block and report decisions to the community-safety service for server enforcement."))
             }
         },
         confirmButton = {
             if (reporting) {
-                TextButton(onClick = { report(category, detail) }, enabled = category.isNotBlank()) { Text("Submit report") }
+                TextButton(onClick = { report(category, detail) }, enabled = category.isNotBlank()) { Text(legendLocalized("Submit report")) }
             } else {
-                TextButton(onClick = block) { Text("Block", color = LegendColors.Error) }
+                TextButton(onClick = block) { Text(legendLocalized("Block"), color = LegendColors.Error) }
             }
         },
         dismissButton = {
             if (reporting) {
-                TextButton(onClick = { reporting = false }) { Text("Back") }
+                TextButton(onClick = { reporting = false }) { Text(legendLocalized("Back")) }
             } else {
                 Row {
-                    TextButton(onClick = { reporting = true }) { Text("Report") }
-                    TextButton(onClick = onDismiss) { Text("Cancel") }
+                    TextButton(onClick = { reporting = true }) { Text(legendLocalized("Report")) }
+                    TextButton(onClick = onDismiss) { Text(legendLocalized("Cancel")) }
                 }
             }
         },
@@ -1267,7 +1361,7 @@ private fun JourneyCirclesSection(
             Row(Modifier.padding(LegendSpacing.Md), verticalAlignment = Alignment.CenterVertically) {
                 CircularProgressIndicator(modifier = Modifier.size(18.dp), color = LegendColors.GoldBright, strokeWidth = 2.dp)
                 Spacer(Modifier.width(LegendSpacing.Sm))
-                Text("Loading Journey Circles", style = LegendTypography.Label, color = LegendColors.OnNavy)
+                Text(legendLocalized("Loading Journey Circles"), style = LegendTypography.Label, color = LegendColors.OnNavy)
             }
         }
 
@@ -1275,7 +1369,7 @@ private fun JourneyCirclesSection(
             Row(Modifier.padding(LegendSpacing.Md), verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Default.Group, null, tint = LegendColors.GoldBright)
                 Spacer(Modifier.width(LegendSpacing.Sm))
-                Text("Journey Circles is currently unavailable.", style = LegendTypography.Supporting, color = LegendColors.GoldSoft)
+                Text(legendLocalized("Journey Circles is currently unavailable."), style = LegendTypography.Supporting, color = LegendColors.GoldSoft)
             }
         }
         is LoadState.Data -> {
@@ -1286,16 +1380,16 @@ private fun JourneyCirclesSection(
                         Icon(Icons.Default.Groups, null, tint = LegendColors.GoldBright, modifier = Modifier.size(22.dp))
                         Spacer(Modifier.width(LegendSpacing.Xs))
                         Column(Modifier.weight(1f)) {
-                            Text("JOURNEY CIRCLES", style = LegendTypography.Eyebrow, color = LegendColors.GoldBright)
-                            Text(if (dashboard.preferences?.consentAffirmed == true) "Your matching circle" else "Build your matching circle", style = LegendTypography.CardTitle, color = LegendColors.OnNavy)
+                            Text(legendLocalized("JOURNEY CIRCLES"), style = LegendTypography.Eyebrow, color = LegendColors.GoldBright)
+                            Text(if (dashboard.preferences?.consentAffirmed == true) legendLocalized("Your matching circle") else legendLocalized("Build your matching circle"), style = LegendTypography.CardTitle, color = LegendColors.OnNavy)
                         }
                         IconButton(onClick = edit, modifier = Modifier.background(LegendColors.NavyElevated.copy(alpha = .45f), CircleShape)) {
-                            Icon(if (dashboard.profile == null) Icons.Default.PersonAdd else Icons.Default.Tune, if (dashboard.profile == null) "Set up Journey Circles" else "Manage Journey Circles", tint = LegendColors.GoldBright)
+                            Icon(if (dashboard.profile == null) Icons.Default.PersonAdd else Icons.Default.Tune, if (dashboard.profile == null) legendLocalized("Set up Journey Circles", "accessibility copy") else legendLocalized("Manage Journey Circles", "accessibility copy"), tint = LegendColors.GoldBright)
                         }
                     }
                     Text(
-                        if (dashboard.preferences?.consentAffirmed == true) "Your recommendations and connection choices remain server-authorized and under your control."
-                        else "Confirm participation to activate private, respectful matching in LEGEND.",
+                        if (dashboard.preferences?.consentAffirmed == true) legendLocalized("Your recommendations and connection choices remain server-authorized and under your control.")
+                        else legendLocalized("Confirm participation to activate private, respectful matching in LEGEND."),
                         style = LegendTypography.Supporting,
                         color = LegendColors.GoldSoft,
                     )
@@ -1322,18 +1416,18 @@ private fun JourneyCirclesSection(
                                     Text(recommendation.profile.displayName, style = LegendTypography.Label, color = LegendColors.OnNavy)
                                     Text(recommendation.explanation, style = LegendTypography.Supporting, color = LegendColors.GoldSoft, maxLines = 2, overflow = TextOverflow.Ellipsis)
                                 }
-                                TextButton(onClick = { requestConnection(recommendation.profile.clientProfileId) }) { Text("Connect", color = LegendColors.GoldBright, style = LegendTypography.Label) }
+                                TextButton(onClick = { requestConnection(recommendation.profile.clientProfileId) }) { Text(legendLocalized("Connect"), color = LegendColors.GoldBright, style = LegendTypography.Label) }
                             }
                         }
                     }
                     if (dashboard.connections.isNotEmpty()) {
                         LegendJourneySectionLabel("Your connections")
                         dashboard.connections.take(3).forEach { connection ->
-                            LegendJourneyConnectionRow(connection, mediaRepository, participantType, null, null, { disconnect(connection.id) })
+                            LegendJourneyConnectionRow(connection, mediaRepository, participantType, null, null) { disconnect(connection.id) }
                         }
                     }
                     if (dashboard.recommendations.isEmpty() && dashboard.connections.isEmpty() && dashboard.requests.isEmpty()) {
-                        Text("Complete your profile to receive server-authorized recommendations.", style = LegendTypography.Supporting, color = LegendColors.TextSecondary)
+                        Text(legendLocalized("Complete your profile to receive server-authorized recommendations."), style = LegendTypography.Supporting, color = LegendColors.TextSecondary)
                     }
                 }
             }
@@ -1343,7 +1437,7 @@ private fun JourneyCirclesSection(
 
 @Composable
 private fun LegendJourneySectionLabel(label: String) {
-    Text(label.uppercase(), style = LegendTypography.Eyebrow, color = LegendColors.GoldBright, modifier = Modifier.padding(top = LegendSpacing.Xs))
+    Text(legendLocalized(label).uppercase(LegendLocalizationRuntime.locale()), style = LegendTypography.Eyebrow, color = LegendColors.GoldBright, modifier = Modifier.padding(top = LegendSpacing.Xs))
 }
 
 @Composable
@@ -1364,10 +1458,10 @@ private fun LegendJourneyConnectionRow(
                 Text(connection.introduction ?: connection.connectionReason ?: connection.status, style = LegendTypography.Supporting, color = LegendColors.GoldSoft, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
             if (disconnect == null) {
-                decline?.let { action -> IconButton(onClick = action) { Icon(Icons.Default.Close, "Decline connection", tint = LegendColors.TextSecondary) } }
-                accept?.let { action -> IconButton(onClick = action) { Icon(Icons.Default.Check, "Accept connection", tint = LegendColors.GoldBright) } }
+                decline?.let { action -> IconButton(onClick = action) { Icon(Icons.Default.Close, legendLocalized("Decline connection", "accessibility copy"), tint = LegendColors.TextSecondary) } }
+                accept?.let { action -> IconButton(onClick = action) { Icon(Icons.Default.Check, legendLocalized("Accept connection", "accessibility copy"), tint = LegendColors.GoldBright) } }
             } else {
-                TextButton(onClick = disconnect) { Text("Connected", style = LegendTypography.Supporting, color = LegendColors.GoldBright) }
+                TextButton(onClick = disconnect) { Text(legendLocalized("Connected"), style = LegendTypography.Supporting, color = LegendColors.GoldBright) }
             }
         }
     }
@@ -1404,9 +1498,9 @@ private fun JourneyProfileEditorSheet(
             verticalArrangement = Arrangement.spacedBy(LegendSpacing.Md),
         ) {
             item {
-                Text("JOURNEY CIRCLES", style = LegendTypography.Eyebrow, color = LegendColors.Gold)
-                Text("Build your circle", style = LegendTypography.Hero, color = LegendColors.TextPrimary)
-                Text("Confirm participation once to begin. Every additional detail makes your recommendations more precise.", style = LegendTypography.Supporting, color = LegendColors.TextSecondary)
+                Text(legendLocalized("JOURNEY CIRCLES"), style = LegendTypography.Eyebrow, color = LegendColors.Gold)
+                Text(legendLocalized("Build your circle"), style = LegendTypography.Hero, color = LegendColors.TextPrimary)
+                Text(legendLocalized("Confirm participation once to begin. Every additional detail makes your recommendations more precise."), style = LegendTypography.Supporting, color = LegendColors.TextSecondary)
             }
             item {
                 Surface(color = LegendColors.Navy, shape = LegendShapes.Card, modifier = Modifier.fillMaxWidth()) {
@@ -1424,12 +1518,12 @@ private fun JourneyProfileEditorSheet(
                 }
             }
             item {
-                Text("A LITTLE ABOUT YOUR SEASON", style = LegendTypography.Eyebrow, color = LegendColors.Gold)
+                Text(legendLocalized("A LITTLE ABOUT YOUR SEASON"), style = LegendTypography.Eyebrow, color = LegendColors.Gold)
                 OutlinedTextField(
                     introduction,
                     { introduction = it },
                     modifier = Modifier.fillMaxWidth(),
-                    label = { Text("What are you building, learning, or looking for?") },
+                    label = { Text(legendLocalized("What are you building, learning, or looking for?")) },
                     minLines = 3,
                     maxLines = 6,
                     shape = LegendShapes.Control,
@@ -1457,7 +1551,7 @@ private fun JourneyProfileEditorSheet(
                 LegendPrimaryButton("Save Journey Circles", modifier = Modifier.fillMaxWidth(), enabled = consent) {
                     save(JourneyProfileInput(consent, optedIn, discoverable, suggestions, requests, introduction.trim().takeIf(String::isNotBlank), lifeStages.sorted(), locations.sorted(), goals.sorted(), interests.sorted(), circles.sorted(), connectionTypes.sorted(), communicationStyles.sorted(), accountability.sorted()))
                 }
-                TextButton(onClick = dismiss, modifier = Modifier.fillMaxWidth()) { Text("Close", color = LegendColors.TextSecondary) }
+                TextButton(onClick = dismiss, modifier = Modifier.fillMaxWidth()) { Text(legendLocalized("Close"), color = LegendColors.TextSecondary) }
             }
         }
     }
@@ -1467,8 +1561,8 @@ private fun JourneyProfileEditorSheet(
 private fun LegendJourneyToggle(title: String, detail: String, checked: Boolean, change: (Boolean) -> Unit) {
     Row(Modifier.fillMaxWidth().padding(vertical = LegendSpacing.Xs), verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f)) {
-            Text(title, style = LegendTypography.Label, color = LegendColors.OnNavy)
-            Text(detail, style = LegendTypography.Supporting, color = LegendColors.GoldSoft)
+            Text(legendLocalized(title), style = LegendTypography.Label, color = LegendColors.OnNavy)
+            Text(legendLocalized(detail), style = LegendTypography.Supporting, color = LegendColors.GoldSoft)
         }
         Switch(checked = checked, onCheckedChange = change, colors = SwitchDefaults.colors(checkedThumbColor = LegendColors.Navy, checkedTrackColor = LegendColors.Gold))
     }
@@ -1479,8 +1573,8 @@ private fun JourneyChoiceSection(title: String, detail: String, options: List<St
     if (options.isEmpty()) return
     Surface(color = LegendColors.Surface, shape = LegendShapes.Card, modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(LegendSpacing.Md), verticalArrangement = Arrangement.spacedBy(LegendSpacing.Xs)) {
-            Text(title.uppercase(), style = LegendTypography.Eyebrow, color = LegendColors.Gold)
-            Text(detail, style = LegendTypography.Supporting, color = LegendColors.TextSecondary)
+            Text(legendLocalized(title).uppercase(LegendLocalizationRuntime.locale()), style = LegendTypography.Eyebrow, color = LegendColors.Gold)
+            Text(legendLocalized(detail), style = LegendTypography.Supporting, color = LegendColors.TextSecondary)
             LazyRow(horizontalArrangement = Arrangement.spacedBy(LegendSpacing.Xs)) {
                 items(options, key = { it }) { option ->
                     FilterChip(
@@ -1502,22 +1596,22 @@ private fun LegendJourneySafetyActions(disconnect: (() -> Unit)?, block: (() -> 
     var confirmDisconnect by remember { mutableStateOf(false) }
     var confirmBlock by remember { mutableStateOf(false) }
     Row(horizontalArrangement = Arrangement.spacedBy(LegendSpacing.Xs), modifier = Modifier.fillMaxWidth()) {
-        disconnect?.let { TextButton(onClick = { confirmDisconnect = true }, modifier = Modifier.weight(1f)) { Text("Remove connection", color = LegendColors.TextSecondary) } }
+        disconnect?.let { TextButton(onClick = { confirmDisconnect = true }, modifier = Modifier.weight(1f)) { Text(legendLocalized("Remove connection"), color = LegendColors.TextSecondary) } }
         if (block != null || report != null) Box {
-            OutlinedButton(onClick = { expanded = true }, shape = LegendShapes.Control) { Text("Safety", color = LegendColors.TextSecondary) }
+            OutlinedButton(onClick = { expanded = true }, shape = LegendShapes.Control) { Text(legendLocalized("Safety"), color = LegendColors.TextSecondary) }
             DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
                 report?.let { submit -> listOf(
                     "Harassment or hate" to "HarassmentOrHate",
                     "Threat or self-harm" to "ThreatOrSelfHarm",
                     "Sexual content" to "SexualContent",
                     "Spam or scam" to "SpamOrScam",
-                ).forEach { (label, category) -> DropdownMenuItem(text = { Text("Report: $label") }, onClick = { expanded = false; submit(category) }) } }
-                block?.let { DropdownMenuItem(text = { Text("Block profile", color = LegendColors.Error) }, onClick = { expanded = false; confirmBlock = true }) }
+                ).forEach { (label, category) -> DropdownMenuItem(text = { Text(legendLocalized("Report: {category}", mapOf("category" to label))) }, onClick = { expanded = false; submit(category) }) } }
+                block?.let { DropdownMenuItem(text = { Text(legendLocalized("Block profile"), color = LegendColors.Error) }, onClick = { expanded = false; confirmBlock = true }) }
             }
         }
     }
-    if (confirmDisconnect) AlertDialog(onDismissRequest = { confirmDisconnect = false }, title = { Text("Remove this connection?") }, text = { Text("This disconnects this Journey Circles connection. It does not change any server rules outside the existing account relationship.") }, confirmButton = { TextButton(onClick = { confirmDisconnect = false; disconnect?.invoke() }) { Text("Remove", color = LegendColors.Error) } }, dismissButton = { TextButton(onClick = { confirmDisconnect = false }) { Text("Cancel") } })
-    if (confirmBlock) AlertDialog(onDismissRequest = { confirmBlock = false }, title = { Text("Block this profile?") }, text = { Text("This removes the Journey Circles connection and prevents client-to-client messaging with this profile.") }, confirmButton = { TextButton(onClick = { confirmBlock = false; block?.invoke() }) { Text("Block", color = LegendColors.Error) } }, dismissButton = { TextButton(onClick = { confirmBlock = false }) { Text("Cancel") } })
+    if (confirmDisconnect) AlertDialog(onDismissRequest = { confirmDisconnect = false }, title = { Text(legendLocalized("Remove this connection?")) }, text = { Text(legendLocalized("This disconnects this Journey Circles connection. It does not change any server rules outside the existing account relationship.")) }, confirmButton = { TextButton(onClick = { confirmDisconnect = false; disconnect?.invoke() }) { Text(legendLocalized("Remove"), color = LegendColors.Error) } }, dismissButton = { TextButton(onClick = { confirmDisconnect = false }) { Text(legendLocalized("Cancel")) } })
+    if (confirmBlock) AlertDialog(onDismissRequest = { confirmBlock = false }, title = { Text(legendLocalized("Block this profile?")) }, text = { Text(legendLocalized("This removes the Journey Circles connection and prevents client-to-client messaging with this profile.")) }, confirmButton = { TextButton(onClick = { confirmBlock = false; block?.invoke() }) { Text(legendLocalized("Block"), color = LegendColors.Error) } }, dismissButton = { TextButton(onClick = { confirmBlock = false }) { Text(legendLocalized("Cancel")) } })
 }
 
 @Composable
@@ -1731,10 +1825,10 @@ private fun AgentClientsScreen(
     ) {
         item {
             Column(verticalArrangement = Arrangement.spacedBy(LegendSpacing.Micro)) {
-                Text("CRM", style = LegendTypography.Eyebrow, color = LegendColors.Gold)
-                Text("Client CRM", style = LegendTypography.Title, color = LegendColors.TextPrimary)
+                Text(legendLocalized("CRM"), style = LegendTypography.Eyebrow, color = LegendColors.Gold)
+                Text(legendLocalized("Client CRM"), style = LegendTypography.Title, color = LegendColors.TextPrimary)
                 Text(
-                    clientCount?.let { "$it live records" } ?: "Live server-authorized records",
+                    clientCount?.let { legendLocalized("{count} live records", mapOf("count" to it)) } ?: legendLocalized("Live server-authorized records"),
                     style = LegendTypography.Supporting,
                     color = LegendColors.TextSecondary,
                 )
@@ -1752,7 +1846,7 @@ private fun AgentClientsScreen(
                 ) {
                     Icon(Icons.Default.PersonAdd, null)
                     Spacer(Modifier.width(LegendSpacing.Xs))
-                    Text("Leads")
+                    Text(legendLocalized("Leads"))
                 }
                 Button(
                     onClick = agentWorkspaceViewModel::launchClientCreationPortal,
@@ -1765,7 +1859,7 @@ private fun AgentClientsScreen(
                 ) {
                     Icon(Icons.Default.Add, null)
                     Spacer(Modifier.width(LegendSpacing.Xs))
-                    Text("Add Client")
+                    Text(legendLocalized("Add Client"))
                 }
             }
         }
@@ -1828,7 +1922,7 @@ private fun AgentClientsScreen(
                                 ) {
                                     Icon(Icons.Default.ChatBubble, null, modifier = Modifier.size(16.dp))
                                     Spacer(Modifier.width(LegendSpacing.Xs))
-                                    Text("Message", style = LegendTypography.Label)
+                                    Text(legendLocalized("Message"), style = LegendTypography.Label)
                                 }
                             }
                         }
@@ -1837,7 +1931,7 @@ private fun AgentClientsScreen(
             }
         }
         (recipients as? LoadState.Error)?.let { failure ->
-            item { Text(failure.message, style = LegendTypography.Supporting, color = LegendColors.Error) }
+            item { Text(legendLocalized(failure.message), style = LegendTypography.Supporting, color = LegendColors.Error) }
         }
     }
 
@@ -1848,7 +1942,7 @@ private fun AgentClientsScreen(
                 contentPadding = PaddingValues(LegendSpacing.Md),
                 verticalArrangement = Arrangement.spacedBy(LegendSpacing.Sm),
             ) {
-                item { Text("Leads", style = LegendTypography.Title, color = LegendColors.TextPrimary) }
+                item { Text(legendLocalized("Leads"), style = LegendTypography.Title, color = LegendColors.TextPrimary) }
                 when (val leadState = leads) {
                     is LoadState.Data -> if (leadState.value.isEmpty()) {
                         item { LegendEmptyState("No leads", "Live CRM leads will appear here.") }
@@ -1905,7 +1999,7 @@ private fun LegendClientRowSkeleton() {
 
 /**
  * Android host for the exact same short-lived AgentPortal client-intake page
- * used by iOS. There are intentionally no Kotlin fields or CRM mutations
+ * used by iOS. There are intentionally no platform-specific fields or CRM mutations
  * here: the Razor page remains the only implementation of that workflow.
  */
 @Composable
@@ -1929,13 +2023,13 @@ private fun LegendAgentClientCreationPortal(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Column(Modifier.weight(1f)) {
-                        Text("CLIENT CRM", style = LegendTypography.Eyebrow, color = LegendColors.Gold)
-                        Text("Create client", style = LegendTypography.Section, color = LegendColors.TextPrimary)
+                        Text(legendLocalized("CLIENT CRM"), style = LegendTypography.Eyebrow, color = LegendColors.Gold)
+                        Text(legendLocalized("Create client"), style = LegendTypography.Section, color = LegendColors.TextPrimary)
                     }
                     IconButton(
                         onClick = dismiss,
                         modifier = Modifier.size(LegendSize.MinimumTapTarget).background(LegendColors.SurfaceInset, CircleShape),
-                    ) { Icon(Icons.Default.Close, "Close client intake", tint = LegendColors.TextPrimary) }
+                    ) { Icon(Icons.Default.Close, legendLocalized("Close client intake", "accessibility copy"), tint = LegendColors.TextPrimary) }
                 }
                 HorizontalDivider(color = LegendColors.Divider)
                 if (failure == null) {
@@ -1943,17 +2037,13 @@ private fun LegendAgentClientCreationPortal(
                         AndroidView(
                             factory = { context ->
                                 WebView(context).apply {
-                                    settings.javaScriptEnabled = true
-                                    settings.domStorageEnabled = true
-                                    settings.allowFileAccess = false
-                                    settings.allowContentAccess = false
                                     webViewClient = LegendClientCreationPortalWebViewClient(
                                         launchPath = launchPath,
                                         onCreated = dismiss,
                                         onSessionExpired = recoverExpiredTicket,
                                         onFailure = { failure = it },
                                     )
-                                    loadUrl(launchPath)
+                                    openLegendClientCreationPortal(launchPath)
                                 }
                             },
                             modifier = Modifier.fillMaxSize(),
@@ -1964,7 +2054,7 @@ private fun LegendAgentClientCreationPortal(
                         modifier = Modifier.fillMaxSize().padding(LegendSpacing.Xl),
                         verticalArrangement = Arrangement.Center,
                     ) {
-                        Text("Client intake unavailable", style = LegendTypography.Section, color = LegendColors.TextPrimary)
+                        Text(legendLocalized("Client intake unavailable"), style = LegendTypography.Section, color = LegendColors.TextPrimary)
                         Spacer(Modifier.height(LegendSpacing.Xs))
                         Text(failure.orEmpty(), style = LegendTypography.Body, color = LegendColors.TextSecondary)
                         Spacer(Modifier.height(LegendSpacing.Md))
@@ -1979,13 +2069,27 @@ private fun LegendAgentClientCreationPortal(
     }
 }
 
+/** JavaScript is required by the same-origin client form; all broader WebView capabilities stay off. */
+@SuppressLint("SetJavaScriptEnabled")
+private fun WebView.openLegendClientCreationPortal(launchPath: String) {
+    settings.javaScriptEnabled = true
+    settings.domStorageEnabled = true
+    settings.allowFileAccess = false
+    settings.allowContentAccess = false
+    settings.javaScriptCanOpenWindowsAutomatically = false
+    settings.setSupportMultipleWindows(false)
+    settings.mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
+    settings.safeBrowsingEnabled = true
+    loadUrl(launchPath)
+}
+
 private class LegendClientCreationPortalWebViewClient(
     launchPath: String,
     private val onCreated: () -> Unit,
     private val onSessionExpired: () -> Unit,
     private val onFailure: (String) -> Unit,
 ) : WebViewClient() {
-    private val origin = Uri.parse(launchPath)
+    private val origin = launchPath.toUri()
     private var completed = false
 
     override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
@@ -1999,6 +2103,25 @@ private class LegendClientCreationPortalWebViewClient(
         return false
     }
 
+    override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? {
+        val destination = request.url
+        if (destination.scheme.equals("http", ignoreCase = true) ||
+            destination.scheme.equals("https", ignoreCase = true)
+        ) {
+            if (!isApprovedPortalResource(destination)) {
+                return WebResourceResponse(
+                    "text/plain",
+                    "UTF-8",
+                    403,
+                    "Blocked",
+                    emptyMap(),
+                    ByteArrayInputStream(ByteArray(0)),
+                )
+            }
+        }
+        return super.shouldInterceptRequest(view, request)
+    }
+
     override fun onReceivedHttpError(view: WebView, request: WebResourceRequest, response: WebResourceResponse) {
         if (!request.isForMainFrame) return
         when (response.statusCode) {
@@ -2007,7 +2130,7 @@ private class LegendClientCreationPortalWebViewClient(
         }
     }
 
-    override fun onReceivedError(view: WebView, request: WebResourceRequest, error: android.webkit.WebResourceError) {
+    override fun onReceivedError(view: WebView, request: WebResourceRequest, error: WebResourceError) {
         if (request.isForMainFrame && !completed) {
             onFailure(error.description?.toString() ?: "The client intake could not be opened. Please try again.")
         }
@@ -2019,10 +2142,20 @@ private class LegendClientCreationPortalWebViewClient(
             destination.host.equals(origin.host, ignoreCase = true) &&
             normalizedPort(destination) == normalizedPort(origin)
 
+    private fun isApprovedPortalResource(destination: Uri): Boolean =
+        isApprovedPortalLocation(destination) ||
+            (destination.scheme.equals("https", ignoreCase = true) &&
+                normalizedPort(destination) == 443 &&
+                destination.host?.lowercase() in approvedExternalResourceHosts)
+
     private fun normalizedPort(uri: Uri): Int = when {
         uri.port != -1 -> uri.port
         uri.scheme.equals("https", ignoreCase = true) -> 443
         else -> -1
+    }
+
+    private companion object {
+        val approvedExternalResourceHosts = setOf("fonts.googleapis.com", "fonts.gstatic.com")
     }
 
     private fun complete() {
@@ -2050,7 +2183,6 @@ private fun LegendHomeBrandBar(
         if (showsHomeActions && create != null) {
             LegendHomeChromeButton(
                 icon = Icons.Default.Add,
-                description = "Create a LEGEND update",
                 onClick = create,
                 modifier = Modifier.align(Alignment.CenterStart),
             )
@@ -2074,8 +2206,7 @@ private fun LegendHomeBrandBar(
 
 @Composable
 private fun LegendHomeChromeButton(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    description: String,
+    icon: ImageVector,
     modifier: Modifier = Modifier,
     onClick: () -> Unit,
 ) = IconButton(
@@ -2085,7 +2216,7 @@ private fun LegendHomeChromeButton(
         .clip(CircleShape)
         .background(LegendColors.Navy),
 ) {
-    Icon(icon, contentDescription = description, tint = LegendColors.OnNavy)
+    Icon(icon, contentDescription = legendLocalized("Create a LEGEND update", "accessibility copy"), tint = LegendColors.OnNavy)
 }
 
 @Composable
@@ -2112,7 +2243,7 @@ private fun LegendHomeHero(home: MobileHomeResponse, openScripture: () -> Unit) 
             verticalArrangement = Arrangement.spacedBy(LegendSpacing.Sm),
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("Welcome back,", style = LegendTypography.Supporting.copy(fontWeight = FontWeight.SemiBold), color = LegendColors.GoldBright)
+                Text(legendLocalized("Welcome back,"), style = LegendTypography.Supporting.copy(fontWeight = FontWeight.SemiBold), color = LegendColors.GoldBright)
                 Spacer(Modifier.width(LegendSpacing.Xs))
                 Text(firstName, style = LegendTypography.Section, color = LegendColors.OnNavy, maxLines = 1)
                 Spacer(Modifier.weight(1f))
@@ -2120,7 +2251,7 @@ private fun LegendHomeHero(home: MobileHomeResponse, openScripture: () -> Unit) 
             }
             Column(verticalArrangement = Arrangement.spacedBy(LegendSpacing.Micro)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("DAILY SCRIPTURE", style = LegendTypography.Eyebrow.copy(letterSpacing = 1.sp), color = LegendColors.GoldBright)
+                    Text(legendLocalized("DAILY SCRIPTURE"), style = LegendTypography.Eyebrow.copy(letterSpacing = 1.sp), color = LegendColors.GoldBright)
                     Spacer(Modifier.weight(1f))
                     Icon(Icons.Default.NorthEast, contentDescription = null, tint = LegendColors.OnNavy.copy(alpha = 0.72f))
                 }
@@ -2173,12 +2304,12 @@ private fun LegendHomeActivityPill(
         )
         Spacer(Modifier.width(LegendSpacing.Sm))
         Column(Modifier.weight(1f)) {
-            Text("TODAY'S ACTIVITY", style = LegendTypography.Eyebrow.copy(letterSpacing = 1.sp), color = LegendColors.GoldBright)
-            Text(if (hasActivity) "Your live LEGEND activity" else "Your day is clear", style = LegendTypography.Body, color = LegendColors.OnNavy.copy(alpha = 0.84f))
+            Text(legendLocalized("TODAY'S ACTIVITY"), style = LegendTypography.Eyebrow.copy(letterSpacing = 1.sp), color = LegendColors.GoldBright)
+            Text(if (hasActivity) legendLocalized("Your live LEGEND activity") else legendLocalized("Your day is clear"), style = LegendTypography.Body, color = LegendColors.OnNavy.copy(alpha = 0.84f))
         }
         Text(count.toString(), style = LegendTypography.Title, color = if (count > 0) LegendColors.Error else LegendColors.OnNavy)
         Spacer(Modifier.width(LegendSpacing.Xs))
-        Icon(Icons.Default.ChevronRight, contentDescription = "Open today's activity", tint = LegendColors.OnNavy.copy(alpha = 0.70f))
+        Icon(Icons.Default.ChevronRight, contentDescription = legendLocalized("Open today's activity", "accessibility copy"), tint = LegendColors.OnNavy.copy(alpha = 0.70f))
     }
 }
 
@@ -2197,7 +2328,7 @@ private fun LegendNotificationButton(
         ) {
             Icon(
                 Icons.Default.FavoriteBorder,
-                contentDescription = "Open notifications, $notificationCount recent interactions",
+                contentDescription = legendLocalized("Open notifications, {count} recent interactions", LegendLocalizationRuntime.AccessibilityContext, mapOf("count" to notificationCount)),
                 tint = LegendColors.OnNavy,
             )
         }
@@ -2255,17 +2386,17 @@ private fun LegendStoryRail(
                             .border(LegendSpacing.Hairline, LegendColors.OnNavy, CircleShape),
                         contentAlignment = Alignment.Center,
                     ) {
-                        Icon(Icons.Default.Add, "Create your story", tint = LegendColors.OnNavy, modifier = Modifier.size(15.dp))
+                        Icon(Icons.Default.Add, legendLocalized("Create your story", "accessibility copy"), tint = LegendColors.OnNavy, modifier = Modifier.size(15.dp))
                     }
                 }
                 Spacer(Modifier.height(LegendSpacing.Xs))
                 Text(
-                    "Your story",
+                    legendLocalized("Your story"),
                     style = LegendTypography.Label,
                     color = LegendColors.TextPrimary,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
-                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                    textAlign = TextAlign.Center,
                 )
             }
         }
@@ -2327,9 +2458,9 @@ private fun LegendPromotedGroupCard(
         }
         Spacer(Modifier.width(LegendSpacing.Sm))
         Column(Modifier.weight(1f)) {
-            Text("FEATURED GROUP", style = LegendTypography.Eyebrow.copy(letterSpacing = 1.sp), color = LegendColors.GoldBright)
+            Text(legendLocalized("FEATURED GROUP"), style = LegendTypography.Eyebrow.copy(letterSpacing = 1.sp), color = LegendColors.GoldBright)
             Text(group.subject, style = LegendTypography.Section, color = LegendColors.OnNavy, maxLines = 2, overflow = TextOverflow.Ellipsis)
-            Text("Hosted by ${group.owner.displayName} · ${group.activeMemberCount} members", style = LegendTypography.Supporting, color = LegendColors.OnNavy.copy(alpha = 0.72f), maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Text(legendLocalized("Hosted by {name} · {count} members", mapOf("name" to group.owner.displayName, "count" to group.activeMemberCount)), style = LegendTypography.Supporting, color = LegendColors.OnNavy.copy(alpha = 0.72f), maxLines = 2, overflow = TextOverflow.Ellipsis)
         }
         Spacer(Modifier.width(LegendSpacing.Xs))
         Button(
@@ -2337,7 +2468,7 @@ private fun LegendPromotedGroupCard(
             enabled = !group.isJoinedByCurrentActor,
             colors = ButtonDefaults.buttonColors(containerColor = LegendColors.GoldBright, contentColor = LegendColors.Midnight, disabledContainerColor = LegendColors.OnNavy.copy(alpha = 0.18f), disabledContentColor = LegendColors.OnNavy),
             contentPadding = PaddingValues(horizontal = LegendSpacing.Sm),
-        ) { Text(if (group.isJoinedByCurrentActor) "Joined" else "Join", style = LegendTypography.Label) }
+        ) { Text(if (group.isJoinedByCurrentActor) legendLocalized("Joined") else legendLocalized("Join"), style = LegendTypography.Label) }
     }
 }
 
@@ -2350,7 +2481,7 @@ private fun LegendHomeSocialLoading() = Card(
     Row(Modifier.padding(LegendSpacing.CardContent), verticalAlignment = Alignment.CenterVertically) {
         CircularProgressIndicator(modifier = Modifier.size(LegendSize.AvatarSmall), color = LegendColors.Navy, strokeWidth = LegendSpacing.Hairline)
         Spacer(Modifier.width(LegendSpacing.Sm))
-        Text("Loading your secure community feed…", style = LegendTypography.Supporting, color = LegendColors.TextSecondary)
+        Text(legendLocalized("Loading your secure community feed…"), style = LegendTypography.Supporting, color = LegendColors.TextSecondary)
     }
 }
 
@@ -2361,8 +2492,8 @@ private fun LegendInlineRetry(message: String, retry: () -> Unit) = Card(
     colors = CardDefaults.cardColors(containerColor = LegendColors.SurfaceElevated),
 ) {
     Row(Modifier.padding(LegendSpacing.CardContent), verticalAlignment = Alignment.CenterVertically) {
-        Text(message, modifier = Modifier.weight(1f), style = LegendTypography.Supporting, color = LegendColors.TextSecondary)
-        TextButton(onClick = retry) { Text("Retry", color = LegendColors.Navy) }
+        Text(legendLocalized(message), modifier = Modifier.weight(1f), style = LegendTypography.Supporting, color = LegendColors.TextSecondary)
+        TextButton(onClick = retry) { Text(legendLocalized("Retry"), color = LegendColors.Navy) }
     }
 }
 
@@ -2374,8 +2505,8 @@ private fun LegendHomeEmptyFeed(create: () -> Unit) = Card(
     colors = CardDefaults.cardColors(containerColor = LegendColors.SurfaceElevated),
 ) {
     Column(Modifier.padding(LegendSpacing.CardContent), verticalArrangement = Arrangement.spacedBy(LegendSpacing.Xs)) {
-        Text("Your community is ready", style = LegendTypography.CardTitle, color = LegendColors.TextPrimary)
-        Text("Create the first server-authorized LEGEND update for your feed.", style = LegendTypography.Supporting, color = LegendColors.TextSecondary)
+        Text(legendLocalized("Your community is ready"), style = LegendTypography.CardTitle, color = LegendColors.TextPrimary)
+        Text(legendLocalized("Create the first server-authorized LEGEND update for your feed."), style = LegendTypography.Supporting, color = LegendColors.TextSecondary)
     }
 }
 
@@ -2389,7 +2520,7 @@ private fun DailyScriptureSheet(scripture: MobileDailyScripture, dismiss: () -> 
         contentPadding = PaddingValues(LegendSpacing.Lg),
         verticalArrangement = Arrangement.spacedBy(LegendSpacing.Sm),
     ) {
-        item { Text("DAILY SCRIPTURE", style = LegendTypography.Eyebrow.copy(letterSpacing = 1.sp), color = LegendColors.GoldBright) }
+        item { Text(legendLocalized("DAILY SCRIPTURE"), style = LegendTypography.Eyebrow.copy(letterSpacing = 1.sp), color = LegendColors.GoldBright) }
         item { Text(scripture.reference, style = LegendTypography.Hero, color = LegendColors.OnNavy) }
         item { Text(scripture.passageText.ifBlank { scripture.text }, style = LegendTypography.Body, color = LegendColors.OnNavy.copy(alpha = 0.86f)) }
         item { Text(scripture.translation, style = LegendTypography.Label, color = LegendColors.GoldBright) }
@@ -2408,13 +2539,13 @@ private fun HomeActivitySheet(actions: List<MobileActionItem>, dismiss: () -> Un
         verticalArrangement = Arrangement.spacedBy(LegendSpacing.Sm),
     ) {
         item {
-            Text("Today's activity", style = LegendTypography.Title, color = LegendColors.TextPrimary)
-            Text("Your server-authorized LEGEND action projection.", style = LegendTypography.Supporting, color = LegendColors.TextSecondary)
+            Text(legendLocalized("Today's activity"), style = LegendTypography.Title, color = LegendColors.TextPrimary)
+            Text(legendLocalized("Your server-authorized LEGEND action projection."), style = LegendTypography.Supporting, color = LegendColors.TextSecondary)
         }
         items(actions, key = { "action-${it.id}" }) { action ->
             LegendActivityRow(action.title, "${action.priority} · ${action.status}")
         }
-        if (actions.isEmpty()) item { Text("Your day is clear.", style = LegendTypography.Body, color = LegendColors.TextSecondary) }
+        if (actions.isEmpty()) item { Text(legendLocalized("Your day is clear."), style = LegendTypography.Body, color = LegendColors.TextSecondary) }
         item { LegendPrimaryButton("Close", onClick = dismiss) }
     }
 }
@@ -2442,7 +2573,7 @@ private fun NotificationInboxSheet(
     when (state) {
         LoadState.Idle,
         LoadState.Loading -> Box(Modifier.fillMaxWidth().height(LegendSize.AvatarHero), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = LegendColors.Navy) }
-        is LoadState.Error -> Column(Modifier.padding(LegendSpacing.Lg)) { Text(state.message, color = LegendColors.TextSecondary); LegendPrimaryButton("Retry", onClick = retry) }
+        is LoadState.Error -> Column(Modifier.padding(LegendSpacing.Lg)) { Text(legendLocalized(state.message), color = LegendColors.TextSecondary); LegendPrimaryButton("Retry", onClick = retry) }
         is LoadState.Data -> {
             val snapshot = state.value
             LazyColumn(
@@ -2453,13 +2584,13 @@ private fun NotificationInboxSheet(
                 item {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) {
-                            Text("Notifications", style = LegendTypography.Title, color = LegendColors.TextPrimary)
-                            Text("${snapshot.badge.unreadCount} unread", style = LegendTypography.Supporting, color = LegendColors.TextSecondary)
+                            Text(legendLocalized("Notifications"), style = LegendTypography.Title, color = LegendColors.TextPrimary)
+                            Text(legendLocalized("{count} unread", mapOf("count" to snapshot.badge.unreadCount)), style = LegendTypography.Supporting, color = LegendColors.TextSecondary)
                         }
-                        TextButton(onClick = clearBadges) { Text("Clear badges", color = LegendColors.Navy) }
+                        TextButton(onClick = clearBadges) { Text(legendLocalized("Clear badges"), color = LegendColors.Navy) }
                     }
                 }
-                if (snapshot.notifications.isEmpty()) item { Text("No notifications yet.", style = LegendTypography.Body, color = LegendColors.TextSecondary) }
+                if (snapshot.notifications.isEmpty()) item { Text(legendLocalized("No notifications yet."), style = LegendTypography.Body, color = LegendColors.TextSecondary) }
                 items(snapshot.notifications, key = { it.id }) { item ->
                     Card(
                         onClick = { open(item) },
@@ -2682,14 +2813,14 @@ private fun LegendMessagesInboxHeader(
             Modifier.padding(LegendSpacing.Md),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text("Messages", style = LegendTypography.Section, color = LegendColors.OnNavy, modifier = Modifier.weight(1f))
+            Text(legendLocalized("Messages"), style = LegendTypography.Section, color = LegendColors.OnNavy, modifier = Modifier.weight(1f))
             IconButton(
                 onClick = onNewMessage,
                 modifier = Modifier
                     .size(48.dp)
                     .background(LegendGradients.Gold, CircleShape)
                     .border(LegendSpacing.Hairline, LegendColors.OnNavy.copy(alpha = 0.30f), CircleShape),
-            ) { Icon(Icons.Default.Edit, "Start a new conversation", tint = LegendColors.Midnight) }
+            ) { Icon(Icons.Default.Edit, legendLocalized("Start a new conversation", "accessibility copy"), tint = LegendColors.Midnight) }
             Spacer(Modifier.width(LegendSpacing.Sm))
             IconButton(
                 onClick = onCallDirectory,
@@ -2697,7 +2828,7 @@ private fun LegendMessagesInboxHeader(
                     .size(48.dp)
                     .background(LegendColors.OnNavy.copy(alpha = 0.12f), CircleShape)
                     .border(LegendSpacing.Hairline, LegendColors.Gold.copy(alpha = 0.66f), CircleShape),
-            ) { Icon(Icons.Default.Phone, "Call a connection", tint = LegendColors.OnNavy) }
+            ) { Icon(Icons.Default.Phone, legendLocalized("Call a connection", "accessibility copy"), tint = LegendColors.OnNavy) }
         }
     }
 }
@@ -2712,14 +2843,14 @@ private fun LegendConversationRow(
 ) {
     val isGroup = conversation.conversationType.equals("Group", ignoreCase = true)
     val relationship = when {
-        isGroup -> "Group chat"
+        isGroup -> legendLocalized("Group chat")
         conversation.counterparty.identity.participantType.equals("Agent", ignoreCase = true) ->
-            conversation.counterparty.roleLabel?.takeIf(String::isNotBlank) ?: "LEGEND guide"
-        else -> "Connection"
+            conversation.counterparty.roleLabel?.takeIf(String::isNotBlank) ?: legendLocalized("LEGEND guide")
+        else -> legendLocalized("Connection")
     }
     LegendContactCard(
         displayName = conversation.title,
-        subtitle = conversation.lastMessagePreview ?: "Start your conversation",
+        subtitle = conversation.lastMessagePreview ?: legendLocalized("Start your conversation"),
         detail = relationship,
         isVerified = !isGroup && conversation.counterparty.isVerified,
         onClick = open,
@@ -2747,7 +2878,7 @@ private fun LegendConversationRow(
                     )
                 }
                 when {
-                    conversation.isPinned -> Icon(Icons.Default.PushPin, "Pinned conversation", modifier = Modifier.size(15.dp), tint = LegendColors.GoldBright)
+                    conversation.isPinned -> Icon(Icons.Default.PushPin, legendLocalized("Pinned conversation", "accessibility copy"), modifier = Modifier.size(15.dp), tint = LegendColors.GoldBright)
                     conversation.unreadCount > 0 -> Text(
                         conversation.unreadCount.coerceAtMost(99).toString(),
                         style = LegendTypography.Label,
@@ -2756,8 +2887,8 @@ private fun LegendConversationRow(
                             .background(LegendColors.Error, CircleShape)
                             .padding(horizontal = LegendSpacing.Xs, vertical = LegendSpacing.Micro),
                     )
-                    conversation.isMuted -> Icon(Icons.Default.NotificationsOff, "Muted conversation", modifier = Modifier.size(15.dp), tint = LegendColors.OnNavy.copy(alpha = LegendOpacity.ContactAction))
-                    else -> Icon(Icons.Default.ChevronRight, "Open conversation", modifier = Modifier.size(20.dp), tint = LegendColors.OnNavy.copy(alpha = LegendOpacity.ContactAction))
+                    conversation.isMuted -> Icon(Icons.Default.NotificationsOff, legendLocalized("Muted conversation", "accessibility copy"), modifier = Modifier.size(15.dp), tint = LegendColors.OnNavy.copy(alpha = LegendOpacity.ContactAction))
+                    else -> Icon(Icons.Default.ChevronRight, legendLocalized("Open conversation", "accessibility copy"), modifier = Modifier.size(20.dp), tint = LegendColors.OnNavy.copy(alpha = LegendOpacity.ContactAction))
                 }
             }
         },
@@ -2791,16 +2922,16 @@ private fun LegendMessagingCallDirectorySheet(
             item {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
-                        Text("CALL", style = LegendTypography.Eyebrow, color = LegendColors.Gold)
-                        Text("Call a connection", style = LegendTypography.Section, color = LegendColors.TextPrimary)
+                        Text(legendLocalized("CALL"), style = LegendTypography.Eyebrow, color = LegendColors.Gold)
+                        Text(legendLocalized("Call a connection"), style = LegendTypography.Section, color = LegendColors.TextPrimary)
                         Text(
-                            "Calls open through your device’s secure Phone experience.",
+                            legendLocalized("Calls open through your device’s secure Phone experience."),
                             style = LegendTypography.Supporting,
                             color = LegendColors.TextSecondary,
                         )
                     }
                     IconButton(onClick = dismiss, modifier = Modifier.size(LegendSize.MinimumTapTarget)) {
-                        Icon(Icons.Default.Close, "Close call directory", tint = LegendColors.TextPrimary)
+                        Icon(Icons.Default.Close, legendLocalized("Close call directory", "accessibility copy"), tint = LegendColors.TextPrimary)
                     }
                 }
             }
@@ -2853,12 +2984,12 @@ private fun LegendConversationCallSheet(
                 LoadState.Idle,
                 LoadState.Loading -> {
                     CircularProgressIndicator(color = LegendColors.Gold)
-                    Text("Preparing secure call options", style = LegendTypography.Supporting, color = LegendColors.TextSecondary)
+                    Text(legendLocalized("Preparing secure call options"), style = LegendTypography.Supporting, color = LegendColors.TextSecondary)
                 }
                 is LoadState.Error -> {
                     Icon(Icons.Default.PhoneDisabled, null, tint = LegendColors.Warning, modifier = Modifier.size(30.dp))
-                    Text("Calling unavailable", style = LegendTypography.Section, color = LegendColors.TextPrimary)
-                    Text(state.message, style = LegendTypography.Supporting, color = LegendColors.TextSecondary)
+                    Text(legendLocalized("Calling unavailable"), style = LegendTypography.Section, color = LegendColors.TextPrimary)
+                    Text(legendLocalized(state.message), style = LegendTypography.Supporting, color = LegendColors.TextSecondary)
                 }
                 is LoadState.Data -> {
                     val options = state.value
@@ -2879,7 +3010,7 @@ private fun LegendConversationCallSheet(
                                 context.startActivity(
                                     Intent(
                                         Intent.ACTION_DIAL,
-                                        Uri.parse("tel:${Uri.encode(phoneNumber)}"),
+                                        "tel:${Uri.encode(phoneNumber)}".toUri(),
                                     ),
                                 )
                                 dismiss()
@@ -2893,14 +3024,14 @@ private fun LegendConversationCallSheet(
                         ) {
                             Icon(Icons.Default.Phone, null)
                             Spacer(Modifier.width(LegendSpacing.Xs))
-                            Text("Phone call", style = LegendTypography.BodyEmphasis)
+                            Text(legendLocalized("Phone call"), style = LegendTypography.BodyEmphasis)
                         }
                     } else {
-                        Text("$fallbackName has not shared a call address for this private conversation.", style = LegendTypography.Supporting, color = LegendColors.TextSecondary)
+                        Text(legendLocalized("{name} has not shared a call address for this private conversation.", mapOf("name" to fallbackName)), style = LegendTypography.Supporting, color = LegendColors.TextSecondary)
                     }
                 }
             }
-            TextButton(onClick = dismiss) { Text("Done", color = LegendColors.Gold) }
+            TextButton(onClick = dismiss) { Text(legendLocalized("Done"), color = LegendColors.Gold) }
         }
     }
 }
@@ -2910,8 +3041,8 @@ private fun LegendMessagingEmptyCard(title: String, detail: String, action: () -
     Surface(color = LegendColors.Surface, shape = LegendShapes.Card, modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(LegendSpacing.Lg), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(LegendSpacing.Sm)) {
             Icon(Icons.Default.ChatBubbleOutline, null, tint = LegendColors.Gold, modifier = Modifier.size(32.dp))
-            Text(title, style = LegendTypography.Section, color = LegendColors.TextPrimary)
-            Text(detail, style = LegendTypography.Supporting, color = LegendColors.TextSecondary, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+            Text(legendLocalized(title), style = LegendTypography.Section, color = LegendColors.TextPrimary)
+            Text(legendLocalized(detail), style = LegendTypography.Supporting, color = LegendColors.TextSecondary, textAlign = TextAlign.Center)
             LegendPrimaryButton("New message", onClick = action)
         }
     }
@@ -2928,7 +3059,6 @@ private fun LegendRecipientPicker(
     isSending: Boolean,
     dismiss: () -> Unit,
 ) {
-    val context = LocalContext.current
     var search by remember { mutableStateOf("") }
     var scope by remember { mutableStateOf<String?>(null) }
     var isCreatingGroup by remember { mutableStateOf(false) }
@@ -2941,19 +3071,19 @@ private fun LegendRecipientPicker(
         Column(Modifier.fillMaxHeight(0.9f).padding(horizontal = LegendSpacing.PageHorizontal)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
-                    Text(if (isCreatingGroup) "New group" else "New message", style = LegendTypography.Section, color = LegendColors.TextPrimary)
-                    Text(if (isCreatingGroup) "Choose at least two connections" else "Search your LEGEND network", style = LegendTypography.Supporting, color = LegendColors.TextSecondary)
+                    Text(if (isCreatingGroup) legendLocalized("New group") else legendLocalized("New message"), style = LegendTypography.Section, color = LegendColors.TextPrimary)
+                    Text(if (isCreatingGroup) legendLocalized("Choose at least two connections") else legendLocalized("Search your LEGEND network"), style = LegendTypography.Supporting, color = LegendColors.TextSecondary)
                 }
-                TextButton(onClick = dismiss) { Text("Cancel", color = LegendColors.Gold) }
+                TextButton(onClick = dismiss) { Text(legendLocalized("Cancel"), color = LegendColors.Gold) }
             }
             Row(horizontalArrangement = Arrangement.spacedBy(LegendSpacing.Xs), modifier = Modifier.padding(top = LegendSpacing.Xs)) {
-                FilterChip(selected = !isCreatingGroup, onClick = { isCreatingGroup = false; groupRecipients = emptyList() }, label = { Text("Direct") }, colors = legendCompactChipColors(!isCreatingGroup))
-                FilterChip(selected = isCreatingGroup, onClick = { isCreatingGroup = true }, label = { Text("Group") }, colors = legendCompactChipColors(isCreatingGroup))
+                FilterChip(selected = !isCreatingGroup, onClick = { isCreatingGroup = false; groupRecipients = emptyList() }, label = { Text(legendLocalized("Direct")) }, colors = legendCompactChipColors())
+                FilterChip(selected = isCreatingGroup, onClick = { isCreatingGroup = true }, label = { Text(legendLocalized("Group")) }, colors = legendCompactChipColors())
             }
             if (isCreatingGroup) {
                 Row(Modifier.padding(top = LegendSpacing.Sm), verticalAlignment = Alignment.CenterVertically) {
                     IconButton(onClick = { groupPhotoPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }, modifier = Modifier.background(LegendColors.Navy, CircleShape)) {
-                        Icon(if (groupImage == null) Icons.Default.AddAPhoto else Icons.Default.Image, "Choose group photo", tint = LegendColors.GoldBright)
+                        Icon(if (groupImage == null) Icons.Default.AddAPhoto else Icons.Default.Image, legendLocalized("Choose group photo", "accessibility copy"), tint = LegendColors.GoldBright)
                     }
                     Spacer(Modifier.width(LegendSpacing.Xs))
                     OutlinedTextField(
@@ -2961,24 +3091,25 @@ private fun LegendRecipientPicker(
                         onValueChange = { groupSubject = it },
                         modifier = Modifier.weight(1f),
                         singleLine = true,
-                        placeholder = { Text("Group name") },
+                        placeholder = { Text(legendLocalized("Group name")) },
                         shape = LegendShapes.Control,
                         colors = legendMessagingFieldColors(),
                     )
                 }
                 if (groupRecipients.isNotEmpty()) {
-                    Text("${groupRecipients.size} members selected", style = LegendTypography.Label, color = LegendColors.Gold, modifier = Modifier.padding(top = LegendSpacing.Xs))
+                    Text(legendLocalized("{count} members selected", mapOf("count" to groupRecipients.size)), style = LegendTypography.Label, color = LegendColors.Gold, modifier = Modifier.padding(top = LegendSpacing.Xs))
                 }
                 LegendPrimaryButton(
-                    text = if (isSending) "Creating group…" else "Create group (${groupRecipients.size})",
+                    text = if (isSending) legendLocalized("Creating group…")
+                    else legendLocalized("Create group ({count})", mapOf("count" to groupRecipients.size)),
                     modifier = Modifier.fillMaxWidth().padding(top = LegendSpacing.Xs),
                     enabled = !isSending && groupSubject.isNotBlank() && groupRecipients.size >= 2,
                 ) { createGroup(groupSubject, groupRecipients, groupImage) }
             }
-            OutlinedTextField(value = search, onValueChange = { search = it }, modifier = Modifier.fillMaxWidth().padding(top = LegendSpacing.Sm), singleLine = true, leadingIcon = { Icon(Icons.Default.Search, null) }, placeholder = { Text("Search people") })
+            OutlinedTextField(value = search, onValueChange = { search = it }, modifier = Modifier.fillMaxWidth().padding(top = LegendSpacing.Sm), singleLine = true, leadingIcon = { Icon(Icons.Default.Search, null) }, placeholder = { Text(legendLocalized("Search people")) })
             LazyRow(Modifier.padding(vertical = LegendSpacing.Sm), horizontalArrangement = Arrangement.spacedBy(LegendSpacing.Xs)) {
                 item {
-                    FilterChip(selected = scope == null, onClick = { scope = null }, label = { Text("All") })
+                    FilterChip(selected = scope == null, onClick = { scope = null }, label = { Text(legendLocalized("All")) })
                 }
                 items(listOf("Clients", "Agents", "Leads")) { value ->
                     FilterChip(selected = scope == value, onClick = { scope = value }, label = { Text(value) })
@@ -3007,13 +3138,13 @@ private fun LegendRecipientPicker(
                                         Spacer(Modifier.width(LegendSpacing.Sm))
                                         Column(Modifier.weight(1f)) {
                                             Text(recipient.displayName, style = LegendTypography.CardTitle, color = LegendColors.TextPrimary)
-                                            Text(recipient.relationshipLabel ?: recipient.roleLabel ?: "LEGEND member", style = LegendTypography.Label, color = LegendColors.TextSecondary)
+                                            Text(recipient.relationshipLabel ?: recipient.roleLabel ?: legendLocalized("LEGEND member"), style = LegendTypography.Label, color = LegendColors.TextSecondary)
                                         }
                                         if (isCreatingGroup) Icon(
                                             if (groupRecipients.any { it.identity == recipient.identity }) Icons.Default.CheckCircle else Icons.Default.AddCircleOutline,
-                                            if (groupRecipients.any { it.identity == recipient.identity }) "Remove group member" else "Add group member",
+                                            if (groupRecipients.any { it.identity == recipient.identity }) legendLocalized("Remove group member", "accessibility copy") else legendLocalized("Add group member", "accessibility copy"),
                                             tint = if (groupRecipients.any { it.identity == recipient.identity }) LegendColors.Success else LegendColors.Gold,
-                                        ) else Icon(Icons.Default.ChevronRight, "Start conversation", tint = LegendColors.Gold)
+                                        ) else Icon(Icons.Default.ChevronRight, legendLocalized("Start conversation", "accessibility copy"), tint = LegendColors.Gold)
                                     }
                                 }
                             }
@@ -3026,7 +3157,7 @@ private fun LegendRecipientPicker(
 }
 
 @Composable
-private fun legendCompactChipColors(selected: Boolean) = FilterChipDefaults.filterChipColors(
+private fun legendCompactChipColors() = FilterChipDefaults.filterChipColors(
     containerColor = LegendColors.SurfaceInset,
     labelColor = LegendColors.TextSecondary,
     selectedContainerColor = LegendColors.Navy,
@@ -3060,12 +3191,12 @@ private fun LegendGroupMemberPicker(
         Column(Modifier.fillMaxHeight(.82f).padding(horizontal = LegendSpacing.PageHorizontal)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
-                    Text("Add group member", style = LegendTypography.Section, color = LegendColors.TextPrimary)
-                    Text("The server confirms whether this member can join.", style = LegendTypography.Supporting, color = LegendColors.TextSecondary)
+                    Text(legendLocalized("Add group member"), style = LegendTypography.Section, color = LegendColors.TextPrimary)
+                    Text(legendLocalized("The server confirms whether this member can join."), style = LegendTypography.Supporting, color = LegendColors.TextSecondary)
                 }
-                TextButton(onClick = dismiss) { Text("Cancel", color = LegendColors.Gold) }
+                TextButton(onClick = dismiss) { Text(legendLocalized("Cancel"), color = LegendColors.Gold) }
             }
-            OutlinedTextField(search, { search = it }, modifier = Modifier.fillMaxWidth().padding(vertical = LegendSpacing.Sm), singleLine = true, leadingIcon = { Icon(Icons.Default.Search, null, tint = LegendColors.Gold) }, placeholder = { Text("Search people") }, shape = LegendShapes.Control, colors = legendMessagingFieldColors())
+            OutlinedTextField(search, { search = it }, modifier = Modifier.fillMaxWidth().padding(vertical = LegendSpacing.Sm), singleLine = true, leadingIcon = { Icon(Icons.Default.Search, null, tint = LegendColors.Gold) }, placeholder = { Text(legendLocalized("Search people")) }, shape = LegendShapes.Control, colors = legendMessagingFieldColors())
             when (state) {
                 LoadState.Idle, LoadState.Loading -> LegendLoadingState()
                 is LoadState.Error -> LegendErrorState(state.message) { load(search, null) }
@@ -3078,9 +3209,9 @@ private fun LegendGroupMemberPicker(
                                 Spacer(Modifier.width(LegendSpacing.Sm))
                                 Column(Modifier.weight(1f)) {
                                     Text(recipient.displayName, style = LegendTypography.CardTitle, color = LegendColors.TextPrimary)
-                                    Text(recipient.relationshipLabel ?: recipient.roleLabel ?: "LEGEND member", style = LegendTypography.Label, color = LegendColors.TextSecondary)
+                                    Text(recipient.relationshipLabel ?: recipient.roleLabel ?: legendLocalized("LEGEND member"), style = LegendTypography.Label, color = LegendColors.TextSecondary)
                                 }
-                                Icon(Icons.Default.PersonAdd, "Add member", tint = LegendColors.Gold)
+                                Icon(Icons.Default.PersonAdd, legendLocalized("Add member", "accessibility copy"), tint = LegendColors.Gold)
                             }
                         }
                     }
@@ -3119,10 +3250,10 @@ private fun LegendGroupManagementSheet(
                     LegendProtectedAvatar(conversation.groupAvatar, conversation.title, participantType, mediaRepository, size = 56.dp)
                     Spacer(Modifier.width(LegendSpacing.Sm))
                     Column(Modifier.weight(1f)) {
-                        Text("GROUP SETTINGS", style = LegendTypography.Eyebrow, color = LegendColors.Gold)
+                        Text(legendLocalized("GROUP SETTINGS"), style = LegendTypography.Eyebrow, color = LegendColors.Gold)
                         Text(conversation.title, style = LegendTypography.Section, color = LegendColors.TextPrimary)
                     }
-                    TextButton(onClick = dismiss) { Text("Done", color = LegendColors.Gold) }
+                    TextButton(onClick = dismiss) { Text(legendLocalized("Done"), color = LegendColors.Gold) }
                 }
             }
             if (conversation.canManageMembers) item {
@@ -3133,23 +3264,23 @@ private fun LegendGroupManagementSheet(
                 ) {
                     Icon(Icons.Default.PhotoCamera, null, tint = LegendColors.Gold)
                     Spacer(Modifier.width(LegendSpacing.Xs))
-                    Text("Change group photo", color = LegendColors.TextPrimary)
+                    Text(legendLocalized("Change group photo"), color = LegendColors.TextPrimary)
                 }
             }
             if (conversation.canManageMembers || conversation.canManageMeeting) item {
                 Surface(color = LegendColors.Surface, shape = LegendShapes.Card, modifier = Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(LegendSpacing.Md), verticalArrangement = Arrangement.spacedBy(LegendSpacing.Xs)) {
-                        Text("GROUP PROFILE", style = LegendTypography.Eyebrow, color = LegendColors.Gold)
-                        OutlinedTextField(subject, { subject = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Group name") }, singleLine = true, shape = LegendShapes.Control, colors = legendMessagingFieldColors())
+                        Text(legendLocalized("GROUP PROFILE"), style = LegendTypography.Eyebrow, color = LegendColors.Gold)
+                        OutlinedTextField(subject, { subject = it }, modifier = Modifier.fillMaxWidth(), label = { Text(legendLocalized("Group name")) }, singleLine = true, shape = LegendShapes.Control, colors = legendMessagingFieldColors())
                         LegendPrimaryButton("Save group name", modifier = Modifier.fillMaxWidth(), enabled = subject.isNotBlank() && subject.trim() != conversation.title) { updateSubject(subject) }
                         conversation.meeting?.let { meeting ->
-                            Text("Meeting: ${meeting.linkLabel ?: meeting.linkUrl ?: "Scheduled"}", style = LegendTypography.Supporting, color = LegendColors.TextSecondary)
+                            Text(legendLocalized("Meeting:") + " " + (meeting.linkLabel ?: meeting.linkUrl ?: legendLocalized("Scheduled")), style = LegendTypography.Supporting, color = LegendColors.TextSecondary)
                         }
                         if (conversation.canManageMeeting) {
                             OutlinedButton(onClick = { editingMeeting = true }, modifier = Modifier.fillMaxWidth(), shape = LegendShapes.Control) {
                                 Icon(Icons.Default.VideoCall, null, tint = LegendColors.Gold)
                                 Spacer(Modifier.width(LegendSpacing.Xs))
-                                Text(if (conversation.meeting == null) "Add group meeting" else "Edit group meeting", color = LegendColors.TextPrimary)
+                                Text(if (conversation.meeting == null) legendLocalized("Add group meeting") else legendLocalized("Edit group meeting"), color = LegendColors.TextPrimary)
                             }
                         }
                     }
@@ -3159,15 +3290,15 @@ private fun LegendGroupManagementSheet(
                 Surface(color = LegendColors.Navy, shape = LegendShapes.Card, modifier = Modifier.fillMaxWidth()) {
                     Row(Modifier.padding(LegendSpacing.Md), verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) {
-                            Text("Promoted group", style = LegendTypography.Label, color = LegendColors.OnNavy)
-                            Text("Server-authorized group discovery visibility.", style = LegendTypography.Supporting, color = LegendColors.GoldSoft)
+                            Text(legendLocalized("Promoted group"), style = LegendTypography.Label, color = LegendColors.OnNavy)
+                            Text(legendLocalized("Server-authorized group discovery visibility."), style = LegendTypography.Supporting, color = LegendColors.GoldSoft)
                         }
                         Switch(checked = conversation.isPromoted, onCheckedChange = setPromotion, colors = SwitchDefaults.colors(checkedThumbColor = LegendColors.Navy, checkedTrackColor = LegendColors.Gold))
                     }
                 }
             }
-            item { Text("MEMBERS", style = LegendTypography.Eyebrow, color = LegendColors.Gold) }
-            if (conversation.canManageMembers) item { OutlinedButton(onClick = addMember, shape = LegendShapes.Control, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Default.PersonAdd, null, tint = LegendColors.Gold); Spacer(Modifier.width(LegendSpacing.Xs)); Text("Add member", color = LegendColors.TextPrimary) } }
+            item { Text(legendLocalized("MEMBERS"), style = LegendTypography.Eyebrow, color = LegendColors.Gold) }
+            if (conversation.canManageMembers) item { OutlinedButton(onClick = addMember, shape = LegendShapes.Control, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Default.PersonAdd, null, tint = LegendColors.Gold); Spacer(Modifier.width(LegendSpacing.Xs)); Text(legendLocalized("Add member"), color = LegendColors.TextPrimary) } }
             items(conversation.participants, key = { "${it.identity.userId}:${it.identity.participantType}" }) { member ->
                 Surface(color = LegendColors.Surface, shape = LegendShapes.Control, modifier = Modifier.fillMaxWidth()) {
                     Row(Modifier.padding(LegendSpacing.Sm), verticalAlignment = Alignment.CenterVertically) {
@@ -3175,23 +3306,23 @@ private fun LegendGroupManagementSheet(
                         Spacer(Modifier.width(LegendSpacing.Sm))
                         Column(Modifier.weight(1f)) {
                             Text(member.displayName, style = LegendTypography.Label, color = LegendColors.TextPrimary)
-                            Text(if (member.isGroupManager) "Group manager" else member.roleLabel ?: "Member", style = LegendTypography.Supporting, color = LegendColors.TextSecondary)
+                            Text(if (member.isGroupManager) legendLocalized("Group manager") else member.roleLabel ?: legendLocalized("Member"), style = LegendTypography.Supporting, color = LegendColors.TextSecondary)
                         }
                         if (conversation.canManageCollaborators) Switch(checked = member.isGroupManager, onCheckedChange = { setManager(member, it) }, colors = SwitchDefaults.colors(checkedThumbColor = LegendColors.Navy, checkedTrackColor = LegendColors.Gold))
                     }
                 }
             }
             if (conversation.canDeleteGroup) item {
-                TextButton(onClick = { confirmDelete = true }, modifier = Modifier.fillMaxWidth()) { Text("Delete group", color = LegendColors.Error) }
+                TextButton(onClick = { confirmDelete = true }, modifier = Modifier.fillMaxWidth()) { Text(legendLocalized("Delete group"), color = LegendColors.Error) }
             }
         }
     }
     if (confirmDelete) AlertDialog(
         onDismissRequest = { confirmDelete = false },
-        title = { Text("Delete this group?") },
-        text = { Text("This is a server-authorized group deletion and cannot be undone from Android.") },
-        confirmButton = { TextButton(onClick = { confirmDelete = false; deleteGroup() }) { Text("Delete group", color = LegendColors.Error) } },
-        dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text("Cancel") } },
+        title = { Text(legendLocalized("Delete this group?")) },
+        text = { Text(legendLocalized("This is a server-authorized group deletion and cannot be undone from Android.")) },
+        confirmButton = { TextButton(onClick = { confirmDelete = false; deleteGroup() }) { Text(legendLocalized("Delete group"), color = LegendColors.Error) } },
+        dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text(legendLocalized("Cancel")) } },
     )
     if (editingMeeting) {
         LegendGroupMeetingEditorSheet(
@@ -3218,7 +3349,7 @@ private fun LegendGroupMeetingEditorSheet(
     var frequency by remember(conversation.id) { mutableStateOf(existing?.schedule?.frequency ?: "Weekly") }
     var weekday by remember(conversation.id) { mutableStateOf(existing?.schedule?.weekdays?.firstOrNull() ?: "Wednesday") }
     var localTime by remember(conversation.id) { mutableStateOf(existing?.schedule?.localTime ?: "18:00") }
-    var timeZoneId by remember(conversation.id) { mutableStateOf(existing?.schedule?.timeZoneId ?: java.util.TimeZone.getDefault().id) }
+    var timeZoneId by remember(conversation.id) { mutableStateOf(existing?.schedule?.timeZoneId ?: TimeZone.getDefault().id) }
     var startsUtc by remember(conversation.id) { mutableStateOf(existing?.schedule?.startsUtc.orEmpty()) }
     var customDescription by remember(conversation.id) { mutableStateOf(existing?.schedule?.customDescription.orEmpty()) }
     val host = conversation.participants.firstOrNull { "${it.identity.userId}:${it.identity.participantType}" == hostKey }
@@ -3235,19 +3366,19 @@ private fun LegendGroupMeetingEditorSheet(
             item {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
-                        Text("GROUP MEETING", style = LegendTypography.Eyebrow, color = LegendColors.Gold)
-                        Text("Meeting details", style = LegendTypography.Section, color = LegendColors.TextPrimary)
-                        Text("Only the server-authorized group owner can save host or meeting details.", style = LegendTypography.Supporting, color = LegendColors.TextSecondary)
+                        Text(legendLocalized("GROUP MEETING"), style = LegendTypography.Eyebrow, color = LegendColors.Gold)
+                        Text(legendLocalized("Meeting details"), style = LegendTypography.Section, color = LegendColors.TextPrimary)
+                        Text(legendLocalized("Only the server-authorized group owner can save host or meeting details."), style = LegendTypography.Supporting, color = LegendColors.TextSecondary)
                     }
-                    TextButton(onClick = dismiss) { Text("Cancel", color = LegendColors.Gold) }
+                    TextButton(onClick = dismiss) { Text(legendLocalized("Cancel"), color = LegendColors.Gold) }
                 }
             }
             item {
                 Surface(color = LegendColors.Navy, shape = LegendShapes.Control, modifier = Modifier.fillMaxWidth()) {
                     Row(Modifier.padding(LegendSpacing.Sm), verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) {
-                            Text("Online meeting", style = LegendTypography.Label, color = LegendColors.OnNavy)
-                            Text("Add a meeting link and optional schedule for the group.", style = LegendTypography.Supporting, color = LegendColors.GoldSoft)
+                            Text(legendLocalized("Online meeting"), style = LegendTypography.Label, color = LegendColors.OnNavy)
+                            Text(legendLocalized("Add a meeting link and optional schedule for the group."), style = LegendTypography.Supporting, color = LegendColors.GoldSoft)
                         }
                         Switch(checked = enabled, onCheckedChange = { enabled = it }, colors = SwitchDefaults.colors(checkedThumbColor = LegendColors.Navy, checkedTrackColor = LegendColors.Gold))
                     }
@@ -3255,10 +3386,10 @@ private fun LegendGroupMeetingEditorSheet(
             }
             if (enabled) {
                 item {
-                    Text("HOST", style = LegendTypography.Eyebrow, color = LegendColors.Gold)
+                    Text(legendLocalized("HOST"), style = LegendTypography.Eyebrow, color = LegendColors.Gold)
                     Box {
                         OutlinedButton(onClick = { hostsOpen = true }, modifier = Modifier.fillMaxWidth(), shape = LegendShapes.Control) {
-                            Text(host?.displayName ?: "Choose group host", color = LegendColors.TextPrimary, modifier = Modifier.weight(1f))
+                            Text(host?.displayName ?: legendLocalized("Choose group host"), color = LegendColors.TextPrimary, modifier = Modifier.weight(1f))
                             Icon(Icons.Default.ExpandMore, null, tint = LegendColors.Gold)
                         }
                         DropdownMenu(expanded = hostsOpen, onDismissRequest = { hostsOpen = false }, containerColor = LegendColors.Surface) {
@@ -3274,8 +3405,8 @@ private fun LegendGroupMeetingEditorSheet(
                     Surface(color = LegendColors.Surface, shape = LegendShapes.Control, modifier = Modifier.fillMaxWidth()) {
                         Row(Modifier.padding(LegendSpacing.Sm), verticalAlignment = Alignment.CenterVertically) {
                             Column(Modifier.weight(1f)) {
-                                Text("Add a schedule", style = LegendTypography.Label, color = LegendColors.TextPrimary)
-                                Text("A schedule is optional; the link is always required when a meeting is enabled.", style = LegendTypography.Supporting, color = LegendColors.TextSecondary)
+                                Text(legendLocalized("Add a schedule"), style = LegendTypography.Label, color = LegendColors.TextPrimary)
+                                Text(legendLocalized("A schedule is optional; the link is always required when a meeting is enabled."), style = LegendTypography.Supporting, color = LegendColors.TextSecondary)
                             }
                             Switch(checked = scheduleEnabled, onCheckedChange = { scheduleEnabled = it }, colors = SwitchDefaults.colors(checkedThumbColor = LegendColors.Navy, checkedTrackColor = LegendColors.Gold))
                         }
@@ -3283,17 +3414,17 @@ private fun LegendGroupMeetingEditorSheet(
                 }
                 if (scheduleEnabled) {
                     item {
-                        Text("FREQUENCY", style = LegendTypography.Eyebrow, color = LegendColors.Gold)
+                        Text(legendLocalized("FREQUENCY"), style = LegendTypography.Eyebrow, color = LegendColors.Gold)
                         LazyRow(horizontalArrangement = Arrangement.spacedBy(LegendSpacing.Xs)) {
                             items(listOf("OneTime", "Daily", "Weekly", "Biweekly", "Monthly", "Custom")) { candidate ->
-                                FilterChip(selected = frequency == candidate, onClick = { frequency = candidate }, label = { Text(candidate.replace("OneTime", "One time").replace("Biweekly", "Every other week")) }, colors = legendCompactChipColors(frequency == candidate))
+                                FilterChip(selected = frequency == candidate, onClick = { frequency = candidate }, label = { Text(candidate.replace("OneTime", "One time").replace("Biweekly", "Every other week")) }, colors = legendCompactChipColors())
                             }
                         }
                     }
                     if (needsWeekday) item {
-                        Text("WEEKDAY", style = LegendTypography.Eyebrow, color = LegendColors.Gold)
+                        Text(legendLocalized("WEEKDAY"), style = LegendTypography.Eyebrow, color = LegendColors.Gold)
                         LazyRow(horizontalArrangement = Arrangement.spacedBy(LegendSpacing.Xs)) {
-                            items(listOf("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")) { day -> FilterChip(selected = weekday == day, onClick = { weekday = day }, label = { Text(day.take(3)) }, colors = legendCompactChipColors(weekday == day)) }
+                            items(listOf("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")) { day -> FilterChip(selected = weekday == day, onClick = { weekday = day }, label = { Text(day.take(3)) }, colors = legendCompactChipColors()) }
                         }
                     }
                     if (recurring) {
@@ -3341,15 +3472,15 @@ private fun LegendConversationActions(
     AlertDialog(
         onDismissRequest = dismiss,
         title = { Text(conversation.title) },
-        text = { Text("Manage this server-authorized conversation. Removing it only removes it from your inbox; a new message will bring it back.") },
+        text = { Text(legendLocalized("Manage this server-authorized conversation. Removing it only removes it from your inbox; a new message will bring it back.")) },
         confirmButton = {
             Column(horizontalAlignment = Alignment.End) {
-                TextButton(onClick = { pin(); dismiss() }) { Text(if (conversation.isPinned) "Unpin conversation" else "Pin conversation") }
-                TextButton(onClick = { mute(); dismiss() }) { Text(if (conversation.isMuted) "Unmute conversation" else "Mute conversation") }
-                TextButton(onClick = { remove(); dismiss() }) { Text("Remove from inbox", color = LegendColors.Error) }
+                TextButton(onClick = { pin(); dismiss() }) { Text(if (conversation.isPinned) legendLocalized("Unpin conversation") else legendLocalized("Pin conversation")) }
+                TextButton(onClick = { mute(); dismiss() }) { Text(if (conversation.isMuted) legendLocalized("Unmute conversation") else legendLocalized("Mute conversation")) }
+                TextButton(onClick = { remove(); dismiss() }) { Text(legendLocalized("Remove from inbox"), color = LegendColors.Error) }
             }
         },
-        dismissButton = { TextButton(onClick = dismiss) { Text("Cancel") } },
+        dismissButton = { TextButton(onClick = dismiss) { Text(legendLocalized("Cancel")) } },
     )
 }
 
@@ -3360,7 +3491,7 @@ private fun MessageThread(
     participantType: String,
     isSending: Boolean,
     back: () -> Unit,
-    send: (android.content.Context, String, String, String?, List<Uri>) -> Unit,
+    send: (Context, String, String, String?, List<Uri>) -> Unit,
     loadOlder: () -> Unit,
     delete: (ConversationMessage) -> Unit,
     manageGroup: (ConversationDetail) -> Unit,
@@ -3375,14 +3506,14 @@ private fun MessageThread(
     Column(Modifier.fillMaxSize().background(LegendColors.Canvas)) {
         Surface(color = LegendColors.Navy) {
             Row(Modifier.fillMaxWidth().padding(horizontal = LegendSpacing.Sm, vertical = LegendSpacing.Xs), verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = back) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back to messages", tint = LegendColors.OnNavy) }
+                IconButton(onClick = back) { Icon(Icons.AutoMirrored.Filled.ArrowBack, legendLocalized("Back to messages", "accessibility copy"), tint = LegendColors.OnNavy) }
                 Column(Modifier.weight(1f)) {
                     Text(conversation.title, style = LegendTypography.CardTitle, color = LegendColors.OnNavy, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     conversation.purpose?.let { Text(it, style = LegendTypography.Label, color = LegendColors.GoldSoft, maxLines = 1) }
                 }
-                conversation.meeting?.linkLabel?.let { Icon(Icons.Default.Event, "${it} meeting", tint = LegendColors.Gold) }
+                conversation.meeting?.linkLabel?.let { Icon(Icons.Default.Event, "$it meeting", tint = LegendColors.Gold) }
                 if (conversation.canManageMembers || conversation.canManageCollaborators || conversation.canManagePromotion || conversation.canDeleteGroup) {
-                    IconButton(onClick = { manageGroup(conversation) }) { Icon(Icons.Default.Group, "Manage group", tint = LegendColors.GoldBright) }
+                    IconButton(onClick = { manageGroup(conversation) }) { Icon(Icons.Default.Group, legendLocalized("Manage group", "accessibility copy"), tint = LegendColors.GoldBright) }
                 }
             }
         }
@@ -3415,32 +3546,32 @@ private fun MessageThread(
                             onClick = loadOlder,
                             modifier = Modifier.fillMaxWidth(),
                         ) {
-                            Text("Load earlier messages", color = LegendColors.Gold)
+                            Text(legendLocalized("Load earlier messages"), color = LegendColors.Gold)
                         }
                     }
                 }
             }
         }
         if (conversation.isClosed) {
-            Text("Conversation closed · New messages cannot be sent.", style = LegendTypography.Supporting, color = LegendColors.TextSecondary, modifier = Modifier.fillMaxWidth().background(LegendColors.Surface).padding(LegendSpacing.Md))
+            Text(legendLocalized("Conversation closed · New messages cannot be sent."), style = LegendTypography.Supporting, color = LegendColors.TextSecondary, modifier = Modifier.fillMaxWidth().background(LegendColors.Surface).padding(LegendSpacing.Md))
         } else {
             replyTo?.let { reply ->
                 Row(Modifier.fillMaxWidth().background(LegendColors.GoldSoft).padding(horizontal = LegendSpacing.PageHorizontal, vertical = LegendSpacing.Xs), verticalAlignment = Alignment.CenterVertically) {
-                    Text("Replying to ${reply.sender.displayName}: ${reply.body}", modifier = Modifier.weight(1f), style = LegendTypography.Label, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    IconButton(onClick = { replyTo = null }) { Icon(Icons.Default.Close, "Cancel reply") }
+                    Text(legendLocalized("Replying to {name}:", mapOf("name" to reply.sender.displayName)) + " " + reply.body, modifier = Modifier.weight(1f), style = LegendTypography.Label, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    IconButton(onClick = { replyTo = null }) { Icon(Icons.Default.Close, legendLocalized("Cancel reply", "accessibility copy")) }
                 }
             }
             if (attachments.isNotEmpty()) {
                 LazyRow(Modifier.fillMaxWidth().background(LegendColors.Surface).padding(horizontal = LegendSpacing.PageHorizontal, vertical = LegendSpacing.Xs), horizontalArrangement = Arrangement.spacedBy(LegendSpacing.Xs)) {
                     items(attachments, key = { it.toString() }) { uri ->
-                        AssistChip(onClick = { attachments = attachments - uri }, label = { Text(context.contentResolver.legendDisplayName(uri), maxLines = 1, overflow = TextOverflow.Ellipsis) }, trailingIcon = { Icon(Icons.Default.Close, "Remove attachment") })
+                        AssistChip(onClick = { attachments = attachments - uri }, label = { Text(context.contentResolver.legendDisplayName(uri), maxLines = 1, overflow = TextOverflow.Ellipsis) }, trailingIcon = { Icon(Icons.Default.Close, legendLocalized("Remove attachment", "accessibility copy")) })
                     }
                 }
             }
             Row(Modifier.fillMaxWidth().background(LegendColors.Surface).padding(horizontal = LegendSpacing.PageHorizontal, vertical = LegendSpacing.Sm), verticalAlignment = Alignment.Bottom) {
-                IconButton(onClick = { photoPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }) { Icon(Icons.Default.AddPhotoAlternate, "Add photo", tint = LegendColors.Gold) }
-                IconButton(onClick = { filePicker.launch(arrayOf("image/*", "application/pdf", "text/plain", "application/msword", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "application/vnd.ms-excel", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")) }) { Icon(Icons.Default.AttachFile, "Add file", tint = LegendColors.Gold) }
-                OutlinedTextField(value = draft, onValueChange = { draft = it }, modifier = Modifier.weight(1f), placeholder = { Text("Write a message") }, maxLines = 5, shape = LegendShapes.Control)
+                IconButton(onClick = { photoPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }) { Icon(Icons.Default.AddPhotoAlternate, legendLocalized("Add photo", "accessibility copy"), tint = LegendColors.Gold) }
+                IconButton(onClick = { filePicker.launch(arrayOf("image/*", "application/pdf", "text/plain", "application/msword", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "application/vnd.ms-excel", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")) }) { Icon(Icons.Default.AttachFile, legendLocalized("Add file", "accessibility copy"), tint = LegendColors.Gold) }
+                OutlinedTextField(value = draft, onValueChange = { draft = it }, modifier = Modifier.weight(1f), placeholder = { Text(legendLocalized("Write a message")) }, maxLines = 5, shape = LegendShapes.Control)
                 IconButton(
                     onClick = {
                         send(context, conversation.id, draft, replyTo?.id, attachments)
@@ -3452,7 +3583,7 @@ private fun MessageThread(
                     modifier = Modifier.padding(start = LegendSpacing.Xs).background(if (draft.isNotBlank()) LegendColors.Gold else LegendColors.SurfaceInset, CircleShape),
                 ) {
                     if (isSending) CircularProgressIndicator(modifier = Modifier.size(18.dp), color = LegendColors.Midnight, strokeWidth = 2.dp)
-                    else Icon(Icons.AutoMirrored.Filled.Send, "Send message", tint = LegendColors.Midnight)
+                    else Icon(Icons.AutoMirrored.Filled.Send, legendLocalized("Send message", "accessibility copy"), tint = LegendColors.Midnight)
                 }
             }
         }
@@ -3477,21 +3608,21 @@ private fun LegendMessageBubble(
             Column(Modifier.padding(LegendSpacing.Sm), verticalArrangement = Arrangement.spacedBy(LegendSpacing.Xs)) {
                 if (!message.isMine) Text(message.sender.displayName, style = LegendTypography.Label, color = LegendColors.TextSecondary)
                 message.reply?.let { replyPreview ->
-                    Text("${replyPreview.sender.displayName}: ${if (replyPreview.isDeleted) "Message unsent" else replyPreview.body}", style = LegendTypography.Label, color = if (message.isMine) LegendColors.GoldSoft else LegendColors.TextSecondary, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    Text("${replyPreview.sender.displayName}: ${if (replyPreview.isDeleted) legendLocalized("Message unsent") else replyPreview.body}", style = LegendTypography.Label, color = if (message.isMine) LegendColors.GoldSoft else LegendColors.TextSecondary, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 }
-                Text(if (message.isDeleted) "Message unsent" else message.body, color = if (message.isMine) LegendColors.OnNavy else LegendColors.TextPrimary)
+                Text(if (message.isDeleted) legendLocalized("Message unsent") else message.body, color = if (message.isMine) LegendColors.OnNavy else LegendColors.TextPrimary)
                 message.originalBody?.takeIf { it != message.body }?.let { original ->
                     Text("${LegendCopy.value("message.original")}: $original", style = LegendTypography.Label, color = if (message.isMine) LegendColors.GoldSoft else LegendColors.TextSecondary)
                 }
                 message.translation?.let { translation ->
-                    Text("Translated ${translation.originalLanguage} → ${translation.targetLanguage}", style = LegendTypography.Label, color = if (message.isMine) LegendColors.GoldSoft else LegendColors.TextTertiary)
+                    Text(legendLocalized("Translated {source} → {target}", mapOf("source" to translation.originalLanguage, "target" to translation.targetLanguage)), style = LegendTypography.Label, color = if (message.isMine) LegendColors.GoldSoft else LegendColors.TextTertiary)
                 }
                 message.verificationReview?.let { review ->
                     Text("${review.resourceType}: ${review.status}", style = LegendTypography.Label, color = if (message.isMine) LegendColors.GoldSoft else LegendColors.TextSecondary)
                     if (review.canResolve) {
                         Row(horizontalArrangement = Arrangement.spacedBy(LegendSpacing.Xs)) {
-                            TextButton(onClick = { resolveVerification(review, true, null) }) { Text("Approve", color = LegendColors.Success) }
-                            TextButton(onClick = { resolveVerification(review, false, null) }) { Text("Decline", color = LegendColors.Error) }
+                            TextButton(onClick = { resolveVerification(review, true, null) }) { Text(legendLocalized("Approve"), color = LegendColors.Success) }
+                            TextButton(onClick = { resolveVerification(review, false, null) }) { Text(legendLocalized("Decline"), color = LegendColors.Error) }
                         }
                     }
                 }
@@ -3500,26 +3631,36 @@ private fun LegendMessageBubble(
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(legendCompactTime(message.sentUtc), style = LegendTypography.Label, color = if (message.isMine) LegendColors.GoldSoft else LegendColors.TextTertiary, modifier = Modifier.weight(1f))
-                    IconButton(onClick = reply, modifier = Modifier.size(28.dp)) { Icon(Icons.AutoMirrored.Filled.Reply, "Reply", modifier = Modifier.size(15.dp), tint = if (message.isMine) LegendColors.GoldSoft else LegendColors.TextSecondary) }
-                    if (message.isMine && !message.isDeleted) IconButton(onClick = delete, modifier = Modifier.size(28.dp)) { Icon(Icons.Default.DeleteOutline, "Unsend message", modifier = Modifier.size(15.dp), tint = if (message.isMine) LegendColors.GoldSoft else LegendColors.TextSecondary) }
+                    IconButton(onClick = reply, modifier = Modifier.size(28.dp)) { Icon(Icons.AutoMirrored.Filled.Reply, legendLocalized("Reply", "accessibility copy"), modifier = Modifier.size(15.dp), tint = if (message.isMine) LegendColors.GoldSoft else LegendColors.TextSecondary) }
+                    if (message.isMine && !message.isDeleted) IconButton(onClick = delete, modifier = Modifier.size(28.dp)) { Icon(Icons.Default.DeleteOutline, legendLocalized("Unsend message", "accessibility copy"), modifier = Modifier.size(15.dp), tint = if (message.isMine) LegendColors.GoldSoft else LegendColors.TextSecondary) }
                 }
             }
         }
     }
 }
 
-private fun legendCompactTime(value: String): String = value.substringAfter('T', value).take(5).takeIf { it.isNotBlank() } ?: value
+private fun legendCompactTime(value: String): String {
+    val formatter = DateTimeFormatter.ofLocalizedTime(FormatStyle.SHORT)
+        .withLocale(LegendLocalizationRuntime.locale())
+    return runCatching {
+        OffsetDateTime.parse(value)
+            .atZoneSameInstant(ZoneId.systemDefault())
+            .format(formatter)
+    }.recoverCatching {
+        LocalDateTime.parse(value).format(formatter)
+    }.getOrDefault(value)
+}
 
 private enum class SocialCollection {
     POSTS,
     STORIES,
-    HACS;
+    SHORT_VIDEOS;
 
     val label: String
-        get() = if (this == STORIES) "Stories" else when (this) {
+        get() = when (this) {
             POSTS -> "${LegendCopy.value("content.post")}s"
-            STORIES -> "${LegendCopy.value("content.story")}s"
-            HACS -> "${LegendCopy.value("content.hac")}s"
+            STORIES -> legendLocalized("Stories")
+            SHORT_VIDEOS -> "${LegendCopy.value("content.hac")}s"
         }
 }
 
@@ -3546,7 +3687,7 @@ private fun LegendGlobalSocialShareSheet(
     var recipientBeingSent by remember(post.id) { mutableStateOf<String?>(null) }
 
     LaunchedEffect(query) {
-        kotlinx.coroutines.delay(120)
+        delay(120.milliseconds)
         messaging.loadRecipients(query.trim().takeIf(String::isNotBlank))
     }
 
@@ -3569,20 +3710,20 @@ private fun LegendGlobalSocialShareSheet(
                     .padding(horizontal = LegendSpacing.PageHorizontal, vertical = LegendSpacing.Sm),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text("Share", style = LegendTypography.Section, color = LegendColors.TextPrimary, modifier = Modifier.weight(1f))
-                TextButton(onClick = dismiss) { Text("Done", style = LegendTypography.BodyEmphasis, color = LegendColors.Gold) }
+                Text(legendLocalized("Share"), style = LegendTypography.Section, color = LegendColors.TextPrimary, modifier = Modifier.weight(1f))
+                TextButton(onClick = dismiss) { Text(legendLocalized("Done"), style = LegendTypography.BodyEmphasis, color = LegendColors.Gold) }
             }
             Column(
                 modifier = Modifier.padding(horizontal = LegendSpacing.PageHorizontal),
                 verticalArrangement = Arrangement.spacedBy(LegendSpacing.Sm),
             ) {
-                Text("SEND IN LEGEND", style = LegendTypography.Eyebrow, color = LegendColors.Gold)
+                Text(legendLocalized("SEND IN LEGEND"), style = LegendTypography.Eyebrow, color = LegendColors.Gold)
                 OutlinedTextField(
                     value = query,
                     onValueChange = { query = it },
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true,
-                    placeholder = { Text("Search LEGEND members") },
+                    placeholder = { Text(legendLocalized("Search LEGEND members")) },
                     leadingIcon = { Icon(Icons.Default.Search, null, tint = LegendColors.Gold) },
                     shape = LegendShapes.Control,
                     colors = legendMessagingFieldColors(),
@@ -3595,10 +3736,10 @@ private fun LegendGlobalSocialShareSheet(
                         .clickable {
                             social.recordShare(post.id)
                             context.startActivity(
-                                android.content.Intent.createChooser(
-                                    android.content.Intent(android.content.Intent.ACTION_SEND)
+                                Intent.createChooser(
+                                    Intent(Intent.ACTION_SEND)
                                         .setType("text/plain")
-                                        .putExtra(android.content.Intent.EXTRA_TEXT, externalMessageBody),
+                                        .putExtra(Intent.EXTRA_TEXT, externalMessageBody),
                                     "Share outside LEGEND",
                                 ),
                             )
@@ -3611,8 +3752,8 @@ private fun LegendGlobalSocialShareSheet(
                         Icon(Icons.Default.Share, null, tint = LegendColors.Gold)
                         Spacer(Modifier.width(LegendSpacing.Sm))
                         Column(Modifier.weight(1f)) {
-                            Text("Share outside LEGEND", style = LegendTypography.BodyEmphasis, color = LegendColors.TextPrimary)
-                            Text("Messages, email, and other apps", style = LegendTypography.Caption, color = LegendColors.TextSecondary)
+                            Text(legendLocalized("Share outside LEGEND"), style = LegendTypography.BodyEmphasis, color = LegendColors.TextPrimary)
+                            Text(legendLocalized("Messages, email, and other apps"), style = LegendTypography.Caption, color = LegendColors.TextSecondary)
                         }
                         Icon(Icons.Default.ChevronRight, null, tint = LegendColors.TextSecondary)
                     }
@@ -3630,8 +3771,8 @@ private fun LegendGlobalSocialShareSheet(
                 is LoadState.Data -> {
                     if (state.value.isEmpty()) {
                         LegendEmptyState(
-                            if (query.isBlank()) "No LEGEND members available" else "No matching LEGEND members",
-                            if (query.isBlank()) "Try another member category." else "Try a different search.",
+                            if (query.isBlank()) legendLocalized("No LEGEND members available") else legendLocalized("No matching LEGEND members"),
+                            if (query.isBlank()) legendLocalized("Try another member category.") else legendLocalized("Try a different search."),
                         )
                     } else {
                         LazyColumn(
@@ -3674,7 +3815,7 @@ private fun LegendGlobalSocialShareSheet(
                                     Column(Modifier.weight(1f)) {
                                         Row(verticalAlignment = Alignment.CenterVertically) {
                                             Text(recipient.displayName, style = LegendTypography.BodyEmphasis, color = LegendColors.TextPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                            if (recipient.isVerified) Icon(Icons.Default.Verified, "Verified", modifier = Modifier.padding(start = LegendSpacing.Xs).size(16.dp), tint = LegendColors.Verified)
+                                            if (recipient.isVerified) Icon(Icons.Default.Verified, legendLocalized("Verified", "accessibility copy"), modifier = Modifier.padding(start = LegendSpacing.Xs).size(16.dp), tint = LegendColors.Verified)
                                         }
                                         Text(
                                             recipient.email ?: recipient.relationshipLabel ?: recipient.roleLabel.orEmpty(),
@@ -3687,7 +3828,18 @@ private fun LegendGlobalSocialShareSheet(
                                     if (isThisRecipientSending) {
                                         CircularProgressIndicator(modifier = Modifier.size(20.dp), color = LegendColors.Gold, strokeWidth = 2.dp)
                                     } else {
-                                        Icon(Icons.AutoMirrored.Filled.Send, "Send ${post.displayContentLabel()} to ${recipient.displayName}", tint = LegendColors.Gold)
+                                        Icon(
+                                            Icons.AutoMirrored.Filled.Send,
+                                            legendLocalized(
+                                                "Send {contentType} to {recipientName}",
+                                                "accessibility copy",
+                                                mapOf(
+                                                    "contentType" to post.displayContentLabel(),
+                                                    "recipientName" to recipient.displayName,
+                                                ),
+                                            ),
+                                            tint = LegendColors.Gold,
+                                        )
                                     }
                                 }
                                 HorizontalDivider(color = LegendColors.Divider, modifier = Modifier.padding(start = 56.dp))
@@ -3701,13 +3853,19 @@ private fun LegendGlobalSocialShareSheet(
 }
 
 private fun SocialPost.legendInternalShareBody(): String {
-    val heading = "Shared a LEGEND ${displayContentLabel()} by ${author.displayName}"
+    val heading = legendLocalized(
+        "Shared a LEGEND {contentType} by {displayName}",
+        mapOf("contentType" to displayContentLabel(), "displayName" to author.displayName),
+    )
     return body.trim().takeIf(String::isNotBlank)?.let { "$heading\n\n$it" } ?: heading
 }
 
 private fun SocialPost.legendExternalShareBody(): String =
     body.trim().takeIf(String::isNotBlank)
-        ?: "LEGEND ${displayContentLabel()} by ${author.displayName}"
+        ?: legendLocalized(
+            "LEGEND {contentType} by {displayName}",
+            mapOf("contentType" to displayContentLabel(), "displayName" to author.displayName),
+        )
 
 @Composable
 private fun SocialScreen(
@@ -3723,7 +3881,7 @@ private fun SocialScreen(
     LaunchedEffect(state, commentingPost?.id) {
         val current = commentingPost ?: return@LaunchedEffect
         val snapshot = (state as? LoadState.Data<SocialSnapshot>)?.value ?: return@LaunchedEffect
-        (snapshot.posts + snapshot.stories + snapshot.hacs).firstOrNull { it.id == current.id }?.let { commentingPost = it }
+        (snapshot.posts + snapshot.stories + snapshot.shortVideos).firstOrNull { it.id == current.id }?.let { commentingPost = it }
     }
 
     when (state) {
@@ -3734,8 +3892,8 @@ private fun SocialScreen(
             // iOS's For You tab is not a second mixed social feed. It is the
             // dedicated full-viewport Hac experience, backed by the exact same
             // server-issued Hac projection as the Home and profile surfaces.
-            val hacs = snapshot.hacs.filter { it.legendContentType == LegendSocialContentType.HAC }
-            if (hacs.isEmpty()) {
+            val shortVideos = snapshot.shortVideos.filter { it.legendContentType == LegendSocialContentType.HAC }
+            if (shortVideos.isEmpty()) {
                 Box(Modifier.fillMaxSize().background(LegendColors.Midnight)) {
                     Column(
                         modifier = Modifier.align(Alignment.Center).padding(LegendSpacing.Xl),
@@ -3743,18 +3901,21 @@ private fun SocialScreen(
                         verticalArrangement = Arrangement.spacedBy(LegendSpacing.Sm),
                     ) {
                         Icon(Icons.Default.VideoLibrary, null, tint = LegendColors.GoldBright, modifier = Modifier.size(32.dp))
-                        Text("No Hacs yet", style = LegendTypography.Section, color = LegendColors.OnNavy)
+                        Text(legendLocalized("No {content} yet", mapOf("content" to LegendCopy.value("content.hac"))), style = LegendTypography.Section, color = LegendColors.OnNavy)
                         Text(
-                            "Video Hacs will appear here as they are shared.",
+                            legendLocalized(
+                                "Video {content}s will appear here as they are shared.",
+                                mapOf("content" to LegendCopy.value("content.hac")),
+                            ),
                             style = LegendTypography.Supporting,
                             color = LegendColors.GoldSoft,
                         )
                     }
                 }
             } else {
-                val pagerState = rememberPagerState(pageCount = { hacs.size })
-                LaunchedEffect(pagerState.currentPage, hacs) {
-                    hacs.getOrNull(pagerState.currentPage)?.let { hac ->
+                val pagerState = rememberPagerState(pageCount = { shortVideos.size })
+                LaunchedEffect(pagerState.currentPage, shortVideos) {
+                    shortVideos.getOrNull(pagerState.currentPage)?.let { hac ->
                         // The server owns view accounting. Android reports an
                         // open event only; it does not derive engagement rules.
                         viewModel.recordView(hac.id, storyInteractionType = "Opened")
@@ -3764,19 +3925,19 @@ private fun SocialScreen(
                     state = pagerState,
                     modifier = Modifier.fillMaxSize().background(LegendColors.Midnight),
                     beyondViewportPageCount = 1,
-                    key = { page -> hacs[page].id },
+                    key = { page -> shortVideos[page].id },
                 ) { page ->
                     LegendHacViewportPage(
-                        post = hacs[page],
+                        post = shortVideos[page],
                         isActive = pagerState.currentPage == page,
                         mediaRepository = mediaRepository,
                         participantType = participantType,
-                        openProfile = { profileAuthor = hacs[page].author },
-                        react = { viewModel.react(hacs[page].id) },
-                        comment = { commentingPost = hacs[page] },
-                        repost = { viewModel.toggleRepost(hacs[page].id) },
-                        save = { viewModel.toggleSave(hacs[page].id) },
-                        share = { sharePost(hacs[page]) },
+                        openProfile = { profileAuthor = shortVideos[page].author },
+                        react = { viewModel.react(shortVideos[page].id) },
+                        comment = { commentingPost = shortVideos[page] },
+                        repost = { viewModel.toggleRepost(shortVideos[page].id) },
+                        save = { viewModel.toggleSave(shortVideos[page].id) },
+                        share = { sharePost(shortVideos[page]) },
                     )
                 }
             }
@@ -3826,7 +3987,7 @@ private fun LegendHacViewportPage(
                 repository = mediaRepository,
                 contentDescription = video.accessibilityText,
                 modifier = Modifier.fillMaxSize(),
-                contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                contentScale = ContentScale.Crop,
                 videoHeight = null,
                 autoPlayVideo = isActive,
                 showVideoControls = false,
@@ -3843,7 +4004,7 @@ private fun LegendHacViewportPage(
         Box(
             Modifier
                 .fillMaxSize()
-                .background(Brush.verticalGradient(listOf(androidx.compose.ui.graphics.Color.Transparent, LegendColors.Midnight.copy(alpha = 0.78f)))),
+                .background(Brush.verticalGradient(listOf(Color.Transparent, LegendColors.Midnight.copy(alpha = 0.78f)))),
         )
         Column(
             modifier = Modifier
@@ -3868,7 +4029,7 @@ private fun LegendHacViewportPage(
                 )
                 Spacer(Modifier.width(LegendSpacing.Xs))
                 Text(post.author.displayName, style = LegendTypography.CardTitle, color = LegendColors.OnNavy, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                if (post.author.isVerified) Icon(Icons.Default.Verified, "Verified", tint = LegendColors.Verified, modifier = Modifier.padding(start = LegendSpacing.Xs).size(17.dp))
+                if (post.author.isVerified) Icon(Icons.Default.Verified, legendLocalized("Verified", "accessibility copy"), tint = LegendColors.Verified, modifier = Modifier.padding(start = LegendSpacing.Xs).size(17.dp))
             }
             post.body.takeIf(String::isNotBlank)?.let { body ->
                 Text(body, style = LegendTypography.Supporting, color = LegendColors.OnNavy, maxLines = 3, overflow = TextOverflow.Ellipsis)
@@ -3896,10 +4057,10 @@ private fun LegendHacViewportPage(
 @Composable
 private fun LegendHacAction(
     selected: Boolean,
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    icon: ImageVector,
     contentDescription: String,
     count: Int?,
-    tint: androidx.compose.ui.graphics.Color,
+    tint: Color,
     onClick: () -> Unit,
 ) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -3912,28 +4073,6 @@ private fun LegendHacAction(
             Icon(icon, contentDescription, tint = tint, modifier = Modifier.size(21.dp))
         }
         count?.let { Text(it.toString(), style = LegendTypography.Caption, color = LegendColors.OnNavy) }
-    }
-}
-
-@Composable
-private fun LegendStoryRail(
-    stories: List<SocialPost>,
-    mediaRepository: AuthenticatedMediaRepository,
-    participantType: String,
-    select: (SocialPost) -> Unit,
-) {
-    Column(verticalArrangement = Arrangement.spacedBy(LegendSpacing.Xs)) {
-        Text("Stories", style = LegendTypography.Section, color = LegendColors.TextPrimary)
-        LazyRow(horizontalArrangement = Arrangement.spacedBy(LegendSpacing.Md)) {
-            items(stories, key = { it.id }) { story ->
-                Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.width(72.dp).clickable { select(story) }) {
-                    Box(Modifier.size(60.dp).background(Brush.linearGradient(listOf(LegendColors.GoldBright, LegendColors.Gold)), CircleShape).padding(3.dp)) {
-                        LegendProtectedAvatar(story.author.avatar, story.author.displayName, participantType, mediaRepository, modifier = Modifier.fillMaxSize(), size = 54.dp)
-                    }
-                    Text(story.author.displayName, style = LegendTypography.Label, color = LegendColors.TextPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                }
-            }
-        }
     }
 }
 
@@ -3967,11 +4106,11 @@ private fun LegendSocialPostCard(
             Column(Modifier.weight(1f)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(post.author.displayName, style = LegendTypography.CardTitle, color = LegendColors.TextPrimary)
-                    if (post.author.isVerified) Icon(Icons.Default.Verified, "Verified", modifier = Modifier.padding(start = LegendSpacing.Xs).size(17.dp), tint = LegendColors.Verified)
+                    if (post.author.isVerified) Icon(Icons.Default.Verified, legendLocalized("Verified", "accessibility copy"), modifier = Modifier.padding(start = LegendSpacing.Xs).size(17.dp), tint = LegendColors.Verified)
                 }
                 Text(post.author.username?.let { "@$it" } ?: post.displayContentLabel(), style = LegendTypography.Label, color = LegendColors.TextSecondary)
             }
-            IconButton(onClick = { showActions = true }) { Icon(Icons.Default.MoreHoriz, "Post actions", tint = LegendColors.TextSecondary) }
+            IconButton(onClick = { showActions = true }) { Icon(Icons.Default.MoreHoriz, legendLocalized("Post actions", "accessibility copy"), tint = LegendColors.TextSecondary) }
         }
         if (post.body.isNotBlank()) Text(post.body, style = LegendTypography.Body, color = LegendColors.TextPrimary)
         if (post.media.isNotEmpty()) {
@@ -3999,7 +4138,7 @@ private fun LegendSocialPostCard(
                         repository = mediaRepository,
                         contentDescription = item.accessibilityText,
                         modifier = Modifier.fillMaxSize(),
-                        contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                        contentScale = ContentScale.Crop,
                         videoHeight = null,
                     )
                 }
@@ -4023,7 +4162,7 @@ private fun LegendSocialPostCard(
                     }
                 }
             }
-            if (post.media.any { !it.processingState.equals("Ready", ignoreCase = true) }) Text("Preparing media", style = LegendTypography.Label, color = LegendColors.TextSecondary)
+            if (post.media.any { !it.processingState.equals("Ready", ignoreCase = true) }) Text(legendLocalized("Preparing media"), style = LegendTypography.Label, color = LegendColors.TextSecondary)
         }
         Row(verticalAlignment = Alignment.CenterVertically) {
             TextButton(onClick = onReact) {
@@ -4036,19 +4175,19 @@ private fun LegendSocialPostCard(
                 Text(post.reactionCount.toString())
             }
             TextButton(onClick = onComment, enabled = post.commentsEnabled) {
-                Icon(Icons.Default.ChatBubbleOutline, "Comments")
+                Icon(Icons.Default.ChatBubbleOutline, legendLocalized("Comments", "accessibility copy"))
                 Spacer(Modifier.width(LegendSpacing.Micro))
                 Text(post.commentCount.toString())
             }
-            IconButton(onClick = onSave) { Icon(if (post.savedByCurrentActor) Icons.Default.Bookmark else Icons.Default.BookmarkBorder, "Save", tint = LegendColors.Gold) }
+            IconButton(onClick = onSave) { Icon(if (post.savedByCurrentActor) Icons.Default.Bookmark else Icons.Default.BookmarkBorder, legendLocalized("Save", "accessibility copy"), tint = LegendColors.Gold) }
             IconButton(onClick = onRepost) {
                 Icon(
                     Icons.Default.Repeat,
-                    if (post.repostedByCurrentActor) "Undo repost" else "Repost",
+                    if (post.repostedByCurrentActor) legendLocalized("Undo repost", "accessibility copy") else legendLocalized("Repost", "accessibility copy"),
                     tint = if (post.repostedByCurrentActor) LegendColors.Info else LegendColors.TextSecondary,
                 )
             }
-            IconButton(onClick = { sharePost(post) }) { Icon(Icons.Default.Share, "Share", tint = LegendColors.TextSecondary) }
+            IconButton(onClick = { sharePost(post) }) { Icon(Icons.Default.Share, legendLocalized("Share", "accessibility copy"), tint = LegendColors.TextSecondary) }
         }
         post.music?.let { music -> Text("♫ ${music.trackTitle} · ${music.artistName}", style = LegendTypography.Label, color = LegendColors.TextSecondary) }
         if (showActions) {
@@ -4084,21 +4223,21 @@ private fun LegendSocialPostActionsSheet(
             verticalArrangement = Arrangement.spacedBy(LegendSpacing.Xs),
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("${post.displayContentLabel()} actions", style = LegendTypography.Section, color = LegendColors.TextPrimary, modifier = Modifier.weight(1f))
-                TextButton(onClick = dismiss) { Text("Done", style = LegendTypography.BodyEmphasis, color = LegendColors.Gold) }
+                Text(legendLocalized("{content} actions", mapOf("content" to post.displayContentLabel())), style = LegendTypography.Section, color = LegendColors.TextPrimary, modifier = Modifier.weight(1f))
+                TextButton(onClick = dismiss) { Text(legendLocalized("Done"), style = LegendTypography.BodyEmphasis, color = LegendColors.Gold) }
             }
             if (!isCurrentActor) {
                 LegendSocialActionRow(
                     icon = if (post.followedByCurrentActor) Icons.Default.PersonRemove else Icons.Default.PersonAdd,
-                    title = if (post.followedByCurrentActor) "Unfollow" else if (post.followRequestPending) "Follow request pending" else "Follow",
-                    detail = if (post.followRequestPending) "Waiting for the server-authorized response" else "Update your LEGEND relationship",
+                    title = if (post.followedByCurrentActor) legendLocalized("Unfollow") else if (post.followRequestPending) legendLocalized("Follow request pending") else legendLocalized("Follow"),
+                    detail = if (post.followRequestPending) legendLocalized("Waiting for the server-authorized response") else legendLocalized("Update your LEGEND relationship"),
                     onClick = { follow(); dismiss() },
                 )
             }
             LegendSocialActionRow(
                 icon = Icons.Default.Repeat,
-                title = if (post.repostedByCurrentActor) "Undo repost" else "Repost",
-                detail = "Share through the existing LEGEND social authority",
+                title = if (post.repostedByCurrentActor) legendLocalized("Undo repost") else legendLocalized("Repost"),
+                detail = legendLocalized("Share through the existing LEGEND social authority"),
                 onClick = { repost(); dismiss() },
             )
             if (isCurrentActor) {
@@ -4126,10 +4265,10 @@ private fun LegendSocialPostActionsSheet(
 
 @Composable
 private fun LegendSocialActionRow(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    icon: ImageVector,
     title: String,
     detail: String,
-    tint: androidx.compose.ui.graphics.Color = LegendColors.TextPrimary,
+    tint: Color = LegendColors.TextPrimary,
     onClick: () -> Unit,
 ) {
     Surface(
@@ -4171,13 +4310,13 @@ private fun CreatePostSheet(
     val acceptSelection: (List<Uri>) -> Unit = { candidate ->
         val type = contentType
         if (type == null) {
-            mediaSelectionError = "Choose a LEGEND format before selecting media."
+            mediaSelectionError = legendLocalized("Choose a LEGEND format before selecting media.")
         } else {
             val limited = candidate.take(type.maximumMediaItems)
             when {
                 limited.isEmpty() -> Unit
                 type == LegendSocialContentType.HAC && !context.isPortableHacVideo(limited.single()) -> {
-                    mediaSelectionError = "A Hac requires one playable MP4 video. LEGEND will process the selected upload on the server."
+                    mediaSelectionError = legendLocalized("A Hac requires one playable MP4 video. LEGEND will process the selected upload on the server.")
                 }
                 else -> {
                     selected = limited
@@ -4304,12 +4443,15 @@ private fun LegendSocialContentType.label(): String = when (this) {
 
 private fun SocialPost.displayContentLabel(): String = legendContentType?.label() ?: contentType
 
-private fun LegendSocialContentType.newContentTitle(): String = "New ${label().lowercase()}"
+private fun LegendSocialContentType.newContentTitle(): String = legendLocalized(
+    "New {contentType}",
+    mapOf("contentType" to label().lowercase(LegendLocalizationRuntime.locale())),
+)
 
 private fun LegendSocialContentType.selectionHint(): String = when (this) {
-    LegendSocialContentType.POST -> "Select up to 10 photos or videos."
-    LegendSocialContentType.STORY -> "Select one photo or video for a 24-hour moment."
-    LegendSocialContentType.HAC -> "Select one playable MP4 video for your Hac."
+    LegendSocialContentType.POST -> legendLocalized("Select up to 10 photos or videos.")
+    LegendSocialContentType.STORY -> legendLocalized("Select one photo or video for a 24-hour moment.")
+    LegendSocialContentType.HAC -> legendLocalized("Select one playable MP4 video for your Hac.")
 }
 
 private fun LegendSocialContentType.icon() = when (this) {
@@ -4332,9 +4474,9 @@ private fun LegendSocialCreationModeMenu(
             IconButton(
                 onClick = dismiss,
                 modifier = Modifier.size(LegendSize.MinimumTapTarget).background(LegendColors.OnNavy.copy(alpha = .12f), CircleShape),
-            ) { Icon(Icons.Default.Close, "Close creator", tint = LegendColors.OnNavy) }
+            ) { Icon(Icons.Default.Close, legendLocalized("Close creator", "accessibility copy"), tint = LegendColors.OnNavy) }
             Spacer(Modifier.weight(1f))
-            Text("Create", style = LegendTypography.CardTitle, color = LegendColors.OnNavy)
+            Text(legendLocalized("Create"), style = LegendTypography.CardTitle, color = LegendColors.OnNavy)
             Spacer(Modifier.weight(1f))
             Spacer(Modifier.size(LegendSize.MinimumTapTarget))
         }
@@ -4342,7 +4484,7 @@ private fun LegendSocialCreationModeMenu(
             modifier = Modifier.weight(1f),
             verticalArrangement = Arrangement.Center,
         ) {
-            Text("Choose a format", style = LegendTypography.Title, color = LegendColors.OnNavy)
+            Text(legendLocalized("Choose a format"), style = LegendTypography.Title, color = LegendColors.OnNavy)
             Spacer(Modifier.height(LegendSpacing.Md))
             LegendSocialContentType.entries.forEach { type ->
                 TextButton(
@@ -4375,7 +4517,7 @@ private fun LegendSocialMediaLibrary(
     remove: (Uri) -> Unit,
     next: () -> Unit,
     dismiss: () -> Unit,
-    context: android.content.Context,
+    context: Context,
 ) {
     Column(
         modifier = Modifier.fillMaxHeight(.94f).fillMaxWidth().background(
@@ -4389,12 +4531,22 @@ private fun LegendSocialMediaLibrary(
             IconButton(
                 onClick = dismiss,
                 modifier = Modifier.size(LegendSize.MinimumTapTarget).background(LegendColors.OnNavy.copy(alpha = .12f), CircleShape),
-            ) { Icon(Icons.Default.Close, "Cancel ${type.label()} creation", tint = LegendColors.OnNavy) }
+            ) {
+                Icon(
+                    Icons.Default.Close,
+                    legendLocalized(
+                        "Cancel {contentType} creation",
+                        "accessibility copy",
+                        mapOf("contentType" to type.label()),
+                    ),
+                    tint = LegendColors.OnNavy,
+                )
+            }
             Spacer(Modifier.weight(1f))
             Text(type.newContentTitle(), style = LegendTypography.CardTitle, color = LegendColors.OnNavy)
             Spacer(Modifier.weight(1f))
             TextButton(onClick = next, enabled = selected.isNotEmpty() || type == LegendSocialContentType.POST) {
-                Text("Next", style = LegendTypography.BodyEmphasis, color = if (selected.isNotEmpty() || type == LegendSocialContentType.POST) LegendColors.GoldBright else LegendColors.OnNavy.copy(alpha = .36f))
+                Text(legendLocalized("Next"), style = LegendTypography.BodyEmphasis, color = if (selected.isNotEmpty() || type == LegendSocialContentType.POST) LegendColors.GoldBright else LegendColors.OnNavy.copy(alpha = .36f))
             }
         }
         LazyColumn(
@@ -4405,13 +4557,23 @@ private fun LegendSocialMediaLibrary(
             item {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
-                        Text("Recents", style = LegendTypography.Section, color = LegendColors.OnNavy)
+                        Text(legendLocalized("Recents"), style = LegendTypography.Section, color = LegendColors.OnNavy)
                         Text(type.selectionHint(), style = LegendTypography.Supporting, color = LegendColors.GoldSoft)
                     }
                     IconButton(
                         onClick = chooseMedia,
                         modifier = Modifier.size(42.dp).background(LegendColors.GoldBright, CircleShape),
-                    ) { Icon(Icons.Default.PermMedia, "Choose ${type.label()} media", tint = LegendColors.Midnight) }
+                    ) {
+                        Icon(
+                            Icons.Default.PermMedia,
+                            legendLocalized(
+                                "Choose {contentType} media",
+                                "accessibility copy",
+                                mapOf("contentType" to type.label()),
+                            ),
+                            tint = LegendColors.Midnight,
+                        )
+                    }
                 }
             }
             item {
@@ -4426,8 +4588,8 @@ private fun LegendSocialMediaLibrary(
                         verticalArrangement = Arrangement.spacedBy(LegendSpacing.Xs),
                     ) {
                         Icon(type.icon(), null, tint = LegendColors.GoldBright, modifier = Modifier.size(28.dp))
-                        Text(if (selected.isEmpty()) "Choose from your device" else "Replace selected media", style = LegendTypography.BodyEmphasis, color = LegendColors.OnNavy)
-                        Text("Android's system photo picker keeps your library private until you select media for LEGEND.", style = LegendTypography.Caption, color = LegendColors.GoldSoft)
+                        Text(if (selected.isEmpty()) legendLocalized("Choose from your device") else legendLocalized("Replace selected media"), style = LegendTypography.BodyEmphasis, color = LegendColors.OnNavy)
+                        Text(legendLocalized("Android's system photo picker keeps your library private until you select media for LEGEND."), style = LegendTypography.Caption, color = LegendColors.GoldSoft)
                     }
                 }
             }
@@ -4452,7 +4614,7 @@ private fun LegendSocialMediaLibrary(
 private fun LegendSocialSelectedMediaCard(
     uri: Uri,
     type: LegendSocialContentType,
-    context: android.content.Context,
+    context: Context,
     remove: () -> Unit,
 ) {
     val mimeType = context.contentResolver.getType(uri).orEmpty()
@@ -4463,13 +4625,13 @@ private fun LegendSocialSelectedMediaCard(
             } else {
                 AsyncImage(
                     model = uri,
-                    contentDescription = "Selected ${type.label()} media",
+                    contentDescription = legendLocalized("Selected {content} media", LegendLocalizationRuntime.AccessibilityContext, mapOf("content" to type.label())),
                     modifier = Modifier.fillMaxWidth().heightIn(max = if (type == LegendSocialContentType.POST) 260.dp else 420.dp),
                 )
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(context.contentResolver.legendDisplayName(uri), style = LegendTypography.Label, color = LegendColors.OnNavy, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                IconButton(onClick = remove) { Icon(Icons.Default.Close, "Remove selected media", tint = LegendColors.GoldBright) }
+                IconButton(onClick = remove) { Icon(Icons.Default.Close, legendLocalized("Remove selected media", "accessibility copy"), tint = LegendColors.GoldBright) }
             }
         }
     }
@@ -4493,7 +4655,7 @@ private fun LegendSocialShareDetails(
     back: () -> Unit,
     share: () -> Unit,
     canPublish: Boolean,
-    context: android.content.Context,
+    context: Context,
 ) {
     Column(Modifier.fillMaxHeight(.94f).fillMaxWidth().background(LegendColors.Canvas)) {
         Row(
@@ -4501,13 +4663,13 @@ private fun LegendSocialShareDetails(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             IconButton(onClick = back, modifier = Modifier.size(LegendSize.MinimumTapTarget).background(LegendColors.SurfaceInset, CircleShape)) {
-                Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back to media", tint = LegendColors.TextPrimary)
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, legendLocalized("Back to media", "accessibility copy"), tint = LegendColors.TextPrimary)
             }
             Spacer(Modifier.weight(1f))
             Text(type.newContentTitle(), style = LegendTypography.CardTitle, color = LegendColors.TextPrimary)
             Spacer(Modifier.weight(1f))
             TextButton(onClick = share, enabled = canPublish) {
-                Text("Share", style = LegendTypography.BodyEmphasis, color = if (canPublish) LegendColors.Gold else LegendColors.TextTertiary)
+                Text(legendLocalized("Share"), style = LegendTypography.BodyEmphasis, color = if (canPublish) LegendColors.Gold else LegendColors.TextTertiary)
             }
         }
         LazyColumn(
@@ -4522,7 +4684,7 @@ private fun LegendSocialShareDetails(
                 OutlinedTextField(
                     value = body,
                     onValueChange = updateBody,
-                    label = { Text(if (type == LegendSocialContentType.STORY) "Add a story message..." else "Write a caption...") },
+                    label = { Text(if (type == LegendSocialContentType.STORY) legendLocalized("Add a story message...") else legendLocalized("Write a caption...")) },
                     modifier = Modifier.fillMaxWidth(),
                     minLines = 3,
                     maxLines = 7,
@@ -4540,8 +4702,8 @@ private fun LegendSocialShareDetails(
                         Row(Modifier.fillMaxWidth().heightIn(min = 52.dp).padding(horizontal = LegendSpacing.Sm), verticalAlignment = Alignment.CenterVertically) {
                             Icon(Icons.Default.Group, null, tint = LegendColors.TextPrimary, modifier = Modifier.size(24.dp))
                             Spacer(Modifier.width(LegendSpacing.Sm))
-                            Text("Audience", style = LegendTypography.Body, color = LegendColors.TextPrimary, modifier = Modifier.weight(1f))
-                            Text("Legend network", style = LegendTypography.Caption, color = LegendColors.TextSecondary)
+                            Text(legendLocalized("Audience"), style = LegendTypography.Body, color = LegendColors.TextPrimary, modifier = Modifier.weight(1f))
+                            Text(legendLocalized("Legend network"), style = LegendTypography.Caption, color = LegendColors.TextSecondary)
                         }
                         HorizontalDivider(color = LegendColors.Divider, modifier = Modifier.padding(start = 52.dp))
                         LegendSocialDetailField("Alt text", accessibilityText, updateAccessibilityText)
@@ -4549,7 +4711,7 @@ private fun LegendSocialShareDetails(
                         Row(Modifier.fillMaxWidth().heightIn(min = 52.dp).padding(horizontal = LegendSpacing.Sm), verticalAlignment = Alignment.CenterVertically) {
                             Icon(Icons.Default.ChatBubbleOutline, null, tint = LegendColors.TextPrimary, modifier = Modifier.size(24.dp))
                             Spacer(Modifier.width(LegendSpacing.Sm))
-                            Text("Allow comments", style = LegendTypography.Body, color = LegendColors.TextPrimary, modifier = Modifier.weight(1f))
+                            Text(legendLocalized("Allow comments"), style = LegendTypography.Body, color = LegendColors.TextPrimary, modifier = Modifier.weight(1f))
                             Switch(checked = commentsEnabled, onCheckedChange = updateCommentsEnabled, colors = SwitchDefaults.colors(checkedThumbColor = LegendColors.Navy, checkedTrackColor = LegendColors.GoldBright))
                         }
                     }
@@ -4559,7 +4721,7 @@ private fun LegendSocialShareDetails(
                 Text(selectionError, style = LegendTypography.Supporting, color = LegendColors.Warning)
             }
             item {
-                Text("Android supplies native selection and playback. LEGEND's existing protected upload and media-processing authority owns publication.", style = LegendTypography.Caption, color = LegendColors.TextSecondary)
+                Text(legendLocalized("Android supplies native selection and playback. LEGEND's existing protected upload and media-processing authority owns publication."), style = LegendTypography.Caption, color = LegendColors.TextSecondary)
             }
         }
     }
@@ -4570,7 +4732,7 @@ private fun LegendSocialDetailField(label: String, value: String, update: (Strin
     OutlinedTextField(
         value = value,
         onValueChange = update,
-        label = { Text(label) },
+        label = { Text(legendLocalized(label)) },
         modifier = Modifier.fillMaxWidth().padding(horizontal = LegendSpacing.Sm, vertical = LegendSpacing.Tiny),
         singleLine = true,
         leadingIcon = { Icon(Icons.Default.Edit, null, tint = LegendColors.TextPrimary) },
@@ -4579,7 +4741,7 @@ private fun LegendSocialDetailField(label: String, value: String, update: (Strin
     )
 }
 
-private fun android.content.Context.isPortableHacVideo(uri: Uri): Boolean {
+private fun Context.isPortableHacVideo(uri: Uri): Boolean {
     val mimeType = contentResolver.getType(uri).orEmpty()
     val fileName = contentResolver.legendDisplayName(uri)
     return mimeType.startsWith("video/", ignoreCase = true) && fileName.endsWith(".mp4", ignoreCase = true)
@@ -4624,9 +4786,9 @@ private fun LegendCommentsSheet(
     ModalBottomSheet(onDismissRequest = onDismiss, containerColor = LegendColors.Canvas) {
         Column(Modifier.fillMaxHeight(.9f)) {
             Row(Modifier.fillMaxWidth().padding(horizontal = LegendSpacing.PageHorizontal, vertical = LegendSpacing.Sm), verticalAlignment = Alignment.CenterVertically) {
-                Text("Comments", style = LegendTypography.Section, color = LegendColors.TextPrimary, modifier = Modifier.weight(1f))
+                Text(legendLocalized("Comments"), style = LegendTypography.Section, color = LegendColors.TextPrimary, modifier = Modifier.weight(1f))
                 Text("${post.commentCount}", style = LegendTypography.Label, color = LegendColors.Gold)
-                TextButton(onClick = onDismiss) { Text("Done", color = LegendColors.Gold) }
+                TextButton(onClick = onDismiss) { Text(legendLocalized("Done"), color = LegendColors.Gold) }
             }
             if (parents.isEmpty()) {
                 Box(Modifier.weight(1f)) { LegendEmptyState("No comments yet", "Be the first to join this LEGEND conversation.") }
@@ -4636,21 +4798,21 @@ private fun LegendCommentsSheet(
                 verticalArrangement = Arrangement.spacedBy(LegendSpacing.Sm),
             ) {
                 items(parents, key = { it.id }) { comment ->
-                    LegendCommentRow(comment, mediaRepository, participantType, { replyTo = comment })
+                    LegendCommentRow(comment, mediaRepository, participantType) { replyTo = comment }
                     replies(comment.id).forEach { reply ->
-                        Row(Modifier.padding(start = LegendSpacing.Xl)) { LegendCommentRow(reply, mediaRepository, participantType, { replyTo = comment }) }
+                        Row(Modifier.padding(start = LegendSpacing.Xl)) { LegendCommentRow(reply, mediaRepository, participantType) { replyTo = comment } }
                     }
                 }
             }
             replyTo?.let { target ->
                 Row(Modifier.fillMaxWidth().background(LegendColors.GoldSoft).padding(horizontal = LegendSpacing.PageHorizontal, vertical = LegendSpacing.Xs), verticalAlignment = Alignment.CenterVertically) {
-                    Text("Replying to ${target.author.displayName}", style = LegendTypography.Label, color = LegendColors.Midnight, modifier = Modifier.weight(1f))
-                    IconButton(onClick = { replyTo = null }) { Icon(Icons.Default.Close, "Cancel reply", tint = LegendColors.Midnight) }
+                    Text(legendLocalized("Replying to {name}", mapOf("name" to target.author.displayName)), style = LegendTypography.Label, color = LegendColors.Midnight, modifier = Modifier.weight(1f))
+                    IconButton(onClick = { replyTo = null }) { Icon(Icons.Default.Close, legendLocalized("Cancel reply", "accessibility copy"), tint = LegendColors.Midnight) }
                 }
             }
             Row(Modifier.fillMaxWidth().background(LegendColors.Surface).padding(horizontal = LegendSpacing.PageHorizontal, vertical = LegendSpacing.Sm), verticalAlignment = Alignment.Bottom) {
-                OutlinedTextField(body, { body = it }, modifier = Modifier.weight(1f), placeholder = { Text("Add a comment") }, maxLines = 4, shape = LegendShapes.Control, colors = legendMessagingFieldColors())
-                IconButton(onClick = { if (body.isNotBlank()) { submit(body.trim(), replyTo?.id); body = ""; replyTo = null } }, enabled = body.isNotBlank(), modifier = Modifier.padding(start = LegendSpacing.Xs).background(if (body.isNotBlank()) LegendColors.Gold else LegendColors.SurfaceInset, CircleShape)) { Icon(Icons.AutoMirrored.Filled.Send, "Post comment", tint = LegendColors.Midnight) }
+                OutlinedTextField(body, { body = it }, modifier = Modifier.weight(1f), placeholder = { Text(legendLocalized("Add a comment")) }, maxLines = 4, shape = LegendShapes.Control, colors = legendMessagingFieldColors())
+                IconButton(onClick = { if (body.isNotBlank()) { submit(body.trim(), replyTo?.id); body = ""; replyTo = null } }, enabled = body.isNotBlank(), modifier = Modifier.padding(start = LegendSpacing.Xs).background(if (body.isNotBlank()) LegendColors.Gold else LegendColors.SurfaceInset, CircleShape)) { Icon(Icons.AutoMirrored.Filled.Send, legendLocalized("Post comment", "accessibility copy"), tint = LegendColors.Midnight) }
             }
         }
     }
@@ -4667,7 +4829,7 @@ private fun LegendCommentRow(comment: SocialComment, mediaRepository: Authentica
                 Text(comment.body, style = LegendTypography.Supporting, color = LegendColors.TextPrimary)
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(legendCompactTime(comment.createdUtc), style = LegendTypography.Label, color = LegendColors.TextTertiary, modifier = Modifier.weight(1f))
-                    TextButton(onClick = reply, modifier = Modifier.height(28.dp)) { Text("Reply", style = LegendTypography.Label, color = LegendColors.Gold) }
+                    TextButton(onClick = reply, modifier = Modifier.height(28.dp)) { Text(legendLocalized("Reply"), style = LegendTypography.Label, color = LegendColors.Gold) }
                 }
             }
         }
@@ -4679,44 +4841,11 @@ private fun EditPostDialog(post: SocialPost, dismiss: () -> Unit, submit: (Strin
     var body by remember(post.id) { mutableStateOf(post.body) }
     AlertDialog(
         onDismissRequest = dismiss,
-        title = { Text("Edit ${post.displayContentLabel()}") },
-        text = { OutlinedTextField(value = body, onValueChange = { body = it }, modifier = Modifier.fillMaxWidth(), minLines = 3, label = { Text("Caption") }) },
-        confirmButton = { TextButton(onClick = { submit(body) }) { Text("Save") } },
-        dismissButton = { TextButton(onClick = dismiss) { Text("Cancel") } },
+        title = { Text(legendLocalized("Edit {content}", mapOf("content" to post.displayContentLabel()))) },
+        text = { OutlinedTextField(value = body, onValueChange = { body = it }, modifier = Modifier.fillMaxWidth(), minLines = 3, label = { Text(legendLocalized("Caption")) }) },
+        confirmButton = { TextButton(onClick = { submit(body) }) { Text(legendLocalized("Save")) } },
+        dismissButton = { TextButton(onClick = dismiss) { Text(legendLocalized("Cancel")) } },
     )
-}
-
-@Composable
-private fun LegendStoryViewer(
-    story: SocialPost,
-    mediaRepository: AuthenticatedMediaRepository,
-    participantType: String,
-    dismiss: () -> Unit,
-    recordView: () -> Unit,
-) {
-    LaunchedEffect(story.id) { recordView() }
-    ModalBottomSheet(onDismissRequest = dismiss, containerColor = LegendColors.Midnight) {
-        LazyColumn(
-            modifier = Modifier.fillMaxWidth(),
-            contentPadding = PaddingValues(horizontal = LegendSpacing.PageHorizontal, vertical = LegendSpacing.Sm),
-            verticalArrangement = Arrangement.spacedBy(LegendSpacing.Sm),
-        ) {
-            item {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    LegendProtectedAvatar(story.author.avatar, story.author.displayName, participantType, mediaRepository)
-                    Spacer(Modifier.width(LegendSpacing.Sm))
-                    Text(story.author.displayName, style = LegendTypography.CardTitle, color = LegendColors.OnNavy, modifier = Modifier.weight(1f))
-                    IconButton(onClick = dismiss) { Icon(Icons.Default.Close, "Close story", tint = LegendColors.OnNavy) }
-                }
-            }
-            items(story.media, key = { it.id }) { media ->
-                LegendProtectedSocialMedia(media.id, media.mediaKind, participantType, mediaRepository, media.accessibilityText, Modifier.fillMaxWidth())
-            }
-            if (story.body.isNotBlank()) {
-                item { Text(story.body, style = LegendTypography.Body, color = LegendColors.OnNavy) }
-            }
-        }
-    }
 }
 
 @Composable
@@ -4744,12 +4873,12 @@ private fun LegendSocialProfileSheet(
                     Column(Modifier.weight(1f)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(author.displayName, style = LegendTypography.Section, color = LegendColors.TextPrimary)
-                            if (author.isVerified) Icon(Icons.Default.Verified, "Verified", modifier = Modifier.padding(start = LegendSpacing.Xs).size(18.dp), tint = LegendColors.Verified)
+                            if (author.isVerified) Icon(Icons.Default.Verified, legendLocalized("Verified", "accessibility copy"), modifier = Modifier.padding(start = LegendSpacing.Xs).size(18.dp), tint = LegendColors.Verified)
                         }
                         author.username?.let { Text("@$it", style = LegendTypography.Label, color = LegendColors.TextSecondary) }
                         author.roleLabel?.let { Text(it, style = LegendTypography.Label, color = LegendColors.Gold) }
                     }
-                    TextButton(onClick = dismiss) { Text("Done", color = LegendColors.Gold) }
+                    TextButton(onClick = dismiss) { Text(legendLocalized("Done"), color = LegendColors.Gold) }
                 }
             }
             author.bio?.takeIf(String::isNotBlank)?.let { bio -> item { Text(bio, style = LegendTypography.Body, color = LegendColors.TextPrimary) } }
@@ -4768,7 +4897,7 @@ private fun LegendSocialProfileSheet(
                     else -> Unit
                 }
             }
-            item { Text("Posts", style = LegendTypography.Section, color = LegendColors.TextPrimary) }
+            item { Text(legendLocalized("Posts"), style = LegendTypography.Section, color = LegendColors.TextPrimary) }
             when (posts) {
                 LoadState.Idle, LoadState.Loading -> item { LegendLoadingState() }
                 is LoadState.Error -> item { LegendErrorState((posts as LoadState.Error).message) { viewModel.loadPublicProfile(author) } }
@@ -4802,7 +4931,7 @@ private fun LegendSocialProfileSheet(
 private fun LegendMetric(label: String, value: String) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Text(value, style = LegendTypography.CardTitle, color = LegendColors.OnNavy)
-        Text(label, style = LegendTypography.Label, color = LegendColors.GoldSoft)
+        Text(legendLocalized(label), style = LegendTypography.Label, color = LegendColors.GoldSoft)
     }
 }
 
@@ -4826,6 +4955,7 @@ private fun AccountScreen(
     currentAccountId: String,
     switchSignedInAccount: (String) -> Unit,
     addAccount: () -> Unit,
+    refreshLocalization: suspend () -> Unit,
     signOut: () -> Unit,
 ) {
     val profile by viewModel.profile.collectAsStateWithLifecycle()
@@ -4921,7 +5051,7 @@ private fun AccountScreen(
                                 modifier = Modifier.fillMaxWidth().heightIn(min = LegendSize.MinimumTapTarget),
                                 shape = LegendShapes.Control,
                                 colors = ButtonDefaults.buttonColors(containerColor = LegendColors.Navy, contentColor = LegendColors.OnNavy),
-                            ) { Text("Edit profile", style = LegendTypography.BodyEmphasis) }
+                            ) { Text(legendLocalized("Edit profile"), style = LegendTypography.BodyEmphasis) }
                         }
                         item {
                             LegendProfileContentSelector(selectedContent) { selectedContent = it }
@@ -4965,7 +5095,9 @@ private fun AccountScreen(
             current = account.translationAccess?.preferredCommunicationLanguage.orEmpty(),
             onDismiss = { languageAccount = null },
             submit = { language ->
-                viewModel.updateLanguage(account, language)
+                viewModel.updateLanguage(account, language) {
+                    profilePagerScope.launch { refreshLocalization() }
+                }
                 languageAccount = null
             },
         )
@@ -4998,7 +5130,7 @@ private fun AccountScreen(
         LegendCommunitySafetyReviewSheet(communitySafetyViewModel, isFounder) { communitySafetyOpen = false }
     }
     if (followRequestsOpen) {
-        LegendFollowRequestsSheet(socialViewModel, mediaRepository, participantType, { followRequestsOpen = false })
+        LegendFollowRequestsSheet(socialViewModel, mediaRepository, participantType) { followRequestsOpen = false }
     }
     if (creatorInsightsOpen) {
         LegendCreatorInsightsSheet(
@@ -5085,7 +5217,7 @@ private val Int?.orZero get() = this ?: 0
 private val SocialCollection.socialContentType: LegendSocialContentType
     get() = when (this) {
         SocialCollection.POSTS -> LegendSocialContentType.POST
-        SocialCollection.HACS -> LegendSocialContentType.HAC
+        SocialCollection.SHORT_VIDEOS -> LegendSocialContentType.HAC
         SocialCollection.STORIES -> LegendSocialContentType.STORY
     }
 
@@ -5138,7 +5270,7 @@ private fun LegendProfileIdentityCard(
                                 .border(1.dp, LegendColors.OnNavy, CircleShape),
                             contentAlignment = Alignment.Center,
                         ) {
-                            Icon(Icons.Default.PhotoCamera, "Change profile photo", tint = LegendColors.Midnight, modifier = Modifier.size(14.dp))
+                            Icon(Icons.Default.PhotoCamera, legendLocalized("Change profile photo", "accessibility copy"), tint = LegendColors.Midnight, modifier = Modifier.size(14.dp))
                         }
                     }
                 }
@@ -5163,7 +5295,7 @@ private fun LegendProfileIdentityCard(
                             onDismissRequest = { accountMenuOpen = false },
                         ) {
                             DropdownMenuItem(
-                                text = { Text("Current: ${account.participantType}") },
+                                text = { Text(legendLocalized("Current: {workspace}", mapOf("workspace" to account.participantType))) },
                                 leadingIcon = { Icon(Icons.Default.CheckCircle, null, tint = LegendColors.Gold) },
                                 onClick = { accountMenuOpen = false },
                                 enabled = false,
@@ -5172,7 +5304,7 @@ private fun LegendProfileIdentityCard(
                                 HorizontalDivider()
                                 alternateParticipantTypes.forEach { role ->
                                     DropdownMenuItem(
-                                        text = { Text("Continue as $role") },
+                                        text = { Text(legendLocalized("Continue as {role}", mapOf("role" to role))) },
                                         leadingIcon = {
                                             Icon(
                                                 if (role.equals("Agent", ignoreCase = true)) Icons.Default.BusinessCenter else Icons.Default.Person,
@@ -5226,7 +5358,7 @@ private fun LegendProfileIdentityCard(
                             overflow = TextOverflow.Ellipsis,
                             modifier = Modifier.weight(1f, fill = false),
                         )
-                        if (account.isVerified) Icon(Icons.Default.Verified, "Verified", modifier = Modifier.padding(start = LegendSpacing.Xs).size(20.dp), tint = LegendColors.Verified)
+                        if (account.isVerified) Icon(Icons.Default.Verified, legendLocalized("Verified", "accessibility copy"), modifier = Modifier.padding(start = LegendSpacing.Xs).size(20.dp), tint = LegendColors.Verified)
                     }
                 }
                 IconButton(
@@ -5236,7 +5368,7 @@ private fun LegendProfileIdentityCard(
                     Box(
                         Modifier.size(LegendSize.ProfileSettingsIcon).background(LegendColors.Navy, CircleShape),
                         contentAlignment = Alignment.Center,
-                    ) { Icon(Icons.Default.Settings, "Open profile settings", tint = LegendColors.OnNavy) }
+                    ) { Icon(Icons.Default.Settings, legendLocalized("Open profile settings", "accessibility copy"), tint = LegendColors.OnNavy) }
                 }
             }
 
@@ -5248,7 +5380,7 @@ private fun LegendProfileIdentityCard(
             if (account.isPhoneVisible) account.phone?.takeIf(String::isNotBlank)?.let { LegendProfileDetail(Icons.Default.Phone, it, LegendColors.TextSecondary) }
 
             Row(Modifier.fillMaxWidth().padding(top = LegendSpacing.Xs), horizontalArrangement = Arrangement.SpaceEvenly) {
-                LegendProfileMetric(hacCount, "Hacs", Modifier.weight(1f))
+                LegendProfileMetric(hacCount, "${LegendCopy.value("content.hac")}s", Modifier.weight(1f))
                 LegendProfileMetric(metrics?.followingCount.orZero, "Following", Modifier.weight(1f))
                 LegendProfileMetric(metrics?.followerCount.orZero, "Followers", Modifier.weight(1f))
             }
@@ -5257,7 +5389,7 @@ private fun LegendProfileIdentityCard(
 }
 
 @Composable
-private fun LegendProfileDetail(icon: androidx.compose.ui.graphics.vector.ImageVector, value: String, color: androidx.compose.ui.graphics.Color) {
+private fun LegendProfileDetail(icon: ImageVector, value: String, color: Color) {
     Row(verticalAlignment = Alignment.CenterVertically) {
         Icon(icon, null, tint = color, modifier = Modifier.size(18.dp))
         Spacer(Modifier.width(LegendSpacing.Xs))
@@ -5283,7 +5415,7 @@ private fun LegendProfileContentSelector(selected: SocialCollection, select: (So
             .padding(LegendSpacing.Tiny),
         horizontalArrangement = Arrangement.spacedBy(LegendSpacing.Xs),
     ) {
-        listOf(SocialCollection.POSTS, SocialCollection.HACS, SocialCollection.STORIES).forEach { option ->
+        listOf(SocialCollection.POSTS, SocialCollection.SHORT_VIDEOS, SocialCollection.STORIES).forEach { option ->
             val isSelected = option == selected
             TextButton(
                 onClick = { select(option) },
@@ -5291,7 +5423,7 @@ private fun LegendProfileContentSelector(selected: SocialCollection, select: (So
                 shape = LegendShapes.Compact,
                 contentPadding = PaddingValues(horizontal = LegendSpacing.Tiny, vertical = LegendSpacing.Xs),
                 colors = ButtonDefaults.textButtonColors(
-                    containerColor = if (isSelected) LegendColors.Navy else androidx.compose.ui.graphics.Color.Transparent,
+                    containerColor = if (isSelected) LegendColors.Navy else Color.Transparent,
                     contentColor = if (isSelected) LegendColors.OnNavy else LegendColors.Navy,
                 ),
             ) {
@@ -5299,7 +5431,7 @@ private fun LegendProfileContentSelector(selected: SocialCollection, select: (So
                     Icon(
                         when (option) {
                             SocialCollection.POSTS -> Icons.Default.GridView
-                            SocialCollection.HACS -> Icons.Default.VideoLibrary
+                            SocialCollection.SHORT_VIDEOS -> Icons.Default.VideoLibrary
                             SocialCollection.STORIES -> Icons.Default.RadioButtonUnchecked
                         },
                         null,
@@ -5357,7 +5489,7 @@ private fun LegendProfileGridTile(
                 repository = mediaRepository,
                 contentDescription = media.accessibilityText,
                 modifier = Modifier.fillMaxSize(),
-                contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                contentScale = ContentScale.Crop,
                 videoHeight = null,
             )
         } else {
@@ -5376,10 +5508,10 @@ private fun LegendProfileGridTile(
             }
         }
         if (post.legendContentType == LegendSocialContentType.HAC) {
-            Icon(Icons.Default.PlayCircle, "Play Hac", tint = LegendColors.OnNavy, modifier = Modifier.align(Alignment.TopEnd).padding(LegendSpacing.Xs).size(22.dp))
+            Icon(Icons.Default.PlayCircle, legendLocalized("Play Hac", "accessibility copy"), tint = LegendColors.OnNavy, modifier = Modifier.align(Alignment.TopEnd).padding(LegendSpacing.Xs).size(22.dp))
         }
         if (post.legendContentType == LegendSocialContentType.STORY) {
-            Icon(Icons.Default.RadioButtonUnchecked, "Story", tint = LegendColors.GoldBright, modifier = Modifier.align(Alignment.TopEnd).padding(LegendSpacing.Xs).size(20.dp))
+            Icon(Icons.Default.RadioButtonUnchecked, legendLocalized("Story", "accessibility copy"), tint = LegendColors.GoldBright, modifier = Modifier.align(Alignment.TopEnd).padding(LegendSpacing.Xs).size(20.dp))
         }
     }
 }
@@ -5404,8 +5536,8 @@ private fun LegendProfileContentEmptyState(content: SocialCollection) {
             verticalArrangement = Arrangement.spacedBy(LegendSpacing.Xs),
         ) {
             Icon(Icons.Default.Collections, null, tint = LegendColors.Gold, modifier = Modifier.size(28.dp))
-            Text("No ${content.label.lowercase()} yet", style = LegendTypography.Section, color = LegendColors.TextPrimary)
-            Text("Published ${content.label.lowercase()} will appear here.", style = LegendTypography.Supporting, color = LegendColors.TextSecondary)
+            Text(legendLocalized("No {content} yet", mapOf("content" to content.label.lowercase())), style = LegendTypography.Section, color = LegendColors.TextPrimary)
+            Text(legendLocalized("Published {content} will appear here.", mapOf("content" to content.label.lowercase())), style = LegendTypography.Supporting, color = LegendColors.TextSecondary)
         }
     }
 }
@@ -5441,15 +5573,12 @@ private fun LegendAccountSettingsSheet(
         ) {
             item {
                 LegendProfileSheetHeader(
-                    eyebrow = "Member experience",
-                    title = "Profile settings",
-                    detail = "Personalize the details people see here. These settings are private to the LEGEND mobile app.",
                     dismiss = dismiss,
                 )
             }
             item { AccountSettingsRow("Edit profile", "Update your public profile, handle, and visibility", Icons.Default.Edit, click = { edit(account) }) }
             if (isFounder) item { AccountSettingsRow("Creator insights", "Review reach and engagement", Icons.Default.Insights, creatorInsights) }
-            item { AccountSettingsRow("Language preferences", account.translationAccess?.preferredCommunicationLanguage ?: "No preferred communication language set", Icons.Default.Translate, { language(account) }, footnote = "Translation is server-only.") }
+            item { AccountSettingsRow("Language preferences", account.translationAccess?.preferredCommunicationLanguage ?: legendLocalized("No preferred communication language set"), Icons.Default.Translate, { language(account) }, footnote = legendLocalized("Translation is server-only.")) }
             if (isFounder) item { AccountSettingsRow("Founder management", "Server-authorized account archive and removal controls", Icons.Default.AdminPanelSettings, founderManagement) }
             if (isFounder) item { AccountSettingsRow("Member authority", "Grant or revoke founder-controlled LEGEND resources", Icons.Default.ManageAccounts, memberAuthority) }
             if (canManageScripture) item { AccountSettingsRow("Daily Scripture", "Manage the server-owned scripture schedule", Icons.AutoMirrored.Filled.MenuBook, scriptureManagement) }
@@ -5463,19 +5592,19 @@ private fun LegendAccountSettingsSheet(
                         .border(LegendSpacing.Hairline, LegendColors.Gold.copy(alpha = 0.52f), LegendShapes.Card),
                 ) {
                     Column(Modifier.padding(LegendSpacing.CardContent), verticalArrangement = Arrangement.spacedBy(LegendSpacing.Xs)) {
-                        Text("Privacy & safety", style = LegendTypography.CardTitle, color = LegendColors.OnNavy)
+                        Text(legendLocalized("Privacy & safety"), style = LegendTypography.CardTitle, color = LegendColors.OnNavy)
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Column(Modifier.weight(1f)) {
-                                Text("Private profile", style = LegendTypography.Body, color = LegendColors.OnNavy)
-                                Text(if (account.isPrivate) "Only approved followers can view your profile." else "Your public profile is visible to your LEGEND network.", style = LegendTypography.Supporting, color = LegendColors.OnNavy.copy(alpha = 0.76f))
+                                Text(legendLocalized("Private profile"), style = LegendTypography.Body, color = LegendColors.OnNavy)
+                                Text(if (account.isPrivate) legendLocalized("Only approved followers can view your profile.") else legendLocalized("Your public profile is visible to your LEGEND network."), style = LegendTypography.Supporting, color = LegendColors.OnNavy.copy(alpha = 0.76f))
                             }
                             Switch(checked = account.isPrivate, onCheckedChange = updatePrivacy)
                         }
                         HorizontalDivider(color = LegendColors.OnNavy.copy(alpha = 0.16f))
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Column(Modifier.weight(1f)) {
-                                Text("Improve LEGEND Connect", style = LegendTypography.Body, color = LegendColors.OnNavy)
-                                Text("When every participant opts in, eligible translated conversations can improve LEGEND Connect.", style = LegendTypography.Supporting, color = LegendColors.OnNavy.copy(alpha = 0.76f))
+                                Text(legendLocalized("Improve LEGEND Connect"), style = LegendTypography.Body, color = LegendColors.OnNavy)
+                                Text(legendLocalized("When every participant opts in, eligible translated conversations can improve LEGEND Connect."), style = LegendTypography.Supporting, color = LegendColors.OnNavy.copy(alpha = 0.76f))
                             }
                             Switch(checked = account.allowsConsentedTranslationLearning, onCheckedChange = updateTranslationLearningConsent)
                         }
@@ -5492,11 +5621,11 @@ private fun LegendAccountSettingsSheet(
                         .border(LegendSpacing.Hairline, LegendColors.Gold.copy(alpha = 0.52f), LegendShapes.Card),
                 ) {
                     Column(Modifier.padding(LegendSpacing.CardContent), verticalArrangement = Arrangement.spacedBy(LegendSpacing.Xs)) {
-                        Text("Account lifecycle", style = LegendTypography.CardTitle, color = LegendColors.OnNavy)
-                        Text(lifecycle?.value?.state ?: "Loading account status", style = LegendTypography.Supporting, color = LegendColors.OnNavy.copy(alpha = 0.76f))
-                        if (lifecycle?.value?.canResume == true) TextButton(onClick = resume) { Text("Resume account", color = LegendColors.GoldBright) }
-                        else TextButton(onClick = pause) { Text("Pause account", color = LegendColors.GoldBright) }
-                        TextButton(onClick = deleteAccount) { Text("Request account deletion", color = LegendColors.Error) }
+                        Text(legendLocalized("Account lifecycle"), style = LegendTypography.CardTitle, color = LegendColors.OnNavy)
+                        Text(lifecycle?.value?.state ?: legendLocalized("Loading account status"), style = LegendTypography.Supporting, color = LegendColors.OnNavy.copy(alpha = 0.76f))
+                        if (lifecycle?.value?.canResume == true) TextButton(onClick = resume) { Text(legendLocalized("Resume account"), color = LegendColors.GoldBright) }
+                        else TextButton(onClick = pause) { Text(legendLocalized("Pause account"), color = LegendColors.GoldBright) }
+                        TextButton(onClick = deleteAccount) { Text(legendLocalized("Request account deletion"), color = LegendColors.Error) }
                     }
                 }
             }
@@ -5521,11 +5650,11 @@ private fun LegendCreatorInsightsSheet(
             item {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
-                        Text("CREATOR INTELLIGENCE", style = LegendTypography.Eyebrow, color = LegendColors.Gold)
-                        Text("Your LEGEND impact", style = LegendTypography.Section, color = LegendColors.TextPrimary)
-                        Text("Reach and engagement generated from protected LEGEND activity.", style = LegendTypography.Supporting, color = LegendColors.TextSecondary)
+                        Text(legendLocalized("CREATOR INTELLIGENCE"), style = LegendTypography.Eyebrow, color = LegendColors.Gold)
+                        Text(legendLocalized("Your LEGEND impact"), style = LegendTypography.Section, color = LegendColors.TextPrimary)
+                        Text(legendLocalized("Reach and engagement generated from protected LEGEND activity."), style = LegendTypography.Supporting, color = LegendColors.TextSecondary)
                     }
-                    IconButton(onClick = dismiss) { Icon(Icons.Default.Close, "Close creator insights", tint = LegendColors.TextPrimary) }
+                    IconButton(onClick = dismiss) { Icon(Icons.Default.Close, legendLocalized("Close creator insights", "accessibility copy"), tint = LegendColors.TextPrimary) }
                 }
             }
             if (insights == null) {
@@ -5546,9 +5675,9 @@ private fun LegendCreatorInsightsSheet(
                 item {
                     Surface(color = LegendColors.BrandBlueSurface, shape = LegendShapes.Card, modifier = Modifier.fillMaxWidth()) {
                         Column(Modifier.padding(LegendSpacing.CardContent), verticalArrangement = Arrangement.spacedBy(LegendSpacing.Xs)) {
-                            Text("CONTENT AND COMMUNITY", style = LegendTypography.Eyebrow, color = LegendColors.Gold)
+                            Text(legendLocalized("CONTENT AND COMMUNITY"), style = LegendTypography.Eyebrow, color = LegendColors.Gold)
                             LegendCreatorInsightValue("Posts", profileMetrics?.postCount?.toString() ?: "—")
-                            LegendCreatorInsightValue("Hacs", profileMetrics?.videoCount?.toString() ?: "—")
+                            LegendCreatorInsightValue("${LegendCopy.value("content.hac")}s", profileMetrics?.videoCount?.toString() ?: "—")
                             LegendCreatorInsightValue("Stories", profileMetrics?.storyCount?.toString() ?: "—")
                             LegendCreatorInsightValue("Following", profileMetrics?.followingCount?.toString() ?: "—")
                             LegendCreatorInsightValue("Profile visits", insights.profileVisits.toString())
@@ -5557,7 +5686,7 @@ private fun LegendCreatorInsightsSheet(
                     }
                 }
                 item { LegendCreatorInsightList("Top posts", "Publish a post to begin building performance history.", insights.topPosts) }
-                item { LegendCreatorInsightList("Top Hacs", "Publish a Hac to begin building Hac performance history.", insights.topVideos) }
+                item { LegendCreatorInsightList("Top ${LegendCopy.value("content.hac")}s", "Publish a ${LegendCopy.value("content.hac")} to begin building ${LegendCopy.value("content.hac")} performance history.", insights.topVideos) }
                 item { LegendCreatorInsightList("Top stories", "Publish a story to begin building story performance history.", insights.topStories) }
             }
         }
@@ -5568,15 +5697,15 @@ private fun LegendCreatorInsightsSheet(
 private fun LegendCreatorInsightMetric(
     label: String,
     value: String,
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    color: androidx.compose.ui.graphics.Color,
+    icon: ImageVector,
+    color: Color,
     modifier: Modifier = Modifier,
 ) {
     Surface(color = LegendColors.BrandBlueSurface, shape = LegendShapes.Control, modifier = modifier) {
         Column(Modifier.padding(LegendSpacing.Md), verticalArrangement = Arrangement.spacedBy(LegendSpacing.Xs)) {
             Icon(icon, null, tint = color, modifier = Modifier.size(20.dp))
             Text(value, style = LegendTypography.Section, color = LegendColors.TextPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(label, style = LegendTypography.Caption, color = LegendColors.TextSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(legendLocalized(label), style = LegendTypography.Caption, color = LegendColors.TextSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
     }
 }
@@ -5584,7 +5713,7 @@ private fun LegendCreatorInsightMetric(
 @Composable
 private fun LegendCreatorInsightValue(label: String, value: String) {
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-        Text(label, style = LegendTypography.Supporting, color = LegendColors.TextSecondary)
+        Text(legendLocalized(label), style = LegendTypography.Supporting, color = LegendColors.TextSecondary)
         Text(value, style = LegendTypography.BodyEmphasis, color = LegendColors.TextPrimary)
     }
 }
@@ -5593,15 +5722,22 @@ private fun LegendCreatorInsightValue(label: String, value: String) {
 private fun LegendCreatorInsightList(title: String, emptyMessage: String, items: List<SocialPostInsight>) {
     Surface(color = LegendColors.SurfaceElevated, shape = LegendShapes.Card, modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(LegendSpacing.CardContent), verticalArrangement = Arrangement.spacedBy(LegendSpacing.Sm)) {
-            Text(title, style = LegendTypography.CardTitle, color = LegendColors.TextPrimary)
+            Text(legendLocalized(title), style = LegendTypography.CardTitle, color = LegendColors.TextPrimary)
             if (items.isEmpty()) {
-                Text(emptyMessage, style = LegendTypography.Supporting, color = LegendColors.TextSecondary)
+                Text(legendLocalized(emptyMessage), style = LegendTypography.Supporting, color = LegendColors.TextSecondary)
             } else {
                 items.forEach { insight ->
                     Column(verticalArrangement = Arrangement.spacedBy(LegendSpacing.Micro)) {
-                        Text(insight.postedUtc.take(10), style = LegendTypography.BodyEmphasis, color = LegendColors.TextPrimary)
+                        Text(legendDate(insight.postedUtc), style = LegendTypography.BodyEmphasis, color = LegendColors.TextPrimary)
                         Text(
-                            "${insight.metrics.uniqueViewerCount} reached · ${insight.metrics.reactionCount} appreciations · ${legendInsightPercentage(insight.engagementRatePercentage)} engagement",
+                            legendLocalized(
+                                "{reachCount} reached · {appreciationCount} appreciations · {engagementPercentage} engagement",
+                                mapOf(
+                                    "reachCount" to insight.metrics.uniqueViewerCount,
+                                    "appreciationCount" to insight.metrics.reactionCount,
+                                    "engagementPercentage" to legendInsightPercentage(insight.engagementRatePercentage),
+                                ),
+                            ),
                             style = LegendTypography.Supporting,
                             color = LegendColors.TextSecondary,
                         )
@@ -5613,10 +5749,13 @@ private fun LegendCreatorInsightList(title: String, emptyMessage: String, items:
 }
 
 private fun legendInsightPercentage(value: Double): String =
-    String.format(java.util.Locale.US, "%.1f%%", value)
+    NumberFormat.getPercentInstance(LegendLocalizationRuntime.locale()).apply {
+        minimumFractionDigits = 1
+        maximumFractionDigits = 1
+    }.format(value / 100.0)
 
 @Composable
-private fun AccountSettingsRow(title: String, detail: String, icon: androidx.compose.ui.graphics.vector.ImageVector, click: () -> Unit, footnote: String? = null) {
+private fun AccountSettingsRow(title: String, detail: String, icon: ImageVector, click: () -> Unit, footnote: String? = null) {
     Surface(
         color = LegendColors.ContactNavy,
         shape = LegendShapes.Control,
@@ -5629,9 +5768,9 @@ private fun AccountSettingsRow(title: String, detail: String, icon: androidx.com
             Icon(icon, null, tint = LegendColors.GoldBright, modifier = Modifier.size(22.dp))
             Spacer(Modifier.width(LegendSpacing.Sm))
             Column(Modifier.weight(1f)) {
-                Text(title, style = LegendTypography.CardTitle, color = LegendColors.OnNavy)
-                Text(detail, style = LegendTypography.Supporting, color = LegendColors.OnNavy.copy(alpha = 0.76f), maxLines = 2, overflow = TextOverflow.Ellipsis)
-                footnote?.let { Text(it, style = LegendTypography.Label, color = LegendColors.GoldBright) }
+                Text(legendLocalized(title), style = LegendTypography.CardTitle, color = LegendColors.OnNavy)
+                Text(legendLocalized(detail), style = LegendTypography.Supporting, color = LegendColors.OnNavy.copy(alpha = 0.76f), maxLines = 2, overflow = TextOverflow.Ellipsis)
+                footnote?.let { Text(legendLocalized(it), style = LegendTypography.Label, color = LegendColors.GoldBright) }
             }
             Icon(Icons.Default.ChevronRight, null, tint = LegendColors.OnNavy.copy(alpha = 0.82f))
         }
@@ -5641,9 +5780,6 @@ private fun AccountSettingsRow(title: String, detail: String, icon: androidx.com
 /** iOS-equivalent branded sheet header with an explicit, always-reachable close action. */
 @Composable
 private fun LegendProfileSheetHeader(
-    eyebrow: String,
-    title: String,
-    detail: String,
     dismiss: () -> Unit,
 ) {
     Row(
@@ -5660,10 +5796,16 @@ private fun LegendProfileSheetHeader(
                         .background(LegendGradients.Gold, CircleShape),
                 )
                 Spacer(Modifier.width(LegendSpacing.Xs))
-                Text(eyebrow.uppercase(), style = LegendTypography.Eyebrow, color = LegendColors.Gold)
+                Text(legendLocalized("MEMBER EXPERIENCE"), style = LegendTypography.Eyebrow, color = LegendColors.Gold)
             }
-            Text(title, style = LegendTypography.Title, color = LegendColors.TextPrimary)
-            Text(detail, style = LegendTypography.Caption, color = LegendColors.TextSecondary, maxLines = 3, overflow = TextOverflow.Ellipsis)
+            Text(legendLocalized("Profile settings"), style = LegendTypography.Title, color = LegendColors.TextPrimary)
+            Text(
+                legendLocalized("Personalize the details people see here. These settings are private to the LEGEND mobile app."),
+                style = LegendTypography.Caption,
+                color = LegendColors.TextSecondary,
+                maxLines = 3,
+                overflow = TextOverflow.Ellipsis,
+            )
         }
         IconButton(
             onClick = dismiss,
@@ -5672,7 +5814,7 @@ private fun LegendProfileSheetHeader(
                 .background(LegendGradients.Finance, CircleShape)
                 .border(LegendSpacing.Hairline, LegendColors.OnNavy.copy(alpha = 0.16f), CircleShape),
         ) {
-            Icon(Icons.Default.Close, "Close profile settings", tint = LegendColors.OnNavy, modifier = Modifier.size(14.dp))
+            Icon(Icons.Default.Close, legendLocalized("Close profile settings", "accessibility copy"), tint = LegendColors.OnNavy, modifier = Modifier.size(14.dp))
         }
     }
 }
@@ -5695,11 +5837,11 @@ private fun LegendDailyScriptureManagementSheet(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Column(Modifier.weight(1f)) {
-                    Text("CONTENT MANAGEMENT", style = LegendTypography.Eyebrow, color = LegendColors.Gold)
-                    Text("Daily Scripture", style = LegendTypography.Section, color = LegendColors.TextPrimary)
-                    Text("The server resolves each LEGEND business day. Scheduled overrides apply only on their date.", style = LegendTypography.Supporting, color = LegendColors.TextSecondary)
+                    Text(legendLocalized("CONTENT MANAGEMENT"), style = LegendTypography.Eyebrow, color = LegendColors.Gold)
+                    Text(legendLocalized("Daily Scripture"), style = LegendTypography.Section, color = LegendColors.TextPrimary)
+                    Text(legendLocalized("The server resolves each LEGEND business day. Scheduled overrides apply only on their date."), style = LegendTypography.Supporting, color = LegendColors.TextSecondary)
                 }
-                TextButton(onClick = dismiss) { Text("Done", color = LegendColors.Gold) }
+                TextButton(onClick = dismiss) { Text(legendLocalized("Done"), color = LegendColors.Gold) }
             }
             when (state) {
                 LoadState.Idle, LoadState.Loading -> LegendLoadingState()
@@ -5714,12 +5856,12 @@ private fun LegendDailyScriptureManagementSheet(
                         item {
                             Surface(color = LegendColors.Navy, shape = LegendShapes.Hero, modifier = Modifier.fillMaxWidth()) {
                                 Column(Modifier.padding(LegendSpacing.CardContent), verticalArrangement = Arrangement.spacedBy(LegendSpacing.Xs)) {
-                                    Text("TODAY · ${snapshot.businessDate}", style = LegendTypography.Eyebrow, color = LegendColors.Gold)
+                                    Text(legendLocalized("TODAY · {date}", mapOf("date" to legendDate(snapshot.businessDate))), style = LegendTypography.Eyebrow, color = LegendColors.Gold)
                                     Text(snapshot.current.reference, style = LegendTypography.Section, color = LegendColors.OnNavy)
                                     Text(snapshot.current.text.ifBlank { snapshot.current.passageText }, style = LegendTypography.Supporting, color = LegendColors.GoldSoft, maxLines = 3, overflow = TextOverflow.Ellipsis)
-                                    Text(snapshot.current.source.let { if (it == "ScheduledOverride") "Scheduled override" else "Daily collection" }, style = LegendTypography.Label, color = LegendColors.Gold)
+                                    Text(snapshot.current.source.let { if (it == "ScheduledOverride") legendLocalized("Scheduled override") else legendLocalized("Daily collection") }, style = LegendTypography.Label, color = LegendColors.Gold)
                                     LegendPrimaryButton(
-                                        text = if (snapshot.upcoming.any { it.displayDate == snapshot.businessDate }) "Edit today" else "Override today",
+                                        text = if (snapshot.upcoming.any { it.displayDate == snapshot.businessDate }) legendLocalized("Edit today") else legendLocalized("Override today"),
                                         modifier = Modifier.fillMaxWidth(),
                                     ) {
                                         editor = snapshot.upcoming.firstOrNull { it.displayDate == snapshot.businessDate }
@@ -5731,10 +5873,10 @@ private fun LegendDailyScriptureManagementSheet(
                         item {
                             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                                 Column(Modifier.weight(1f)) {
-                                    Text("Schedule", style = LegendTypography.CardTitle, color = LegendColors.TextPrimary)
-                                    Text("Date, reference, translation, and exact passage text remain server-authoritative.", style = LegendTypography.Supporting, color = LegendColors.TextSecondary)
+                                    Text(legendLocalized("Schedule"), style = LegendTypography.CardTitle, color = LegendColors.TextPrimary)
+                                    Text(legendLocalized("Date, reference, translation, and exact passage text remain server-authoritative."), style = LegendTypography.Supporting, color = LegendColors.TextSecondary)
                                 }
-                                TextButton(onClick = { creating = true; editor = null }) { Text("Schedule", color = LegendColors.Gold) }
+                                TextButton(onClick = { creating = true; editor = null }) { Text(legendLocalized("Schedule"), color = LegendColors.Gold) }
                             }
                         }
                         if (snapshot.upcoming.isEmpty()) {
@@ -5744,12 +5886,12 @@ private fun LegendDailyScriptureManagementSheet(
                                 Surface(color = LegendColors.Surface, shape = LegendShapes.Control, modifier = Modifier.fillMaxWidth()) {
                                     Row(Modifier.padding(LegendSpacing.Sm), verticalAlignment = Alignment.CenterVertically) {
                                         Column(Modifier.weight(1f)) {
-                                            Text(override.displayDate, style = LegendTypography.Eyebrow, color = LegendColors.Gold)
+                                            Text(legendDate(override.displayDate), style = LegendTypography.Eyebrow, color = LegendColors.Gold)
                                             Text(override.reference, style = LegendTypography.CardTitle, color = LegendColors.TextPrimary)
                                             Text(override.translation, style = LegendTypography.Supporting, color = LegendColors.TextSecondary)
                                         }
-                                        TextButton(onClick = { editor = override; creating = false }) { Text("Edit", color = LegendColors.Gold) }
-                                        IconButton(onClick = { removalTarget = override }) { Icon(Icons.Default.Delete, "Remove scheduled scripture", tint = LegendColors.Error) }
+                                        TextButton(onClick = { editor = override; creating = false }) { Text(legendLocalized("Edit"), color = LegendColors.Gold) }
+                                        IconButton(onClick = { removalTarget = override }) { Icon(Icons.Default.Delete, legendLocalized("Remove scheduled scripture", "accessibility copy"), tint = LegendColors.Error) }
                                     }
                                 }
                             }
@@ -5757,14 +5899,14 @@ private fun LegendDailyScriptureManagementSheet(
                     }
                 }
             }
-            if (action is LoadState.Error) Text((action as LoadState.Error).message, style = LegendTypography.Supporting, color = LegendColors.Error, modifier = Modifier.padding(LegendSpacing.PageHorizontal))
+            if (action is LoadState.Error) Text(legendLocalized((action as LoadState.Error).message), style = LegendTypography.Supporting, color = LegendColors.Error, modifier = Modifier.padding(LegendSpacing.PageHorizontal))
         }
     }
     if (creating || editor != null) {
         val businessDate = (state as? LoadState.Data<DailyScriptureManagementSnapshot>)?.value?.businessDate
         LegendDailyScriptureEditorSheet(
             existing = editor,
-            defaultDate = businessDate?.let { runCatching { java.time.LocalDate.parse(it).plusDays(1).toString() }.getOrDefault(it) }.orEmpty(),
+            defaultDate = businessDate?.let { runCatching { LocalDate.parse(it).plusDays(1).toString() }.getOrDefault(it) }.orEmpty(),
             dismiss = { creating = false; editor = null },
             submit = { draft -> viewModel.save(editor?.id, draft) { creating = false; editor = null } },
         )
@@ -5772,10 +5914,10 @@ private fun LegendDailyScriptureManagementSheet(
     removalTarget?.let { target ->
         AlertDialog(
             onDismissRequest = { removalTarget = null },
-            title = { Text("Remove this scheduled scripture?") },
-            text = { Text("LEGEND will return to its daily collection for ${target.displayDate} unless another override is scheduled.") },
-            confirmButton = { TextButton(onClick = { viewModel.remove(target.id); removalTarget = null }) { Text("Remove override", color = LegendColors.Error) } },
-            dismissButton = { TextButton(onClick = { removalTarget = null }) { Text("Cancel", color = LegendColors.Gold) } },
+            title = { Text(legendLocalized("Remove this scheduled scripture?")) },
+            text = { Text(legendLocalized("LEGEND will return to its daily collection for {date} unless another override is scheduled.", mapOf("date" to target.displayDate))) },
+            confirmButton = { TextButton(onClick = { viewModel.remove(target.id); removalTarget = null }) { Text(legendLocalized("Remove override"), color = LegendColors.Error) } },
+            dismissButton = { TextButton(onClick = { removalTarget = null }) { Text(legendLocalized("Cancel"), color = LegendColors.Gold) } },
         )
     }
 }
@@ -5800,13 +5942,13 @@ private fun LegendDailyScriptureEditorSheet(
             item {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
-                        Text(if (existing == null) "SCHEDULE SCRIPTURE" else "EDIT SCRIPTURE", style = LegendTypography.Eyebrow, color = LegendColors.Gold)
-                        Text(if (existing == null) "New override" else "Scheduled override", style = LegendTypography.Section, color = LegendColors.TextPrimary)
+                        Text(if (existing == null) legendLocalized("SCHEDULE SCRIPTURE") else legendLocalized("EDIT SCRIPTURE"), style = LegendTypography.Eyebrow, color = LegendColors.Gold)
+                        Text(if (existing == null) legendLocalized("New override") else legendLocalized("Scheduled override"), style = LegendTypography.Section, color = LegendColors.TextPrimary)
                     }
-                    TextButton(onClick = dismiss) { Text("Cancel", color = LegendColors.Gold) }
+                    TextButton(onClick = dismiss) { Text(legendLocalized("Cancel"), color = LegendColors.Gold) }
                 }
             }
-            item { Text("LEGEND uses America/Phoenix for this date. The passage is stored exactly as entered.", style = LegendTypography.Supporting, color = LegendColors.TextSecondary) }
+            item { Text(legendLocalized("LEGEND uses America/Phoenix for this date. The passage is stored exactly as entered."), style = LegendTypography.Supporting, color = LegendColors.TextSecondary) }
             item { AccountEditorField("Display date (YYYY-MM-DD)", displayDate) { displayDate = it } }
             item { AccountEditorField("Reference (for example, Psalm 121)", reference) { reference = it } }
             item { AccountEditorField("Translation", translation) { translation = it } }
@@ -5833,11 +5975,11 @@ private fun LegendCommunitySafetyReviewSheet(
         Column(Modifier.fillMaxHeight(.88f)) {
             Row(Modifier.fillMaxWidth().padding(horizontal = LegendSpacing.PageHorizontal, vertical = LegendSpacing.Md), verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
-                    Text("COMMUNITY", style = LegendTypography.Eyebrow, color = LegendColors.Gold)
-                    Text("Safety review", style = LegendTypography.Section, color = LegendColors.TextPrimary)
-                    Text("Open reports requiring a recorded server-authorized decision.", style = LegendTypography.Supporting, color = LegendColors.TextSecondary)
+                    Text(legendLocalized("COMMUNITY"), style = LegendTypography.Eyebrow, color = LegendColors.Gold)
+                    Text(legendLocalized("Safety review"), style = LegendTypography.Section, color = LegendColors.TextPrimary)
+                    Text(legendLocalized("Open reports requiring a recorded server-authorized decision."), style = LegendTypography.Supporting, color = LegendColors.TextSecondary)
                 }
-                TextButton(onClick = dismiss) { Text("Done", color = LegendColors.Gold) }
+                TextButton(onClick = dismiss) { Text(legendLocalized("Done"), color = LegendColors.Gold) }
             }
             when (reports) {
                 LoadState.Idle, LoadState.Loading -> LegendLoadingState()
@@ -5865,7 +6007,7 @@ private fun LegendCommunitySafetyReviewSheet(
                                         else ReportResolutionMenu(report, isFounder, viewModel)
                                     }
                                     report.detail?.takeIf(String::isNotBlank)?.let { Text(it, style = LegendTypography.Body, color = LegendColors.TextSecondary) }
-                                    Text(report.createdUtc, style = LegendTypography.Label, color = LegendColors.TextTertiary)
+                                    Text(legendDateTime(report.createdUtc), style = LegendTypography.Label, color = LegendColors.TextTertiary)
                                 }
                             }
                         }
@@ -5880,12 +6022,12 @@ private fun LegendCommunitySafetyReviewSheet(
 private fun ReportResolutionMenu(report: CommunitySafetyReport, isFounder: Boolean, viewModel: CommunitySafetyReviewViewModel) {
     var expanded by remember { mutableStateOf(false) }
     Box {
-        IconButton(onClick = { expanded = true }) { Icon(Icons.Default.MoreHoriz, "Resolve report", tint = LegendColors.Gold) }
+        IconButton(onClick = { expanded = true }) { Icon(Icons.Default.MoreHoriz, legendLocalized("Resolve report", "accessibility copy"), tint = LegendColors.Gold) }
         DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }, containerColor = LegendColors.Surface) {
-            DropdownMenuItem(text = { Text("Dismiss", color = LegendColors.TextPrimary) }, onClick = { expanded = false; viewModel.resolve(report, "Dismissed") })
-            DropdownMenuItem(text = { Text("Needs investigation", color = LegendColors.TextPrimary) }, onClick = { expanded = false; viewModel.resolve(report, "NeedsInvestigation") })
+            DropdownMenuItem(text = { Text(legendLocalized("Dismiss"), color = LegendColors.TextPrimary) }, onClick = { expanded = false; viewModel.resolve(report, "Dismissed") })
+            DropdownMenuItem(text = { Text(legendLocalized("Needs investigation"), color = LegendColors.TextPrimary) }, onClick = { expanded = false; viewModel.resolve(report, "NeedsInvestigation") })
             if (isFounder && report.targetKind == "SocialPost") {
-                DropdownMenuItem(text = { Text("Remove reported content", color = LegendColors.Error) }, onClick = { expanded = false; viewModel.resolve(report, "Actioned") })
+                DropdownMenuItem(text = { Text(legendLocalized("Remove reported content"), color = LegendColors.Error) }, onClick = { expanded = false; viewModel.resolve(report, "Actioned") })
             }
         }
     }
@@ -5904,29 +6046,29 @@ private fun LegendFounderAccountsSheet(
     var confirmation by remember { mutableStateOf("") }
     LaunchedEffect(archive) { selectedIds = emptySet(); confirmation = ""; viewModel.load(scope = if (archive) "archive" else null) }
     LaunchedEffect(search) {
-        kotlinx.coroutines.delay(180)
+        delay(180.milliseconds)
         viewModel.load(search.trim().takeIf(String::isNotBlank), if (archive) "archive" else null)
     }
     ModalBottomSheet(onDismissRequest = dismiss, containerColor = LegendColors.Canvas) {
         Column(Modifier.fillMaxHeight(.94f)) {
             Row(Modifier.fillMaxWidth().padding(horizontal = LegendSpacing.PageHorizontal, vertical = LegendSpacing.Md), verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
-                    Text("FOUNDER MANAGEMENT", style = LegendTypography.Eyebrow, color = LegendColors.Gold)
-                    Text(if (archive) "Archived accounts" else "Active accounts", style = LegendTypography.Section, color = LegendColors.TextPrimary)
+                    Text(legendLocalized("FOUNDER MANAGEMENT"), style = LegendTypography.Eyebrow, color = LegendColors.Gold)
+                    Text(if (archive) legendLocalized("Archived accounts") else legendLocalized("Active accounts"), style = LegendTypography.Section, color = LegendColors.TextPrimary)
                 }
-                TextButton(onClick = dismiss) { Text("Done", color = LegendColors.Gold) }
+                TextButton(onClick = dismiss) { Text(legendLocalized("Done"), color = LegendColors.Gold) }
             }
             Row(Modifier.padding(horizontal = LegendSpacing.PageHorizontal), horizontalArrangement = Arrangement.spacedBy(LegendSpacing.Xs)) {
-                FilterChip(selected = !archive, onClick = { archive = false }, label = { Text("Active") }, colors = legendCompactChipColors(!archive))
-                FilterChip(selected = archive, onClick = { archive = true }, label = { Text("Archive") }, colors = legendCompactChipColors(archive))
+                FilterChip(selected = !archive, onClick = { archive = false }, label = { Text(legendLocalized("Active")) }, colors = legendCompactChipColors())
+                FilterChip(selected = archive, onClick = { archive = true }, label = { Text(legendLocalized("Archive")) }, colors = legendCompactChipColors())
             }
-            OutlinedTextField(search, { search = it }, modifier = Modifier.fillMaxWidth().padding(horizontal = LegendSpacing.PageHorizontal, vertical = LegendSpacing.Sm), singleLine = true, leadingIcon = { Icon(Icons.Default.Search, null, tint = LegendColors.Gold) }, placeholder = { Text("Search accounts") }, shape = LegendShapes.Control, colors = legendMessagingFieldColors())
+            OutlinedTextField(search, { search = it }, modifier = Modifier.fillMaxWidth().padding(horizontal = LegendSpacing.PageHorizontal, vertical = LegendSpacing.Sm), singleLine = true, leadingIcon = { Icon(Icons.Default.Search, null, tint = LegendColors.Gold) }, placeholder = { Text(legendLocalized("Search accounts")) }, shape = LegendShapes.Control, colors = legendMessagingFieldColors())
             when (accounts) {
                 LoadState.Idle, LoadState.Loading -> LegendLoadingState()
                 is LoadState.Error -> LegendErrorState((accounts as LoadState.Error).message) { viewModel.load(search.takeIf(String::isNotBlank), if (archive) "archive" else null) }
                 is LoadState.Data -> {
                     val entries = (accounts as LoadState.Data<List<FounderManagedAccount>>).value
-                    if (entries.isEmpty()) Box(Modifier.weight(1f)) { LegendEmptyState(if (archive) "Archive is empty" else "No accounts found", "The existing founder authority returned no matching accounts.") }
+                    if (entries.isEmpty()) Box(Modifier.weight(1f)) { LegendEmptyState(if (archive) legendLocalized("Archive is empty") else legendLocalized("No accounts found"), legendLocalized("The existing founder authority returned no matching accounts.")) }
                     else LazyColumn(
                         modifier = Modifier.weight(1f),
                         contentPadding = PaddingValues(horizontal = LegendSpacing.PageHorizontal, vertical = LegendSpacing.Xs),
@@ -5940,9 +6082,22 @@ private fun LegendFounderAccountsSheet(
                                     Spacer(Modifier.width(LegendSpacing.Xs))
                                     Column(Modifier.weight(1f)) {
                                         Text(account.displayName, style = LegendTypography.Label, color = LegendColors.TextPrimary)
-                                        Text("${account.participantType} · ${account.lifecycleState}${if (account.hasCancelableSubscription) " · subscription" else ""}", style = LegendTypography.Supporting, color = LegendColors.TextSecondary)
+                                        val participantLabel = when (account.participantType.lowercase()) {
+                                            "agent" -> legendLocalized("Agent")
+                                            "client" -> legendLocalized("Client")
+                                            else -> account.participantType
+                                        }
+                                        val lifecycleLabel = when (account.lifecycleState.lowercase()) {
+                                            "active" -> legendLocalized("Active")
+                                            "inactive" -> legendLocalized("Inactive")
+                                            "paused" -> legendLocalized("Paused")
+                                            "deletionrequested" -> legendLocalized("Deletion requested")
+                                            "closed" -> legendLocalized("Closed")
+                                            else -> account.lifecycleState
+                                        }
+                                        Text("$participantLabel · $lifecycleLabel${if (account.hasCancelableSubscription) legendLocalized(" · subscription") else ""}", style = LegendTypography.Supporting, color = LegendColors.TextSecondary)
                                     }
-                                    if (account.isActive) Icon(Icons.Default.Circle, "Active", tint = LegendColors.Success, modifier = Modifier.size(12.dp))
+                                    if (account.isActive) Icon(Icons.Default.Circle, legendLocalized("Active", "accessibility copy"), tint = LegendColors.Success, modifier = Modifier.size(12.dp))
                                 }
                             }
                         }
@@ -5951,11 +6106,16 @@ private fun LegendFounderAccountsSheet(
                         val selected = entries.filter { "${it.profileId}:${it.participantType}" in selectedIds }
                         Surface(color = if (archive) LegendColors.Navy else LegendColors.SurfaceElevated, modifier = Modifier.fillMaxWidth(), shape = LegendShapes.Card) {
                             Column(Modifier.padding(LegendSpacing.Md), verticalArrangement = Arrangement.spacedBy(LegendSpacing.Xs)) {
-                                Text(if (archive) "Permanent purge" else "Archive selected accounts", style = LegendTypography.CardTitle, color = if (archive) LegendColors.OnNavy else LegendColors.TextPrimary)
-                                Text(if (archive) "Type ERASE to permanently remove ${selected.size} archived account(s)." else "Type DELETE to close and archive ${selected.size} account(s).", style = LegendTypography.Supporting, color = if (archive) LegendColors.GoldSoft else LegendColors.TextSecondary)
-                                OutlinedTextField(confirmation, { confirmation = it }, modifier = Modifier.fillMaxWidth(), singleLine = true, label = { Text(if (archive) "Type ERASE" else "Type DELETE") }, shape = LegendShapes.Control, colors = if (archive) legendDarkFieldColors() else legendMessagingFieldColors())
+                                Text(if (archive) legendLocalized("Permanent purge") else legendLocalized("Archive selected accounts"), style = LegendTypography.CardTitle, color = if (archive) LegendColors.OnNavy else LegendColors.TextPrimary)
+                                Text(
+                                    if (archive) legendLocalized("Type ERASE to permanently remove {count} archived account(s).", mapOf("count" to selected.size))
+                                    else legendLocalized("Type DELETE to close and archive {count} account(s).", mapOf("count" to selected.size)),
+                                    style = LegendTypography.Supporting,
+                                    color = if (archive) LegendColors.GoldSoft else LegendColors.TextSecondary,
+                                )
+                                OutlinedTextField(confirmation, { confirmation = it }, modifier = Modifier.fillMaxWidth(), singleLine = true, label = { Text(if (archive) legendLocalized("Type ERASE") else legendLocalized("Type DELETE")) }, shape = LegendShapes.Control, colors = if (archive) legendDarkFieldColors() else legendMessagingFieldColors())
                                 LegendPrimaryButton(
-                                    text = if (archive) "Permanently purge ${selected.size} account(s)" else "Archive ${selected.size} account(s)",
+                                    text = if (archive) legendLocalized("Permanently purge {count} account(s)", mapOf("count" to selected.size)) else legendLocalized("Archive {count} account(s)", mapOf("count" to selected.size)),
                                     enabled = confirmation == if (archive) "ERASE" else "DELETE",
                                     modifier = Modifier.fillMaxWidth(),
                                 ) {
@@ -5968,10 +6128,10 @@ private fun LegendFounderAccountsSheet(
                     }
                 }
             }
-            if (action is LoadState.Error) Text((action as LoadState.Error).message, color = LegendColors.Error, style = LegendTypography.Supporting, modifier = Modifier.padding(LegendSpacing.PageHorizontal))
+            if (action is LoadState.Error) Text(legendLocalized((action as LoadState.Error).message), color = LegendColors.Error, style = LegendTypography.Supporting, modifier = Modifier.padding(LegendSpacing.PageHorizontal))
             if (action is LoadState.Data) {
                 val result = (action as LoadState.Data<FounderAccountBatchResponse>).value
-                Text("${result.completedCount} completed${if (result.failedCount > 0) ", ${result.failedCount} failed" else ""}.", color = LegendColors.Success, style = LegendTypography.Supporting, modifier = Modifier.padding(LegendSpacing.PageHorizontal))
+                Text(legendLocalized("{completed} completed, {failed} failed.", mapOf("completed" to result.completedCount, "failed" to result.failedCount)), color = LegendColors.Success, style = LegendTypography.Supporting, modifier = Modifier.padding(LegendSpacing.PageHorizontal))
             }
         }
     }
@@ -5981,7 +6141,7 @@ private enum class LegendFounderResource(val apiValue: String, val title: String
     LanguageTranslation("LanguageTranslation", "Language translation", "Grant or revoke access to LEGEND language translation."),
     ScriptureManagement("ScriptureManagement", "Daily Scripture", "Delegate Daily Scripture scheduling and editorial management."),
     CommunityManagement("CommunityManagement", "Community safety", "Delegate report triage; content removal remains Founder-only."),
-    SocialContentPriority("SocialContentPriority", "Social content priority", "Prioritize eligible Posts and Hacs above standard feed ranking."),
+    SocialContentPriority("SocialContentPriority", "Social content priority", "Prioritize eligible Posts and short videos above standard feed ranking."),
 }
 
 @Composable
@@ -5997,28 +6157,28 @@ private fun LegendControlledResourceAccessSheet(
     val updating by viewModel.updating.collectAsStateWithLifecycle()
     LaunchedEffect(resource) { search = ""; viewModel.load(resource.apiValue) }
     LaunchedEffect(search, resource) {
-        kotlinx.coroutines.delay(180)
+        delay(180.milliseconds)
         viewModel.load(resource.apiValue, search.trim().takeIf(String::isNotBlank))
     }
     ModalBottomSheet(onDismissRequest = dismiss, containerColor = LegendColors.Canvas) {
         Column(Modifier.fillMaxHeight(.92f)) {
             Row(Modifier.fillMaxWidth().padding(horizontal = LegendSpacing.PageHorizontal, vertical = LegendSpacing.Md), verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
-                    Text("FOUNDER CONTROLS", style = LegendTypography.Eyebrow, color = LegendColors.Gold)
+                    Text(legendLocalized("FOUNDER CONTROLS"), style = LegendTypography.Eyebrow, color = LegendColors.Gold)
                     Text(resource.title, style = LegendTypography.Section, color = LegendColors.TextPrimary)
                     Text(resource.detail, style = LegendTypography.Supporting, color = LegendColors.TextSecondary)
                 }
-                TextButton(onClick = dismiss) { Text("Done", color = LegendColors.Gold) }
+                TextButton(onClick = dismiss) { Text(legendLocalized("Done"), color = LegendColors.Gold) }
             }
             LazyRow(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = LegendSpacing.PageHorizontal),
                 horizontalArrangement = Arrangement.spacedBy(LegendSpacing.Xs),
             ) {
                 items(LegendFounderResource.entries) { candidate ->
-                    FilterChip(selected = candidate == resource, onClick = { resource = candidate }, label = { Text(candidate.title) }, colors = legendCompactChipColors(candidate == resource))
+                    FilterChip(selected = candidate == resource, onClick = { resource = candidate }, label = { Text(candidate.title) }, colors = legendCompactChipColors())
                 }
             }
-            OutlinedTextField(search, { search = it }, modifier = Modifier.fillMaxWidth().padding(horizontal = LegendSpacing.PageHorizontal, vertical = LegendSpacing.Sm), singleLine = true, leadingIcon = { Icon(Icons.Default.Search, null, tint = LegendColors.Gold) }, placeholder = { Text("Search people") }, shape = LegendShapes.Control, colors = legendMessagingFieldColors())
+            OutlinedTextField(search, { search = it }, modifier = Modifier.fillMaxWidth().padding(horizontal = LegendSpacing.PageHorizontal, vertical = LegendSpacing.Sm), singleLine = true, leadingIcon = { Icon(Icons.Default.Search, null, tint = LegendColors.Gold) }, placeholder = { Text(legendLocalized("Search people")) }, shape = LegendShapes.Control, colors = legendMessagingFieldColors())
             when (recipients) {
                 LoadState.Idle, LoadState.Loading -> LegendLoadingState()
                 is LoadState.Error -> LegendErrorState((recipients as LoadState.Error).message) { viewModel.load(resource.apiValue, search.trim().takeIf(String::isNotBlank)) }
@@ -6043,7 +6203,7 @@ private fun LegendControlledResourceAccessSheet(
                                         Text(recipient.email ?: recipient.roleLabel ?: recipient.identity.participantType, style = LegendTypography.Supporting, color = LegendColors.TextSecondary)
                                     }
                                     if (isUpdating) CircularProgressIndicator(modifier = Modifier.size(24.dp), color = LegendColors.Gold, strokeWidth = 2.dp)
-                                    else OutlinedButton(onClick = { viewModel.setGrant(resource.apiValue, recipient, !granted) }, shape = LegendShapes.Control) { Text(if (granted) "Remove" else "Grant", color = if (granted) LegendColors.Error else LegendColors.Gold) }
+                                    else OutlinedButton(onClick = { viewModel.setGrant(resource.apiValue, recipient, !granted) }, shape = LegendShapes.Control) { Text(if (granted) legendLocalized("Remove") else legendLocalized("Grant"), color = if (granted) LegendColors.Error else LegendColors.Gold) }
                                 }
                             }
                         }
@@ -6066,10 +6226,10 @@ private fun LegendFollowRequestsSheet(
         Column(Modifier.fillMaxHeight(.78f)) {
             Row(Modifier.fillMaxWidth().padding(horizontal = LegendSpacing.PageHorizontal, vertical = LegendSpacing.Md), verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
-                    Text("FOLLOW REQUESTS", style = LegendTypography.Eyebrow, color = LegendColors.Gold)
-                    Text("Your private audience", style = LegendTypography.Section, color = LegendColors.TextPrimary)
+                    Text(legendLocalized("FOLLOW REQUESTS"), style = LegendTypography.Eyebrow, color = LegendColors.Gold)
+                    Text(legendLocalized("Your private audience"), style = LegendTypography.Section, color = LegendColors.TextPrimary)
                 }
-                TextButton(onClick = dismiss) { Text("Done", color = LegendColors.Gold) }
+                TextButton(onClick = dismiss) { Text(legendLocalized("Done"), color = LegendColors.Gold) }
             }
             when (requests) {
                 LoadState.Idle, LoadState.Loading -> LegendLoadingState()
@@ -6085,10 +6245,10 @@ private fun LegendFollowRequestsSheet(
                                     Spacer(Modifier.width(LegendSpacing.Sm))
                                     Column(Modifier.weight(1f)) {
                                         Text(request.profile.displayName, style = LegendTypography.Label, color = LegendColors.TextPrimary)
-                                        Text(request.profile.username?.let { "@$it" } ?: "LEGEND member", style = LegendTypography.Supporting, color = LegendColors.TextSecondary)
+                                        Text(request.profile.username?.let { "@$it" } ?: legendLocalized("LEGEND member"), style = LegendTypography.Supporting, color = LegendColors.TextSecondary)
                                     }
-                                    IconButton(onClick = { viewModel.decideFollowRequest(request.id, false) }) { Icon(Icons.Default.Close, "Decline follow request", tint = LegendColors.Error) }
-                                    IconButton(onClick = { viewModel.decideFollowRequest(request.id, true) }) { Icon(Icons.Default.Check, "Approve follow request", tint = LegendColors.Success) }
+                                    IconButton(onClick = { viewModel.decideFollowRequest(request.id, false) }) { Icon(Icons.Default.Close, legendLocalized("Decline follow request", "accessibility copy"), tint = LegendColors.Error) }
+                                    IconButton(onClick = { viewModel.decideFollowRequest(request.id, true) }) { Icon(Icons.Default.Check, legendLocalized("Approve follow request", "accessibility copy"), tint = LegendColors.Success) }
                                 }
                             }
                         }
@@ -6120,7 +6280,7 @@ private fun AccountEditorSheet(
     var phoneVisible by remember(account.profileId) { mutableStateOf(account.isPhoneVisible) }
     var privateProfile by remember(account.profileId) { mutableStateOf(account.isPrivate) }
     LaunchedEffect(username) {
-        kotlinx.coroutines.delay(260)
+        delay(260.milliseconds)
         checkUsernameAvailability(username.trim().takeIf(String::isNotBlank))
     }
     val usernameIsValid = username.isBlank() || (usernameAvailability as? LoadState.Data<MobileUsernameAvailability>)?.value?.isAvailable == true
@@ -6132,20 +6292,20 @@ private fun AccountEditorSheet(
         ) {
             item {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("Edit profile", style = LegendTypography.Section, color = LegendColors.TextPrimary, modifier = Modifier.weight(1f))
-                    TextButton(onClick = dismiss) { Text("Cancel", color = LegendColors.Gold) }
+                    Text(legendLocalized("Edit profile"), style = LegendTypography.Section, color = LegendColors.TextPrimary, modifier = Modifier.weight(1f))
+                    TextButton(onClick = dismiss) { Text(legendLocalized("Cancel"), color = LegendColors.Gold) }
                 }
             }
             item { AccountEditorField("Name", displayName) { displayName = it } }
             item {
                 AccountEditorField("Username", username) { username = it }
                 when (usernameAvailability) {
-                    LoadState.Loading -> Text("Checking username…", style = LegendTypography.Label, color = LegendColors.TextSecondary)
+                    LoadState.Loading -> Text(legendLocalized("Checking username…"), style = LegendTypography.Label, color = LegendColors.TextSecondary)
                     is LoadState.Data -> {
                         val result = usernameAvailability.value
-                        Text(result.message ?: if (result.isAvailable) "Username available" else "Username unavailable", style = LegendTypography.Label, color = if (result.isAvailable) LegendColors.Success else LegendColors.Error)
+                        Text(result.message?.let(::legendLocalized) ?: if (result.isAvailable) legendLocalized("Username available") else legendLocalized("Username unavailable"), style = LegendTypography.Label, color = if (result.isAvailable) LegendColors.Success else LegendColors.Error)
                     }
-                    is LoadState.Error -> Text(usernameAvailability.message, style = LegendTypography.Label, color = LegendColors.Error)
+                    is LoadState.Error -> Text(legendLocalized(usernameAvailability.message), style = LegendTypography.Label, color = LegendColors.Error)
                     LoadState.Idle -> Unit
                 }
             }
@@ -6194,21 +6354,21 @@ private fun LanguageDialog(current: String, onDismiss: () -> Unit, submit: (Stri
     var language by remember(current) { mutableStateOf(current) }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Preferred language") },
+        title = { Text(legendLocalized("Preferred language")) },
         text = {
             Column {
-                Text("LEGEND sends this preference to the server. Android does not translate messages locally.")
+                Text(legendLocalized("LEGEND sends this preference to the server. Android does not translate messages locally."))
                 OutlinedTextField(
                     value = language,
                     onValueChange = { language = it },
-                    label = { Text("Language") },
+                    label = { Text(legendLocalized("Language")) },
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true,
                 )
             }
         },
-        confirmButton = { TextButton(onClick = { submit(language) }) { Text("Save") } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+        confirmButton = { TextButton(onClick = { submit(language) }) { Text(legendLocalized("Save")) } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(legendLocalized("Cancel")) } },
     )
 }
 
@@ -6217,23 +6377,23 @@ private fun DeletionDialog(onDismiss: () -> Unit, submit: (String) -> Unit) {
     var confirmation by remember { mutableStateOf("") }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Close your LEGEND account?") },
+        title = { Text(legendLocalized("Close your LEGEND account?")) },
         text = {
             Column {
-                Text("Type DELETE to submit the server-authoritative account closure request.")
+                Text(legendLocalized("Type DELETE to submit the server-authoritative account closure request."))
                 OutlinedTextField(
                     value = confirmation,
                     onValueChange = { confirmation = it },
-                    label = { Text("Confirmation") },
+                    label = { Text(legendLocalized("Confirmation")) },
                 )
             }
         },
         confirmButton = {
             TextButton(onClick = { submit(confirmation) }, enabled = confirmation == "DELETE") {
-                Text("Request deletion", color = LegendColors.Error)
+                Text(legendLocalized("Request deletion"), color = LegendColors.Error)
             }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(legendLocalized("Cancel")) } },
     )
 }
 
@@ -6298,8 +6458,7 @@ private fun FinancialReportingGate(
         val activeEpoch = securityEpoch
         state = when (authenticator.authenticate(host)) {
             FinancialReportingAccessResult.Granted -> {
-                if (isActive &&
-                    lifecycleOwner.lifecycle.currentState == Lifecycle.State.RESUMED &&
+                if (lifecycleOwner.lifecycle.currentState == Lifecycle.State.RESUMED &&
                     activeEpoch == securityEpoch
                 ) {
                     FinancialReportingGateState.Granted
@@ -6331,10 +6490,10 @@ private fun FinancialReportingLockedScreen(
     backToProfile: () -> Unit,
 ) {
     val detail = when (state) {
-        FinancialReportingGateState.Locked -> "Use Face ID or your device PIN, pattern, or password before financial information is shown."
-        FinancialReportingGateState.Authenticating -> "Waiting for device authentication."
-        FinancialReportingGateState.Denied -> "Financial reporting remains locked until device authentication succeeds."
-        FinancialReportingGateState.Unavailable -> "Set up a device screen lock to access financial reporting."
+        FinancialReportingGateState.Locked -> legendLocalized("Use Face ID or your device PIN, pattern, or password before financial information is shown.")
+        FinancialReportingGateState.Authenticating -> legendLocalized("Waiting for device authentication.")
+        FinancialReportingGateState.Denied -> legendLocalized("Financial reporting remains locked until device authentication succeeds.")
+        FinancialReportingGateState.Unavailable -> legendLocalized("Set up a device screen lock to access financial reporting.")
         FinancialReportingGateState.Granted -> ""
     }
 
@@ -6353,13 +6512,13 @@ private fun FinancialReportingLockedScreen(
             modifier = Modifier.size(42.dp),
         )
         Spacer(Modifier.height(LegendSpacing.Md))
-        Text("Financial reporting is protected", style = LegendTypography.Section, color = LegendColors.TextPrimary)
+        Text(legendLocalized("Financial reporting is protected"), style = LegendTypography.Section, color = LegendColors.TextPrimary)
         Spacer(Modifier.height(LegendSpacing.Xs))
         Text(
             detail,
             style = LegendTypography.Supporting,
             color = LegendColors.TextSecondary,
-            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+            textAlign = TextAlign.Center,
         )
         Spacer(Modifier.height(LegendSpacing.Md))
         if (state == FinancialReportingGateState.Authenticating) {
@@ -6369,7 +6528,7 @@ private fun FinancialReportingLockedScreen(
         }
         Spacer(Modifier.height(LegendSpacing.Sm))
         TextButton(onClick = backToProfile) {
-            Text("Back to profile", color = LegendColors.Navy)
+            Text(legendLocalized("Back to profile"), color = LegendColors.Navy)
         }
     }
 }
@@ -6391,7 +6550,7 @@ private fun FinancialScreen(
         var loadedDate = LocalDate.now()
         viewModel.load()
         while (true) {
-            delay(60_000)
+            delay(1.minutes)
             val currentDate = LocalDate.now()
             if (currentDate != loadedDate) {
                 loadedDate = currentDate
@@ -6532,7 +6691,7 @@ private fun FinancialCashFlowLanding(
             item {
                 FinancialAvailabilityCard(
                     operatingSystem?.projection?.summary
-                        ?: "Your saved financial outlook will appear here when it is ready.",
+                        ?: legendLocalized("Your saved financial outlook will appear here when it is ready."),
                 )
             }
         }
@@ -6546,9 +6705,9 @@ private fun FinancialCashFlowHero(open: () -> Unit) {
             modifier = Modifier.fillMaxWidth().background(LegendGradients.Finance).padding(LegendSpacing.Lg),
             verticalArrangement = Arrangement.spacedBy(LegendSpacing.Sm),
         ) {
-            Text("FINANCIAL INTELLIGENCE", style = LegendTypography.Eyebrow.copy(letterSpacing = 1.sp), color = LegendColors.GoldBright)
-            Text("Cash flow at a glance", style = LegendTypography.Hero, color = LegendColors.OnNavy)
-            Text("Current week and month", style = LegendTypography.Body, color = LegendColors.OnNavy.copy(alpha = 0.70f))
+            Text(legendLocalized("FINANCIAL INTELLIGENCE"), style = LegendTypography.Eyebrow.copy(letterSpacing = 1.sp), color = LegendColors.GoldBright)
+            Text(legendLocalized("Cash flow at a glance"), style = LegendTypography.Hero, color = LegendColors.OnNavy)
+            Text(legendLocalized("Current week and month"), style = LegendTypography.Body, color = LegendColors.OnNavy.copy(alpha = 0.70f))
             Button(
                 onClick = open,
                 modifier = Modifier.fillMaxWidth(),
@@ -6560,7 +6719,7 @@ private fun FinancialCashFlowHero(open: () -> Unit) {
             ) {
                 Icon(Icons.AutoMirrored.Filled.ShowChart, null, modifier = Modifier.size(20.dp))
                 Spacer(Modifier.width(LegendSpacing.Xs))
-                Text("Financial Intelligence", style = LegendTypography.BodyEmphasis)
+                Text(legendLocalized("Financial Intelligence"), style = LegendTypography.BodyEmphasis)
             }
         }
     }
@@ -6589,9 +6748,9 @@ private fun FinancialOutlookPreview(
         ) {
             Row(verticalAlignment = Alignment.Top) {
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(LegendSpacing.Micro)) {
-                    Text(eyebrow.uppercase(), style = LegendTypography.Eyebrow.copy(letterSpacing = 1.sp), color = LegendColors.GoldBright)
-                    Text(title, style = LegendTypography.Section, color = LegendColors.OnNavy)
-                    Text(period, style = LegendTypography.Supporting, color = LegendColors.OnNavy.copy(alpha = 0.68f))
+                    Text(legendLocalized(eyebrow).uppercase(), style = LegendTypography.Eyebrow.copy(letterSpacing = 1.sp), color = LegendColors.GoldBright)
+                    Text(legendLocalized(title), style = LegendTypography.Section, color = LegendColors.OnNavy)
+                    Text(legendLocalized(period), style = LegendTypography.Supporting, color = LegendColors.OnNavy.copy(alpha = 0.68f))
                 }
                 FinancialStatusBadge(pressureStatus, financialStatusTone(pressureStatus))
             }
@@ -6611,8 +6770,8 @@ private fun FinancialOutlookPreview(
 private fun FinancialOutlookMetric(
     label: String,
     value: String,
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    tone: androidx.compose.ui.graphics.Color,
+    icon: ImageVector,
+    tone: Color,
     modifier: Modifier = Modifier,
 ) {
     Row(
@@ -6648,7 +6807,7 @@ private fun FinancialIntelligenceDashboard(
             item {
                 FinancialAvailabilityCard(
                     snapshot.operatingSystem?.projection?.summary
-                        ?: "A prioritized financial view is not available from the mobile service yet.",
+                        ?: legendLocalized("A prioritized financial view is not available from the mobile service yet."),
                 )
             }
         } else {
@@ -6668,7 +6827,7 @@ private fun FinancialProfileBackControl(back: () -> Unit) {
     OutlinedButton(
         onClick = back,
         shape = LegendShapes.Control,
-        border = androidx.compose.foundation.BorderStroke(
+        border = BorderStroke(
             LegendSpacing.Hairline,
             LegendColors.Gold.copy(alpha = 0.38f),
         ),
@@ -6676,7 +6835,7 @@ private fun FinancialProfileBackControl(back: () -> Unit) {
     ) {
         Icon(Icons.AutoMirrored.Filled.ArrowBack, null, modifier = Modifier.size(18.dp))
         Spacer(Modifier.width(LegendSpacing.Micro))
-        Text("Profile", style = LegendTypography.BodyEmphasis)
+        Text(legendLocalized("Profile"), style = LegendTypography.BodyEmphasis)
     }
 }
 
@@ -6690,10 +6849,10 @@ private fun FinancialDetailNavigation(backToFinancialIntelligence: () -> Unit, b
         ) {
             Icon(Icons.AutoMirrored.Filled.ArrowBack, null, modifier = Modifier.size(17.dp))
             Spacer(Modifier.width(LegendSpacing.Micro))
-            Text("Financial Intelligence", style = LegendTypography.Label, maxLines = 1)
+            Text(legendLocalized("Financial Intelligence"), style = LegendTypography.Label, maxLines = 1)
         }
         OutlinedButton(onClick = backToProfile, shape = LegendShapes.Control) {
-            Text("Profile", style = LegendTypography.Label)
+            Text(legendLocalized("Profile"), style = LegendTypography.Label)
         }
     }
 }
@@ -6720,17 +6879,25 @@ private fun FinancialPriorityCard(
             Spacer(Modifier.width(LegendSpacing.Sm))
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(LegendSpacing.Micro)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(section.eyebrow.uppercase(), modifier = Modifier.weight(1f), style = LegendTypography.Eyebrow.copy(letterSpacing = 1.sp), color = LegendColors.GoldBright, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(legendLocalized(section.eyebrow).uppercase(), modifier = Modifier.weight(1f), style = LegendTypography.Eyebrow.copy(letterSpacing = 1.sp), color = LegendColors.GoldBright, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     FinancialStatusBadge(section.status, tone)
                 }
-                Text(section.title, style = LegendTypography.CardTitle, color = LegendColors.OnNavy, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                Text(legendLocalized(section.title), style = LegendTypography.CardTitle, color = LegendColors.OnNavy, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     FinancialPriorityMetric(section.primaryMetric, tone, Modifier.weight(1f))
                     section.secondaryMetric?.let {
                         Spacer(Modifier.width(LegendSpacing.Sm))
                         FinancialPriorityMetric(it, financialSummaryTone(it), Modifier.weight(1f))
                     }
-                    Icon(Icons.Default.ChevronRight, "Open ${section.title}", tint = LegendColors.OnNavy.copy(alpha = 0.68f))
+                    Icon(
+                        Icons.Default.ChevronRight,
+                        legendLocalized(
+                            "Open {sectionTitle}",
+                            "accessibility copy",
+                            mapOf("sectionTitle" to legendLocalized(section.title)),
+                        ),
+                        tint = LegendColors.OnNavy.copy(alpha = 0.68f),
+                    )
                 }
             }
         }
@@ -6738,9 +6905,9 @@ private fun FinancialPriorityCard(
 }
 
 @Composable
-private fun FinancialPriorityMetric(metric: FinancialSummaryMetric, tone: androidx.compose.ui.graphics.Color, modifier: Modifier = Modifier) {
+private fun FinancialPriorityMetric(metric: FinancialSummaryMetric, tone: Color, modifier: Modifier = Modifier) {
     Column(modifier, verticalArrangement = Arrangement.spacedBy(LegendSpacing.Micro)) {
-        Text(metric.label.uppercase(), style = LegendTypography.Label, color = LegendColors.OnNavy.copy(alpha = 0.62f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text(legendLocalized(metric.label).uppercase(), style = LegendTypography.Label, color = LegendColors.OnNavy.copy(alpha = 0.62f), maxLines = 1, overflow = TextOverflow.Ellipsis)
         Text(financialMetricValue(metric), style = LegendTypography.BodyEmphasis, color = tone, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }
@@ -6798,7 +6965,7 @@ private fun FinancialDetailScreen(
             FinancialDetailDestination.DebtObligations -> {
                 val obligation = snapshot.operatingSystem?.monthAtGlance?.largestObligation
                 if (obligation == null) {
-                    item { FinancialAvailabilityCard(snapshot.operatingSystem?.projection?.summary ?: "No largest scheduled obligation is available for the current month.") }
+                    item { FinancialAvailabilityCard(snapshot.operatingSystem?.projection?.summary ?: legendLocalized("No largest scheduled obligation is available for the current month.")) }
                 } else {
                     item { FinancialLargestObligationCard(obligation) }
                 }
@@ -6825,7 +6992,7 @@ private fun FinancialDetailScreen(
                 item {
                     FinancialAvailabilityCard(
                         snapshot.operatingSystem?.projection?.summary
-                            ?: "The current Expense Lens projection is not available.",
+                            ?: legendLocalized("The current Expense Lens projection is not available."),
                     )
                 }
             }
@@ -6840,7 +7007,7 @@ private fun FinancialDetailScreen(
 private fun FinancialPriorityStatusBanner(
     status: String,
     detail: String,
-    tone: androidx.compose.ui.graphics.Color,
+    tone: Color,
     destination: FinancialDetailDestination,
 ) {
     Surface(color = tone.copy(alpha = 0.12f), shape = LegendShapes.Card, modifier = Modifier.fillMaxWidth()) {
@@ -6849,7 +7016,7 @@ private fun FinancialPriorityStatusBanner(
             Spacer(Modifier.width(LegendSpacing.Sm))
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(LegendSpacing.Xs)) {
                 FinancialStatusBadge(status, tone)
-                Text(detail, style = LegendTypography.Supporting, color = LegendColors.TextPrimary)
+                Text(legendLocalized(detail), style = LegendTypography.Supporting, color = LegendColors.TextPrimary)
             }
         }
     }
@@ -6859,12 +7026,12 @@ private fun FinancialPriorityStatusBanner(
 private fun FinancialPositionHero(position: FinancialPosition) {
     Surface(color = LegendColors.Navy, shape = LegendShapes.Hero, modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(LegendSpacing.Lg), verticalArrangement = Arrangement.spacedBy(LegendSpacing.Sm)) {
-            Text("BALANCE SHEET", style = LegendTypography.Eyebrow.copy(letterSpacing = 1.sp), color = LegendColors.GoldBright)
+            Text(legendLocalized("BALANCE SHEET"), style = LegendTypography.Eyebrow.copy(letterSpacing = 1.sp), color = LegendColors.GoldBright)
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(position.positionStatus, modifier = Modifier.weight(1f), style = LegendTypography.Section, color = LegendColors.OnNavy)
+                Text(legendLocalized(position.positionStatus), modifier = Modifier.weight(1f), style = LegendTypography.Section, color = LegendColors.OnNavy)
                 FinancialStatusBadge(position.positionStatus, financialStatusTone(position.positionStatus))
             }
-            Text(position.positionSummary, style = LegendTypography.Supporting, color = LegendColors.OnNavy.copy(alpha = 0.72f))
+            Text(legendLocalized(position.positionSummary), style = LegendTypography.Supporting, color = LegendColors.OnNavy.copy(alpha = 0.72f))
             Row(horizontalArrangement = Arrangement.spacedBy(LegendSpacing.Sm)) {
                 FinancialHeroMetric("Net worth", financialCurrency(position.netWorth), financialAmountTone(position.netWorth, FinancialAmountKind.NetWorth), Modifier.weight(1f))
                 FinancialHeroMetric("Liabilities", financialCurrency(position.liabilitiesTotal), financialAmountTone(position.liabilitiesTotal, FinancialAmountKind.Liabilities), Modifier.weight(1f))
@@ -6874,8 +7041,8 @@ private fun FinancialPositionHero(position: FinancialPosition) {
 }
 
 @Composable
-private fun FinancialHeroMetric(label: String, value: String, tone: androidx.compose.ui.graphics.Color, modifier: Modifier = Modifier) = Column(modifier, verticalArrangement = Arrangement.spacedBy(LegendSpacing.Micro)) {
-    Text(label.uppercase(), style = LegendTypography.Label, color = LegendColors.OnNavy.copy(alpha = 0.62f))
+private fun FinancialHeroMetric(label: String, value: String, tone: Color, modifier: Modifier = Modifier) = Column(modifier, verticalArrangement = Arrangement.spacedBy(LegendSpacing.Micro)) {
+    Text(legendLocalized(label).uppercase(), style = LegendTypography.Label, color = LegendColors.OnNavy.copy(alpha = 0.62f))
     Text(value, style = LegendTypography.Section, color = tone, maxLines = 1, overflow = TextOverflow.Ellipsis)
 }
 
@@ -6907,9 +7074,18 @@ private fun FinancialHealthSectionCard(section: FinancialHealthSection, modifier
         modifier = modifier.then(if (open != null) Modifier.clickable(onClick = open) else Modifier),
     ) {
         Column(Modifier.padding(LegendSpacing.Sm), verticalArrangement = Arrangement.spacedBy(LegendSpacing.Xs)) {
-            Text(section.title, style = LegendTypography.BodyEmphasis, color = LegendColors.OnNavy, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Text(legendLocalized(section.title), style = LegendTypography.BodyEmphasis, color = LegendColors.OnNavy, maxLines = 2, overflow = TextOverflow.Ellipsis)
             total?.let { Text(financialMetricValue(it), style = LegendTypography.CardTitle, color = tone, maxLines = 1, overflow = TextOverflow.Ellipsis) }
-            if (open != null) Icon(Icons.Default.ChevronRight, "Open ${section.title}", tint = LegendColors.OnNavy.copy(alpha = 0.60f), modifier = Modifier.align(Alignment.End).size(18.dp))
+            if (open != null) Icon(
+                Icons.Default.ChevronRight,
+                legendLocalized(
+                    "Open {sectionTitle}",
+                    "accessibility copy",
+                    mapOf("sectionTitle" to legendLocalized(section.title)),
+                ),
+                tint = LegendColors.OnNavy.copy(alpha = 0.60f),
+                modifier = Modifier.align(Alignment.End).size(18.dp),
+            )
         }
     }
 }
@@ -6917,13 +7093,13 @@ private fun FinancialHealthSectionCard(section: FinancialHealthSection, modifier
 @Composable
 private fun FinancialHealthSectionDetail(section: FinancialHealthSection) {
     Column(verticalArrangement = Arrangement.spacedBy(LegendSpacing.Sm)) {
-        Text(section.title, style = LegendTypography.Section, color = LegendColors.TextPrimary)
-        section.period?.takeIf(String::isNotBlank)?.let { Text(it, style = LegendTypography.Supporting, color = LegendColors.TextSecondary) }
+        Text(legendLocalized(section.title), style = LegendTypography.Section, color = LegendColors.TextPrimary)
+        section.period?.takeIf(String::isNotBlank)?.let { Text(legendLocalized(it), style = LegendTypography.Supporting, color = LegendColors.TextSecondary) }
         section.total?.let { total -> FinancialHealthMetricRow(total, section.semantic, emphasized = true) }
         section.groups.forEach { group ->
             Surface(color = LegendColors.Surface, shape = LegendShapes.Card, modifier = Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(LegendSpacing.CardContent), verticalArrangement = Arrangement.spacedBy(LegendSpacing.Xs)) {
-                    group.title?.takeIf(String::isNotBlank)?.let { Text(it, style = LegendTypography.CardTitle, color = LegendColors.TextPrimary) }
+                    group.title?.takeIf(String::isNotBlank)?.let { Text(legendLocalized(it), style = LegendTypography.CardTitle, color = LegendColors.TextPrimary) }
                     group.metrics.forEach { metric -> FinancialHealthMetricRow(metric, section.semantic, emphasized = false) }
                 }
             }
@@ -6935,8 +7111,8 @@ private fun FinancialHealthSectionDetail(section: FinancialHealthSection) {
 private fun FinancialHealthMetricRow(metric: FinancialMetric, sectionSemantic: String, emphasized: Boolean) {
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(LegendSpacing.Micro)) {
-            Text(metric.label, style = if (emphasized) LegendTypography.CardTitle else LegendTypography.Body, color = LegendColors.TextPrimary)
-            metric.status?.takeIf(String::isNotBlank)?.let { Text(it, style = LegendTypography.Label, color = financialSemanticTone(it)) }
+            Text(legendLocalized(metric.label), style = if (emphasized) LegendTypography.CardTitle else LegendTypography.Body, color = LegendColors.TextPrimary)
+            metric.status?.takeIf(String::isNotBlank)?.let { Text(legendLocalized(it), style = LegendTypography.Label, color = financialSemanticTone(it)) }
         }
         Text(financialMetricValue(metric), style = if (emphasized) LegendTypography.CardTitle else LegendTypography.BodyEmphasis, color = financialHealthMetricTone(metric, sectionSemantic), maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
@@ -6946,7 +7122,7 @@ private fun FinancialHealthMetricRow(metric: FinancialMetric, sectionSemantic: S
 private fun FinancialLargestObligationCard(obligation: FinancialLargestObligation) {
     Surface(color = LegendColors.Navy, shape = LegendShapes.ProminentCard, modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(LegendSpacing.CardContent), verticalArrangement = Arrangement.spacedBy(LegendSpacing.Xs)) {
-            Text("LARGEST UPCOMING OBLIGATION", style = LegendTypography.Eyebrow.copy(letterSpacing = 1.sp), color = LegendColors.GoldBright)
+            Text(legendLocalized("LARGEST UPCOMING OBLIGATION"), style = LegendTypography.Eyebrow.copy(letterSpacing = 1.sp), color = LegendColors.GoldBright)
             Text(obligation.title, style = LegendTypography.Section, color = LegendColors.OnNavy)
             Row(horizontalArrangement = Arrangement.spacedBy(LegendSpacing.Lg)) {
                 FinancialHeroMetric("Amount", financialCurrencyCents(obligation.amountCents), financialAmountTone(obligation.amountCents, FinancialAmountKind.Debt), Modifier.weight(1f))
@@ -6964,7 +7140,7 @@ private fun FinancialUpcomingBillCard(bill: UpcomingBill) {
             Spacer(Modifier.width(LegendSpacing.Sm))
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(LegendSpacing.Micro)) {
                 Text(bill.displayName, style = LegendTypography.CardTitle, color = LegendColors.TextPrimary)
-                Text("${bill.cadence} · ${financialDate(bill.nextExpectedDateUtc)}", style = LegendTypography.Supporting, color = LegendColors.TextSecondary)
+                Text("${legendLocalized(bill.cadence)} · ${financialDate(bill.nextExpectedDateUtc)}", style = LegendTypography.Supporting, color = LegendColors.TextSecondary)
             }
             Text(financialCurrencyCents(bill.averageAmountCents), style = LegendTypography.CardTitle, color = financialAmountTone(bill.averageAmountCents, FinancialAmountKind.Bills))
         }
@@ -6977,7 +7153,7 @@ private fun FinancialAvailabilityCard(detail: String) {
         Row(Modifier.padding(LegendSpacing.CardContent), verticalAlignment = Alignment.Top) {
             Icon(Icons.Default.Info, null, tint = LegendColors.Info, modifier = Modifier.size(22.dp))
             Spacer(Modifier.width(LegendSpacing.Sm))
-            Text(detail, style = LegendTypography.Supporting, color = LegendColors.TextSecondary)
+            Text(legendLocalized(detail), style = LegendTypography.Supporting, color = LegendColors.TextSecondary)
         }
     }
 }
@@ -6993,7 +7169,7 @@ private fun FinancialLastUpdated(snapshot: FinancialSnapshot) {
         Row(Modifier.padding(LegendSpacing.Sm), verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.Default.History, null, tint = LegendColors.OnNavy.copy(alpha = 0.70f), modifier = Modifier.size(20.dp))
             Spacer(Modifier.width(LegendSpacing.Xs))
-            Text("Last updated ${financialDateTime(value)}", style = LegendTypography.Supporting, color = LegendColors.OnNavy.copy(alpha = 0.72f))
+            Text(legendLocalized("Last updated {date}", mapOf("date" to financialDateTime(value))), style = LegendTypography.Supporting, color = LegendColors.OnNavy.copy(alpha = 0.72f))
         }
     }
 }
@@ -7041,13 +7217,21 @@ private fun FinancialOutlookDialogHeader(selection: FinancialOutlookSelection, d
                     Text(selection.period, style = LegendTypography.Body, color = LegendColors.OnNavy.copy(alpha = 0.70f))
                 }
                 IconButton(onClick = dismiss, modifier = Modifier.size(LegendSize.MinimumTapTarget).background(LegendColors.OnNavy.copy(alpha = 0.08f), CircleShape)) {
-                    Icon(Icons.Default.Close, "Close ${selection.title}", tint = LegendColors.OnNavy)
+                    Icon(
+                        Icons.Default.Close,
+                        legendLocalized(
+                            "Close {selectionTitle}",
+                            "accessibility copy",
+                            mapOf("selectionTitle" to legendLocalized(selection.title)),
+                        ),
+                        tint = LegendColors.OnNavy,
+                    )
                 }
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 FinancialStatusBadge(selection.pressureStatus, financialStatusTone(selection.pressureStatus))
                 Spacer(Modifier.weight(1f))
-                Text("SERVER-SYNCED", style = LegendTypography.Eyebrow.copy(letterSpacing = 1.sp), color = LegendColors.OnNavy.copy(alpha = 0.55f))
+                Text(legendLocalized("SERVER-SYNCED"), style = LegendTypography.Eyebrow.copy(letterSpacing = 1.sp), color = LegendColors.OnNavy.copy(alpha = 0.55f))
             }
         }
     }
@@ -7060,7 +7244,7 @@ private fun FinancialOutlookSummary(summary: String) {
             Icon(Icons.AutoMirrored.Filled.ShowChart, null, tint = LegendColors.GoldBright, modifier = Modifier.size(24.dp))
             Spacer(Modifier.width(LegendSpacing.Sm))
             Column(verticalArrangement = Arrangement.spacedBy(LegendSpacing.Xs)) {
-                Text("OUTLOOK SUMMARY", style = LegendTypography.Eyebrow.copy(letterSpacing = 1.sp), color = LegendColors.GoldBright)
+                Text(legendLocalized("OUTLOOK SUMMARY"), style = LegendTypography.Eyebrow.copy(letterSpacing = 1.sp), color = LegendColors.GoldBright)
                 Text(summary, style = LegendTypography.Body, color = LegendColors.OnNavy.copy(alpha = 0.76f))
             }
         }
@@ -7125,7 +7309,7 @@ private fun FinancialOutlookTotals(
         add(FinancialDialogMetric("Ending debt", endingDebtCents, FinancialAmountKind.Debt))
     }
     Column(verticalArrangement = Arrangement.spacedBy(LegendSpacing.Xs)) {
-        Text("CASH FLOW BREAKDOWN", style = LegendTypography.Eyebrow.copy(letterSpacing = 1.sp), color = LegendColors.GoldBright)
+        Text(legendLocalized("CASH FLOW BREAKDOWN"), style = LegendTypography.Eyebrow.copy(letterSpacing = 1.sp), color = LegendColors.GoldBright)
         metrics.chunked(2).forEach { row ->
             Row(horizontalArrangement = Arrangement.spacedBy(LegendSpacing.Xs)) {
                 row.forEach { metric -> FinancialDialogMetricCard(metric, Modifier.weight(1f)) }
@@ -7140,7 +7324,7 @@ private fun FinancialDialogMetricCard(metric: FinancialDialogMetric, modifier: M
     val tone = financialAmountTone(metric.amountCents, metric.kind)
     Surface(color = LegendColors.OnNavy.copy(alpha = 0.07f), shape = LegendShapes.Control, modifier = modifier) {
         Column(Modifier.padding(LegendSpacing.Sm), verticalArrangement = Arrangement.spacedBy(LegendSpacing.Xs)) {
-            Text(metric.label.uppercase(), style = LegendTypography.Label, color = LegendColors.OnNavy.copy(alpha = 0.64f), maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Text(legendLocalized(metric.label).uppercase(), style = LegendTypography.Label, color = LegendColors.OnNavy.copy(alpha = 0.64f), maxLines = 2, overflow = TextOverflow.Ellipsis)
             Text(financialCurrencyCents(metric.amountCents), style = LegendTypography.BodyEmphasis, color = tone, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
     }
@@ -7149,7 +7333,7 @@ private fun FinancialDialogMetricCard(metric: FinancialDialogMetric, modifier: M
 @Composable
 private fun FinancialCashFlowEvents(events: List<FinancialCashFlowEvent>) {
     Column(verticalArrangement = Arrangement.spacedBy(LegendSpacing.Xs)) {
-        Text("SCHEDULED EVENTS", style = LegendTypography.Eyebrow.copy(letterSpacing = 1.sp), color = LegendColors.GoldBright)
+        Text(legendLocalized("SCHEDULED EVENTS"), style = LegendTypography.Eyebrow.copy(letterSpacing = 1.sp), color = LegendColors.GoldBright)
         if (events.isEmpty()) {
             FinancialAvailabilityCard("No server-synchronized cash-flow events are scheduled for this week.")
         } else {
@@ -7161,7 +7345,7 @@ private fun FinancialCashFlowEvents(events: List<FinancialCashFlowEvent>) {
                         Spacer(Modifier.width(LegendSpacing.Sm))
                         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(LegendSpacing.Micro)) {
                             Text(event.title, style = LegendTypography.BodyEmphasis, color = LegendColors.OnNavy)
-                            Text("${financialDate(event.occursOn)} · ${event.status}", style = LegendTypography.Label, color = LegendColors.OnNavy.copy(alpha = 0.64f))
+                            Text("${financialDate(event.occursOn)} · ${legendLocalized(event.status)}", style = LegendTypography.Label, color = LegendColors.OnNavy.copy(alpha = 0.64f))
                         }
                         Text(financialCurrencyCents(event.amountCents), style = LegendTypography.BodyEmphasis, color = tone)
                     }
@@ -7174,7 +7358,7 @@ private fun FinancialCashFlowEvents(events: List<FinancialCashFlowEvent>) {
 @Composable
 private fun FinancialMonthTiming(weeks: List<FinancialWeekSummary>) {
     Column(verticalArrangement = Arrangement.spacedBy(LegendSpacing.Xs)) {
-        Text("WEEKLY TIMING", style = LegendTypography.Eyebrow.copy(letterSpacing = 1.sp), color = LegendColors.GoldBright)
+        Text(legendLocalized("WEEKLY TIMING"), style = LegendTypography.Eyebrow.copy(letterSpacing = 1.sp), color = LegendColors.GoldBright)
         if (weeks.isEmpty()) {
             FinancialAvailabilityCard("No server-synchronized weekly timing is available for this month.")
         } else {
@@ -7198,12 +7382,12 @@ private fun FinancialMonthTiming(weeks: List<FinancialWeekSummary>) {
 }
 
 @Composable
-private fun FinancialStatusBadge(status: String, tone: androidx.compose.ui.graphics.Color) {
+private fun FinancialStatusBadge(status: String, tone: Color) {
     Surface(color = tone.copy(alpha = 0.16f), shape = LegendShapes.Control) {
         Row(Modifier.padding(horizontal = LegendSpacing.Xs, vertical = LegendSpacing.Micro), verticalAlignment = Alignment.CenterVertically) {
             Box(Modifier.size(8.dp).background(tone, CircleShape))
             Spacer(Modifier.width(LegendSpacing.Micro))
-            Text(status, style = LegendTypography.Label, color = tone, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(legendLocalized(status), style = LegendTypography.Label, color = tone, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
     }
 }
@@ -7218,16 +7402,16 @@ private sealed class FinancialOutlookSelection {
     abstract val pressureSummary: String?
 
     data class Week(val value: FinancialWeekAtGlance) : FinancialOutlookSelection() {
-        override val title = "Week at a Glance"
-        override val eyebrow = "Synced weekly outlook"
+        override val title = legendLocalized("Week at a Glance")
+        override val eyebrow = legendLocalized("Synced weekly outlook")
         override val period = financialDateRange(value.startDate, value.endDate)
         override val pressureStatus = value.pressureStatus
         override val pressureSummary = value.pressureSummary
     }
 
     data class Month(val value: FinancialMonthAtGlance) : FinancialOutlookSelection() {
-        override val title = "Month at a Glance"
-        override val eyebrow = "Synced monthly outlook"
+        override val title = legendLocalized("Month at a Glance")
+        override val eyebrow = legendLocalized("Synced monthly outlook")
         override val period = financialMonth(value.monthKey)
         override val pressureStatus = value.pressureStatus
         override val pressureSummary = value.pressureSummary
@@ -7238,30 +7422,47 @@ private data class FinancialDialogMetric(val label: String, val amountCents: Lon
 
 private enum class FinancialAmountKind { Assets, Liabilities, NetWorth, Income, Bills, Debt, EndingCash, OpeningCash, Savings }
 
-private fun financialMetricValue(metric: FinancialSummaryMetric): String = metric.amountCents?.let(::financialCurrencyCents) ?: metric.date?.let(::financialDate) ?: metric.textValue ?: "Not available"
-private fun financialMetricValue(metric: FinancialMetric): String = metric.amountCents?.let(::financialCurrencyCents) ?: metric.numericValue?.toString() ?: metric.textValue ?: "Not available"
-private fun financialCurrencyCents(value: Long): String = java.text.NumberFormat.getCurrencyInstance(java.util.Locale.US).format(value / 100.0)
-private fun financialCurrency(value: Double): String = java.text.NumberFormat.getCurrencyInstance(java.util.Locale.US).format(value)
+private fun financialMetricValue(metric: FinancialSummaryMetric): String = metric.amountCents?.let(::financialCurrencyCents) ?: metric.date?.let(::financialDate) ?: metric.textValue?.let(::legendLocalized) ?: legendLocalized("Not available")
+private fun financialMetricValue(metric: FinancialMetric): String = metric.amountCents?.let(::financialCurrencyCents) ?: metric.numericValue?.toString() ?: metric.textValue?.let(::legendLocalized) ?: legendLocalized("Not available")
+private fun financialCurrencyCents(value: Long): String = NumberFormat
+    .getCurrencyInstance(LegendLocalizationRuntime.locale())
+    .format(value / 100.0)
+private fun financialCurrency(value: Double): String = NumberFormat
+    .getCurrencyInstance(LegendLocalizationRuntime.locale())
+    .format(value)
 private fun financialDate(value: String): String = runCatching {
-    java.time.LocalDate.parse(value.take(10)).format(java.time.format.DateTimeFormatter.ofPattern("MMM d", java.util.Locale.US))
+    LocalDate.parse(value.take(10)).format(
+        DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM)
+            .withLocale(LegendLocalizationRuntime.locale()),
+    )
 }.getOrDefault(value)
+private fun legendDate(value: String): String = financialDate(value)
 private fun financialDateTime(value: String): String {
-    val formatter = java.time.format.DateTimeFormatter.ofPattern("MMM d 'at' h:mm a", java.util.Locale.US)
-    return runCatching { java.time.OffsetDateTime.parse(value).format(formatter) }
-        .recoverCatching { java.time.LocalDateTime.parse(value).format(formatter) }
+    val formatter = DateTimeFormatter
+        .ofLocalizedDateTime(FormatStyle.MEDIUM, FormatStyle.SHORT)
+        .withLocale(LegendLocalizationRuntime.locale())
+    return runCatching {
+        OffsetDateTime.parse(value)
+            .atZoneSameInstant(ZoneId.systemDefault())
+            .format(formatter)
+    }
+        .recoverCatching { LocalDateTime.parse(value).format(formatter) }
         .getOrElse { financialDate(value) }
 }
+private fun legendDateTime(value: String): String = financialDateTime(value)
 private fun financialDateRange(start: String, end: String) = "${financialDate(start)} – ${financialDate(end)}"
 private fun financialMonth(value: String): String = runCatching {
-    java.time.LocalDate.parse("${value.take(7)}-01").format(java.time.format.DateTimeFormatter.ofPattern("MMMM yyyy", java.util.Locale.US))
+    LocalDate.parse("${value.take(7)}-01").format(
+        DateTimeFormatter.ofPattern("MMMM yyyy", LegendLocalizationRuntime.locale()),
+    )
 }.getOrDefault(value)
 
-private fun financialSummaryTone(metric: FinancialSummaryMetric): androidx.compose.ui.graphics.Color {
+private fun financialSummaryTone(metric: FinancialSummaryMetric): Color {
     val label = metric.label.lowercase()
     val amount = metric.amountCents
     if (amount != null) {
         val kind = when {
-            label.contains("liabilit") -> FinancialAmountKind.Liabilities
+            label.contains("liability") || label.contains("liabilities") -> FinancialAmountKind.Liabilities
             label.contains("debt") || label.contains("loan") || label.contains("payoff") -> FinancialAmountKind.Debt
             label.contains("bill") || label.contains("expense") || label.contains("outflow") || label.contains("spending") -> FinancialAmountKind.Bills
             label.contains("income") || label.contains("inflow") -> FinancialAmountKind.Income
@@ -7277,11 +7478,11 @@ private fun financialSummaryTone(metric: FinancialSummaryMetric): androidx.compo
     return financialSemanticTone(metric.semantic)
 }
 
-private fun financialHealthMetricTone(metric: FinancialMetric, sectionSemantic: String): androidx.compose.ui.graphics.Color {
+private fun financialHealthMetricTone(metric: FinancialMetric, sectionSemantic: String): Color {
     val amount = metric.amountCents ?: return financialSemanticTone(metric.status ?: sectionSemantic)
     val semantic = "${sectionSemantic.lowercase()} ${metric.label.lowercase()}"
     val kind = when {
-        semantic.contains("liabilit") -> FinancialAmountKind.Liabilities
+        semantic.contains("liability") || semantic.contains("liabilities") -> FinancialAmountKind.Liabilities
         semantic.contains("debt") || semantic.contains("loan") -> FinancialAmountKind.Debt
         semantic.contains("expense") || semantic.contains("bill") || semantic.contains("tax") || semantic.contains("cost") || semantic.contains("outflow") -> FinancialAmountKind.Bills
         semantic.contains("income") || semantic.contains("earn") -> FinancialAmountKind.Income
@@ -7292,8 +7493,8 @@ private fun financialHealthMetricTone(metric: FinancialMetric, sectionSemantic: 
     return kind?.let { financialAmountTone(amount, it) } ?: if (amount < 0) LegendColors.Error else financialSemanticTone(sectionSemantic)
 }
 
-private fun financialAmountTone(value: Long, kind: FinancialAmountKind): androidx.compose.ui.graphics.Color = financialAmountTone(value.toDouble(), kind)
-private fun financialAmountTone(value: Double, kind: FinancialAmountKind): androidx.compose.ui.graphics.Color {
+private fun financialAmountTone(value: Long, kind: FinancialAmountKind): Color = financialAmountTone(value.toDouble(), kind)
+private fun financialAmountTone(value: Double, kind: FinancialAmountKind): Color {
     if (value < 0) return LegendColors.Error
     if (value == 0.0) return LegendColors.TextTertiary
     return when (kind) {
@@ -7309,7 +7510,7 @@ private fun financialAmountTone(value: Double, kind: FinancialAmountKind): andro
     }
 }
 
-private fun financialSemanticTone(value: String): androidx.compose.ui.graphics.Color = when (value.lowercase()) {
+private fun financialSemanticTone(value: String): Color = when (value.lowercase()) {
     "positive", "healthy", "ready", "complete", "on-track" -> LegendColors.Success
     "negative", "critical", "risk", "overdue", "shortfall" -> LegendColors.Error
     "caution", "warning", "review", "incomplete", "scheduled", "needs attention" -> LegendColors.Warning
@@ -7317,18 +7518,18 @@ private fun financialSemanticTone(value: String): androidx.compose.ui.graphics.C
     else -> LegendColors.GoldBright
 }
 
-private fun financialStatusTone(status: String): androidx.compose.ui.graphics.Color = financialSemanticTone(status)
-private fun financialEventTone(event: FinancialCashFlowEvent): androidx.compose.ui.graphics.Color = when {
+private fun financialStatusTone(status: String): Color = financialSemanticTone(status)
+private fun financialEventTone(event: FinancialCashFlowEvent): Color = when {
     event.kind.contains("income", ignoreCase = true) -> financialAmountTone(event.amountCents, FinancialAmountKind.Income)
     event.kind.contains("debt", ignoreCase = true) -> financialAmountTone(event.amountCents, FinancialAmountKind.Debt)
     else -> financialAmountTone(event.amountCents, FinancialAmountKind.Bills)
 }
-private fun financialEventIcon(event: FinancialCashFlowEvent): androidx.compose.ui.graphics.vector.ImageVector = when {
+private fun financialEventIcon(event: FinancialCashFlowEvent): ImageVector = when {
     event.kind.contains("income", ignoreCase = true) -> Icons.Default.SouthWest
     event.kind.contains("debt", ignoreCase = true) -> Icons.Default.CreditCard
     else -> Icons.Default.Description
 }
-private fun financialDestinationIcon(destination: FinancialDetailDestination): androidx.compose.ui.graphics.vector.ImageVector = when (destination) {
+private fun financialDestinationIcon(destination: FinancialDetailDestination): ImageVector = when (destination) {
     FinancialDetailDestination.Assets,
     FinancialDetailDestination.FinancialPosition -> Icons.Default.AccountBalance
     FinancialDetailDestination.Liabilities,

@@ -110,13 +110,13 @@ enum OAuthError: LocalizedError, Equatable {
     var errorDescription: String? {
         switch self {
         case .randomGenerationFailed:
-            return "A secure sign-in request could not be created."
+            return LegendLocalized("A secure sign-in request could not be created.")
         case .invalidAuthorizationEndpoint:
-            return "The mobile authorization endpoint is invalid."
+            return LegendLocalized("The mobile authorization endpoint is invalid.")
         case .missingCallback:
-            return "The authorization service did not return a callback."
+            return LegendLocalized("The authorization service did not return a callback.")
         case .sessionStartFailed:
-            return "The system browser could not start sign-in."
+            return LegendLocalized("The system browser could not start sign-in.")
         }
     }
 }

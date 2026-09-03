@@ -1527,18 +1527,28 @@ public sealed class LegendConnectSemanticSpanGroundingTests
     }
 
     [Fact]
-    public async Task IndexedMeaningGraph_RejectsNonExactInputsAboveSemanticComponentBound()
+    public async Task IndexedMeaningGraph_ProcessesLongInputWithoutCallingItInvalid()
     {
         await using var db = ControllerTestHelpers.BuildDb();
         var fixture = CreateFixture(db);
-        var input = string.Join(" ", Enumerable.Range(0, 25).Select(index => $"novel{index}"));
+        Assert.True((await fixture.Curriculum.SubmitFounderBatchAsync(
+            CompetingHypothesesTestDesignFamily(1))).Succeeded);
+        var input = string.Join(
+            " ",
+            Enumerable.Range(0, 140).Select(index => $"novel{index}")) +
+            " Keep both hypotheses; plan an experiment.";
 
         var graph = await fixture.Operations.AnalyzeReusableMeaningGraphAsync(input);
 
-        Assert.False(graph.IsComposed);
-        Assert.Equal("meaning_graph_input_invalid", graph.ReasonCode);
-        Assert.Empty(graph.Nodes);
-        Assert.Empty(graph.Relations);
+        Assert.True(graph.IsComposed, graph.ReasonCode);
+        Assert.NotEqual("meaning_graph_input_invalid", graph.ReasonCode);
+        Assert.Contains(
+            graph.Nodes,
+            item => item.SemanticValue == "retain_competing_hypotheses");
+        Assert.Contains(
+            graph.Nodes,
+            item => item.SemanticValue == "design_discriminating_test");
+        Assert.Single(graph.Relations);
     }
 
     [Fact]

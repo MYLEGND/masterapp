@@ -53,7 +53,12 @@ public sealed class MobileMessagingController : MobileApiControllerBase
             resolution.PermittedActors.Select(actor => actor.Actor.ParticipantType).ToArray(),
             resolution.RequiresParticipantSelection,
             await CapabilitiesAsync(resolution.Actor, cancellationToken),
-            CorrelationId()));
+            CorrelationId(),
+            resolution.Actor is null
+                ? null
+                : await _controlledResources.GetCanonicalPreferredLanguageAsync(
+                    resolution.Actor.Actor,
+                    cancellationToken)));
     }
 
     [HttpPost("session/select-role")]
@@ -72,7 +77,10 @@ public sealed class MobileMessagingController : MobileApiControllerBase
             await ToActorDtoAsync(resolution.SelectedActor, cancellationToken),
             resolution.PermittedActors.Select(actor => actor.Actor.ParticipantType).ToArray(),
             CorrelationId(),
-            await CapabilitiesAsync(resolution.SelectedActor, cancellationToken)));
+            await CapabilitiesAsync(resolution.SelectedActor, cancellationToken),
+            await _controlledResources.GetCanonicalPreferredLanguageAsync(
+                resolution.SelectedActor.Actor,
+                cancellationToken)));
     }
 
     [HttpGet("messaging/conversations")]
@@ -1177,7 +1185,8 @@ public sealed record MobileSessionResponse(
     IReadOnlyList<string> PermittedParticipantTypes,
     bool RequiresParticipantSelection,
     MobileCapabilitiesDto Capabilities,
-    string CorrelationId);
+    string CorrelationId,
+    string? PreferredLanguageCode = null);
 
 public sealed record MobileCapabilitiesDto(
     bool Messaging,
@@ -1189,7 +1198,8 @@ public sealed record MobileRoleSelectionResponse(
     MobileActorDto Actor,
     IReadOnlyList<string> PermittedParticipantTypes,
     string CorrelationId,
-    MobileCapabilitiesDto? Capabilities = null);
+    MobileCapabilitiesDto? Capabilities = null,
+    string? PreferredLanguageCode = null);
 
 public sealed record MobileSelectRoleRequest(string? ParticipantType);
 

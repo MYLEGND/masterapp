@@ -183,19 +183,19 @@ struct MobileFinancialHealthMetricResponse:
     var displayValue: String {
         switch valueType {
         case "Currency":
-            guard let amountCents else { return "Not available" }
+            guard let amountCents else { return LegendLocalized("Not available") }
             return MobileFinancialDisplay.currency(cents: amountCents)
 
         case "Percentage":
-            guard let numericValue else { return "Not available" }
+            guard let numericValue else { return LegendLocalized("Not available") }
             return numericValue.formatted(
-                .percent.precision(.fractionLength(0...2)))
+                .percent.precision(.fractionLength(0...2)).locale(LegendActiveLocale()))
 
         default:
             return textValue?.trimmingCharacters(
                 in: .whitespacesAndNewlines).isEmpty == false
-                ? textValue!
-                : "Not available"
+                ? LegendLocalized(textValue!)
+                : LegendLocalized("Not available")
         }
     }
 }
@@ -233,14 +233,14 @@ struct MobileFinancialSummaryMetricResponse: Codable, Equatable, Sendable {
     var displayValue: String {
         if let amountCents {
             return (Decimal(amountCents) / Decimal(100))
-                .formatted(.currency(code: "USD"))
+                .formatted(.currency(code: "USD").locale(LegendActiveLocale()))
         }
 
         if let date {
             return MobileFinancialDisplay.date(date)
         }
 
-        return textValue ?? "Not available"
+        return textValue ?? LegendLocalized("Not available")
     }
 }
 
@@ -288,29 +288,29 @@ enum MobileFinancialDetailDestination: String, Hashable, Identifiable, Sendable 
     var title: String {
         switch self {
         case .assets:
-            return "Assets"
+            return LegendLocalized("Assets")
         case .liabilities:
-            return "Liabilities"
+            return LegendLocalized("Liabilities")
         case .cashFlow:
-            return "Cash Flow"
+            return LegendLocalized("Cash Flow")
         case .protection:
-            return "Protection"
+            return LegendLocalized("Protection")
         case .taxProfile:
-            return "Tax Profile"
+            return LegendLocalized("Tax Profile")
         case .currentOutlook:
-            return "Current Outlook"
+            return LegendLocalized("Current Outlook")
         case .monthlyOutlook:
-            return "Month at a Glance"
+            return LegendLocalized("Month at a Glance")
         case .debtObligations:
-            return "Debt & Obligations"
+            return LegendLocalized("Debt & Obligations")
         case .financialPosition:
-            return "Balance Sheet"
+            return LegendLocalized("Balance Sheet")
         case .upcomingActivity:
-            return "Upcoming Activity"
+            return LegendLocalized("Upcoming Activity")
         case .protectionDiscussion:
-            return "Protection Discussion"
+            return LegendLocalized("Protection Discussion")
         case .dataAttention:
-            return "Data Needing Attention"
+            return LegendLocalized("Data Needing Attention")
         }
     }
 
@@ -699,7 +699,9 @@ enum MobileFinancialDisplay {
             return value
         }
 
-        return "\(Calendar.current.shortMonthSymbols[month - 1]) \(day)"
+        var calendar = Calendar.current
+        calendar.locale = LegendActiveLocale()
+        return "\(calendar.shortMonthSymbols[month - 1]) \(day)"
     }
 
     static func month(_ value: String) -> String {
@@ -708,16 +710,18 @@ enum MobileFinancialDisplay {
         guard parts.count >= 2,
               let year = Int(parts[0]),
               let month = Int(parts[1]),
-              (1...Calendar.current.monthSymbols.count).contains(month) else {
+              (1...12).contains(month) else {
             return value
         }
 
-        return "\(Calendar.current.monthSymbols[month - 1]) \(year)"
+        var calendar = Calendar.current
+        calendar.locale = LegendActiveLocale()
+        return "\(calendar.monthSymbols[month - 1]) \(year)"
     }
 
     static func currency(cents: Int64) -> String {
         (Decimal(cents) / Decimal(100))
-            .formatted(.currency(code: "USD"))
+            .formatted(.currency(code: "USD").locale(LegendActiveLocale()))
     }
 }
 

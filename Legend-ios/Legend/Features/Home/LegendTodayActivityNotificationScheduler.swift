@@ -42,8 +42,8 @@ struct LegendTodayActivityNotificationPlan: Equatable, Sendable {
 
         return Self(
             identifier: "legend.today.\(kind.rawValue).\(itemIdentifier)",
-            title: "LEGEND®",
-            subtitle: kind == .reminder ? "Reminder" : "Event",
+            title: LegendLocalized("LEGEND®"),
+            subtitle: kind == .reminder ? LegendLocalized("Reminder") : LegendLocalized("Event"),
             body: normalizedTitle,
             fireDate: resolvedFireDate,
             repeatRule: repeatRule)
@@ -157,7 +157,7 @@ enum LegendTodayActivityNotificationError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .authorizationRequired:
-            return "Allow LEGEND notifications in Settings to schedule this alert."
+            return LegendLocalized("Allow LEGEND notifications in Settings to schedule this alert.")
         }
     }
 }

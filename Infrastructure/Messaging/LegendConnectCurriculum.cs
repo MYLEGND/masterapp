@@ -206,7 +206,9 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
     private const int MaximumGovernedResponseSentences = 8;
     private const int MaximumConciseResponseComponents = 24;
     private const int MinimumDetailedResponseComponents = 25;
-    private const int MaximumSemanticInputComponents = 24;
+    private const int MaximumSemanticInputComponents = 128;
+    private const int MaximumReusableMeaningAnchorComponents = 64;
+    private const int MaximumSemanticRequestComponents = 512;
     private const int MaximumIndexedSemanticTextUnits = 512;
     private const int MaximumIndexedSemanticAnchors = 4096;
     private const int MaximumSemanticTransitionFamilies =
@@ -2414,6 +2416,8 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
         }
         await _db.SaveChangesAsync(cancellationToken);
 
+        await ReconcileSupersededMeaningGraphEvidenceAsync(exampleIds, cancellationToken);
+
         var affectedPatterns = evidence.Select(item => item.StructuralPatternId).Distinct().ToArray();
         var affectedRelationships = evidence
             .Where(item => item.StructuralRelationshipId is not null)
@@ -2424,6 +2428,102 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
             await RefreshPatternMaturityAsync(patternId, cancellationToken);
         foreach (var relationshipId in affectedRelationships)
             await RefreshStructuralRelationshipMaturityAsync(relationshipId, cancellationToken);
+        await _db.SaveChangesAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// Reconciles meaning-graph projections by their exact owning curriculum
+    /// example IDs. This also repairs historical examples whose parent rows
+    /// were already retired before all dependent projections were covered,
+    /// without touching current examples that reuse the same text unit.
+    /// </summary>
+    internal async Task ReconcileSupersededMeaningGraphEvidenceAsync(
+        IReadOnlyCollection<Guid> curriculumExampleIds,
+        CancellationToken cancellationToken = default)
+    {
+        if (curriculumExampleIds.Count == 0)
+            return;
+
+        var exampleIds = curriculumExampleIds
+            .Where(item => item != Guid.Empty)
+            .Distinct()
+            .ToArray();
+        if (exampleIds.Length == 0)
+            return;
+
+        var examples = await _db.Set<LegendCurriculumExample>()
+            .Where(item => exampleIds.Contains(item.Id))
+            .Select(item => new { item.Id, item.SupersededUtc })
+            .ToListAsync(cancellationToken);
+        if (examples.Count != exampleIds.Length || examples.Any(item => item.SupersededUtc == null))
+        {
+            throw new InvalidOperationException(
+                "Meaning-graph projections can only be reconciled for known superseded curriculum examples.");
+        }
+
+        var now = DateTime.UtcNow;
+        // Meaning graphs are canonical projections of the exact curriculum
+        // examples identified above. Retain every row for audit, but remove
+        // each projection from active evidence and recalculate the affected
+        // aggregate maturity below.
+        var meaningNodes = await _db.Set<LegendLanguageMeaningNodeEvidence>()
+            .Where(item => item.SupersededUtc == null &&
+                exampleIds.Contains(item.CurriculumExampleId))
+            .ToListAsync(cancellationToken);
+        foreach (var item in meaningNodes)
+        {
+            item.SupersededUtc = now;
+            item.UpdatedUtc = now;
+        }
+
+        var primitiveEvidence = await _db.Set<LegendLanguageMeaningPrimitiveEvidence>()
+            .Where(item => item.SupersededUtc == null &&
+                exampleIds.Contains(item.CurriculumExampleId))
+            .ToListAsync(cancellationToken);
+        foreach (var item in primitiveEvidence)
+        {
+            item.SupersededUtc = now;
+            item.UpdatedUtc = now;
+        }
+
+        var meaningRelationEvidence = await _db.Set<LegendLanguageMeaningRelationEvidence>()
+            .Where(item => item.SupersededUtc == null &&
+                exampleIds.Contains(item.CurriculumExampleId))
+            .ToListAsync(cancellationToken);
+        foreach (var item in meaningRelationEvidence)
+        {
+            item.SupersededUtc = now;
+            item.UpdatedUtc = now;
+        }
+
+        var discourseReferenceEvidence = await _db.Set<LegendLanguageDiscourseReferenceRuleEvidence>()
+            .Where(item => item.SupersededUtc == null &&
+                exampleIds.Contains(item.CurriculumExampleId))
+            .ToListAsync(cancellationToken);
+        foreach (var item in discourseReferenceEvidence)
+        {
+            item.SupersededUtc = now;
+            item.UpdatedUtc = now;
+        }
+
+        var semanticExampleRelations = await _db.Set<LegendFounderSemanticExampleRelationEvidence>()
+            .Where(item => item.SupersededUtc == null &&
+                (exampleIds.Contains(item.SourceCurriculumExampleId) ||
+                 exampleIds.Contains(item.ResultCurriculumExampleId)))
+            .ToListAsync(cancellationToken);
+        foreach (var item in semanticExampleRelations)
+        {
+            item.SupersededUtc = now;
+            item.UpdatedUtc = now;
+        }
+        await _db.SaveChangesAsync(cancellationToken);
+
+        foreach (var primitiveId in primitiveEvidence.Select(item => item.MeaningPrimitiveId).Distinct())
+            await RefreshMeaningPrimitiveMaturityAsync(primitiveId, cancellationToken);
+        foreach (var relationId in meaningRelationEvidence.Select(item => item.MeaningRelationId).Distinct())
+            await RefreshMeaningRelationMaturityAsync(relationId, cancellationToken);
+        foreach (var ruleId in discourseReferenceEvidence.Select(item => item.DiscourseReferenceRuleId).Distinct())
+            await RefreshDiscourseReferenceRuleMaturityAsync(ruleId, cancellationToken);
         await _db.SaveChangesAsync(cancellationToken);
     }
 
@@ -4193,6 +4293,7 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
                     anchor.ComponentStartTokenIndex >= 0 &&
                     anchor.ComponentLength > 0 &&
                     anchor.ComponentLength <= inputLexemeHashes.Count &&
+                    anchor.ComponentLength <= MaximumReusableMeaningAnchorComponents &&
                     occurrence.TokenIndex >= anchor.ComponentStartTokenIndex &&
                     occurrence.TokenIndex < anchor.ComponentStartTokenIndex + anchor.ComponentLength
                 group occurrence by new
@@ -4253,6 +4354,68 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
         return rows.Length > MaximumIndexedSemanticTextUnits
             ? IndexedSemanticAnchorRetrieval.Bounded
             : new(rows, false);
+    }
+
+    /// <summary>
+    /// Applies the existing indexed semantic lookup across one complete
+    /// request. The SQL lookup remains bounded, while overlapping windows
+    /// guarantee that every reusable anchor within the governed 64-component
+    /// anchor contract is evaluated without classifying a longer utterance as
+    /// invalid. Exact governed endpoints retain their existing direct lookup.
+    /// </summary>
+    private async Task<IndexedSemanticAnchorRetrieval>
+        LoadIndexedSemanticAnchorIdsForRequestAsync(
+            string language,
+            IReadOnlyList<string> inputLexemeHashes,
+            CancellationToken cancellationToken,
+            bool requireReusableMeaningEvidence)
+    {
+        if (inputLexemeHashes.Count is < 1 or > MaximumSemanticRequestComponents)
+            return IndexedSemanticAnchorRetrieval.Empty;
+
+        if (inputLexemeHashes.Count <= MaximumSemanticInputComponents)
+        {
+            return await LoadIndexedSemanticAnchorIdsAsync(
+                language,
+                inputLexemeHashes,
+                cancellationToken,
+                requireReusableMeaningEvidence);
+        }
+
+        var anchorIds = new HashSet<Guid>();
+        var stride = MaximumReusableMeaningAnchorComponents;
+        for (var start = 0; start < inputLexemeHashes.Count; start += stride)
+        {
+            var windowStart = Math.Min(
+                start,
+                inputLexemeHashes.Count - MaximumSemanticInputComponents);
+            var window = inputLexemeHashes
+                .Skip(windowStart)
+                .Take(MaximumSemanticInputComponents)
+                .ToArray();
+            var indexed = await LoadIndexedSemanticAnchorIdsAsync(
+                language,
+                window,
+                cancellationToken,
+                requireReusableMeaningEvidence);
+            if (indexed.BoundExceeded)
+                return IndexedSemanticAnchorRetrieval.Bounded;
+
+            foreach (var anchorId in indexed.AnchorIds)
+            {
+                anchorIds.Add(anchorId);
+                if (anchorIds.Count > MaximumIndexedSemanticTextUnits)
+                    return IndexedSemanticAnchorRetrieval.Bounded;
+            }
+
+            if (windowStart + MaximumSemanticInputComponents >=
+                inputLexemeHashes.Count)
+            {
+                break;
+            }
+        }
+
+        return new(anchorIds.OrderBy(item => item).ToArray(), false);
     }
 
     /// <summary>
@@ -4785,19 +4948,19 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
         }
         else
         {
-            if (tokens.Count > MaximumSemanticInputComponents)
+            if (tokens.Count > MaximumSemanticRequestComponents)
             {
                 return new(
                     false,
                     [],
                     [],
                     tokens.Select(item => item.NormalizedText).ToArray(),
-                    "meaning_graph_input_invalid");
+                    "meaning_graph_processing_bound_exceeded");
             }
             var inputLexemeHashes = tokens
                 .Select(item => item.NormalizedHash)
                 .ToArray();
-            indexedAnchors = await LoadIndexedSemanticAnchorIdsAsync(
+            indexedAnchors = await LoadIndexedSemanticAnchorIdsForRequestAsync(
                 languageCode,
                 inputLexemeHashes,
                 cancellationToken,
@@ -6009,13 +6172,24 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
                 "discourse_reference_binding_invalid");
         }
 
-        var nodes = graph.Nodes.ToList();
-        var relations = graph.Relations.ToList();
+        if (!TryPruneSupersededReplacementEntities(
+                graph.Nodes,
+                graph.Relations,
+                currentTurn.Bindings,
+                out var nodes,
+                out var relations,
+                out var selectorRemap))
+        {
+            return DiscourseMeaningGraphCompletion.Failure(
+                graph,
+                "discourse_reference_binding_invalid");
+        }
+
         foreach (var selectorSignature in rules
                      .Select(item => item.SelectorSemanticSignature)
                      .Distinct(StringComparer.Ordinal))
         {
-            var selectorIndexes = nodes
+            var selectorIndexes = graph.Nodes
                 .Select((node, index) => new { node, index })
                 .Where(item => string.Equals(
                     item.node.SemanticSignature,
@@ -6109,7 +6283,7 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
                     "governed-discourse-reference-completion|v1|" +
                     rule.RuleSignature + "|" + entity.SemanticSignature),
                 "resolved-reference",
-                selectorIndexes[0],
+                selectorRemap[selectorIndexes[0]],
                 completedEntityIndex,
                 Math.Min(entity.IndependentSupportCount, rule.IndependentSupportCount));
             if (!relations.Contains(relation))
@@ -6122,6 +6296,91 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
             relations,
             graph.UnknownSurfaceComponents,
             "meaning_graph_discourse_completed"));
+    }
+
+    private static bool TryPruneSupersededReplacementEntities(
+        IReadOnlyList<LegendConnectUtteranceMeaningNode> nodes,
+        IReadOnlyList<LegendConnectUtteranceMeaningRelation> relations,
+        IReadOnlyList<LegendConnectDiscourseReferenceBindingSnapshot> bindings,
+        out List<LegendConnectUtteranceMeaningNode> prunedNodes,
+        out List<LegendConnectUtteranceMeaningRelation> prunedRelations,
+        out Dictionary<int, int> selectorRemap)
+    {
+        prunedNodes = nodes.ToList();
+        prunedRelations = relations.ToList();
+        selectorRemap = Enumerable.Range(0, nodes.Count)
+            .ToDictionary(index => index, index => index);
+
+        var replacements = bindings
+            .Where(item =>
+                item.ResolutionState == "bound" &&
+                item.ReplacesActiveBinding &&
+                !string.IsNullOrWhiteSpace(item.EntitySemanticDimension) &&
+                !string.IsNullOrWhiteSpace(item.EntitySemanticSignature) &&
+                !string.IsNullOrWhiteSpace(item.EntitySemanticValue))
+            .ToArray();
+        if (replacements.Length == 0)
+            return true;
+
+        var retainedByDimension = new Dictionary<string, (string Signature, string Value)>(StringComparer.Ordinal);
+        foreach (var binding in replacements)
+        {
+            var retained = (binding.EntitySemanticSignature!, binding.EntitySemanticValue!);
+            if (retainedByDimension.TryGetValue(binding.EntitySemanticDimension, out var existing) &&
+                (!string.Equals(existing.Signature, retained.Item1, StringComparison.Ordinal) ||
+                 !string.Equals(existing.Value, retained.Item2, StringComparison.Ordinal)))
+            {
+                return false;
+            }
+
+            retainedByDimension[binding.EntitySemanticDimension] = retained;
+        }
+
+        var removedIndexes = Enumerable.Range(0, nodes.Count)
+            .Where(index => false)
+            .ToHashSet();
+        foreach (var binding in replacements)
+        {
+            if (!binding.HasSupersededCurrentTurnEntity)
+                continue;
+            if (binding.SupersededCurrentTurnNodeIndex is not int candidateIndex ||
+                candidateIndex < 0 || candidateIndex >= nodes.Count)
+                return false;
+            var candidate = nodes[candidateIndex];
+            if (!string.Equals(candidate.SemanticSignature, binding.SupersededCurrentTurnSemanticSignature, StringComparison.Ordinal) ||
+                !string.Equals(candidate.SemanticDimension, binding.SupersededCurrentTurnSemanticDimension, StringComparison.Ordinal) ||
+                !string.Equals(candidate.SemanticValue, binding.SupersededCurrentTurnSemanticValue, StringComparison.Ordinal) ||
+                candidate.StartTokenIndex != binding.SupersededCurrentTurnNodeStartTokenIndex ||
+                candidate.TokenLength != binding.SupersededCurrentTurnNodeTokenLength ||
+                !string.Equals(candidate.SemanticDimension, binding.EntitySemanticDimension, StringComparison.Ordinal))
+                return false;
+            removedIndexes.Add(candidateIndex);
+        }
+
+        if (removedIndexes.Count == 0)
+            return true;
+
+        var retainedIndexes = Enumerable.Range(0, nodes.Count)
+            .Where(index => !removedIndexes.Contains(index))
+            .ToArray();
+        var remap = retainedIndexes
+            .Select((originalIndex, newIndex) => new { originalIndex, newIndex })
+            .ToDictionary(item => item.originalIndex, item => item.newIndex);
+        selectorRemap = remap;
+        prunedNodes = retainedIndexes
+            .Select(index => nodes[index])
+            .ToList();
+        prunedRelations = relations
+            .Where(item =>
+                !removedIndexes.Contains(item.SourceNodeIndex) &&
+                !removedIndexes.Contains(item.TargetNodeIndex))
+            .Select(item => item with
+            {
+                SourceNodeIndex = remap[item.SourceNodeIndex],
+                TargetNodeIndex = remap[item.TargetNodeIndex]
+            })
+            .ToList();
+        return true;
     }
 
     private static bool IsActiveDiscourseEntityNode(

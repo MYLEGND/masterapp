@@ -56,16 +56,16 @@ public sealed class MobileProfilePresentationContractTests
             "private func submitControlledResourceRequest(");
         var iosPublicProfile = Between(
             iosSettings,
-            "LegendProfileSettingsSection(title: \"Profile\")",
+            "LegendProfileSettingsSection(title: LegendLocalized(\"Profile\"))",
             "if currentSession.actor.identity.participantType == .agent");
         var iosFounderDiagnostics = Between(
             iosSettings,
-            "LegendProfileSettingsSection(title: \"Founder diagnostics\")",
+            "LegendProfileSettingsSection(title: LegendLocalized(\"Founder diagnostics\"))",
             "if currentSession.capabilities.contains(\"scripture-management\")");
         var iosPublicSecurity = Between(
             iosSettings,
-            "LegendProfileSettingsSection(title: \"Security\")",
-            "LegendProfileSettingsSection(title: \"Account access\")");
+            "LegendProfileSettingsSection(title: LegendLocalized(\"Security\"))",
+            "LegendProfileSettingsSection(title: LegendLocalized(\"Account access\"))");
 
         Assert.Contains("Edit profile", iosPublicProfile, StringComparison.Ordinal);
         Assert.DoesNotContain("Creator insights", iosPublicProfile, StringComparison.Ordinal);
@@ -104,7 +104,7 @@ public sealed class MobileProfilePresentationContractTests
             "registered", "ui", "LegendFounderAiConversation.kt");
         var manifest = Read("Legend-Android", "app", "src", "main", "AndroidManifest.xml");
         var adaptiveIcon = Read(
-            "Legend-Android", "app", "src", "main", "res", "mipmap-anydpi-v26",
+            "Legend-Android", "app", "src", "main", "res", "mipmap-anydpi",
             "ic_legend_launcher.xml");
 
         Assert.Contains(".navigationBarsPadding()", android, StringComparison.Ordinal);
@@ -144,6 +144,103 @@ public sealed class MobileProfilePresentationContractTests
             "android:drawable=\"@drawable/ic_legend_launcher_foreground\"",
             adaptiveIcon,
             StringComparison.Ordinal);
+        Assert.Contains(
+            "<monochrome android:drawable=\"@drawable/ic_legend_notification\" />",
+            adaptiveIcon,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void AndroidPush_UsesFirebaseInstallationRegistrationWithoutDeprecatedTokenApis()
+    {
+        var manifest = Read("Legend-Android", "app", "src", "main", "AndroidManifest.xml");
+        var coordinator = Read(
+            "Legend-Android", "app", "src", "main", "java", "com", "mylegnd", "legend",
+            "registered", "core", "push", "FcmPushRegistrationCoordinator.kt");
+        var service = Read(
+            "Legend-Android", "app", "src", "main", "java", "com", "mylegnd", "legend",
+            "registered", "core", "push", "LegendFirebaseMessagingService.kt");
+
+        Assert.Contains("firebase_messaging_installation_id_enabled", manifest, StringComparison.Ordinal);
+        Assert.Contains("FirebaseMessaging.getInstance().register()", coordinator, StringComparison.Ordinal);
+        Assert.Contains("FirebaseMessaging.getInstance().unregister()", coordinator, StringComparison.Ordinal);
+        Assert.Contains("FirebaseInstallations.getInstance().id", coordinator, StringComparison.Ordinal);
+        Assert.Contains("override fun onRegistered(installationId: String)", service, StringComparison.Ordinal);
+        Assert.DoesNotContain(".deleteToken()", coordinator, StringComparison.Ordinal);
+        Assert.DoesNotContain(".token.awaitResult()", coordinator, StringComparison.Ordinal);
+        Assert.DoesNotContain("override fun onNewToken", service, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void MobileSignIn_UsesOneSecureActionForStandardAndProvidedCredentials()
+    {
+        var ios = Read("Legend-ios", "Legend", "Features", "Root", "RootView.swift");
+        var android = Read(
+            "Legend-Android", "app", "src", "main", "java", "com", "mylegnd", "legend",
+            "registered", "ui", "LegendApp.kt");
+
+        var iosSignIn = Between(
+            ios,
+            "private struct SignInView: View",
+            "private struct SessionFailureView: View");
+        Assert.Contains(
+            "Button(LegendLocalized(\"Sign in securely\"), action: signIn)",
+            iosSignIn,
+            StringComparison.Ordinal);
+        Assert.Contains("session.signInForAppReview(", iosSignIn, StringComparison.Ordinal);
+        Assert.Contains("session.signIn()", iosSignIn, StringComparison.Ordinal);
+        Assert.Contains("ScrollView", iosSignIn, StringComparison.Ordinal);
+        Assert.Contains("Were you given sign-in credentials?", iosSignIn, StringComparison.Ordinal);
+        Assert.Contains("showsProvidedCredentials && hasCompleteProvidedCredentials", iosSignIn, StringComparison.Ordinal);
+        Assert.DoesNotContain("App Review Sign In", iosSignIn, StringComparison.Ordinal);
+        Assert.DoesNotContain("AppReviewSignInView", iosSignIn, StringComparison.Ordinal);
+        Assert.DoesNotContain(".sheet(", iosSignIn, StringComparison.Ordinal);
+
+        var androidSignIn = Between(
+            android,
+            "private fun SignInScreen(",
+            "private fun RoleSelectionScreen(")
+            .Replace("\r\n", "\n", StringComparison.Ordinal);
+        Assert.Contains("LegendPrimaryButton(\n                \"Sign in securely\"", androidSignIn, StringComparison.Ordinal);
+        Assert.Contains(
+            "onAppReviewSignIn(normalizedUsername, submittedPassword)",
+            androidSignIn,
+            StringComparison.Ordinal);
+        Assert.Contains("activity?.let(onSignIn)", androidSignIn, StringComparison.Ordinal);
+        Assert.Contains(".imePadding()", androidSignIn, StringComparison.Ordinal);
+        Assert.Contains("Were you given sign-in credentials?", androidSignIn, StringComparison.Ordinal);
+        Assert.Contains(
+            "showsProvidedCredentials && hasCompleteProvidedCredentials",
+            androidSignIn,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain("App Review Sign In", androidSignIn, StringComparison.Ordinal);
+        Assert.DoesNotContain("AppReviewSignInDialog", androidSignIn, StringComparison.Ordinal);
+        Assert.DoesNotContain("AlertDialog(", androidSignIn, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void AndroidSecureSignIn_UsesOneConfiguredMsalClientAndAccountAuthority()
+    {
+        var auth = Read(
+            "Legend-Android", "app", "src", "main", "java", "com", "mylegnd", "legend",
+            "registered", "core", "auth", "LegendAuth.kt");
+        var session = Read(
+            "Legend-Android", "app", "src", "main", "java", "com", "mylegnd", "legend",
+            "registered", "core", "session", "LegendSession.kt");
+        var manifest = Read("Legend-Android", "app", "src", "main", "AndroidManifest.xml");
+        var msalConfiguration = Read(
+            "Legend-Android", "app", "src", "main", "legend-template", "res", "raw",
+            "legend_msal_config.json");
+
+        Assert.Contains("android.permission.ACCESS_NETWORK_STATE", manifest, StringComparison.Ordinal);
+        Assert.Contains("\"default\": true", msalConfiguration, StringComparison.Ordinal);
+        Assert.Contains("private val applicationMutex = Mutex()", auth, StringComparison.Ordinal);
+        Assert.Contains("cachedApplication", auth, StringComparison.Ordinal);
+        Assert.Contains(".fromAuthority(account.authority)", auth, StringComparison.Ordinal);
+        Assert.DoesNotContain(".fromAuthority(configuration.entraAuthority)", auth, StringComparison.Ordinal);
+        Assert.Contains("MsalClientException.IO_ERROR", auth, StringComparison.Ordinal);
+        Assert.Contains("is AuthenticationCancelledException -> SessionState.SignedOut", session, StringComparison.Ordinal);
+        Assert.Contains("Secure sign-in needs a working internet connection.", session, StringComparison.Ordinal);
     }
 
     private static string Between(string source, string start, string end)

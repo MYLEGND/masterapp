@@ -660,14 +660,15 @@ jobs:
         env:
           LEGEND_PRODUCTION_PROOF_REQUIRED: 'true'
           LEGEND_PRODUCTION_PROOF_MATRIX_VERSION: ${{ env.LEGEND_PRODUCTION_PROOF_MATRIX_VERSION }}
-          LEGEND_PRODUCTION_PROOF_RESULT_PATH: diagnostics/legend-production-matrix-result.json
+          # VSTest may execute from the downloaded assembly directory.
+          LEGEND_PRODUCTION_PROOF_RESULT_PATH: ${{ github.workspace }}/diagnostics/legend-production-matrix-result.json
           OPENAI_API_KEY: ''
           OpenAI__ApiKey: ''
         run: |
           New-Item -ItemType Directory -Force diagnostics | Out-Null
           $testName = 'AgentPortal.Tests.LegendFounderCurriculumSqlServerE2ETests.ProductionReadOnlyNativeProofMatrix'
           $filter = "FullyQualifiedName=$testName"
-          $matrixResultPath = 'diagnostics/legend-production-matrix-result.json'
+          $matrixResultPath = $env:LEGEND_PRODUCTION_PROOF_RESULT_PATH
           if (Test-Path $matrixResultPath) { throw 'A stale SQL proof result exists before matrix execution.' }
           dotnet test './tested/AgentPortal.Tests.dll' --list-tests --filter $filter 2>&1 | Tee-Object -FilePath diagnostics/legend-production-proof-discovery.txt
           if ($LASTEXITCODE -ne 0) { throw 'LEGEND production proof test discovery failed.' }

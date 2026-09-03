@@ -288,6 +288,6 @@ enum KeychainStoreError: LocalizedError {
     case deleteFailed(OSStatus)
 
     var errorDescription: String? {
-        "Secure session storage could not be updated."
+        LegendLocalized("Secure session storage could not be updated.")
     }
 }

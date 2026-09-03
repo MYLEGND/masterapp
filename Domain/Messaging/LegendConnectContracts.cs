@@ -59,6 +59,11 @@ public interface ILegendLanguageRegistry
     Task<IReadOnlyList<LegendLanguageDefinitionSnapshot>> ListEnabledTranslationLanguagesAsync(
         CancellationToken cancellationToken = default);
 
+    Task<IReadOnlyList<LegendLanguageDefinitionSnapshot>>
+        ListEnabledTranslationLanguagesReadOnlyAsync(
+            CancellationToken cancellationToken = default) =>
+        ListEnabledTranslationLanguagesAsync(cancellationToken);
+
     /// <summary>
     /// Reads the existing directional serving eligibility without creating or
     /// enabling a pair. Production routing must never turn an unsupported pair
@@ -85,6 +90,90 @@ public interface ITranslationLearningPublisher
 public interface ITranslationProvider : ITranslationService
 {
     string ProviderName { get; }
+
+    /// <summary>
+    /// Stable provider contract version used only for retained-translation
+    /// invalidation. It is provenance metadata, not a model-quality claim.
+    /// </summary>
+    string ProviderVersion => "unspecified";
+
+    async Task<IReadOnlyList<TranslationProviderResult>> TranslateBatchAsync(
+        IReadOnlyList<string> texts,
+        string targetLanguage,
+        string? sourceLanguage = null,
+        CancellationToken cancellationToken = default)
+    {
+        var results = new List<TranslationProviderResult>(texts.Count);
+        foreach (var text in texts)
+        {
+            results.Add(await TranslateAsync(
+                text,
+                targetLanguage,
+                sourceLanguage,
+                cancellationToken));
+        }
+        return results;
+    }
+}
+
+public static class TranslationReuseScopes
+{
+    public const string Global = "Global";
+    public const string Tenant = "Tenant";
+    public const string User = "User";
+    public const string Conversation = "Conversation";
+
+    public static bool IsSupported(string? value) => value is
+        Global or Tenant or User or Conversation;
+}
+
+/// <summary>
+/// A versioned request for durable reuse through the existing canonical
+/// translation store. ScopeIdentityHash is empty only for globally reusable,
+/// approved non-personal copy; restricted identities are always one-way hashes.
+/// </summary>
+public sealed record RetainedTranslationRequest(
+    string StableSourceContentId,
+    string SourceText,
+    string SourceLanguageCode,
+    string TargetLanguageCode,
+    string SourceRevision,
+    string TranslationContext,
+    string PlaceholderContract,
+    string ReuseScope,
+    string ScopeIdentityHash = "");
+
+public sealed record RetainedTranslationResult(
+    bool Succeeded,
+    string Text,
+    string SourceLanguageCode,
+    string TargetLanguageCode,
+    string Provider,
+    string Provenance,
+    string ValidationState,
+    DateTime CreatedUtc,
+    bool Reused,
+    string? ErrorCode = null);
+
+/// <summary>
+/// Retained application/content translation is another contract on the one
+/// Legend Connect router. It is not a provider, cache, or preference source.
+/// </summary>
+public interface IRetainedTranslationService
+{
+    Task<RetainedTranslationResult> TranslateRetainedAsync(
+        RetainedTranslationRequest request,
+        CancellationToken cancellationToken = default);
+
+    async Task<IReadOnlyList<RetainedTranslationResult>> TranslateRetainedBatchAsync(
+        IReadOnlyList<RetainedTranslationRequest> requests,
+        CancellationToken cancellationToken = default)
+    {
+        var results = new List<RetainedTranslationResult>(requests.Count);
+        foreach (var request in requests)
+            results.Add(await TranslateRetainedAsync(request, cancellationToken));
+        return results;
+    }
 }
 
 /// <summary>
@@ -979,7 +1068,33 @@ public sealed record LegendConnectDiscourseReferenceBindingSnapshot(
     int? EntityNodeIndex,
     bool ReplacesActiveBinding,
     string SelectorSemanticSignature,
-    string? ReferenceRuleSignature);
+    string? ReferenceRuleSignature)
+{
+    public Guid? SupersededTurnId { get; init; }
+    public int? SupersededTurnSequence { get; init; }
+    public int? SupersededNodeIndex { get; init; }
+    public string? SupersededEntitySemanticSignature { get; init; }
+    public string? SupersededEntitySemanticDimension { get; init; }
+    public string? SupersededEntitySemanticValue { get; init; }
+    public int? SupersededNodeStartTokenIndex { get; init; }
+    public int? SupersededNodeTokenLength { get; init; }
+    public Guid? SelectorTurnId { get; init; }
+    public int? SelectorTurnSequence { get; init; }
+    public int? SelectorNodeIndex { get; init; }
+    public int? SelectorNodeStartTokenIndex { get; init; }
+    public int? SelectorNodeTokenLength { get; init; }
+    public string? RuleLanguageCode { get; init; }
+    public string? RuleResolutionMode { get; init; }
+    public int? RuleSelectionRank { get; init; }
+    public string? RuleAllowedSourceRoles { get; init; }
+    public bool HasSupersededCurrentTurnEntity { get; init; }
+    public int? SupersededCurrentTurnNodeIndex { get; init; }
+    public string? SupersededCurrentTurnSemanticSignature { get; init; }
+    public string? SupersededCurrentTurnSemanticDimension { get; init; }
+    public string? SupersededCurrentTurnSemanticValue { get; init; }
+    public int? SupersededCurrentTurnNodeStartTokenIndex { get; init; }
+    public int? SupersededCurrentTurnNodeTokenLength { get; init; }
+}
 
 public sealed record LegendConnectDiscourseStateSnapshot(
     IReadOnlyList<LegendConnectDiscourseTurnStateSnapshot> Turns);

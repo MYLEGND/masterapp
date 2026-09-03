@@ -429,8 +429,8 @@ final class LegendApplicationBootstrapCoordinator: ObservableObject {
 
     private var agentWorkspaceUnavailableFailure: UserFacingFailure {
         UserFacingFailure(
-            title: "Agent workspace unavailable",
-            message: "The required client and lead workspace could not be initialized for this agent session.",
+            title: LegendLocalized("Agent workspace unavailable"),
+            message: LegendLocalized("The required client and lead workspace could not be initialized for this agent session."),
             correlationID: nil)
     }
 }

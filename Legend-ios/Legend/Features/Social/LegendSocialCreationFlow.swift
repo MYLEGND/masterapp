@@ -52,11 +52,11 @@ private struct LegendSocialCreationModeMenu: View {
                         }
                         .buttonStyle(.plain)
                         .foregroundStyle(.white)
-                        .accessibilityLabel("Close creator")
+                        .accessibilityLabel(LegendLocalized("Close creator", context: "accessibility copy"))
 
                         Spacer()
 
-                        Text("Create")
+                        Text(LegendLocalized("Create"))
                             .font(.headline.weight(.semibold))
                             .foregroundStyle(.white)
 
@@ -68,7 +68,7 @@ private struct LegendSocialCreationModeMenu: View {
                     .padding(.top, LegendNextSpacing.xs)
 
                     VStack(alignment: .leading, spacing: LegendNextSpacing.md) {
-                        Text("Choose a format")
+                        Text(LegendLocalized("Choose a format"))
                             .font(.title2.weight(.bold))
                             .foregroundStyle(.white)
 
@@ -77,7 +77,7 @@ private struct LegendSocialCreationModeMenu: View {
                                 creationOption(candidate)
                             }
                             .buttonStyle(.plain)
-                            .accessibilityLabel("Create \(candidate.displayName)")
+                            .accessibilityLabel(LegendLocalized("Create {value1}", context: "accessibility copy", arguments: ["value1": String(describing: (candidate.displayName))]))
                             .accessibilityHint(candidate.creationPrompt)
                         }
                     }
@@ -264,17 +264,17 @@ struct LegendSocialComposer: View {
             }
         }
         .confirmationDialog(
-            "Discard this creation?",
+            LegendLocalized("Discard this creation?"),
             isPresented: $showsDiscardConfirmation,
             titleVisibility: .visible
         ) {
-            Button("Discard creation", role: .destructive) {
+            Button(LegendLocalized("Discard creation"), role: .destructive) {
                 discardTemporaryMedia()
                 dismiss()
             }
-            Button("Keep editing", role: .cancel) {}
+            Button(LegendLocalized("Keep editing"), role: .cancel) {}
         } message: {
-            Text("Your selected media, edits, and publishing details will be removed.")
+            Text(LegendLocalized("Your selected media, edits, and publishing details will be removed."))
         }
     }
 
@@ -397,7 +397,7 @@ struct LegendSocialComposer: View {
             }
             .buttonStyle(.plain)
             .foregroundStyle(.white)
-            .accessibilityLabel("Cancel \(type.displayName) creation")
+            .accessibilityLabel(LegendLocalized("Cancel {value1} creation", context: "accessibility copy", arguments: ["value1": String(describing: (type.displayName))]))
 
             Spacer()
 
@@ -408,14 +408,14 @@ struct LegendSocialComposer: View {
             Spacer()
 
             Button(action: primaryAction) {
-                Text("Next")
+                Text(LegendLocalized("Next"))
                     .font(.body.weight(.semibold))
                     .foregroundStyle(canContinue ? LegendNextColor.goldBright : Color.white.opacity(0.36))
                     .frame(width: 44, height: 44)
             }
             .buttonStyle(.plain)
             .disabled(!canContinue)
-            .accessibilityLabel("Continue to \(type.displayName) editor")
+            .accessibilityLabel(LegendLocalized("Continue to {value1} editor", context: "accessibility copy", arguments: ["value1": String(describing: (type.displayName))]))
         }
         .padding(.horizontal, LegendNextSpacing.sm)
         .padding(.vertical, LegendNextSpacing.xs)
@@ -436,12 +436,16 @@ struct LegendSocialComposer: View {
     private var mediaLibraryToolbar: some View {
         HStack(spacing: LegendNextSpacing.sm) {
             VStack(alignment: .leading, spacing: 2) {
-                Text("Recents")
+                Text(LegendLocalized("Recents"))
                     .font(.title3.weight(.bold))
                     .foregroundStyle(.white)
                 Text(type.maximumMediaItems == 1
-                     ? "Select one \(type.displayName.lowercased()) item"
-                     : "Select up to \(type.maximumMediaItems) items")
+                     ? LegendLocalized(
+                        "Select one {type} item",
+                        arguments: ["type": type.displayName.lowercased()])
+                     : LegendLocalized(
+                        "Select up to {count} items",
+                        arguments: ["count": String(type.maximumMediaItems)]))
                     .font(.caption)
                     .foregroundStyle(Color.white.opacity(0.62))
             }
@@ -456,7 +460,7 @@ struct LegendSocialComposer: View {
                     .background(LegendNextColor.goldBright, in: Circle())
             }
             .buttonStyle(.plain)
-            .accessibilityLabel("Open camera for \(type.displayName)")
+            .accessibilityLabel(LegendLocalized("Open camera for {value1}", context: "accessibility copy", arguments: ["value1": String(describing: (type.displayName))]))
         }
     }
 
@@ -505,7 +509,7 @@ struct LegendSocialComposer: View {
                 .padding(8)
                 .background(LegendNextColor.goldBright, in: Capsule())
                 .padding(6)
-                .accessibilityLabel("Reorder selected media")
+                .accessibilityLabel(LegendLocalized("Reorder selected media", context: "accessibility copy"))
             }
         }
 
@@ -581,7 +585,7 @@ struct LegendSocialComposer: View {
                         selectionAspectRatio,
                         contentMode: .fit
                     )
-                    .accessibilityLabel("Loading more media")
+                    .accessibilityLabel(LegendLocalized("Loading more media", context: "accessibility copy"))
                     .onAppear { photoLibrary.loadNextPage(for: type) }
             }
         }
@@ -610,12 +614,12 @@ struct LegendSocialComposer: View {
                     symbol: "photo.on.rectangle.angled",
                     color: LegendNextColor.information)
                 Spacer(minLength: LegendNextSpacing.xs)
-                Button("Select More Photos") {
+                Button(LegendLocalized("Select More Photos")) {
                     photoLibrary.presentLimitedLibraryPicker()
                 }
                 .font(.caption.weight(.semibold))
                 .buttonStyle(.bordered)
-                .accessibilityLabel("Select more photos for Legend")
+                .accessibilityLabel(LegendLocalized("Select more photos for Legend", context: "accessibility copy"))
             }
 
         case .notDetermined:
@@ -625,7 +629,7 @@ struct LegendSocialComposer: View {
                     symbol: "photo.badge.plus",
                     color: LegendNextColor.information)
                 Spacer(minLength: LegendNextSpacing.xs)
-                Button("Manage access") {
+                Button(LegendLocalized("Manage access")) {
                     photoLibrary.requestAccess()
                 }
                 .font(.caption.weight(.semibold))
@@ -639,7 +643,7 @@ struct LegendSocialComposer: View {
                     symbol: "photo.slash",
                     color: LegendNextColor.warning)
                 Spacer(minLength: LegendNextSpacing.xs)
-                Button("Open Settings") {
+                Button(LegendLocalized("Open Settings")) {
                     photoLibrary.openSettings()
                 }
                 .font(.caption.weight(.semibold))
@@ -756,7 +760,7 @@ struct LegendSocialComposer: View {
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(.white)
-                .accessibilityLabel("Back to media selection")
+                .accessibilityLabel(LegendLocalized("Back to media selection", context: "accessibility copy"))
 
                 Spacer(minLength: 0)
 
@@ -769,14 +773,14 @@ struct LegendSocialComposer: View {
                 Button {
                     primaryAction()
                 } label: {
-                    Text("Next")
+                    Text(LegendLocalized("Next"))
                         .font(.body.weight(.semibold))
                         .foregroundStyle(canContinue ? LegendNextColor.goldBright : Color.white.opacity(0.38))
                         .frame(width: 44, height: 44)
                 }
                 .buttonStyle(.plain)
                 .disabled(!canContinue)
-                .accessibilityLabel("Continue to \(type.displayName) details")
+                .accessibilityLabel(LegendLocalized("Continue to {value1} details", context: "accessibility copy", arguments: ["value1": String(describing: (type.displayName))]))
         }
         .padding(.horizontal, LegendNextSpacing.sm)
         .padding(.vertical, LegendNextSpacing.xs)
@@ -797,7 +801,7 @@ struct LegendSocialComposer: View {
                             )
                         )
 
-                    Text("Add content")
+                    Text(LegendLocalized("Add content"))
                         .font(LegendNextTypography.cardTitle)
                 }
                 .foregroundStyle(.white)
@@ -831,16 +835,16 @@ struct LegendSocialComposer: View {
 
                 if type.maximumMediaItems > 1 && selectedMedia.count > 1 {
                     HStack(spacing: LegendNextSpacing.xs) {
-                        Button("Previous", systemImage: "chevron.left") {
+                        Button(LegendLocalized("Previous"), systemImage: "chevron.left") {
                             moveActiveMediaSelection(by: -1)
                         }
                         .disabled(activeMediaIndex == 0)
 
-                        Text("\(activeMediaIndex + 1) of \(selectedMedia.count)")
+                        Text(LegendLocalized("{value1} of {value2}", arguments: ["value1": String(describing: (activeMediaIndex + 1)), "value2": String(describing: (selectedMedia.count))]))
                             .font(.caption.weight(.bold))
                             .monospacedDigit()
 
-                        Button("Next", systemImage: "chevron.right") {
+                        Button(LegendLocalized("Next"), systemImage: "chevron.right") {
                             moveActiveMediaSelection(by: 1)
                         }
                         .disabled(activeMediaIndex >= selectedMedia.count - 1)
@@ -933,7 +937,7 @@ struct LegendSocialComposer: View {
         if activeMedia?.isVideo == true {
             HStack(spacing: LegendNextSpacing.md) {
                 Toggle(
-                    "Original audio",
+                    LegendLocalized("Original audio"),
                     isOn: Binding(
                         get: { !activeVideoEdit.isOriginalAudioMuted },
                         set: { isEnabled in
@@ -942,12 +946,12 @@ struct LegendSocialComposer: View {
                 .tint(LegendNextColor.goldBright)
                 .foregroundStyle(.white)
 
-                Button("Trim", systemImage: "scissors") {
+                Button(LegendLocalized("Trim"), systemImage: "scissors") {
                     isTrimmingVideo = true
                 }
                 .font(.caption.weight(.bold))
                 .foregroundStyle(LegendNextColor.goldBright)
-                .accessibilityLabel("Trim selected video")
+                .accessibilityLabel(LegendLocalized("Trim selected video", context: "accessibility copy"))
             }
             .padding(.horizontal, LegendNextSpacing.md)
             .padding(.vertical, LegendNextSpacing.sm)
@@ -956,18 +960,18 @@ struct LegendSocialComposer: View {
 
     private var imageTransformEditor: some View {
         HStack(spacing: LegendNextSpacing.md) {
-            Text("Pinch to zoom · Drag to position")
+            Text(LegendLocalized("Pinch to zoom · Drag to position"))
                 .font(.caption)
                 .foregroundStyle(Color.white.opacity(0.70))
             Spacer(minLength: 0)
             HStack(spacing: LegendNextSpacing.sm) {
-                Button("Rotate left", systemImage: "rotate.left") {
+                Button(LegendLocalized("Rotate left"), systemImage: "rotate.left") {
                     updateActiveEdit { $0.rotationDegrees = max(-180, $0.rotationDegrees - 90) }
                 }
-                Button("Rotate right", systemImage: "rotate.right") {
+                Button(LegendLocalized("Rotate right"), systemImage: "rotate.right") {
                     updateActiveEdit { $0.rotationDegrees = min(180, $0.rotationDegrees + 90) }
                 }
-                Button("Reset") { updateActiveEdit { $0.resetTransform() } }
+                Button(LegendLocalized("Reset")) { updateActiveEdit { $0.resetTransform() } }
             }
             .font(.caption.weight(.bold))
             .foregroundStyle(LegendNextColor.goldBright)
@@ -988,7 +992,7 @@ struct LegendSocialComposer: View {
             }
             if activeEdit.filter != .original {
                 LegendSocialAdjustmentSlider(
-                    title: "Intensity",
+                    title: LegendLocalized("Intensity"),
                     value: Binding(
                         get: { activeEdit.filterIntensity },
                         set: { value in updateActiveEdit { $0.filterIntensity = value } }),
@@ -1024,7 +1028,7 @@ struct LegendSocialComposer: View {
                 }
             }
             .buttonStyle(.plain)
-            .accessibilityLabel("Apply \(filter.title) filter")
+            .accessibilityLabel(LegendLocalized("Apply {value1} filter", context: "accessibility copy", arguments: ["value1": String(describing: (filter.title))]))
             .accessibilityAddTraits(activeEdit.filter == filter ? .isSelected : [])
         }
     }
@@ -1062,7 +1066,7 @@ struct LegendSocialComposer: View {
 
             HStack {
                 Spacer()
-                Button("Reset") { updateActiveEdit { $0.resetAdjustments() } }
+                Button(LegendLocalized("Reset")) { updateActiveEdit { $0.resetAdjustments() } }
                     .font(.caption.weight(.bold))
                     .foregroundStyle(LegendNextColor.goldBright)
                     .padding(.trailing, LegendNextSpacing.md)
@@ -1080,7 +1084,7 @@ struct LegendSocialComposer: View {
 
     private var storyTextEditor: some View {
         VStack(alignment: .leading, spacing: LegendNextSpacing.xs) {
-            TextField("Add story text…", text: Binding(
+            TextField(LegendLocalized("Add story text…"), text: Binding(
                 get: { activeEdit.storyOverlay.text },
                 set: { text in updateActiveEdit { $0.storyOverlay.text = text } }),
                 axis: .vertical)
@@ -1103,12 +1107,12 @@ struct LegendSocialComposer: View {
                                     lineWidth: activeEdit.storyOverlay.color == color ? 3 : 1)
                             }
                     }
-                    .accessibilityLabel("Story text color \(color.title)")
+                    .accessibilityLabel(LegendLocalized("Story text color {value1}", context: "accessibility copy", arguments: ["value1": String(describing: (color.title))]))
                     .accessibilityAddTraits(activeEdit.storyOverlay.color == color ? .isSelected : [])
                 }
                 Spacer(minLength: 0)
                 LegendSocialAdjustmentSlider(
-                    title: "Size",
+                    title: LegendLocalized("Size"),
                     value: Binding(
                         get: { activeEdit.storyOverlay.scale },
                         set: { value in updateActiveEdit { $0.storyOverlay.scale = value } }),
@@ -1124,7 +1128,7 @@ struct LegendSocialComposer: View {
         VStack(spacing: LegendNextSpacing.sm) {
             if type == .post {
                 HStack(spacing: LegendNextSpacing.xs) {
-                    Text("Format")
+                    Text(LegendLocalized("Format"))
                         .font(LegendNextTypography.label)
                         .foregroundStyle(Color.white.opacity(0.72))
                     Spacer(minLength: 0)
@@ -1193,7 +1197,7 @@ struct LegendSocialComposer: View {
                     if isPreparingPublication {
                         HStack(spacing: LegendNextSpacing.xs) {
                             ProgressView()
-                            Text("Preparing your final media…")
+                            Text(LegendLocalized("Preparing your final media…"))
                                 .font(LegendNextTypography.supporting)
                         }
                         .foregroundStyle(LegendNextColor.textSecondary)
@@ -1220,7 +1224,7 @@ struct LegendSocialComposer: View {
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(LegendNextColor.textPrimary)
-                .accessibilityLabel("Back to media editing")
+                .accessibilityLabel(LegendLocalized("Back to media editing", context: "accessibility copy"))
 
                 Spacer(minLength: 0)
 
@@ -1231,7 +1235,7 @@ struct LegendSocialComposer: View {
                 Spacer(minLength: 0)
 
                 Button(action: publish) {
-                    Text("Share")
+                    Text(LegendLocalized("Share"))
                         .font(.body.weight(.semibold))
                         .frame(minWidth: 44, minHeight: 44)
                 }
@@ -1243,7 +1247,7 @@ struct LegendSocialComposer: View {
                 )
                 .disabled(!canPublish || social.isPublishing || isPreparingPublication)
                 .accessibilityLabel(
-                    "Publish \(type.displayName)"
+                    LegendLocalized("Publish {value1}", context: "accessibility copy", arguments: ["value1": String(describing: (type.displayName))])
                 )
         }
         .padding(.horizontal, LegendNextSpacing.sm)
@@ -1292,8 +1296,8 @@ struct LegendSocialComposer: View {
                 if caption.isEmpty {
                     Text(
                         type == .story
-                            ? "Add a story message..."
-                            : "Write a caption..."
+                            ? LegendLocalized("Add a story message...")
+                            : LegendLocalized("Write a caption...")
                     )
                     .font(.system(size: 15))
                     .foregroundStyle(
@@ -1315,7 +1319,7 @@ struct LegendSocialComposer: View {
                     .padding(.vertical, 0)
                     .background(Color.clear)
                     .accessibilityLabel(
-                        "\(type.displayName) caption"
+                        LegendLocalized("{value1} caption", context: "accessibility copy", arguments: ["value1": String(describing: (type.displayName))])
                     )
             }
             .frame(maxWidth: .infinity)
@@ -1368,13 +1372,13 @@ struct LegendSocialComposer: View {
         VStack(spacing: 0) {
             publicationSettingButton(
                 icon: "number",
-                title: "Topics & mentions",
+                title: LegendLocalized("Topics & mentions"),
                 value: tagsAndMentions.isEmpty ? "Add" : tagsAndMentions,
                 action: { detailEditor = .topics })
             publicationSeparator
             publicationSettingButton(
                 icon: "mappin.and.ellipse",
-                title: "Location",
+                title: LegendLocalized("Location"),
                 value: shareLocation.isEmpty ? "Add" : shareLocation,
                 action: { detailEditor = .location })
 
@@ -1383,11 +1387,11 @@ struct LegendSocialComposer: View {
                 Image(systemName: "person.2")
                     .foregroundStyle(LegendNextColor.textPrimary)
                     .frame(width: 24)
-                Text("Audience")
+                Text(LegendLocalized("Audience"))
                     .font(.subheadline)
                     .foregroundStyle(LegendNextColor.textPrimary)
                 Spacer()
-                Text("Legend network")
+                Text(LegendLocalized("Legend network"))
                     .font(.caption)
                     .foregroundStyle(LegendNextColor.textSecondary)
             }
@@ -1402,8 +1406,8 @@ struct LegendSocialComposer: View {
             publicationSeparator
             publicationSettingButton(
                 icon: "accessibility",
-                title: "Alt text",
-                value: accessibilityText.isEmpty ? "Add" : "Added",
+                title: LegendLocalized("Alt text"),
+                value: accessibilityText.isEmpty ? LegendLocalized("Add") : LegendLocalized("Added"),
                 action: { detailEditor = .accessibility })
             publicationSeparator
 
@@ -1411,11 +1415,11 @@ struct LegendSocialComposer: View {
                 Image(systemName: "ellipsis.bubble")
                     .foregroundStyle(LegendNextColor.textPrimary)
                     .frame(width: 24)
-                Text("Allow comments")
+                Text(LegendLocalized("Allow comments"))
                     .font(.subheadline)
                     .foregroundStyle(LegendNextColor.textPrimary)
                 Spacer()
-                Toggle("Allow comments", isOn: $commentsEnabled)
+                Toggle(LegendLocalized("Allow comments"), isOn: $commentsEnabled)
                     .labelsHidden()
                     .tint(LegendNextColor.goldBright)
             }
@@ -1484,11 +1488,11 @@ struct LegendSocialComposer: View {
                     .frame(width: 28, height: 36)
                     .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
 
-                    Text("Cover")
+                    Text(LegendLocalized("Cover"))
                         .font(.subheadline)
                         .foregroundStyle(LegendNextColor.textPrimary)
                     Spacer()
-                    Text("Choose frame")
+                    Text(LegendLocalized("Choose frame"))
                         .font(.caption)
                         .foregroundStyle(LegendNextColor.textSecondary)
                     Image(systemName: "chevron.right")
@@ -1500,7 +1504,7 @@ struct LegendSocialComposer: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .accessibilityLabel("Choose Hac cover")
+            .accessibilityLabel(LegendLocalized("Choose Hac cover", context: "accessibility copy"))
         }
     }
 
@@ -1663,7 +1667,7 @@ struct LegendSocialComposer: View {
                 stage = .handedOff
                 dismiss()
             } catch {
-                mediaSelectionError = error.localizedDescription
+                mediaSelectionError = LegendLocalized(error.localizedDescription)
                 isPreparingPublication = false
             }
         }
@@ -1825,18 +1829,18 @@ private struct LegendSocialMusicSelectionSheet: View {
                         VStack(alignment: .leading, spacing: LegendNextSpacing.md) {
                             musicSearchField
 
-                            Text(query.isEmpty ? "Christian music" : "Search results")
+                            Text(query.isEmpty ? LegendLocalized("Christian music") : LegendLocalized("Search results"))
                                 .font(LegendNextTypography.section)
                                 .foregroundStyle(.white)
 
                             if isSearching {
                                 HStack(spacing: LegendNextSpacing.xs) {
-                                    Text("Finding music")
+                                    Text(LegendLocalized("Finding music"))
                                         .font(LegendNextTypography.supporting)
                                         .foregroundStyle(Color.white.opacity(0.70))
                                 }
                             } else if tracks.isEmpty {
-                                Label("No matching music found", systemImage: "music.quarternote.3")
+                                Label(LegendLocalized("No matching music found"), systemImage: "music.quarternote.3")
                                     .font(LegendNextTypography.supporting)
                                     .foregroundStyle(Color.white.opacity(0.72))
                                     .frame(maxWidth: .infinity, minHeight: 120)
@@ -1896,24 +1900,24 @@ private struct LegendSocialMusicSelectionSheet: View {
 
     private var musicHeader: some View {
         HStack {
-            Button("Cancel") {
+            Button(LegendLocalized("Cancel")) {
                 stopPreview()
                 cancel()
             }
             .font(LegendNextTypography.label)
             .foregroundStyle(LegendNextColor.goldBright)
             .frame(width: LegendNextSize.prominentControlHeight, height: LegendNextSize.prominentControlHeight)
-            .accessibilityLabel("Cancel music selection")
+            .accessibilityLabel(LegendLocalized("Cancel music selection", context: "accessibility copy"))
 
             Spacer()
 
-            Text("Add music")
+            Text(LegendLocalized("Add music"))
                 .font(LegendNextTypography.section)
                 .foregroundStyle(.white)
 
             Spacer()
 
-            Button("Add") {
+            Button(LegendLocalized("Add")) {
                 guard let selectedTrack else { return }
                 save(LegendSocialMusicDraft(
                     track: selectedTrack,
@@ -1934,7 +1938,7 @@ private struct LegendSocialMusicSelectionSheet: View {
                     : Color.white.opacity(0.38))
             .frame(width: LegendNextSize.prominentControlHeight, height: LegendNextSize.prominentControlHeight)
             .disabled(selectedTrack == nil || trimEnd <= trimStart)
-            .accessibilityLabel("Add selected music")
+            .accessibilityLabel(LegendLocalized("Add selected music", context: "accessibility copy"))
         }
         .padding(.horizontal, LegendNextSpacing.md)
         .padding(.vertical, LegendNextSpacing.sm)
@@ -1945,13 +1949,13 @@ private struct LegendSocialMusicSelectionSheet: View {
             Image(systemName: "magnifyingglass")
                 .foregroundStyle(LegendNextColor.goldBright)
                 .accessibilityHidden(true)
-            TextField("Search Christian music or an artist", text: $query)
+            TextField(LegendLocalized("Search Christian music or an artist"), text: $query)
                 .font(LegendNextTypography.body)
                 .foregroundStyle(.white)
                 .tint(LegendNextColor.goldBright)
                 .submitLabel(.search)
                 .onSubmit { search(query) }
-                .accessibilityLabel("Search music")
+                .accessibilityLabel(LegendLocalized("Search music", context: "accessibility copy"))
             if !query.isEmpty {
                 Button {
                     query = ""
@@ -1961,7 +1965,7 @@ private struct LegendSocialMusicSelectionSheet: View {
                         .foregroundStyle(Color.white.opacity(0.62))
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel("Clear music search")
+                .accessibilityLabel(LegendLocalized("Clear music search", context: "accessibility copy"))
             }
         }
         .padding(.horizontal, LegendNextSpacing.sm)
@@ -2018,7 +2022,7 @@ private struct LegendSocialMusicSelectionSheet: View {
                 }
             }
             .buttonStyle(.plain)
-            .accessibilityLabel("Select \(track.trackTitle) by \(track.artistName)")
+            .accessibilityLabel(LegendLocalized("Select {value1} by {value2}", context: "accessibility copy", arguments: ["value1": String(describing: (track.trackTitle)), "value2": String(describing: (track.artistName))]))
 
             if track.audioURL != nil {
                 Button {
@@ -2033,7 +2037,7 @@ private struct LegendSocialMusicSelectionSheet: View {
                         .background(LegendNextColor.goldBright, in: Circle())
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel("Preview \(track.trackTitle)")
+                .accessibilityLabel(LegendLocalized("Preview {value1}", context: "accessibility copy", arguments: ["value1": String(describing: (track.trackTitle))]))
             }
         }
     }
@@ -2052,7 +2056,7 @@ private struct LegendSocialMusicSelectionSheet: View {
     private func mixingControls(for track: MobileSocialMusicTrack) -> some View {
         let totalDuration = max(NSDecimalNumber(decimal: track.trackDurationSeconds).doubleValue, 0.01)
         return VStack(alignment: .leading, spacing: LegendNextSpacing.sm) {
-            Text("Clip and audio mix")
+            Text(LegendLocalized("Clip and audio mix"))
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(.white)
             musicSlider("Clip begins", value: $trimStart, range: 0...max(0, trimEnd - 0.01), detail: duration(Decimal(trimStart)))
@@ -2141,7 +2145,7 @@ private struct LegendSocialMusicArtwork: View {
             .foregroundStyle(LegendNextColor.midnight)
             .frame(width: LegendNextSize.controlHeight, height: LegendNextSize.controlHeight)
             .background(LegendNextColor.goldBright, in: Circle())
-            .accessibilityLabel("\(artistName) artist monogram")
+            .accessibilityLabel(LegendLocalized("{value1} artist monogram", context: "accessibility copy", arguments: ["value1": String(describing: (artistName))]))
     }
 }
 
@@ -2221,15 +2225,15 @@ enum LegendSocialImageFilter: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
-        case .original: "Original"
-        case .clean: "Clean"
-        case .warm: "Warm"
-        case .cool: "Cool"
-        case .rich: "Rich"
-        case .golden: "Golden"
-        case .soft: "Soft"
-        case .contrast: "Contrast"
-        case .mono: "Mono"
+        case .original: LegendLocalized("Original")
+        case .clean: LegendLocalized("Clean")
+        case .warm: LegendLocalized("Warm")
+        case .cool: LegendLocalized("Cool")
+        case .rich: LegendLocalized("Rich")
+        case .golden: LegendLocalized("Golden")
+        case .soft: LegendLocalized("Soft")
+        case .contrast: LegendLocalized("Contrast")
+        case .mono: LegendLocalized("Mono")
         }
     }
 }
@@ -2281,13 +2285,13 @@ private enum LegendSocialImageAdjustment: CaseIterable, Identifiable {
 
     var title: String {
         switch self {
-        case .brightness: "Brightness"
-        case .contrast: "Contrast"
-        case .saturation: "Saturation"
-        case .warmth: "Warmth"
-        case .highlights: "Highlights"
-        case .shadows: "Shadows"
-        case .sharpness: "Sharpness"
+        case .brightness: LegendLocalized("Brightness")
+        case .contrast: LegendLocalized("Contrast")
+        case .saturation: LegendLocalized("Saturation")
+        case .warmth: LegendLocalized("Warmth")
+        case .highlights: LegendLocalized("Highlights")
+        case .shadows: LegendLocalized("Shadows")
+        case .sharpness: LegendLocalized("Sharpness")
         }
     }
 
@@ -2317,17 +2321,17 @@ private enum LegendSocialPublicationDetail: String, Identifiable {
 
     var title: String {
         switch self {
-        case .topics: "Topics & mentions"
-        case .location: "Location"
-        case .accessibility: "Alt text"
+        case .topics: LegendLocalized("Topics & mentions")
+        case .location: LegendLocalized("Location")
+        case .accessibility: LegendLocalized("Alt text")
         }
     }
 
     var prompt: String {
         switch self {
-        case .topics: "Add #topics or @mentions"
-        case .location: "Add a location"
-        case .accessibility: "Describe this media"
+        case .topics: LegendLocalized("Add #topics or @mentions")
+        case .location: LegendLocalized("Add a location")
+        case .accessibility: LegendLocalized("Describe this media")
         }
     }
 
@@ -2376,7 +2380,7 @@ private struct LegendSocialPublicationDetailSheet: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Done") { dismiss() }
+                    Button(LegendLocalized("Done")) { dismiss() }
                         .fontWeight(.semibold)
                 }
             }
@@ -2398,11 +2402,11 @@ private enum LegendSocialEditingTool: CaseIterable, Identifiable {
 
     var title: String {
         switch self {
-        case .audio: "Audio"
-        case .transform: "Crop"
-        case .style: "Filters"
-        case .adjust: "Adjust"
-        case .text: "Text"
+        case .audio: LegendLocalized("Audio")
+        case .transform: LegendLocalized("Crop")
+        case .style: LegendLocalized("Filters")
+        case .adjust: LegendLocalized("Adjust")
+        case .text: LegendLocalized("Text")
         }
     }
 
@@ -2789,7 +2793,10 @@ private struct LegendSocialPlayableVideoPreview: View {
                         }
                         .buttonStyle(.plain)
                         .foregroundStyle(.white)
-                        .accessibilityLabel(isPlaying ? "Pause preview" : "Play preview")
+                        .accessibilityLabel(
+                            isPlaying
+                                ? LegendLocalized("Pause preview", context: "accessibility copy")
+                                : LegendLocalized("Play preview", context: "accessibility copy"))
 
                         Text("\(LegendHacPreviewFrame.timeLabel(position)) / \(LegendHacPreviewFrame.timeLabel(playableRange.upperBound))")
                             .font(.caption.monospacedDigit())
@@ -2807,7 +2814,10 @@ private struct LegendSocialPlayableVideoPreview: View {
                             }
                             .buttonStyle(.plain)
                             .foregroundStyle(.white)
-                            .accessibilityLabel(player.isMuted ? "Enable original audio" : "Mute original audio")
+                            .accessibilityLabel(
+                                player.isMuted
+                                    ? LegendLocalized("Enable original audio", context: "accessibility copy")
+                                    : LegendLocalized("Mute original audio", context: "accessibility copy"))
                         }
                     }
                 }
@@ -2944,7 +2954,7 @@ private struct LegendSocialVideoTrimSheet: View {
 
                 VStack(alignment: .leading, spacing: LegendNextSpacing.sm) {
                     HStack {
-                        Text("Trim")
+                        Text(LegendLocalized("Trim"))
                             .font(.headline.weight(.semibold))
                         Spacer()
                         Text("\(LegendHacPreviewFrame.timeLabel(startSeconds)) – \(LegendHacPreviewFrame.timeLabel(endSeconds))")
@@ -2961,7 +2971,7 @@ private struct LegendSocialVideoTrimSheet: View {
                         .frame(height: 76)
 
                     HStack {
-                        Button("Preview", systemImage: "play.fill") {
+                        Button(LegendLocalized("Preview"), systemImage: "play.fill") {
                             player.currentItem?.forwardPlaybackEndTime = CMTime(
                                 seconds: endSeconds,
                                 preferredTimescale: 600)
@@ -2969,7 +2979,7 @@ private struct LegendSocialVideoTrimSheet: View {
                             player.play()
                         }
                         Spacer()
-                        Button("Reset") {
+                        Button(LegendLocalized("Reset")) {
                             startSeconds = 0
                             endSeconds = duration
                             previewRange()
@@ -2983,18 +2993,18 @@ private struct LegendSocialVideoTrimSheet: View {
             }
             .padding(LegendNextSpacing.md)
             .background(LegendNextColor.midnight)
-            .navigationTitle("Trim")
+            .navigationTitle(LegendLocalized("Trim"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") {
+                    Button(LegendLocalized("Cancel")) {
                         player.pause()
                         cancel()
                         dismiss()
                     }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Save") {
+                    Button(LegendLocalized("Save")) {
                         player.pause()
                         save(LegendSocialVideoEdit(
                             trimStartSeconds: startSeconds,
@@ -3090,7 +3100,7 @@ private struct LegendSocialVideoRangeTimeline: View {
                 count: 10)
         }
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("Trim range from \(LegendHacPreviewFrame.timeLabel(startSeconds)) to \(LegendHacPreviewFrame.timeLabel(endSeconds))")
+        .accessibilityLabel(LegendLocalized("Trim range from {value1} to {value2}", context: "accessibility copy", arguments: ["value1": String(describing: (LegendHacPreviewFrame.timeLabel(startSeconds))), "value2": String(describing: (LegendHacPreviewFrame.timeLabel(endSeconds)))]))
     }
 
     private func trimHandle(at x: CGFloat, width: CGFloat, isStart: Bool) -> some View {
@@ -3152,7 +3162,7 @@ private struct LegendSocialMediaPreview: View {
                         .background(.white, in: Circle())
                 }
                 .padding(LegendNextSpacing.xs)
-                .accessibilityLabel("Remove selected media")
+                .accessibilityLabel(LegendLocalized("Remove selected media", context: "accessibility copy"))
             }
         }
         .clipShape(
@@ -3164,7 +3174,7 @@ private struct LegendSocialMediaPreview: View {
                 .strokeBorder(Color.white.opacity(0.36), lineWidth: 1)
         }
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("Selected \(media.kindDescription): \(media.fileName)")
+        .accessibilityLabel(LegendLocalized("Selected {value1}: {value2}", context: "accessibility copy", arguments: ["value1": String(describing: (media.kindDescription)), "value2": String(describing: (media.fileName))]))
     }
 
     @ViewBuilder
@@ -3406,7 +3416,7 @@ private struct LegendHacPreviewSelector: View {
 
                 VStack(alignment: .leading, spacing: LegendNextSpacing.sm) {
                     HStack {
-                        Text("Cover")
+                        Text(LegendLocalized("Cover"))
                             .font(.headline.weight(.semibold))
                         Spacer()
                         Text(LegendHacPreviewFrame.timeLabel(selectedSeconds))
@@ -3431,18 +3441,18 @@ private struct LegendHacPreviewSelector: View {
             }
             .padding(LegendNextSpacing.md)
             .background(LegendNextColor.midnight)
-            .navigationTitle("Cover")
+            .navigationTitle(LegendLocalized("Cover"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") {
+                    Button(LegendLocalized("Cancel")) {
                         player.pause()
                         cancel()
                         dismiss()
                     }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Use frame") {
+                    Button(LegendLocalized("Use frame")) {
                         if let imageData = LegendHacPreviewFrame.jpegData(
                             from: sourceURL,
                             at: selectedSeconds) {
@@ -3533,7 +3543,7 @@ private struct LegendHacCoverTimeline: View {
                 count: 10)
         }
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("Cover frame at \(LegendHacPreviewFrame.timeLabel(selectedSeconds))")
+        .accessibilityLabel(LegendLocalized("Cover frame at {value1}", context: "accessibility copy", arguments: ["value1": String(describing: (LegendHacPreviewFrame.timeLabel(selectedSeconds)))]))
     }
 }
 
@@ -3612,9 +3622,9 @@ private enum LegendSocialMediaLoadingError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .unavailable:
-            "Legend could not prepare this media for publishing."
+            LegendLocalized("Legend could not prepare this media for publishing.")
         case .unsupported:
-            "This media format is not supported for this update."
+            LegendLocalized("This media format is not supported for this update.")
         }
     }
 }
@@ -3649,11 +3659,11 @@ private enum LegendSocialCameraError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .unavailable:
-            "Camera capture is unavailable on this device."
+            LegendLocalized("Camera capture is unavailable on this device.")
         case .permissionDenied:
-            "Camera access is required to capture a new update."
+            LegendLocalized("Camera access is required to capture a new update.")
         case .captureFailed:
-            "Legend could not complete that capture."
+            LegendLocalized("Legend could not complete that capture.")
         }
     }
 }
@@ -4005,27 +4015,33 @@ private final class LegendSocialCameraViewController: UIViewController {
 
     private func setRecordingAppearance(_ recording: Bool) {
         captureButton.backgroundColor = recording ? .systemRed : .white
-        captureButton.accessibilityLabel = recording ? "Stop video recording" : "Start video recording"
-        setStatus(recording ? "Recording · tap to finish" : captureStatus)
+        captureButton.accessibilityLabel = recording
+            ? LegendLocalized("Stop video recording", context: "accessibility copy")
+            : LegendLocalized("Start video recording", context: "accessibility copy")
+        setStatus(recording ? LegendLocalized("Recording · tap to finish") : captureStatus)
     }
 
     private var captureStatus: String {
-        guard capturesVideo else { return "Photo capture" }
+        guard capturesVideo else { return LegendLocalized("Photo capture") }
         let audioIsAvailable = AVCaptureDevice.authorizationStatus(for: .audio) == .authorized
-        let mode = audioIsAvailable ? "Video capture" : "Video capture without audio"
+        let mode = audioIsAvailable
+            ? LegendLocalized("Video capture")
+            : LegendLocalized("Video capture without audio")
         guard let maximumVideoDuration else { return mode }
-        return "\(mode) · up to \(Int(maximumVideoDuration)) seconds"
+        return LegendLocalized(
+            "{mode} · up to {seconds} seconds",
+            arguments: ["mode": mode, "seconds": Int(maximumVideoDuration)])
     }
 
     private func updateCaptureModeAppearance() {
         let nextModeSymbol = capturesVideo ? "camera.fill" : "video.fill"
         captureModeButton.setImage(UIImage(systemName: nextModeSymbol), for: .normal)
         captureModeButton.accessibilityLabel = capturesVideo
-            ? "Switch to photo capture"
-            : "Switch to video capture"
+            ? LegendLocalized("Switch to photo capture", context: "accessibility copy")
+            : LegendLocalized("Switch to video capture", context: "accessibility copy")
         captureButton.accessibilityLabel = capturesVideo
-            ? "Start video recording"
-            : "Capture photo"
+            ? LegendLocalized("Start video recording", context: "accessibility copy")
+            : LegendLocalized("Capture photo", context: "accessibility copy")
     }
 
     private func setStatus(_ message: String) {
@@ -4122,15 +4138,15 @@ private extension MobileSocialContentType {
         guard asset.isVideo else {
             return acceptsImages
                 ? nil
-                : "Hacs use one video. Choose a video to continue."
+                : LegendLocalized("Hacs use one video. Choose a video to continue.")
         }
 
         guard acceptsVideos else {
-            return "This media is not available for the selected format."
+            return LegendLocalized("This media is not available for the selected format.")
         }
 
         guard format.acceptsVideo(duration: asset.duration) else {
-            return "Videos must be 10 minutes or less."
+            return LegendLocalized("Videos must be 10 minutes or less.")
         }
 
         return nil
@@ -4247,14 +4263,25 @@ private struct LegendPhotoLibraryThumbnail: View {
     }
 
     private var accessibilityDescription: String {
-        var description = asset.isVideo ? "Video" : "Photo"
+        var description = asset.isVideo
+            ? LegendLocalized("Video", context: "accessibility copy")
+            : LegendLocalized("Photo", context: "accessibility copy")
         if asset.isVideo {
-            description += ", \(durationLabel)"
+            description = LegendLocalized(
+                "{description}, {duration}",
+                context: "accessibility copy",
+                arguments: ["description": description, "duration": durationLabel])
         }
         if let selectionIndex {
-            description += ", selected, position \(selectionIndex)"
+            description = LegendLocalized(
+                "{description}, selected, position {position}",
+                context: "accessibility copy",
+                arguments: ["description": description, "position": selectionIndex])
         } else if isSelected {
-            description += ", selected"
+            description = LegendLocalized(
+                "{description}, selected",
+                context: "accessibility copy",
+                arguments: ["description": description])
         }
         return description
     }
@@ -4322,7 +4349,7 @@ private struct LegendPhotoLibraryAssetPreview: View {
                     }
                     .buttonStyle(.plain)
                     .foregroundStyle(.white)
-                    .accessibilityLabel("Close preview")
+                    .accessibilityLabel(LegendLocalized("Close preview", context: "accessibility copy"))
 
                     Spacer()
 
@@ -4341,7 +4368,9 @@ private struct LegendPhotoLibraryAssetPreview: View {
 
                 Button(action: toggleSelection) {
                     Label(
-                        isSelected ? "Remove from selection" : "Add to selection",
+                        isSelected
+                            ? LegendLocalized("Remove from selection")
+                            : LegendLocalized("Add to selection"),
                         systemImage: isSelected ? "minus.circle" : "checkmark.circle")
                         .frame(maxWidth: .infinity)
                 }

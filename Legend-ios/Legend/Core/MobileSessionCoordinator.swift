@@ -7,14 +7,17 @@ struct MobileSession: Equatable, Sendable {
     let actor: MobileActor
     let capabilities: Set<String>
     let permittedParticipantTypes: [ParticipantType]
+    let preferredLanguageCode: String?
 
     init(
         actor: MobileActor,
         capabilities: Set<String>,
-        permittedParticipantTypes: [ParticipantType]? = nil
+        permittedParticipantTypes: [ParticipantType]? = nil,
+        preferredLanguageCode: String? = nil
     ) {
         self.actor = actor
         self.capabilities = capabilities
+        self.preferredLanguageCode = preferredLanguageCode
 
         var permitted: [ParticipantType] = []
         for participantType in (permittedParticipantTypes ?? []) + [actor.identity.participantType] {
@@ -201,8 +204,8 @@ final class MobileSessionCoordinator: ObservableObject {
                 guard await self.biometricSecurity.authenticate() else {
                     self.transition(
                         to: .failed(UserFacingFailure(
-                            title: "Face ID required",
-                            message: "Use Face ID to reopen your protected Legend session.",
+                            title: LegendLocalized("Face ID required"),
+                            message: LegendLocalized("Use Face ID to reopen your protected Legend session."),
                             correlationID: nil)),
                         reason: "Face ID did not authenticate the cached session")
                     return
@@ -293,7 +296,8 @@ final class MobileSessionCoordinator: ObservableObject {
             capabilities: Array(session.capabilities),
             permittedParticipantTypes: session.permittedParticipantTypes,
             cachedUtc: Date(),
-            credentialFingerprint: credentialFingerprint))
+            credentialFingerprint: credentialFingerprint,
+            preferredLanguageCode: session.preferredLanguageCode))
     }
 
     /// What the failure screen's retry should do. A user who still holds a valid
@@ -397,8 +401,8 @@ final class MobileSessionCoordinator: ObservableObject {
         guard !normalizedUsername.isEmpty, !password.isEmpty else {
             transition(
                 to: .failed(UserFacingFailure(
-                    title: "App Review sign-in unavailable",
-                    message: "Enter the App Review username and password.",
+                    title: LegendLocalized("App Review sign-in unavailable"),
+                    message: LegendLocalized("Enter the App Review username and password."),
                     correlationID: nil)),
                 reason: "App Review credentials were incomplete")
             return
@@ -447,8 +451,8 @@ final class MobileSessionCoordinator: ObservableObject {
                 let apiError = error as? MobileAPIError
                 transition(
                     to: .failed(UserFacingFailure(
-                        title: "App Review sign-in unavailable",
-                        message: "The App Review credentials could not be verified.",
+                        title: LegendLocalized("App Review sign-in unavailable"),
+                        message: LegendLocalized("The App Review credentials could not be verified."),
                         correlationID: apiError?.correlationID)),
                     reason: "App Review authentication did not complete")
                 diagnostics.record(
@@ -709,6 +713,20 @@ final class MobileSessionCoordinator: ObservableObject {
                 participantType: currentSession.actor.identity.participantType,
                 accessTokenProvider: accessTokenProvider)
         )
+    }
+
+    func applicationLocalizationCatalog(
+        participantType: ParticipantType
+    ) async throws -> LegendApplicationLocalizationCatalog {
+        guard let apiBaseURL = configuration.apiBaseURL else {
+            throw MobileAPIError.invalidBaseURL
+        }
+        let accessToken = try await accessTokenForRequest()
+        return try await MobileHTTPClient(baseURL: apiBaseURL).get(
+            "/api/v1/mobile/localization/catalog",
+            accessToken: accessToken,
+            headers: ["X-Legend-Participant-Type": participantType.rawValue],
+            response: LegendApplicationLocalizationCatalog.self)
     }
 
     func makeNotificationStore() -> MobileNotificationStore {
@@ -989,7 +1007,8 @@ final class MobileSessionCoordinator: ObservableObject {
         let session = MobileSession(
             actor: actor,
             capabilities: response.capabilities.sessionCapabilities,
-            permittedParticipantTypes: response.permittedParticipantTypes)
+            permittedParticipantTypes: response.permittedParticipantTypes,
+            preferredLanguageCode: response.preferredLanguageCode)
         commitConfirmedSession(session, reason: "Authenticated mobile session decoded")
     }
 
@@ -1008,7 +1027,8 @@ final class MobileSessionCoordinator: ObservableObject {
         let session = MobileSession(
             actor: response.actor,
             capabilities: response.capabilities?.sessionCapabilities ?? ["messaging"],
-            permittedParticipantTypes: response.permittedParticipantTypes)
+            permittedParticipantTypes: response.permittedParticipantTypes,
+            preferredLanguageCode: response.preferredLanguageCode)
         if clearCachedLaunch {
             launchCache.clear()
         }
@@ -1346,34 +1366,40 @@ final class MobileSessionCoordinator: ObservableObject {
 
     private func failure(for error: Error, defaultTitle: String = "Sign-in unavailable") -> UserFacingFailure {
         guard let apiError = error as? MobileAPIError else {
-            return UserFacingFailure(title: defaultTitle, message: error.localizedDescription, correlationID: nil)
+            return UserFacingFailure(
+                title: LegendLocalized(defaultTitle),
+                message: LegendLocalized(error.localizedDescription),
+                correlationID: nil)
         }
 
         switch apiError {
         case .apiUnauthorized:
             return UserFacingFailure(
-                title: "Secure sign-in required",
-                message: "The mobile API rejected the current bearer credential. Please sign in again.",
+                title: LegendLocalized("Secure sign-in required"),
+                message: LegendLocalized("The mobile API rejected the current bearer credential. Please sign in again."),
                 correlationID: apiError.correlationID)
         case .apiForbidden:
             return UserFacingFailure(
-                title: "Mobile access unavailable",
-                message: "Your Entra sign-in succeeded, but the server could not resolve an authorized mobile role.",
+                title: LegendLocalized("Mobile access unavailable"),
+                message: LegendLocalized("Your Entra sign-in succeeded, but the server could not resolve an authorized mobile role."),
                 correlationID: apiError.correlationID)
         case .networkUnavailable:
             return UserFacingFailure(
-                title: "Connection unavailable",
-                message: "Your secure session is still stored. Check your connection and try again.",
+                title: LegendLocalized("Connection unavailable"),
+                message: LegendLocalized("Your secure session is still stored. Check your connection and try again."),
                 correlationID: nil)
         case .apiConflict(let code, _):
             return UserFacingFailure(
-                title: "Role selection required",
+                title: LegendLocalized("Role selection required"),
                 message: code == "mobile_role_selection_required"
-                    ? "Choose an authorized mobile role before continuing."
-                    : apiError.localizedDescription,
+                    ? LegendLocalized("Choose an authorized mobile role before continuing.")
+                    : LegendLocalized(apiError.localizedDescription),
                 correlationID: apiError.correlationID)
         default:
-            return UserFacingFailure(title: defaultTitle, message: apiError.localizedDescription, correlationID: apiError.correlationID)
+            return UserFacingFailure(
+                title: LegendLocalized(defaultTitle),
+                message: LegendLocalized(apiError.localizedDescription),
+                correlationID: apiError.correlationID)
         }
     }
 
@@ -1424,7 +1450,7 @@ enum OAuthCallbackError: LocalizedError, Equatable {
     case invalidCallback
 
     var errorDescription: String? {
-        "The sign-in callback could not be verified."
+        LegendLocalized("The sign-in callback could not be verified.")
     }
 }
 
@@ -1712,6 +1738,25 @@ struct MobileBootstrapResponse: Decodable {
     let requiresParticipantSelection: Bool
     let capabilities: MobileCapabilities
     let correlationID: String
+    let preferredLanguageCode: String?
+
+    init(
+        authenticated: Bool,
+        actor: MobileActor?,
+        permittedParticipantTypes: [ParticipantType],
+        requiresParticipantSelection: Bool,
+        capabilities: MobileCapabilities,
+        correlationID: String,
+        preferredLanguageCode: String? = nil
+    ) {
+        self.authenticated = authenticated
+        self.actor = actor
+        self.permittedParticipantTypes = permittedParticipantTypes
+        self.requiresParticipantSelection = requiresParticipantSelection
+        self.capabilities = capabilities
+        self.correlationID = correlationID
+        self.preferredLanguageCode = preferredLanguageCode
+    }
 
     private enum CodingKeys: String, CodingKey {
         case authenticated
@@ -1720,6 +1765,7 @@ struct MobileBootstrapResponse: Decodable {
         case requiresParticipantSelection
         case capabilities
         case correlationID = "correlationId"
+        case preferredLanguageCode
     }
 }
 
@@ -1777,17 +1823,20 @@ struct MobileRoleSelectionResponse: Decodable {
     let permittedParticipantTypes: [ParticipantType]
     let correlationID: String
     let capabilities: MobileCapabilities?
+    let preferredLanguageCode: String?
 
     init(
         actor: MobileActor,
         permittedParticipantTypes: [ParticipantType],
         correlationID: String,
-        capabilities: MobileCapabilities? = nil
+        capabilities: MobileCapabilities? = nil,
+        preferredLanguageCode: String? = nil
     ) {
         self.actor = actor
         self.permittedParticipantTypes = permittedParticipantTypes
         self.correlationID = correlationID
         self.capabilities = capabilities
+        self.preferredLanguageCode = preferredLanguageCode
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -1795,5 +1844,6 @@ struct MobileRoleSelectionResponse: Decodable {
         case permittedParticipantTypes
         case correlationID = "correlationId"
         case capabilities
+        case preferredLanguageCode
     }
 }

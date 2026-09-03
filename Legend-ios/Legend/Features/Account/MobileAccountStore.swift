@@ -503,7 +503,7 @@ final class MobileAccountStore: ObservableObject {
             refreshFailure = nil
             return true
         } catch {
-            actionFailure = failure(for: error, title: "Account update unavailable")
+            actionFailure = failure(for: error, title: LegendLocalized("Account update unavailable"))
             return false
         }
     }
@@ -520,7 +520,7 @@ final class MobileAccountStore: ObservableObject {
             refreshFailure = nil
             return true
         } catch {
-            actionFailure = failure(for: error, title: "Profile picture unavailable")
+            actionFailure = failure(for: error, title: LegendLocalized("Profile picture unavailable"))
             return false
         }
     }
@@ -528,7 +528,7 @@ final class MobileAccountStore: ObservableObject {
     @discardableResult
     func savePreferredCommunicationLanguage(_ language: String) async -> Bool {
         guard case .loaded(let profile) = state else { return false }
-        return await save(MobileAccountUpdate(
+        let saved = await save(MobileAccountUpdate(
             displayName: profile.displayName,
             phone: profile.phone,
             title: profile.title,
@@ -541,6 +541,10 @@ final class MobileAccountStore: ObservableObject {
             isEmailVisible: profile.isEmailVisible,
             isPhoneVisible: profile.isPhoneVisible,
             preferredCommunicationLanguage: language))
+        if saved {
+            NotificationCenter.default.post(name: .legendPreferredLanguageDidChange, object: nil)
+        }
+        return saved
     }
 
     func dismissActionFailure() {
@@ -561,7 +565,7 @@ final class MobileAccountStore: ObservableObject {
     @discardableResult
     func pauseAccount() async -> Bool {
         await updateLifecycle(
-            title: "Account pause unavailable",
+            title: LegendLocalized("Account pause unavailable"),
             operation: { api, token in
                 try await api.pauseAccount(accessToken: token)
             })
@@ -570,7 +574,7 @@ final class MobileAccountStore: ObservableObject {
     @discardableResult
     func resumeAccount() async -> Bool {
         await updateLifecycle(
-            title: "Account resume unavailable",
+            title: LegendLocalized("Account resume unavailable"),
             operation: { api, token in
                 try await api.resumeAccount(accessToken: token)
             })
@@ -579,7 +583,7 @@ final class MobileAccountStore: ObservableObject {
     @discardableResult
     func requestAccountDeletion(confirmation: String) async -> Bool {
         await updateLifecycle(
-            title: "Account deletion unavailable",
+            title: LegendLocalized("Account deletion unavailable"),
             operation: { api, token in
                 try await api.requestAccountDeletion(confirmation: confirmation, accessToken: token)
             })
@@ -596,7 +600,7 @@ final class MobileAccountStore: ObservableObject {
                 state = .loaded(try await api.updatePrivacy(isPrivate: isPrivate, accessToken: accessToken))
                 refreshFailure = nil
             } catch {
-                actionFailure = failure(for: error, title: "Account privacy unavailable")
+                actionFailure = failure(for: error, title: LegendLocalized("Account privacy unavailable"))
             }
         }
     }
@@ -614,7 +618,7 @@ final class MobileAccountStore: ObservableObject {
                     accessToken: accessToken))
                 refreshFailure = nil
             } catch {
-                actionFailure = failure(for: error, title: "Translation learning preference unavailable")
+                actionFailure = failure(for: error, title: LegendLocalized("Translation learning preference unavailable"))
             }
         }
     }
@@ -682,8 +686,8 @@ final class MobileAccountStore: ObservableObject {
         let task = Task { [weak self] in
             guard let self else {
                 return MobileStoreLoadResult.failed(UserFacingFailure(
-                    title: "Account unavailable",
-                    message: "The account store is no longer available.",
+                    title: LegendLocalized("Account unavailable"),
+                    message: LegendLocalized("The account store is no longer available."),
                     correlationID: nil))
             }
 
@@ -721,7 +725,7 @@ final class MobileAccountStore: ObservableObject {
             refreshFailure = nil
             return .loaded
         } catch {
-            let presentation = failure(for: error, title: "Account unavailable")
+            let presentation = failure(for: error, title: LegendLocalized("Account unavailable"))
             if preservingCachedValue {
                 refreshFailure = presentation
             } else {
@@ -739,7 +743,7 @@ final class MobileAccountStore: ObservableObject {
             correlationID: apiError?.correlationID)
         return UserFacingFailure(
             title: title,
-            message: error.localizedDescription,
+            message: LegendLocalized(error.localizedDescription),
             correlationID: apiError?.correlationID)
     }
 }
