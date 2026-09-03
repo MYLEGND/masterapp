@@ -210,8 +210,11 @@ public sealed class LegendConnectNativeReasoningModelServingTests
         Assert.Contains("symbolic evidence", assisted.AuthoritySummary, StringComparison.Ordinal);
     }
 
-    [Fact]
-    public async Task UnsupportedSymbolicRequest_NeverInvokesQualifiedModel()
+    [Theory]
+    [InlineData("This surface has no governed meaning.")]
+    [InlineData("What was Project Zephyr's exact conversion rate last Tuesday? Do not estimate.")]
+    [InlineData("Explain a new operational scenario with owners, constraints, risks, and observable success signals.")]
+    public async Task UnsupportedSymbolicRequest_NeverInvokesQualifiedModel(string request)
     {
         await using var db = ControllerTestHelpers.BuildDb();
         await SeedPromotedReasoningModelAsync(db, "Promoted");
@@ -219,12 +222,13 @@ public sealed class LegendConnectNativeReasoningModelServingTests
         var fixture = CreateFixture(db, transport);
 
         var result = await fixture.Operations.TryInferConversationWithDiscourseAsync(
-            "This surface has no governed meaning.",
+            request,
             [],
             new LegendConnectDiscourseStateSnapshot([]));
 
         Assert.False(result.Supported);
         Assert.Null(result.Answer);
+        Assert.Equal(0, result.EvidenceCount);
         Assert.Equal(0, transport.CallCount);
         var assistance = Assert.IsType<LegendConnectNativeModelAssistanceSnapshot>(
             result.ModelAssistance);
