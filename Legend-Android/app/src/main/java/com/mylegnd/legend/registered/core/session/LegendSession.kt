@@ -34,6 +34,7 @@ data class ActiveLegendSession(
     val capabilities: MobileCapabilities,
     val accountId: String,
     val signedInAccounts: List<SignedInLegendAccount>,
+    val preferredLanguageCode: String? = null,
 )
 
 sealed interface SessionState {
@@ -122,7 +123,12 @@ class SessionRepository(
 
     suspend fun selectRole(role: String): SessionState {
         val response = apiClient().api.selectRole(SelectRoleRequest(role)).legendBody()
-        return authenticated(response.actor, response.permittedParticipantTypes, response.capabilities ?: MobileCapabilities())
+        return authenticated(
+            response.actor,
+            response.permittedParticipantTypes,
+            response.capabilities ?: MobileCapabilities(),
+            response.preferredLanguageCode,
+        )
     }
 
     suspend fun switchSignedInAccount(accountId: String): SessionState {
@@ -158,10 +164,20 @@ class SessionRepository(
         if (!response.authenticated) return SessionState.SignedOut
         if (response.requiresParticipantSelection) return SessionState.RoleSelection(response.permittedParticipantTypes)
         val actor = response.actor ?: return SessionState.Failure("Legend could not resolve this account.", response.correlationId)
-        return authenticated(actor, response.permittedParticipantTypes, response.capabilities)
+        return authenticated(
+            actor,
+            response.permittedParticipantTypes,
+            response.capabilities,
+            response.preferredLanguageCode,
+        )
     }
 
-    private suspend fun authenticated(actor: MobileActor, roles: List<String>, capabilities: MobileCapabilities): SessionState {
+    private suspend fun authenticated(
+        actor: MobileActor,
+        roles: List<String>,
+        capabilities: MobileCapabilities,
+        preferredLanguageCode: String?,
+    ): SessionState {
         val existing = cache.read()
         val accountId = activeCredential?.id ?: existing?.accountId ?: actor.identity.userId
         val interactiveSignInUtc = activeInteractiveSignInUtc ?: existing?.interactiveSignInUtc
@@ -173,6 +189,7 @@ class SessionRepository(
                 cachedUtc = Instant.now().toString(),
                 accountId = accountId,
                 interactiveSignInUtc = interactiveSignInUtc,
+                preferredLanguageCode = preferredLanguageCode,
             )
         )
         val signedInAccounts = cache.accounts()
@@ -183,7 +200,14 @@ class SessionRepository(
                 }
             }
         return SessionState.Authenticated(
-            ActiveLegendSession(actor, roles, capabilities, accountId, signedInAccounts)
+            ActiveLegendSession(
+                actor,
+                roles,
+                capabilities,
+                accountId,
+                signedInAccounts,
+                preferredLanguageCode,
+            )
         )
     }
 }

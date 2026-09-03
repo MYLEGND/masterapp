@@ -75,6 +75,7 @@ import com.mylegnd.legend.registered.core.design.LegendShapes
 import com.mylegnd.legend.registered.core.design.LegendSize
 import com.mylegnd.legend.registered.core.design.LegendSpacing
 import com.mylegnd.legend.registered.core.design.LegendTypography
+import com.mylegnd.legend.registered.core.design.legendLocalized
 import com.mylegnd.legend.registered.data.LoadState
 import com.mylegnd.legend.registered.feature.FounderAiConversationState
 import com.mylegnd.legend.registered.feature.FounderAiTranscriptMessage
@@ -213,7 +214,7 @@ private fun FounderAiConversationContent(
                 FounderAiMark(52.dp)
                 Spacer(Modifier.width(LegendSpacing.Sm))
                 Text(
-                    "Legend® Ai",
+                    legendLocalized("Legend® Ai"),
                     style = LegendTypography.Wordmark,
                     color = LegendColors.OnNavy,
                     modifier = Modifier.weight(1f),
@@ -256,18 +257,21 @@ private fun FounderAiConversationContent(
                         ) {
                             FounderAiMark(LegendSize.AvatarLarge)
                             Text(
-                                "FOUNDER INTELLIGENCE",
+                                legendLocalized("FOUNDER INTELLIGENCE"),
                                 style = LegendTypography.Eyebrow,
                                 color = LegendColors.Gold,
                             )
                             Text(
-                                "Ask ${if (mode == "teacher") "OpenAI" else "Legend® Ai"}",
+                                legendLocalized(
+                                    "Ask {provider}",
+                                    mapOf("provider" to if (mode == "teacher") "OpenAI" else "Legend® Ai"),
+                                ),
                                 style = LegendTypography.Display,
                                 color = LegendColors.Navy,
                             )
                             Text(
-                                if (mode == "teacher") "A direct Founder-to-OpenAI conversation through the governed application authority."
-                                else "A governed conversation for inspecting knowledge, evidence, readiness, and the next legitimate learning step.",
+                                if (mode == "teacher") legendLocalized("A direct Founder-to-OpenAI conversation through the governed application authority.")
+                                else legendLocalized("A governed conversation for inspecting knowledge, evidence, readiness, and the next legitimate learning step."),
                                 style = LegendTypography.Body,
                                 color = LegendColors.TextSecondary,
                                 textAlign = TextAlign.Center,
@@ -296,7 +300,12 @@ private fun FounderAiConversationContent(
                     enabled = available,
                     minLines = 1,
                     maxLines = 4,
-                    placeholder = { Text(if (mode == "teacher") "Message OpenAI…" else "Message Legend® Ai…") },
+                    placeholder = {
+                        Text(
+                            if (mode == "teacher") legendLocalized("Message OpenAI…")
+                            else legendLocalized("Message Legend® Ai…"),
+                        )
+                    },
                     shape = LegendShapes.Control,
                 )
                 Button(
@@ -312,7 +321,8 @@ private fun FounderAiConversationContent(
                 ) {
                     Icon(
                         if (state.isSending) Icons.Default.StopCircle else Icons.AutoMirrored.Filled.Send,
-                        if (state.isSending) "Stop response" else "Send message",
+                        if (state.isSending) legendLocalized("Stop response", "accessibility copy")
+                        else legendLocalized("Send message", "accessibility copy"),
                     )
                 }
             }
@@ -357,15 +367,15 @@ private fun FounderAiDrawer(
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
-                Text("Founder space", style = LegendTypography.Label, color = LegendColors.Gold)
-                Text("Conversations", style = LegendTypography.Section, color = LegendColors.Navy)
+                Text(legendLocalized("Founder space"), style = LegendTypography.Label, color = LegendColors.Gold)
+                Text(legendLocalized("Conversations"), style = LegendTypography.Section, color = LegendColors.Navy)
             }
             IconButton(
                 onClick = close,
                 modifier = Modifier
                     .size(LegendSize.CompactControlHeight)
                     .border(1.dp, LegendColors.Divider, CircleShape),
-            ) { Icon(Icons.Default.Close, "Close conversations", tint = LegendColors.Navy) }
+            ) { Icon(Icons.Default.Close, legendLocalized("Close conversations", "accessibility copy"), tint = LegendColors.Navy) }
         }
         Button(
             onClick = startNewConversation,
@@ -375,9 +385,9 @@ private fun FounderAiDrawer(
         ) {
             Icon(Icons.Default.Add, null)
             Spacer(Modifier.width(LegendSpacing.Xs))
-            Text("New conversation", style = LegendTypography.Label, fontWeight = FontWeight.Bold)
+            Text(legendLocalized("New conversation"), style = LegendTypography.Label, fontWeight = FontWeight.Bold)
         }
-        Text("Responder", style = LegendTypography.Label, color = LegendColors.TextTertiary)
+        Text(legendLocalized("Responder"), style = LegendTypography.Label, color = LegendColors.TextTertiary)
         Row(horizontalArrangement = Arrangement.spacedBy(LegendSpacing.Xs)) {
             FounderAiModeButton(
                 label = "Legend® Ai",
@@ -407,8 +417,8 @@ private fun FounderAiDrawer(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Column(Modifier.weight(1f)) {
-                    Text("Native-only", style = LegendTypography.Label, color = LegendColors.TextPrimary, fontWeight = FontWeight.Bold)
-                    Text("Block OpenAI escalation for this LEGEND test.", style = LegendTypography.Label, color = LegendColors.TextSecondary)
+                    Text(legendLocalized("Native-only"), style = LegendTypography.Label, color = LegendColors.TextPrimary, fontWeight = FontWeight.Bold)
+                    Text(legendLocalized("Block OpenAI escalation for this LEGEND test."), style = LegendTypography.Label, color = LegendColors.TextSecondary)
                 }
                 Switch(
                     checked = nativeOnly,
@@ -418,15 +428,15 @@ private fun FounderAiDrawer(
             }
         }
         HorizontalDivider(color = LegendColors.Divider, modifier = Modifier.padding(vertical = LegendSpacing.Xs))
-        Text("Recent", style = LegendTypography.Label, color = LegendColors.TextTertiary)
-        Text("The active conversation is retained in this session.", style = LegendTypography.Label, color = LegendColors.TextSecondary)
+        Text(legendLocalized("Recent"), style = LegendTypography.Label, color = LegendColors.TextTertiary)
+        Text(legendLocalized("The active conversation is retained in this session."), style = LegendTypography.Label, color = LegendColors.TextSecondary)
         Spacer(Modifier.weight(1f))
         OutlinedButton(
             onClick = clear,
             enabled = canChangeMode,
             modifier = Modifier.fillMaxWidth().heightIn(min = 38.dp),
             shape = LegendShapes.Compact,
-        ) { Text("Clear conversation", style = LegendTypography.Body) }
+        ) { Text(legendLocalized("Clear conversation"), style = LegendTypography.Body) }
     }
 }
 
@@ -503,7 +513,7 @@ private fun FounderAiMessageBubble(message: FounderAiTranscriptMessage) {
                 Text(message.content, style = LegendTypography.Body, color = LegendColors.OnNavy)
                 if (authority in setOf("LegendAi", "OpenAITeacher")) {
                     Text(
-                        if (authority == "LegendAi") "Legend® Ai" else "OpenAI",
+                        if (authority == "LegendAi") legendLocalized("Legend® Ai") else legendLocalized("OpenAI"),
                         style = LegendTypography.Label,
                         color = LegendColors.OnNavy,
                         fontWeight = FontWeight.Bold,
@@ -521,7 +531,7 @@ private fun FounderAiMessageBubble(message: FounderAiTranscriptMessage) {
 @Composable
 private fun FounderAiStatusCard(message: String, isError: Boolean = false) {
     Text(
-        message,
+        legendLocalized(message),
         style = LegendTypography.Body,
         color = if (isError) LegendColors.Error else LegendColors.TextSecondary,
         modifier = Modifier
@@ -536,7 +546,7 @@ private fun FounderAiStatusCard(message: String, isError: Boolean = false) {
 private fun FounderAiMark(size: Dp) {
     AsyncImage(
         model = FOUNDER_AI_ARTWORK,
-        contentDescription = "Legend® Ai",
+        contentDescription = legendLocalized("Legend® Ai", "accessibility copy"),
         contentScale = ContentScale.Crop,
         modifier = Modifier
             .size(size)

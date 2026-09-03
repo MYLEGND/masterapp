@@ -70,6 +70,32 @@ import kotlinx.serialization.Serializable
     @SerialName("requiresParticipantSelection") val requiresParticipantSelection: Boolean = false,
     val capabilities: MobileCapabilities,
     @SerialName("correlationId") val correlationId: String,
+    @SerialName("preferredLanguageCode") val preferredLanguageCode: String? = null,
+)
+
+@Serializable data class ApplicationLocalizedCopy(
+    val id: String,
+    val source: String,
+    val text: String,
+    val context: String,
+    @SerialName("sourceRevision") val sourceRevision: String,
+    val placeholders: List<String> = emptyList(),
+    val provider: String,
+    val provenance: String,
+    @SerialName("validationState") val validationState: String,
+    @SerialName("createdUtc") val createdUtc: String,
+    val reused: Boolean,
+    @SerialName("failureCode") val failureCode: String? = null,
+)
+
+@Serializable data class ApplicationLocalizationCatalog(
+    @SerialName("catalogVersion") val catalogVersion: String,
+    @SerialName("sourceLanguageCode") val sourceLanguageCode: String,
+    @SerialName("languageCode") val languageCode: String,
+    val locale: String,
+    @SerialName("generatedUtc") val generatedUtc: String,
+    @SerialName("isComplete") val isComplete: Boolean,
+    val entries: List<ApplicationLocalizedCopy>,
 )
 
 @Serializable data class SelectRoleRequest(@SerialName("participantType") val participantType: String)
@@ -83,6 +109,7 @@ import kotlinx.serialization.Serializable
     @SerialName("permittedParticipantTypes") val permittedParticipantTypes: List<String>,
     @SerialName("correlationId") val correlationId: String,
     val capabilities: MobileCapabilities? = null,
+    @SerialName("preferredLanguageCode") val preferredLanguageCode: String? = null,
 )
 
 @Serializable data class MobileHomeResponse(

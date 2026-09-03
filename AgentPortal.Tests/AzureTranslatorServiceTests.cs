@@ -91,6 +91,93 @@ public sealed class AzureTranslatorServiceTests
         factory.VerifyNoOtherCalls();
     }
 
+    [Fact]
+    public async Task Translate_RetriesTransientThrottleWithinBound_ThenSucceeds()
+    {
+        var responseCount = 0;
+        var handler = new RecordingHandler(_ => ++responseCount < 3
+            ? new HttpResponseMessage(HttpStatusCode.TooManyRequests)
+            : JsonResponse("[{\"translations\":[{\"text\":\"Bonjou\",\"to\":\"ht\"}]}]"));
+        var service = CreateService(handler);
+
+        var result = await service.TranslateAsync("Hello", "ht", "en");
+
+        Assert.True(result.Succeeded);
+        Assert.Equal("Bonjou", result.TranslatedText);
+        Assert.Equal(3, handler.CallCount);
+    }
+
+    [Fact]
+    public async Task Translate_DoesNotRetryPermanentProviderFailure()
+    {
+        var handler = new RecordingHandler(_ => new HttpResponseMessage(HttpStatusCode.BadRequest));
+        var service = CreateService(handler);
+
+        var result = await service.TranslateAsync("Hello", "ht", "en");
+
+        Assert.False(result.Succeeded);
+        Assert.Equal("translation_provider_failed", result.ErrorCode);
+        Assert.Equal(1, handler.CallCount);
+    }
+
+    [Fact]
+    public async Task Translate_TimeoutRetriesOnlyWithinBound_ThenFailsSafely()
+    {
+        var handler = new RecordingHandler((_, _) =>
+            Task.FromException<HttpResponseMessage>(new TaskCanceledException("provider timeout")));
+        var service = CreateService(handler);
+
+        var result = await service.TranslateAsync("Hello", "ht", "en");
+
+        Assert.False(result.Succeeded);
+        Assert.Equal("translation_provider_timeout", result.ErrorCode);
+        Assert.Equal(3, handler.CallCount);
+    }
+
+    [Fact]
+    public async Task Translate_InvalidProviderPayloadFailsSafelyWithoutInventingCopy()
+    {
+        var handler = new RecordingHandler(_ => JsonResponse("{not-json"));
+        var service = CreateService(handler);
+
+        var result = await service.TranslateAsync("Hello", "ht", "en");
+
+        Assert.False(result.Succeeded);
+        Assert.Null(result.TranslatedText);
+        Assert.Equal("translation_provider_failed", result.ErrorCode);
+        Assert.Equal(1, handler.CallCount);
+    }
+
+    [Fact]
+    public async Task Translate_InvalidLanguageNeverCallsProvider()
+    {
+        var handler = new RecordingHandler(_ => JsonResponse("[]"));
+        var service = CreateService(handler);
+
+        var result = await service.TranslateAsync("Hello", "not a language!", "en");
+
+        Assert.False(result.Succeeded);
+        Assert.Equal("translation_language_unsupported", result.ErrorCode);
+        Assert.Equal(0, handler.CallCount);
+    }
+
+    [Fact]
+    public async Task TranslateBatch_UsesOneProviderRequestAndPreservesResultOrder()
+    {
+        var handler = new RecordingHandler(_ => JsonResponse(
+            "[{\"translations\":[{\"text\":\"Youn\",\"to\":\"ht\"}]},{\"translations\":[{\"text\":\"De\",\"to\":\"ht\"}]}]"));
+        var service = CreateService(handler);
+
+        var result = await service.TranslateBatchAsync(["One", "Two"], "ht", "en");
+
+        Assert.Equal(2, result.Count);
+        Assert.Equal("Youn", result[0].TranslatedText);
+        Assert.Equal("De", result[1].TranslatedText);
+        Assert.Equal(1, handler.CallCount);
+        Assert.Contains("\"One\"", handler.RequestBody, StringComparison.Ordinal);
+        Assert.Contains("\"Two\"", handler.RequestBody, StringComparison.Ordinal);
+    }
+
     private static AzureTranslatorService CreateService(RecordingHandler handler)
     {
         var factory = new Mock<IHttpClientFactory>(MockBehavior.Strict);
@@ -117,9 +204,14 @@ public sealed class AzureTranslatorServiceTests
 
     private sealed class RecordingHandler : HttpMessageHandler
     {
-        private readonly Func<HttpRequestMessage, HttpResponseMessage> _response;
+        private readonly Func<HttpRequestMessage, CancellationToken, Task<HttpResponseMessage>> _response;
 
         public RecordingHandler(Func<HttpRequestMessage, HttpResponseMessage> response)
+        {
+            _response = (request, _) => Task.FromResult(response(request));
+        }
+
+        public RecordingHandler(Func<HttpRequestMessage, CancellationToken, Task<HttpResponseMessage>> response)
         {
             _response = response;
         }
@@ -132,17 +224,20 @@ public sealed class AzureTranslatorServiceTests
 
         public string RequestBody { get; private set; } = string.Empty;
 
+        public int CallCount { get; private set; }
+
         protected override Task<HttpResponseMessage> SendAsync(
             HttpRequestMessage request,
             CancellationToken cancellationToken)
         {
+            CallCount++;
             Method = request.Method;
             RequestUri = request.RequestUri;
             Region = request.Headers.TryGetValues("Ocp-Apim-Subscription-Region", out var values)
                 ? values.Single()
                 : null;
             RequestBody = request.Content?.ReadAsStringAsync(cancellationToken).GetAwaiter().GetResult() ?? string.Empty;
-            return Task.FromResult(_response(request));
+            return _response(request, cancellationToken);
         }
     }
 }

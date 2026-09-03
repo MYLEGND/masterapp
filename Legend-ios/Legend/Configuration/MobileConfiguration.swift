@@ -174,9 +174,15 @@ struct MobileConfigurationValidation: Equatable, Sendable {
 
     var summary: String {
         if isReady {
-            return "All required native configuration values are present."
+            return LegendLocalized("All required native configuration values are present.")
         }
-        return "Secure sign-in is unavailable until an administrator provides \(missingKeys.count) required value\(missingKeys.count == 1 ? "" : "s")."
+        return missingKeys.count == 1
+            ? LegendLocalized(
+                "Secure sign-in is unavailable until an administrator provides {count} required value.",
+                arguments: ["count": missingKeys.count])
+            : LegendLocalized(
+                "Secure sign-in is unavailable until an administrator provides {count} required values.",
+                arguments: ["count": missingKeys.count])
     }
 
     var missingBuildSettings: [String] {

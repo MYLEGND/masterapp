@@ -3,6 +3,7 @@ import SwiftUI
 struct RootView: View {
     @EnvironmentObject private var session: MobileSessionCoordinator
     @EnvironmentObject private var diagnostics: LegendDiagnostics
+    @EnvironmentObject private var localization: LegendApplicationLocalization
 
     var body: some View {
         Group {
@@ -18,8 +19,12 @@ struct RootView: View {
             case .roleSelection(let selection):
                 RoleSelectionView(selection: selection)
             case .authenticated(let currentSession):
-                AuthenticatedHomeView(currentSession: currentSession, coordinator: session)
-                    .id(currentSession.actor.identity)
+                if localization.isReady(for: currentSession) {
+                    AuthenticatedHomeView(currentSession: currentSession, coordinator: session)
+                        .id("\(currentSession.actor.identity)-\(localization.revision)")
+                } else {
+                    LegendSessionProgressView()
+                }
             case .failed(let failure):
                 SessionFailureView(failure: failure)
             }
@@ -27,12 +32,36 @@ struct RootView: View {
         .task {
             session.restore()
         }
+        .task(id: localizationActivationKey) {
+            guard case .authenticated(let currentSession) = session.state else {
+                return
+            }
+            await localization.activate(
+                session: currentSession,
+                coordinator: session,
+                launchCache: session.launchCache)
+        }
         .onAppear(perform: recordSelectedBranch)
         .onChange(of: session.state.diagnosticName) { _, _ in
             recordSelectedBranch()
         }
+        .onChange(of: session.state.diagnosticName) { _, state in
+            if state == "signedOut" {
+                localization.clearPresentation()
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .legendPreferredLanguageDidChange)) { _ in
+            guard case .authenticated(let currentSession) = session.state else { return }
+            Task {
+                await localization.refresh(
+                    session: currentSession,
+                    coordinator: session,
+                    launchCache: session.launchCache)
+            }
+        }
+        .environment(\.locale, localization.locale)
         .alert(
-            "Use Face ID?",
+            LegendLocalized("Use Face ID?"),
             isPresented: Binding(
                 get: { session.isOfferingBiometricSignIn },
                 set: { isPresented in
@@ -41,14 +70,14 @@ struct RootView: View {
                     }
                 })
         ) {
-            Button("Enable Face ID") {
+            Button(LegendLocalized("Enable Face ID")) {
                 session.enableBiometricSignInFromEnrollment()
             }
-            Button("Not now", role: .cancel) {
+            Button(LegendLocalized("Not now"), role: .cancel) {
                 session.declineBiometricSignInEnrollment()
             }
         } message: {
-            Text("Optionally use Face ID to protect this Legend account on this device. You can change this any time in Profile settings.")
+            Text(LegendLocalized("Optionally use Face ID to protect this Legend account on this device. You can change this any time in Profile settings."))
         }
         // Legend's standard canvas is white. Discover opts into its blue
         // treatment locally, making that choice explicit rather than allowing
@@ -63,6 +92,17 @@ struct RootView: View {
             summary: "Root view branch selected: \(session.state.diagnosticName).")
         #endif
     }
+
+    private var localizationActivationKey: String {
+        guard case .authenticated(let currentSession) = session.state else {
+            return session.state.diagnosticName
+        }
+        return [
+            currentSession.actor.identity.participantType.rawValue,
+            currentSession.actor.identity.userID,
+            currentSession.preferredLanguageCode ?? "source"
+        ].joined(separator: ":")
+    }
 }
 
 private struct LegendSessionProgressView: View {
@@ -71,7 +111,7 @@ private struct LegendSessionProgressView: View {
             .tint(LegendNextColor.navyElevated)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(LegendNextCanvas())
-            .accessibilityLabel("Securing your Legend session")
+            .accessibilityLabel(LegendLocalized("Securing your Legend session", context: "accessibility copy"))
     }
 }
 
@@ -85,7 +125,7 @@ private struct RoleSelectionView: View {
                 VStack(spacing: LegendNextSpacing.md) {
                     VStack(alignment: .leading, spacing: LegendNextSpacing.xs) {
                         HStack {
-                            Text("LEGEND ACCOUNT")
+                            Text(LegendLocalized("LEGEND ACCOUNT"))
                                 .font(LegendNextTypography.eyebrow)
                                 .foregroundStyle(LegendNextColor.goldBright)
 
@@ -97,11 +137,11 @@ private struct RoleSelectionView: View {
                                 .accessibilityHidden(true)
                         }
 
-                        Text("Choose your experience")
+                        Text(LegendLocalized("Choose your experience"))
                             .font(.system(size: 27, weight: .bold))
                             .foregroundStyle(LegendNextColor.contactTitle)
 
-                        Text("Choose the account you want to use. Legend will reopen it next time.")
+                        Text(LegendLocalized("Choose the account you want to use. Legend will reopen it next time."))
                             .font(LegendNextTypography.supporting)
                             .foregroundStyle(LegendNextColor.contactTitle.opacity(0.76))
                             .fixedSize(horizontal: false, vertical: true)
@@ -126,7 +166,7 @@ private struct RoleSelectionView: View {
 
                     LegendNextSurface(style: .elevated) {
                         VStack(alignment: .leading, spacing: LegendNextSpacing.xs) {
-                            Text("Available workspaces")
+                            Text(LegendLocalized("Available workspaces"))
                                 .font(LegendNextTypography.section)
                                 .foregroundStyle(LegendNextColor.textPrimary)
 
@@ -147,8 +187,8 @@ private struct RoleSelectionView: View {
 
                                         Text(
                                             role == .agent
-                                                ? "Continue as Agent"
-                                                : "Continue as Client"
+                                                ? LegendLocalized("Continue as Agent")
+                                                : LegendLocalized("Continue as Client")
                                         )
                                         .font(.system(size: 15, weight: .semibold))
                                         .foregroundStyle(LegendNextColor.textPrimary)
@@ -195,7 +235,7 @@ private struct RoleSelectionView: View {
                         }
                     }
 
-                    Button("Sign out") {
+                    Button(LegendLocalized("Sign out")) {
                         session.signOut()
                     }
                     .font(.system(size: 14, weight: .semibold))
@@ -233,18 +273,18 @@ private struct ConfigurationStateView: View {
                     VStack(spacing: LegendNextSpacing.xs) {
                         LegendBrandLogo(maximumWidth: 96)
                             .accessibilityHidden(true)
-                        Text("LEGEND®")
+                        Text(LegendLocalized("LEGEND®"))
                             .font(.system(.title2, design: .rounded).weight(.bold))
                             .foregroundStyle(LegendNextColor.textPrimary)
                     }
 
                     VStack(spacing: LegendNextSpacing.sm) {
-                        Text("Native Mobile Configuration Required")
+                        Text(LegendLocalized("Native Mobile Configuration Required"))
                             .font(.system(.title, design: .rounded).weight(.bold))
                             .multilineTextAlignment(.center)
                             .foregroundStyle(LegendNextColor.textPrimary)
                             .fixedSize(horizontal: false, vertical: true)
-                        Text("This build is waiting for administrator configuration before secure sign-in can begin.")
+                        Text(LegendLocalized("This build is waiting for administrator configuration before secure sign-in can begin."))
                             .font(LegendNextTypography.body)
                             .foregroundStyle(LegendNextColor.textSecondary)
                             .multilineTextAlignment(.center)
@@ -253,7 +293,7 @@ private struct ConfigurationStateView: View {
 
                     LegendNextSurface {
                         VStack(alignment: .leading, spacing: LegendNextSpacing.sm) {
-                            Label("Required configuration", systemImage: "checklist")
+                            Label(LegendLocalized("Required configuration"), systemImage: "checklist")
                                 .font(LegendNextTypography.section)
                                 .foregroundStyle(LegendNextColor.textPrimary)
                             Text(validation.summary)
@@ -265,16 +305,16 @@ private struct ConfigurationStateView: View {
                                 Label(key.buildSetting, systemImage: "exclamationmark.circle")
                                     .font(.footnote.monospaced().weight(.medium))
                                     .foregroundStyle(LegendNextColor.textPrimary)
-                                    .accessibilityLabel("Missing administrator configuration: \(key.buildSetting)")
+                                    .accessibilityLabel(LegendLocalized("Missing administrator configuration: {value1}", context: "accessibility copy", arguments: ["value1": String(describing: (key.buildSetting))]))
                             }
                         }
                     }
 
-                    Button("Check configuration") {
+                    Button(LegendLocalized("Check configuration")) {
                         session.restore()
                     }
                     .buttonStyle(LegendNextButtonStyle(kind: .primary))
-                    .accessibilityHint("Checks whether the required administrator configuration is now available.")
+                    .accessibilityHint(LegendLocalized("Checks whether the required administrator configuration is now available.", context: "accessibility copy"))
                 }
                 .frame(maxWidth: 520)
                 .padding(.horizontal, LegendNextSpacing.md)
@@ -317,14 +357,14 @@ private struct SignInView: View {
                             }
                             .accessibilityHidden(true)
 
-                        Text("LEGEND ACCOUNT")
+                        Text(LegendLocalized("LEGEND ACCOUNT"))
                             .font(LegendNextTypography.eyebrow)
                             .foregroundStyle(LegendNextColor.goldBright)
 
-                        Text("Secure sign in")
+                        Text(LegendLocalized("Secure sign in"))
                             .font(.system(size: 27, weight: .bold))
                             .foregroundStyle(LegendNextColor.contactTitle)
-                        Text("Tap Sign in securely to continue with your Legend account.")
+                        Text(LegendLocalized("Tap Sign in securely to continue with your Legend account."))
                             .font(LegendNextTypography.supporting)
                             .foregroundStyle(LegendNextColor.contactTitle.opacity(0.76))
                             .multilineTextAlignment(.center)
@@ -352,10 +392,10 @@ private struct SignInView: View {
                         Button(action: toggleProvidedCredentials) {
                             HStack(spacing: LegendNextSpacing.sm) {
                                 VStack(alignment: .leading, spacing: 2) {
-                                    Text("Were you given sign-in credentials?")
+                                    Text(LegendLocalized("Were you given sign-in credentials?"))
                                         .font(LegendNextTypography.supporting)
                                         .foregroundStyle(LegendNextColor.textPrimary)
-                                    Text("Optional access method")
+                                    Text(LegendLocalized("Optional access method"))
                                         .font(LegendNextTypography.caption)
                                         .foregroundStyle(LegendNextColor.textSecondary)
                                 }
@@ -377,7 +417,7 @@ private struct SignInView: View {
                                 .padding(.vertical, LegendNextSpacing.sm)
 
                             VStack(alignment: .leading, spacing: LegendNextSpacing.sm) {
-                                TextField("Username", text: $username)
+                                TextField(LegendLocalized("Username"), text: $username)
                                     .textContentType(.username)
                                     .textInputAutocapitalization(.never)
                                     .autocorrectionDisabled()
@@ -385,12 +425,12 @@ private struct SignInView: View {
 
                                 Divider()
 
-                                SecureField("Password", text: $password)
+                                SecureField(LegendLocalized("Password"), text: $password)
                                     .textContentType(.password)
                                     .submitLabel(.go)
                                     .onSubmit(signIn)
 
-                                Text("Enter the username and password you were provided, then use the same Sign in securely button below.")
+                                Text(LegendLocalized("Enter the username and password you were provided, then use the same Sign in securely button below."))
                                     .font(LegendNextTypography.caption)
                                     .foregroundStyle(LegendNextColor.textSecondary)
                                     .fixedSize(horizontal: false, vertical: true)
@@ -406,16 +446,16 @@ private struct SignInView: View {
                             .strokeBorder(LegendNextColor.separator, lineWidth: 1)
                     }
 
-                    Button("Sign in securely", action: signIn)
+                    Button(LegendLocalized("Sign in securely"), action: signIn)
                         .buttonStyle(LegendNextButtonStyle(kind: .primary))
                         .frame(maxHeight: 48)
                         .disabled(showsProvidedCredentials && !hasCompleteProvidedCredentials)
                         .accessibilityHint(
                             hasCompleteProvidedCredentials
-                                ? "Signs in with the provided Legend credentials."
-                                : "Opens secure Legend sign-in and verification.")
+                                ? LegendLocalized("Signs in with the provided Legend credentials.", context: "accessibility copy")
+                                : LegendLocalized("Opens secure Legend sign-in and verification.", context: "accessibility copy"))
 
-                    Text("Face ID is optional and can be enabled after sign in in Profile settings.")
+                    Text(LegendLocalized("Face ID is optional and can be enabled after sign in in Profile settings."))
                         .font(LegendNextTypography.caption)
                         .foregroundStyle(LegendNextColor.textSecondary)
                         .multilineTextAlignment(.center)
@@ -465,13 +505,13 @@ private struct SessionFailureView: View {
                 LegendNextErrorState(
                     title: failure.title,
                     message: failure.message,
-                    retryTitle: "Try again",
+                    retryTitle: LegendLocalized("Try again"),
                     retry: session.retrySessionEntry)
             }
             .padding(LegendNextSpacing.md)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(LegendNextCanvas())
-            .navigationTitle("Secure access")
+            .navigationTitle(LegendLocalized("Secure access"))
             .navigationBarTitleDisplayMode(.inline)
         }
     }
@@ -520,14 +560,14 @@ private struct AuthenticatedHomeView: View {
                     LegendNextErrorState(
                         title: failure.title,
                         message: failure.message,
-                        retryTitle: "Try again",
+                        retryTitle: LegendLocalized("Try again"),
                         retry: {
                             Task { await bootstrap.retryBootstrap() }
                         })
                     .padding(LegendNextSpacing.md)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .background(LegendNextCanvas())
-                    .navigationTitle("LEGEND®")
+                    .navigationTitle(LegendLocalized("LEGEND®"))
                     .navigationBarTitleDisplayMode(.inline)
                 }
             }

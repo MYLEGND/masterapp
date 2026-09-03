@@ -56,16 +56,16 @@ public sealed class MobileProfilePresentationContractTests
             "private func submitControlledResourceRequest(");
         var iosPublicProfile = Between(
             iosSettings,
-            "LegendProfileSettingsSection(title: \"Profile\")",
+            "LegendProfileSettingsSection(title: LegendLocalized(\"Profile\"))",
             "if currentSession.actor.identity.participantType == .agent");
         var iosFounderDiagnostics = Between(
             iosSettings,
-            "LegendProfileSettingsSection(title: \"Founder diagnostics\")",
+            "LegendProfileSettingsSection(title: LegendLocalized(\"Founder diagnostics\"))",
             "if currentSession.capabilities.contains(\"scripture-management\")");
         var iosPublicSecurity = Between(
             iosSettings,
-            "LegendProfileSettingsSection(title: \"Security\")",
-            "LegendProfileSettingsSection(title: \"Account access\")");
+            "LegendProfileSettingsSection(title: LegendLocalized(\"Security\"))",
+            "LegendProfileSettingsSection(title: LegendLocalized(\"Account access\"))");
 
         Assert.Contains("Edit profile", iosPublicProfile, StringComparison.Ordinal);
         Assert.DoesNotContain("Creator insights", iosPublicProfile, StringComparison.Ordinal);
@@ -183,7 +183,10 @@ public sealed class MobileProfilePresentationContractTests
             ios,
             "private struct SignInView: View",
             "private struct SessionFailureView: View");
-        Assert.Contains("Button(\"Sign in securely\", action: signIn)", iosSignIn, StringComparison.Ordinal);
+        Assert.Contains(
+            "Button(LegendLocalized(\"Sign in securely\"), action: signIn)",
+            iosSignIn,
+            StringComparison.Ordinal);
         Assert.Contains("session.signInForAppReview(", iosSignIn, StringComparison.Ordinal);
         Assert.Contains("session.signIn()", iosSignIn, StringComparison.Ordinal);
         Assert.Contains("ScrollView", iosSignIn, StringComparison.Ordinal);

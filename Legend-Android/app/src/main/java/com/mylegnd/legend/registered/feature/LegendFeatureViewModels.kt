@@ -635,7 +635,33 @@ class AccountViewModel(private val repository: AccountRepository, private val ro
     private val _lifecycle = MutableStateFlow<LoadState<AccountLifecycle>>(LoadState.Idle); val lifecycle: StateFlow<LoadState<AccountLifecycle>> = _lifecycle.asStateFlow()
     private val _usernameAvailability = MutableStateFlow<LoadState<MobileUsernameAvailability>>(LoadState.Idle); val usernameAvailability: StateFlow<LoadState<MobileUsernameAvailability>> = _usernameAvailability.asStateFlow()
     fun load() = viewModelScope.launch { _profile.value = LoadState.Loading; _profile.value = repository.profile(role); _lifecycle.value = repository.lifecycle(role) }
-    fun updateLanguage(account: MobileAccountProfile, language: String?) = viewModelScope.launch { _profile.value = LoadState.Loading; _profile.value = repository.update(role, AccountUpdateRequest(account.displayName, account.phone, account.title, account.shortBio, account.username, account.bio, account.website, account.location, account.profileEmail, account.isEmailVisible, account.isPhoneVisible, account.isPrivate, language?.trim()?.takeIf(String::isNotBlank))) }
+    fun updateLanguage(
+        account: MobileAccountProfile,
+        language: String?,
+        completed: () -> Unit = {},
+    ) = viewModelScope.launch {
+        _profile.value = LoadState.Loading
+        val result = repository.update(
+            role,
+            AccountUpdateRequest(
+                account.displayName,
+                account.phone,
+                account.title,
+                account.shortBio,
+                account.username,
+                account.bio,
+                account.website,
+                account.location,
+                account.profileEmail,
+                account.isEmailVisible,
+                account.isPhoneVisible,
+                account.isPrivate,
+                language?.trim()?.takeIf(String::isNotBlank),
+            ),
+        )
+        _profile.value = result
+        if (result is LoadState.Data) completed()
+    }
     fun checkUsernameAvailability(username: String?) = viewModelScope.launch { _usernameAvailability.value = LoadState.Loading; _usernameAvailability.value = repository.usernameAvailability(role, username?.trim()?.takeIf(String::isNotBlank)) }
     fun updatePrivacy(isPrivate: Boolean) = viewModelScope.launch { _profile.value = LoadState.Loading; _profile.value = repository.updatePrivacy(role, isPrivate) }
     fun updateTranslationLearningConsent(allowsConsentedTranslationLearning: Boolean) = viewModelScope.launch { _profile.value = LoadState.Loading; _profile.value = repository.updateTranslationLearningConsent(role, allowsConsentedTranslationLearning) }

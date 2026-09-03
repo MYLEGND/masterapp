@@ -385,11 +385,11 @@ enum ControlledResourceType: String, Codable, Identifiable, Sendable {
 
     var displayName: String {
         switch self {
-        case .verificationBadge: "Legend verification"
-        case .languageTranslation: "Language Translation Access"
-        case .scriptureManagement: "Daily Scripture Management"
-        case .communityManagement: "Community Manager"
-        case .socialContentPriority: "Featured Creator"
+        case .verificationBadge: LegendLocalized("Legend verification")
+        case .languageTranslation: LegendLocalized("Language Translation Access")
+        case .scriptureManagement: LegendLocalized("Daily Scripture Management")
+        case .communityManagement: LegendLocalized("Community Manager")
+        case .socialContentPriority: LegendLocalized("Featured Creator")
         }
     }
 }
@@ -516,6 +516,13 @@ enum MessagingRecipientScope: String, CaseIterable, Identifiable, Sendable {
     case leads = "Leads"
 
     var id: String { rawValue }
+    var title: String {
+        switch self {
+        case .clients: LegendLocalized("Clients")
+        case .agents: LegendLocalized("Agents")
+        case .leads: LegendLocalized("Leads")
+        }
+    }
     var icon: String {
         switch self {
         case .clients: "person.2.fill"
@@ -1144,7 +1151,7 @@ enum MobileMessagingContractError: LocalizedError, Equatable {
     case unavailable
 
     var errorDescription: String? {
-        "Secure mobile messaging is waiting for the approved server contract."
+        LegendLocalized("Secure mobile messaging is waiting for the approved server contract.")
     }
 }
 

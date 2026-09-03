@@ -107,11 +107,11 @@ private struct LegendGlobalShareSheet: View {
                 internalShareSection
             }
             .background(LegendNextCanvas())
-            .navigationTitle("Share")
+            .navigationTitle(LegendLocalized("Share"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("Done") {
+                    Button(LegendLocalized("Done")) {
                         dismiss()
                     }
                     .font(.subheadline.weight(.semibold))
@@ -131,12 +131,12 @@ private struct LegendGlobalShareSheet: View {
 
     private var destinationHeader: some View {
         VStack(alignment: .leading, spacing: LegendNextSpacing.sm) {
-            Text("SEND IN LEGEND")
+            Text(LegendLocalized("SEND IN LEGEND"))
                 .font(.caption2.weight(.bold))
                 .tracking(1.0)
                 .foregroundStyle(LegendNextColor.gold)
 
-            TextField("Search Legend members", text: $search)
+            TextField(LegendLocalized("Search Legend members"), text: $search)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
                 .padding(.horizontal, LegendNextSpacing.md)
@@ -157,10 +157,10 @@ private struct LegendGlobalShareSheet: View {
                         .font(.body.weight(.semibold))
 
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("Share outside Legend")
+                        Text(LegendLocalized("Share outside Legend"))
                             .font(.subheadline.weight(.bold))
 
-                        Text("Messages, Mail, AirDrop, and other apps")
+                        Text(LegendLocalized("Messages, Mail, AirDrop, and other apps"))
                             .font(.caption)
                             .foregroundStyle(LegendNextColor.textSecondary)
                     }
@@ -188,7 +188,7 @@ private struct LegendGlobalShareSheet: View {
                     social.recordShare(postID: post.id)
                 }
             )
-            .accessibilityLabel("Share outside Legend")
+            .accessibilityLabel(LegendLocalized("Share outside Legend", context: "accessibility copy"))
         }
         .padding(.horizontal, LegendNextSpacing.md)
         .padding(.top, LegendNextSpacing.sm)
@@ -238,7 +238,7 @@ private struct LegendGlobalShareSheet: View {
         case .idle, .loading:
             VStack(spacing: LegendNextSpacing.sm) {
                 ProgressView()
-                Text("Loading Legend members")
+                Text(LegendLocalized("Loading Legend members"))
                     .font(.caption)
                     .foregroundStyle(LegendNextColor.textSecondary)
             }
@@ -258,7 +258,7 @@ private struct LegendGlobalShareSheet: View {
                     .foregroundStyle(LegendNextColor.textSecondary)
                     .multilineTextAlignment(.center)
 
-                Button("Retry") {
+                Button(LegendLocalized("Retry")) {
                     messaging.loadRecipients(search: search)
                 }
                 .buttonStyle(.borderedProminent)
@@ -275,14 +275,14 @@ private struct LegendGlobalShareSheet: View {
                         .foregroundStyle(LegendNextColor.textSecondary)
 
                     Text(search.isEmpty
-                         ? "No Legend members available"
-                         : "No matching Legend members")
+                         ? LegendLocalized("No Legend members available")
+                         : LegendLocalized("No matching Legend members"))
                         .font(.headline)
 
                     Text(
                         search.isEmpty
-                            ? "Try another member category."
-                            : "Try a different search."
+                            ? LegendLocalized("Try another member category.")
+                            : LegendLocalized("Try a different search.")
                     )
                     .font(.subheadline)
                     .foregroundStyle(LegendNextColor.textSecondary)
@@ -375,7 +375,7 @@ private struct LegendGlobalShareSheet: View {
             messaging.isSending
         )
         .accessibilityLabel(
-            "Send \(post.displayContentType) to \(recipient.displayName)"
+            LegendLocalized("Send {value1} to {value2}", context: "accessibility copy", arguments: ["value1": String(describing: (post.displayContentType)), "value2": String(describing: (recipient.displayName))])
         )
     }
 
@@ -425,22 +425,22 @@ private struct LegendGlobalShareUnavailableSheet: View {
                     .font(.title2)
                     .foregroundStyle(LegendNextColor.textSecondary)
 
-                Text("Sharing unavailable")
+                Text(LegendLocalized("Sharing unavailable"))
                     .font(.headline)
 
                 Text(
-                    "The account messaging authority is not available in this session."
+                    LegendLocalized("The account messaging authority is not available in this session.")
                 )
                 .font(.subheadline)
                 .foregroundStyle(LegendNextColor.textSecondary)
                 .multilineTextAlignment(.center)
             }
             .padding(LegendNextSpacing.xl)
-            .navigationTitle("Share")
+            .navigationTitle(LegendLocalized("Share"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("Done") {
+                    Button(LegendLocalized("Done")) {
                         dismiss()
                     }
                 }
@@ -559,13 +559,13 @@ struct LegendSocialHomeSection<DashboardContent: View>: View {
             handleHomeChromeAction(request)
         }
         .alert(
-            social.actionFailure?.title ?? "Legend update unavailable",
+            social.actionFailure?.title ?? LegendLocalized("Legend update unavailable"),
             isPresented: failurePresentation,
             actions: {
-                Button("OK", role: .cancel) { social.dismissActionFailure() }
+                Button(LegendLocalized("OK"), role: .cancel) { social.dismissActionFailure() }
             },
             message: {
-                Text(social.actionFailure?.message ?? "The request could not be completed.")
+                Text(social.actionFailure?.message ?? LegendLocalized("The request could not be completed."))
             })
     }
 
@@ -630,7 +630,7 @@ struct LegendSocialHomeSection<DashboardContent: View>: View {
             LegendNextErrorState(
                 title: failure.title,
                 message: failure.message,
-                retryTitle: "Retry",
+                retryTitle: LegendLocalized("Retry"),
                 retry: social.load
             )
 
@@ -729,7 +729,7 @@ private struct LegendPromotedGroupCard: View {
                 groupAvatar
 
                 VStack(alignment: .leading, spacing: LegendNextSpacing.tiny) {
-                    Text("FEATURED GROUP")
+                    Text(LegendLocalized("FEATURED GROUP"))
                         .font(.caption2.weight(.bold))
                         .tracking(1.1)
                         .foregroundStyle(LegendNextColor.goldBright)
@@ -739,7 +739,7 @@ private struct LegendPromotedGroupCard: View {
                         .foregroundStyle(.white)
                         .lineLimit(1)
 
-                    Text("Hosted by \(group.owner.displayName) · \(group.activeMemberCount) members")
+                    Text(LegendLocalized("Hosted by {value1} · {value2} members", arguments: ["value1": String(describing: (group.owner.displayName)), "value2": String(describing: (group.activeMemberCount))]))
                         .font(.caption)
                         .foregroundStyle(.white.opacity(0.72))
                         .lineLimit(1)
@@ -747,7 +747,7 @@ private struct LegendPromotedGroupCard: View {
 
                 Spacer(minLength: 0)
 
-                Button(group.isJoinedByCurrentActor ? "Joined" : "Join") {
+                Button(group.isJoinedByCurrentActor ? LegendLocalized("Joined") : LegendLocalized("Join")) {
                     join()
                 }
                 .font(.caption.weight(.bold))
@@ -817,7 +817,7 @@ private struct LegendStoryRail: View {
             }
             .padding(.horizontal, 2)
         }
-        .accessibilityLabel("Legend stories")
+        .accessibilityLabel(LegendLocalized("Legend stories", context: "accessibility copy"))
     }
 
     @ViewBuilder
@@ -825,7 +825,7 @@ private struct LegendStoryRail: View {
         if let currentActorCollection {
             LegendStoryCircle(
                 collection: currentActorCollection,
-                title: "Your story",
+                title: LegendLocalized("Your story"),
                 showsVerifiedBadge: false,
                 action: { selectStory(currentActorCollection) })
         } else {
@@ -845,7 +845,7 @@ private struct LegendStoryRail: View {
                             .background(LegendNextColor.navy, in: Circle())
                             .overlay { Circle().stroke(.white, lineWidth: 1.5) }
                     }
-                    Text("Your story")
+                    Text(LegendLocalized("Your story"))
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(LegendNextColor.textPrimary)
                         .lineLimit(1)
@@ -853,7 +853,7 @@ private struct LegendStoryRail: View {
                 .frame(width: 72)
             }
             .buttonStyle(.plain)
-            .accessibilityLabel("Create your story")
+            .accessibilityLabel(LegendLocalized("Create your story", context: "accessibility copy"))
         }
     }
 }
@@ -882,7 +882,15 @@ private struct LegendStoryCircle: View {
             .frame(width: 72)
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("Open \(title), \(collection.items.count) story \(collection.items.count == 1 ? "item" : "items")")
+        .accessibilityLabel(LegendLocalized(
+            collection.items.count == 1
+                ? "Open {title}, {count} story"
+                : "Open {title}, {count} stories",
+            context: "accessibility copy",
+            arguments: [
+                "title": title,
+                "count": collection.items.count
+            ]))
     }
 }
 
@@ -1026,7 +1034,7 @@ private struct LegendStoryViewer: View {
         }
         .interactiveDismissDisabled(false)
         .accessibilityLabel(
-            "Story viewer for \(collection.author.displayName)"
+            LegendLocalized("Story viewer for {value1}", context: "accessibility copy", arguments: ["value1": String(describing: (collection.author.displayName))])
         )
     }
 
@@ -1041,12 +1049,12 @@ private struct LegendStoryViewer: View {
 
             HStack(spacing: 0) {
                 storyInteractionZone(
-                    accessibilityLabel: "Previous story",
+                    accessibilityLabel: LegendLocalized("Previous story", context: "accessibility copy"),
                     moveForwardOnTap: false
                 )
 
                 storyInteractionZone(
-                    accessibilityLabel: "Next story",
+                    accessibilityLabel: LegendLocalized("Next story", context: "accessibility copy"),
                     moveForwardOnTap: true
                 )
             }
@@ -1167,7 +1175,7 @@ private struct LegendStoryViewer: View {
             }
         }
         .accessibilityLabel(
-            "Story \(itemIndex + 1) of \(collection.items.count)"
+            LegendLocalized("Story {value1} of {value2}", context: "accessibility copy", arguments: ["value1": String(describing: (itemIndex + 1)), "value2": String(describing: (collection.items.count))])
         )
         .allowsHitTesting(false)
     }
@@ -1182,7 +1190,7 @@ private struct LegendStoryViewer: View {
 
             VStack(alignment: .leading, spacing: 2) {
                 if isOwner {
-                    Text("Your story")
+                    Text(LegendLocalized("Your story"))
                         .font(.subheadline.weight(.bold))
                 } else {
                     LegendVerifiedName(
@@ -1210,7 +1218,7 @@ private struct LegendStoryViewer: View {
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.white)
                 .accessibilityLabel(
-                    "\(item.metrics.uniqueViewerCount) unique viewers"
+                    LegendLocalized("{value1} unique viewers", context: "accessibility copy", arguments: ["value1": String(describing: (item.metrics.uniqueViewerCount))])
                 )
             }
 
@@ -1228,7 +1236,7 @@ private struct LegendStoryViewer: View {
             }
             .buttonStyle(.plain)
             .foregroundStyle(.white)
-            .accessibilityLabel("Close story")
+            .accessibilityLabel(LegendLocalized("Close story", context: "accessibility copy"))
         }
         .contentShape(Rectangle())
     }
@@ -1277,7 +1285,7 @@ private struct LegendStoryViewer: View {
                 in: Capsule()
             )
             .accessibilityLabel(
-                "\(item.metrics.uniqueViewerCount) unique viewers"
+                LegendLocalized("{value1} unique viewers", context: "accessibility copy", arguments: ["value1": String(describing: (item.metrics.uniqueViewerCount))])
             )
 
             Spacer(minLength: 0)
@@ -1289,7 +1297,7 @@ private struct LegendStoryViewer: View {
     private var viewerFooter: some View {
         HStack(spacing: LegendNextSpacing.sm) {
             TextField(
-                "Reply to \(collection.author.displayName)",
+                LegendLocalized("Reply to {value1}", arguments: ["value1": String(describing: (collection.author.displayName))]),
                 text: $replyBody
             )
             .focused($isReplyFocused)
@@ -1310,7 +1318,7 @@ private struct LegendStoryViewer: View {
                     )
             }
             .foregroundStyle(.white)
-            .accessibilityLabel("Reply to story")
+            .accessibilityLabel(LegendLocalized("Reply to story", context: "accessibility copy"))
 
             if !normalizedReplyBody.isEmpty {
                 Button(action: submitReply) {
@@ -1322,7 +1330,7 @@ private struct LegendStoryViewer: View {
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(.white)
-                .accessibilityLabel("Send story reply")
+                .accessibilityLabel(LegendLocalized("Send story reply", context: "accessibility copy"))
             }
 
             Button {
@@ -1361,7 +1369,7 @@ private struct LegendStoryViewer: View {
         LegendGlobalShareButton(
             post: item,
             social: social,
-            accessibilityLabel: "Share story"
+            accessibilityLabel: LegendLocalized("Share story", context: "accessibility copy")
         ) {
             Image(systemName: "square.and.arrow.up")
                 .font(.title3)
@@ -1660,19 +1668,19 @@ struct LegendPostDetailView: View {
                         Button {
                             editingPost = post
                         } label: {
-                            Label("Edit \(post.displayContentType)", systemImage: "pencil")
+                            Label(LegendLocalized("Edit {value1}", arguments: ["value1": String(describing: (post.displayContentType))]), systemImage: "pencil")
                         }
 
                         Button(role: .destructive) {
                             deletionTarget = post
                         } label: {
-                            Label("Delete \(post.displayContentType)", systemImage: "trash")
+                            Label(LegendLocalized("Delete {value1}", arguments: ["value1": String(describing: (post.displayContentType))]), systemImage: "trash")
                         }
                     } label: {
                         Image(systemName: "ellipsis.circle")
                             .font(.body.weight(.semibold))
                     }
-                    .accessibilityLabel("\(post.displayContentType) options")
+                    .accessibilityLabel(LegendLocalized("{value1} options", context: "accessibility copy", arguments: ["value1": String(describing: (post.displayContentType))]))
                 }
             }
         }
@@ -1704,7 +1712,7 @@ struct LegendPostDetailView: View {
             )
         }
         .confirmationDialog(
-            "Delete this \(deletionTargetDisplayName)?",
+            LegendLocalized("Delete this {value1}?", arguments: ["value1": String(describing: (deletionTargetDisplayName))]),
             isPresented: Binding(
                 get: { deletionTarget != nil },
                 set: { if !$0 { deletionTarget = nil } }
@@ -1712,7 +1720,7 @@ struct LegendPostDetailView: View {
             titleVisibility: .visible
         ) {
             if let deletionTarget {
-                Button("Delete \(deletionTarget.displayContentType)", role: .destructive) {
+                Button(LegendLocalized("Delete {value1}", arguments: ["value1": String(describing: (deletionTarget.displayContentType))]), role: .destructive) {
                     Task {
                         guard await social.deletePost(postID: deletionTarget.id) else { return }
                         self.deletionTarget = nil
@@ -1721,25 +1729,25 @@ struct LegendPostDetailView: View {
                 }
             }
 
-            Button("Cancel", role: .cancel) {
+            Button(LegendLocalized("Cancel"), role: .cancel) {
                 deletionTarget = nil
             }
         } message: {
-            Text("This removes the \(deletionTargetDisplayName) from your Legend profile and feed.")
+            Text(LegendLocalized("This removes the {value1} from your Legend profile and feed.", arguments: ["value1": String(describing: (deletionTargetDisplayName))]))
         }
         .alert(
-            social.actionFailure?.title ?? "Legend update unavailable",
+            social.actionFailure?.title ?? LegendLocalized("Legend update unavailable"),
             isPresented: Binding(
                 get: { social.actionFailure != nil },
                 set: { if !$0 { social.dismissActionFailure() } }
             ),
             actions: {
-                Button("OK", role: .cancel) {
+                Button(LegendLocalized("OK"), role: .cancel) {
                     social.dismissActionFailure()
                 }
             },
             message: {
-                Text(social.actionFailure?.message ?? "The request could not be completed.")
+                Text(social.actionFailure?.message ?? LegendLocalized("The request could not be completed."))
             }
         )
     }
@@ -1881,12 +1889,12 @@ private struct LegendSocialPostCard: View {
                 }
             }
             .buttonStyle(.plain)
-            .accessibilityLabel("Open \(post.author.displayName)'s profile")
+            .accessibilityLabel(LegendLocalized("Open {value1}'s profile", context: "accessibility copy", arguments: ["value1": String(describing: (post.author.displayName))]))
 
             Spacer(minLength: LegendNextSpacing.xs)
 
             if post.author.identity != currentIdentity {
-                Button(post.followedByCurrentActor ? "Following" : "Follow", action: follow)
+                Button(post.followedByCurrentActor ? LegendLocalized("Following") : LegendLocalized("Follow"), action: follow)
                     .font(.caption.weight(.bold))
                     .foregroundStyle(post.followedByCurrentActor ? LegendNextColor.textSecondary : .white)
                     .padding(.horizontal, 11)
@@ -1915,7 +1923,7 @@ private struct LegendSocialPostCard: View {
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(LegendNextColor.information)
-                .accessibilityLabel("View \(post.displayContentType) insights")
+                .accessibilityLabel(LegendLocalized("View {value1} insights", context: "accessibility copy", arguments: ["value1": String(describing: (post.displayContentType))]))
             }
         }
     }
@@ -1948,7 +1956,7 @@ private struct LegendSocialPostCard: View {
                         guard presentation.opensForYou else { return }
                         open()
                     }
-                    .accessibilityHint("Double tap to appreciate this update")
+                    .accessibilityHint(LegendLocalized("Double tap to appreciate this update", context: "accessibility copy"))
                 }
             }
             .tabViewStyle(.page(indexDisplayMode: post.media.count > 1 ? .automatic : .never))
@@ -1987,7 +1995,7 @@ private struct LegendSocialPostCard: View {
                 )
             }
             .buttonStyle(.plain)
-            .accessibilityLabel("Comment on this update")
+            .accessibilityLabel(LegendLocalized("Comment on this update", context: "accessibility copy"))
 
             if presentation.includesSaveAction {
                 Button {
@@ -2030,7 +2038,7 @@ private struct LegendSocialPostCard: View {
             LegendGlobalShareButton(
                 post: post,
                 social: social,
-                accessibilityLabel: "Share this update"
+                accessibilityLabel: LegendLocalized("Share this update", context: "accessibility copy")
             ) {
                 actionMetricLabel(
                     symbolName: "paperplane",
@@ -2106,7 +2114,7 @@ private struct LegendSocialPostCard: View {
             .font(LegendNextTypography.supporting)
             .foregroundStyle(LegendNextColor.textSecondary)
             .lineLimit(1)
-            .accessibilityLabel("Music: \(music.trackTitle) by \(music.artistName)")
+            .accessibilityLabel(LegendLocalized("Music: {value1} by {value2}", context: "accessibility copy", arguments: ["value1": String(describing: (music.trackTitle)), "value2": String(describing: (music.artistName))]))
         }
 
         if !post.comments.isEmpty {
@@ -2178,7 +2186,7 @@ struct LegendForYouView: View {
                 LegendNextErrorState(
                     title: failure.title,
                     message: failure.message,
-                    retryTitle: "Retry",
+                    retryTitle: LegendLocalized("Retry"),
                     retry: { social.load() }
                 )
                 .padding(LegendNextSpacing.sm)
@@ -2357,7 +2365,7 @@ private final class LegendHacMediaResourceLoader: NSObject, AVAssetResourceLoade
                 taskIdentifier: dataTask.taskIdentifier,
                 error: streamError(
                     code: response.statusCode,
-                    message: "Legend could not load this Hac stream."))
+                    message: LegendLocalized("Legend could not load this Hac stream.")))
             completionHandler(.cancel)
             return
         }
@@ -2767,8 +2775,8 @@ private final class LegendHacPlaybackCoordinator: ObservableObject {
         guard let asset = await asset(for: media, social: social) else {
             guard retainedMediaIDs.contains(media.id) else { return }
             failures[media.id] = social.mediaFailure(for: media.id) ?? UserFacingFailure(
-                title: "Video unavailable",
-                message: "This Hac could not be prepared for playback. Please try again.",
+                title: LegendLocalized("Video unavailable"),
+                message: LegendLocalized("This Hac could not be prepared for playback. Please try again."),
                 correlationID: nil)
             return
         }
@@ -2818,7 +2826,7 @@ private final class LegendHacPlaybackCoordinator: ObservableObject {
                 case .failed:
                     self.readyMediaIDs.remove(media.id)
                     let message = observedItem.error?.localizedDescription
-                        ?? "This Hac could not be played. Please try again."
+                        ?? LegendLocalized("This Hac could not be played. Please try again.")
                     self.handlePlaybackFailure(
                         mediaID: media.id,
                         message: message)
@@ -3023,8 +3031,8 @@ private final class LegendHacPlaybackCoordinator: ObservableObject {
             return true
         } catch {
             failures[mediaID] = UserFacingFailure(
-                title: "Hac audio unavailable",
-                message: "Legend could not prepare audio playback for this Hac. Please try again.",
+                title: LegendLocalized("Hac audio unavailable"),
+                message: LegendLocalized("Legend could not prepare audio playback for this Hac. Please try again."),
                 correlationID: nil)
             return false
         }
@@ -3053,7 +3061,7 @@ private final class LegendHacPlaybackCoordinator: ObservableObject {
             isPlaying = false
         }
         failures[mediaID] = UserFacingFailure(
-            title: "Video unavailable",
+            title: LegendLocalized("Video unavailable"),
             message: message,
             correlationID: nil)
     }
@@ -3193,8 +3201,8 @@ struct LegendHacViewportFeed: View {
         Group {
             if posts.isEmpty {
                 LegendNextEmptyState(
-                    title: "No Hacs yet",
-                    message: "Video Hacs will appear here as they are shared.",
+                    title: LegendLocalized("No Hacs yet"),
+                    message: LegendLocalized("Video Hacs will appear here as they are shared."),
                     systemImage: "play.rectangle.on.rectangle")
             } else {
                 LegendScrollView {
@@ -3283,7 +3291,7 @@ struct LegendHacViewportFeed: View {
                 .buttonStyle(.plain)
                 .padding(.leading, LegendNextSpacing.md)
                 .padding(.top, LegendNextSpacing.md)
-                .accessibilityLabel("Back")
+                .accessibilityLabel(LegendLocalized("Back", context: "accessibility copy"))
             }
         }
         .sheet(item: $commentTarget) { post in
@@ -3304,16 +3312,16 @@ struct LegendHacViewportFeed: View {
             }
         }
         .alert(
-            social.actionFailure?.title ?? "Legend update unavailable",
+            social.actionFailure?.title ?? LegendLocalized("Legend update unavailable"),
             isPresented: Binding(
                 get: { social.actionFailure != nil },
                 set: { if !$0 { social.dismissActionFailure() } }
             ),
             actions: {
-                Button("OK", role: .cancel) { social.dismissActionFailure() }
+                Button(LegendLocalized("OK"), role: .cancel) { social.dismissActionFailure() }
             },
             message: {
-                Text(social.actionFailure?.message ?? "The request could not be completed.")
+                Text(social.actionFailure?.message ?? LegendLocalized("The request could not be completed."))
             }
         )
     }
@@ -3418,7 +3426,7 @@ private struct LegendHacViewportPage: View {
             }
         }
         .accessibilityElement(children: .contain)
-        .accessibilityLabel("Hac by \(post.author.displayName)")
+        .accessibilityLabel(LegendLocalized("Hac by {value1}", context: "accessibility copy", arguments: ["value1": String(describing: (post.author.displayName))]))
     }
 
     private func hacOverlay(
@@ -3443,7 +3451,7 @@ private struct LegendHacViewportPage: View {
                         }
                     }
                     .buttonStyle(.plain)
-                    .accessibilityLabel("Open \(post.author.displayName)'s profile")
+                    .accessibilityLabel(LegendLocalized("Open {value1}'s profile", context: "accessibility copy", arguments: ["value1": String(describing: (post.author.displayName))]))
 
                     if !post.body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                         Text(post.body)
@@ -3491,7 +3499,7 @@ private struct LegendHacViewportPage: View {
                 Button(action: comment) {
                     HStack(spacing: LegendNextSpacing.xs) {
                         Image(systemName: "bubble.right")
-                        Text("Add comment…")
+                        Text(LegendLocalized("Add comment…"))
                             .lineLimit(1)
                         Spacer(minLength: 0)
                     }
@@ -3502,7 +3510,7 @@ private struct LegendHacViewportPage: View {
                     .background(.black.opacity(0.62), in: Capsule())
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel("Add a comment")
+                .accessibilityLabel(LegendLocalized("Add a comment", context: "accessibility copy"))
             }
         }
         .padding(.bottom, safeAreaBottom == 0 ? 0 : LegendNextSpacing.micro)
@@ -3513,27 +3521,27 @@ private struct LegendHacViewportPage: View {
                 hacAction(
                     symbol: post.reactedByCurrentActor ? "heart.fill" : "heart",
                     count: post.metrics.reactionCount,
-                    title: post.reactedByCurrentActor ? "Remove appreciation" : "Appreciate",
+                    title: post.reactedByCurrentActor ? LegendLocalized("Remove appreciation") : LegendLocalized("Appreciate"),
                     tint: post.reactedByCurrentActor ? LegendNextColor.danger : .white,
                     action: appreciate)
 
                 hacAction(
                     symbol: "bubble.right",
                     count: post.metrics.commentCount,
-                    title: "Comment",
+                    title: LegendLocalized("Comment"),
                     action: comment)
 
                 hacAction(
                     symbol: "arrow.2.squarepath",
                     count: post.metrics.repostCount,
-                    title: post.repostedByCurrentActor ? "Remove repost" : "Repost",
+                    title: post.repostedByCurrentActor ? LegendLocalized("Remove repost") : LegendLocalized("Repost"),
                     tint: post.repostedByCurrentActor ? LegendNextColor.information : .white,
                     action: { social.toggleRepost(postID: post.id) })
 
                 LegendGlobalShareButton(
                     post: post,
                     social: social,
-                    accessibilityLabel: "Share Hac"
+                    accessibilityLabel: LegendLocalized("Share Hac", context: "accessibility copy")
                 ) {
                     hacActionLabel(
                         symbol: "paperplane",
@@ -3544,14 +3552,14 @@ private struct LegendHacViewportPage: View {
                 hacAction(
                     symbol: post.savedByCurrentActor ? "bookmark.fill" : "bookmark",
                     count: nil,
-                    title: post.savedByCurrentActor ? "Remove saved Hac" : "Save Hac",
+                    title: post.savedByCurrentActor ? LegendLocalized("Remove saved Hac") : LegendLocalized("Save Hac"),
                     tint: post.savedByCurrentActor ? LegendNextColor.gold : .white,
                     action: { social.toggleSave(postID: post.id) })
 
                 hacAction(
                     symbol: playback.isMuted ? "speaker.slash.fill" : "speaker.wave.2.fill",
                     count: nil,
-                    title: playback.isMuted ? "Unmute Hac" : "Mute Hac",
+                    title: playback.isMuted ? LegendLocalized("Unmute Hac") : LegendLocalized("Mute Hac"),
                     action: playback.toggleMute)
         }
     }
@@ -3595,7 +3603,7 @@ private struct LegendHacViewportPage: View {
                     height: LegendNextSize.hacActionSize)
                 .background(LegendNextColor.navy.opacity(0.72), in: Circle())
             if let count, count > 0 {
-                Text(count.formatted())
+                Text(count.formatted(.number.locale(LegendActiveLocale())))
                     .font(.caption2.weight(.bold))
                     .monospacedDigit()
             }
@@ -3623,7 +3631,7 @@ private struct LegendHacViewportPage: View {
             Text(failure.message)
                 .font(LegendNextTypography.supporting)
                 .multilineTextAlignment(.center)
-            Button("Retry video", action: retry)
+            Button(LegendLocalized("Retry video"), action: retry)
             .buttonStyle(LegendNextButtonStyle(kind: .secondary))
         }
         .foregroundStyle(.white)
@@ -3682,7 +3690,7 @@ private struct LegendHacScrubber: View {
         }
         .frame(height: 12)
         .accessibilityElement()
-        .accessibilityLabel("Video progress")
+        .accessibilityLabel(LegendLocalized("Video progress", context: "accessibility copy"))
         .accessibilityValue("\(Int(displayedProgress * 100)) percent")
         .accessibilityAdjustableAction { direction in
             let step = 0.05
@@ -3769,10 +3777,10 @@ struct LegendSocialPostEditor: View {
                             style: .continuous
                         )
                     )
-                    .accessibilityLabel("\(post.displayContentType) caption")
+                    .accessibilityLabel(LegendLocalized("{value1} caption", context: "accessibility copy", arguments: ["value1": String(describing: (post.displayContentType))]))
 
                 if post.media.isEmpty {
-                    Text("A text post needs a caption.")
+                    Text(LegendLocalized("A text post needs a caption."))
                         .font(.caption)
                         .foregroundStyle(LegendNextColor.textSecondary)
                 }
@@ -3781,17 +3789,17 @@ struct LegendSocialPostEditor: View {
             }
             .padding(LegendNextSpacing.sm)
             .background(LegendNextColor.canvas)
-            .navigationTitle("Edit \(post.displayContentType)")
+            .navigationTitle(LegendLocalized("Edit {value1}", arguments: ["value1": String(describing: (post.displayContentType))]))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") {
+                    Button(LegendLocalized("Cancel")) {
                         dismiss()
                     }
                 }
 
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Save") {
+                    Button(LegendLocalized("Save")) {
                         isSaving = true
                         Task {
                             if await social.updatePost(postID: post.id, body: caption) {
@@ -3868,7 +3876,10 @@ struct LegendSocialMediaVideo: View {
                             Image(systemName: isPlaying ? "pause.fill" : "play.fill")
                                 .frame(width: 36, height: 36)
                         }
-                        .accessibilityLabel(isPlaying ? "Pause video" : "Play video")
+                        .accessibilityLabel(
+                            isPlaying
+                                ? LegendLocalized("Pause video", context: "accessibility copy")
+                                : LegendLocalized("Play video", context: "accessibility copy"))
 
                         Button {
                             isMuted.toggle()
@@ -3877,7 +3888,10 @@ struct LegendSocialMediaVideo: View {
                             Image(systemName: isMuted ? "speaker.slash.fill" : "speaker.wave.2.fill")
                                 .frame(width: 36, height: 36)
                         }
-                        .accessibilityLabel(isMuted ? "Unmute original video audio" : "Mute original video audio")
+                        .accessibilityLabel(
+                            isMuted
+                                ? LegendLocalized("Unmute original video audio", context: "accessibility copy")
+                                : LegendLocalized("Mute original video audio", context: "accessibility copy"))
                     }
                     .font(.subheadline.weight(.bold))
                     .foregroundStyle(.white)
@@ -3887,7 +3901,7 @@ struct LegendSocialMediaVideo: View {
             }
 
             if let music {
-                Label("Music: \(music.trackTitle) · \(music.artistName)", systemImage: "music.note")
+                Label(LegendLocalized("Music: {value1} · {value2}", arguments: ["value1": String(describing: (music.trackTitle)), "value2": String(describing: (music.artistName))]), systemImage: "music.note")
                     .font(.caption)
                     .foregroundStyle(LegendNextColor.textSecondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -3928,7 +3942,7 @@ struct LegendSocialMediaVideo: View {
             playerStatusObservation = nil
             LegendSocialAudioSession.endPlayback(for: .hac(media.id))
         }
-        .accessibilityLabel(media.accessibilityText ?? "Shared video")
+        .accessibilityLabel(media.accessibilityText ?? LegendLocalized("Shared video", context: "accessibility copy"))
     }
 
     private func togglePlayback() {
@@ -3942,8 +3956,8 @@ struct LegendSocialMediaVideo: View {
                 try LegendSocialAudioSession.beginPlayback(for: .hac(media.id))
             } catch {
                 playbackFailure = UserFacingFailure(
-                    title: "Hac audio unavailable",
-                    message: "Legend could not prepare audio playback for this Hac. Please try again.",
+                    title: LegendLocalized("Hac audio unavailable"),
+                    message: LegendLocalized("Legend could not prepare audio playback for this Hac. Please try again."),
                     correlationID: nil)
                 return
             }
@@ -3962,8 +3976,8 @@ struct LegendSocialMediaVideo: View {
             for: media,
             forceRefresh: forceRefresh) else {
             playbackFailure = social.mediaFailure(for: media.id) ?? UserFacingFailure(
-                title: "Video unavailable",
-                message: "This video could not be prepared for playback. Please try again.",
+                title: LegendLocalized("Video unavailable"),
+                message: LegendLocalized("This video could not be prepared for playback. Please try again."),
                 correlationID: nil)
             return
         }
@@ -3972,8 +3986,8 @@ struct LegendSocialMediaVideo: View {
             try LegendSocialAudioSession.beginPlayback(for: .hac(media.id))
         } catch {
             playbackFailure = UserFacingFailure(
-                title: "Hac audio unavailable",
-                message: "Legend could not prepare audio playback for this Hac. Please try again.",
+                title: LegendLocalized("Hac audio unavailable"),
+                message: LegendLocalized("Legend could not prepare audio playback for this Hac. Please try again."),
                 correlationID: nil)
             return
         }
@@ -3985,13 +3999,13 @@ struct LegendSocialMediaVideo: View {
         ) { observedItem, _ in
             guard observedItem.status == .failed else { return }
             let message = observedItem.error?.localizedDescription
-                ?? "This video could not be played. Please try again."
+                ?? LegendLocalized("This video could not be played. Please try again.")
             Task { @MainActor in
                 player?.pause()
                 isPlaying = false
                 LegendSocialAudioSession.endPlayback(for: .hac(media.id))
                 playbackFailure = UserFacingFailure(
-                    title: "Video unavailable",
+                    title: LegendLocalized("Video unavailable"),
                     message: message,
                     correlationID: nil)
             }
@@ -4015,7 +4029,7 @@ struct LegendSocialMediaVideo: View {
                 .font(.caption)
                 .foregroundStyle(LegendNextColor.textSecondary)
                 .multilineTextAlignment(.center)
-            Button("Retry video") {
+            Button(LegendLocalized("Retry video")) {
                 Task { await loadPlayer(forceRefresh: true) }
             }
             .font(.caption.weight(.bold))
@@ -4052,7 +4066,7 @@ struct LegendSocialMediaVideo: View {
 private struct LegendSocialLoadingSection: View {
     var body: some View {
         VStack(alignment: .leading, spacing: LegendNextSpacing.sm) {
-            LegendNextSectionHeader(title: "From your Legend network")
+            LegendNextSectionHeader(title: LegendLocalized("From your Legend network"))
             HStack(spacing: LegendNextSpacing.md) {
                 ForEach(0 ..< 4, id: \.self) { _ in
                     Circle()
@@ -4062,7 +4076,7 @@ private struct LegendSocialLoadingSection: View {
             }
             LegendNextSurface {
                 HStack(spacing: LegendNextSpacing.sm) {
-                    Text("Loading your secure feed…")
+                    Text(LegendLocalized("Loading your secure feed…"))
                         .font(LegendNextTypography.supporting)
                         .foregroundStyle(LegendNextColor.textSecondary)
                 }
@@ -4078,13 +4092,13 @@ private struct LegendSocialEmptyFeed: View {
     var body: some View {
         LegendNextSurface {
             VStack(alignment: .leading, spacing: LegendNextSpacing.sm) {
-                Label("Start the conversation", systemImage: "sparkles")
+                Label(LegendLocalized("Start the conversation"), systemImage: "sparkles")
                     .font(LegendNextTypography.section)
                     .foregroundStyle(LegendNextColor.textPrimary)
-                Text("Share a focused update with people in your Legend network.")
+                Text(LegendLocalized("Share a focused update with people in your Legend network."))
                     .font(LegendNextTypography.supporting)
                     .foregroundStyle(LegendNextColor.textSecondary)
-                Button("Create update", action: createPost)
+                Button(LegendLocalized("Create update"), action: createPost)
                     .buttonStyle(LegendNextButtonStyle(kind: .primary))
             }
         }
@@ -4146,7 +4160,7 @@ struct LegendSocialMediaImage: View {
                             .multilineTextAlignment(.center)
                             .foregroundStyle(LegendNextColor.textSecondary)
 
-                        Button("Retry media") {
+                        Button(LegendLocalized("Retry media")) {
                             Task { await loadMedia(forceRefresh: true) }
                         }
                         .font(.caption.weight(.bold))
@@ -4168,7 +4182,7 @@ struct LegendSocialMediaImage: View {
         .task(id: media.id) {
             await loadMedia()
         }
-        .accessibilityLabel(media.accessibilityText ?? "Shared image")
+        .accessibilityLabel(media.accessibilityText ?? LegendLocalized("Shared image", context: "accessibility copy"))
     }
 
     private func loadMedia(forceRefresh: Bool = false) async {
@@ -4192,8 +4206,8 @@ struct LegendSocialMediaImage: View {
 
     private var mediaFailure: UserFacingFailure {
         social.mediaFailure(for: media.id) ?? UserFacingFailure(
-            title: "Media unavailable",
-            message: "This protected image could not be displayed. Try again shortly.",
+            title: LegendLocalized("Media unavailable"),
+            message: LegendLocalized("This protected image could not be displayed. Try again shortly."),
             correlationID: nil)
     }
 }
@@ -4267,7 +4281,7 @@ struct LegendSocialVideoPoster: View {
             poster = image
             finishedLoading = true
         }
-        .accessibilityLabel(media.accessibilityText ?? "Hac preview")
+        .accessibilityLabel(media.accessibilityText ?? LegendLocalized("Hac preview", context: "accessibility copy"))
     }
 }
 
@@ -4321,7 +4335,7 @@ private struct LegendSocialPublicationBanner: View {
             .stroke(accent.opacity(0.34), lineWidth: 1)
         }
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("Publication status: \(title). \(detail)")
+        .accessibilityLabel(LegendLocalized("Publication status: {value1}. {value2}", context: "accessibility copy", arguments: ["value1": String(describing: (title)), "value2": String(describing: (detail))]))
     }
 
     @ViewBuilder
@@ -4330,13 +4344,13 @@ private struct LegendSocialPublicationBanner: View {
             // Discard must be reachable: a parked failure used to hold the upload
             // slot and disable the composer with no way to clear it.
             HStack(spacing: LegendNextSpacing.xs) {
-                Button("Discard", action: dismiss)
+                Button(LegendLocalized("Discard"), action: dismiss)
                     .font(.caption.weight(.semibold))
                     .buttonStyle(.bordered)
                     .tint(LegendNextColor.textSecondary)
-                    .accessibilityLabel("Discard this failed upload")
+                    .accessibilityLabel(LegendLocalized("Discard this failed upload", context: "accessibility copy"))
 
-                Button("Retry", action: retry)
+                Button(LegendLocalized("Retry"), action: retry)
                     .font(.caption.weight(.bold))
                     .buttonStyle(.borderedProminent)
                     .tint(LegendNextColor.navy)
@@ -4352,7 +4366,7 @@ private struct LegendSocialPublicationBanner: View {
             }
             .buttonStyle(.plain)
             .foregroundStyle(LegendNextColor.textSecondary)
-            .accessibilityLabel("Dismiss upload confirmation")
+            .accessibilityLabel(LegendLocalized("Dismiss upload confirmation", context: "accessibility copy"))
         }
     }
 
@@ -4368,17 +4382,17 @@ private struct LegendSocialPublicationBanner: View {
                 }
         }
         .frame(height: 5)
-        .accessibilityLabel("Upload progress \(Int((publication.uploadProgress * 100).rounded())) percent")
+        .accessibilityLabel(LegendLocalized("Upload progress {value1} percent", context: "accessibility copy", arguments: ["value1": String(describing: (Int((publication.uploadProgress * 100).rounded())))]))
     }
 
     private var title: String {
         let content = publication.contentType.displayName
         switch publication.stage {
-        case .preparing: return "Preparing \(content)"
-        case .uploading: return "Uploading \(content)"
-        case .processing: return "Publishing \(content)"
-        case .published: return "\(content) shared"
-        case .failed: return "\(content) needs attention"
+        case .preparing: return LegendLocalized("Preparing {content}", arguments: ["content": content])
+        case .uploading: return LegendLocalized("Uploading {content}", arguments: ["content": content])
+        case .processing: return LegendLocalized("Publishing {content}", arguments: ["content": content])
+        case .published: return LegendLocalized("{content} shared", arguments: ["content": content])
+        case .failed: return LegendLocalized("{content} needs attention", arguments: ["content": content])
         }
     }
 
@@ -4393,7 +4407,7 @@ private struct LegendSocialPublicationBanner: View {
         case .published:
             "Your \(publication.contentType.displayName.lowercased()) is now in the authorized Legend feed."
         case .failed:
-            publication.failureMessage ?? "Tap Retry to try this secure upload again."
+            publication.failureMessage ?? LegendLocalized("Tap Retry to try this secure upload again.")
         }
     }
 
@@ -4457,8 +4471,8 @@ private struct LegendCommentComposer: View {
         NavigationStack {
             VStack(spacing: 0) {
                 LegendNextSheetHeader(
-                    eyebrow: "Legend network",
-                    title: "Conversation",
+                    eyebrow: LegendLocalized("Legend network"),
+                    title: LegendLocalized("Conversation"),
                     detail: post.map { "Discussing \($0.author.displayName)'s update" },
                     dismiss: cancel
                 )
@@ -4477,7 +4491,7 @@ private struct LegendCommentComposer: View {
                 } else {
                     LegendListSkeleton(rows: 4)
                         .padding(LegendNextSpacing.sm)
-                        .accessibilityLabel("Loading comments")
+                        .accessibilityLabel(LegendLocalized("Loading comments", context: "accessibility copy"))
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
 
@@ -4575,11 +4589,11 @@ private struct LegendCommentComposer: View {
                     .font(.system(size: 24, weight: .medium))
                     .foregroundStyle(LegendNextColor.gold)
 
-                Text("Start the conversation")
+                Text(LegendLocalized("Start the conversation"))
                     .font(.subheadline.weight(.bold))
                     .foregroundStyle(LegendNextColor.textPrimary)
 
-                Text("Be the first to leave a comment.")
+                Text(LegendLocalized("Be the first to leave a comment."))
                     .font(LegendNextTypography.supporting)
                     .foregroundStyle(LegendNextColor.textSecondary)
             }
@@ -4695,13 +4709,13 @@ private struct LegendCommentComposer: View {
                     replyTarget = comment
                     composerFocused = true
                 } label: {
-                    Text("Reply")
+                    Text(LegendLocalized("Reply"))
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(LegendNextColor.textSecondary)
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(
-                    "Reply to \(comment.author.displayName)"
+                    LegendLocalized("Reply to {value1}", context: "accessibility copy", arguments: ["value1": String(describing: (comment.author.displayName))])
                 )
             }
 
@@ -4721,7 +4735,7 @@ private struct LegendCommentComposer: View {
                         .font(.caption.weight(.semibold))
 
                     Text(
-                        "Replying to \(replyTarget.author.displayName)"
+                        LegendLocalized("Replying to {value1}", arguments: ["value1": String(describing: (replyTarget.author.displayName))])
                     )
                     .font(LegendNextTypography.caption)
                     .lineLimit(1)
@@ -4735,7 +4749,7 @@ private struct LegendCommentComposer: View {
                             .font(.caption.weight(.bold))
                     }
                     .buttonStyle(.plain)
-                    .accessibilityLabel("Cancel reply")
+                    .accessibilityLabel(LegendLocalized("Cancel reply", context: "accessibility copy"))
                 }
                 .foregroundStyle(LegendNextColor.textSecondary)
                 .padding(.horizontal, LegendNextSpacing.md)
@@ -4789,7 +4803,7 @@ private struct LegendCommentComposer: View {
                     }
                     .buttonStyle(.plain)
                     .disabled(!canSend)
-                    .accessibilityLabel("Send comment")
+                    .accessibilityLabel(LegendLocalized("Send comment", context: "accessibility copy"))
                 }
             }
             .padding(.horizontal, LegendNextSpacing.md)
@@ -4842,9 +4856,9 @@ struct LegendCreatorInsightsSheet: View {
             LegendScrollView(tracksNavigationChrome: false) {
                 VStack(alignment: .leading, spacing: LegendNextSpacing.md) {
                     LegendNextSheetHeader(
-                        eyebrow: "Creator intelligence",
-                        title: "Your Legend impact",
-                        detail: "Reach and engagement generated from protected Legend activity.",
+                        eyebrow: LegendLocalized("Creator intelligence"),
+                        title: LegendLocalized("Your Legend impact"),
+                        detail: LegendLocalized("Reach and engagement generated from protected Legend activity."),
                         dismiss: { dismiss() }
                     )
 
@@ -4864,7 +4878,7 @@ struct LegendCreatorInsightsSheet: View {
 
                     LegendNextSurface(style: .brandBlue) {
                         VStack(alignment: .leading, spacing: LegendNextSpacing.sm) {
-                            LegendNextSectionHeader(eyebrow: "Profile", title: "Content and community")
+                            LegendNextSectionHeader(eyebrow: LegendLocalized("Profile"), title: LegendLocalized("Content and community"))
                             LegendNextKeyValueRow(label: "Posts", value: "\(profileMetrics.postCount)")
                             LegendNextKeyValueRow(label: "Hacs", value: "\(profileMetrics.videoCount)")
                             LegendNextKeyValueRow(label: "Stories", value: "\(profileMetrics.storyCount)")
@@ -4875,16 +4889,16 @@ struct LegendCreatorInsightsSheet: View {
                     }
 
                     LegendSocialInsightList(
-                        title: "Top posts",
-                        emptyMessage: "Publish a post to begin building performance history.",
+                        title: LegendLocalized("Top posts"),
+                        emptyMessage: LegendLocalized("Publish a post to begin building performance history."),
                         insights: insights.topPosts)
                     LegendSocialInsightList(
-                        title: "Top Hacs",
-                        emptyMessage: "Publish a Hac to begin building Hac performance history.",
+                        title: LegendLocalized("Top Hacs"),
+                        emptyMessage: LegendLocalized("Publish a Hac to begin building Hac performance history."),
                         insights: insights.topVideos)
                     LegendSocialInsightList(
-                        title: "Top stories",
-                        emptyMessage: "Publish a story to begin building story performance history.",
+                        title: LegendLocalized("Top stories"),
+                        emptyMessage: LegendLocalized("Publish a story to begin building story performance history."),
                         insights: insights.topStories)
                 }
                 .padding(LegendNextSpacing.md)
@@ -4893,7 +4907,7 @@ struct LegendCreatorInsightsSheet: View {
             .toolbar(.hidden, for: .navigationBar)
         }
         .legendNextSheetChrome()
-        .accessibilityLabel("Creator insights generated from your Legend activity")
+        .accessibilityLabel(LegendLocalized("Creator insights generated from your Legend activity", context: "accessibility copy"))
     }
 }
 
@@ -4908,9 +4922,9 @@ struct LegendFollowRequestsSheet: View {
             LegendScrollView(tracksNavigationChrome: false) {
                 VStack(alignment: .leading, spacing: LegendNextSpacing.sm) {
                     LegendNextSheetHeader(
-                        eyebrow: "Account privacy",
-                        title: "Follow requests",
-                        detail: "Choose who can see updates from your private Legend account.",
+                        eyebrow: LegendLocalized("Account privacy"),
+                        title: LegendLocalized("Follow requests"),
+                        detail: LegendLocalized("Choose who can see updates from your private Legend account."),
                         dismiss: { dismiss() })
 
                     content
@@ -4929,21 +4943,21 @@ struct LegendFollowRequestsSheet: View {
     private var content: some View {
         switch state {
         case .idle, .loading:
-            ProgressView("Loading follow requests")
+            ProgressView(LegendLocalized("Loading follow requests"))
                 .frame(maxWidth: .infinity, minHeight: 160)
 
         case .unavailable(let failure):
             LegendNextErrorState(
                 title: failure.title,
                 message: failure.message,
-                retryTitle: "Try again",
+                retryTitle: LegendLocalized("Try again"),
                 retry: { Task { await loadRequests() } })
 
         case .loaded(let requests):
             if requests.isEmpty {
                 LegendNextEmptyState(
-                    title: "No follow requests",
-                    message: "New requests to your private account will appear here.",
+                    title: LegendLocalized("No follow requests"),
+                    message: LegendLocalized("New requests to your private account will appear here."),
                     systemImage: "person.badge.clock")
                     .frame(maxWidth: .infinity, minHeight: 180)
             } else {
@@ -4953,7 +4967,13 @@ struct LegendFollowRequestsSheet: View {
                         subtitle: request.profile.identity.participantType == .agent
                             ? request.profile.roleLabel
                             : request.profile.username.map { "@\($0)" },
-                        detail: "Requested \(request.requestedUTC.formatted(date: .abbreviated, time: .omitted))",
+                        detail: LegendLocalized(
+                            "Requested {date}",
+                            arguments: [
+                                "date": request.requestedUTC.formatted(
+                                    .dateTime.year().month(.abbreviated).day()
+                                        .locale(LegendActiveLocale()))
+                            ]),
                         isVerified: request.profile.isVerified == true,
                         avatar: {
                             LegendProfileAvatar(
@@ -4963,9 +4983,9 @@ struct LegendFollowRequestsSheet: View {
                         },
                         action: {
                             VStack(spacing: 6) {
-                                Button("Approve") { decide(request, approve: true) }
+                                Button(LegendLocalized("Approve")) { decide(request, approve: true) }
                                     .buttonStyle(LegendNextButtonStyle(kind: .primary, isFullWidth: false, controlHeight: 30))
-                                Button("Decline") { decide(request, approve: false) }
+                                Button(LegendLocalized("Decline")) { decide(request, approve: false) }
                                     .buttonStyle(LegendNextButtonStyle(kind: .secondary, isFullWidth: false, controlHeight: 30))
                             }
                             .disabled(updatingRequestIDs.contains(request.id))
@@ -5002,24 +5022,30 @@ private struct LegendPostInsightsSheet: View {
             LegendScrollView(tracksNavigationChrome: false) {
                 VStack(alignment: .leading, spacing: LegendNextSpacing.md) {
                     LegendNextSheetHeader(
-                        eyebrow: "Legend performance",
-                        title: "\(insight.displayContentType) insights",
-                        detail: "Published \(insight.postedUTC.formatted(date: .abbreviated, time: .omitted))",
+                        eyebrow: LegendLocalized("Legend performance"),
+                        title: LegendLocalized("{value1} insights", arguments: ["value1": String(describing: (insight.displayContentType))]),
+                        detail: LegendLocalized(
+                            "Published {date}",
+                            arguments: [
+                                "date": insight.postedUTC.formatted(
+                                    .dateTime.year().month(.abbreviated).day()
+                                        .locale(LegendActiveLocale()))
+                            ]),
                         dismiss: { dismiss() }
                     )
 
                     LegendNextSurface(style: .navy, padding: LegendNextSpacing.md) {
                         VStack(alignment: .leading, spacing: LegendNextSpacing.xs) {
-                            Text("AUDIENCE REACH")
+                            Text(LegendLocalized("AUDIENCE REACH"))
                                 .font(LegendNextTypography.eyebrow)
                                 .tracking(0.9)
                                 .foregroundStyle(LegendNextColor.goldBright)
 
-                            Text("\(insight.metrics.uniqueViewerCount) reached")
+                            Text(LegendLocalized("{value1} reached", arguments: ["value1": String(describing: (insight.metrics.uniqueViewerCount))]))
                                 .font(LegendNextTypography.title)
                                 .foregroundStyle(.white)
 
-                            Text("\(socialPercentage(insight.engagementRatePercentage)) engagement")
+                            Text(LegendLocalized("{value1} engagement", arguments: ["value1": String(describing: (socialPercentage(insight.engagementRatePercentage)))]))
                                 .font(LegendNextTypography.supporting)
                                 .foregroundStyle(.white.opacity(0.74))
                         }
@@ -5028,8 +5054,8 @@ private struct LegendPostInsightsSheet: View {
                     LegendNextSurface(style: .brandBlue) {
                         VStack(alignment: .leading, spacing: LegendNextSpacing.sm) {
                             LegendNextSectionHeader(
-                                eyebrow: "Legend analytics",
-                                title: "Engagement detail"
+                                eyebrow: LegendLocalized("Legend analytics"),
+                                title: LegendLocalized("Engagement detail")
                             )
                             LegendNextKeyValueRow(label: "Views", value: "\(insight.metrics.viewCount)")
                             LegendNextKeyValueRow(label: "Unique viewers", value: "\(insight.metrics.uniqueViewerCount)")
@@ -5063,7 +5089,7 @@ private struct LegendPostInsightsSheet: View {
             .toolbar(.hidden, for: .navigationBar)
         }
         .legendNextSheetChrome()
-        .accessibilityLabel("Private \(insight.displayContentType) insights")
+        .accessibilityLabel(LegendLocalized("Private {value1} insights", context: "accessibility copy", arguments: ["value1": String(describing: (insight.displayContentType))]))
     }
 }
 
@@ -5115,7 +5141,7 @@ private struct LegendSocialInsightList: View {
                             Text(insight.postedUTC, format: .dateTime.month(.abbreviated).day().year())
                                 .font(LegendNextTypography.bodyEmphasis)
                                 .foregroundStyle(LegendNextColor.textPrimary)
-                            Text("\(insight.metrics.uniqueViewerCount) reached · \(insight.metrics.reactionCount) appreciations · \(socialPercentage(insight.engagementRatePercentage)) engagement")
+                            Text(LegendLocalized("{value1} reached · {value2} appreciations · {value3} engagement", arguments: ["value1": String(describing: (insight.metrics.uniqueViewerCount)), "value2": String(describing: (insight.metrics.reactionCount)), "value3": String(describing: (socialPercentage(insight.engagementRatePercentage)))]))
                                 .font(LegendNextTypography.supporting)
                                 .foregroundStyle(LegendNextColor.textSecondary)
                         }

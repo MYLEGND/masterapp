@@ -24,6 +24,8 @@ import com.mylegnd.legend.registered.core.network.LegendApiClient
 import com.mylegnd.legend.registered.core.model.MobileAvatar
 import com.mylegnd.legend.registered.ui.LegendAvatar
 import com.mylegnd.legend.registered.core.design.LegendColors
+import com.mylegnd.legend.registered.core.design.LegendLocalizationRuntime
+import com.mylegnd.legend.registered.core.design.legendLocalized
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.Request
@@ -189,7 +191,11 @@ fun LegendProtectedAvatar(
     } else {
         AsyncImage(
             model = file,
-            contentDescription = "$displayName profile image",
+            contentDescription = legendLocalized(
+                "{name} profile image",
+                LegendLocalizationRuntime.AccessibilityContext,
+                mapOf("name" to displayName),
+            ),
             modifier = modifier
                 .size(size)
                 .clip(CircleShape)
