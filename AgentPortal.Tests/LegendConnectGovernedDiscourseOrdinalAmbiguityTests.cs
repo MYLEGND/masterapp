@@ -501,6 +501,105 @@ public sealed class LegendConnectGovernedDiscourseOrdinalAmbiguityTests
         Assert.Equal(1, validatedBinding.SupersededNodeTokenLength);
     }
 
+    [Theory]
+    [InlineData("signature", null, null)]
+    [InlineData("signature", "", "")]
+    [InlineData("signature", " ", " ")]
+    [InlineData("signature", "candidate-other", "candidate-cobalt")]
+    [InlineData("dimension", null, null)]
+    [InlineData("dimension", "", "")]
+    [InlineData("dimension", " ", " ")]
+    [InlineData("dimension", "other", "choice")]
+    [InlineData("value", null, null)]
+    [InlineData("value", "", "")]
+    [InlineData("value", " ", " ")]
+    [InlineData("value", "other", "cobalt")]
+    public void PersistedActiveOccurrence_WithIncompleteOrMismatchedIdentity_FailsClosed(
+        string component,
+        string? persistedCoordinate,
+        string? nodeCoordinate)
+    {
+        var sourceTurnId = Guid.NewGuid();
+        var containingTurnId = Guid.NewGuid();
+        var nodeSignature = component == "signature" ? nodeCoordinate : "candidate-cobalt";
+        var nodeDimension = component == "dimension" ? nodeCoordinate : "choice";
+        var nodeValue = component == "value" ? nodeCoordinate : "cobalt";
+        var bindingSignature = component == "signature" ? persistedCoordinate : "candidate-cobalt";
+        var bindingDimension = component == "dimension" ? persistedCoordinate : "choice";
+        var bindingValue = component == "value" ? persistedCoordinate : "cobalt";
+        var sourceTurn = new LegendFounderAiDiscourseTurn
+        {
+            Id = sourceTurnId,
+            SequenceNumber = 1,
+            Role = "user",
+            MeaningGraphJson = JsonSerializer.Serialize(new
+            {
+                IsComposed = true,
+                Nodes = new[]
+                {
+                    new LegendConnectUtteranceMeaningNode(
+                        nodeSignature!,
+                        nodeDimension!,
+                        nodeValue!,
+                        0,
+                        1,
+                        3)
+                },
+                Relations = Array.Empty<LegendConnectUtteranceMeaningRelation>(),
+                ReasonCode = "composed"
+            })
+        };
+        var binding = new LegendFounderAiDiscourseReferenceBinding(
+            "bound",
+            "governed_reference_resolved",
+            "selector",
+            bindingDimension!,
+            bindingSignature,
+            bindingValue,
+            sourceTurnId,
+            1,
+            0,
+            false,
+            "rule");
+        var containingTurn = new LegendFounderAiDiscourseTurn
+        {
+            Id = containingTurnId,
+            SequenceNumber = 2,
+            Role = "user",
+            MeaningGraphJson = JsonSerializer.Serialize(new
+            {
+                IsComposed = true,
+                Nodes = new[]
+                {
+                    new LegendConnectUtteranceMeaningNode(
+                        "selector",
+                        "reference_selector",
+                        "ordinal_one",
+                        0,
+                        1,
+                        3)
+                },
+                Relations = Array.Empty<LegendConnectUtteranceMeaningRelation>(),
+                ReasonCode = "composed"
+            }),
+            ResolvedBindingsJson = JsonSerializer.Serialize(new[] { binding })
+        };
+        var method = typeof(LegendFounderAiDiscourseStateService).GetMethod(
+            "DeserializeAndValidateBindings",
+            BindingFlags.NonPublic | BindingFlags.Static,
+            null,
+            [typeof(LegendFounderAiDiscourseTurn), typeof(IReadOnlyList<LegendFounderAiDiscourseTurn>)],
+            null);
+        Assert.NotNull(method);
+
+        var validated = Assert.IsAssignableFrom<
+            IReadOnlyList<LegendFounderAiDiscourseReferenceBinding>>(
+            method!.Invoke(null, [containingTurn, new[] { sourceTurn, containingTurn }]));
+        var invalid = Assert.Single(validated);
+        Assert.Equal("unresolved", invalid.ResolutionState);
+        Assert.Equal("reference_antecedent_identity_invalid", invalid.ReasonCode);
+    }
+
     [Fact]
     public void CurrentTurnExactOccurrence_RemainsBoundWhenDetachedFromEveryRelation()
     {
