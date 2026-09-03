@@ -2414,6 +2414,8 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
         }
         await _db.SaveChangesAsync(cancellationToken);
 
+        await ReconcileSupersededMeaningGraphEvidenceAsync(exampleIds, cancellationToken);
+
         var affectedPatterns = evidence.Select(item => item.StructuralPatternId).Distinct().ToArray();
         var affectedRelationships = evidence
             .Where(item => item.StructuralRelationshipId is not null)
@@ -2424,6 +2426,102 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
             await RefreshPatternMaturityAsync(patternId, cancellationToken);
         foreach (var relationshipId in affectedRelationships)
             await RefreshStructuralRelationshipMaturityAsync(relationshipId, cancellationToken);
+        await _db.SaveChangesAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// Reconciles meaning-graph projections by their exact owning curriculum
+    /// example IDs. This also repairs historical examples whose parent rows
+    /// were already retired before all dependent projections were covered,
+    /// without touching current examples that reuse the same text unit.
+    /// </summary>
+    internal async Task ReconcileSupersededMeaningGraphEvidenceAsync(
+        IReadOnlyCollection<Guid> curriculumExampleIds,
+        CancellationToken cancellationToken = default)
+    {
+        if (curriculumExampleIds.Count == 0)
+            return;
+
+        var exampleIds = curriculumExampleIds
+            .Where(item => item != Guid.Empty)
+            .Distinct()
+            .ToArray();
+        if (exampleIds.Length == 0)
+            return;
+
+        var examples = await _db.Set<LegendCurriculumExample>()
+            .Where(item => exampleIds.Contains(item.Id))
+            .Select(item => new { item.Id, item.SupersededUtc })
+            .ToListAsync(cancellationToken);
+        if (examples.Count != exampleIds.Length || examples.Any(item => item.SupersededUtc == null))
+        {
+            throw new InvalidOperationException(
+                "Meaning-graph projections can only be reconciled for known superseded curriculum examples.");
+        }
+
+        var now = DateTime.UtcNow;
+        // Meaning graphs are canonical projections of the exact curriculum
+        // examples identified above. Retain every row for audit, but remove
+        // each projection from active evidence and recalculate the affected
+        // aggregate maturity below.
+        var meaningNodes = await _db.Set<LegendLanguageMeaningNodeEvidence>()
+            .Where(item => item.SupersededUtc == null &&
+                exampleIds.Contains(item.CurriculumExampleId))
+            .ToListAsync(cancellationToken);
+        foreach (var item in meaningNodes)
+        {
+            item.SupersededUtc = now;
+            item.UpdatedUtc = now;
+        }
+
+        var primitiveEvidence = await _db.Set<LegendLanguageMeaningPrimitiveEvidence>()
+            .Where(item => item.SupersededUtc == null &&
+                exampleIds.Contains(item.CurriculumExampleId))
+            .ToListAsync(cancellationToken);
+        foreach (var item in primitiveEvidence)
+        {
+            item.SupersededUtc = now;
+            item.UpdatedUtc = now;
+        }
+
+        var meaningRelationEvidence = await _db.Set<LegendLanguageMeaningRelationEvidence>()
+            .Where(item => item.SupersededUtc == null &&
+                exampleIds.Contains(item.CurriculumExampleId))
+            .ToListAsync(cancellationToken);
+        foreach (var item in meaningRelationEvidence)
+        {
+            item.SupersededUtc = now;
+            item.UpdatedUtc = now;
+        }
+
+        var discourseReferenceEvidence = await _db.Set<LegendLanguageDiscourseReferenceRuleEvidence>()
+            .Where(item => item.SupersededUtc == null &&
+                exampleIds.Contains(item.CurriculumExampleId))
+            .ToListAsync(cancellationToken);
+        foreach (var item in discourseReferenceEvidence)
+        {
+            item.SupersededUtc = now;
+            item.UpdatedUtc = now;
+        }
+
+        var semanticExampleRelations = await _db.Set<LegendFounderSemanticExampleRelationEvidence>()
+            .Where(item => item.SupersededUtc == null &&
+                (exampleIds.Contains(item.SourceCurriculumExampleId) ||
+                 exampleIds.Contains(item.ResultCurriculumExampleId)))
+            .ToListAsync(cancellationToken);
+        foreach (var item in semanticExampleRelations)
+        {
+            item.SupersededUtc = now;
+            item.UpdatedUtc = now;
+        }
+        await _db.SaveChangesAsync(cancellationToken);
+
+        foreach (var primitiveId in primitiveEvidence.Select(item => item.MeaningPrimitiveId).Distinct())
+            await RefreshMeaningPrimitiveMaturityAsync(primitiveId, cancellationToken);
+        foreach (var relationId in meaningRelationEvidence.Select(item => item.MeaningRelationId).Distinct())
+            await RefreshMeaningRelationMaturityAsync(relationId, cancellationToken);
+        foreach (var ruleId in discourseReferenceEvidence.Select(item => item.DiscourseReferenceRuleId).Distinct())
+            await RefreshDiscourseReferenceRuleMaturityAsync(ruleId, cancellationToken);
         await _db.SaveChangesAsync(cancellationToken);
     }
 
