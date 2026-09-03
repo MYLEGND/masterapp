@@ -511,9 +511,16 @@ private fun FounderAiMessageBubble(message: FounderAiTranscriptMessage) {
                 verticalArrangement = Arrangement.spacedBy(LegendSpacing.Xs),
             ) {
                 Text(message.content, style = LegendTypography.Body, color = LegendColors.OnNavy)
-                if (authority in setOf("LegendAi", "OpenAITeacher")) {
+                val authorityLabel = when (authority) {
+                    "LegendAi" -> legendLocalized("Legend® Ai")
+                    "GovernedResearch" -> legendLocalized("LEGEND governed research")
+                    "OpenAITeacher" -> legendLocalized("OpenAI")
+                    "SystemDiagnostic" -> legendLocalized("System diagnostic")
+                    else -> null
+                }
+                if (authorityLabel != null) {
                     Text(
-                        if (authority == "LegendAi") legendLocalized("Legend® Ai") else legendLocalized("OpenAI"),
+                        authorityLabel,
                         style = LegendTypography.Label,
                         color = LegendColors.OnNavy,
                         fontWeight = FontWeight.Bold,
