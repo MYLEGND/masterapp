@@ -309,9 +309,11 @@ public sealed class LegendConnectGovernedDiscourseOrdinalAmbiguityTests
                 true,
                 [
                     new LegendConnectUtteranceMeaningNode(
-                        "candidate-saffron", "choice", "saffron", 0, 1, 3),
+                        LegendLanguageIdentity.TextHash("semantic|choice|saffron"),
+                        "choice", "saffron", 0, 1, 3),
                     new LegendConnectUtteranceMeaningNode(
-                        "candidate-cobalt", "choice", "cobalt", 1, 1, 3),
+                        LegendLanguageIdentity.TextHash("semantic|choice|cobalt"),
+                        "choice", "cobalt", 1, 1, 3),
                     new LegendConnectUtteranceMeaningNode(
                         "decision-context", "choice_note", "stable", 2, 1, 3)
                 ],
@@ -330,7 +332,7 @@ public sealed class LegendConnectGovernedDiscourseOrdinalAmbiguityTests
                 sourceGraph);
 
             var secondSelector = await operations.AnalyzeReusableMeaningGraphAsync(
-                "Compare the second one.");
+                "the second one");
             Assert.True(secondSelector.IsComposed, secondSelector.ReasonCode);
             await discourse.RecordObservationAsync(
                 founder,
@@ -379,6 +381,11 @@ public sealed class LegendConnectGovernedDiscourseOrdinalAmbiguityTests
                 conversationId.ToString(),
                 "user",
                 correctionGraph);
+            var correctionBinding = Assert.Single(
+                await discourse.GetLatestBindingsAsync(actor, conversationId));
+            Assert.True(
+                correctionBinding.ResolutionState == "bound",
+                correctionBinding.ReasonCode);
             var state = Assert.IsType<LegendConnectDiscourseStateSnapshot>(
                 await discourse.GetStateAsync(founder, conversationId.ToString()));
             var plan = await operations.TryPlanConversationAsync(
@@ -970,6 +977,7 @@ public sealed class LegendConnectGovernedDiscourseOrdinalAmbiguityTests
                 "beta",
                 "The beta choice seems reliable to me.",
                 "reliable"),
+            InitialOrdinalReferenceExample(family),
             CorrectionReferenceExample(family),
             ResponseEvidenceExample(family, "correction_acknowledgement")
         ],
@@ -1100,6 +1108,27 @@ public sealed class LegendConnectGovernedDiscourseOrdinalAmbiguityTests
                 1,
                 ["user", "assistant"],
                 true)]));
+
+    private static LegendConnectCurriculumExampleSubmission InitialOrdinalReferenceExample(int family) =>
+        new(
+            $"Founder initial ordinal reference {family}: the second one.",
+            Variations("reference"),
+            new LegendConnectMeaningGraphSubmission(
+            [
+                new LegendConnectMeaningNodeSubmission(
+                    "initial-selector", "reference_selector", "ordinal_two", "second"),
+                new LegendConnectMeaningNodeSubmission(
+                    "initial-kind", "reference_kind", "choice", "one")
+            ],
+            [new LegendConnectMeaningRelationSubmission(
+                "initial-selector", "reference-target", "initial-kind")],
+            [new LegendConnectDiscourseReferenceSubmission(
+                "initial-selector",
+                "choice",
+                "ordinal",
+                2,
+                ["user", "assistant"],
+                false)]));
 
     private static IReadOnlyDictionary<string, string> Variations(string function) =>
         new Dictionary<string, string>
