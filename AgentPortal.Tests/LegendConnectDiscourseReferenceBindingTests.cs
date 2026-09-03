@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using AgentPortal.Models;
@@ -65,6 +66,11 @@ public sealed class LegendConnectDiscourseReferenceBindingTests
             conversationId,
             "user",
             "Alpha and beta explanations.");
+        await fixture.ObserveAsync(
+            fixture.FirstActor,
+            conversationId,
+            "user",
+            "Compare the second one.");
         await fixture.ObserveAsync(
             fixture.FirstActor,
             conversationId,
@@ -201,7 +207,27 @@ public sealed class LegendConnectDiscourseReferenceBindingTests
             "No use the first one.");
         Assert.True(planned.Supported, planned.ReasonCode);
         AssertCompletedReference(planned, "alpha");
-        Assert.True(Assert.Single(planned.Plan!.ResolvedDiscourseBindings).ReplacesActiveBinding);
+        var replacement = Assert.Single(planned.Plan!.ResolvedDiscourseBindings);
+        Assert.True(replacement.ReplacesActiveBinding);
+        Assert.NotNull(replacement.SupersededTurnId);
+        var replacementTurn = Assert.Single((await fixture.StateAsync(
+                fixture.FirstActor,
+                conversationId)).Turns
+            .Where(item => item.SequenceNumber == replacement.SupersededTurnSequence));
+        var supersededNodeIndex = Assert.IsType<int>(replacement.SupersededNodeIndex);
+        var supersededNode = replacementTurn.Nodes[supersededNodeIndex];
+        Assert.Equal("beta", supersededNode.SemanticValue);
+        Assert.Equal(replacement.SupersededEntitySemanticSignature, supersededNode.SemanticSignature);
+        Assert.Equal(replacement.SupersededNodeStartTokenIndex, supersededNode.StartTokenIndex);
+        Assert.Equal(replacement.SupersededNodeTokenLength, supersededNode.TokenLength);
+        var selectorTurn = Assert.Single((await fixture.StateAsync(
+                fixture.FirstActor,
+                conversationId)).Turns
+            .Where(item => item.SequenceNumber == replacement.SelectorTurnSequence));
+        var selectorNodeIndex = Assert.IsType<int>(replacement.SelectorNodeIndex);
+        Assert.Equal(
+            replacement.SelectorSemanticSignature,
+            selectorTurn.Nodes[selectorNodeIndex].SemanticSignature);
 
         var active = Assert.Single(await fixture.ActiveBindingsAsync(
             fixture.FirstActor,
@@ -220,6 +246,275 @@ public sealed class LegendConnectDiscourseReferenceBindingTests
                 conversationId,
                 "Explain it."),
             "alpha");
+    }
+
+    [Fact]
+    public async Task ReplacementOccurrenceIdentity_PersistsDistinctSelectorOccurrencesWithoutChangingRelations()
+    {
+        await using var fixture = await CreateInMemoryFixtureAsync();
+        var conversationId = Guid.NewGuid();
+        var permutedConversationId = Guid.NewGuid();
+        var unfamiliarEntities = new LegendConnectUtteranceMeaningGraphSnapshot(
+            true,
+            [
+                new LegendConnectUtteranceMeaningNode(
+                    "mineral-cobalt", "explanation", "cobalt", 0, 1, 3),
+                new LegendConnectUtteranceMeaningNode(
+                    "mineral-saffron", "explanation", "saffron", 2, 1, 3)
+            ],
+            [new LegendConnectUtteranceMeaningRelation(
+                "mineral-sequence", "precedes", 0, 1, 3)],
+            [],
+            "meaning_graph_observational_composed");
+        await fixture.ObserveGraphAsync(
+            fixture.FirstActor,
+            conversationId,
+            "user",
+            unfamiliarEntities);
+        await fixture.ObserveGraphAsync(
+            fixture.FirstActor,
+            permutedConversationId,
+            "user",
+            unfamiliarEntities);
+        await fixture.ObserveAsync(
+            fixture.FirstActor,
+            conversationId,
+            "user",
+            "Compare the second one.");
+        await fixture.ObserveAsync(
+            fixture.FirstActor,
+            permutedConversationId,
+            "user",
+            "Compare the second one.");
+
+        var graph = await fixture.AnalyzeAsync("No use the first one.");
+        var selector = Assert.Single(graph.Nodes.Where(item =>
+            item.SemanticDimension == "reference_selector"));
+        var duplicateSelector = selector with
+        {
+            StartTokenIndex = selector.StartTokenIndex + selector.TokenLength + 1
+        };
+        var repeatedSelectorGraph = graph with
+        {
+            Nodes = graph.Nodes.Concat([duplicateSelector]).ToArray()
+        };
+        await fixture.ObserveGraphAsync(
+            fixture.FirstActor,
+            conversationId,
+            "user",
+            repeatedSelectorGraph);
+        var permutation = Enumerable.Range(0, repeatedSelectorGraph.Nodes.Count)
+            .Reverse()
+            .ToArray();
+        var remap = permutation
+            .Select((originalIndex, newIndex) => new { originalIndex, newIndex })
+            .ToDictionary(item => item.originalIndex, item => item.newIndex);
+        var permutedGraph = repeatedSelectorGraph with
+        {
+            Nodes = permutation.Select(index => repeatedSelectorGraph.Nodes[index]).ToArray(),
+            Relations = repeatedSelectorGraph.Relations.Select(item => item with
+            {
+                SourceNodeIndex = remap[item.SourceNodeIndex],
+                TargetNodeIndex = remap[item.TargetNodeIndex]
+            }).ToArray()
+        };
+        await fixture.ObserveGraphAsync(
+            fixture.FirstActor,
+            permutedConversationId,
+            "user",
+            permutedGraph);
+
+        var projected = Assert.Single((await fixture.StateAsync(
+            fixture.FirstActor,
+            conversationId)).Turns.Where(item => item.SequenceNumber == 3));
+        var replacements = projected.Bindings
+            .Where(item => item.ResolutionState == "bound" && item.ReplacesActiveBinding)
+            .OrderBy(item => item.SelectorNodeIndex)
+            .ToArray();
+        Assert.Equal(2, replacements.Length);
+        Assert.Equal(
+            replacements.Select(item => item.SelectorNodeIndex).Distinct().Count(),
+            replacements.Length);
+        Assert.Equal(repeatedSelectorGraph.Nodes, projected.Nodes);
+        Assert.Equal(repeatedSelectorGraph.Relations, projected.Relations);
+        Assert.All(replacements, binding =>
+        {
+            Assert.Equal(projected.SequenceNumber, binding.SelectorTurnSequence);
+            var nodeIndex = Assert.IsType<int>(binding.SelectorNodeIndex);
+            Assert.Equal(binding.SelectorSemanticSignature, projected.Nodes[nodeIndex].SemanticSignature);
+            Assert.Equal(binding.SelectorNodeStartTokenIndex, projected.Nodes[nodeIndex].StartTokenIndex);
+            Assert.Equal(binding.SelectorNodeTokenLength, projected.Nodes[nodeIndex].TokenLength);
+        });
+        var permutedProjection = Assert.Single((await fixture.StateAsync(
+            fixture.FirstActor,
+            permutedConversationId)).Turns.Where(item => item.SequenceNumber == 3));
+        Assert.Equal(
+            replacements.Select(item => (
+                    item.SelectorSemanticSignature,
+                    item.SelectorNodeStartTokenIndex,
+                    item.SelectorNodeTokenLength)),
+            permutedProjection.Bindings
+                .Where(item => item.ResolutionState == "bound" && item.ReplacesActiveBinding)
+                .OrderBy(item => item.SelectorNodeStartTokenIndex)
+                .Select(item => (
+                    item.SelectorSemanticSignature,
+                    item.SelectorNodeStartTokenIndex,
+                    item.SelectorNodeTokenLength)));
+        Assert.All(permutedProjection.Bindings, binding =>
+        {
+            Assert.NotNull(binding.SelectorTurnId);
+            var nodeIndex = Assert.IsType<int>(binding.SelectorNodeIndex);
+            Assert.Equal(binding.SelectorSemanticSignature, permutedProjection.Nodes[nodeIndex].SemanticSignature);
+        });
+
+        var persistedTurn = await fixture.Db.LegendFounderAiDiscourseTurns
+            .Where(item => item.SequenceNumber == 3)
+            .Join(
+                fixture.Db.LegendFounderAiDiscourseConversations
+                    .Where(item => item.ConversationId == conversationId),
+                turn => turn.DiscourseConversationId,
+                conversation => conversation.Id,
+                (turn, _) => turn)
+            .SingleAsync();
+        var persistedBindings = JsonSerializer.Deserialize<
+            LegendFounderAiDiscourseReferenceBinding[]>(persistedTurn.ResolvedBindingsJson)!;
+        var conflicting = persistedBindings[1] with
+        {
+            EntitySemanticSignature = unfamiliarEntities.Nodes[1].SemanticSignature,
+            EntitySemanticValue = unfamiliarEntities.Nodes[1].SemanticValue,
+            EntityNodeIndex = 1
+        };
+        foreach (var order in new[]
+                 {
+                     new[] { persistedBindings[0], conflicting },
+                     new[] { conflicting, persistedBindings[0] }
+                 })
+        {
+            persistedTurn.ResolvedBindingsJson = JsonSerializer.Serialize(order);
+            await fixture.Db.SaveChangesAsync();
+            Assert.Empty(await fixture.ActiveBindingsAsync(
+                fixture.FirstActor,
+                conversationId));
+        }
+    }
+
+    [Fact]
+    public async Task ReplacementOccurrenceIdentity_MissingStaleOrConflictingStateFailsClosed()
+    {
+        foreach (var mutation in new[]
+                 {
+                     "missing", "stale", "conflicting", "flag", "antecedent", "dimension",
+                     "rule", "language", "mode", "roles", "current"
+                 })
+        {
+            await using var fixture = await CreateInMemoryFixtureAsync();
+            var conversationId = Guid.NewGuid();
+            await fixture.ObserveAsync(
+                fixture.FirstActor,
+                conversationId,
+                "user",
+                "Alpha and beta explanations.");
+            await fixture.ObserveAsync(
+                fixture.FirstActor,
+                conversationId,
+                "user",
+                "Compare the second one.");
+            await fixture.ObserveAsync(
+                fixture.FirstActor,
+                conversationId,
+                "user",
+                "No use the first one.");
+
+            var turn = await fixture.Db.LegendFounderAiDiscourseTurns
+                .OrderByDescending(item => item.SequenceNumber)
+                .FirstAsync();
+            var binding = Assert.Single(JsonSerializer.Deserialize<
+                LegendFounderAiDiscourseReferenceBinding[]>(turn.ResolvedBindingsJson)!);
+            var alternateRuleSignature = await fixture.Db.LegendLanguageDiscourseReferenceRules
+                .Where(item => item.RuleSignature != binding.ReferenceRuleSignature)
+                .Select(item => item.RuleSignature)
+                .FirstAsync();
+            var invalid = mutation switch
+            {
+                "missing" => binding with { SupersededNodeIndex = null },
+                "stale" => binding with
+                {
+                    SupersededTurnSequence = binding.SupersededTurnSequence + 1
+                },
+                "flag" => binding with { ReplacesActiveBinding = false },
+                "antecedent" => binding with { EntityNodeIndex = int.MaxValue },
+                "dimension" => binding with { EntitySemanticDimension = null! },
+                "rule" => binding with { ReferenceRuleSignature = alternateRuleSignature },
+                "language" => binding with { RuleLanguageCode = "zz" },
+                "mode" => binding with { RuleResolutionMode = "recent" },
+                "roles" => binding with { RuleAllowedSourceRoles = "assistant" },
+                "current" => binding with
+                {
+                    HasSupersededCurrentTurnEntity = true,
+                    SupersededCurrentTurnNodeIndex = binding.SelectorNodeIndex,
+                    SupersededCurrentTurnSemanticSignature = binding.SelectorSemanticSignature,
+                    SupersededCurrentTurnSemanticDimension = binding.EntitySemanticDimension,
+                    SupersededCurrentTurnSemanticValue = binding.EntitySemanticValue,
+                    SupersededCurrentTurnNodeStartTokenIndex = binding.SelectorNodeStartTokenIndex,
+                    SupersededCurrentTurnNodeTokenLength = binding.SelectorNodeTokenLength
+                },
+                _ => binding
+            };
+            IReadOnlyList<LegendFounderAiDiscourseReferenceBinding> invalidBindings =
+                mutation == "conflicting" ? [invalid, invalid] : [invalid];
+            turn.ResolvedBindingsJson = JsonSerializer.Serialize(invalidBindings);
+            await fixture.Db.SaveChangesAsync();
+
+            var reloaded = await fixture.LatestBindingsAsync(
+                fixture.FirstActor,
+                conversationId);
+            Assert.NotEmpty(reloaded);
+            Assert.All(reloaded, item =>
+            {
+                Assert.Equal("unresolved", item.ResolutionState);
+                Assert.Equal(
+                    mutation is "antecedent" or "dimension"
+                        ? "reference_antecedent_identity_invalid"
+                        : mutation is "rule" or "language" or "mode" or "roles"
+                            ? "reference_rule_provenance_invalid"
+                        : "reference_replacement_occurrence_invalid",
+                    item.ReasonCode);
+            });
+            Assert.Empty(await fixture.ActiveBindingsAsync(
+                fixture.FirstActor,
+                conversationId));
+        }
+
+        await using var malformedFixture = await CreateInMemoryFixtureAsync();
+        var malformedConversationId = Guid.NewGuid();
+        await malformedFixture.ObserveAsync(
+            malformedFixture.FirstActor,
+            malformedConversationId,
+            "user",
+            "Alpha and beta explanations.");
+        await malformedFixture.ObserveAsync(
+            malformedFixture.FirstActor,
+            malformedConversationId,
+            "user",
+            "Compare the second one.");
+        await malformedFixture.ObserveAsync(
+            malformedFixture.FirstActor,
+            malformedConversationId,
+            "user",
+            "No use the first one.");
+        var malformedTurn = await malformedFixture.Db.LegendFounderAiDiscourseTurns
+            .OrderByDescending(item => item.SequenceNumber)
+            .FirstAsync();
+        malformedTurn.ResolvedBindingsJson = "[null]";
+        await malformedFixture.Db.SaveChangesAsync();
+        var malformed = Assert.Single(await malformedFixture.LatestBindingsAsync(
+            malformedFixture.FirstActor,
+            malformedConversationId));
+        Assert.Equal("unresolved", malformed.ResolutionState);
+        Assert.Equal("reference_binding_state_invalid", malformed.ReasonCode);
+        Assert.Empty(await malformedFixture.ActiveBindingsAsync(
+            malformedFixture.FirstActor,
+            malformedConversationId));
     }
 
     [Fact]
@@ -338,6 +633,19 @@ public sealed class LegendConnectDiscourseReferenceBindingTests
                 .GetActiveBindingsAsync(actor, conversationId);
         }
 
+        async Task<LegendConnectDiscourseStateSnapshot> StateAsync(string actor, Guid conversationId)
+        {
+            await using var db = new MasterAppDbContext(options);
+            return Assert.IsType<LegendConnectDiscourseStateSnapshot>(
+                await new LegendFounderAiDiscourseStateService(
+                        db,
+                        new AgentProfileAccessResolver(db),
+                        CreateOperations(db))
+                    .GetStateAsync(
+                        ControllerTestHelpers.BuildUser(actor),
+                        conversationId.ToString()));
+        }
+
         // 1. A/B/C -> “the second one” resolves B.
         var ordinalConversation = Guid.NewGuid();
         await ObserveAsync(firstActor, ordinalConversation, "user", "a b c");
@@ -352,6 +660,30 @@ public sealed class LegendConnectDiscourseReferenceBindingTests
         Assert.Equal("bound", correction.ResolutionState);
         Assert.Equal("a", correction.EntitySemanticValue);
         Assert.True(correction.ReplacesActiveBinding);
+        Assert.Equal(3, correction.SupersededTurnSequence);
+        Assert.NotNull(correction.SupersededNodeIndex);
+        Assert.NotNull(correction.SupersededNodeStartTokenIndex);
+        Assert.NotNull(correction.SupersededNodeTokenLength);
+        var correctionState = await StateAsync(firstActor, ordinalConversation);
+        var projectedCorrection = Assert.Single(correctionState.Turns
+            .Single(item => item.SequenceNumber == correction.SelectorTurnSequence)
+            .Bindings);
+        Assert.Equal(correction.SupersededTurnId, projectedCorrection.SupersededTurnId);
+        Assert.Equal(correction.SupersededTurnSequence, projectedCorrection.SupersededTurnSequence);
+        Assert.Equal(correction.SupersededNodeIndex, projectedCorrection.SupersededNodeIndex);
+        Assert.Equal(
+            correction.SupersededNodeStartTokenIndex,
+            projectedCorrection.SupersededNodeStartTokenIndex);
+        Assert.Equal(correction.SupersededNodeTokenLength, projectedCorrection.SupersededNodeTokenLength);
+        Assert.Equal(
+            correction.HasSupersededCurrentTurnEntity,
+            projectedCorrection.HasSupersededCurrentTurnEntity);
+        Assert.Equal(
+            correction.SupersededCurrentTurnNodeIndex,
+            projectedCorrection.SupersededCurrentTurnNodeIndex);
+        Assert.Equal(
+            correction.SupersededCurrentTurnSemanticSignature,
+            projectedCorrection.SupersededCurrentTurnSemanticSignature);
         var active = Assert.Single(await ActiveAsync(firstActor, ordinalConversation));
         Assert.Equal("a", active.EntitySemanticValue);
 
@@ -1089,11 +1421,25 @@ public sealed class LegendConnectDiscourseReferenceBindingTests
             SecondActor = secondActor;
         }
 
-        private MasterAppDbContext Db { get; }
+        internal MasterAppDbContext Db { get; }
         private LegendConnectOperations Operations { get; }
         private LegendFounderAiDiscourseStateService Discourse { get; }
         internal string FirstActor { get; }
         internal string SecondActor { get; }
+
+        internal Task<LegendConnectUtteranceMeaningGraphSnapshot> AnalyzeAsync(string surface) =>
+            Operations.AnalyzeReusableMeaningGraphAsync(surface);
+
+        internal Task ObserveGraphAsync(
+            string actor,
+            Guid conversationId,
+            string role,
+            LegendConnectUtteranceMeaningGraphSnapshot graph) =>
+            Discourse.RecordObservationAsync(
+                ControllerTestHelpers.BuildUser(actor),
+                conversationId.ToString(),
+                role,
+                graph);
 
         internal async Task ObserveAsync(
             string actor,
