@@ -424,30 +424,6 @@ public sealed class LegendFounderAiDiscourseStateService
                 continue;
             }
 
-            var currentTurnSupersededCandidates = rule.ReplacesActiveBinding
-                ? ActiveMeaningGraphEntityCandidates(meaning)
-                    .Where(item =>
-                        string.Equals(
-                            item.Node.SemanticDimension,
-                            rule.EntitySemanticDimension,
-                            StringComparison.Ordinal) &&
-                        (!string.Equals(
-                             item.Node.SemanticSignature,
-                             selected.Node.SemanticSignature,
-                             StringComparison.Ordinal) ||
-                         !string.Equals(
-                             item.Node.SemanticValue,
-                             selected.Node.SemanticValue,
-                             StringComparison.Ordinal)))
-                    .ToArray()
-                : Array.Empty<MeaningGraphEntityCandidate>();
-            if (currentTurnSupersededCandidates.Length > 1)
-            {
-                results.Add(Unresolved(selector, rule, "reference_current_turn_replacement_ambiguous"));
-                continue;
-            }
-
-            var currentTurnSuperseded = currentTurnSupersededCandidates.SingleOrDefault();
             results.Add(new LegendFounderAiDiscourseReferenceBinding(
                 "bound",
                 "governed_reference_resolved",
@@ -477,13 +453,7 @@ public sealed class LegendFounderAiDiscourseStateService
                 rule.ReplacesActiveBinding ? selectorOccurrence.Index : null,
                 rule.ReplacesActiveBinding ? selector.StartTokenIndex : null,
                 rule.ReplacesActiveBinding ? selector.TokenLength : null,
-                currentTurnSuperseded is not null,
-                currentTurnSuperseded?.NodeIndex,
-                currentTurnSuperseded?.Node.SemanticSignature,
-                currentTurnSuperseded?.Node.SemanticDimension,
-                currentTurnSuperseded?.Node.SemanticValue,
-                currentTurnSuperseded?.Node.StartTokenIndex,
-                currentTurnSuperseded?.Node.TokenLength));
+                false));
         }
         return results;
     }
@@ -563,30 +533,6 @@ public sealed class LegendFounderAiDiscourseStateService
         }
         foreach (var nodeIndex in activeIndexes.OrderBy(item => item))
             yield return new DiscourseEntityCandidate(turn, graph.Nodes[nodeIndex], nodeIndex);
-    }
-
-    private static IEnumerable<MeaningGraphEntityCandidate> ActiveMeaningGraphEntityCandidates(
-        LegendConnectUtteranceMeaningGraphSnapshot graph)
-    {
-        if (!graph.IsComposed || graph.Nodes.Count == 0)
-            yield break;
-        if (graph.Nodes.Count == 1 && graph.Relations.Count == 0)
-        {
-            yield return new MeaningGraphEntityCandidate(graph.Nodes[0], 0);
-            yield break;
-        }
-
-        var activeIndexes = new HashSet<int>();
-        foreach (var relation in graph.Relations)
-        {
-            if (relation.SourceNodeIndex < 0 || relation.SourceNodeIndex >= graph.Nodes.Count ||
-                relation.TargetNodeIndex < 0 || relation.TargetNodeIndex >= graph.Nodes.Count)
-                yield break;
-            activeIndexes.Add(relation.SourceNodeIndex);
-            activeIndexes.Add(relation.TargetNodeIndex);
-        }
-        foreach (var nodeIndex in activeIndexes.OrderBy(item => item))
-            yield return new MeaningGraphEntityCandidate(graph.Nodes[nodeIndex], nodeIndex);
     }
 
     private static LegendFounderAiDiscourseReferenceBinding Unresolved(
@@ -939,24 +885,24 @@ public sealed class LegendFounderAiDiscourseStateService
             return !carriesIdentity;
         if (binding.SupersededCurrentTurnNodeIndex is not int nodeIndex ||
             nodeIndex < 0 || nodeIndex >= graph.Nodes.Count ||
+            binding.SupersededCurrentTurnNodeStartTokenIndex is not int startTokenIndex ||
+            binding.SupersededCurrentTurnNodeTokenLength is not int tokenLength ||
+            startTokenIndex < 0 ||
+            tokenLength <= 0 ||
             string.IsNullOrWhiteSpace(binding.SupersededCurrentTurnSemanticSignature) ||
             string.IsNullOrWhiteSpace(binding.SupersededCurrentTurnSemanticDimension) ||
+            string.IsNullOrWhiteSpace(binding.SupersededCurrentTurnSemanticValue) ||
             !string.Equals(
                 binding.SupersededCurrentTurnSemanticDimension,
                 binding.EntitySemanticDimension,
                 StringComparison.Ordinal))
             return false;
-        var candidates = ActiveMeaningGraphEntityCandidates(graph)
-            .Where(item => item.NodeIndex == nodeIndex)
-            .ToArray();
-        if (candidates.Length != 1)
-            return false;
-        var node = candidates[0].Node;
+        var node = graph.Nodes[nodeIndex];
         return string.Equals(node.SemanticSignature, binding.SupersededCurrentTurnSemanticSignature, StringComparison.Ordinal) &&
             string.Equals(node.SemanticDimension, binding.SupersededCurrentTurnSemanticDimension, StringComparison.Ordinal) &&
             string.Equals(node.SemanticValue, binding.SupersededCurrentTurnSemanticValue, StringComparison.Ordinal) &&
-            node.StartTokenIndex == binding.SupersededCurrentTurnNodeStartTokenIndex &&
-            node.TokenLength == binding.SupersededCurrentTurnNodeTokenLength;
+            node.StartTokenIndex == startTokenIndex &&
+            node.TokenLength == tokenLength;
     }
 
     private static bool IsMalformedBindingState(
@@ -1071,10 +1017,6 @@ public sealed class LegendFounderAiDiscourseStateService
 
     private sealed record DiscourseEntityCandidate(
         LegendFounderAiDiscourseTurn Turn,
-        LegendConnectUtteranceMeaningNode Node,
-        int NodeIndex);
-
-    private sealed record MeaningGraphEntityCandidate(
         LegendConnectUtteranceMeaningNode Node,
         int NodeIndex);
 
