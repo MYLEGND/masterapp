@@ -349,5 +349,12 @@ manifest = {
   "sourceLanguageCode" => "en",
   "entries" => ordered_entries
 }
-File.write(MANIFEST, JSON.pretty_generate(manifest) + "\n")
+serialized_manifest = JSON.pretty_generate(manifest)
+# Keep empty placeholder arrays in the repository's established multiline
+# form across Ruby JSON versions so regeneration changes only copy content.
+serialized_manifest.gsub!(
+  '"placeholders": []',
+  '"placeholders": [' + "\n\n" + '      ]'
+)
+File.write(MANIFEST, serialized_manifest + "\n")
 puts "Generated #{manifest['entries'].length} canonical application-copy entries."
