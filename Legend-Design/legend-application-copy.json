@@ -1,5 +1,5 @@
 {
-  "catalogVersion": "application-copy-v1-c396b58d462998fe",
+  "catalogVersion": "application-copy-v1-f098865e3f91172f",
   "sourceLanguageCode": "en",
   "entries": [
     {
@@ -8614,6 +8614,17 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.6906d5d2297e75e1a4cf10cf",
+      "source": "LEGEND governed research",
+      "context": "visual interface copy",
+      "sourceRevision": "5dd925c26beae8ff",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.3e72a3dd29718b11348f7953",
       "source": "LEGEND guide",
       "context": "visual interface copy",
@@ -14671,6 +14682,17 @@
       "source": "Synced weekly outlook",
       "context": "visual interface copy",
       "sourceRevision": "f4387fa2293a2dd5",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.ab07e2c52a0e5d1260de1ec1",
+      "source": "System diagnostic",
+      "context": "visual interface copy",
+      "sourceRevision": "b581b9304532dda5",
       "placeholders": [
 
       ],
