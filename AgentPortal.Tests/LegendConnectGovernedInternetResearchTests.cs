@@ -94,20 +94,29 @@ public sealed class LegendConnectGovernedInternetResearchTests
             "selector-first-option",
             "ordinal-choice-rule")
         {
-            SupersededTurnId = correctionTurnId,
-            SupersededTurnSequence = 2,
+            SupersededTurnId = Guid.NewGuid(),
+            SupersededTurnSequence = 1,
             SupersededNodeIndex = 0,
-            SupersededNodeStartTokenIndex = correctionSelector.StartTokenIndex,
-            SupersededNodeTokenLength = correctionSelector.TokenLength
+            SupersededEntitySemanticSignature = alpha.SemanticSignature,
+            SupersededEntitySemanticDimension = alpha.SemanticDimension,
+            SupersededEntitySemanticValue = alpha.SemanticValue,
+            SupersededNodeStartTokenIndex = alpha.StartTokenIndex,
+            SupersededNodeTokenLength = alpha.TokenLength,
+            SelectorTurnId = correctionTurnId,
+            SelectorTurnSequence = 2,
+            SelectorNodeIndex = 0,
+            SelectorNodeStartTokenIndex = correctionSelector.StartTokenIndex,
+            SelectorNodeTokenLength = correctionSelector.TokenLength
         };
         var current = corrected with
         {
             ReplacesActiveBinding = false,
             SelectorSemanticSignature = "selector-which-option",
-            SupersededTurnSequence = null,
-            SupersededNodeIndex = null,
-            SupersededNodeStartTokenIndex = null,
-            SupersededNodeTokenLength = null
+            SelectorTurnId = null,
+            SelectorTurnSequence = null,
+            SelectorNodeIndex = null,
+            SelectorNodeStartTokenIndex = null,
+            SelectorNodeTokenLength = null
         };
         var discourseState = new LegendConnectDiscourseStateSnapshot(
         [

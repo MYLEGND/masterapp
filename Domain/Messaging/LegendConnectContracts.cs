@@ -984,8 +984,16 @@ public sealed record LegendConnectDiscourseReferenceBindingSnapshot(
     public Guid? SupersededTurnId { get; init; }
     public int? SupersededTurnSequence { get; init; }
     public int? SupersededNodeIndex { get; init; }
+    public string? SupersededEntitySemanticSignature { get; init; }
+    public string? SupersededEntitySemanticDimension { get; init; }
+    public string? SupersededEntitySemanticValue { get; init; }
     public int? SupersededNodeStartTokenIndex { get; init; }
     public int? SupersededNodeTokenLength { get; init; }
+    public Guid? SelectorTurnId { get; init; }
+    public int? SelectorTurnSequence { get; init; }
+    public int? SelectorNodeIndex { get; init; }
+    public int? SelectorNodeStartTokenIndex { get; init; }
+    public int? SelectorNodeTokenLength { get; init; }
     public string? RuleLanguageCode { get; init; }
     public string? RuleResolutionMode { get; init; }
     public int? RuleSelectionRank { get; init; }

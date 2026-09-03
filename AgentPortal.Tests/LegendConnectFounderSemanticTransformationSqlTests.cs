@@ -568,16 +568,16 @@ public sealed class LegendConnectFounderSemanticTransformationSqlTests
                     Assert.True(binding.ReplacesActiveBinding);
                     Assert.NotNull(binding.SupersededTurnId);
                     var bindingTurn = Assert.Single(planningState.Turns.Where(item =>
-                        item.SequenceNumber == binding.SupersededTurnSequence));
-                    var nodeIndex = Assert.IsType<int>(binding.SupersededNodeIndex);
+                        item.SequenceNumber == binding.SelectorTurnSequence));
+                    var nodeIndex = Assert.IsType<int>(binding.SelectorNodeIndex);
                     Assert.Equal(
                         binding.SelectorSemanticSignature,
                         bindingTurn.Nodes[nodeIndex].SemanticSignature);
                     Assert.Equal(
-                        binding.SupersededNodeStartTokenIndex,
+                        binding.SelectorNodeStartTokenIndex,
                         bindingTurn.Nodes[nodeIndex].StartTokenIndex);
                     Assert.Equal(
-                        binding.SupersededNodeTokenLength,
+                        binding.SelectorNodeTokenLength,
                         bindingTurn.Nodes[nodeIndex].TokenLength);
                 }
 
