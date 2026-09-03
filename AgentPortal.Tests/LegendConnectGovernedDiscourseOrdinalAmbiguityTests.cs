@@ -164,9 +164,6 @@ public sealed class LegendConnectGovernedDiscourseOrdinalAmbiguityTests
                 var submitted = await curriculum.SubmitFounderBatchAsync(
                     ProductionStyleChoiceFamily(family));
                 Assert.True(submitted.Succeeded, submitted.Message);
-                submitted = await curriculum.SubmitFounderBatchAsync(
-                    ActiveUniqueBindingFamily(family));
-                Assert.True(submitted.Succeeded, submitted.Message);
             }
 
             Assert.DoesNotContain(
@@ -180,8 +177,7 @@ public sealed class LegendConnectGovernedDiscourseOrdinalAmbiguityTests
             var priorMessages = new[]
             {
                 new LegendFounderAiChatMessage("user", "The alpha choice feels affordable to me."),
-                new LegendFounderAiChatMessage("user", "The beta choice seems reliable to me."),
-                new LegendFounderAiChatMessage("user", "the latest one")
+                new LegendFounderAiChatMessage("user", "The beta choice seems reliable to me.")
             };
             var directConversationId = Guid.NewGuid();
             foreach (var message in priorMessages)
@@ -403,6 +399,12 @@ public sealed class LegendConnectGovernedDiscourseOrdinalAmbiguityTests
             "composed");
         Assert.DoesNotContain(graph.Relations, relation =>
             relation.SourceNodeIndex == 1 || relation.TargetNodeIndex == 1);
+        var produced = InvokeCurrentTurnOccurrenceProducer(
+            graph,
+            new LegendConnectUtteranceMeaningNode("old", "choice", "old", 9, 1, 3));
+        Assert.False(produced.IsAmbiguous);
+        Assert.Equal(1, produced.NodeIndex);
+        Assert.Equal("old", produced.SemanticValue);
         var binding = CurrentTurnReplacementBinding(turnId);
 
         var validated = InvokeCurrentTurnBindingValidation(turnId, graph, [binding]);
@@ -448,6 +450,76 @@ public sealed class LegendConnectGovernedDiscourseOrdinalAmbiguityTests
                 Assert.Equal("reference_replacement_occurrence_invalid", item.ReasonCode);
             });
         }
+    }
+
+    [Fact]
+    public void ActiveOccurrenceFallback_UsesLatestUniqueDirectNodeAndFailsClosedForZeroDuplicateOrConflict()
+    {
+        var rule = new LegendConnectDiscourseReferenceRuleSnapshot(
+            "selector",
+            "choice",
+            "ordinal",
+            1,
+            ["user"],
+            true,
+            3,
+            "rule");
+        var alpha = new LegendConnectUtteranceMeaningNode("alpha", "choice", "alpha", 0, 1, 3);
+        var beta = new LegendConnectUtteranceMeaningNode("beta", "choice", "beta", 1, 1, 3);
+        var note = new LegendConnectUtteranceMeaningNode("note", "note", "stable", 2, 1, 3);
+
+        var exact = InvokeActiveOccurrenceFallback(
+            [PersistedTurn(1, [alpha]), PersistedTurn(2, [note, beta])],
+            rule);
+        Assert.True(exact.HasOccurrence);
+        Assert.Equal("beta", exact.SemanticValue);
+        Assert.Equal(1, exact.NodeIndex);
+
+        var zero = InvokeActiveOccurrenceFallback([PersistedTurn(1, [note])], rule);
+        Assert.False(zero.HasOccurrence);
+        Assert.False(zero.IsInvalid);
+
+        var duplicate = InvokeActiveOccurrenceFallback(
+            [PersistedTurn(1, [alpha, alpha with { StartTokenIndex = 1 }])],
+            rule);
+        Assert.True(duplicate.IsInvalid);
+
+        var conflicting = InvokeActiveOccurrenceFallback(
+            [PersistedTurn(1, [alpha]), PersistedTurn(2, [alpha]), PersistedTurn(2, [beta])],
+            rule);
+        Assert.True(conflicting.IsInvalid);
+    }
+
+    [Fact]
+    public void CurrentTurnOccurrenceProducer_UsesFullIdentityWithZeroOneAndAmbiguousOutcomes()
+    {
+        var active = new LegendConnectUtteranceMeaningNode("beta", "choice", "beta", 5, 1, 3);
+        var nearSignature = active with { SemanticSignature = "other", StartTokenIndex = 0 };
+        var nearValue = active with { SemanticValue = "other", StartTokenIndex = 1 };
+        var exact = active with { StartTokenIndex = 2 };
+        var detachedGraph = new LegendConnectUtteranceMeaningGraphSnapshot(
+            true,
+            [nearSignature, nearValue, exact],
+            [],
+            [],
+            "composed");
+
+        var one = InvokeCurrentTurnOccurrenceProducer(detachedGraph, active);
+        Assert.False(one.IsAmbiguous);
+        Assert.Equal(2, one.NodeIndex);
+        Assert.Equal("beta", one.SemanticValue);
+
+        var zero = InvokeCurrentTurnOccurrenceProducer(
+            detachedGraph with { Nodes = [nearSignature, nearValue] },
+            active);
+        Assert.False(zero.IsAmbiguous);
+        Assert.Null(zero.NodeIndex);
+
+        var duplicate = InvokeCurrentTurnOccurrenceProducer(
+            detachedGraph with { Nodes = [exact, exact with { StartTokenIndex = 3 }] },
+            active);
+        Assert.True(duplicate.IsAmbiguous);
+        Assert.Null(duplicate.NodeIndex);
     }
 
     [Fact]
@@ -696,44 +768,6 @@ public sealed class LegendConnectGovernedDiscourseOrdinalAmbiguityTests
                 }))
         ]);
 
-    private static LegendConnectCurriculumBatchSubmission ActiveUniqueBindingFamily(int family) => new(
-        $"rg5.active.unique.binding.{family}",
-        "Founder-governed active binding evidence",
-        [
-            ChoiceEntityExample(
-                family,
-                "alpha",
-                "The alpha choice feels affordable to me.",
-                "affordable"),
-            ChoiceEntityExample(
-                family,
-                "beta",
-                "The beta choice seems reliable to me.",
-                "reliable"),
-            ActiveRecentReferenceExample(family)
-        ]);
-
-    private static LegendConnectCurriculumExampleSubmission ActiveRecentReferenceExample(int family) =>
-        new(
-            $"Founder active reference {family}: the latest one.",
-            Variations("reference"),
-            new LegendConnectMeaningGraphSubmission(
-            [
-                new LegendConnectMeaningNodeSubmission(
-                    "selector",
-                    "reference_selector",
-                    "recent_choice",
-                    "latest"),
-                new LegendConnectMeaningNodeSubmission("kind", "reference_kind", "choice", "one")
-            ],
-            [new LegendConnectMeaningRelationSubmission("selector", "reference-target", "kind")],
-            [new LegendConnectDiscourseReferenceSubmission(
-                "selector",
-                "choice",
-                "recent",
-                null,
-                ["user", "assistant"])]));
-
     private static LegendConnectCurriculumExampleSubmission EntityExample(int family) =>
         new($"Please consider a b c variant {family}.",
             Variations("establish"),
@@ -953,6 +987,88 @@ public sealed class LegendConnectGovernedDiscourseOrdinalAmbiguityTests
         return Assert.IsAssignableFrom<IReadOnlyList<LegendFounderAiDiscourseReferenceBinding>>(
             method!.Invoke(null, [turn, graph]));
     }
+
+    private static LegendFounderAiDiscourseTurn PersistedTurn(
+        int sequence,
+        IReadOnlyList<LegendConnectUtteranceMeaningNode> nodes) =>
+        new()
+        {
+            Id = Guid.NewGuid(),
+            SequenceNumber = sequence,
+            Role = "user",
+            MeaningGraphJson = JsonSerializer.Serialize(new
+            {
+                IsComposed = true,
+                Nodes = nodes,
+                Relations = Array.Empty<LegendConnectUtteranceMeaningRelation>(),
+                ReasonCode = "composed"
+            })
+        };
+
+    private static ActiveOccurrenceInvocationResult InvokeActiveOccurrenceFallback(
+        IReadOnlyList<LegendFounderAiDiscourseTurn> turns,
+        LegendConnectDiscourseReferenceRuleSnapshot rule)
+    {
+        var method = typeof(LegendFounderAiDiscourseStateService).GetMethod(
+            "ResolveMostRecentExactActiveOccurrence",
+            BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.NotNull(method);
+        var result = method!.Invoke(null, [turns, rule]);
+        Assert.NotNull(result);
+        var type = result.GetType();
+        var hasOccurrence = Assert.IsType<bool>(type.GetProperty("HasBinding")!.GetValue(result));
+        var candidate = type.GetProperty("Candidate")!.GetValue(result);
+        if (candidate is null)
+            return new(hasOccurrence, hasOccurrence, null, null);
+        var candidateType = candidate.GetType();
+        var node = Assert.IsType<LegendConnectUtteranceMeaningNode>(
+            candidateType.GetProperty("Node")!.GetValue(candidate));
+        var nodeIndex = Assert.IsType<int>(candidateType.GetProperty("NodeIndex")!.GetValue(candidate));
+        return new(true, false, node.SemanticValue, nodeIndex);
+    }
+
+    private static CurrentTurnOccurrenceInvocationResult InvokeCurrentTurnOccurrenceProducer(
+        LegendConnectUtteranceMeaningGraphSnapshot graph,
+        LegendConnectUtteranceMeaningNode activeNode)
+    {
+        var candidateType = typeof(LegendFounderAiDiscourseStateService)
+            .GetNestedType("DiscourseEntityCandidate", BindingFlags.NonPublic);
+        Assert.NotNull(candidateType);
+        var candidate = Activator.CreateInstance(
+            candidateType!,
+            PersistedTurn(1, [activeNode]),
+            activeNode,
+            0);
+        Assert.NotNull(candidate);
+        var method = typeof(LegendFounderAiDiscourseStateService).GetMethod(
+            "ResolveCurrentTurnSupersededOccurrence",
+            BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.NotNull(method);
+        var result = method!.Invoke(null, [graph, candidate]);
+        Assert.NotNull(result);
+        var type = result.GetType();
+        var isAmbiguous = Assert.IsType<bool>(type.GetProperty("IsAmbiguous")!.GetValue(result));
+        var occurrence = type.GetProperty("Candidate")!.GetValue(result);
+        if (occurrence is null)
+            return new(isAmbiguous, null, null);
+        var occurrenceType = occurrence.GetType();
+        var node = Assert.IsType<LegendConnectUtteranceMeaningNode>(
+            occurrenceType.GetProperty("Node")!.GetValue(occurrence));
+        var nodeIndex = Assert.IsType<int>(
+            occurrenceType.GetProperty("NodeIndex")!.GetValue(occurrence));
+        return new(isAmbiguous, nodeIndex, node.SemanticValue);
+    }
+
+    private sealed record ActiveOccurrenceInvocationResult(
+        bool HasOccurrence,
+        bool IsInvalid,
+        string? SemanticValue,
+        int? NodeIndex);
+
+    private sealed record CurrentTurnOccurrenceInvocationResult(
+        bool IsAmbiguous,
+        int? NodeIndex,
+        string? SemanticValue);
 
     private sealed record ReplacementPruningInvocationResult(
         bool Succeeded,

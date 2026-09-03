@@ -424,6 +424,16 @@ public sealed class LegendFounderAiDiscourseStateService
                 continue;
             }
 
+            var currentTurnSuperseded = rule.ReplacesActiveBinding
+                ? ResolveCurrentTurnSupersededOccurrence(meaning, activeBinding.Candidate!)
+                : CurrentTurnSupersededOccurrenceResolution.None;
+            if (currentTurnSuperseded.IsAmbiguous)
+            {
+                results.Add(Unresolved(selector, rule, "reference_current_turn_replacement_ambiguous"));
+                continue;
+            }
+            var currentTurnSupersededCandidate = currentTurnSuperseded.Candidate;
+
             results.Add(new LegendFounderAiDiscourseReferenceBinding(
                 "bound",
                 "governed_reference_resolved",
@@ -453,7 +463,13 @@ public sealed class LegendFounderAiDiscourseStateService
                 rule.ReplacesActiveBinding ? selectorOccurrence.Index : null,
                 rule.ReplacesActiveBinding ? selector.StartTokenIndex : null,
                 rule.ReplacesActiveBinding ? selector.TokenLength : null,
-                false));
+                currentTurnSupersededCandidate is not null,
+                currentTurnSupersededCandidate?.NodeIndex,
+                currentTurnSupersededCandidate?.Node.SemanticSignature,
+                currentTurnSupersededCandidate?.Node.SemanticDimension,
+                currentTurnSupersededCandidate?.Node.SemanticValue,
+                currentTurnSupersededCandidate?.Node.StartTokenIndex,
+                currentTurnSupersededCandidate?.Node.TokenLength));
         }
         return results;
     }
@@ -467,7 +483,9 @@ public sealed class LegendFounderAiDiscourseStateService
             BindingEntries(priorTurns, validatedBindings),
             rule.EntitySemanticDimension);
         if (!active.HasBinding)
-            return ActiveDiscourseBindingResolution.None;
+            return rule.ReplacesActiveBinding
+                ? ResolveMostRecentExactActiveOccurrence(priorTurns, rule)
+                : ActiveDiscourseBindingResolution.None;
         if (active.Binding is null)
             return ActiveDiscourseBindingResolution.Invalid;
 
@@ -505,6 +523,66 @@ public sealed class LegendFounderAiDiscourseStateService
         return source.Length == 1
             ? new(true, source[0])
             : ActiveDiscourseBindingResolution.Invalid;
+    }
+
+    private static ActiveDiscourseBindingResolution ResolveMostRecentExactActiveOccurrence(
+        IReadOnlyList<LegendFounderAiDiscourseTurn> priorTurns,
+        LegendConnectDiscourseReferenceRuleSnapshot rule)
+    {
+        foreach (var sequenceGroup in priorTurns
+                     .Where(item => rule.AllowedSourceRoles.Contains(item.Role, StringComparer.Ordinal))
+                     .GroupBy(item => item.SequenceNumber)
+                     .OrderByDescending(item => item.Key))
+        {
+            var turns = sequenceGroup.ToArray();
+            if (turns.Length != 1)
+                return ActiveDiscourseBindingResolution.Invalid;
+            var turn = turns[0];
+            var graph = DeserializeMeaning(turn.MeaningGraphJson);
+            if (!graph.IsComposed)
+                return ActiveDiscourseBindingResolution.Invalid;
+            var matches = graph.Nodes
+                .Select((node, index) => new DiscourseEntityCandidate(turn, node, index))
+                .Where(item => string.Equals(
+                    item.Node.SemanticDimension,
+                    rule.EntitySemanticDimension,
+                    StringComparison.Ordinal))
+                .ToArray();
+            if (matches.Length == 0)
+                continue;
+            return matches.Length == 1
+                ? new ActiveDiscourseBindingResolution(true, matches[0])
+                : ActiveDiscourseBindingResolution.Invalid;
+        }
+        return ActiveDiscourseBindingResolution.None;
+    }
+
+    private static CurrentTurnSupersededOccurrenceResolution ResolveCurrentTurnSupersededOccurrence(
+        LegendConnectUtteranceMeaningGraphSnapshot graph,
+        DiscourseEntityCandidate activeOccurrence)
+    {
+        var matches = graph.Nodes
+            .Select((node, index) => new MeaningGraphEntityCandidate(node, index))
+            .Where(item =>
+                string.Equals(
+                    item.Node.SemanticSignature,
+                    activeOccurrence.Node.SemanticSignature,
+                    StringComparison.Ordinal) &&
+                string.Equals(
+                    item.Node.SemanticDimension,
+                    activeOccurrence.Node.SemanticDimension,
+                    StringComparison.Ordinal) &&
+                string.Equals(
+                    item.Node.SemanticValue,
+                    activeOccurrence.Node.SemanticValue,
+                    StringComparison.Ordinal))
+            .ToArray();
+        return matches.Length switch
+        {
+            0 => CurrentTurnSupersededOccurrenceResolution.None,
+            1 => new(false, matches[0]),
+            _ => CurrentTurnSupersededOccurrenceResolution.Ambiguous
+        };
     }
 
     private static IEnumerable<DiscourseEntityCandidate> ActiveDiscourseEntityCandidates(
@@ -1019,6 +1097,18 @@ public sealed class LegendFounderAiDiscourseStateService
         LegendFounderAiDiscourseTurn Turn,
         LegendConnectUtteranceMeaningNode Node,
         int NodeIndex);
+
+    private sealed record MeaningGraphEntityCandidate(
+        LegendConnectUtteranceMeaningNode Node,
+        int NodeIndex);
+
+    private sealed record CurrentTurnSupersededOccurrenceResolution(
+        bool IsAmbiguous,
+        MeaningGraphEntityCandidate? Candidate)
+    {
+        public static CurrentTurnSupersededOccurrenceResolution None { get; } = new(false, null);
+        public static CurrentTurnSupersededOccurrenceResolution Ambiguous { get; } = new(true, null);
+    }
 
     private sealed record DiscourseBindingEntry(
         LegendFounderAiDiscourseTurn Turn,
