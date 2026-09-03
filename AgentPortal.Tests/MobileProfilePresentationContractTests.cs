@@ -214,6 +214,31 @@ public sealed class MobileProfilePresentationContractTests
         Assert.DoesNotContain("AlertDialog(", androidSignIn, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void AndroidSecureSignIn_UsesOneConfiguredMsalClientAndAccountAuthority()
+    {
+        var auth = Read(
+            "Legend-Android", "app", "src", "main", "java", "com", "mylegnd", "legend",
+            "registered", "core", "auth", "LegendAuth.kt");
+        var session = Read(
+            "Legend-Android", "app", "src", "main", "java", "com", "mylegnd", "legend",
+            "registered", "core", "session", "LegendSession.kt");
+        var manifest = Read("Legend-Android", "app", "src", "main", "AndroidManifest.xml");
+        var msalConfiguration = Read(
+            "Legend-Android", "app", "src", "main", "legend-template", "res", "raw",
+            "legend_msal_config.json");
+
+        Assert.Contains("android.permission.ACCESS_NETWORK_STATE", manifest, StringComparison.Ordinal);
+        Assert.Contains("\"default\": true", msalConfiguration, StringComparison.Ordinal);
+        Assert.Contains("private val applicationMutex = Mutex()", auth, StringComparison.Ordinal);
+        Assert.Contains("cachedApplication", auth, StringComparison.Ordinal);
+        Assert.Contains(".fromAuthority(account.authority)", auth, StringComparison.Ordinal);
+        Assert.DoesNotContain(".fromAuthority(configuration.entraAuthority)", auth, StringComparison.Ordinal);
+        Assert.Contains("MsalClientException.IO_ERROR", auth, StringComparison.Ordinal);
+        Assert.Contains("is AuthenticationCancelledException -> SessionState.SignedOut", session, StringComparison.Ordinal);
+        Assert.Contains("Secure sign-in needs a working internet connection.", session, StringComparison.Ordinal);
+    }
+
     private static string Between(string source, string start, string end)
     {
         var startIndex = source.IndexOf(start, StringComparison.Ordinal);

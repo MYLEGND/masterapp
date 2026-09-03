@@ -11,7 +11,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
@@ -21,7 +20,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -44,6 +43,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.Switch
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.material3.DrawerValue
 import androidx.compose.runtime.Composable
@@ -64,6 +64,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -228,7 +229,7 @@ private fun FounderAiConversationContent(
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth(),
-                contentPadding = androidx.compose.foundation.layout.PaddingValues(
+                contentPadding = PaddingValues(
                     horizontal = LegendSpacing.Md,
                     vertical = LegendSpacing.Lg,
                 ),
@@ -307,7 +308,7 @@ private fun FounderAiConversationContent(
                         containerColor = if (state.isSending) LegendColors.Error else LegendColors.Gold,
                         contentColor = if (state.isSending) LegendColors.OnNavy else LegendColors.OnGold,
                     ),
-                    contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp),
+                    contentPadding = PaddingValues(0.dp),
                 ) {
                     Icon(
                         if (state.isSending) Icons.Default.StopCircle else Icons.AutoMirrored.Filled.Send,
@@ -409,7 +410,7 @@ private fun FounderAiDrawer(
                     Text("Native-only", style = LegendTypography.Label, color = LegendColors.TextPrimary, fontWeight = FontWeight.Bold)
                     Text("Block OpenAI escalation for this LEGEND test.", style = LegendTypography.Label, color = LegendColors.TextSecondary)
                 }
-                androidx.compose.material3.Switch(
+                Switch(
                     checked = nativeOnly,
                     enabled = canChangeMode,
                     onCheckedChange = setNativeOnly,
@@ -445,7 +446,7 @@ private fun FounderAiModeButton(
             enabled = enabled,
             shape = LegendShapes.Compact,
             colors = ButtonDefaults.buttonColors(containerColor = color, contentColor = LegendColors.OnNavy),
-            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = LegendSpacing.Xs),
+            contentPadding = PaddingValues(horizontal = LegendSpacing.Xs),
         ) { Text(label, maxLines = 1, overflow = TextOverflow.Ellipsis) }
     } else {
         OutlinedButton(
@@ -453,7 +454,7 @@ private fun FounderAiModeButton(
             modifier = modifier.heightIn(min = 34.dp),
             enabled = enabled,
             shape = LegendShapes.Compact,
-            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = LegendSpacing.Xs),
+            contentPadding = PaddingValues(horizontal = LegendSpacing.Xs),
         ) { Text(label, maxLines = 1, overflow = TextOverflow.Ellipsis) }
     }
 }
@@ -462,11 +463,6 @@ private fun FounderAiModeButton(
 private fun FounderAiMessageBubble(message: FounderAiTranscriptMessage) {
     val isUser = message.role == "user"
     val authority = message.responseAuthority?.trim()
-    val accent = when (authority) {
-        "LegendAi" -> LegendColors.Success
-        "OpenAITeacher" -> LegendColors.Royal
-        else -> LegendColors.TextTertiary
-    }
     if (isUser) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -488,37 +484,32 @@ private fun FounderAiMessageBubble(message: FounderAiTranscriptMessage) {
         }
     } else {
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(IntrinsicSize.Min),
+            modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(LegendSpacing.Xs),
+            verticalAlignment = Alignment.Top,
         ) {
             FounderAiMark(28.dp)
-            Box(
-                Modifier
-                    .fillMaxHeight()
-                    .width(3.dp)
-                    .background(LegendGradients.Gold),
-            )
             Column(
                 modifier = Modifier
-                    .weight(1f)
-                    .padding(start = LegendSpacing.Xs, bottom = LegendSpacing.Sm),
+                    .weight(1f, fill = false)
+                    .widthIn(max = 520.dp)
+                    .shadow(8.dp, LegendShapes.Card)
+                    .clip(LegendShapes.Card)
+                    .background(LegendColors.AiResponseRoyal)
+                    .border(1.dp, LegendColors.OnNavy.copy(alpha = 0.24f), LegendShapes.Card)
+                    .padding(horizontal = LegendSpacing.Sm, vertical = LegendSpacing.Sm),
                 verticalArrangement = Arrangement.spacedBy(LegendSpacing.Xs),
             ) {
-                Text(message.content, style = LegendTypography.Body, color = LegendColors.TextPrimary)
+                Text(message.content, style = LegendTypography.Body, color = LegendColors.OnNavy)
                 if (authority in setOf("LegendAi", "OpenAITeacher")) {
                     Text(
                         if (authority == "LegendAi") "Legend® Ai" else "OpenAI",
                         style = LegendTypography.Label,
-                        color = accent,
+                        color = LegendColors.OnNavy,
                         fontWeight = FontWeight.Bold,
                         modifier = Modifier
-                            .clip(CircleShape)
-                            .background(
-                                if (authority == "LegendAi") LegendColors.Success.copy(alpha = 0.13f)
-                                else LegendColors.BrandBlueSurface,
-                            )
+                            .background(LegendColors.OnNavy.copy(alpha = 0.14f), CircleShape)
+                            .border(1.dp, LegendColors.OnNavy.copy(alpha = 0.26f), CircleShape)
                             .padding(horizontal = LegendSpacing.Xs, vertical = LegendSpacing.Micro),
                     )
                 }
@@ -542,7 +533,7 @@ private fun FounderAiStatusCard(message: String, isError: Boolean = false) {
 }
 
 @Composable
-private fun FounderAiMark(size: androidx.compose.ui.unit.Dp) {
+private fun FounderAiMark(size: Dp) {
     AsyncImage(
         model = FOUNDER_AI_ARTWORK,
         contentDescription = "Legend® Ai",
