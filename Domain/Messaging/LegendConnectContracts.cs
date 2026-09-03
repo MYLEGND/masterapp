@@ -986,6 +986,10 @@ public sealed record LegendConnectDiscourseReferenceBindingSnapshot(
     public int? SupersededNodeIndex { get; init; }
     public int? SupersededNodeStartTokenIndex { get; init; }
     public int? SupersededNodeTokenLength { get; init; }
+    public string? RuleLanguageCode { get; init; }
+    public string? RuleResolutionMode { get; init; }
+    public int? RuleSelectionRank { get; init; }
+    public string? RuleAllowedSourceRoles { get; init; }
 }
 
 public sealed record LegendConnectDiscourseStateSnapshot(

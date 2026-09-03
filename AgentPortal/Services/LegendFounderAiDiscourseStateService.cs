@@ -184,9 +184,10 @@ public sealed class LegendFounderAiDiscourseStateService
         CancellationToken cancellationToken = default)
     {
         var latest = await GetTurnsAsync(founderAgentUserId, conversationId, cancellationToken);
-        return latest.Count == 0
-            ? []
-            : DeserializeAndValidateBindings(latest[^1], latest);
+        if (latest.Count == 0)
+            return [];
+        var validated = await LoadValidatedBindingsAsync(latest, cancellationToken);
+        return validated[latest[^1].Id];
     }
 
     internal async Task<IReadOnlyList<LegendFounderAiDiscourseReferenceBinding>> GetActiveBindingsAsync(
@@ -195,7 +196,8 @@ public sealed class LegendFounderAiDiscourseStateService
         CancellationToken cancellationToken = default)
     {
         var turns = await GetTurnsAsync(founderAgentUserId, conversationId, cancellationToken);
-        var entries = BindingEntries(turns);
+        var validated = await LoadValidatedBindingsAsync(turns, cancellationToken);
+        var entries = BindingEntries(turns, validated);
         return entries
             .Where(item =>
                 item.Binding.ResolutionState == "bound" ||
@@ -228,6 +230,7 @@ public sealed class LegendFounderAiDiscourseStateService
             return null;
 
         var turns = await GetTurnsAsync(actor, parsedConversationId, cancellationToken);
+        var validated = await LoadValidatedBindingsAsync(turns, cancellationToken);
         return new LegendConnectDiscourseStateSnapshot(
             turns.Select(turn =>
             {
@@ -238,7 +241,7 @@ public sealed class LegendFounderAiDiscourseStateService
                     graph.IsComposed,
                     graph.Nodes,
                     graph.Relations,
-                    DeserializeAndValidateBindings(turn, graph, turns)
+                    validated[turn.Id]
                         .Select(binding => new LegendConnectDiscourseReferenceBindingSnapshot(
                             binding.ResolutionState,
                             binding.ReasonCode,
@@ -255,7 +258,11 @@ public sealed class LegendFounderAiDiscourseStateService
                             SupersededTurnSequence = binding.SupersededTurnSequence,
                             SupersededNodeIndex = binding.SupersededNodeIndex,
                             SupersededNodeStartTokenIndex = binding.SupersededNodeStartTokenIndex,
-                            SupersededNodeTokenLength = binding.SupersededNodeTokenLength
+                            SupersededNodeTokenLength = binding.SupersededNodeTokenLength,
+                            RuleLanguageCode = binding.RuleLanguageCode,
+                            RuleResolutionMode = binding.RuleResolutionMode,
+                            RuleSelectionRank = binding.RuleSelectionRank,
+                            RuleAllowedSourceRoles = binding.RuleAllowedSourceRoles
                         })
                         .ToArray());
             }).ToArray());
@@ -284,6 +291,7 @@ public sealed class LegendFounderAiDiscourseStateService
             sourceLanguageCode, selectorSignatures, cancellationToken);
         if (rules.Count == 0)
             return [];
+        var validatedPriorBindings = await LoadValidatedBindingsAsync(priorTurns, cancellationToken);
 
         var results = new List<LegendFounderAiDiscourseReferenceBinding>();
         foreach (var selectorOccurrence in meaning.Nodes
@@ -362,6 +370,7 @@ public sealed class LegendFounderAiDiscourseStateService
                 .ToArray();
             var activeBinding = ResolveActiveDiscourseBindingCandidate(
                 priorTurns,
+                validatedPriorBindings,
                 rule);
             if (rule.ResolutionMode == "unique" &&
                 activeBinding.HasBinding && activeBinding.Candidate is null)
@@ -411,16 +420,23 @@ public sealed class LegendFounderAiDiscourseStateService
                 rule.ReplacesActiveBinding ? turnSequence : null,
                 rule.ReplacesActiveBinding ? selectorOccurrence.Index : null,
                 rule.ReplacesActiveBinding ? selector.StartTokenIndex : null,
-                rule.ReplacesActiveBinding ? selector.TokenLength : null));
+                rule.ReplacesActiveBinding ? selector.TokenLength : null,
+                sourceLanguageCode,
+                rule.ResolutionMode,
+                rule.SelectionRank,
+                string.Join("|", rule.AllowedSourceRoles.OrderBy(item => item, StringComparer.Ordinal))));
         }
         return results;
     }
 
     private static ActiveDiscourseBindingResolution ResolveActiveDiscourseBindingCandidate(
         IReadOnlyList<LegendFounderAiDiscourseTurn> priorTurns,
+        IReadOnlyDictionary<Guid, IReadOnlyList<LegendFounderAiDiscourseReferenceBinding>> validatedBindings,
         LegendConnectDiscourseReferenceRuleSnapshot rule)
     {
-        var active = ResolveActiveBinding(BindingEntries(priorTurns), rule.EntitySemanticDimension);
+        var active = ResolveActiveBinding(
+            BindingEntries(priorTurns, validatedBindings),
+            rule.EntitySemanticDimension);
         if (!active.HasBinding)
             return ActiveDiscourseBindingResolution.None;
         if (active.Binding is null)
@@ -559,6 +575,60 @@ public sealed class LegendFounderAiDiscourseStateService
                     ? binding
                     : InvalidateBinding(binding, "reference_antecedent_identity_invalid"))
             .ToArray();
+
+    private async Task<IReadOnlyDictionary<Guid, IReadOnlyList<LegendFounderAiDiscourseReferenceBinding>>>
+        LoadValidatedBindingsAsync(
+            IReadOnlyList<LegendFounderAiDiscourseTurn> turns,
+            CancellationToken cancellationToken)
+    {
+        var structural = turns.ToDictionary(
+            turn => turn.Id,
+            turn => DeserializeAndValidateBindings(turn, turns));
+        var bound = structural.Values.SelectMany(item => item)
+            .Where(item => item.ResolutionState == "bound")
+            .ToArray();
+        var authoritative = new List<(string LanguageCode, LegendConnectDiscourseReferenceRuleSnapshot Rule)>();
+        foreach (var group in bound
+                     .Where(item =>
+                         !string.IsNullOrWhiteSpace(item.RuleLanguageCode) &&
+                         !string.IsNullOrWhiteSpace(item.SelectorSemanticSignature))
+                     .GroupBy(item => item.RuleLanguageCode!, StringComparer.Ordinal))
+        {
+            var rules = await _operations.GetProductionDiscourseReferenceRulesAsync(
+                group.Key,
+                group.Select(item => item.SelectorSemanticSignature)
+                    .Distinct(StringComparer.Ordinal)
+                    .ToArray(),
+                cancellationToken);
+            authoritative.AddRange(rules.Select(rule => (group.Key, rule)));
+        }
+
+        return structural.ToDictionary(
+            item => item.Key,
+            item => (IReadOnlyList<LegendFounderAiDiscourseReferenceBinding>)item.Value
+                .Select(binding =>
+                {
+                    if (binding.ResolutionState != "bound")
+                        return binding;
+                    var matches = authoritative.Where(candidate =>
+                            string.Equals(candidate.LanguageCode, binding.RuleLanguageCode, StringComparison.Ordinal) &&
+                            string.Equals(candidate.Rule.RuleSignature, binding.ReferenceRuleSignature, StringComparison.Ordinal) &&
+                            string.Equals(candidate.Rule.SelectorSemanticSignature, binding.SelectorSemanticSignature, StringComparison.Ordinal) &&
+                            string.Equals(candidate.Rule.EntitySemanticDimension, binding.EntitySemanticDimension, StringComparison.Ordinal) &&
+                            string.Equals(candidate.Rule.ResolutionMode, binding.RuleResolutionMode, StringComparison.Ordinal) &&
+                            candidate.Rule.SelectionRank == binding.RuleSelectionRank &&
+                            candidate.Rule.ReplacesActiveBinding == binding.ReplacesActiveBinding &&
+                            string.Equals(
+                                string.Join("|", candidate.Rule.AllowedSourceRoles.OrderBy(role => role, StringComparer.Ordinal)),
+                                binding.RuleAllowedSourceRoles,
+                                StringComparison.Ordinal))
+                        .ToArray();
+                    return matches.Length == 1
+                        ? binding
+                        : InvalidateBinding(binding, "reference_rule_provenance_invalid");
+                })
+                .ToArray());
+    }
 
     private static bool IsBindingAntecedentValid(
         LegendFounderAiDiscourseReferenceBinding binding,
@@ -711,9 +781,10 @@ public sealed class LegendFounderAiDiscourseStateService
             null);
 
     private static IReadOnlyList<DiscourseBindingEntry> BindingEntries(
-        IReadOnlyList<LegendFounderAiDiscourseTurn> turns) =>
+        IReadOnlyList<LegendFounderAiDiscourseTurn> turns,
+        IReadOnlyDictionary<Guid, IReadOnlyList<LegendFounderAiDiscourseReferenceBinding>> validatedBindings) =>
         turns.OrderBy(item => item.SequenceNumber)
-            .SelectMany(turn => DeserializeAndValidateBindings(turn, turns)
+            .SelectMany(turn => validatedBindings[turn.Id]
                 .Select(binding => new DiscourseBindingEntry(turn, binding)))
             .ToArray();
 
@@ -842,4 +913,8 @@ internal sealed record LegendFounderAiDiscourseReferenceBinding(
     int? SupersededTurnSequence = null,
     int? SupersededNodeIndex = null,
     int? SupersededNodeStartTokenIndex = null,
-    int? SupersededNodeTokenLength = null);
+    int? SupersededNodeTokenLength = null,
+    string? RuleLanguageCode = null,
+    string? RuleResolutionMode = null,
+    int? RuleSelectionRank = null,
+    string? RuleAllowedSourceRoles = null);

@@ -384,7 +384,8 @@ public sealed class LegendConnectDiscourseReferenceBindingTests
     {
         foreach (var mutation in new[]
                  {
-                     "missing", "stale", "conflicting", "flag", "antecedent", "dimension"
+                     "missing", "stale", "conflicting", "flag", "antecedent", "dimension",
+                     "rule", "language", "mode", "roles"
                  })
         {
             await using var fixture = await CreateInMemoryFixtureAsync();
@@ -405,6 +406,10 @@ public sealed class LegendConnectDiscourseReferenceBindingTests
                 .FirstAsync();
             var binding = Assert.Single(JsonSerializer.Deserialize<
                 LegendFounderAiDiscourseReferenceBinding[]>(turn.ResolvedBindingsJson)!);
+            var alternateRuleSignature = await fixture.Db.LegendLanguageDiscourseReferenceRules
+                .Where(item => item.RuleSignature != binding.ReferenceRuleSignature)
+                .Select(item => item.RuleSignature)
+                .FirstAsync();
             var invalid = mutation switch
             {
                 "missing" => binding with { SupersededNodeIndex = null },
@@ -415,6 +420,10 @@ public sealed class LegendConnectDiscourseReferenceBindingTests
                 "flag" => binding with { ReplacesActiveBinding = false },
                 "antecedent" => binding with { EntityNodeIndex = int.MaxValue },
                 "dimension" => binding with { EntitySemanticDimension = null! },
+                "rule" => binding with { ReferenceRuleSignature = alternateRuleSignature },
+                "language" => binding with { RuleLanguageCode = "zz" },
+                "mode" => binding with { RuleResolutionMode = "recent" },
+                "roles" => binding with { RuleAllowedSourceRoles = "assistant" },
                 _ => binding
             };
             IReadOnlyList<LegendFounderAiDiscourseReferenceBinding> invalidBindings =
@@ -432,6 +441,8 @@ public sealed class LegendConnectDiscourseReferenceBindingTests
                 Assert.Equal(
                     mutation is "antecedent" or "dimension"
                         ? "reference_antecedent_identity_invalid"
+                        : mutation is "rule" or "language" or "mode" or "roles"
+                            ? "reference_rule_provenance_invalid"
                         : "reference_replacement_occurrence_invalid",
                     item.ReasonCode);
             });
