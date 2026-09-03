@@ -77,6 +77,178 @@ public sealed class LegendConnectMeaningGraphTests
     }
 
     [Fact]
+    public async Task SupersedingCurriculumExamples_RetiresEveryOwnedMeaningProjectionAndRecalculatesMaturity()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var curriculum = CreateCurriculum(db);
+        var forms = new[]
+        {
+            "Please select alpha one.",
+            "Kindly select alpha one.",
+            "Now select alpha one."
+        };
+
+        for (var support = 1; support <= 3; support++)
+        {
+            var submitted = await curriculum.SubmitFounderBatchAsync(
+                new LegendConnectCurriculumBatchSubmission(
+                    $"meaning.graph.retirement.{support}",
+                    "Meaning projection retirement evidence",
+                    [
+                        new LegendConnectCurriculumExampleSubmission(
+                            forms[support - 1],
+                            new Dictionary<string, string>
+                            {
+                                ["conversation_function"] = "selection_request",
+                                ["choice"] = "alpha"
+                            },
+                            new LegendConnectMeaningGraphSubmission(
+                                [
+                                    new LegendConnectMeaningNodeSubmission(
+                                        "action", "conversation_function", "selection_request", "select"),
+                                    new LegendConnectMeaningNodeSubmission(
+                                        "choice", "choice", "alpha", "alpha")
+                                ],
+                                [
+                                    new LegendConnectMeaningRelationSubmission(
+                                        "action", "selects", "choice")
+                                ],
+                                [
+                                    new LegendConnectDiscourseReferenceSubmission(
+                                        "choice", "choice", "recent", null, ["user"], true)
+                                ])),
+                        new LegendConnectCurriculumExampleSubmission(
+                            $"Retirement control evidence {support}.",
+                            new Dictionary<string, string>
+                            {
+                                ["control"] = $"retirement-{support}"
+                            })
+                    ]));
+            Assert.True(submitted.Succeeded, submitted.Message);
+        }
+
+        var activeGraph = await curriculum.AnalyzeReusableMeaningGraphAsync(
+            "en",
+            forms[0]);
+        Assert.True(activeGraph.IsComposed);
+        Assert.Equal(2, activeGraph.Nodes.Count);
+        Assert.Single(activeGraph.Relations);
+
+        var primitiveIds = await db.LegendLanguageMeaningPrimitiveEvidence
+            .Where(item => item.SupersededUtc == null)
+            .Select(item => item.MeaningPrimitiveId)
+            .Distinct()
+            .ToListAsync();
+        var relationId = await db.LegendLanguageMeaningRelationEvidence
+            .Where(item => item.SupersededUtc == null)
+            .Select(item => item.MeaningRelationId)
+            .Distinct()
+            .SingleAsync();
+        var ruleId = await db.LegendLanguageDiscourseReferenceRuleEvidence
+            .Where(item => item.SupersededUtc == null)
+            .Select(item => item.DiscourseReferenceRuleId)
+            .Distinct()
+            .SingleAsync();
+        var retiringTextUnitIds = await (
+            from node in db.LegendLanguageMeaningNodeEvidence.AsNoTracking()
+            join example in db.LegendCurriculumExamples.AsNoTracking()
+                on node.CurriculumExampleId equals example.Id
+            where node.SupersededUtc == null && example.SupersededUtc == null
+            select example.TextUnitId).Distinct().ToListAsync();
+
+        await curriculum.ReconcileSupersededExamplesAsync(retiringTextUnitIds);
+
+        Assert.Empty(await db.LegendLanguageMeaningNodeEvidence
+            .Where(item => item.SupersededUtc == null).ToListAsync());
+        Assert.Empty(await db.LegendLanguageMeaningPrimitiveEvidence
+            .Where(item => item.SupersededUtc == null).ToListAsync());
+        Assert.Empty(await db.LegendLanguageMeaningRelationEvidence
+            .Where(item => item.SupersededUtc == null).ToListAsync());
+        Assert.Empty(await db.LegendLanguageDiscourseReferenceRuleEvidence
+            .Where(item => item.SupersededUtc == null).ToListAsync());
+
+        var primitives = await db.LegendLanguageMeaningPrimitives
+            .Where(item => primitiveIds.Contains(item.Id))
+            .ToListAsync();
+        Assert.All(primitives, primitive =>
+        {
+            Assert.Equal(0, primitive.SupportCount);
+            Assert.Equal(0, primitive.IndependentSourceCount);
+            Assert.Equal("Observation", primitive.MaturityState);
+            Assert.False(primitive.IsProductionEligible);
+        });
+        var relation = await db.LegendLanguageMeaningRelations.SingleAsync(item => item.Id == relationId);
+        Assert.Equal(0, relation.SupportCount);
+        Assert.Equal(0, relation.IndependentSourceCount);
+        Assert.Equal("Observation", relation.MaturityState);
+        Assert.False(relation.IsProductionEligible);
+        var rule = await db.LegendLanguageDiscourseReferenceRules.SingleAsync(item => item.Id == ruleId);
+        Assert.Equal(0, rule.SupportCount);
+        Assert.Equal(0, rule.IndependentSourceCount);
+        Assert.Equal("Observation", rule.MaturityState);
+        Assert.False(rule.IsProductionEligible);
+
+        var retiredGraph = await curriculum.AnalyzeReusableMeaningGraphAsync(
+            "en",
+            forms[0]);
+        Assert.False(retiredGraph.IsComposed);
+    }
+
+    [Fact]
+    public async Task ExactMeaningGraphReconciliation_RepairsOnlyTheAlreadySupersededOwner()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var curriculum = CreateCurriculum(db);
+        for (var family = 1; family <= 3; family++)
+            Assert.True((await curriculum.SubmitFounderBatchAsync(Family(family))).Succeeded);
+
+        var graphExampleIds = await db.LegendLanguageMeaningNodeEvidence
+            .Where(item => item.SupersededUtc == null)
+            .Select(item => item.CurriculumExampleId)
+            .Distinct()
+            .OrderBy(item => item)
+            .ToListAsync();
+        Assert.Equal(3, graphExampleIds.Count);
+        var retiredExampleId = graphExampleIds[0];
+        var preservedExampleIds = graphExampleIds.Skip(1).ToArray();
+
+        var retiredExample = await db.LegendCurriculumExamples
+            .SingleAsync(item => item.Id == retiredExampleId);
+        retiredExample.SupersededUtc = DateTime.UtcNow;
+        retiredExample.UpdatedUtc = retiredExample.SupersededUtc.Value;
+        await db.SaveChangesAsync();
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            curriculum.ReconcileSupersededMeaningGraphEvidenceAsync(preservedExampleIds));
+        await curriculum.ReconcileSupersededMeaningGraphEvidenceAsync([retiredExampleId]);
+
+        Assert.Empty(await db.LegendLanguageMeaningNodeEvidence
+            .Where(item => item.CurriculumExampleId == retiredExampleId && item.SupersededUtc == null)
+            .ToListAsync());
+        Assert.Equal(4, await db.LegendLanguageMeaningNodeEvidence.CountAsync(item =>
+            preservedExampleIds.Contains(item.CurriculumExampleId) && item.SupersededUtc == null));
+        Assert.Empty(await db.LegendLanguageMeaningPrimitiveEvidence
+            .Where(item => item.CurriculumExampleId == retiredExampleId && item.SupersededUtc == null)
+            .ToListAsync());
+        Assert.Empty(await db.LegendLanguageMeaningRelationEvidence
+            .Where(item => item.CurriculumExampleId == retiredExampleId && item.SupersededUtc == null)
+            .ToListAsync());
+
+        Assert.All(await db.LegendLanguageMeaningPrimitives.ToListAsync(), primitive =>
+        {
+            Assert.Equal(2, primitive.SupportCount);
+            Assert.Equal(2, primitive.IndependentSourceCount);
+            Assert.Equal("Observation", primitive.MaturityState);
+            Assert.False(primitive.IsProductionEligible);
+        });
+        var relation = await db.LegendLanguageMeaningRelations.SingleAsync();
+        Assert.Equal(2, relation.SupportCount);
+        Assert.Equal(2, relation.IndependentSourceCount);
+        Assert.Equal("Observation", relation.MaturityState);
+        Assert.False(relation.IsProductionEligible);
+    }
+
+    [Fact]
     public async Task MatureAtomicMeaningPrimitive_IsSemanticWithoutArtificialRelation()
     {
         await using var db = ControllerTestHelpers.BuildDb();
