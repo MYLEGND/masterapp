@@ -289,140 +289,168 @@ private struct ConfigurationStateView: View {
 
 private struct SignInView: View {
     @EnvironmentObject private var session: MobileSessionCoordinator
-    @State private var showingAppReviewSignIn = false
-
-    var body: some View {
-        NavigationStack {
-            VStack(spacing: LegendNextSpacing.md) {
-                VStack(spacing: LegendNextSpacing.sm) {
-                    LegendBrandLogo(maximumWidth: 78)
-                        .frame(width: 68, height: 68)
-                        .clipShape(Circle())
-                        .overlay {
-                            Circle()
-                                .strokeBorder(
-                                    LegendNextColor.goldBright.opacity(0.72),
-                                    lineWidth: 1)
-                        }
-                        .accessibilityHidden(true)
-
-                    Text("LEGEND ACCOUNT")
-                        .font(LegendNextTypography.eyebrow)
-                        .foregroundStyle(LegendNextColor.goldBright)
-
-                    Text("Secure sign in")
-                        .font(.system(size: 27, weight: .bold))
-                        .foregroundStyle(LegendNextColor.contactTitle)
-                    Text("Verify your Legend account to continue.")
-                        .font(LegendNextTypography.supporting)
-                        .foregroundStyle(LegendNextColor.contactTitle.opacity(0.76))
-                        .multilineTextAlignment(.center)
-                }
-                .frame(maxWidth: .infinity)
-                .padding(.horizontal, LegendNextSpacing.lg)
-                .padding(.vertical, LegendNextSpacing.lg)
-                .background {
-                    ZStack {
-                        LegendNextGradient.hero
-                        LegendNextGradient.heroGlow
-                    }
-                    .clipShape(
-                        RoundedRectangle(
-                            cornerRadius: 26,
-                            style: .continuous))
-                }
-                .overlay {
-                    RoundedRectangle(cornerRadius: 26, style: .continuous)
-                        .strokeBorder(LegendNextGradient.premiumStroke, lineWidth: 1)
-                }
-                .shadow(color: LegendNextColor.navy.opacity(0.16), radius: 20, y: 10)
-
-                Button("Sign in securely") {
-                    session.signIn()
-                }
-                .buttonStyle(LegendNextButtonStyle(kind: .primary))
-                .frame(maxHeight: 48)
-                .accessibilityHint("Opens secure Legend sign-in and verification.")
-
-                Button("App Review Sign In") {
-                    showingAppReviewSignIn = true
-                }
-                .font(LegendNextTypography.supporting)
-                .foregroundStyle(LegendNextColor.navyElevated)
-                .accessibilityHint("Opens the dedicated App Store review sign-in.")
-
-                Text("Face ID is optional and can be enabled after sign in in Profile settings.")
-                    .font(LegendNextTypography.caption)
-                    .foregroundStyle(LegendNextColor.textSecondary)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, LegendNextSpacing.xl)
-
-                Spacer(minLength: LegendNextSpacing.section)
-            }
-            .frame(maxWidth: 520)
-            .padding(.horizontal, LegendNextSpacing.pageHorizontal)
-            .padding(.top, LegendNextSpacing.xl)
-            .padding(.bottom, LegendNextSpacing.lg)
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(LegendNextCanvas())
-            .toolbar(.hidden, for: .navigationBar)
-            .sheet(isPresented: $showingAppReviewSignIn) {
-                AppReviewSignInView()
-                    .environmentObject(session)
-            }
-        }
-    }
-}
-
-private struct AppReviewSignInView: View {
-    @Environment(\.dismiss) private var dismiss
-    @EnvironmentObject private var session: MobileSessionCoordinator
     @State private var username = ""
     @State private var password = ""
+    @State private var showsProvidedCredentials = false
+
+    private var normalizedUsername: String {
+        username.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var hasCompleteProvidedCredentials: Bool {
+        !normalizedUsername.isEmpty && !password.isEmpty
+    }
 
     var body: some View {
         NavigationStack {
-            Form {
-                Section {
-                    TextField("Username", text: $username)
-                        .textContentType(.username)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
+            ScrollView {
+                VStack(spacing: LegendNextSpacing.md) {
+                    VStack(spacing: LegendNextSpacing.sm) {
+                        LegendBrandLogo(maximumWidth: 78)
+                            .frame(width: 68, height: 68)
+                            .clipShape(Circle())
+                            .overlay {
+                                Circle()
+                                    .strokeBorder(
+                                        LegendNextColor.goldBright.opacity(0.72),
+                                        lineWidth: 1)
+                            }
+                            .accessibilityHidden(true)
 
-                    SecureField("Password", text: $password)
-                        .textContentType(.password)
-                } header: {
-                    Text("App Review Access")
-                } footer: {
-                    Text("Use the review credentials provided in App Store Connect.")
-                }
+                        Text("LEGEND ACCOUNT")
+                            .font(LegendNextTypography.eyebrow)
+                            .foregroundStyle(LegendNextColor.goldBright)
 
-                Section {
-                    Button("Sign In") {
-                        let submittedUsername = username
-                        let submittedPassword = password
-                        password = ""
-                        dismiss()
-                        session.signInForAppReview(
-                            username: submittedUsername,
-                            password: submittedPassword)
+                        Text("Secure sign in")
+                            .font(.system(size: 27, weight: .bold))
+                            .foregroundStyle(LegendNextColor.contactTitle)
+                        Text("Tap Sign in securely to continue with your Legend account.")
+                            .font(LegendNextTypography.supporting)
+                            .foregroundStyle(LegendNextColor.contactTitle.opacity(0.76))
+                            .multilineTextAlignment(.center)
                     }
-                    .disabled(
-                        username.trimmingCharacters(
-                            in: .whitespacesAndNewlines).isEmpty ||
-                        password.isEmpty)
-                }
-            }
-            .navigationTitle("App Review Sign In")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") {
-                        password = ""
-                        dismiss()
+                    .frame(maxWidth: .infinity)
+                    .padding(.horizontal, LegendNextSpacing.lg)
+                    .padding(.vertical, LegendNextSpacing.lg)
+                    .background {
+                        ZStack {
+                            LegendNextGradient.hero
+                            LegendNextGradient.heroGlow
+                        }
+                        .clipShape(
+                            RoundedRectangle(
+                                cornerRadius: 26,
+                                style: .continuous))
                     }
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 26, style: .continuous)
+                            .strokeBorder(LegendNextGradient.premiumStroke, lineWidth: 1)
+                    }
+                    .shadow(color: LegendNextColor.navy.opacity(0.16), radius: 20, y: 10)
+
+                    VStack(spacing: 0) {
+                        Button(action: toggleProvidedCredentials) {
+                            HStack(spacing: LegendNextSpacing.sm) {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("Were you given sign-in credentials?")
+                                        .font(LegendNextTypography.supporting)
+                                        .foregroundStyle(LegendNextColor.textPrimary)
+                                    Text("Optional access method")
+                                        .font(LegendNextTypography.caption)
+                                        .foregroundStyle(LegendNextColor.textSecondary)
+                                }
+                                Spacer(minLength: LegendNextSpacing.sm)
+                                Image(systemName: showsProvidedCredentials ? "chevron.up" : "chevron.down")
+                                    .font(.system(size: 14, weight: .semibold))
+                                    .foregroundStyle(LegendNextColor.navyElevated)
+                            }
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityHint(
+                            showsProvidedCredentials
+                                ? "Hides the provided credential fields."
+                                : "Shows fields for credentials supplied with access instructions.")
+
+                        if showsProvidedCredentials {
+                            Divider()
+                                .padding(.vertical, LegendNextSpacing.sm)
+
+                            VStack(alignment: .leading, spacing: LegendNextSpacing.sm) {
+                                TextField("Username", text: $username)
+                                    .textContentType(.username)
+                                    .textInputAutocapitalization(.never)
+                                    .autocorrectionDisabled()
+                                    .submitLabel(.next)
+
+                                Divider()
+
+                                SecureField("Password", text: $password)
+                                    .textContentType(.password)
+                                    .submitLabel(.go)
+                                    .onSubmit(signIn)
+
+                                Text("Enter the username and password you were provided, then use the same Sign in securely button below.")
+                                    .font(LegendNextTypography.caption)
+                                    .foregroundStyle(LegendNextColor.textSecondary)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                            .textFieldStyle(.plain)
+                        }
+                    }
+                    .padding(LegendNextSpacing.md)
+                    .background(LegendNextColor.surface)
+                    .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 18, style: .continuous)
+                            .strokeBorder(LegendNextColor.separator, lineWidth: 1)
+                    }
+
+                    Button("Sign in securely", action: signIn)
+                        .buttonStyle(LegendNextButtonStyle(kind: .primary))
+                        .frame(maxHeight: 48)
+                        .disabled(showsProvidedCredentials && !hasCompleteProvidedCredentials)
+                        .accessibilityHint(
+                            hasCompleteProvidedCredentials
+                                ? "Signs in with the provided Legend credentials."
+                                : "Opens secure Legend sign-in and verification.")
+
+                    Text("Face ID is optional and can be enabled after sign in in Profile settings.")
+                        .font(LegendNextTypography.caption)
+                        .foregroundStyle(LegendNextColor.textSecondary)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, LegendNextSpacing.xl)
                 }
+                .frame(maxWidth: 520)
+                .padding(.horizontal, LegendNextSpacing.pageHorizontal)
+                .padding(.top, LegendNextSpacing.xl)
+                .padding(.bottom, LegendNextSpacing.lg)
+                .frame(maxWidth: .infinity)
             }
+            .scrollDismissesKeyboard(.interactively)
+            .background(LegendNextCanvas())
+            .toolbar(.hidden, for: .navigationBar)
+        }
+    }
+
+    private func signIn() {
+        if showsProvidedCredentials && hasCompleteProvidedCredentials {
+            let submittedUsername = normalizedUsername
+            let submittedPassword = password
+            password = ""
+            session.signInForAppReview(
+                username: submittedUsername,
+                password: submittedPassword)
+        } else if !showsProvidedCredentials {
+            session.signIn()
+        }
+    }
+
+    private func toggleProvidedCredentials() {
+        showsProvidedCredentials.toggle()
+        if !showsProvidedCredentials {
+            username = ""
+            password = ""
         }
     }
 }

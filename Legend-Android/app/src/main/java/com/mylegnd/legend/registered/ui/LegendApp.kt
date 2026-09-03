@@ -201,9 +201,16 @@ private fun SignInScreen(
     onAppReviewSignIn: (String, String) -> Unit,
 ) {
     val activity = LocalActivity.current
-    var appReviewOpen by remember { mutableStateOf(false) }
+    var username by remember { mutableStateOf("") }
+    var password by remember { mutableStateOf("") }
+    var showsProvidedCredentials by remember { mutableStateOf(false) }
+    val normalizedUsername = username.trim()
+    val hasCompleteProvidedCredentials = normalizedUsername.isNotEmpty() && password.isNotEmpty()
     LazyColumn(
-        modifier = Modifier.fillMaxSize().background(LegendColors.Canvas),
+        modifier = Modifier
+            .fillMaxSize()
+            .background(LegendColors.Canvas)
+            .imePadding(),
         contentPadding = PaddingValues(horizontal = LegendSpacing.PageHorizontal, vertical = LegendSpacing.Lg),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(LegendSpacing.Md),
@@ -224,24 +231,117 @@ private fun SignInScreen(
                 Text("LEGEND ACCOUNT", style = LegendTypography.Eyebrow, color = LegendColors.GoldBright)
                 Text("Secure sign in", style = LegendTypography.Title, color = LegendColors.OnNavy)
                 Text(
-                    "Verify your Legend account to continue.",
+                    "Tap Sign in securely to continue with your Legend account.",
                     style = LegendTypography.Supporting,
                     color = LegendColors.OnNavy.copy(alpha = 0.76f),
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                 )
             }
         }
         item {
-            LegendPrimaryButton("Sign in securely", modifier = Modifier.fillMaxWidth(), enabled = activity != null) {
-                activity?.let(onSignIn)
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(LegendShapes.Card)
+                    .background(LegendColors.Surface)
+                    .border(1.dp, LegendColors.Divider, LegendShapes.Card),
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable {
+                            showsProvidedCredentials = !showsProvidedCredentials
+                            if (!showsProvidedCredentials) {
+                                username = ""
+                                password = ""
+                            }
+                        }
+                        .padding(LegendSpacing.Md),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(LegendSpacing.Sm),
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            "Were you given sign-in credentials?",
+                            style = LegendTypography.Supporting,
+                            color = LegendColors.TextPrimary,
+                        )
+                        Text(
+                            "Optional access method",
+                            style = LegendTypography.Caption,
+                            color = LegendColors.TextSecondary,
+                        )
+                    }
+                    Icon(
+                        imageVector = if (showsProvidedCredentials) {
+                            Icons.Default.KeyboardArrowUp
+                        } else {
+                            Icons.Default.KeyboardArrowDown
+                        },
+                        contentDescription = if (showsProvidedCredentials) {
+                            "Hide provided credential fields"
+                        } else {
+                            "Show provided credential fields"
+                        },
+                        tint = LegendColors.NavyElevated,
+                    )
+                }
+                if (showsProvidedCredentials) {
+                    HorizontalDivider(color = LegendColors.Divider)
+                    Column(
+                        modifier = Modifier.padding(
+                            start = LegendSpacing.Md,
+                            top = LegendSpacing.Sm,
+                            end = LegendSpacing.Md,
+                            bottom = LegendSpacing.Md,
+                        ),
+                        verticalArrangement = Arrangement.spacedBy(LegendSpacing.Sm),
+                    ) {
+                        OutlinedTextField(
+                            value = username,
+                            onValueChange = { username = it },
+                            modifier = Modifier.fillMaxWidth(),
+                            label = { Text("Username") },
+                            singleLine = true,
+                            shape = LegendShapes.Control,
+                        )
+                        OutlinedTextField(
+                            value = password,
+                            onValueChange = { password = it },
+                            modifier = Modifier.fillMaxWidth(),
+                            label = { Text("Password") },
+                            singleLine = true,
+                            shape = LegendShapes.Control,
+                            visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
+                        )
+                        Text(
+                            "Enter the username and password you were provided, then use the same Sign in securely button below.",
+                            style = LegendTypography.Caption,
+                            color = LegendColors.TextSecondary,
+                        )
+                    }
+                }
             }
         }
-        item { TextButton(onClick = { appReviewOpen = true }) {
-            Text(
-                "App Review Sign In",
-                style = LegendTypography.Supporting,
-                color = LegendColors.NavyElevated,
-            )
-        } }
+        item {
+            LegendPrimaryButton(
+                "Sign in securely",
+                modifier = Modifier.fillMaxWidth(),
+                enabled = if (showsProvidedCredentials) {
+                    hasCompleteProvidedCredentials
+                } else {
+                    activity != null
+                },
+            ) {
+                if (showsProvidedCredentials && hasCompleteProvidedCredentials) {
+                    val submittedPassword = password
+                    password = ""
+                    onAppReviewSignIn(normalizedUsername, submittedPassword)
+                } else {
+                    activity?.let(onSignIn)
+                }
+            }
+        }
         item {
             Text(
                 "Device authentication is optional and can be enabled after sign in in Profile settings.",
@@ -252,69 +352,6 @@ private fun SignInScreen(
             )
         }
     }
-    if (appReviewOpen) {
-        AppReviewSignInDialog(
-            dismiss = { appReviewOpen = false },
-            submit = { username, password ->
-                appReviewOpen = false
-                onAppReviewSignIn(username, password)
-            },
-        )
-    }
-}
-
-@Composable
-private fun AppReviewSignInDialog(
-    dismiss: () -> Unit,
-    submit: (String, String) -> Unit,
-) {
-    var username by remember { mutableStateOf("") }
-    var password by remember { mutableStateOf("") }
-    AlertDialog(
-        onDismissRequest = {
-            password = ""
-            dismiss()
-        },
-        title = { Text("App Review Sign In", style = LegendTypography.Section) },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(LegendSpacing.Sm)) {
-                Text(
-                    "Use the review credentials provided in Google Play Console.",
-                    style = LegendTypography.Supporting,
-                    color = LegendColors.TextSecondary,
-                )
-                OutlinedTextField(
-                    value = username,
-                    onValueChange = { username = it },
-                    label = { Text("Username") },
-                    singleLine = true,
-                )
-                OutlinedTextField(
-                    value = password,
-                    onValueChange = { password = it },
-                    label = { Text("Password") },
-                    singleLine = true,
-                    visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
-                )
-            }
-        },
-        confirmButton = {
-            TextButton(
-                onClick = {
-                    val submittedPassword = password
-                    password = ""
-                    submit(username.trim(), submittedPassword)
-                },
-                enabled = username.isNotBlank() && password.isNotBlank(),
-            ) { Text("Sign In") }
-        },
-        dismissButton = {
-            TextButton(onClick = {
-                password = ""
-                dismiss()
-            }) { Text("Cancel") }
-        },
-    )
 }
 
 /** The same iOS-owned artwork bundled by Gradle; Android keeps no forked logo file. */
