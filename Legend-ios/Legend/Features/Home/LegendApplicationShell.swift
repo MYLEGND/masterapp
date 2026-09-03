@@ -10603,6 +10603,7 @@ private enum LegendFounderAiPresentationTokens {
     static let header = LegendNextColor.navy
     static let headerElevated = LegendNextColor.navyElevated
     static let action = LegendNextColor.goldBright
+    static let response = LegendNextColor.aiResponseRoyal
     static let onHeader = LegendSharedDesign.color("onNavy")
     static let onAction = LegendSharedDesign.color("onGold")
     static let paper = LegendNextColor.canvas
@@ -11106,7 +11107,7 @@ struct LegendFounderAiConversationView: View {
                     Text(message.content)
                         .font(.system(size: 15))
                         .foregroundStyle(
-                            LegendFounderAiPresentationTokens.text)
+                            LegendFounderAiPresentationTokens.onHeader)
                         .lineSpacing(4)
                         .textSelection(.enabled)
 
@@ -11114,33 +11115,53 @@ struct LegendFounderAiConversationView: View {
                         Text(authority)
                             .font(.system(size: 10, weight: .bold))
                             .foregroundStyle(
-                                authority == "OpenAI"
-                                    ? LegendNextColor.royal
-                                    : LegendNextColor.success)
+                                LegendFounderAiPresentationTokens.onHeader)
                             .padding(.horizontal, 8)
                             .padding(.vertical, 4)
                             .background(
-                                authority == "OpenAI"
-                                    ? LegendNextColor.brandBlueSurface
-                                    : LegendNextColor.success.opacity(0.13),
+                                LegendFounderAiPresentationTokens.onHeader
+                                    .opacity(0.14),
                                 in: Capsule())
+                            .overlay {
+                                Capsule()
+                                    .strokeBorder(
+                                        LegendFounderAiPresentationTokens
+                                            .onHeader
+                                            .opacity(0.26),
+                                        lineWidth: 1)
+                            }
                     }
                 }
                 .padding(
-                    .leading,
-                    10)
+                    .horizontal,
+                    12)
                 .padding(
-                    .bottom,
-                    13)
-                .overlay(alignment: .leading) {
-                    Rectangle()
-                        .fill(LegendNextGradient.gold)
-                        .frame(width: 3)
-                        .shadow(
-                            color: LegendFounderAiPresentationTokens.action
-                                .opacity(0.34),
-                            radius: 5)
+                    .vertical,
+                    10)
+                .background(
+                    LegendFounderAiPresentationTokens.response,
+                    in:
+                        UnevenRoundedRectangle(
+                            topLeadingRadius: 15,
+                            bottomLeadingRadius: 4,
+                            bottomTrailingRadius: 15,
+                            topTrailingRadius: 15))
+                .overlay {
+                    UnevenRoundedRectangle(
+                        topLeadingRadius: 15,
+                        bottomLeadingRadius: 4,
+                        bottomTrailingRadius: 15,
+                        topTrailingRadius: 15)
+                        .strokeBorder(
+                            LegendFounderAiPresentationTokens.onHeader
+                                .opacity(0.24),
+                            lineWidth: 1)
                 }
+                .shadow(
+                    color: LegendFounderAiPresentationTokens.response
+                        .opacity(0.28),
+                    radius: 12,
+                    y: 5)
 
                 Spacer(minLength: 0)
             }

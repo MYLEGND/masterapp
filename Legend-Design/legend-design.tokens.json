@@ -7,6 +7,7 @@
     "navy": { "light": "#10254C" },
     "navyElevated": { "light": "#3159BF" },
     "royal": { "light": "#234284" },
+    "aiResponseRoyal": { "light": "#315FD1", "dark": "#315FD1" },
     "gold": { "light": "#A68023" },
     "goldBright": { "light": "#E0B853" },
     "goldSoft": { "light": "#F6E8BF" },

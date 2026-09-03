@@ -63,6 +63,7 @@ object LegendColors {
     val Navy get() = LegendDesignAuthority.color("navy")
     val NavyElevated get() = LegendDesignAuthority.color("navyElevated")
     val Royal get() = LegendDesignAuthority.color("royal")
+    val AiResponseRoyal get() = LegendDesignAuthority.color("aiResponseRoyal")
     val Gold get() = LegendDesignAuthority.color("gold")
     val GoldBright get() = LegendDesignAuthority.color("goldBright")
     val GoldSoft get() = LegendDesignAuthority.color("goldSoft")

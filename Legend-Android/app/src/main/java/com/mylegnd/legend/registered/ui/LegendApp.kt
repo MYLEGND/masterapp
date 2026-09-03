@@ -376,7 +376,7 @@ private fun SignInScreen(
     }
 }
 
-/** The same iOS-owned artwork bundled by Gradle; Android keeps no forked logo file. */
+/** Shared brand artwork bundled from the canonical iOS asset by Gradle. */
 @Composable
 private fun LegendBrandArtwork(modifier: Modifier = Modifier, size: Dp = 96.dp) {
     AsyncImage(
@@ -3024,7 +3024,6 @@ private fun LegendRecipientPicker(
     isSending: Boolean,
     dismiss: () -> Unit,
 ) {
-    val context = LocalContext.current
     var search by remember { mutableStateOf("") }
     var scope by remember { mutableStateOf<String?>(null) }
     var isCreatingGroup by remember { mutableStateOf(false) }
@@ -3609,13 +3608,13 @@ private fun legendCompactTime(value: String): String = value.substringAfter('T',
 private enum class SocialCollection {
     POSTS,
     STORIES,
-    HACS;
+    SHORT_VIDEOS;
 
     val label: String
         get() = when (this) {
             POSTS -> "${LegendCopy.value("content.post")}s"
             STORIES -> "Stories"
-            HACS -> "${LegendCopy.value("content.hac")}s"
+            SHORT_VIDEOS -> "${LegendCopy.value("content.hac")}s"
         }
 }
 
@@ -3819,7 +3818,7 @@ private fun SocialScreen(
     LaunchedEffect(state, commentingPost?.id) {
         val current = commentingPost ?: return@LaunchedEffect
         val snapshot = (state as? LoadState.Data<SocialSnapshot>)?.value ?: return@LaunchedEffect
-        (snapshot.posts + snapshot.stories + snapshot.hacs).firstOrNull { it.id == current.id }?.let { commentingPost = it }
+        (snapshot.posts + snapshot.stories + snapshot.shortVideos).firstOrNull { it.id == current.id }?.let { commentingPost = it }
     }
 
     when (state) {
@@ -3830,8 +3829,8 @@ private fun SocialScreen(
             // iOS's For You tab is not a second mixed social feed. It is the
             // dedicated full-viewport Hac experience, backed by the exact same
             // server-issued Hac projection as the Home and profile surfaces.
-            val hacs = snapshot.hacs.filter { it.legendContentType == LegendSocialContentType.HAC }
-            if (hacs.isEmpty()) {
+            val shortVideos = snapshot.shortVideos.filter { it.legendContentType == LegendSocialContentType.HAC }
+            if (shortVideos.isEmpty()) {
                 Box(Modifier.fillMaxSize().background(LegendColors.Midnight)) {
                     Column(
                         modifier = Modifier.align(Alignment.Center).padding(LegendSpacing.Xl),
@@ -3839,18 +3838,18 @@ private fun SocialScreen(
                         verticalArrangement = Arrangement.spacedBy(LegendSpacing.Sm),
                     ) {
                         Icon(Icons.Default.VideoLibrary, null, tint = LegendColors.GoldBright, modifier = Modifier.size(32.dp))
-                        Text("No Hacs yet", style = LegendTypography.Section, color = LegendColors.OnNavy)
+                        Text("No ${LegendCopy.value("content.hac")}s yet", style = LegendTypography.Section, color = LegendColors.OnNavy)
                         Text(
-                            "Video Hacs will appear here as they are shared.",
+                            "Video ${LegendCopy.value("content.hac")}s will appear here as they are shared.",
                             style = LegendTypography.Supporting,
                             color = LegendColors.GoldSoft,
                         )
                     }
                 }
             } else {
-                val pagerState = rememberPagerState(pageCount = { hacs.size })
-                LaunchedEffect(pagerState.currentPage, hacs) {
-                    hacs.getOrNull(pagerState.currentPage)?.let { hac ->
+                val pagerState = rememberPagerState(pageCount = { shortVideos.size })
+                LaunchedEffect(pagerState.currentPage, shortVideos) {
+                    shortVideos.getOrNull(pagerState.currentPage)?.let { hac ->
                         // The server owns view accounting. Android reports an
                         // open event only; it does not derive engagement rules.
                         viewModel.recordView(hac.id, storyInteractionType = "Opened")
@@ -3860,19 +3859,19 @@ private fun SocialScreen(
                     state = pagerState,
                     modifier = Modifier.fillMaxSize().background(LegendColors.Midnight),
                     beyondViewportPageCount = 1,
-                    key = { page -> hacs[page].id },
+                    key = { page -> shortVideos[page].id },
                 ) { page ->
                     LegendHacViewportPage(
-                        post = hacs[page],
+                        post = shortVideos[page],
                         isActive = pagerState.currentPage == page,
                         mediaRepository = mediaRepository,
                         participantType = participantType,
-                        openProfile = { profileAuthor = hacs[page].author },
-                        react = { viewModel.react(hacs[page].id) },
-                        comment = { commentingPost = hacs[page] },
-                        repost = { viewModel.toggleRepost(hacs[page].id) },
-                        save = { viewModel.toggleSave(hacs[page].id) },
-                        share = { sharePost(hacs[page]) },
+                        openProfile = { profileAuthor = shortVideos[page].author },
+                        react = { viewModel.react(shortVideos[page].id) },
+                        comment = { commentingPost = shortVideos[page] },
+                        repost = { viewModel.toggleRepost(shortVideos[page].id) },
+                        save = { viewModel.toggleSave(shortVideos[page].id) },
+                        share = { sharePost(shortVideos[page]) },
                     )
                 }
             }
@@ -5126,7 +5125,7 @@ private val Int?.orZero get() = this ?: 0
 private val SocialCollection.socialContentType: LegendSocialContentType
     get() = when (this) {
         SocialCollection.POSTS -> LegendSocialContentType.POST
-        SocialCollection.HACS -> LegendSocialContentType.HAC
+        SocialCollection.SHORT_VIDEOS -> LegendSocialContentType.HAC
         SocialCollection.STORIES -> LegendSocialContentType.STORY
     }
 
@@ -5289,7 +5288,7 @@ private fun LegendProfileIdentityCard(
             if (account.isPhoneVisible) account.phone?.takeIf(String::isNotBlank)?.let { LegendProfileDetail(Icons.Default.Phone, it, LegendColors.TextSecondary) }
 
             Row(Modifier.fillMaxWidth().padding(top = LegendSpacing.Xs), horizontalArrangement = Arrangement.SpaceEvenly) {
-                LegendProfileMetric(hacCount, "Hacs", Modifier.weight(1f))
+                LegendProfileMetric(hacCount, "${LegendCopy.value("content.hac")}s", Modifier.weight(1f))
                 LegendProfileMetric(metrics?.followingCount.orZero, "Following", Modifier.weight(1f))
                 LegendProfileMetric(metrics?.followerCount.orZero, "Followers", Modifier.weight(1f))
             }
@@ -5324,7 +5323,7 @@ private fun LegendProfileContentSelector(selected: SocialCollection, select: (So
             .padding(LegendSpacing.Tiny),
         horizontalArrangement = Arrangement.spacedBy(LegendSpacing.Xs),
     ) {
-        listOf(SocialCollection.POSTS, SocialCollection.HACS, SocialCollection.STORIES).forEach { option ->
+        listOf(SocialCollection.POSTS, SocialCollection.SHORT_VIDEOS, SocialCollection.STORIES).forEach { option ->
             val isSelected = option == selected
             TextButton(
                 onClick = { select(option) },
@@ -5340,7 +5339,7 @@ private fun LegendProfileContentSelector(selected: SocialCollection, select: (So
                     Icon(
                         when (option) {
                             SocialCollection.POSTS -> Icons.Default.GridView
-                            SocialCollection.HACS -> Icons.Default.VideoLibrary
+                            SocialCollection.SHORT_VIDEOS -> Icons.Default.VideoLibrary
                             SocialCollection.STORIES -> Icons.Default.RadioButtonUnchecked
                         },
                         null,
@@ -5586,7 +5585,7 @@ private fun LegendCreatorInsightsSheet(
                         Column(Modifier.padding(LegendSpacing.CardContent), verticalArrangement = Arrangement.spacedBy(LegendSpacing.Xs)) {
                             Text("CONTENT AND COMMUNITY", style = LegendTypography.Eyebrow, color = LegendColors.Gold)
                             LegendCreatorInsightValue("Posts", profileMetrics?.postCount?.toString() ?: "—")
-                            LegendCreatorInsightValue("Hacs", profileMetrics?.videoCount?.toString() ?: "—")
+                            LegendCreatorInsightValue("${LegendCopy.value("content.hac")}s", profileMetrics?.videoCount?.toString() ?: "—")
                             LegendCreatorInsightValue("Stories", profileMetrics?.storyCount?.toString() ?: "—")
                             LegendCreatorInsightValue("Following", profileMetrics?.followingCount?.toString() ?: "—")
                             LegendCreatorInsightValue("Profile visits", insights.profileVisits.toString())
@@ -5595,7 +5594,7 @@ private fun LegendCreatorInsightsSheet(
                     }
                 }
                 item { LegendCreatorInsightList("Top posts", "Publish a post to begin building performance history.", insights.topPosts) }
-                item { LegendCreatorInsightList("Top Hacs", "Publish a Hac to begin building Hac performance history.", insights.topVideos) }
+                item { LegendCreatorInsightList("Top ${LegendCopy.value("content.hac")}s", "Publish a ${LegendCopy.value("content.hac")} to begin building ${LegendCopy.value("content.hac")} performance history.", insights.topVideos) }
                 item { LegendCreatorInsightList("Top stories", "Publish a story to begin building story performance history.", insights.topStories) }
             }
         }
@@ -6022,7 +6021,7 @@ private enum class LegendFounderResource(val apiValue: String, val title: String
     LanguageTranslation("LanguageTranslation", "Language translation", "Grant or revoke access to LEGEND language translation."),
     ScriptureManagement("ScriptureManagement", "Daily Scripture", "Delegate Daily Scripture scheduling and editorial management."),
     CommunityManagement("CommunityManagement", "Community safety", "Delegate report triage; content removal remains Founder-only."),
-    SocialContentPriority("SocialContentPriority", "Social content priority", "Prioritize eligible Posts and Hacs above standard feed ranking."),
+    SocialContentPriority("SocialContentPriority", "Social content priority", "Prioritize eligible Posts and short videos above standard feed ranking."),
 }
 
 @Composable

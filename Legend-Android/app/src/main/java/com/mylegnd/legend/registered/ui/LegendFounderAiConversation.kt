@@ -11,7 +11,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
@@ -21,7 +20,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -465,11 +463,6 @@ private fun FounderAiModeButton(
 private fun FounderAiMessageBubble(message: FounderAiTranscriptMessage) {
     val isUser = message.role == "user"
     val authority = message.responseAuthority?.trim()
-    val accent = when (authority) {
-        "LegendAi" -> LegendColors.Success
-        "OpenAITeacher" -> LegendColors.Royal
-        else -> LegendColors.TextTertiary
-    }
     if (isUser) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -491,37 +484,32 @@ private fun FounderAiMessageBubble(message: FounderAiTranscriptMessage) {
         }
     } else {
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(IntrinsicSize.Min),
+            modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(LegendSpacing.Xs),
+            verticalAlignment = Alignment.Top,
         ) {
             FounderAiMark(28.dp)
-            Box(
-                Modifier
-                    .fillMaxHeight()
-                    .width(3.dp)
-                    .background(LegendGradients.Gold),
-            )
             Column(
                 modifier = Modifier
-                    .weight(1f)
-                    .padding(start = LegendSpacing.Xs, bottom = LegendSpacing.Sm),
+                    .weight(1f, fill = false)
+                    .widthIn(max = 520.dp)
+                    .shadow(8.dp, LegendShapes.Card)
+                    .clip(LegendShapes.Card)
+                    .background(LegendColors.AiResponseRoyal)
+                    .border(1.dp, LegendColors.OnNavy.copy(alpha = 0.24f), LegendShapes.Card)
+                    .padding(horizontal = LegendSpacing.Sm, vertical = LegendSpacing.Sm),
                 verticalArrangement = Arrangement.spacedBy(LegendSpacing.Xs),
             ) {
-                Text(message.content, style = LegendTypography.Body, color = LegendColors.TextPrimary)
+                Text(message.content, style = LegendTypography.Body, color = LegendColors.OnNavy)
                 if (authority in setOf("LegendAi", "OpenAITeacher")) {
                     Text(
                         if (authority == "LegendAi") "Legend® Ai" else "OpenAI",
                         style = LegendTypography.Label,
-                        color = accent,
+                        color = LegendColors.OnNavy,
                         fontWeight = FontWeight.Bold,
                         modifier = Modifier
-                            .clip(CircleShape)
-                            .background(
-                                if (authority == "LegendAi") LegendColors.Success.copy(alpha = 0.13f)
-                                else LegendColors.BrandBlueSurface,
-                            )
+                            .background(LegendColors.OnNavy.copy(alpha = 0.14f), CircleShape)
+                            .border(1.dp, LegendColors.OnNavy.copy(alpha = 0.26f), CircleShape)
                             .padding(horizontal = LegendSpacing.Xs, vertical = LegendSpacing.Micro),
                     )
                 }
