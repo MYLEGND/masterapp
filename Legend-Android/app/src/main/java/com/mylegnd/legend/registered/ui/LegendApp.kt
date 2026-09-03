@@ -5,12 +5,14 @@ package com.mylegnd.legend.registered.ui
 import android.annotation.SuppressLint
 import android.app.Activity
 import android.Manifest
+import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.net.Uri
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
+import android.webkit.WebResourceError
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
@@ -21,6 +23,7 @@ import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
@@ -42,14 +45,21 @@ import androidx.compose.material.icons.automirrored.filled.TrendingUp
 import androidx.compose.material.icons.automirrored.filled.ShowChart
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
+import androidx.compose.material3.ModalBottomSheet as MaterialModalBottomSheet
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -106,6 +116,14 @@ import kotlinx.coroutines.launch
 import coil3.compose.AsyncImage
 import java.io.ByteArrayInputStream
 import java.time.LocalDate
+import java.time.LocalDateTime
+import java.time.OffsetDateTime
+import java.time.format.DateTimeFormatter
+import java.text.NumberFormat
+import java.util.Locale
+import java.util.TimeZone
+import kotlin.time.Duration.Companion.milliseconds
+import kotlin.time.Duration.Companion.minutes
 
 @Composable
 fun LegendRoot(sessionViewModel: SessionViewModel, container: LegendContainer) {
@@ -171,12 +189,12 @@ private fun ModalBottomSheet(
     onDismissRequest: () -> Unit,
     modifier: Modifier = Modifier,
     sheetState: SheetState = rememberModalBottomSheetState(),
-    containerColor: androidx.compose.ui.graphics.Color = BottomSheetDefaults.ContainerColor,
-    contentColor: androidx.compose.ui.graphics.Color = contentColorFor(containerColor),
+    containerColor: Color = BottomSheetDefaults.ContainerColor,
+    contentColor: Color = contentColorFor(containerColor),
     dragHandle: @Composable (() -> Unit)? = { BottomSheetDefaults.DragHandle() },
     content: @Composable ColumnScope.() -> Unit,
 ) {
-    androidx.compose.material3.ModalBottomSheet(
+    MaterialModalBottomSheet(
         onDismissRequest = onDismissRequest,
         modifier = modifier,
         sheetState = sheetState,
@@ -238,7 +256,7 @@ private fun SignInScreen(
                     "Tap Sign in securely to continue with your Legend account.",
                     style = LegendTypography.Supporting,
                     color = LegendColors.OnNavy.copy(alpha = 0.76f),
-                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                    textAlign = TextAlign.Center,
                 )
             }
         }
@@ -316,7 +334,7 @@ private fun SignInScreen(
                             label = { Text("Password") },
                             singleLine = true,
                             shape = LegendShapes.Control,
-                            visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
+                            visualTransformation = PasswordVisualTransformation(),
                         )
                         Text(
                             "Enter the username and password you were provided, then use the same Sign in securely button below.",
@@ -351,7 +369,7 @@ private fun SignInScreen(
                 "Device authentication is optional and can be enabled after sign in in Profile settings.",
                 style = LegendTypography.Caption,
                 color = LegendColors.TextSecondary,
-                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                textAlign = TextAlign.Center,
                 modifier = Modifier.padding(horizontal = LegendSpacing.Xl),
             )
         }
@@ -360,11 +378,11 @@ private fun SignInScreen(
 
 /** The same iOS-owned artwork bundled by Gradle; Android keeps no forked logo file. */
 @Composable
-private fun LegendBrandArtwork(modifier: Modifier = Modifier, size: androidx.compose.ui.unit.Dp = 96.dp) {
+private fun LegendBrandArtwork(modifier: Modifier = Modifier, size: Dp = 96.dp) {
     AsyncImage(
         model = "file:///android_asset/legend-logo.png",
         contentDescription = "LEGEND®",
-        contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+        contentScale = ContentScale.Crop,
         modifier = modifier
             .size(size)
             .clip(CircleShape),
@@ -443,7 +461,7 @@ private fun RoleSelectionScreen(
                 modifier = Modifier.fillMaxWidth().heightIn(min = LegendSize.MinimumTapTarget),
                 shape = LegendShapes.Compact,
                 colors = ButtonDefaults.outlinedButtonColors(contentColor = LegendColors.Error),
-                border = androidx.compose.foundation.BorderStroke(
+                border = BorderStroke(
                     1.dp,
                     LegendColors.Error.copy(alpha = 0.22f),
                 ),
@@ -678,7 +696,7 @@ private fun LegendAccountSwitcherSheet(
                     modifier = Modifier.fillMaxWidth().heightIn(min = LegendSize.ControlHeight),
                     shape = LegendShapes.Control,
                     colors = ButtonDefaults.outlinedButtonColors(contentColor = LegendColors.OnNavy),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, LegendColors.Gold.copy(alpha = 0.46f)),
+                    border = BorderStroke(1.dp, LegendColors.Gold.copy(alpha = 0.46f)),
                 ) {
                     Icon(if (role.equals("Agent", true)) Icons.Default.BusinessCenter else Icons.Default.Person, null)
                     Spacer(Modifier.width(LegendSpacing.Xs))
@@ -694,7 +712,7 @@ private fun LegendAccountSwitcherSheet(
                     modifier = Modifier.fillMaxWidth().heightIn(min = LegendSize.ControlHeight),
                     shape = LegendShapes.Control,
                     colors = ButtonDefaults.outlinedButtonColors(contentColor = LegendColors.OnNavy),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, LegendColors.Divider),
+                    border = BorderStroke(1.dp, LegendColors.Divider),
                 ) {
                     Icon(Icons.Default.AccountCircle, null)
                     Spacer(Modifier.width(LegendSpacing.Xs))
@@ -727,7 +745,7 @@ private fun LegendAccountSwitcherSheet(
                     style = LegendTypography.Caption,
                     color = LegendColors.GoldSoft,
                     modifier = Modifier.fillMaxWidth(),
-                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                    textAlign = TextAlign.Center,
                 )
             }
         }
@@ -992,7 +1010,7 @@ private fun DiscoverScreen(viewModel: DiscoveryViewModel, socialViewModel: Socia
     var editingJourney by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { viewModel.load() }
     LaunchedEffect(query) {
-        kotlinx.coroutines.delay(120)
+        delay(120.milliseconds)
         viewModel.search(query)
     }
     when (page) {
@@ -1097,7 +1115,7 @@ private fun LegendDiscoverEmptyState(query: String) {
         Column(Modifier.padding(LegendSpacing.Lg), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(LegendSpacing.Sm)) {
             Icon(Icons.Default.PersonSearch, null, tint = LegendColors.GoldBright, modifier = Modifier.size(32.dp))
             Text(if (query.isBlank()) "No members yet" else "No members found", style = LegendTypography.Section, color = LegendColors.OnNavy)
-            Text(if (query.isBlank()) "Active LEGEND members and agents will appear here." else "Try another name, goal, interest, or location.", style = LegendTypography.Supporting, color = LegendColors.GoldSoft, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+            Text(if (query.isBlank()) "Active LEGEND members and agents will appear here." else "Try another name, goal, interest, or location.", style = LegendTypography.Supporting, color = LegendColors.GoldSoft, textAlign = TextAlign.Center)
         }
     }
 }
@@ -1370,7 +1388,7 @@ private fun JourneyCirclesSection(
                     if (dashboard.connections.isNotEmpty()) {
                         LegendJourneySectionLabel("Your connections")
                         dashboard.connections.take(3).forEach { connection ->
-                            LegendJourneyConnectionRow(connection, mediaRepository, participantType, null, null, { disconnect(connection.id) })
+                            LegendJourneyConnectionRow(connection, mediaRepository, participantType, null, null) { disconnect(connection.id) }
                         }
                     }
                     if (dashboard.recommendations.isEmpty() && dashboard.connections.isEmpty() && dashboard.requests.isEmpty()) {
@@ -1946,7 +1964,7 @@ private fun LegendClientRowSkeleton() {
 
 /**
  * Android host for the exact same short-lived AgentPortal client-intake page
- * used by iOS. There are intentionally no Kotlin fields or CRM mutations
+ * used by iOS. There are intentionally no platform-specific fields or CRM mutations
  * here: the Razor page remains the only implementation of that workflow.
  */
 @Composable
@@ -2077,7 +2095,7 @@ private class LegendClientCreationPortalWebViewClient(
         }
     }
 
-    override fun onReceivedError(view: WebView, request: WebResourceRequest, error: android.webkit.WebResourceError) {
+    override fun onReceivedError(view: WebView, request: WebResourceRequest, error: WebResourceError) {
         if (request.isForMainFrame && !completed) {
             onFailure(error.description?.toString() ?: "The client intake could not be opened. Please try again.")
         }
@@ -2130,7 +2148,6 @@ private fun LegendHomeBrandBar(
         if (showsHomeActions && create != null) {
             LegendHomeChromeButton(
                 icon = Icons.Default.Add,
-                description = "Create a LEGEND update",
                 onClick = create,
                 modifier = Modifier.align(Alignment.CenterStart),
             )
@@ -2154,8 +2171,7 @@ private fun LegendHomeBrandBar(
 
 @Composable
 private fun LegendHomeChromeButton(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    description: String,
+    icon: ImageVector,
     modifier: Modifier = Modifier,
     onClick: () -> Unit,
 ) = IconButton(
@@ -2165,7 +2181,7 @@ private fun LegendHomeChromeButton(
         .clip(CircleShape)
         .background(LegendColors.Navy),
 ) {
-    Icon(icon, contentDescription = description, tint = LegendColors.OnNavy)
+    Icon(icon, contentDescription = "Create a LEGEND update", tint = LegendColors.OnNavy)
 }
 
 @Composable
@@ -2345,7 +2361,7 @@ private fun LegendStoryRail(
                     color = LegendColors.TextPrimary,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
-                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                    textAlign = TextAlign.Center,
                 )
             }
         }
@@ -2991,7 +3007,7 @@ private fun LegendMessagingEmptyCard(title: String, detail: String, action: () -
         Column(Modifier.padding(LegendSpacing.Lg), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(LegendSpacing.Sm)) {
             Icon(Icons.Default.ChatBubbleOutline, null, tint = LegendColors.Gold, modifier = Modifier.size(32.dp))
             Text(title, style = LegendTypography.Section, color = LegendColors.TextPrimary)
-            Text(detail, style = LegendTypography.Supporting, color = LegendColors.TextSecondary, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+            Text(detail, style = LegendTypography.Supporting, color = LegendColors.TextSecondary, textAlign = TextAlign.Center)
             LegendPrimaryButton("New message", onClick = action)
         }
     }
@@ -3027,8 +3043,8 @@ private fun LegendRecipientPicker(
                 TextButton(onClick = dismiss) { Text("Cancel", color = LegendColors.Gold) }
             }
             Row(horizontalArrangement = Arrangement.spacedBy(LegendSpacing.Xs), modifier = Modifier.padding(top = LegendSpacing.Xs)) {
-                FilterChip(selected = !isCreatingGroup, onClick = { isCreatingGroup = false; groupRecipients = emptyList() }, label = { Text("Direct") }, colors = legendCompactChipColors(!isCreatingGroup))
-                FilterChip(selected = isCreatingGroup, onClick = { isCreatingGroup = true }, label = { Text("Group") }, colors = legendCompactChipColors(isCreatingGroup))
+                FilterChip(selected = !isCreatingGroup, onClick = { isCreatingGroup = false; groupRecipients = emptyList() }, label = { Text("Direct") }, colors = legendCompactChipColors())
+                FilterChip(selected = isCreatingGroup, onClick = { isCreatingGroup = true }, label = { Text("Group") }, colors = legendCompactChipColors())
             }
             if (isCreatingGroup) {
                 Row(Modifier.padding(top = LegendSpacing.Sm), verticalAlignment = Alignment.CenterVertically) {
@@ -3106,7 +3122,7 @@ private fun LegendRecipientPicker(
 }
 
 @Composable
-private fun legendCompactChipColors(selected: Boolean) = FilterChipDefaults.filterChipColors(
+private fun legendCompactChipColors() = FilterChipDefaults.filterChipColors(
     containerColor = LegendColors.SurfaceInset,
     labelColor = LegendColors.TextSecondary,
     selectedContainerColor = LegendColors.Navy,
@@ -3298,7 +3314,7 @@ private fun LegendGroupMeetingEditorSheet(
     var frequency by remember(conversation.id) { mutableStateOf(existing?.schedule?.frequency ?: "Weekly") }
     var weekday by remember(conversation.id) { mutableStateOf(existing?.schedule?.weekdays?.firstOrNull() ?: "Wednesday") }
     var localTime by remember(conversation.id) { mutableStateOf(existing?.schedule?.localTime ?: "18:00") }
-    var timeZoneId by remember(conversation.id) { mutableStateOf(existing?.schedule?.timeZoneId ?: java.util.TimeZone.getDefault().id) }
+    var timeZoneId by remember(conversation.id) { mutableStateOf(existing?.schedule?.timeZoneId ?: TimeZone.getDefault().id) }
     var startsUtc by remember(conversation.id) { mutableStateOf(existing?.schedule?.startsUtc.orEmpty()) }
     var customDescription by remember(conversation.id) { mutableStateOf(existing?.schedule?.customDescription.orEmpty()) }
     val host = conversation.participants.firstOrNull { "${it.identity.userId}:${it.identity.participantType}" == hostKey }
@@ -3366,14 +3382,14 @@ private fun LegendGroupMeetingEditorSheet(
                         Text("FREQUENCY", style = LegendTypography.Eyebrow, color = LegendColors.Gold)
                         LazyRow(horizontalArrangement = Arrangement.spacedBy(LegendSpacing.Xs)) {
                             items(listOf("OneTime", "Daily", "Weekly", "Biweekly", "Monthly", "Custom")) { candidate ->
-                                FilterChip(selected = frequency == candidate, onClick = { frequency = candidate }, label = { Text(candidate.replace("OneTime", "One time").replace("Biweekly", "Every other week")) }, colors = legendCompactChipColors(frequency == candidate))
+                                FilterChip(selected = frequency == candidate, onClick = { frequency = candidate }, label = { Text(candidate.replace("OneTime", "One time").replace("Biweekly", "Every other week")) }, colors = legendCompactChipColors())
                             }
                         }
                     }
                     if (needsWeekday) item {
                         Text("WEEKDAY", style = LegendTypography.Eyebrow, color = LegendColors.Gold)
                         LazyRow(horizontalArrangement = Arrangement.spacedBy(LegendSpacing.Xs)) {
-                            items(listOf("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")) { day -> FilterChip(selected = weekday == day, onClick = { weekday = day }, label = { Text(day.take(3)) }, colors = legendCompactChipColors(weekday == day)) }
+                            items(listOf("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")) { day -> FilterChip(selected = weekday == day, onClick = { weekday = day }, label = { Text(day.take(3)) }, colors = legendCompactChipColors()) }
                         }
                     }
                     if (recurring) {
@@ -3440,7 +3456,7 @@ private fun MessageThread(
     participantType: String,
     isSending: Boolean,
     back: () -> Unit,
-    send: (android.content.Context, String, String, String?, List<Uri>) -> Unit,
+    send: (Context, String, String, String?, List<Uri>) -> Unit,
     loadOlder: () -> Unit,
     delete: (ConversationMessage) -> Unit,
     manageGroup: (ConversationDetail) -> Unit,
@@ -3460,7 +3476,7 @@ private fun MessageThread(
                     Text(conversation.title, style = LegendTypography.CardTitle, color = LegendColors.OnNavy, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     conversation.purpose?.let { Text(it, style = LegendTypography.Label, color = LegendColors.GoldSoft, maxLines = 1) }
                 }
-                conversation.meeting?.linkLabel?.let { Icon(Icons.Default.Event, "${it} meeting", tint = LegendColors.Gold) }
+                conversation.meeting?.linkLabel?.let { Icon(Icons.Default.Event, "$it meeting", tint = LegendColors.Gold) }
                 if (conversation.canManageMembers || conversation.canManageCollaborators || conversation.canManagePromotion || conversation.canDeleteGroup) {
                     IconButton(onClick = { manageGroup(conversation) }) { Icon(Icons.Default.Group, "Manage group", tint = LegendColors.GoldBright) }
                 }
@@ -3596,9 +3612,9 @@ private enum class SocialCollection {
     HACS;
 
     val label: String
-        get() = if (this == STORIES) "Stories" else when (this) {
+        get() = when (this) {
             POSTS -> "${LegendCopy.value("content.post")}s"
-            STORIES -> "${LegendCopy.value("content.story")}s"
+            STORIES -> "Stories"
             HACS -> "${LegendCopy.value("content.hac")}s"
         }
 }
@@ -3626,7 +3642,7 @@ private fun LegendGlobalSocialShareSheet(
     var recipientBeingSent by remember(post.id) { mutableStateOf<String?>(null) }
 
     LaunchedEffect(query) {
-        kotlinx.coroutines.delay(120)
+        delay(120.milliseconds)
         messaging.loadRecipients(query.trim().takeIf(String::isNotBlank))
     }
 
@@ -3675,10 +3691,10 @@ private fun LegendGlobalSocialShareSheet(
                         .clickable {
                             social.recordShare(post.id)
                             context.startActivity(
-                                android.content.Intent.createChooser(
-                                    android.content.Intent(android.content.Intent.ACTION_SEND)
+                                Intent.createChooser(
+                                    Intent(Intent.ACTION_SEND)
                                         .setType("text/plain")
-                                        .putExtra(android.content.Intent.EXTRA_TEXT, externalMessageBody),
+                                        .putExtra(Intent.EXTRA_TEXT, externalMessageBody),
                                     "Share outside LEGEND",
                                 ),
                             )
@@ -3906,7 +3922,7 @@ private fun LegendHacViewportPage(
                 repository = mediaRepository,
                 contentDescription = video.accessibilityText,
                 modifier = Modifier.fillMaxSize(),
-                contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                contentScale = ContentScale.Crop,
                 videoHeight = null,
                 autoPlayVideo = isActive,
                 showVideoControls = false,
@@ -3923,7 +3939,7 @@ private fun LegendHacViewportPage(
         Box(
             Modifier
                 .fillMaxSize()
-                .background(Brush.verticalGradient(listOf(androidx.compose.ui.graphics.Color.Transparent, LegendColors.Midnight.copy(alpha = 0.78f)))),
+                .background(Brush.verticalGradient(listOf(Color.Transparent, LegendColors.Midnight.copy(alpha = 0.78f)))),
         )
         Column(
             modifier = Modifier
@@ -3976,10 +3992,10 @@ private fun LegendHacViewportPage(
 @Composable
 private fun LegendHacAction(
     selected: Boolean,
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    icon: ImageVector,
     contentDescription: String,
     count: Int?,
-    tint: androidx.compose.ui.graphics.Color,
+    tint: Color,
     onClick: () -> Unit,
 ) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -3992,28 +4008,6 @@ private fun LegendHacAction(
             Icon(icon, contentDescription, tint = tint, modifier = Modifier.size(21.dp))
         }
         count?.let { Text(it.toString(), style = LegendTypography.Caption, color = LegendColors.OnNavy) }
-    }
-}
-
-@Composable
-private fun LegendStoryRail(
-    stories: List<SocialPost>,
-    mediaRepository: AuthenticatedMediaRepository,
-    participantType: String,
-    select: (SocialPost) -> Unit,
-) {
-    Column(verticalArrangement = Arrangement.spacedBy(LegendSpacing.Xs)) {
-        Text("Stories", style = LegendTypography.Section, color = LegendColors.TextPrimary)
-        LazyRow(horizontalArrangement = Arrangement.spacedBy(LegendSpacing.Md)) {
-            items(stories, key = { it.id }) { story ->
-                Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.width(72.dp).clickable { select(story) }) {
-                    Box(Modifier.size(60.dp).background(Brush.linearGradient(listOf(LegendColors.GoldBright, LegendColors.Gold)), CircleShape).padding(3.dp)) {
-                        LegendProtectedAvatar(story.author.avatar, story.author.displayName, participantType, mediaRepository, modifier = Modifier.fillMaxSize(), size = 54.dp)
-                    }
-                    Text(story.author.displayName, style = LegendTypography.Label, color = LegendColors.TextPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                }
-            }
-        }
     }
 }
 
@@ -4079,7 +4073,7 @@ private fun LegendSocialPostCard(
                         repository = mediaRepository,
                         contentDescription = item.accessibilityText,
                         modifier = Modifier.fillMaxSize(),
-                        contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                        contentScale = ContentScale.Crop,
                         videoHeight = null,
                     )
                 }
@@ -4206,10 +4200,10 @@ private fun LegendSocialPostActionsSheet(
 
 @Composable
 private fun LegendSocialActionRow(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    icon: ImageVector,
     title: String,
     detail: String,
-    tint: androidx.compose.ui.graphics.Color = LegendColors.TextPrimary,
+    tint: Color = LegendColors.TextPrimary,
     onClick: () -> Unit,
 ) {
     Surface(
@@ -4455,7 +4449,7 @@ private fun LegendSocialMediaLibrary(
     remove: (Uri) -> Unit,
     next: () -> Unit,
     dismiss: () -> Unit,
-    context: android.content.Context,
+    context: Context,
 ) {
     Column(
         modifier = Modifier.fillMaxHeight(.94f).fillMaxWidth().background(
@@ -4532,7 +4526,7 @@ private fun LegendSocialMediaLibrary(
 private fun LegendSocialSelectedMediaCard(
     uri: Uri,
     type: LegendSocialContentType,
-    context: android.content.Context,
+    context: Context,
     remove: () -> Unit,
 ) {
     val mimeType = context.contentResolver.getType(uri).orEmpty()
@@ -4573,7 +4567,7 @@ private fun LegendSocialShareDetails(
     back: () -> Unit,
     share: () -> Unit,
     canPublish: Boolean,
-    context: android.content.Context,
+    context: Context,
 ) {
     Column(Modifier.fillMaxHeight(.94f).fillMaxWidth().background(LegendColors.Canvas)) {
         Row(
@@ -4659,7 +4653,7 @@ private fun LegendSocialDetailField(label: String, value: String, update: (Strin
     )
 }
 
-private fun android.content.Context.isPortableHacVideo(uri: Uri): Boolean {
+private fun Context.isPortableHacVideo(uri: Uri): Boolean {
     val mimeType = contentResolver.getType(uri).orEmpty()
     val fileName = contentResolver.legendDisplayName(uri)
     return mimeType.startsWith("video/", ignoreCase = true) && fileName.endsWith(".mp4", ignoreCase = true)
@@ -4716,9 +4710,9 @@ private fun LegendCommentsSheet(
                 verticalArrangement = Arrangement.spacedBy(LegendSpacing.Sm),
             ) {
                 items(parents, key = { it.id }) { comment ->
-                    LegendCommentRow(comment, mediaRepository, participantType, { replyTo = comment })
+                    LegendCommentRow(comment, mediaRepository, participantType) { replyTo = comment }
                     replies(comment.id).forEach { reply ->
-                        Row(Modifier.padding(start = LegendSpacing.Xl)) { LegendCommentRow(reply, mediaRepository, participantType, { replyTo = comment }) }
+                        Row(Modifier.padding(start = LegendSpacing.Xl)) { LegendCommentRow(reply, mediaRepository, participantType) { replyTo = comment } }
                     }
                 }
             }
@@ -4764,39 +4758,6 @@ private fun EditPostDialog(post: SocialPost, dismiss: () -> Unit, submit: (Strin
         confirmButton = { TextButton(onClick = { submit(body) }) { Text("Save") } },
         dismissButton = { TextButton(onClick = dismiss) { Text("Cancel") } },
     )
-}
-
-@Composable
-private fun LegendStoryViewer(
-    story: SocialPost,
-    mediaRepository: AuthenticatedMediaRepository,
-    participantType: String,
-    dismiss: () -> Unit,
-    recordView: () -> Unit,
-) {
-    LaunchedEffect(story.id) { recordView() }
-    ModalBottomSheet(onDismissRequest = dismiss, containerColor = LegendColors.Midnight) {
-        LazyColumn(
-            modifier = Modifier.fillMaxWidth(),
-            contentPadding = PaddingValues(horizontal = LegendSpacing.PageHorizontal, vertical = LegendSpacing.Sm),
-            verticalArrangement = Arrangement.spacedBy(LegendSpacing.Sm),
-        ) {
-            item {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    LegendProtectedAvatar(story.author.avatar, story.author.displayName, participantType, mediaRepository)
-                    Spacer(Modifier.width(LegendSpacing.Sm))
-                    Text(story.author.displayName, style = LegendTypography.CardTitle, color = LegendColors.OnNavy, modifier = Modifier.weight(1f))
-                    IconButton(onClick = dismiss) { Icon(Icons.Default.Close, "Close story", tint = LegendColors.OnNavy) }
-                }
-            }
-            items(story.media, key = { it.id }) { media ->
-                LegendProtectedSocialMedia(media.id, media.mediaKind, participantType, mediaRepository, media.accessibilityText, Modifier.fillMaxWidth())
-            }
-            if (story.body.isNotBlank()) {
-                item { Text(story.body, style = LegendTypography.Body, color = LegendColors.OnNavy) }
-            }
-        }
-    }
 }
 
 @Composable
@@ -5078,7 +5039,7 @@ private fun AccountScreen(
         LegendCommunitySafetyReviewSheet(communitySafetyViewModel, isFounder) { communitySafetyOpen = false }
     }
     if (followRequestsOpen) {
-        LegendFollowRequestsSheet(socialViewModel, mediaRepository, participantType, { followRequestsOpen = false })
+        LegendFollowRequestsSheet(socialViewModel, mediaRepository, participantType) { followRequestsOpen = false }
     }
     if (creatorInsightsOpen) {
         LegendCreatorInsightsSheet(
@@ -5337,7 +5298,7 @@ private fun LegendProfileIdentityCard(
 }
 
 @Composable
-private fun LegendProfileDetail(icon: androidx.compose.ui.graphics.vector.ImageVector, value: String, color: androidx.compose.ui.graphics.Color) {
+private fun LegendProfileDetail(icon: ImageVector, value: String, color: Color) {
     Row(verticalAlignment = Alignment.CenterVertically) {
         Icon(icon, null, tint = color, modifier = Modifier.size(18.dp))
         Spacer(Modifier.width(LegendSpacing.Xs))
@@ -5371,7 +5332,7 @@ private fun LegendProfileContentSelector(selected: SocialCollection, select: (So
                 shape = LegendShapes.Compact,
                 contentPadding = PaddingValues(horizontal = LegendSpacing.Tiny, vertical = LegendSpacing.Xs),
                 colors = ButtonDefaults.textButtonColors(
-                    containerColor = if (isSelected) LegendColors.Navy else androidx.compose.ui.graphics.Color.Transparent,
+                    containerColor = if (isSelected) LegendColors.Navy else Color.Transparent,
                     contentColor = if (isSelected) LegendColors.OnNavy else LegendColors.Navy,
                 ),
             ) {
@@ -5437,7 +5398,7 @@ private fun LegendProfileGridTile(
                 repository = mediaRepository,
                 contentDescription = media.accessibilityText,
                 modifier = Modifier.fillMaxSize(),
-                contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                contentScale = ContentScale.Crop,
                 videoHeight = null,
             )
         } else {
@@ -5521,9 +5482,6 @@ private fun LegendAccountSettingsSheet(
         ) {
             item {
                 LegendProfileSheetHeader(
-                    eyebrow = "Member experience",
-                    title = "Profile settings",
-                    detail = "Personalize the details people see here. These settings are private to the LEGEND mobile app.",
                     dismiss = dismiss,
                 )
             }
@@ -5648,8 +5606,8 @@ private fun LegendCreatorInsightsSheet(
 private fun LegendCreatorInsightMetric(
     label: String,
     value: String,
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    color: androidx.compose.ui.graphics.Color,
+    icon: ImageVector,
+    color: Color,
     modifier: Modifier = Modifier,
 ) {
     Surface(color = LegendColors.BrandBlueSurface, shape = LegendShapes.Control, modifier = modifier) {
@@ -5693,10 +5651,10 @@ private fun LegendCreatorInsightList(title: String, emptyMessage: String, items:
 }
 
 private fun legendInsightPercentage(value: Double): String =
-    String.format(java.util.Locale.US, "%.1f%%", value)
+    String.format(Locale.US, "%.1f%%", value)
 
 @Composable
-private fun AccountSettingsRow(title: String, detail: String, icon: androidx.compose.ui.graphics.vector.ImageVector, click: () -> Unit, footnote: String? = null) {
+private fun AccountSettingsRow(title: String, detail: String, icon: ImageVector, click: () -> Unit, footnote: String? = null) {
     Surface(
         color = LegendColors.ContactNavy,
         shape = LegendShapes.Control,
@@ -5721,9 +5679,6 @@ private fun AccountSettingsRow(title: String, detail: String, icon: androidx.com
 /** iOS-equivalent branded sheet header with an explicit, always-reachable close action. */
 @Composable
 private fun LegendProfileSheetHeader(
-    eyebrow: String,
-    title: String,
-    detail: String,
     dismiss: () -> Unit,
 ) {
     Row(
@@ -5740,10 +5695,16 @@ private fun LegendProfileSheetHeader(
                         .background(LegendGradients.Gold, CircleShape),
                 )
                 Spacer(Modifier.width(LegendSpacing.Xs))
-                Text(eyebrow.uppercase(), style = LegendTypography.Eyebrow, color = LegendColors.Gold)
+                Text("MEMBER EXPERIENCE", style = LegendTypography.Eyebrow, color = LegendColors.Gold)
             }
-            Text(title, style = LegendTypography.Title, color = LegendColors.TextPrimary)
-            Text(detail, style = LegendTypography.Caption, color = LegendColors.TextSecondary, maxLines = 3, overflow = TextOverflow.Ellipsis)
+            Text("Profile settings", style = LegendTypography.Title, color = LegendColors.TextPrimary)
+            Text(
+                "Personalize the details people see here. These settings are private to the LEGEND mobile app.",
+                style = LegendTypography.Caption,
+                color = LegendColors.TextSecondary,
+                maxLines = 3,
+                overflow = TextOverflow.Ellipsis,
+            )
         }
         IconButton(
             onClick = dismiss,
@@ -5844,7 +5805,7 @@ private fun LegendDailyScriptureManagementSheet(
         val businessDate = (state as? LoadState.Data<DailyScriptureManagementSnapshot>)?.value?.businessDate
         LegendDailyScriptureEditorSheet(
             existing = editor,
-            defaultDate = businessDate?.let { runCatching { java.time.LocalDate.parse(it).plusDays(1).toString() }.getOrDefault(it) }.orEmpty(),
+            defaultDate = businessDate?.let { runCatching { LocalDate.parse(it).plusDays(1).toString() }.getOrDefault(it) }.orEmpty(),
             dismiss = { creating = false; editor = null },
             submit = { draft -> viewModel.save(editor?.id, draft) { creating = false; editor = null } },
         )
@@ -5984,7 +5945,7 @@ private fun LegendFounderAccountsSheet(
     var confirmation by remember { mutableStateOf("") }
     LaunchedEffect(archive) { selectedIds = emptySet(); confirmation = ""; viewModel.load(scope = if (archive) "archive" else null) }
     LaunchedEffect(search) {
-        kotlinx.coroutines.delay(180)
+        delay(180.milliseconds)
         viewModel.load(search.trim().takeIf(String::isNotBlank), if (archive) "archive" else null)
     }
     ModalBottomSheet(onDismissRequest = dismiss, containerColor = LegendColors.Canvas) {
@@ -5997,8 +5958,8 @@ private fun LegendFounderAccountsSheet(
                 TextButton(onClick = dismiss) { Text("Done", color = LegendColors.Gold) }
             }
             Row(Modifier.padding(horizontal = LegendSpacing.PageHorizontal), horizontalArrangement = Arrangement.spacedBy(LegendSpacing.Xs)) {
-                FilterChip(selected = !archive, onClick = { archive = false }, label = { Text("Active") }, colors = legendCompactChipColors(!archive))
-                FilterChip(selected = archive, onClick = { archive = true }, label = { Text("Archive") }, colors = legendCompactChipColors(archive))
+                FilterChip(selected = !archive, onClick = { archive = false }, label = { Text("Active") }, colors = legendCompactChipColors())
+                FilterChip(selected = archive, onClick = { archive = true }, label = { Text("Archive") }, colors = legendCompactChipColors())
             }
             OutlinedTextField(search, { search = it }, modifier = Modifier.fillMaxWidth().padding(horizontal = LegendSpacing.PageHorizontal, vertical = LegendSpacing.Sm), singleLine = true, leadingIcon = { Icon(Icons.Default.Search, null, tint = LegendColors.Gold) }, placeholder = { Text("Search accounts") }, shape = LegendShapes.Control, colors = legendMessagingFieldColors())
             when (accounts) {
@@ -6077,7 +6038,7 @@ private fun LegendControlledResourceAccessSheet(
     val updating by viewModel.updating.collectAsStateWithLifecycle()
     LaunchedEffect(resource) { search = ""; viewModel.load(resource.apiValue) }
     LaunchedEffect(search, resource) {
-        kotlinx.coroutines.delay(180)
+        delay(180.milliseconds)
         viewModel.load(resource.apiValue, search.trim().takeIf(String::isNotBlank))
     }
     ModalBottomSheet(onDismissRequest = dismiss, containerColor = LegendColors.Canvas) {
@@ -6095,7 +6056,7 @@ private fun LegendControlledResourceAccessSheet(
                 horizontalArrangement = Arrangement.spacedBy(LegendSpacing.Xs),
             ) {
                 items(LegendFounderResource.entries) { candidate ->
-                    FilterChip(selected = candidate == resource, onClick = { resource = candidate }, label = { Text(candidate.title) }, colors = legendCompactChipColors(candidate == resource))
+                    FilterChip(selected = candidate == resource, onClick = { resource = candidate }, label = { Text(candidate.title) }, colors = legendCompactChipColors())
                 }
             }
             OutlinedTextField(search, { search = it }, modifier = Modifier.fillMaxWidth().padding(horizontal = LegendSpacing.PageHorizontal, vertical = LegendSpacing.Sm), singleLine = true, leadingIcon = { Icon(Icons.Default.Search, null, tint = LegendColors.Gold) }, placeholder = { Text("Search people") }, shape = LegendShapes.Control, colors = legendMessagingFieldColors())
@@ -6200,7 +6161,7 @@ private fun AccountEditorSheet(
     var phoneVisible by remember(account.profileId) { mutableStateOf(account.isPhoneVisible) }
     var privateProfile by remember(account.profileId) { mutableStateOf(account.isPrivate) }
     LaunchedEffect(username) {
-        kotlinx.coroutines.delay(260)
+        delay(260.milliseconds)
         checkUsernameAvailability(username.trim().takeIf(String::isNotBlank))
     }
     val usernameIsValid = username.isBlank() || (usernameAvailability as? LoadState.Data<MobileUsernameAvailability>)?.value?.isAvailable == true
@@ -6378,8 +6339,7 @@ private fun FinancialReportingGate(
         val activeEpoch = securityEpoch
         state = when (authenticator.authenticate(host)) {
             FinancialReportingAccessResult.Granted -> {
-                if (isActive &&
-                    lifecycleOwner.lifecycle.currentState == Lifecycle.State.RESUMED &&
+                if (lifecycleOwner.lifecycle.currentState == Lifecycle.State.RESUMED &&
                     activeEpoch == securityEpoch
                 ) {
                     FinancialReportingGateState.Granted
@@ -6439,7 +6399,7 @@ private fun FinancialReportingLockedScreen(
             detail,
             style = LegendTypography.Supporting,
             color = LegendColors.TextSecondary,
-            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+            textAlign = TextAlign.Center,
         )
         Spacer(Modifier.height(LegendSpacing.Md))
         if (state == FinancialReportingGateState.Authenticating) {
@@ -6471,7 +6431,7 @@ private fun FinancialScreen(
         var loadedDate = LocalDate.now()
         viewModel.load()
         while (true) {
-            delay(60_000)
+            delay(1.minutes)
             val currentDate = LocalDate.now()
             if (currentDate != loadedDate) {
                 loadedDate = currentDate
@@ -6691,8 +6651,8 @@ private fun FinancialOutlookPreview(
 private fun FinancialOutlookMetric(
     label: String,
     value: String,
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    tone: androidx.compose.ui.graphics.Color,
+    icon: ImageVector,
+    tone: Color,
     modifier: Modifier = Modifier,
 ) {
     Row(
@@ -6748,7 +6708,7 @@ private fun FinancialProfileBackControl(back: () -> Unit) {
     OutlinedButton(
         onClick = back,
         shape = LegendShapes.Control,
-        border = androidx.compose.foundation.BorderStroke(
+        border = BorderStroke(
             LegendSpacing.Hairline,
             LegendColors.Gold.copy(alpha = 0.38f),
         ),
@@ -6818,7 +6778,7 @@ private fun FinancialPriorityCard(
 }
 
 @Composable
-private fun FinancialPriorityMetric(metric: FinancialSummaryMetric, tone: androidx.compose.ui.graphics.Color, modifier: Modifier = Modifier) {
+private fun FinancialPriorityMetric(metric: FinancialSummaryMetric, tone: Color, modifier: Modifier = Modifier) {
     Column(modifier, verticalArrangement = Arrangement.spacedBy(LegendSpacing.Micro)) {
         Text(metric.label.uppercase(), style = LegendTypography.Label, color = LegendColors.OnNavy.copy(alpha = 0.62f), maxLines = 1, overflow = TextOverflow.Ellipsis)
         Text(financialMetricValue(metric), style = LegendTypography.BodyEmphasis, color = tone, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -6920,7 +6880,7 @@ private fun FinancialDetailScreen(
 private fun FinancialPriorityStatusBanner(
     status: String,
     detail: String,
-    tone: androidx.compose.ui.graphics.Color,
+    tone: Color,
     destination: FinancialDetailDestination,
 ) {
     Surface(color = tone.copy(alpha = 0.12f), shape = LegendShapes.Card, modifier = Modifier.fillMaxWidth()) {
@@ -6954,7 +6914,7 @@ private fun FinancialPositionHero(position: FinancialPosition) {
 }
 
 @Composable
-private fun FinancialHeroMetric(label: String, value: String, tone: androidx.compose.ui.graphics.Color, modifier: Modifier = Modifier) = Column(modifier, verticalArrangement = Arrangement.spacedBy(LegendSpacing.Micro)) {
+private fun FinancialHeroMetric(label: String, value: String, tone: Color, modifier: Modifier = Modifier) = Column(modifier, verticalArrangement = Arrangement.spacedBy(LegendSpacing.Micro)) {
     Text(label.uppercase(), style = LegendTypography.Label, color = LegendColors.OnNavy.copy(alpha = 0.62f))
     Text(value, style = LegendTypography.Section, color = tone, maxLines = 1, overflow = TextOverflow.Ellipsis)
 }
@@ -7278,7 +7238,7 @@ private fun FinancialMonthTiming(weeks: List<FinancialWeekSummary>) {
 }
 
 @Composable
-private fun FinancialStatusBadge(status: String, tone: androidx.compose.ui.graphics.Color) {
+private fun FinancialStatusBadge(status: String, tone: Color) {
     Surface(color = tone.copy(alpha = 0.16f), shape = LegendShapes.Control) {
         Row(Modifier.padding(horizontal = LegendSpacing.Xs, vertical = LegendSpacing.Micro), verticalAlignment = Alignment.CenterVertically) {
             Box(Modifier.size(8.dp).background(tone, CircleShape))
@@ -7320,28 +7280,28 @@ private enum class FinancialAmountKind { Assets, Liabilities, NetWorth, Income, 
 
 private fun financialMetricValue(metric: FinancialSummaryMetric): String = metric.amountCents?.let(::financialCurrencyCents) ?: metric.date?.let(::financialDate) ?: metric.textValue ?: "Not available"
 private fun financialMetricValue(metric: FinancialMetric): String = metric.amountCents?.let(::financialCurrencyCents) ?: metric.numericValue?.toString() ?: metric.textValue ?: "Not available"
-private fun financialCurrencyCents(value: Long): String = java.text.NumberFormat.getCurrencyInstance(java.util.Locale.US).format(value / 100.0)
-private fun financialCurrency(value: Double): String = java.text.NumberFormat.getCurrencyInstance(java.util.Locale.US).format(value)
+private fun financialCurrencyCents(value: Long): String = NumberFormat.getCurrencyInstance(Locale.US).format(value / 100.0)
+private fun financialCurrency(value: Double): String = NumberFormat.getCurrencyInstance(Locale.US).format(value)
 private fun financialDate(value: String): String = runCatching {
-    java.time.LocalDate.parse(value.take(10)).format(java.time.format.DateTimeFormatter.ofPattern("MMM d", java.util.Locale.US))
+    LocalDate.parse(value.take(10)).format(DateTimeFormatter.ofPattern("MMM d", Locale.US))
 }.getOrDefault(value)
 private fun financialDateTime(value: String): String {
-    val formatter = java.time.format.DateTimeFormatter.ofPattern("MMM d 'at' h:mm a", java.util.Locale.US)
-    return runCatching { java.time.OffsetDateTime.parse(value).format(formatter) }
-        .recoverCatching { java.time.LocalDateTime.parse(value).format(formatter) }
+    val formatter = DateTimeFormatter.ofPattern("MMM d 'at' h:mm a", Locale.US)
+    return runCatching { OffsetDateTime.parse(value).format(formatter) }
+        .recoverCatching { LocalDateTime.parse(value).format(formatter) }
         .getOrElse { financialDate(value) }
 }
 private fun financialDateRange(start: String, end: String) = "${financialDate(start)} – ${financialDate(end)}"
 private fun financialMonth(value: String): String = runCatching {
-    java.time.LocalDate.parse("${value.take(7)}-01").format(java.time.format.DateTimeFormatter.ofPattern("MMMM yyyy", java.util.Locale.US))
+    LocalDate.parse("${value.take(7)}-01").format(DateTimeFormatter.ofPattern("MMMM yyyy", Locale.US))
 }.getOrDefault(value)
 
-private fun financialSummaryTone(metric: FinancialSummaryMetric): androidx.compose.ui.graphics.Color {
+private fun financialSummaryTone(metric: FinancialSummaryMetric): Color {
     val label = metric.label.lowercase()
     val amount = metric.amountCents
     if (amount != null) {
         val kind = when {
-            label.contains("liabilit") -> FinancialAmountKind.Liabilities
+            label.contains("liability") || label.contains("liabilities") -> FinancialAmountKind.Liabilities
             label.contains("debt") || label.contains("loan") || label.contains("payoff") -> FinancialAmountKind.Debt
             label.contains("bill") || label.contains("expense") || label.contains("outflow") || label.contains("spending") -> FinancialAmountKind.Bills
             label.contains("income") || label.contains("inflow") -> FinancialAmountKind.Income
@@ -7357,11 +7317,11 @@ private fun financialSummaryTone(metric: FinancialSummaryMetric): androidx.compo
     return financialSemanticTone(metric.semantic)
 }
 
-private fun financialHealthMetricTone(metric: FinancialMetric, sectionSemantic: String): androidx.compose.ui.graphics.Color {
+private fun financialHealthMetricTone(metric: FinancialMetric, sectionSemantic: String): Color {
     val amount = metric.amountCents ?: return financialSemanticTone(metric.status ?: sectionSemantic)
     val semantic = "${sectionSemantic.lowercase()} ${metric.label.lowercase()}"
     val kind = when {
-        semantic.contains("liabilit") -> FinancialAmountKind.Liabilities
+        semantic.contains("liability") || semantic.contains("liabilities") -> FinancialAmountKind.Liabilities
         semantic.contains("debt") || semantic.contains("loan") -> FinancialAmountKind.Debt
         semantic.contains("expense") || semantic.contains("bill") || semantic.contains("tax") || semantic.contains("cost") || semantic.contains("outflow") -> FinancialAmountKind.Bills
         semantic.contains("income") || semantic.contains("earn") -> FinancialAmountKind.Income
@@ -7372,8 +7332,8 @@ private fun financialHealthMetricTone(metric: FinancialMetric, sectionSemantic: 
     return kind?.let { financialAmountTone(amount, it) } ?: if (amount < 0) LegendColors.Error else financialSemanticTone(sectionSemantic)
 }
 
-private fun financialAmountTone(value: Long, kind: FinancialAmountKind): androidx.compose.ui.graphics.Color = financialAmountTone(value.toDouble(), kind)
-private fun financialAmountTone(value: Double, kind: FinancialAmountKind): androidx.compose.ui.graphics.Color {
+private fun financialAmountTone(value: Long, kind: FinancialAmountKind): Color = financialAmountTone(value.toDouble(), kind)
+private fun financialAmountTone(value: Double, kind: FinancialAmountKind): Color {
     if (value < 0) return LegendColors.Error
     if (value == 0.0) return LegendColors.TextTertiary
     return when (kind) {
@@ -7389,7 +7349,7 @@ private fun financialAmountTone(value: Double, kind: FinancialAmountKind): andro
     }
 }
 
-private fun financialSemanticTone(value: String): androidx.compose.ui.graphics.Color = when (value.lowercase()) {
+private fun financialSemanticTone(value: String): Color = when (value.lowercase()) {
     "positive", "healthy", "ready", "complete", "on-track" -> LegendColors.Success
     "negative", "critical", "risk", "overdue", "shortfall" -> LegendColors.Error
     "caution", "warning", "review", "incomplete", "scheduled", "needs attention" -> LegendColors.Warning
@@ -7397,18 +7357,18 @@ private fun financialSemanticTone(value: String): androidx.compose.ui.graphics.C
     else -> LegendColors.GoldBright
 }
 
-private fun financialStatusTone(status: String): androidx.compose.ui.graphics.Color = financialSemanticTone(status)
-private fun financialEventTone(event: FinancialCashFlowEvent): androidx.compose.ui.graphics.Color = when {
+private fun financialStatusTone(status: String): Color = financialSemanticTone(status)
+private fun financialEventTone(event: FinancialCashFlowEvent): Color = when {
     event.kind.contains("income", ignoreCase = true) -> financialAmountTone(event.amountCents, FinancialAmountKind.Income)
     event.kind.contains("debt", ignoreCase = true) -> financialAmountTone(event.amountCents, FinancialAmountKind.Debt)
     else -> financialAmountTone(event.amountCents, FinancialAmountKind.Bills)
 }
-private fun financialEventIcon(event: FinancialCashFlowEvent): androidx.compose.ui.graphics.vector.ImageVector = when {
+private fun financialEventIcon(event: FinancialCashFlowEvent): ImageVector = when {
     event.kind.contains("income", ignoreCase = true) -> Icons.Default.SouthWest
     event.kind.contains("debt", ignoreCase = true) -> Icons.Default.CreditCard
     else -> Icons.Default.Description
 }
-private fun financialDestinationIcon(destination: FinancialDetailDestination): androidx.compose.ui.graphics.vector.ImageVector = when (destination) {
+private fun financialDestinationIcon(destination: FinancialDetailDestination): ImageVector = when (destination) {
     FinancialDetailDestination.Assets,
     FinancialDetailDestination.FinancialPosition -> Icons.Default.AccountBalance
     FinancialDetailDestination.Liabilities,

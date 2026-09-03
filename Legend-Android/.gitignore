@@ -1,6 +1,11 @@
 .gradle/
 gradle/gradle-daemon-jvm.properties
 .idea/
+!.idea/
+.idea/*
+!.idea/dictionaries/
+.idea/dictionaries/*
+!.idea/dictionaries/legend.xml
 local.properties
 legend.properties
 build/
