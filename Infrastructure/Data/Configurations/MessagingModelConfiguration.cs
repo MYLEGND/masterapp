@@ -436,11 +436,26 @@ internal static class MessagingModelConfiguration
             entity.Property(item => item.Provider).IsRequired().HasMaxLength(80);
             entity.Property(item => item.Provenance).IsRequired().HasMaxLength(80);
             entity.Property(item => item.ProviderModel).HasMaxLength(120);
+            entity.Property(item => item.RetainedTranslationIdentity).HasMaxLength(64);
+            entity.Property(item => item.StableSourceContentId).HasMaxLength(180);
+            entity.Property(item => item.SourceContentRevision).HasMaxLength(80);
+            entity.Property(item => item.TranslationContext).HasMaxLength(180);
+            entity.Property(item => item.PlaceholderContractHash).HasMaxLength(64);
+            entity.Property(item => item.ReuseScope).HasMaxLength(24);
+            entity.Property(item => item.ReuseScopeIdentityHash).HasMaxLength(64);
+            entity.Property(item => item.ProviderVersion).HasMaxLength(80);
             entity.Property(item => item.QualityState).IsRequired().HasMaxLength(40);
             entity.Property(item => item.Confidence).HasPrecision(5, 4);
             entity.HasIndex(item => item.SupersededByAlignmentId);
             entity.HasIndex(item => item.SupersededUtc);
-            entity.HasIndex(item => new { item.PairKey, item.SourceTextUnitId, item.TargetTextUnitId }).IsUnique();
+            entity.HasIndex(item => new { item.PairKey, item.SourceTextUnitId, item.TargetTextUnitId });
+            var retainedIdentityIndex = entity
+                .HasIndex(item => item.RetainedTranslationIdentity)
+                .IsUnique();
+            if (IsSqlServer(providerName))
+                retainedIdentityIndex.HasFilter("[RetainedTranslationIdentity] IS NOT NULL");
+            else if (IsSqlite(providerName))
+                retainedIdentityIndex.HasFilter("\"RetainedTranslationIdentity\" IS NOT NULL");
             entity.HasIndex(item => new { item.PairKey, item.QualityState });
             entity.HasOne<LegendLanguageTextUnit>()
                 .WithMany()

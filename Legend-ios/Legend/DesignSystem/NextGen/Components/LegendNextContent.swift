@@ -347,7 +347,7 @@ struct LegendNextSheetHeader: View {
                     }
             }
             .buttonStyle(.plain)
-            .accessibilityLabel("Close")
+            .accessibilityLabel(LegendLocalized("Close", context: "accessibility copy"))
         }
     }
 }
@@ -406,16 +406,18 @@ enum LegendRequestSubmissionFeedback: Equatable {
     var title: String {
         switch self {
         case .sent:
-            return "Request Sent"
+            return LegendLocalized("Request Sent")
         case .failed:
-            return "Request Not Sent"
+            return LegendLocalized("Request Not Sent")
         }
     }
 
     var detail: String {
         switch self {
         case .sent(let resourceType):
-            return "Your \(resourceType.displayName) request is with the private Legend review team."
+            return LegendLocalized(
+                "Your {resourceType} request is with the private Legend review team.",
+                arguments: ["resourceType": resourceType.displayName])
         case .failed(let failure):
             return failure.message
         }

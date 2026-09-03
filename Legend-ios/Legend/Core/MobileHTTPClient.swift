@@ -763,21 +763,21 @@ enum MobileAPIError: LocalizedError, Equatable {
     var errorDescription: String? {
         switch self {
         case .invalidBaseURL, .invalidPath:
-            return "The mobile service configuration is invalid."
+            return LegendLocalized("The mobile service configuration is invalid.")
         case .invalidServerResponse, .decodingFailed:
-            return "The service returned an unexpected response."
+            return LegendLocalized("The service returned an unexpected response.")
         case .networkUnavailable:
-            return "The network connection is unavailable."
+            return LegendLocalized("The network connection is unavailable.")
         case .unauthorized, .apiUnauthorized:
-            return "Your session has ended. Please sign in again."
+            return LegendLocalized("Your session has ended. Please sign in again.")
         case .forbidden, .apiForbidden:
-            return "You do not have access to this action."
+            return LegendLocalized("You do not have access to this action.")
         case .conflict, .apiConflict:
-            return "Choose an authorized role before continuing."
+            return LegendLocalized("Choose an authorized role before continuing.")
         case .apiServer(_, _, let message, _):
-            return message ?? "The service could not complete this request."
+            return message.map { LegendLocalized($0) } ?? LegendLocalized("The service could not complete this request.")
         case .server:
-            return "The service could not complete this request."
+            return LegendLocalized("The service could not complete this request.")
         }
     }
 }

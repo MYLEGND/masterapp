@@ -340,8 +340,8 @@ final class MobileHomeStore: ObservableObject {
         let task = Task { [weak self] in
             guard let self else {
                 return MobileStoreLoadResult.failed(UserFacingFailure(
-                    title: "Home unavailable",
-                    message: "The home store is no longer available.",
+                    title: LegendLocalized("Home unavailable"),
+                    message: LegendLocalized("The home store is no longer available."),
                     correlationID: nil))
             }
             return await self.executeLoad(
@@ -365,7 +365,7 @@ final class MobileHomeStore: ObservableObject {
             refreshFailure = nil
             return .loaded
         } catch {
-            let presentation = failure(for: error, title: "Home unavailable")
+            let presentation = failure(for: error, title: LegendLocalized("Home unavailable"))
             if preservingCachedValue {
                 refreshFailure = presentation
             } else {
@@ -383,7 +383,7 @@ final class MobileHomeStore: ObservableObject {
             correlationID: apiError?.correlationID)
         return UserFacingFailure(
             title: title,
-            message: error.localizedDescription,
+            message: LegendLocalized(error.localizedDescription),
             correlationID: apiError?.correlationID)
     }
 }
@@ -456,8 +456,8 @@ final class MobileFinancialStore: ObservableObject {
         let task = Task { [weak self] in
             guard let self else {
                 return MobileStoreLoadResult.failed(UserFacingFailure(
-                    title: "Financial intelligence unavailable",
-                    message: "The financial store is no longer available.",
+                    title: LegendLocalized("Financial intelligence unavailable"),
+                    message: LegendLocalized("The financial store is no longer available."),
                     correlationID: nil))
             }
             return await self.executeLoad(
@@ -481,8 +481,8 @@ final class MobileFinancialStore: ObservableObject {
             return .loaded
         } catch is CancellationError {
             return .failed(UserFacingFailure(
-                title: "Financial intelligence unavailable",
-                message: "The financial request was cancelled.",
+                title: LegendLocalized("Financial intelligence unavailable"),
+                message: LegendLocalized("The financial request was cancelled."),
                 correlationID: nil))
         } catch {
             let presentation = failure(for: error)
@@ -512,7 +512,7 @@ final class MobileFinancialStore: ObservableObject {
             return .projectionUnavailable(
                 snapshot,
                 detail:
-                    "The financial service did not return the saved Expense Lens projection."
+                    LegendLocalized("The financial service did not return the saved Expense Lens projection.")
             )
         }
 
@@ -533,7 +533,7 @@ final class MobileFinancialStore: ObservableObject {
             return .incomplete(
                 snapshot,
                 detail:
-                    "Your saved cash-flow projection is available, but Financial Health Snapshot has not been saved."
+                    LegendLocalized("Your saved cash-flow projection is available, but Financial Health Snapshot has not been saved.")
             )
         }
 
@@ -564,9 +564,9 @@ final class MobileFinancialStore: ObservableObject {
 
         return UserFacingFailure(
             title: isAuthenticationFailure(error)
-                ? "Sign-in required"
-                : "Financial intelligence unavailable",
-            message: error.localizedDescription,
+                ? LegendLocalized("Sign-in required")
+                : LegendLocalized("Financial intelligence unavailable"),
+            message: LegendLocalized(error.localizedDescription),
             correlationID: apiError?.correlationID
         )
     }
@@ -629,8 +629,8 @@ final class MobileJourneyCirclesStore: ObservableObject {
         let task = Task { [weak self] in
             guard let self else {
                 return MobileStoreLoadResult.failed(UserFacingFailure(
-                    title: "Journey Circles unavailable",
-                    message: "The Journey Circles store is no longer available.",
+                    title: LegendLocalized("Journey Circles unavailable"),
+                    message: LegendLocalized("The Journey Circles store is no longer available."),
                     correlationID: nil))
             }
             return await self.executeLoad(
@@ -676,7 +676,7 @@ final class MobileJourneyCirclesStore: ObservableObject {
     /// Sends a connection request and reports whether the server accepted it, so a
     /// caller such as Discover can update one row instead of reloading a dashboard.
     func requestConnectionConfirmed(to profileID: UUID) async -> Bool {
-        await performConfirmedAction(title: "Could not send the request") {
+        await performConfirmedAction(title: LegendLocalized("Could not send the request")) {
             try await api.requestConnection(
                 MobileJourneyConnectionRequestBody(
                     targetClientProfileID: profileID,
@@ -687,7 +687,7 @@ final class MobileJourneyCirclesStore: ObservableObject {
     }
 
     func disconnectConnectionConfirmed(id: UUID) async -> Bool {
-        await performConfirmedAction(title: "Could not remove the connection") {
+        await performConfirmedAction(title: LegendLocalized("Could not remove the connection")) {
             try await self.api.disconnectConnection(
                 id: id,
                 accessToken: try await self.accessTokenProvider())
@@ -695,7 +695,7 @@ final class MobileJourneyCirclesStore: ObservableObject {
     }
 
     func blockProfileConfirmed(id: UUID) async -> Bool {
-        await performConfirmedAction(title: "Could not block this profile") {
+        await performConfirmedAction(title: LegendLocalized("Could not block this profile")) {
             try await self.api.blockProfile(
                 id: id,
                 accessToken: try await self.accessTokenProvider())
@@ -707,7 +707,7 @@ final class MobileJourneyCirclesStore: ObservableObject {
         category: String,
         detail: String? = nil
     ) async -> Bool {
-        await performConfirmedAction(title: "Could not submit this report") {
+        await performConfirmedAction(title: LegendLocalized("Could not submit this report")) {
             try await self.api.reportProfile(
                 id: id,
                 request: MobileJourneyReportRequestBody(
@@ -748,7 +748,7 @@ final class MobileJourneyCirclesStore: ObservableObject {
                 try await operation()
                 _ = await refresh()
             } catch {
-                actionFailure = failure(for: error, title: "Journey Circles unavailable")
+                actionFailure = failure(for: error, title: LegendLocalized("Journey Circles unavailable"))
             }
         }
     }
@@ -768,7 +768,7 @@ final class MobileJourneyCirclesStore: ObservableObject {
         }
     }
 
-    private func failure(for error: Error, title: String = "Journey Circles unavailable") -> UserFacingFailure {
+    private func failure(for error: Error, title: String = LegendLocalized("Journey Circles unavailable")) -> UserFacingFailure {
         let apiError = error as? MobileAPIError
         diagnostics.record(
             category: .networking,
@@ -776,7 +776,7 @@ final class MobileJourneyCirclesStore: ObservableObject {
             correlationID: apiError?.correlationID)
         return UserFacingFailure(
             title: title,
-            message: error.localizedDescription,
+            message: LegendLocalized(error.localizedDescription),
             correlationID: apiError?.correlationID)
     }
 }
@@ -870,8 +870,8 @@ final class MobileAgentWorkspaceStore: ObservableObject {
         let task = Task { [weak self] in
             guard let self else {
                 return MobileStoreLoadResult.failed(UserFacingFailure(
-                    title: "Client CRM unavailable",
-                    message: "The client CRM store is no longer available.",
+                    title: LegendLocalized("Client CRM unavailable"),
+                    message: LegendLocalized("The client CRM store is no longer available."),
                     correlationID: nil))
             }
             return await self.executeClientsLoad(
@@ -896,8 +896,8 @@ final class MobileAgentWorkspaceStore: ObservableObject {
         let task = Task { [weak self] in
             guard let self else {
                 return MobileStoreLoadResult.failed(UserFacingFailure(
-                    title: "Lead CRM unavailable",
-                    message: "The lead CRM store is no longer available.",
+                    title: LegendLocalized("Lead CRM unavailable"),
+                    message: LegendLocalized("The lead CRM store is no longer available."),
                     correlationID: nil))
             }
             return await self.executeLeadsLoad(
@@ -956,8 +956,8 @@ final class MobileAgentWorkspaceStore: ObservableObject {
             summary: "A native agent \(resource) request could not be completed.",
             correlationID: apiError?.correlationID)
         return UserFacingFailure(
-            title: "\(resource.capitalized) unavailable",
-            message: error.localizedDescription,
+            title: LegendLocalized("{value1} unavailable", arguments: ["value1": String(describing: (resource.capitalized))]),
+            message: LegendLocalized(error.localizedDescription),
             correlationID: apiError?.correlationID)
     }
 }

@@ -44,6 +44,7 @@ internal sealed class MessagingService : IMessagingService
     private readonly ICommunitySafetyService? _communitySafety;
     private readonly ITranslationEntitlementAuthority? _translationEntitlements;
     private readonly ITranslationSystemUsageRecorder? _translationSystemUsage;
+    private readonly IApplicationLocalizationService? _applicationLocalization;
 
     public MessagingService(
         MasterAppDbContext db,
@@ -58,7 +59,8 @@ internal sealed class MessagingService : IMessagingService
         ITranslationLearningPublisher? translationLearning = null,
         ILegendLanguageRegistry? languages = null,
         ITranslationEntitlementAuthority? translationEntitlements = null,
-        ITranslationSystemUsageRecorder? translationSystemUsage = null)
+        ITranslationSystemUsageRecorder? translationSystemUsage = null,
+        IApplicationLocalizationService? applicationLocalization = null)
     {
         _db = db;
         _logger = logger;
@@ -77,6 +79,7 @@ internal sealed class MessagingService : IMessagingService
         _communitySafety = communitySafety;
         _translationEntitlements = translationEntitlements;
         _translationSystemUsage = translationSystemUsage;
+        _applicationLocalization = applicationLocalization;
     }
 
     public async Task<MessagingGroupImage?> GetConversationImageAsync(
@@ -1766,11 +1769,12 @@ internal sealed class MessagingService : IMessagingService
         request.ResolvedUtc = nowUtc;
         request.ResolvedByUserId = actor.UserId;
         request.ResolutionNote = resolutionNote;
-        var outcomeNotification = CreateControlledResourceOutcomeNotification(
+        var outcomeNotification = await CreateControlledResourceOutcomeNotificationAsync(
             request,
             command.Approve,
             resolutionNote,
-            nowUtc);
+            nowUtc,
+            cancellationToken);
         await _notifications.StageAsync(outcomeNotification, cancellationToken);
         _db.InternalMessages.Add(new InternalMessage
         {
@@ -1886,11 +1890,12 @@ internal sealed class MessagingService : IMessagingService
             request.Status = command.IsGranted ? VerificationReviewStatuses.Approved : VerificationReviewStatuses.Declined;
             request.ResolvedUtc = nowUtc;
             request.ResolvedByUserId = actor.UserId;
-            var outcomeNotification = CreateControlledResourceOutcomeNotification(
+            var outcomeNotification = await CreateControlledResourceOutcomeNotificationAsync(
                 request,
                 command.IsGranted,
                 resolutionNote: null,
-                nowUtc);
+                nowUtc,
+                cancellationToken);
             await _notifications.StageAsync(outcomeNotification, cancellationToken);
             if (reviewConversations.TryGetValue(request.ReviewConversationId, out var reviewConversation))
             {
@@ -3811,10 +3816,10 @@ internal sealed class MessagingService : IMessagingService
 
     private static string ControlledResourceDisplayName(string resourceType) => resourceType switch
     {
-        ControlledResourceTypes.VerificationBadge => "Legend verification",
-        ControlledResourceTypes.LanguageTranslation => "Language Translation Access",
-        ControlledResourceTypes.ScriptureManagement => "Daily Scripture Management",
-        _ => "Legend resource"
+        ControlledResourceTypes.VerificationBadge => ApplicationCopyText.Source("Legend verification"),
+        ControlledResourceTypes.LanguageTranslation => ApplicationCopyText.Source("Language Translation Access"),
+        ControlledResourceTypes.ScriptureManagement => ApplicationCopyText.Source("Daily Scripture Management"),
+        _ => ApplicationCopyText.Source("Legend resource")
     };
 
     /// <summary>
@@ -3822,26 +3827,50 @@ internal sealed class MessagingService : IMessagingService
     /// review, direct grant, and future staff tooling) produces the same
     /// recipient outcome without opening a conversation.
     /// </summary>
-    private static MobileActivityNotification CreateControlledResourceOutcomeNotification(
+    private async Task<MobileActivityNotification> CreateControlledResourceOutcomeNotificationAsync(
         VerificationReviewRequest request,
         bool approved,
         string? resolutionNote,
-        DateTime occurredUtc)
+        DateTime occurredUtc,
+        CancellationToken cancellationToken)
     {
-        var resourceName = ControlledResourceDisplayName(request.ResourceType);
-        var defaultDetail = (request.ResourceType, approved) switch
+        var recipient = new MessagingActor(
+            request.RequesterUserId,
+            request.RequesterParticipantType);
+        var resourceName = await LocalizeApplicationCopyAsync(
+            recipient,
+            ControlledResourceDisplayName(request.ResourceType),
+            arguments: null,
+            cancellationToken);
+        var titleTemplate = approved
+            ? ApplicationCopyText.Source("{resourceName} approved")
+            : ApplicationCopyText.Source("{resourceName} declined");
+        var title = await LocalizeApplicationCopyAsync(
+            recipient,
+            titleTemplate,
+            new Dictionary<string, string> { ["resourceName"] = resourceName },
+            cancellationToken);
+        var defaultDetailTemplate = (request.ResourceType, approved) switch
         {
             (ControlledResourceTypes.VerificationBadge, true) =>
-                "Your verification request was approved. Your verified badge is now active.",
+                ApplicationCopyText.Source("Your verification request was approved. Your verified badge is now active."),
             (ControlledResourceTypes.VerificationBadge, false) =>
-                "Your verification request was not approved. You can update your profile and submit a new request when ready.",
+                ApplicationCopyText.Source("Your verification request was not approved. You can update your profile and submit a new request when ready."),
             (ControlledResourceTypes.LanguageTranslation, true) =>
-                "Language Translation Access was approved. You can now select your preferred communication language in Profile settings.",
+                ApplicationCopyText.Source("Language Translation Access was approved. You can now select your preferred communication language in Profile settings."),
             (ControlledResourceTypes.LanguageTranslation, false) =>
-                "Language Translation Access was not approved. You can submit a new request when ready.",
-            (_, true) => $"{resourceName} was approved.",
-            _ => $"{resourceName} was not approved."
+                ApplicationCopyText.Source("Language Translation Access was not approved. You can submit a new request when ready."),
+            (_, true) => ApplicationCopyText.Source("{resourceName} was approved."),
+            _ => ApplicationCopyText.Source("{resourceName} was not approved.")
         };
+        var defaultDetailArguments = defaultDetailTemplate.Contains("{resourceName}", StringComparison.Ordinal)
+            ? new Dictionary<string, string> { ["resourceName"] = resourceName }
+            : null;
+        var defaultDetail = await LocalizeApplicationCopyAsync(
+            recipient,
+            defaultDetailTemplate,
+            defaultDetailArguments,
+            cancellationToken);
 
         return new MobileActivityNotification
         {
@@ -3849,11 +3878,36 @@ internal sealed class MessagingService : IMessagingService
             RecipientUserId = request.RequesterUserId,
             RecipientParticipantType = request.RequesterParticipantType,
             Kind = approved ? "ControlledResourceApproved" : "ControlledResourceDeclined",
-            Title = approved ? $"{resourceName} approved" : $"{resourceName} declined",
+            Title = title,
             Detail = resolutionNote ?? defaultDetail,
             ControlledResourceRequestId = request.Id,
             OccurredUtc = occurredUtc
         };
+    }
+
+    private async Task<string> LocalizeApplicationCopyAsync(
+        MessagingActor actor,
+        string source,
+        IReadOnlyDictionary<string, string>? arguments,
+        CancellationToken cancellationToken)
+    {
+        if (_applicationLocalization is null)
+        {
+            return arguments?.Aggregate(
+                source,
+                (text, argument) => text.Replace(
+                    $"{{{argument.Key}}}",
+                    argument.Value,
+                    StringComparison.Ordinal)) ?? source;
+        }
+
+        var localized = await _applicationLocalization.LocalizeAsync(
+            actor,
+            source,
+            "visual interface copy",
+            arguments,
+            cancellationToken);
+        return localized.Text;
     }
 
     private Task<bool> IsActiveAgentAsync(

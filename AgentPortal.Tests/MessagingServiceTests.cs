@@ -24,6 +24,7 @@ using Xunit;
 
 namespace AgentPortal.Tests;
 
+[Collection("LegendConnectFounderEnvironment")]
 public sealed class MessagingServiceTests
 {
     private const string FounderTestObjectId = "b13065c4-2e0b-4dc7-8546-76f664ce1edf";

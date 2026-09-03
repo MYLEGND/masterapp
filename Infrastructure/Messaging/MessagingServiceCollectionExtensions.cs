@@ -34,7 +34,14 @@ public static class MessagingServiceCollectionExtensions
         services.AddScoped<ILegendConnectOperationalEventWriter, LegendConnectOperationalEventWriter>();
         services.AddScoped<ILegendConnectTranslationIntelligence, LegendConnectTranslationIntelligence>();
         services.AddScoped<ITranslationProvider, AzureTranslatorService>();
-        services.AddScoped<ITranslationService, LegendConnectTranslationRouter>();
+        services.AddSingleton<ITranslationRequestCoalescer, TranslationRequestCoalescer>();
+        services.AddScoped<LegendConnectTranslationRouter>();
+        services.AddScoped<ITranslationService>(provider =>
+            provider.GetRequiredService<LegendConnectTranslationRouter>());
+        services.AddScoped<IRetainedTranslationService>(provider =>
+            provider.GetRequiredService<LegendConnectTranslationRouter>());
+        services.AddSingleton<IApplicationCopyManifestSource, EmbeddedApplicationCopyManifestSource>();
+        services.AddScoped<IApplicationLocalizationService, ApplicationLocalizationService>();
         services.AddScoped<ITranslationLearningPublisher, LegendTranslationLearningPublisher>();
         services.AddScoped<LegendConnectCorpusService>();
         services.AddScoped<LegendConnectCurriculumService>();
