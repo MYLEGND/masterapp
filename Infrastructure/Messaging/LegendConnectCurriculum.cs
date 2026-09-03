@@ -6116,12 +6116,89 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
                 relations.Add(relation);
         }
 
+        // A bound replacement reference is the authoritative discourse value
+        // for that semantic dimension on the current turn. If the current-turn
+        // meaning graph still carries a competing same-dimension entity from a
+        // parallel lexical interpretation, retaining both manufactures the very
+        // ambiguity the governed binding just resolved. Prune only the
+        // superseded local entity nodes here; other discourse modes remain
+        // fail-closed.
+        (nodes, relations) = RemoveSupersededReplacementEntities(
+            nodes,
+            relations,
+            currentTurn.Bindings);
+
         return DiscourseMeaningGraphCompletion.Success(new(
             true,
             nodes,
             relations,
             graph.UnknownSurfaceComponents,
             "meaning_graph_discourse_completed"));
+    }
+
+    private static (
+        List<LegendConnectUtteranceMeaningNode> Nodes,
+        List<LegendConnectUtteranceMeaningRelation> Relations)
+        RemoveSupersededReplacementEntities(
+            List<LegendConnectUtteranceMeaningNode> nodes,
+            List<LegendConnectUtteranceMeaningRelation> relations,
+            IReadOnlyList<LegendConnectDiscourseReferenceBindingSnapshot> bindings)
+    {
+        var retainedByDimension = bindings
+            .Where(item =>
+                item.ResolutionState == "bound" &&
+                item.ReplacesActiveBinding &&
+                !string.IsNullOrWhiteSpace(item.EntitySemanticDimension) &&
+                !string.IsNullOrWhiteSpace(item.EntitySemanticSignature) &&
+                !string.IsNullOrWhiteSpace(item.EntitySemanticValue))
+            .GroupBy(item => item.EntitySemanticDimension!, StringComparer.Ordinal)
+            .ToDictionary(
+                group => group.Key,
+                group => group.Last(),
+                StringComparer.Ordinal);
+        if (retainedByDimension.Count == 0)
+            return (nodes, relations);
+
+        var removedIndexes = Enumerable.Range(0, nodes.Count)
+            .Where(index =>
+            {
+                var node = nodes[index];
+                return retainedByDimension.TryGetValue(
+                           node.SemanticDimension,
+                           out var retained) &&
+                    (!string.Equals(
+                         node.SemanticSignature,
+                         retained.EntitySemanticSignature,
+                         StringComparison.Ordinal) ||
+                     !string.Equals(
+                         node.SemanticValue,
+                         retained.EntitySemanticValue,
+                         StringComparison.Ordinal));
+            })
+            .ToHashSet();
+        if (removedIndexes.Count == 0)
+            return (nodes, relations);
+
+        var retainedIndexes = Enumerable.Range(0, nodes.Count)
+            .Where(index => !removedIndexes.Contains(index))
+            .ToArray();
+        var remap = retainedIndexes
+            .Select((originalIndex, newIndex) => new { originalIndex, newIndex })
+            .ToDictionary(item => item.originalIndex, item => item.newIndex);
+        var prunedNodes = retainedIndexes
+            .Select(index => nodes[index])
+            .ToList();
+        var prunedRelations = relations
+            .Where(item =>
+                !removedIndexes.Contains(item.SourceNodeIndex) &&
+                !removedIndexes.Contains(item.TargetNodeIndex))
+            .Select(item => item with
+            {
+                SourceNodeIndex = remap[item.SourceNodeIndex],
+                TargetNodeIndex = remap[item.TargetNodeIndex]
+            })
+            .ToList();
+        return (prunedNodes, prunedRelations);
     }
 
     private static bool IsActiveDiscourseEntityNode(
