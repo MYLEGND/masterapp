@@ -1238,6 +1238,14 @@ public sealed class LegendFounderAiContractTests
         Assert.Contains("$executedTests -ne 1", verify, StringComparison.Ordinal);
         Assert.Contains("$matrixCases -lt 1", verify, StringComparison.Ordinal);
         Assert.Contains("legend-production-matrix-result.json", verify, StringComparison.Ordinal);
+        Assert.Contains(
+            "LEGEND_PRODUCTION_PROOF_RESULT_PATH: ${{ github.workspace }}/diagnostics/legend-production-matrix-result.json",
+            verify,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "$matrixResultPath = $env:LEGEND_PRODUCTION_PROOF_RESULT_PATH",
+            verify,
+            StringComparison.Ordinal);
         Assert.Contains("ProductionWriteCommandCount", verify, StringComparison.Ordinal);
         Assert.Contains("ProviderClientCount", verify, StringComparison.Ordinal);
         Assert.DoesNotContain("LegendProductionConvergenceGate", workflow, StringComparison.Ordinal);
@@ -1403,6 +1411,14 @@ public sealed class LegendFounderAiContractTests
         Assert.Contains("matrix_result_state=$matrixResultState", diagnostic, StringComparison.Ordinal);
         Assert.Contains("provider_client_count=$providerClientCount", diagnostic, StringComparison.Ordinal);
         Assert.Contains("production_write_command_count=$productionWriteCommandCount", diagnostic, StringComparison.Ordinal);
+        Assert.Contains(
+            "$matrixResultPath = $env:LEGEND_PRODUCTION_PROOF_RESULT_PATH",
+            diagnostic,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "LEGEND_PRODUCTION_PROOF_RESULT_PATH=$env:GITHUB_WORKSPACE/diagnostics/legend-production-matrix-result.json",
+            workflow,
+            StringComparison.Ordinal);
     }
 
     [Fact]

@@ -127,7 +127,7 @@ jobs:
           # release authority, with SQL read-only and the provider unavailable.
           # It remains non-authoritative because no deployed SHA is available.
           "LEGEND_PRODUCTION_PROOF_REQUIRED=true" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-          "LEGEND_PRODUCTION_PROOF_RESULT_PATH=diagnostics/legend-production-matrix-result.json" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "LEGEND_PRODUCTION_PROOF_RESULT_PATH=$env:GITHUB_WORKSPACE/diagnostics/legend-production-matrix-result.json" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           "OPENAI_API_KEY=" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           "OpenAI__ApiKey=" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
@@ -155,7 +155,7 @@ jobs:
           try {
             $testName = 'AgentPortal.Tests.LegendFounderCurriculumSqlServerE2ETests.ProductionReadOnlyNativeProofMatrix'
             $filter = "FullyQualifiedName=$testName"
-            $matrixResultPath = 'diagnostics/legend-production-matrix-result.json'
+            $matrixResultPath = $env:LEGEND_PRODUCTION_PROOF_RESULT_PATH
             if (Test-Path $matrixResultPath) { throw 'A stale candidate observation result exists before matrix execution.' }
             dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-build --list-tests --filter $filter --diag diagnostics/vstest-discovery.txt 2>&1 | Tee-Object -FilePath $preflight
             $listExit = $LASTEXITCODE
