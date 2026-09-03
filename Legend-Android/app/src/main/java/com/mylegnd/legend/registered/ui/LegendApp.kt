@@ -201,9 +201,16 @@ private fun SignInScreen(
     onAppReviewSignIn: (String, String) -> Unit,
 ) {
     val activity = LocalActivity.current
-    var appReviewOpen by remember { mutableStateOf(false) }
+    var username by remember { mutableStateOf("") }
+    var password by remember { mutableStateOf("") }
+    val normalizedUsername = username.trim()
+    val hasAnyProvidedCredential = normalizedUsername.isNotEmpty() || password.isNotEmpty()
+    val hasCompleteProvidedCredentials = normalizedUsername.isNotEmpty() && password.isNotEmpty()
     LazyColumn(
-        modifier = Modifier.fillMaxSize().background(LegendColors.Canvas),
+        modifier = Modifier
+            .fillMaxSize()
+            .background(LegendColors.Canvas)
+            .imePadding(),
         contentPadding = PaddingValues(horizontal = LegendSpacing.PageHorizontal, vertical = LegendSpacing.Lg),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(LegendSpacing.Md),
@@ -231,17 +238,59 @@ private fun SignInScreen(
             }
         }
         item {
-            LegendPrimaryButton("Sign in securely", modifier = Modifier.fillMaxWidth(), enabled = activity != null) {
-                activity?.let(onSignIn)
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(LegendShapes.Card)
+                    .background(LegendColors.Surface)
+                    .border(1.dp, LegendColors.Divider, LegendShapes.Card)
+                    .padding(LegendSpacing.Md),
+                verticalArrangement = Arrangement.spacedBy(LegendSpacing.Sm),
+            ) {
+                Text(
+                    "Provided sign-in credentials",
+                    style = LegendTypography.Section,
+                    color = LegendColors.TextPrimary,
+                )
+                OutlinedTextField(
+                    value = username,
+                    onValueChange = { username = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("Username") },
+                    singleLine = true,
+                    shape = LegendShapes.Control,
+                )
+                OutlinedTextField(
+                    value = password,
+                    onValueChange = { password = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("Password") },
+                    singleLine = true,
+                    shape = LegendShapes.Control,
+                    visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
+                )
+                Text(
+                    "Enter both only when sign-in credentials were provided with your access instructions. Otherwise leave them blank.",
+                    style = LegendTypography.Caption,
+                    color = LegendColors.TextSecondary,
+                )
             }
         }
-        item { TextButton(onClick = { appReviewOpen = true }) {
-            Text(
-                "App Review Sign In",
-                style = LegendTypography.Supporting,
-                color = LegendColors.NavyElevated,
-            )
-        } }
+        item {
+            LegendPrimaryButton(
+                "Sign in securely",
+                modifier = Modifier.fillMaxWidth(),
+                enabled = hasCompleteProvidedCredentials || (!hasAnyProvidedCredential && activity != null),
+            ) {
+                if (hasCompleteProvidedCredentials) {
+                    val submittedPassword = password
+                    password = ""
+                    onAppReviewSignIn(normalizedUsername, submittedPassword)
+                } else {
+                    activity?.let(onSignIn)
+                }
+            }
+        }
         item {
             Text(
                 "Device authentication is optional and can be enabled after sign in in Profile settings.",
@@ -252,69 +301,6 @@ private fun SignInScreen(
             )
         }
     }
-    if (appReviewOpen) {
-        AppReviewSignInDialog(
-            dismiss = { appReviewOpen = false },
-            submit = { username, password ->
-                appReviewOpen = false
-                onAppReviewSignIn(username, password)
-            },
-        )
-    }
-}
-
-@Composable
-private fun AppReviewSignInDialog(
-    dismiss: () -> Unit,
-    submit: (String, String) -> Unit,
-) {
-    var username by remember { mutableStateOf("") }
-    var password by remember { mutableStateOf("") }
-    AlertDialog(
-        onDismissRequest = {
-            password = ""
-            dismiss()
-        },
-        title = { Text("App Review Sign In", style = LegendTypography.Section) },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(LegendSpacing.Sm)) {
-                Text(
-                    "Use the review credentials provided in Google Play Console.",
-                    style = LegendTypography.Supporting,
-                    color = LegendColors.TextSecondary,
-                )
-                OutlinedTextField(
-                    value = username,
-                    onValueChange = { username = it },
-                    label = { Text("Username") },
-                    singleLine = true,
-                )
-                OutlinedTextField(
-                    value = password,
-                    onValueChange = { password = it },
-                    label = { Text("Password") },
-                    singleLine = true,
-                    visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
-                )
-            }
-        },
-        confirmButton = {
-            TextButton(
-                onClick = {
-                    val submittedPassword = password
-                    password = ""
-                    submit(username.trim(), submittedPassword)
-                },
-                enabled = username.isNotBlank() && password.isNotBlank(),
-            ) { Text("Sign In") }
-        },
-        dismissButton = {
-            TextButton(onClick = {
-                password = ""
-                dismiss()
-            }) { Text("Cancel") }
-        },
-    )
 }
 
 /** The same iOS-owned artwork bundled by Gradle; Android keeps no forked logo file. */
