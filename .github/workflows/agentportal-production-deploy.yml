@@ -660,6 +660,7 @@ jobs:
         env:
           LEGEND_PRODUCTION_PROOF_REQUIRED: 'true'
           LEGEND_PRODUCTION_PROOF_MATRIX_VERSION: ${{ env.LEGEND_PRODUCTION_PROOF_MATRIX_VERSION }}
+          # VSTest may execute from the downloaded assembly directory.
           LEGEND_PRODUCTION_PROOF_RESULT_PATH: ${{ github.workspace }}/diagnostics/legend-production-matrix-result.json
           OPENAI_API_KEY: ''
           OpenAI__ApiKey: ''

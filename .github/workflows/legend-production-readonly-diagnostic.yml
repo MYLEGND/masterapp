@@ -127,6 +127,7 @@ jobs:
           # release authority, with SQL read-only and the provider unavailable.
           # It remains non-authoritative because no deployed SHA is available.
           "LEGEND_PRODUCTION_PROOF_REQUIRED=true" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          # Anchor the handoff because VSTest may change its current directory.
           "LEGEND_PRODUCTION_PROOF_RESULT_PATH=$env:GITHUB_WORKSPACE/diagnostics/legend-production-matrix-result.json" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           "OPENAI_API_KEY=" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           "OpenAI__ApiKey=" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
