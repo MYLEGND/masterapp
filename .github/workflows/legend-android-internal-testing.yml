@@ -1,6 +1,7 @@
 name: Deploy Legend Android to Internal Testing
 
 # Production release authority for the existing versionCode 3 candidate.
+# Release 3 publication trigger synchronized.
 
 on:
   push:
