@@ -144,7 +144,7 @@ jobs:
         shell: bash
         env:
           ACCESS_TOKEN: ${{ steps.google-auth.outputs.access_token }}
-          RELEASE_NOTES: ${{ inputs.release_notes || 'Release 3: updated LEGEND Android internal testing build.' }}
+          RELEASE_NOTES: ${{ inputs.release_notes || 'Release 3 - updated LEGEND Android internal testing build.' }}
           PACKAGE_NAME: com.mylegnd.legend.registered
         run: |
           set -euo pipefail
