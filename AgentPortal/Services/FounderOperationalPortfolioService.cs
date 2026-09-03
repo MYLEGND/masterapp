@@ -1,6 +1,8 @@
 using System.Security.Claims;
 using AgentPortal.Security;
+using Domain.Entities;
 using Infrastructure.Data;
+using Infrastructure.Mobile;
 using Microsoft.EntityFrameworkCore;
 
 namespace AgentPortal.Services;
@@ -12,8 +14,13 @@ namespace AgentPortal.Services;
 /// through the existing Founder authorization boundary instead of from
 /// provider recollection or the public internet.
 ///
-/// This service performs counts only. It never mutates, tracks, or returns
-/// personally identifiable client or lead content.
+/// It is not a second data authority: every count is produced by the existing
+/// canonical visibility rules — <see cref="LegendMemberDirectory"/> for active
+/// subscribed members, <see cref="ClientRecordClassification"/> for the
+/// client/lead record type, <see cref="WorkstationLeadConversionLifecycle"/>
+/// for the active lead queue, and the website-lead exclusion of internal and
+/// deleted rows. This service performs counts only. It never mutates, tracks,
+/// or returns personally identifiable client or lead content.
 /// </summary>
 public sealed class FounderOperationalPortfolioService
 {
@@ -28,22 +35,47 @@ public sealed class FounderOperationalPortfolioService
     {
         FounderGuard.EnsureFounderOrThrow(user);
 
-        var clientProfileCount = await _db.ClientProfiles
+        var activeSubscribedProfiles = await LegendMemberDirectory
+            .ActiveSubscribedProfiles(_db)
+            .ToListAsync(cancellationToken);
+
+        var activeClientCount = LegendMemberDirectory
+            .Collapse(activeSubscribedProfiles)
+            .Count;
+
+        var agentLinkedRows = await (
+                from link in _db.AgentClients.AsNoTracking()
+                join profile in _db.ClientProfiles.AsNoTracking()
+                    on link.ClientUserId equals profile.ClientUserId
+                select new
+                {
+                    profile.ClientUserId,
+                    profile.ExternalIdentityObjectId,
+                    profile.CrmNotes,
+                    profile.CrmStatus
+                })
+            .ToListAsync(cancellationToken);
+
+        var agentLinkedClientCount = agentLinkedRows
+            .Where(row => ClientRecordClassification.IsClientOrBusinessClient(
+                row.ClientUserId,
+                row.CrmNotes,
+                row.CrmStatus))
+            .Select(row => LegendMemberDirectory.CanonicalIdentityKey(
+                row.ClientUserId,
+                row.ExternalIdentityObjectId))
+            .Where(key => !string.IsNullOrWhiteSpace(key))
+            .Distinct(StringComparer.Ordinal)
+            .Count();
+
+        var activeLeads = _db.WorkstationLeadProfiles
             .AsNoTracking()
+            .ActiveLeadQueue();
+
+        var activeLeadCount = await activeLeads
             .CountAsync(cancellationToken);
 
-        var agentLinkedClientCount = await _db.AgentClients
-            .AsNoTracking()
-            .Select(link => link.ClientUserId)
-            .Distinct()
-            .CountAsync(cancellationToken);
-
-        var workstationLeadCount = await _db.WorkstationLeadProfiles
-            .AsNoTracking()
-            .CountAsync(cancellationToken);
-
-        var leadsByCrmStatus = await _db.WorkstationLeadProfiles
-            .AsNoTracking()
+        var leadsByCrmStatus = await activeLeads
             .GroupBy(lead => lead.CrmStatus)
             .Select(group => new FounderOperationalPortfolioStatusCount(
                 group.Key,
@@ -52,24 +84,28 @@ public sealed class FounderOperationalPortfolioService
 
         var websiteLeadCount = await _db.WebsiteLeads
             .AsNoTracking()
+            .Where(lead => !lead.IsInternal && !lead.IsDeleted)
             .CountAsync(cancellationToken);
 
         return new FounderOperationalPortfolioSnapshot(
             DateTime.UtcNow,
-            clientProfileCount,
+            activeClientCount,
             agentLinkedClientCount,
-            workstationLeadCount,
+            activeLeadCount,
             leadsByCrmStatus
                 .OrderByDescending(item => item.Count)
                 .ThenBy(item => item.CrmStatus, StringComparer.Ordinal)
                 .ToList(),
             websiteLeadCount,
-            "ClientProfileCount counts every client profile record. " +
-            "AgentLinkedClientCount counts distinct clients linked to an agent. " +
-            "WorkstationLeadCount counts every workstation lead record and " +
-            "WorkstationLeadsByCrmStatus reports the canonical CRM status of each. " +
-            "WebsiteLeadCount counts captured website leads. " +
-            "No lifecycle status beyond these stored values is inferred here.",
+            "ActiveClientCount applies LegendMemberDirectory.ActiveSubscribedProfiles " +
+            "and Collapse (available CRM status, current client-app entitlement, " +
+            "client record type, one row per canonical identity). " +
+            "AgentLinkedClientCount counts distinct canonical client identities " +
+            "linked through AgentClients whose record type is Client or " +
+            "BusinessClient. ActiveLeadCount and ActiveLeadsByCrmStatus apply " +
+            "WorkstationLeadConversionLifecycle.ActiveLeadQueue, so converted " +
+            "leads are excluded. WebsiteLeadCount excludes internal and deleted " +
+            "website leads. No other lifecycle meaning is inferred here.",
             "read_only_zero_write");
     }
 }
@@ -80,10 +116,10 @@ public sealed record FounderOperationalPortfolioStatusCount(
 
 public sealed record FounderOperationalPortfolioSnapshot(
     DateTime ObservedUtc,
-    int ClientProfileCount,
+    int ActiveClientCount,
     int AgentLinkedClientCount,
-    int WorkstationLeadCount,
-    IReadOnlyList<FounderOperationalPortfolioStatusCount> WorkstationLeadsByCrmStatus,
+    int ActiveLeadCount,
+    IReadOnlyList<FounderOperationalPortfolioStatusCount> ActiveLeadsByCrmStatus,
     int WebsiteLeadCount,
     string Definitions,
     string AccessClass);

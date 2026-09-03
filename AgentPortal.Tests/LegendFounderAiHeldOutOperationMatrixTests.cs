@@ -15,6 +15,7 @@ using Domain.Messaging;
 using Infrastructure.Data;
 using Infrastructure.Messaging;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
@@ -64,22 +65,19 @@ public sealed class LegendFounderAiHeldOutOperationMatrixTests
     private const string ToolPrompt =
         "Inspect, read-only, how many client records and how many workstation leads are currently visible to me.";
 
+    /// <summary>
+    /// Isolation evidence only. It proves the native-only boundary makes no
+    /// provider call and attempts no write, and that every refusal carries an
+    /// explicit governed reason. It deliberately does NOT assert that the
+    /// request was answered: native general reasoning is not implemented, and
+    /// the capability gate below is the only place capability is judged.
+    /// </summary>
     [Fact]
-    public async Task HeldOutMatrix_NativeOnlyReasoningNeverCallsTheProviderAndReportsGovernedReasons()
+    public async Task NativeOnlyRequests_MakeNoProviderCallAndAttemptNoWrite()
     {
         var rows = new List<MatrixRow>();
 
-        foreach (var (category, prompt) in new[]
-        {
-            ("arithmetic", ArithmeticPrompt),
-            ("rewriting", RewritingPrompt),
-            ("deduction", DeductionPrompt),
-            ("causal_diagnosis", CausalPrompt),
-            ("constrained_planning", PlanningPrompt),
-            ("internal_data_uncertainty", UncertaintyPrompt),
-            ("same_conversation_memory", MemoryFirstPrompt),
-            ("haitian_creole_conflict", CreolePrompt)
-        })
+        foreach (var (category, prompt) in CapabilityMatrix)
         {
             rows.Add(await RunAsync(
                 $"native_only:{category}",
@@ -90,18 +88,57 @@ public sealed class LegendFounderAiHeldOutOperationMatrixTests
         Record(rows);
 
         Assert.All(rows, row => Assert.Equal(0, row.ProviderCalls));
-        Assert.All(rows, row => Assert.Equal(0, row.DatabaseWrites));
+        Assert.All(rows, row => Assert.Equal(0, row.OperationalWriteAttempts));
         Assert.All(rows, row => Assert.NotEqual("OpenAITeacher", row.ResponseAuthority));
         Assert.All(rows, row => Assert.False(
-            string.IsNullOrWhiteSpace(row.Reason) && string.IsNullOrWhiteSpace(row.Message),
-            "A native-only exchange must return either an answer or an explicit governed reason."));
+            string.IsNullOrWhiteSpace(row.Reason),
+            "A native-only refusal must carry an explicit governed reason."));
     }
 
-    [Fact]
-    public async Task HeldOutMatrix_SameConversationMemoryIsAnsweredWithoutProviderCallsInNativeOnly()
+    /// <summary>
+    /// The native capability gate. Each row demands a correct answer produced
+    /// under LEGEND authority with zero provider calls. It is skipped, never
+    /// passed, because no native general-reasoning model exists in this
+    /// architecture; an explicit refusal must never be recorded as a pass.
+    /// Remove the skip only when a genuine native model can satisfy it.
+    /// </summary>
+    [Theory(Skip = "Native general reasoning is not implemented: the promoted reasoning transport is provider-backed and only re-words symbolically supported answers. This gate must fail until a genuine native model exists; an explicit governed refusal is not a pass.")]
+    [InlineData("arithmetic", "29")]
+    [InlineData("deduction", "Kestrel")]
+    [InlineData("constrained_planning", "five")]
+    public async Task NativeOnlyRequests_ProduceCorrectAnswersUnderLegendAuthority(
+        string category,
+        string requiredAnswerFragment)
+    {
+        var prompt = CapabilityMatrix.Single(row => row.Category == category).Prompt;
+
+        var row = await RunAsync(
+            $"native_capability:{category}",
+            prompt,
+            nativeOnly: true);
+
+        Record([row]);
+
+        Assert.True(row.Succeeded, row.Error);
+        Assert.Equal(0, row.ProviderCalls);
+        Assert.Equal("LegendAi", row.ResponseAuthority);
+        Assert.NotNull(row.Message);
+        Assert.Contains(
+            requiredAnswerFragment,
+            row.Message!,
+            StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// The same-conversation memory gate. It demands the exact owner and date
+    /// stated earlier in the same conversation. Skipped for the same structural
+    /// reason; a different failure can never satisfy it.
+    /// </summary>
+    [Fact(Skip = "Same-conversation recall through native governed discourse is not implemented; see the native general-reasoning structural blocker.")]
+    public async Task SameConversationMemory_ReturnsTheExactValuesStatedEarlier()
     {
         var row = await RunAsync(
-            "native_only:same_conversation_memory_followup",
+            "native_capability:same_conversation_memory",
             MemoryFollowUpPrompt,
             nativeOnly: true,
             priorTurns:
@@ -114,14 +151,16 @@ public sealed class LegendFounderAiHeldOutOperationMatrixTests
 
         Record([row]);
 
+        Assert.True(row.Succeeded, row.Error);
         Assert.Equal(0, row.ProviderCalls);
-        Assert.NotEqual(
-            "source_language_identification_unavailable",
-            row.Reason);
+        Assert.Equal("LegendAi", row.ResponseAuthority);
+        Assert.NotNull(row.Message);
+        Assert.Contains("Corine", row.Message!, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("November", row.Message!, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
-    public async Task HeldOutMatrix_PermittedEscalationAndDirectProviderModeAreAttributedToTheProvider()
+    public async Task PermittedEscalationAndDirectProviderModeAreAttributedToTheProvider()
     {
         var escalated = await RunAsync(
             "escalation_allowed:deduction",
@@ -141,17 +180,28 @@ public sealed class LegendFounderAiHeldOutOperationMatrixTests
         Assert.True(escalated.Succeeded, escalated.Error);
         Assert.Equal("OpenAITeacher", escalated.ResponseAuthority);
         Assert.Equal(1, escalated.ProviderCalls);
+        Assert.Equal(0, escalated.OperationalWriteAttempts);
         Assert.True(direct.Succeeded, direct.Error);
         Assert.Equal("OpenAITeacher", direct.ResponseAuthority);
         Assert.Equal(1, direct.ProviderCalls);
     }
 
-    [Fact]
-    public async Task HeldOutMatrix_GovernedToolRequestExecutesTheRegisteredReadToolWithoutWriting()
+    /// <summary>
+    /// Held-out paraphrases of an owned-record request. The routing decision,
+    /// the offered catalog, the executed receipt and the exact returned counts
+    /// are asserted. The provider fixture stands in for the real selection
+    /// policy, so this is not evidence of autonomous tool selection by OpenAI.
+    /// </summary>
+    [Theory]
+    [InlineData("How many client records and how many leads do we have right now?")]
+    [InlineData("What is the current count of our leads?")]
+    [InlineData("Show me the status of our lead records today.")]
+    public async Task OwnedRecordRequests_ExecuteTheRegisteredReadToolAndCarryItsExactCounts(
+        string prompt)
     {
         var row = await RunAsync(
             "escalation_allowed:governed_tool_read",
-            ToolPrompt,
+            prompt,
             nativeOnly: false,
             providerResponses:
             [
@@ -165,8 +215,28 @@ public sealed class LegendFounderAiHeldOutOperationMatrixTests
         Assert.True(row.Succeeded, row.Error);
         Assert.Equal(2, row.ProviderCalls);
         Assert.Contains("legend_client_lead_portfolio", row.ToolCalls);
-        Assert.Equal(0, row.DatabaseWrites);
+        Assert.Contains(
+            "\"activeLeadCount\":1",
+            row.ReceiptRoundRequest,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "\"websiteLeadCount\":0",
+            row.ReceiptRoundRequest,
+            StringComparison.Ordinal);
+        Assert.Equal(0, row.OperationalWriteAttempts);
     }
+
+    private static readonly (string Category, string Prompt)[] CapabilityMatrix =
+    [
+        ("arithmetic", ArithmeticPrompt),
+        ("rewriting", RewritingPrompt),
+        ("deduction", DeductionPrompt),
+        ("causal_diagnosis", CausalPrompt),
+        ("constrained_planning", PlanningPrompt),
+        ("internal_data_uncertainty", UncertaintyPrompt),
+        ("same_conversation_memory", MemoryFirstPrompt),
+        ("haitian_creole_conflict", CreolePrompt)
+    ];
 
     private static async Task<MatrixRow> RunAsync(
         string label,
@@ -179,14 +249,18 @@ public sealed class LegendFounderAiHeldOutOperationMatrixTests
         bool seedOperationalRecords = false)
     {
         using var founderEnvironment = new FounderEnvironmentScope();
-        await using var db = ControllerTestHelpers.BuildDb();
+        using var writeSentinel = new WriteAttemptSentinel();
+        await using var db = BuildSentinelDb(writeSentinel);
         var founder = await AddFounderProfileAsync(db);
         if (seedOperationalRecords)
         {
             await SeedOperationalRecordsAsync(db);
         }
 
-        var writesBefore = await CountOperationalRecordsAsync(db);
+        // Every persistence attempt from this point on is counted and rejected,
+        // so zero writes is proven at the command boundary instead of inferred
+        // from unchanged row counts.
+        writeSentinel.Arm();
         var responses = providerResponses
             ?? (providerText is null ? [] : new[] { ProviderText(providerText) });
         var handler = new RecordingProviderHandler(responses);
@@ -205,8 +279,6 @@ public sealed class LegendFounderAiHeldOutOperationMatrixTests
                 Messages = messages
             });
 
-        var writesAfter = await CountOperationalRecordsAsync(db);
-
         return new MatrixRow(
             label,
             prompt,
@@ -220,7 +292,16 @@ public sealed class LegendFounderAiHeldOutOperationMatrixTests
             response.ModelProvenance,
             handler.RequestCount,
             handler.ToolCalls,
-            writesAfter - writesBefore);
+            handler.RequestBodies.Count > 1
+                ? handler.RequestBodies[^1].Replace(
+                    "\\u0022",
+                    "\"",
+                    StringComparison.Ordinal)
+                : string.Empty,
+            writeSentinel.OperationalWriteAttempts,
+            writeSentinel.ObservedWriteEntities.ToList(),
+            db.ChangeTracker.Entries().Count(entry =>
+                entry.State != EntityState.Unchanged));
     }
 
     private static void Record(IReadOnlyList<MatrixRow> rows)
@@ -256,13 +337,10 @@ public sealed class LegendFounderAiHeldOutOperationMatrixTests
         string? ModelProvenance,
         int ProviderCalls,
         IReadOnlyList<string> ToolCalls,
-        int DatabaseWrites);
-
-    private static async Task<int> CountOperationalRecordsAsync(
-        MasterAppDbContext db) =>
-        await db.ClientProfiles.CountAsync()
-        + await db.WorkstationLeadProfiles.CountAsync()
-        + await db.AgentClients.CountAsync();
+        string ReceiptRoundRequest,
+        int OperationalWriteAttempts,
+        IReadOnlyList<string> ObservedWriteEntities,
+        int PendingTrackedChanges);
 
     private static async Task SeedOperationalRecordsAsync(MasterAppDbContext db)
     {
@@ -345,6 +423,90 @@ public sealed class LegendFounderAiHeldOutOperationMatrixTests
         return ControllerTestHelpers.BuildUser(FounderEnvironmentScope.FounderId);
     }
 
+    private static MasterAppDbContext BuildSentinelDb(
+        WriteAttemptSentinel sentinel) =>
+        new(new DbContextOptionsBuilder<MasterAppDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString())
+            .ConfigureWarnings(warnings =>
+                warnings.Ignore(InMemoryEventId.TransactionIgnoredWarning))
+            .AddInterceptors(sentinel)
+            .Options);
+
+    /// <summary>
+    /// Observes every persistence attempt on the read path. Any attempt that
+    /// touches an operational record set is counted and rejected, so zero
+    /// operational writes is proven at the persistence boundary instead of
+    /// inferred from unchanged row counts. Other persistence attempts (the
+    /// language registry provisioning its governed baseline) are recorded by
+    /// entity name rather than hidden.
+    /// </summary>
+    private sealed class WriteAttemptSentinel : SaveChangesInterceptor, IDisposable
+    {
+        private static readonly string[] OperationalEntities =
+        [
+            nameof(ClientProfile),
+            nameof(AgentClient),
+            nameof(WorkstationLeadProfile),
+            nameof(WebsiteLead)
+        ];
+
+        private bool _armed;
+
+        public int OperationalWriteAttempts { get; private set; }
+
+        public SortedSet<string> ObservedWriteEntities { get; } =
+            new(StringComparer.Ordinal);
+
+        public void Arm() => _armed = true;
+
+        public void Dispose() => _armed = false;
+
+        public override InterceptionResult<int> SavingChanges(
+            DbContextEventData eventData,
+            InterceptionResult<int> result)
+        {
+            Observe(eventData);
+            return base.SavingChanges(eventData, result);
+        }
+
+        public override ValueTask<InterceptionResult<int>> SavingChangesAsync(
+            DbContextEventData eventData,
+            InterceptionResult<int> result,
+            CancellationToken cancellationToken = default)
+        {
+            Observe(eventData);
+            return base.SavingChangesAsync(eventData, result, cancellationToken);
+        }
+
+        private void Observe(DbContextEventData eventData)
+        {
+            if (!_armed || eventData.Context is null)
+                return;
+
+            var entities = eventData.Context.ChangeTracker
+                .Entries()
+                .Where(entry => entry.State != EntityState.Unchanged &&
+                                entry.State != EntityState.Detached)
+                .Select(entry => entry.Entity.GetType().Name)
+                .ToList();
+
+            foreach (var entity in entities)
+                ObservedWriteEntities.Add(entity);
+
+            var operational = entities
+                .Where(entity => OperationalEntities.Contains(entity))
+                .ToList();
+
+            if (operational.Count == 0)
+                return;
+
+            OperationalWriteAttempts += operational.Count;
+            throw new InvalidOperationException(
+                "A governed read path attempted to persist operational records: " +
+                string.Join(", ", operational));
+        }
+    }
+
     private static HttpResponseMessage ProviderText(string text) =>
         ProviderResponse(new
         {
@@ -395,6 +557,8 @@ public sealed class LegendFounderAiHeldOutOperationMatrixTests
 
         public List<string> ToolCalls { get; } = [];
 
+        public List<string> RequestBodies { get; } = [];
+
         protected override async Task<HttpResponseMessage> SendAsync(
             HttpRequestMessage request,
             CancellationToken cancellationToken)
@@ -403,6 +567,7 @@ public sealed class LegendFounderAiHeldOutOperationMatrixTests
             var body = request.Content is null
                 ? string.Empty
                 : await request.Content.ReadAsStringAsync(cancellationToken);
+            RequestBodies.Add(body);
             if (body.Contains("function_call_output", StringComparison.Ordinal))
             {
                 ToolCalls.Add("legend_client_lead_portfolio");

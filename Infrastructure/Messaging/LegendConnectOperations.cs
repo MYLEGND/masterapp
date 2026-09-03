@@ -495,21 +495,17 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
                     : "internal_legend_state_requires_governed_tools");
         }
 
-        // Tenant-owned operational records (clients, leads, policies, renewals,
-        // appointments, revenue) are authenticated governed resources. The
-        // public internet holds no authority over them, so such a request must
-        // stay on the governed read path even when internal evidence is
-        // currently unavailable, stale, or conflicting.
-        if (IsInternalOperationalDataQuestion(normalized))
+        // Records this deployment owns are authenticated governed resources.
+        // The public internet holds no authority over them. Generic retained
+        // evidence is availability, not relevance: it cannot prove the exact
+        // requested record state, so the request stays on the authenticated
+        // read path and must complete with a governed read receipt.
+        if (LegendConnectOwnedRecordRequest.RequestsOwnedRecordState(normalized))
         {
             return Decision(
                 false,
-                internalAvailable
-                    ? LegendConnectResearchNeed.ExistingGovernedKnowledge
-                    : LegendConnectResearchNeed.NotResearchable,
-                internalAvailable
-                    ? "existing_governed_knowledge_answers_request"
-                    : "internal_operational_data_requires_governed_tools");
+                LegendConnectResearchNeed.NotResearchable,
+                "internal_operational_data_requires_governed_tools");
         }
 
         if (conflicted)
@@ -1780,25 +1776,6 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
             "system state", "database", "readiness", "training state",
             "model state", "model version", "provider capacity", "coverage",
             "retained knowledge", "currently know", "current knowledge");
-
-    /// <summary>
-    /// Recognizes a request about operational records this deployment owns and
-    /// serves from authenticated governed resources. The classification needs
-    /// both an internal ownership marker and operational-record vocabulary so
-    /// ordinary subject matter never becomes an internal-data claim.
-    /// </summary>
-    internal static bool IsInternalOperationalDataQuestion(string normalized) =>
-        ContainsResearchSignal(
-            normalized,
-            "our ", "we ", "my ", "founder", "internal",
-            "in the portal", "in the system", "in the database",
-            "in our", "company-wide", "companywide") &&
-        ContainsResearchSignal(
-            normalized,
-            "client", "lead", "policy", "policies", "renewal",
-            "subscriber", "subscription", "appointment", "agent",
-            "commission", "premium", "pipeline", "book of business",
-            "revenue", "retention", "churn");
 
     private static bool IsExternalFactualQuestion(string normalized)
     {

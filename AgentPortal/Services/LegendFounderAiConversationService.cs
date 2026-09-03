@@ -8,6 +8,7 @@ using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 using AgentPortal.Services.Analytics;
 using Domain.Messaging;
+using Infrastructure.Messaging;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 
@@ -268,10 +269,16 @@ public sealed class LegendFounderAiConversationService
             {
                 // Native-only testing is an absolute boundary: an unusable
                 // governed source language fails closed with its exact reason.
-                // A provider-enabled conversation preserves the same failure
-                // and continues on the single existing escalation path instead
-                // of ending the request without any response authority.
-                if (request.NativeOnly)
+                // A governed determination that the source language is
+                // ambiguous, unsupported, or invalidly declared is a semantic
+                // authority result and also fails closed in every mode: without
+                // a proven language identity neither input nor translation
+                // semantics can be established. Only a transient outage of the
+                // identification service leaves the meaning intact, and only
+                // that case continues on the single existing escalation path.
+                if (request.NativeOnly ||
+                    !IsTransientLanguageIdentificationOutage(
+                        sourceLanguage.Reason))
                 {
                     return LegendFounderAiChatResponse.ModeFailure(
                         mode,
@@ -1259,6 +1266,19 @@ public sealed class LegendFounderAiConversationService
             _logger.LogWarning(exception, "LEGEND discourse observation persistence failed.");
         }
     }
+
+    /// <summary>
+    /// Separates a transient outage of the identification service from a
+    /// governed semantic determination. Only the outage may continue on the
+    /// existing escalation path; ambiguity, an unsupported language, and an
+    /// invalid declared code are authority results that fail closed.
+    /// </summary>
+    internal static bool IsTransientLanguageIdentificationOutage(
+        string? reason) =>
+        string.Equals(
+            reason,
+            "source_language_identification_unavailable",
+            StringComparison.Ordinal);
 
     private async Task<FounderAiSourceLanguageResolution> ResolveSourceLanguageAsync(
         string? declaredLanguageCode,
@@ -3205,6 +3225,13 @@ Never upgrade an unresolved, rejected or contradicted record merely because it a
 
         var text = latest.ToLowerInvariant();
 
+        // Records this deployment owns are governed resources. The one
+        // ownership-deixis authority decides this, so no subject-matter phrase
+        // list is maintained here, and the request cannot complete until a
+        // registered governed read returns a successful receipt.
+        if (LegendConnectOwnedRecordRequest.RequestsOwnedRecordState(text))
+            return true;
+
         var explicitGovernedSignals = new[]
         {
             "canonical", "retained knowledge", "retained evidence",
@@ -3214,11 +3241,7 @@ Never upgrade an unresolved, rejected or contradicted record merely because it a
             "provider capacity", "production deployment",
             "deployment", "repository", "github", "pull request",
             "branch", "commit", "workflow", "tool registry",
-            "machineproposed", "machine proposed",
-            // An explicit request to use a governed read capability is itself
-            // an inspection request, whatever the subject matter is.
-            "read-only", "read only", "governed tool", "governed read",
-            "use a tool", "use your tools", "tool call"
+            "machineproposed", "machine proposed"
         };
 
         if (explicitGovernedSignals.Any(signal =>
@@ -3258,20 +3281,13 @@ Never upgrade an unresolved, rejected or contradicted record merely because it a
         var currentStateSignals = new[]
         {
             "current", "currently", "latest", "today",
-            "right now", "update", "how many", "count", "status",
-            "inspect", "look up", "pull up", "report on"
+            "right now", "update", "how many", "count", "status"
         };
 
         var currentStateSubjects = new[]
         {
             "legend", "language", "learning", "knowledge",
-            "model", "provider", "translation", "haitian creole",
-            // Operational records this deployment owns are governed resources
-            // and are read through the registered tools, never from provider
-            // recollection or the public internet.
-            "client", "lead", "policy", "policies", "renewal",
-            "subscriber", "subscription", "appointment", "agent",
-            "commission", "premium", "pipeline", "revenue"
+            "model", "provider", "translation", "haitian creole"
         };
 
         return currentStateSignals.Any(signal =>
