@@ -2,6 +2,7 @@
 
 package com.mylegnd.legend.registered.ui
 
+import android.annotation.SuppressLint
 import android.app.Activity
 import android.Manifest
 import android.content.Intent
@@ -10,6 +11,7 @@ import android.os.Build
 import android.net.Uri
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
+import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.activity.compose.LocalActivity
@@ -59,6 +61,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.core.content.ContextCompat
+import androidx.core.net.toUri
 import androidx.core.view.WindowCompat
 import androidx.fragment.app.FragmentActivity
 import com.mylegnd.legend.registered.LegendContainer
@@ -101,6 +104,7 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import coil3.compose.AsyncImage
+import java.io.ByteArrayInputStream
 import java.time.LocalDate
 
 @Composable
@@ -1980,17 +1984,13 @@ private fun LegendAgentClientCreationPortal(
                         AndroidView(
                             factory = { context ->
                                 WebView(context).apply {
-                                    settings.javaScriptEnabled = true
-                                    settings.domStorageEnabled = true
-                                    settings.allowFileAccess = false
-                                    settings.allowContentAccess = false
                                     webViewClient = LegendClientCreationPortalWebViewClient(
                                         launchPath = launchPath,
                                         onCreated = dismiss,
                                         onSessionExpired = recoverExpiredTicket,
                                         onFailure = { failure = it },
                                     )
-                                    loadUrl(launchPath)
+                                    openLegendClientCreationPortal(launchPath)
                                 }
                             },
                             modifier = Modifier.fillMaxSize(),
@@ -2016,13 +2016,27 @@ private fun LegendAgentClientCreationPortal(
     }
 }
 
+/** JavaScript is required by the same-origin client form; all broader WebView capabilities stay off. */
+@SuppressLint("SetJavaScriptEnabled")
+private fun WebView.openLegendClientCreationPortal(launchPath: String) {
+    settings.javaScriptEnabled = true
+    settings.domStorageEnabled = true
+    settings.allowFileAccess = false
+    settings.allowContentAccess = false
+    settings.javaScriptCanOpenWindowsAutomatically = false
+    settings.setSupportMultipleWindows(false)
+    settings.mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
+    settings.safeBrowsingEnabled = true
+    loadUrl(launchPath)
+}
+
 private class LegendClientCreationPortalWebViewClient(
     launchPath: String,
     private val onCreated: () -> Unit,
     private val onSessionExpired: () -> Unit,
     private val onFailure: (String) -> Unit,
 ) : WebViewClient() {
-    private val origin = Uri.parse(launchPath)
+    private val origin = launchPath.toUri()
     private var completed = false
 
     override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
@@ -2034,6 +2048,25 @@ private class LegendClientCreationPortalWebViewClient(
             return true
         }
         return false
+    }
+
+    override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? {
+        val destination = request.url
+        if (destination.scheme.equals("http", ignoreCase = true) ||
+            destination.scheme.equals("https", ignoreCase = true)
+        ) {
+            if (!isApprovedPortalResource(destination)) {
+                return WebResourceResponse(
+                    "text/plain",
+                    "UTF-8",
+                    403,
+                    "Blocked",
+                    emptyMap(),
+                    ByteArrayInputStream(ByteArray(0)),
+                )
+            }
+        }
+        return super.shouldInterceptRequest(view, request)
     }
 
     override fun onReceivedHttpError(view: WebView, request: WebResourceRequest, response: WebResourceResponse) {
@@ -2056,10 +2089,20 @@ private class LegendClientCreationPortalWebViewClient(
             destination.host.equals(origin.host, ignoreCase = true) &&
             normalizedPort(destination) == normalizedPort(origin)
 
+    private fun isApprovedPortalResource(destination: Uri): Boolean =
+        isApprovedPortalLocation(destination) ||
+            (destination.scheme.equals("https", ignoreCase = true) &&
+                normalizedPort(destination) == 443 &&
+                destination.host?.lowercase() in approvedExternalResourceHosts)
+
     private fun normalizedPort(uri: Uri): Int = when {
         uri.port != -1 -> uri.port
         uri.scheme.equals("https", ignoreCase = true) -> 443
         else -> -1
+    }
+
+    private companion object {
+        val approvedExternalResourceHosts = setOf("fonts.googleapis.com", "fonts.gstatic.com")
     }
 
     private fun complete() {
@@ -2916,7 +2959,7 @@ private fun LegendConversationCallSheet(
                                 context.startActivity(
                                     Intent(
                                         Intent.ACTION_DIAL,
-                                        Uri.parse("tel:${Uri.encode(phoneNumber)}"),
+                                        "tel:${Uri.encode(phoneNumber)}".toUri(),
                                     ),
                                 )
                                 dismiss()
