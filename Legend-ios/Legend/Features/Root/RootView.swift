@@ -291,13 +291,10 @@ private struct SignInView: View {
     @EnvironmentObject private var session: MobileSessionCoordinator
     @State private var username = ""
     @State private var password = ""
+    @State private var showsProvidedCredentials = false
 
     private var normalizedUsername: String {
         username.trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-
-    private var hasAnyProvidedCredential: Bool {
-        !normalizedUsername.isEmpty || !password.isEmpty
     }
 
     private var hasCompleteProvidedCredentials: Bool {
@@ -327,7 +324,7 @@ private struct SignInView: View {
                         Text("Secure sign in")
                             .font(.system(size: 27, weight: .bold))
                             .foregroundStyle(LegendNextColor.contactTitle)
-                        Text("Verify your Legend account to continue.")
+                        Text("Tap Sign in securely to continue with your Legend account.")
                             .font(LegendNextTypography.supporting)
                             .foregroundStyle(LegendNextColor.contactTitle.opacity(0.76))
                             .multilineTextAlignment(.center)
@@ -351,30 +348,56 @@ private struct SignInView: View {
                     }
                     .shadow(color: LegendNextColor.navy.opacity(0.16), radius: 20, y: 10)
 
-                    VStack(alignment: .leading, spacing: LegendNextSpacing.sm) {
-                        Text("Provided sign-in credentials")
-                            .font(LegendNextTypography.section)
-                            .foregroundStyle(LegendNextColor.textPrimary)
+                    VStack(spacing: 0) {
+                        Button(action: toggleProvidedCredentials) {
+                            HStack(spacing: LegendNextSpacing.sm) {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("Were you given sign-in credentials?")
+                                        .font(LegendNextTypography.supporting)
+                                        .foregroundStyle(LegendNextColor.textPrimary)
+                                    Text("Optional access method")
+                                        .font(LegendNextTypography.caption)
+                                        .foregroundStyle(LegendNextColor.textSecondary)
+                                }
+                                Spacer(minLength: LegendNextSpacing.sm)
+                                Image(systemName: showsProvidedCredentials ? "chevron.up" : "chevron.down")
+                                    .font(.system(size: 14, weight: .semibold))
+                                    .foregroundStyle(LegendNextColor.navyElevated)
+                            }
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityHint(
+                            showsProvidedCredentials
+                                ? "Hides the provided credential fields."
+                                : "Shows fields for credentials supplied with access instructions.")
 
-                        TextField("Username", text: $username)
-                            .textContentType(.username)
-                            .textInputAutocapitalization(.never)
-                            .autocorrectionDisabled()
-                            .submitLabel(.next)
+                        if showsProvidedCredentials {
+                            Divider()
+                                .padding(.vertical, LegendNextSpacing.sm)
 
-                        Divider()
+                            VStack(alignment: .leading, spacing: LegendNextSpacing.sm) {
+                                TextField("Username", text: $username)
+                                    .textContentType(.username)
+                                    .textInputAutocapitalization(.never)
+                                    .autocorrectionDisabled()
+                                    .submitLabel(.next)
 
-                        SecureField("Password", text: $password)
-                            .textContentType(.password)
-                            .submitLabel(.go)
-                            .onSubmit(signIn)
+                                Divider()
 
-                        Text("Enter both only when sign-in credentials were provided with your access instructions. Otherwise leave them blank.")
-                            .font(LegendNextTypography.caption)
-                            .foregroundStyle(LegendNextColor.textSecondary)
-                            .fixedSize(horizontal: false, vertical: true)
+                                SecureField("Password", text: $password)
+                                    .textContentType(.password)
+                                    .submitLabel(.go)
+                                    .onSubmit(signIn)
+
+                                Text("Enter the username and password you were provided, then use the same Sign in securely button below.")
+                                    .font(LegendNextTypography.caption)
+                                    .foregroundStyle(LegendNextColor.textSecondary)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                            .textFieldStyle(.plain)
+                        }
                     }
-                    .textFieldStyle(.plain)
                     .padding(LegendNextSpacing.md)
                     .background(LegendNextColor.surface)
                     .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
@@ -386,7 +409,7 @@ private struct SignInView: View {
                     Button("Sign in securely", action: signIn)
                         .buttonStyle(LegendNextButtonStyle(kind: .primary))
                         .frame(maxHeight: 48)
-                        .disabled(hasAnyProvidedCredential && !hasCompleteProvidedCredentials)
+                        .disabled(showsProvidedCredentials && !hasCompleteProvidedCredentials)
                         .accessibilityHint(
                             hasCompleteProvidedCredentials
                                 ? "Signs in with the provided Legend credentials."
@@ -411,15 +434,23 @@ private struct SignInView: View {
     }
 
     private func signIn() {
-        if hasCompleteProvidedCredentials {
+        if showsProvidedCredentials && hasCompleteProvidedCredentials {
             let submittedUsername = normalizedUsername
             let submittedPassword = password
             password = ""
             session.signInForAppReview(
                 username: submittedUsername,
                 password: submittedPassword)
-        } else if !hasAnyProvidedCredential {
+        } else if !showsProvidedCredentials {
             session.signIn()
+        }
+    }
+
+    private func toggleProvidedCredentials() {
+        showsProvidedCredentials.toggle()
+        if !showsProvidedCredentials {
+            username = ""
+            password = ""
         }
     }
 }

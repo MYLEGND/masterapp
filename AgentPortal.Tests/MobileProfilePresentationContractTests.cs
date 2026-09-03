@@ -146,6 +146,49 @@ public sealed class MobileProfilePresentationContractTests
             StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void MobileSignIn_UsesOneSecureActionForStandardAndProvidedCredentials()
+    {
+        var ios = Read("Legend-ios", "Legend", "Features", "Root", "RootView.swift");
+        var android = Read(
+            "Legend-Android", "app", "src", "main", "java", "com", "mylegnd", "legend",
+            "registered", "ui", "LegendApp.kt");
+
+        var iosSignIn = Between(
+            ios,
+            "private struct SignInView: View",
+            "private struct SessionFailureView: View");
+        Assert.Contains("Button(\"Sign in securely\", action: signIn)", iosSignIn, StringComparison.Ordinal);
+        Assert.Contains("session.signInForAppReview(", iosSignIn, StringComparison.Ordinal);
+        Assert.Contains("session.signIn()", iosSignIn, StringComparison.Ordinal);
+        Assert.Contains("ScrollView", iosSignIn, StringComparison.Ordinal);
+        Assert.Contains("Were you given sign-in credentials?", iosSignIn, StringComparison.Ordinal);
+        Assert.Contains("showsProvidedCredentials && hasCompleteProvidedCredentials", iosSignIn, StringComparison.Ordinal);
+        Assert.DoesNotContain("App Review Sign In", iosSignIn, StringComparison.Ordinal);
+        Assert.DoesNotContain("AppReviewSignInView", iosSignIn, StringComparison.Ordinal);
+        Assert.DoesNotContain(".sheet(", iosSignIn, StringComparison.Ordinal);
+
+        var androidSignIn = Between(
+            android,
+            "private fun SignInScreen(",
+            "private fun RoleSelectionScreen(");
+        Assert.Contains("LegendPrimaryButton(\n                \"Sign in securely\"", androidSignIn, StringComparison.Ordinal);
+        Assert.Contains(
+            "onAppReviewSignIn(normalizedUsername, submittedPassword)",
+            androidSignIn,
+            StringComparison.Ordinal);
+        Assert.Contains("activity?.let(onSignIn)", androidSignIn, StringComparison.Ordinal);
+        Assert.Contains(".imePadding()", androidSignIn, StringComparison.Ordinal);
+        Assert.Contains("Were you given sign-in credentials?", androidSignIn, StringComparison.Ordinal);
+        Assert.Contains(
+            "showsProvidedCredentials && hasCompleteProvidedCredentials",
+            androidSignIn,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain("App Review Sign In", androidSignIn, StringComparison.Ordinal);
+        Assert.DoesNotContain("AppReviewSignInDialog", androidSignIn, StringComparison.Ordinal);
+        Assert.DoesNotContain("AlertDialog(", androidSignIn, StringComparison.Ordinal);
+    }
+
     private static string Between(string source, string start, string end)
     {
         var startIndex = source.IndexOf(start, StringComparison.Ordinal);
