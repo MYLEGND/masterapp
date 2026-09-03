@@ -331,8 +331,8 @@ struct LegendApplicationShell: View {
     private var unavailableTab: some View {
         NavigationStack {
             LegendNextEmptyState(
-                title: "Page unavailable",
-                message: "This page is not available for the current account.",
+                title: LegendLocalized("Page unavailable"),
+                message: LegendLocalized("This page is not available for the current account."),
                 systemImage: "exclamationmark.triangle"
             )
             .padding(LegendNextSpacing.sm)
@@ -391,7 +391,10 @@ private struct LegendAccountLifecycleLockedView: View {
                 .font(.system(size: 44, weight: .semibold))
                 .foregroundStyle(LegendNextColor.goldBright)
 
-            Text(lifecycle.canResume ? "Your account is paused" : "Account deletion is in progress")
+            Text(
+                lifecycle.canResume
+                    ? LegendLocalized("Your account is paused")
+                    : LegendLocalized("Account deletion is in progress"))
                 .font(LegendNextTypography.title)
                 .foregroundStyle(LegendNextColor.textPrimary)
                 .multilineTextAlignment(.center)
@@ -404,7 +407,7 @@ private struct LegendAccountLifecycleLockedView: View {
                 .frame(maxWidth: 360)
 
             if lifecycle.canResume {
-                Button(account.isUpdatingLifecycle ? "Resuming account…" : "Resume account") {
+                Button(account.isUpdatingLifecycle ? LegendLocalized("Resuming account…") : LegendLocalized("Resume account")) {
                     Task { _ = await account.resumeAccount() }
                 }
                 .buttonStyle(LegendNextButtonStyle(kind: .primary))
@@ -419,7 +422,7 @@ private struct LegendAccountLifecycleLockedView: View {
                     .multilineTextAlignment(.center)
             }
 
-            Button("Sign out") {
+            Button(LegendLocalized("Sign out")) {
                 onSignOut()
             }
             .buttonStyle(LegendNextButtonStyle(kind: .secondary))
@@ -434,8 +437,8 @@ private struct LegendAccountLifecycleLockedView: View {
 
     private var lifecycleDetail: String {
         lifecycle.canResume
-            ? "Legend access is paused. Resume your account here when you are ready to return."
-            : "Legend access is disabled while the required account and data-handling process is completed."
+            ? LegendLocalized("Legend access is paused. Resume your account here when you are ready to return.")
+            : LegendLocalized("Legend access is disabled while the required account and data-handling process is completed.")
     }
 }
 
@@ -453,12 +456,12 @@ private struct LegendAppBrandBar: View {
 
     var body: some View {
         ZStack {
-            Text("LEGEND")
+            Text(LegendLocalized("LEGEND"))
                 .font(LegendNextTypography.wordmark)
                 .tracking(LegendSharedDesign.tracking("wordmark"))
                 .foregroundStyle(Color.clear)
                 .overlay(alignment: .leading) {
-                    Text("LEGEND®")
+                    Text(LegendLocalized("LEGEND®"))
                         .font(LegendNextTypography.wordmark)
                         .tracking(
                             LegendSharedDesign.tracking("wordmark")
@@ -472,7 +475,7 @@ private struct LegendAppBrandBar: View {
                         .accessibilityHidden(true)
                 }
                 .frame(maxWidth: .infinity)
-                .accessibilityLabel("LEGEND registered")
+                .accessibilityLabel(LegendLocalized("LEGEND registered", context: "accessibility copy"))
                 .accessibilityAddTraits(.isHeader)
 
             HStack(spacing: LegendNextSpacing.sm) {
@@ -864,19 +867,19 @@ private struct LegendAccountSwitcherSheet: View {
                     alignment: .leading,
                     spacing: LegendNextSpacing.micro
                 ) {
-                    Text("LEGEND® IDENTITY")
+                    Text(LegendLocalized("LEGEND® IDENTITY"))
                         .font(LegendNextTypography.eyebrow)
                         .tracking(1)
                         .foregroundStyle(
                             LegendNextColor.goldBright
                         )
 
-                    Text("Switch account")
+                    Text(LegendLocalized("Switch account"))
                         .font(LegendNextTypography.hero)
                         .foregroundStyle(.white)
 
                     Text(
-                        "Move between your authorized Legend experiences without signing out."
+                        LegendLocalized("Move between your authorized Legend experiences without signing out.")
                     )
                     .font(LegendNextTypography.supporting)
                     .foregroundStyle(
@@ -915,7 +918,7 @@ private struct LegendAccountSwitcherSheet: View {
                         }
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel("Close account switcher")
+                .accessibilityLabel(LegendLocalized("Close account switcher", context: "accessibility copy"))
             }
         }
         .padding(LegendNextSpacing.sm)
@@ -943,7 +946,7 @@ private struct LegendAccountSwitcherSheet: View {
             alignment: .leading,
             spacing: LegendNextSpacing.xs
         ) {
-            Text("CURRENT ACCOUNT")
+            Text(LegendLocalized("CURRENT ACCOUNT"))
                 .font(LegendNextTypography.eyebrow)
                 .tracking(0.9)
                 .foregroundStyle(
@@ -988,7 +991,7 @@ private struct LegendAccountSwitcherSheet: View {
                 Spacer(minLength: LegendNextSpacing.xs)
 
                 Label(
-                    "Active",
+                    LegendLocalized("Active"),
                     systemImage: "checkmark.circle.fill"
                 )
                 .font(LegendNextTypography.caption)
@@ -1029,9 +1032,9 @@ private struct LegendAccountSwitcherSheet: View {
             spacing: LegendNextSpacing.xs
         ) {
             LegendNextSectionHeader(
-                eyebrow: "Authorized access",
-                title: "Available accounts",
-                detail: "Select the Legend experience you want to enter."
+                eyebrow: LegendLocalized("Authorized access"),
+                title: LegendLocalized("Available accounts"),
+                detail: LegendLocalized("Select the Legend experience you want to enter.")
             )
             .foregroundStyle(.white)
 
@@ -1050,9 +1053,9 @@ private struct LegendAccountSwitcherSheet: View {
         if !alternatives.isEmpty {
             VStack(alignment: .leading, spacing: LegendNextSpacing.xs) {
                 LegendNextSectionHeader(
-                    eyebrow: "Signed in on this device",
-                    title: "Other accounts",
-                    detail: "These accounts remain protected and require a fresh sign-in after the shared security checkpoint."
+                    eyebrow: LegendLocalized("Signed in on this device"),
+                    title: LegendLocalized("Other accounts"),
+                    detail: LegendLocalized("These accounts remain protected and require a fresh sign-in after the shared security checkpoint.")
                 )
                 .foregroundStyle(.white)
 
@@ -1112,7 +1115,7 @@ private struct LegendAccountSwitcherSheet: View {
             .background(LegendNextGradient.gold, in: Capsule())
         }
         .buttonStyle(.plain)
-        .accessibilityHint("Securely sign in to another Legend account on this device")
+        .accessibilityHint(LegendLocalized("Securely sign in to another Legend account on this device", context: "accessibility copy"))
     }
 
     private func accountButton(
@@ -1148,7 +1151,7 @@ private struct LegendAccountSwitcherSheet: View {
                     spacing: LegendNextSpacing.micro
                 ) {
                     Text(
-                        "Continue as \(participantType.accountLabel)"
+                        LegendLocalized("Continue as {value1}", arguments: ["value1": String(describing: (participantType.accountLabel))])
                     )
                     .font(LegendNextTypography.bodyEmphasis)
                     .foregroundStyle(.white)
@@ -1208,7 +1211,7 @@ private struct LegendAccountSwitcherSheet: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(
-            "Switch to \(participantType.accountLabel) account"
+            LegendLocalized("Switch to {value1} account", context: "accessibility copy", arguments: ["value1": String(describing: (participantType.accountLabel))])
         )
     }
 
@@ -1230,7 +1233,7 @@ private struct LegendAccountSwitcherSheet: View {
                 .accessibilityHidden(true)
 
             Text(
-                "Your secure session remains active. Legend validates the selected account before loading its data."
+                LegendLocalized("Your secure session remains active. Legend validates the selected account before loading its data.")
             )
             .font(LegendNextTypography.caption)
             .foregroundStyle(
@@ -1252,8 +1255,8 @@ private struct LegendAccountSwitcherSheet: View {
 private extension ParticipantType {
     var accountLabel: String {
         switch self {
-        case .agent: "Agent"
-        case .client: "Member"
+        case .agent: LegendLocalized("Agent")
+        case .client: LegendLocalized("Member")
         }
     }
 
@@ -1267,9 +1270,9 @@ private extension ParticipantType {
     var accountDescription: String {
         switch self {
         case .agent:
-            return "Manage clients, leads, operations, and your professional workspace."
+            return LegendLocalized("Manage clients, leads, operations, and your professional workspace.")
         case .client:
-            return "Open your personal financial, protection, and community experience."
+            return LegendLocalized("Open your personal financial, protection, and community experience.")
         }
     }
 }
@@ -1302,7 +1305,7 @@ struct DailyScriptureSheet: View {
                 }
                 .scrollIndicators(.hidden)
             }
-            .navigationTitle("God Above All")
+            .navigationTitle(LegendLocalized("God Above All"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(
                 LegendNextColor.midnight,
@@ -1329,7 +1332,7 @@ struct DailyScriptureSheet: View {
                             }
                     }
                     .buttonStyle(.plain)
-                    .accessibilityLabel("Close scripture")
+                    .accessibilityLabel(LegendLocalized("Close scripture", context: "accessibility copy"))
                 }
             }
         }
@@ -1370,7 +1373,7 @@ struct DailyScriptureSheet: View {
                         alignment: .leading,
                         spacing: LegendNextSpacing.micro
                     ) {
-                        Text("LIFE HAC")
+                        Text(LegendLocalized("LIFE HAC"))
                             .font(LegendNextTypography.eyebrow)
                             .tracking(1.1)
                             .foregroundStyle(
@@ -1413,7 +1416,7 @@ struct DailyScriptureSheet: View {
 
                     Text("•")
 
-                    Text("DAILY SCRIPTURE")
+                    Text(LegendLocalized("DAILY SCRIPTURE"))
                         .font(LegendNextTypography.eyebrow)
                         .tracking(0.8)
                 }
@@ -1440,12 +1443,12 @@ struct DailyScriptureSheet: View {
                         alignment: .leading,
                         spacing: LegendNextSpacing.micro
                     ) {
-                        Text("THE WORD")
+                        Text(LegendLocalized("THE WORD"))
                             .font(LegendNextTypography.eyebrow)
                             .tracking(1)
                             .foregroundStyle(LegendNextColor.gold)
 
-                        Text("Untill all have heard.")
+                        Text(LegendLocalized("Untill all have heard."))
                             .font(LegendNextTypography.supporting)
                             .foregroundStyle(
                                 LegendNextColor.textSecondary
@@ -1493,13 +1496,13 @@ struct DailyScriptureSheet: View {
                 alignment: .leading,
                 spacing: LegendNextSpacing.micro
             ) {
-                Text("CARRY IT WITH YOU")
+                Text(LegendLocalized("CARRY IT WITH YOU"))
                     .font(LegendNextTypography.eyebrow)
                     .tracking(0.8)
                     .foregroundStyle(LegendNextColor.gold)
 
                 Text(
-                    "Let today’s scripture shape your decisions, your discipline, and the legacy you are building."
+                    LegendLocalized("Let today’s scripture shape your decisions, your discipline, and the legacy you are building.")
                 )
                 .font(LegendNextTypography.supporting)
                 .foregroundStyle(LegendNextColor.textSecondary)
@@ -1641,7 +1644,7 @@ private struct LegendHomeView: View {
                 LegendNextErrorState(
                     title: failure.title,
                     message: failure.message,
-                    retryTitle: "Retry",
+                    retryTitle: LegendLocalized("Retry"),
                     retry: {
                         Task {
                             await bootstrap.refreshHome()
@@ -1708,7 +1711,7 @@ private struct LegendHomeView: View {
                             LegendNextIconButtonStyle(tone: .navy)
                         )
                         .accessibilityLabel(
-                            "Open notifications, \(activity.unreadBadgeCount) recent interactions"
+                            LegendLocalized("Open notifications, {value1} recent interactions", context: "accessibility copy", arguments: ["value1": String(describing: (activity.unreadBadgeCount))])
                         )
                     }
                 }
@@ -1764,7 +1767,7 @@ private struct LegendHomeView: View {
                 } label: {
                     VStack(alignment: .leading, spacing: LegendNextSpacing.micro) {
                         HStack(spacing: LegendNextSpacing.xs) {
-                            Text("DAILY SCRIPTURE")
+                            Text(LegendLocalized("DAILY SCRIPTURE"))
                                 .font(LegendNextTypography.eyebrow)
                                 .tracking(0.9)
                                 .foregroundStyle(LegendNextColor.goldBright)
@@ -1790,7 +1793,7 @@ private struct LegendHomeView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel("Verse of the day, \(home.dailyScripture.reference). Double tap to read the full passage.")
+                .accessibilityLabel(LegendLocalized("Verse of the day, {value1}. Double tap to read the full passage.", context: "accessibility copy", arguments: ["value1": String(describing: (home.dailyScripture.reference))]))
             }
         }
         .overlay {
@@ -1834,9 +1837,9 @@ private struct LegendHomeView: View {
             spacing: LegendNextSpacing.xs
         ) {
             LegendNextSectionHeader(
-                eyebrow: "Live overview",
-                title: "Mission dashboard",
-                detail: "The signals that matter most right now."
+                eyebrow: LegendLocalized("Live overview"),
+                title: LegendLocalized("Mission dashboard"),
+                detail: LegendLocalized("The signals that matter most right now.")
             )
 
             LazyVGrid(
@@ -1856,9 +1859,9 @@ private struct LegendHomeView: View {
                     open(.messages)
                 } label: {
                     LegendNextMetricTile(
-                        title: "Messages",
+                        title: LegendLocalized("Messages"),
                         value: "\(home.messaging.unreadCount)",
-                        detail: "Unread conversations",
+                        detail: LegendLocalized("Unread conversations"),
                         systemImage: "message.fill",
                         tone: home.messaging.unreadCount > 0
                             ? .information
@@ -1872,9 +1875,9 @@ private struct LegendHomeView: View {
                         open(.clients)
                     } label: {
                         LegendNextMetricTile(
-                            title: "Clients",
+                            title: LegendLocalized("Clients"),
                             value: "\(home.activeClientCount)",
-                            detail: "Connections",
+                            detail: LegendLocalized("Connections"),
                             systemImage: "person.2.fill",
                             tone: .navy
                         )
@@ -1882,9 +1885,9 @@ private struct LegendHomeView: View {
                     .buttonStyle(.plain)
 
                     LegendNextMetricTile(
-                        title: "Open actions",
+                        title: LegendLocalized("Open actions"),
                         value: "\(home.actions.count)",
-                        detail: "Items requiring attention",
+                        detail: LegendLocalized("Items requiring attention"),
                         systemImage: "checklist",
                         tone: home.actions.isEmpty
                             ? .success
@@ -1892,9 +1895,9 @@ private struct LegendHomeView: View {
                     )
 
                     LegendNextMetricTile(
-                        title: "Appointments",
+                        title: LegendLocalized("Appointments"),
                         value: "\(home.upcomingAppointments.count)",
-                        detail: "Upcoming meetings",
+                        detail: LegendLocalized("Upcoming meetings"),
                         systemImage: "calendar",
                         tone: .gold
                     )
@@ -1904,9 +1907,9 @@ private struct LegendHomeView: View {
                             open(.discover)
                         } label: {
                             LegendNextMetricTile(
-                                title: "Connections",
+                                title: LegendLocalized("Connections"),
                                 value: "\(journey.connectedPeerCount)",
-                                detail: "\(journey.recommendationCount) recommendations",
+                                detail: LegendLocalized("{value1} recommendations", arguments: ["value1": String(describing: (journey.recommendationCount))]),
                                 systemImage: "person.3.fill",
                                 tone: .information
                             )
@@ -1917,9 +1920,9 @@ private struct LegendHomeView: View {
                             open(.discover)
                         } label: {
                             LegendNextMetricTile(
-                                title: "Journey",
+                                title: LegendLocalized("Journey"),
                                 value: "—",
-                                detail: "Build your circle",
+                                detail: LegendLocalized("Build your circle"),
                                 systemImage: "person.3.fill",
                                 tone: .neutral
                             )
@@ -1928,9 +1931,9 @@ private struct LegendHomeView: View {
                     }
 
                     LegendNextMetricTile(
-                        title: "Appointments",
+                        title: LegendLocalized("Appointments"),
                         value: "\(home.upcomingAppointments.count)",
-                        detail: "Upcoming meetings",
+                        detail: LegendLocalized("Upcoming meetings"),
                         systemImage: "calendar",
                         tone: .gold
                     )
@@ -1947,9 +1950,9 @@ private struct LegendHomeView: View {
             spacing: LegendNextSpacing.xs
         ) {
             LegendNextSectionHeader(
-                eyebrow: "Calendar",
-                title: "Upcoming appointments",
-                detail: "Your next scheduled conversations."
+                eyebrow: LegendLocalized("Calendar"),
+                title: LegendLocalized("Upcoming appointments"),
+                detail: LegendLocalized("Your next scheduled conversations.")
             )
 
             LegendNextSurface(style: .elevated) {
@@ -1976,6 +1979,7 @@ private struct LegendHomeView: View {
                                 Text(
                                     appointment.startUTC.formatted(
                                         .dateTime.month(.abbreviated)
+                                            .locale(LegendActiveLocale())
                                     )
                                     .uppercased()
                                 )
@@ -1987,6 +1991,7 @@ private struct LegendHomeView: View {
                                 Text(
                                     appointment.startUTC.formatted(
                                         .dateTime.day()
+                                            .locale(LegendActiveLocale())
                                     )
                                 )
                                 .font(LegendNextTypography.cardTitle)
@@ -2012,6 +2017,7 @@ private struct LegendHomeView: View {
                                         .dateTime
                                             .hour()
                                             .minute()
+                                            .locale(LegendActiveLocale())
                                     )
                                 )
                                 .font(
@@ -2021,7 +2027,7 @@ private struct LegendHomeView: View {
                                     LegendNextColor.textPrimary
                                 )
 
-                                Text("Scheduled appointment")
+                                Text(LegendLocalized("Scheduled appointment"))
                                     .font(
                                         LegendNextTypography.supporting
                                     )
@@ -2053,9 +2059,9 @@ private struct LegendHomeView: View {
             spacing: LegendNextSpacing.xs
         ) {
             LegendNextSectionHeader(
-                eyebrow: "Execution",
-                title: "Open actions",
-                detail: "Keep momentum on the work in front of you."
+                eyebrow: LegendLocalized("Execution"),
+                title: LegendLocalized("Open actions"),
+                detail: LegendLocalized("Keep momentum on the work in front of you.")
             )
 
             LegendNextSurface(style: .elevated) {
@@ -2117,6 +2123,7 @@ private struct LegendHomeView: View {
                                                 .day()
                                                 .hour()
                                                 .minute()
+                                                .locale(LegendActiveLocale())
                                         )
                                     )
                                     .font(
@@ -2149,9 +2156,9 @@ private struct LegendHomeView: View {
             spacing: LegendNextSpacing.xs
         ) {
             LegendNextSectionHeader(
-                eyebrow: "Navigate",
-                title: "Quick actions",
-                detail: "Move directly into the work that matters."
+                eyebrow: LegendLocalized("Navigate"),
+                title: LegendLocalized("Quick actions"),
+                detail: LegendLocalized("Move directly into the work that matters.")
             )
 
             LazyVGrid(
@@ -2168,7 +2175,7 @@ private struct LegendHomeView: View {
                 spacing: LegendNextSpacing.xs
             ) {
                 quickActionButton(
-                    title: "Messages",
+                    title: LegendLocalized("Messages"),
                     systemImage: "message.fill",
                     tone: .information
                 ) {
@@ -2177,7 +2184,7 @@ private struct LegendHomeView: View {
 
                 if home.identity.participantType == .agent {
                     quickActionButton(
-                        title: "Clients",
+                        title: LegendLocalized("Clients"),
                         systemImage: "person.2.fill",
                         tone: .navy
                     ) {
@@ -2186,7 +2193,7 @@ private struct LegendHomeView: View {
 
                 } else {
                     quickActionButton(
-                        title: "Journey",
+                        title: LegendLocalized("Journey"),
                         systemImage: "person.3.fill",
                         tone: .gold
                     ) {
@@ -2195,7 +2202,7 @@ private struct LegendHomeView: View {
                 }
 
                 quickActionButton(
-                    title: "Account",
+                    title: LegendLocalized("Account"),
                     systemImage: "person.crop.circle.fill",
                     tone: .neutral
                 ) {
@@ -2273,13 +2280,13 @@ private struct LegendHomeView: View {
 
         switch hour {
         case 5..<12:
-            return "Good morning"
+            return LegendLocalized("Good morning")
         case 12..<17:
-            return "Good afternoon"
+            return LegendLocalized("Good afternoon")
         case 17..<22:
-            return "Good evening"
+            return LegendLocalized("Good evening")
         default:
-            return "Welcome back"
+            return LegendLocalized("Welcome back")
         }
     }
 
@@ -2290,7 +2297,7 @@ private struct LegendHomeView: View {
         guard let first = trimmed
             .split(separator: " ")
             .first else {
-            return "Legend"
+            return LegendLocalized("Legend")
         }
 
         return String(first)
@@ -2300,20 +2307,28 @@ private struct LegendHomeView: View {
         for home: MobileHomeResponse
     ) -> String {
         if home.identity.participantType == .agent {
-            return "Lead with purpose, discipline, clarity, and confidence while helping others grow intentionally."
+            return LegendLocalized("Lead with purpose, discipline, clarity, and confidence while helping others grow intentionally.")
         }
 
-        return "Build discipline, confidence, clarity, and purpose through Christ-centered growth and intentional living."
+        return LegendLocalized("Build discipline, confidence, clarity, and purpose through Christ-centered growth and intentional living.")
     }
 
     private func actionDueDetail(
         _ action: MobileActionItem
     ) -> String {
         if let dueDate = action.dueDateUTC {
-            return "Due \(dueDate.formatted(.dateTime.month(.abbreviated).day().hour().minute()))"
+            return LegendLocalized(
+                "Due {date}",
+                arguments: [
+                    "date": dueDate.formatted(
+                        .dateTime.month(.abbreviated).day().hour().minute()
+                            .locale(LegendActiveLocale()))
+                ])
         }
 
-        return "\(action.priority) priority"
+        return LegendLocalized(
+            "{priority} priority",
+            arguments: ["priority": action.priority])
     }
 
     private func priorityTone(
@@ -2430,12 +2445,12 @@ private struct LegendAgentClientsView: View {
             case .loaded(let clients):
                 clientContent(clients)
             case .unavailable(let failure):
-                LegendNextErrorState(title: failure.title, message: failure.message, retryTitle: "Retry", retry: { Task { await bootstrap.refreshClients() } })
+                LegendNextErrorState(title: failure.title, message: failure.message, retryTitle: LegendLocalized("Retry"), retry: { Task { await bootstrap.refreshClients() } })
                     .padding(LegendNextSpacing.sm)
             }
         }
         .background(LegendNextCanvas())
-        .navigationTitle("Clients")
+        .navigationTitle(LegendLocalized("Clients"))
         .navigationBarTitleDisplayMode(.inline)
         .refreshable { await bootstrap.refreshClients() }
         .sheet(isPresented: $isLeadsPresented) {
@@ -2469,17 +2484,17 @@ private struct LegendAgentClientsView: View {
         LegendScrollView {
             LazyVStack(alignment: .leading, spacing: LegendNextSpacing.sm) {
                 LegendNextSectionHeader(
-                    eyebrow: "CRM",
-                    title: "Client CRM",
-                    detail: "\(clients.count) live records"
+                    eyebrow: LegendLocalized("CRM"),
+                    title: LegendLocalized("Client CRM"),
+                    detail: LegendLocalized("{value1} live records", arguments: ["value1": String(describing: (clients.count))])
                 )
 
                 agentCRMCommands
 
                 if clients.isEmpty {
                     LegendNextEmptyState(
-                        title: "No active client members",
-                        message: "Client and Business Client records with active shared-app access will appear here.",
+                        title: LegendLocalized("No active client members"),
+                        message: LegendLocalized("Client and Business Client records with active shared-app access will appear here."),
                         systemImage: "person.2")
                 } else {
                     ForEach(clients) { client in
@@ -2499,7 +2514,7 @@ private struct LegendAgentClientsView: View {
                                         openMessages()
                                     }
                                 } label: {
-                                    Label("Message", systemImage: "message.fill")
+                                    Label(LegendLocalized("Message"), systemImage: "message.fill")
                                 }
                                 .buttonStyle(LegendNextButtonStyle(
                                     kind: .primary,
@@ -2523,14 +2538,14 @@ private struct LegendAgentClientsView: View {
             Button {
                 isLeadsPresented = true
             } label: {
-                Label("Leads", systemImage: "person.crop.circle.badge.plus")
+                Label(LegendLocalized("Leads"), systemImage: "person.crop.circle.badge.plus")
             }
             .buttonStyle(LegendNextButtonStyle(kind: .secondary))
 
             Button {
                 isClientCreationPresented = true
             } label: {
-                Label("Add Client", systemImage: "plus")
+                Label(LegendLocalized("Add Client"), systemImage: "plus")
             }
             .buttonStyle(LegendNextButtonStyle(kind: .gold))
         }
@@ -2560,12 +2575,12 @@ private struct LegendAgentLeadsView: View {
             case .loaded(let leads):
                 leadContent(leads)
             case .unavailable(let failure):
-                LegendNextErrorState(title: failure.title, message: failure.message, retryTitle: "Retry", retry: { Task { await bootstrap.refreshLeads() } })
+                LegendNextErrorState(title: failure.title, message: failure.message, retryTitle: LegendLocalized("Retry"), retry: { Task { await bootstrap.refreshLeads() } })
                     .padding(LegendNextSpacing.sm)
             }
         }
         .background(LegendNextCanvas())
-        .navigationTitle("Leads")
+        .navigationTitle(LegendLocalized("Leads"))
         .navigationBarTitleDisplayMode(.inline)
         .refreshable { await bootstrap.refreshLeads() }
     }
@@ -2574,23 +2589,31 @@ private struct LegendAgentLeadsView: View {
     private func leadContent(_ leads: [MobileAgentLeadSummary]) -> some View {
         if leads.isEmpty {
             LegendNextEmptyState(
-                title: "No active leads",
-                message: "Your active CRM lead records will appear here.",
+                title: LegendLocalized("No active leads"),
+                message: LegendLocalized("Your active CRM lead records will appear here."),
                 systemImage: "person.crop.circle.badge.plus")
         } else {
             LegendScrollView {
                 LazyVStack(alignment: .leading, spacing: LegendNextSpacing.sm) {
                     LegendNextSectionHeader(
-                        eyebrow: "Pipeline",
-                        title: "Active leads",
-                        detail: "(leads.count) current opportunities"
+                        eyebrow: LegendLocalized("Pipeline"),
+                        title: LegendLocalized("Active leads"),
+                        detail: LegendLocalized(
+                            "{count} current opportunities",
+                            arguments: ["count": leads.count])
                     )
 
                     ForEach(leads) { lead in
                         LegendContactCard(
                             displayName: lead.displayName,
                             subtitle: lead.crmStage,
-                            detail: "Updated \(lead.updatedUTC.formatted(.dateTime.month(.abbreviated).day().hour().minute()))",
+                            detail: LegendLocalized(
+                                "Updated {date}",
+                                arguments: [
+                                    "date": lead.updatedUTC.formatted(
+                                        .dateTime.month(.abbreviated).day().hour().minute()
+                                            .locale(LegendActiveLocale()))
+                                ]),
                             avatar: {
                                 Image(systemName: "person.crop.circle")
                                     .font(.title2)
@@ -2662,9 +2685,9 @@ struct LegendJourneyProfileEditor: View {
             LegendScrollView(tracksNavigationChrome: false) {
                 LazyVStack(alignment: .leading, spacing: LegendNextSpacing.md) {
                     LegendNextHero(
-                        eyebrow: "Journey Circles",
-                        title: "Build your circle",
-                        detail: "Confirm participation once to begin. Every additional detail makes your recommendations more precise."
+                        eyebrow: LegendLocalized("Journey Circles"),
+                        title: LegendLocalized("Build your circle"),
+                        detail: LegendLocalized("Confirm participation once to begin. Every additional detail makes your recommendations more precise.")
                     ) {
                         HStack(spacing: LegendNextSpacing.xs) {
                             LegendNextBadge(
@@ -2695,53 +2718,53 @@ struct LegendJourneyProfileEditor: View {
                     JourneyIntroductionSection(introduction: $introduction)
 
                     JourneyMultiSelectSection(
-                        title: "Goals",
-                        detail: "The strongest starting signal for recommendations.",
+                        title: LegendLocalized("Goals"),
+                        detail: LegendLocalized("The strongest starting signal for recommendations."),
                         options: dashboard.taxonomy.goals,
                         selections: $goals)
                     JourneyMultiSelectSection(
-                        title: "Circles",
-                        detail: "Choose communities that fit your current season.",
+                        title: LegendLocalized("Circles"),
+                        detail: LegendLocalized("Choose communities that fit your current season."),
                         options: dashboard.taxonomy.circles,
                         selections: $circleCodes)
                     JourneyMultiSelectSection(
-                        title: "Life stage",
-                        detail: "Optional context that refines your matches.",
+                        title: LegendLocalized("Life stage"),
+                        detail: LegendLocalized("Optional context that refines your matches."),
                         options: dashboard.taxonomy.lifeStages,
                         selections: $lifeStages)
                     JourneyMultiSelectSection(
-                        title: "Location",
-                        detail: "Optional regional relevance.",
+                        title: LegendLocalized("Location"),
+                        detail: LegendLocalized("Optional regional relevance."),
                         options: dashboard.taxonomy.locations,
                         selections: $locations)
                     JourneyMultiSelectSection(
-                        title: "Interests",
-                        detail: "Add the subjects you want to explore together.",
+                        title: LegendLocalized("Interests"),
+                        detail: LegendLocalized("Add the subjects you want to explore together."),
                         options: dashboard.taxonomy.interests,
                         selections: $interests)
                     JourneyMultiSelectSection(
-                        title: "Connection types",
-                        detail: "Set the kind of connection you value.",
+                        title: LegendLocalized("Connection types"),
+                        detail: LegendLocalized("Set the kind of connection you value."),
                         options: dashboard.taxonomy.connectionTypes,
                         selections: $connectionTypes)
                     JourneyMultiSelectSection(
-                        title: "Communication style",
-                        detail: "Help recommendations feel natural from the start.",
+                        title: LegendLocalized("Communication style"),
+                        detail: LegendLocalized("Help recommendations feel natural from the start."),
                         options: dashboard.taxonomy.communicationStyles,
                         selections: $communicationStyles)
                     JourneyMultiSelectSection(
-                        title: "Accountability",
-                        detail: "Optional cadence preferences for stronger fit.",
+                        title: LegendLocalized("Accountability"),
+                        detail: LegendLocalized("Optional cadence preferences for stronger fit."),
                         options: dashboard.taxonomy.accountabilityFrequencies,
                         selections: $accountabilityFrequencies)
 
                     LegendNextSurface(style: .brandBlue) {
                         Label {
                             VStack(alignment: .leading, spacing: LegendNextSpacing.micro) {
-                                Text("Your match profile stays in your control")
+                                Text(LegendLocalized("Your match profile stays in your control"))
                                     .font(LegendNextTypography.label)
                                     .foregroundStyle(LegendNextColor.textPrimary)
-                                Text("One participation choice gets you started. Add or remove details whenever your season changes.")
+                                Text(LegendLocalized("One participation choice gets you started. Add or remove details whenever your season changes."))
                                     .font(LegendNextTypography.caption)
                                     .foregroundStyle(LegendNextColor.textSecondary)
                             }
@@ -2756,15 +2779,15 @@ struct LegendJourneyProfileEditor: View {
                 .padding(.vertical, LegendNextSpacing.md)
             }
             .background(LegendNextColor.canvas.ignoresSafeArea())
-            .navigationTitle("Journey Circles")
+            .navigationTitle(LegendLocalized("Journey Circles"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Close") { dismiss() }
+                    Button(LegendLocalized("Close")) { dismiss() }
                 }
 
                 ToolbarItem(placement: .confirmationAction) {
-                    Button(store.isPerformingAction ? "Saving…" : "Save") {
+                    Button(store.isPerformingAction ? LegendLocalized("Saving…") : LegendLocalized("Save")) {
                         store.saveProfile(MobileJourneyProfileInput(
                             consentAffirmed: consentAffirmed,
                             isOptedIn: isOptedIn,
@@ -2810,38 +2833,38 @@ private struct JourneyParticipationSection: View {
         LegendNextSurface(style: .elevated) {
             VStack(alignment: .leading, spacing: LegendNextSpacing.md) {
                 LegendNextSectionHeader(
-                    eyebrow: "Participation",
-                    title: "Choose your starting point",
-                    detail: "Confirm participation once to begin matching. Every other choice is optional and stays under your control.")
+                    eyebrow: LegendLocalized("Participation"),
+                    title: LegendLocalized("Choose your starting point"),
+                    detail: LegendLocalized("Confirm participation once to begin matching. Every other choice is optional and stays under your control."))
 
                 VStack(spacing: 0) {
                     JourneyParticipationToggle(
-                        title: "Confirm community participation",
-                        detail: "Start a private, respectful matching profile.",
+                        title: LegendLocalized("Confirm community participation"),
+                        detail: LegendLocalized("Start a private, respectful matching profile."),
                         systemImage: "checkmark.seal",
                         isOn: $consentAffirmed)
                     LegendNextDivider()
                     JourneyParticipationToggle(
-                        title: "Join Journey Circles",
-                        detail: "Take part in the Legend matching community.",
+                        title: LegendLocalized("Join Journey Circles"),
+                        detail: LegendLocalized("Take part in the Legend matching community."),
                         systemImage: "person.3",
                         isOn: $isOptedIn)
                     LegendNextDivider()
                     JourneyParticipationToggle(
-                        title: "Show my profile in Discover",
-                        detail: "Let compatible members find your profile.",
+                        title: LegendLocalized("Show my profile in Discover"),
+                        detail: LegendLocalized("Let compatible members find your profile."),
                         systemImage: "magnifyingglass.circle",
                         isOn: $isDiscoverable)
                     LegendNextDivider()
                     JourneyParticipationToggle(
-                        title: "Allow recommendations",
-                        detail: "Receive tailored connection suggestions.",
+                        title: LegendLocalized("Allow recommendations"),
+                        detail: LegendLocalized("Receive tailored connection suggestions."),
                         systemImage: "sparkles",
                         isOn: $allowSuggestions)
                     LegendNextDivider()
                     JourneyParticipationToggle(
-                        title: "Allow connection requests",
-                        detail: "Let compatible members request a connection.",
+                        title: LegendLocalized("Allow connection requests"),
+                        detail: LegendLocalized("Let compatible members request a connection."),
                         systemImage: "person.crop.circle.badge.plus",
                         isOn: $allowConnectionRequests)
                 }
@@ -2891,12 +2914,12 @@ private struct JourneyIntroductionSection: View {
         LegendNextSurface(style: .elevated) {
             VStack(alignment: .leading, spacing: LegendNextSpacing.sm) {
                 LegendNextSectionHeader(
-                    eyebrow: "Optional",
-                    title: "A little about your season",
-                    detail: "Give future connections useful context in your own words.")
+                    eyebrow: LegendLocalized("Optional"),
+                    title: LegendLocalized("A little about your season"),
+                    detail: LegendLocalized("Give future connections useful context in your own words."))
 
                 TextField(
-                    "What are you building, learning, or looking for?",
+                    LegendLocalized("What are you building, learning, or looking for?"),
                     text: $introduction,
                     axis: .vertical)
                     .font(LegendNextTypography.body)
@@ -2930,11 +2953,11 @@ struct JourneyMultiSelectSection: View {
         LegendNextSurface(style: .elevated) {
             VStack(alignment: .leading, spacing: LegendNextSpacing.sm) {
                 LegendNextSectionHeader(
-                    eyebrow: "Match signal",
+                    eyebrow: LegendLocalized("Match signal"),
                     title: title,
                     detail: selections.isEmpty
                         ? detail
-                        : "\(selections.count) selected · \(detail)")
+                        : LegendLocalized("{value1} selected · {value2}", arguments: ["value1": String(describing: (selections.count)), "value2": String(describing: (detail))]))
                 LazyVGrid(
                     columns: [GridItem(.adaptive(minimum: 142), spacing: LegendNextSpacing.xs)],
                     alignment: .leading,
@@ -2989,7 +3012,10 @@ private struct JourneySelectionPill: View {
             }
         }
         .buttonStyle(.plain)
-        .accessibilityValue(isSelected ? "Selected" : "Not selected")
+        .accessibilityValue(
+            isSelected
+                ? LegendLocalized("Selected", context: "accessibility copy")
+                : LegendLocalized("Not selected", context: "accessibility copy"))
     }
 }
 
@@ -3012,18 +3038,18 @@ private enum LegendFinancialOutlookSelection: Identifiable {
     var title: String {
         switch self {
         case .week:
-            return "Week at a Glance"
+            return LegendLocalized("Week at a Glance")
         case .month:
-            return "Month at a Glance"
+            return LegendLocalized("Month at a Glance")
         }
     }
 
     var eyebrow: String {
         switch self {
         case .week:
-            return "Synced weekly outlook"
+            return LegendLocalized("Synced weekly outlook")
         case .month:
-            return "Synced monthly outlook"
+            return LegendLocalized("Synced monthly outlook")
         }
     }
 
@@ -3132,7 +3158,7 @@ private struct LegendFinancialReportingGate<Content: View>: View {
                 .font(.system(size: 40, weight: .semibold))
                 .foregroundStyle(LegendNextColor.gold)
 
-            Text("Financial reporting is protected")
+            Text(LegendLocalized("Financial reporting is protected"))
                 .font(LegendNextTypography.section)
                 .foregroundStyle(LegendNextColor.textPrimary)
 
@@ -3147,14 +3173,14 @@ private struct LegendFinancialReportingGate<Content: View>: View {
                     .tint(LegendNextColor.gold)
                     .padding(.top, LegendNextSpacing.xs)
             } else {
-                Button("Authenticate") {
+                Button(LegendLocalized("Authenticate")) {
                     authenticationAttempt += 1
                 }
                 .buttonStyle(LegendNextButtonStyle(kind: .primary))
                 .padding(.top, LegendNextSpacing.xs)
             }
 
-            Button("Back to profile", action: backToProfile)
+            Button(LegendLocalized("Back to profile"), action: backToProfile)
                 .font(LegendNextTypography.supporting)
                 .foregroundStyle(LegendNextColor.navyElevated)
                 .buttonStyle(.plain)
@@ -3170,13 +3196,13 @@ private struct LegendFinancialReportingGate<Content: View>: View {
     private var accessDetail: String {
         switch state {
         case .locked:
-            return "Use Face ID or your device passcode before financial information is shown."
+            return LegendLocalized("Use Face ID or your device passcode before financial information is shown.")
         case .authenticating:
-            return "Waiting for device authentication."
+            return LegendLocalized("Waiting for device authentication.")
         case .denied:
-            return "Financial reporting remains locked until device authentication succeeds."
+            return LegendLocalized("Financial reporting remains locked until device authentication succeeds.")
         case .unavailable:
-            return "Set up a device screen lock to access financial reporting."
+            return LegendLocalized("Set up a device screen lock to access financial reporting.")
         }
     }
 
@@ -3230,7 +3256,7 @@ private struct LegendFinancialProfilePanel: View {
             switch store.state {
             case .idle, .loading:
                 LegendHomeSkeleton()
-                    .accessibilityLabel("Preparing your financial outlook")
+                    .accessibilityLabel(LegendLocalized("Preparing your financial outlook", context: "accessibility copy"))
 
             case .available(let financial):
                 financialPanel(financial)
@@ -3248,7 +3274,7 @@ private struct LegendFinancialProfilePanel: View {
                 LegendNextErrorState(
                     title: failure.title,
                     message: failure.message,
-                    retryTitle: "Sign in again",
+                    retryTitle: LegendLocalized("Sign in again"),
                     retry: {
                         Task {
                             await bootstrap.refreshFinancial()
@@ -3261,7 +3287,7 @@ private struct LegendFinancialProfilePanel: View {
                 LegendNextErrorState(
                     title: failure.title,
                     message: failure.message,
-                    retryTitle: "Retry",
+                    retryTitle: LegendLocalized("Retry"),
                     retry: {
                         Task {
                             await bootstrap.refreshFinancial()
@@ -3299,13 +3325,13 @@ private struct LegendFinancialProfilePanel: View {
                 spacing: LegendNextSpacing.sm
             ) {
                 LegendNextHero(
-                    eyebrow: "Financial Intelligence",
-                    title: "Cash flow at a glance",
-                    detail: "Current week and month"
+                    eyebrow: LegendLocalized("Financial Intelligence"),
+                    title: LegendLocalized("Cash flow at a glance"),
+                    detail: LegendLocalized("Current week and month")
                 ) {
                     Button(action: openFinancialIntelligence) {
                         Label(
-                            "Financial Intelligence",
+                            LegendLocalized("Financial Intelligence"),
                             systemImage: "chart.line.uptrend.xyaxis"
                         )
                     }
@@ -3327,8 +3353,8 @@ private struct LegendFinancialProfilePanel: View {
                 if let operatingSystem = financial.operatingSystem {
                     if let week = operatingSystem.weekAtGlance {
                         outlookSection(
-                            eyebrow: "This week",
-                            title: "Week at a Glance",
+                            eyebrow: LegendLocalized("This week"),
+                            title: LegendLocalized("Week at a Glance"),
                             detail: "\(MobileFinancialDisplay.date(week.startDate)) – \(MobileFinancialDisplay.date(week.endDate))",
                             status: week.pressureStatus,
                             openingCashCents: week.openingCashCents,
@@ -3343,8 +3369,8 @@ private struct LegendFinancialProfilePanel: View {
 
                     if let month = operatingSystem.monthAtGlance {
                         outlookSection(
-                            eyebrow: "This month",
-                            title: "Month at a Glance",
+                            eyebrow: LegendLocalized("This month"),
+                            title: LegendLocalized("Month at a Glance"),
                             detail: MobileFinancialDisplay.month(month.monthKey),
                             status: month.pressureStatus,
                             openingCashCents: month.openingCashCents,
@@ -3361,12 +3387,12 @@ private struct LegendFinancialProfilePanel: View {
                        operatingSystem.monthAtGlance == nil {
                         unavailableOutlook(
                             operatingSystem.projection.summary
-                                ?? "Your saved financial outlook will appear here when it is ready."
+                                ?? LegendLocalized("Your saved financial outlook will appear here when it is ready.")
                         )
                     }
                 } else {
                     unavailableOutlook(
-                        "Your saved financial outlook will appear here when it is ready."
+                        LegendLocalized("Your saved financial outlook will appear here when it is ready.")
                     )
                 }
             }
@@ -3404,7 +3430,7 @@ private struct LegendFinancialProfilePanel: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(
-            "\(title). \(status). View details."
+            LegendLocalized("{value1}. {value2}. View details.", context: "accessibility copy", arguments: ["value1": String(describing: (title)), "value2": String(describing: (status))])
         )
     }
 
@@ -3425,16 +3451,16 @@ private struct LegendFinancialProfilePanel: View {
             VStack(alignment: .leading, spacing: LegendNextSpacing.sm) {
                 HStack(alignment: .top, spacing: LegendNextSpacing.xs) {
                     VStack(alignment: .leading, spacing: LegendNextSpacing.micro) {
-                        Text(eyebrow.uppercased())
+                        Text(LegendLocalized(eyebrow).uppercased())
                             .font(LegendNextTypography.eyebrow)
                             .tracking(0.8)
                             .foregroundStyle(LegendNextColor.goldBright)
 
-                        Text(title)
+                        Text(LegendLocalized(title))
                             .font(LegendNextTypography.section)
                             .foregroundStyle(.white)
 
-                        Text(detail)
+                        Text(LegendLocalized(detail))
                             .font(LegendNextTypography.supporting)
                             .foregroundStyle(Color.white.opacity(0.66))
                     }
@@ -3442,7 +3468,7 @@ private struct LegendFinancialProfilePanel: View {
                     Spacer(minLength: LegendNextSpacing.sm)
 
                     LegendNextBadge(
-                        status,
+                        LegendLocalized(status),
                         tone: MobileFinancialAmountSemantic.tone(
                             forStatus: status
                         ),
@@ -3458,7 +3484,7 @@ private struct LegendFinancialProfilePanel: View {
                     spacing: LegendNextSpacing.xs
                 ) {
                     outlookMetric(
-                        title: "Opening cash",
+                        title: LegendLocalized("Opening cash"),
                         value: MobileFinancialDisplay.currency(
                             cents: openingCashCents
                         ),
@@ -3469,7 +3495,7 @@ private struct LegendFinancialProfilePanel: View {
                         )
                     )
                     outlookMetric(
-                        title: "Income",
+                        title: LegendLocalized("Income"),
                         value: MobileFinancialDisplay.currency(
                             cents: incomeCents
                         ),
@@ -3480,7 +3506,7 @@ private struct LegendFinancialProfilePanel: View {
                         )
                     )
                     outlookMetric(
-                        title: "Bills",
+                        title: LegendLocalized("Bills"),
                         value: MobileFinancialDisplay.currency(
                             cents: expenseCents
                         ),
@@ -3491,7 +3517,7 @@ private struct LegendFinancialProfilePanel: View {
                         )
                     )
                     outlookMetric(
-                        title: "Ending cash",
+                        title: LegendLocalized("Ending cash"),
                         value: MobileFinancialDisplay.currency(
                             cents: endingCashCents
                         ),
@@ -3699,7 +3725,7 @@ private struct LegendFinancialOutlookSheet: View {
                         .contentShape(Circle())
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel("Close \(selection.title)")
+                .accessibilityLabel(LegendLocalized("Close {value1}", context: "accessibility copy", arguments: ["value1": String(describing: (selection.title))]))
             }
 
             HStack(
@@ -3715,7 +3741,7 @@ private struct LegendFinancialOutlookSheet: View {
 
                 Spacer(minLength: 0)
 
-                Text("SERVER-SYNCED")
+                Text(LegendLocalized("SERVER-SYNCED"))
                     .font(LegendNextTypography.eyebrow)
                     .tracking(0.8)
                     .foregroundStyle(
@@ -3776,7 +3802,7 @@ private struct LegendFinancialOutlookSheet: View {
                 alignment: .leading,
                 spacing: LegendNextSpacing.micro
             ) {
-                Text("OUTLOOK SUMMARY")
+                Text(LegendLocalized("OUTLOOK SUMMARY"))
                     .font(LegendNextTypography.eyebrow)
                     .tracking(0.8)
                     .foregroundStyle(
@@ -3874,7 +3900,7 @@ private struct LegendFinancialOutlookSheet: View {
             cornerRadius: LegendNextRadius.prominentCard
         ) {
             outlookMetric(
-                title: "Savings contribution",
+                title: LegendLocalized("Savings contribution"),
                 cents: month.savingsContributionCents,
                 systemImage: "banknote.fill",
                 tone: MobileFinancialAmountSemantic.tone(
@@ -3890,7 +3916,7 @@ private struct LegendFinancialOutlookSheet: View {
                 cornerRadius: LegendNextRadius.prominentCard
             ) {
                 VStack(alignment: .leading, spacing: LegendNextSpacing.xs) {
-                    Text("LARGEST SCHEDULED OBLIGATION")
+                    Text(LegendLocalized("LARGEST SCHEDULED OBLIGATION"))
                         .font(LegendNextTypography.eyebrow)
                         .tracking(0.8)
                         .foregroundStyle(LegendNextColor.goldBright)
@@ -3900,7 +3926,7 @@ private struct LegendFinancialOutlookSheet: View {
                         .foregroundStyle(.white)
 
                     HStack(alignment: .firstTextBaseline) {
-                        Text("\(MobileFinancialDisplay.date(obligation.occursOn)) · \(obligation.kind)")
+                        Text("\(MobileFinancialDisplay.date(obligation.occursOn)) · \(LegendLocalized(obligation.kind))")
                             .font(LegendNextTypography.supporting)
                             .foregroundStyle(Color.white.opacity(0.66))
 
@@ -3930,7 +3956,7 @@ private struct LegendFinancialOutlookSheet: View {
             cornerRadius: LegendNextRadius.prominentCard
         ) {
             VStack(alignment: .leading, spacing: LegendNextSpacing.sm) {
-                Text("CASH FLOW")
+                Text(LegendLocalized("CASH FLOW"))
                     .font(LegendNextTypography.eyebrow)
                     .tracking(0.8)
                     .foregroundStyle(LegendNextColor.goldBright)
@@ -3943,7 +3969,7 @@ private struct LegendFinancialOutlookSheet: View {
                     spacing: LegendNextSpacing.xs
                 ) {
                     outlookMetric(
-                        title: "Opening cash",
+                        title: LegendLocalized("Opening cash"),
                         cents: openingCashCents,
                         systemImage: "wallet.bifold.fill",
                         tone: MobileFinancialAmountSemantic.tone(
@@ -3952,7 +3978,7 @@ private struct LegendFinancialOutlookSheet: View {
                         )
                     )
                     outlookMetric(
-                        title: "Income",
+                        title: LegendLocalized("Income"),
                         cents: incomeCents,
                         systemImage: "arrow.down.left.circle.fill",
                         tone: MobileFinancialAmountSemantic.tone(
@@ -3961,7 +3987,7 @@ private struct LegendFinancialOutlookSheet: View {
                         )
                     )
                     outlookMetric(
-                        title: "Debit expenses",
+                        title: LegendLocalized("Debit expenses"),
                         cents: debitExpenseCents,
                         systemImage: "doc.text.fill",
                         tone: MobileFinancialAmountSemantic.tone(
@@ -3970,7 +3996,7 @@ private struct LegendFinancialOutlookSheet: View {
                         )
                     )
                     outlookMetric(
-                        title: "Credit expenses",
+                        title: LegendLocalized("Credit expenses"),
                         cents: creditExpenseCents,
                         systemImage: "creditcard.fill",
                         tone: MobileFinancialAmountSemantic.tone(
@@ -3979,7 +4005,7 @@ private struct LegendFinancialOutlookSheet: View {
                         )
                     )
                     outlookMetric(
-                        title: "Ending cash",
+                        title: LegendLocalized("Ending cash"),
                         cents: endingCashCents,
                         systemImage: "banknote.fill",
                         tone: MobileFinancialAmountSemantic.tone(
@@ -4003,7 +4029,7 @@ private struct LegendFinancialOutlookSheet: View {
             cornerRadius: LegendNextRadius.prominentCard
         ) {
             VStack(alignment: .leading, spacing: LegendNextSpacing.sm) {
-                Text("DEBT POSITION")
+                Text(LegendLocalized("DEBT POSITION"))
                     .font(LegendNextTypography.eyebrow)
                     .tracking(0.8)
                     .foregroundStyle(LegendNextColor.goldBright)
@@ -4016,7 +4042,7 @@ private struct LegendFinancialOutlookSheet: View {
                     spacing: LegendNextSpacing.xs
                 ) {
                     outlookMetric(
-                        title: "Opening debt",
+                        title: LegendLocalized("Opening debt"),
                         cents: openingDebtCents,
                         systemImage: "creditcard.fill",
                         tone: MobileFinancialAmountSemantic.tone(
@@ -4025,7 +4051,7 @@ private struct LegendFinancialOutlookSheet: View {
                         )
                     )
                     outlookMetric(
-                        title: "Required payment",
+                        title: LegendLocalized("Required payment"),
                         cents: requiredDebtPaymentCents,
                         systemImage: "arrow.down.circle.fill",
                         tone: MobileFinancialAmountSemantic.tone(
@@ -4034,7 +4060,7 @@ private struct LegendFinancialOutlookSheet: View {
                         )
                     )
                     outlookMetric(
-                        title: "Extra payment",
+                        title: LegendLocalized("Extra payment"),
                         cents: extraDebtPaymentCents,
                         systemImage: "arrow.down.circle.fill",
                         tone: MobileFinancialAmountSemantic.tone(
@@ -4043,7 +4069,7 @@ private struct LegendFinancialOutlookSheet: View {
                         )
                     )
                     outlookMetric(
-                        title: "Ending debt",
+                        title: LegendLocalized("Ending debt"),
                         cents: endingDebtCents,
                         systemImage: "creditcard.fill",
                         tone: MobileFinancialAmountSemantic.tone(
@@ -4061,14 +4087,14 @@ private struct LegendFinancialOutlookSheet: View {
     ) -> some View {
         VStack(alignment: .leading, spacing: LegendNextSpacing.xs) {
             LegendNextSectionHeader(
-                eyebrow: "Synced schedule",
-                title: "Scheduled activity"
+                eyebrow: LegendLocalized("Synced schedule"),
+                title: LegendLocalized("Scheduled activity")
             )
 
             if events.isEmpty {
                 LegendNextSurface(style: .elevated) {
                     Label(
-                        "No dated cash-flow events were returned for this week.",
+                        LegendLocalized("No dated cash-flow events were returned for this week."),
                         systemImage: "calendar"
                     )
                     .font(LegendNextTypography.supporting)
@@ -4106,13 +4132,13 @@ private struct LegendFinancialOutlookSheet: View {
                         .foregroundStyle(.white)
                         .fixedSize(horizontal: false, vertical: true)
 
-                    Text("\(MobileFinancialDisplay.date(event.occursOn)) · \(event.kind) · \(event.status)")
+                    Text("\(MobileFinancialDisplay.date(event.occursOn)) · \(LegendLocalized(event.kind)) · \(LegendLocalized(event.status))")
                         .font(LegendNextTypography.caption)
                         .foregroundStyle(Color.white.opacity(0.66))
 
                     if let sourceToolID = event.sourceToolId,
                        !sourceToolID.isEmpty {
-                        Text("Synced from \(sourceToolID)")
+                        Text(LegendLocalized("Synced from {value1}", arguments: ["value1": String(describing: (sourceToolID))]))
                             .font(LegendNextTypography.caption)
                             .foregroundStyle(Color.white.opacity(0.54))
                     }
@@ -4135,14 +4161,14 @@ private struct LegendFinancialOutlookSheet: View {
     ) -> some View {
         VStack(alignment: .leading, spacing: LegendNextSpacing.xs) {
             LegendNextSectionHeader(
-                eyebrow: "Monthly breakdown",
-                title: "Week by week"
+                eyebrow: LegendLocalized("Monthly breakdown"),
+                title: LegendLocalized("Week by week")
             )
 
             if weeks.isEmpty {
                 LegendNextSurface(style: .elevated) {
                     Label(
-                        "No weekly rollups were returned for this month.",
+                        LegendLocalized("No weekly rollups were returned for this month."),
                         systemImage: "calendar"
                     )
                     .font(LegendNextTypography.supporting)
@@ -4180,7 +4206,7 @@ private struct LegendFinancialOutlookSheet: View {
                                 spacing: LegendNextSpacing.xs
                             ) {
                                 outlookMetric(
-                                    title: "Income",
+                                    title: LegendLocalized("Income"),
                                     cents: week.incomeCents,
                                     systemImage: "arrow.down.left.circle.fill",
                                     tone: MobileFinancialAmountSemantic.tone(
@@ -4189,7 +4215,7 @@ private struct LegendFinancialOutlookSheet: View {
                                     )
                                 )
                                 outlookMetric(
-                                    title: "Outflow",
+                                    title: LegendLocalized("Outflow"),
                                     cents: week.outflowCents,
                                     systemImage: "doc.text.fill",
                                     tone: MobileFinancialAmountSemantic.tone(
@@ -4198,7 +4224,7 @@ private struct LegendFinancialOutlookSheet: View {
                                     )
                                 )
                                 outlookMetric(
-                                    title: "Ending cash",
+                                    title: LegendLocalized("Ending cash"),
                                     cents: week.endingCashCents,
                                     systemImage: "banknote.fill",
                                     tone: MobileFinancialAmountSemantic.tone(
@@ -4207,7 +4233,7 @@ private struct LegendFinancialOutlookSheet: View {
                                     )
                                 )
                                 outlookMetric(
-                                    title: "Ending debt",
+                                    title: LegendLocalized("Ending debt"),
                                     cents: week.endingDebtCents,
                                     systemImage: "creditcard.fill",
                                     tone: MobileFinancialAmountSemantic.tone(
@@ -4323,7 +4349,7 @@ private struct LegendFinanceView: View {
             case .idle, .loading:
                 financialStateContent {
                     LegendHomeSkeleton()
-                        .accessibilityLabel("Loading financial intelligence")
+                        .accessibilityLabel(LegendLocalized("Loading financial intelligence", context: "accessibility copy"))
                 }
 
             case .available(let financial):
@@ -4352,7 +4378,7 @@ private struct LegendFinanceView: View {
                     LegendNextErrorState(
                         title: failure.title,
                         message: failure.message,
-                        retryTitle: "Sign in again",
+                        retryTitle: LegendLocalized("Sign in again"),
                         retry: { Task { await bootstrap.refreshFinancial() } }
                     )
                 }
@@ -4362,7 +4388,7 @@ private struct LegendFinanceView: View {
                     LegendNextErrorState(
                         title: failure.title,
                         message: failure.message,
-                        retryTitle: "Retry",
+                        retryTitle: LegendLocalized("Retry"),
                         retry: { Task { await bootstrap.refreshFinancial() } }
                     )
                 }
@@ -4396,9 +4422,9 @@ private struct LegendFinanceView: View {
                 if financial.healthSnapshot == nil,
                    financial.position == nil {
                     LegendNextEmptyState(
-                        title: "Financial snapshot incomplete",
+                        title: LegendLocalized("Financial snapshot incomplete"),
                         message:
-                            "Your saved financial health data will appear here after it is completed in your account workspace.",
+                            LegendLocalized("Your saved financial health data will appear here after it is completed in your account workspace."),
                         systemImage:
                             "chart.line.uptrend.xyaxis"
                     )
@@ -4526,7 +4552,7 @@ private struct LegendFinanceView: View {
                             alignment: .firstTextBaseline,
                             spacing: LegendNextSpacing.xs
                         ) {
-                            Text(section.eyebrow.uppercased())
+                            Text(LegendLocalized(section.eyebrow).uppercased())
                                 .font(LegendNextTypography.eyebrow)
                                 .tracking(0.7)
                                 .foregroundStyle(
@@ -4537,7 +4563,7 @@ private struct LegendFinanceView: View {
                             Spacer(minLength: LegendNextSpacing.micro)
 
                             LegendNextBadge(
-                                section.status,
+                                LegendLocalized(section.status),
                                 tone:
                                     financialSummaryTone(
                                         section.primaryMetric
@@ -4546,7 +4572,7 @@ private struct LegendFinanceView: View {
                             )
                         }
 
-                        Text(section.title)
+                        Text(LegendLocalized(section.title))
                             .font(LegendNextTypography.bodyEmphasis)
                             .foregroundStyle(.white)
                             .lineLimit(1)
@@ -4577,7 +4603,7 @@ private struct LegendFinanceView: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(
-            "\(section.title). \(section.status). \(section.reason). Open \(destination.title)."
+            LegendLocalized("{value1}. {value2}. {value3}. Open {value4}.", context: "accessibility copy", arguments: ["value1": String(describing: (LegendLocalized(section.title))), "value2": String(describing: (LegendLocalized(section.status))), "value3": String(describing: (LegendLocalized(section.reason))), "value4": String(describing: (destination.title))])
         )
     }
 
@@ -4691,7 +4717,7 @@ private struct LegendFinanceView: View {
             alignment: .leading,
             spacing: 1
         ) {
-            Text(metric.label.uppercased())
+            Text(LegendLocalized(metric.label).uppercased())
                 .font(LegendNextTypography.eyebrow)
                 .foregroundStyle(Color.white.opacity(0.62))
                 .lineLimit(1)
@@ -4723,8 +4749,8 @@ private struct LegendFinanceView: View {
                     where: { $0.key == destination.rawValue }
                    ) {
                     financialIntelligenceStatusBanner(
-                        title: section.status,
-                        detail: section.reason,
+                        title: LegendLocalized(section.status),
+                        detail: LegendLocalized(section.reason),
                         tone: financialSummaryTone(
                             section.primaryMetric
                         ),
@@ -4744,8 +4770,8 @@ private struct LegendFinanceView: View {
                         financialHealthSectionDetail(section)
                     } else {
                         LegendNextEmptyState(
-                            title: "Financial snapshot incomplete",
-                            message: "The saved section detail is not available yet.",
+                            title: LegendLocalized("Financial snapshot incomplete"),
+                            message: LegendLocalized("The saved section detail is not available yet."),
                             systemImage: financialHealthSymbol(destination.rawValue)
                         )
                     }
@@ -4767,7 +4793,7 @@ private struct LegendFinanceView: View {
                     } else {
                         operatingSystemUnavailable(
                             summary: financial.operatingSystem?.projection.summary
-                                ?? "Scheduled obligations are not available."
+                                ?? LegendLocalized("Scheduled obligations are not available.")
                         )
                     }
 
@@ -4779,8 +4805,8 @@ private struct LegendFinanceView: View {
                         financialHealthSectionGrid(healthSnapshot)
                     } else {
                         LegendNextEmptyState(
-                            title: "Financial snapshot incomplete",
-                            message: "Saved balance-sheet details are not available yet.",
+                            title: LegendLocalized("Financial snapshot incomplete"),
+                            message: LegendLocalized("Saved balance-sheet details are not available yet."),
                             systemImage: "building.columns"
                         )
                     }
@@ -4788,8 +4814,8 @@ private struct LegendFinanceView: View {
                 case .upcomingActivity:
                     if financial.upcomingBills.isEmpty {
                         LegendNextEmptyState(
-                            title: "No upcoming activity",
-                            message: "No saved recurring financial items are currently scheduled.",
+                            title: LegendLocalized("No upcoming activity"),
+                            message: LegendLocalized("No saved recurring financial items are currently scheduled."),
                             systemImage: "calendar"
                         )
                     } else {
@@ -4803,8 +4829,8 @@ private struct LegendFinanceView: View {
                         financialHealthSectionDetail(section)
                     } else {
                         LegendNextEmptyState(
-                            title: "Protection information unavailable",
-                            message: "Saved financial health information is not available yet.",
+                            title: LegendLocalized("Protection information unavailable"),
+                            message: LegendLocalized("Saved financial health information is not available yet."),
                             systemImage: "shield.lefthalf.filled"
                         )
                     }
@@ -4812,7 +4838,7 @@ private struct LegendFinanceView: View {
                 case .dataAttention:
                     operatingSystemUnavailable(
                         summary: financial.operatingSystem?.projection.summary
-                            ?? "The current Expense Lens projection is not available."
+                            ?? LegendLocalized("The current Expense Lens projection is not available.")
                     )
                 }
             }
@@ -4853,7 +4879,7 @@ private struct LegendFinanceView: View {
         Button {
             dismiss()
         } label: {
-            Label("Profile", systemImage: "chevron.left")
+            Label(LegendLocalized("Profile"), systemImage: "chevron.left")
                 .font(.subheadline.weight(.bold))
                 .foregroundStyle(LegendNextColor.navy)
                 .padding(.horizontal, LegendNextSpacing.sm)
@@ -4868,7 +4894,7 @@ private struct LegendFinanceView: View {
                 }
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("Back to Profile")
+        .accessibilityLabel(LegendLocalized("Back to Profile", context: "accessibility copy"))
     }
 
     private func financialDetailNavigation() -> some View {
@@ -4876,7 +4902,7 @@ private struct LegendFinanceView: View {
             Button {
                 detailDestination = nil
             } label: {
-                Label("Financial Intelligence", systemImage: "chevron.left")
+                Label(LegendLocalized("Financial Intelligence"), systemImage: "chevron.left")
                     .font(.subheadline.weight(.bold))
                     .foregroundStyle(LegendNextColor.navy)
                     .padding(.horizontal, LegendNextSpacing.sm)
@@ -4891,7 +4917,7 @@ private struct LegendFinanceView: View {
                     }
             }
             .buttonStyle(.plain)
-            .accessibilityLabel("Back to Financial Intelligence")
+            .accessibilityLabel(LegendLocalized("Back to Financial Intelligence", context: "accessibility copy"))
 
             Spacer(minLength: 0)
 
@@ -4907,11 +4933,11 @@ private struct LegendFinanceView: View {
         var title: String {
             switch self {
             case .incomplete:
-                return "Financial setup incomplete"
+                return LegendLocalized("Financial setup incomplete")
             case .neverSaved:
-                return "Financial picture not saved"
+                return LegendLocalized("Financial picture not saved")
             case .projectionUnavailable:
-                return "Expense Lens needs attention"
+                return LegendLocalized("Expense Lens needs attention")
             }
         }
 
@@ -4997,7 +5023,7 @@ private struct LegendFinanceView: View {
                             Image(systemName: "clock")
                                 .accessibilityHidden(true)
 
-                            Text("Last updated")
+                            Text(LegendLocalized("Last updated"))
                             Text(
                                 updatedUTC,
                                 format: .dateTime
@@ -5029,7 +5055,7 @@ private struct LegendFinanceView: View {
                 alignment: .leading,
                 spacing: LegendNextSpacing.sm
             ) {
-                Text("BALANCE SHEET")
+                Text(LegendLocalized("BALANCE SHEET"))
                     .font(LegendNextTypography.eyebrow)
                     .tracking(0.7)
                     .foregroundStyle(LegendNextColor.goldBright)
@@ -5043,14 +5069,14 @@ private struct LegendFinanceView: View {
                         .foregroundStyle(.white)
                         .monospacedDigit()
 
-                    Text("OF 100")
+                    Text(LegendLocalized("OF 100"))
                         .font(LegendNextTypography.eyebrow)
                         .foregroundStyle(Color.white.opacity(0.62))
 
                     Spacer(minLength: LegendNextSpacing.sm)
 
                     LegendNextBadge(
-                        position.positionStatus,
+                        LegendLocalized(position.positionStatus),
                         tone: MobileFinancialAmountSemantic.tone(
                             forStatus: position.positionStatus
                         ),
@@ -5059,7 +5085,9 @@ private struct LegendFinanceView: View {
                 }
 
                 LegendNextBadge(
-                    "Net Worth \(compactCurrency(position.netWorth))",
+                    LegendLocalized(
+                        "Net Worth {amount}",
+                        arguments: ["amount": compactCurrency(position.netWorth)]),
                     tone: MobileFinancialAmountSemantic.tone(
                         for: position.netWorth,
                         kind: .netWorth
@@ -5096,7 +5124,7 @@ private struct LegendFinanceView: View {
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel(
-                        "\(section.title). \(sectionSummary(section)). Open details."
+                        LegendLocalized("{value1}. {value2}. Open details.", context: "accessibility copy", arguments: ["value1": String(describing: (section.title)), "value2": String(describing: (sectionSummary(section)))])
                     )
                 }
             }
@@ -5141,7 +5169,7 @@ private struct LegendFinanceView: View {
                         .accessibilityHidden(true)
                 }
 
-                Text(section.title.uppercased())
+                Text(LegendLocalized(section.title).uppercased())
                     .font(LegendNextTypography.eyebrow)
                     .tracking(0.5)
                     .foregroundStyle(tone.color)
@@ -5156,7 +5184,7 @@ private struct LegendFinanceView: View {
                     .minimumScaleFactor(0.68)
 
                 if let period = section.period {
-                    Text(period.uppercased())
+                    Text(LegendLocalized(period).uppercased())
                         .font(LegendNextTypography.eyebrow)
                         .foregroundStyle(Color.white.opacity(0.56))
                         .lineLimit(1)
@@ -5189,7 +5217,7 @@ private struct LegendFinanceView: View {
                         groupIndex,
                         group in
                         if let title = group.title {
-                            Text(title.uppercased())
+                            Text(LegendLocalized(title).uppercased())
                                 .font(LegendNextTypography.eyebrow)
                                 .tracking(0.7)
                                 .foregroundStyle(tone.color)
@@ -5244,7 +5272,7 @@ private struct LegendFinanceView: View {
         )
 
         return HStack(alignment: .firstTextBaseline, spacing: LegendNextSpacing.sm) {
-            Text(metric.label)
+            Text(LegendLocalized(metric.label))
                 .font(isTotal ? LegendNextTypography.bodyEmphasis : LegendNextTypography.supporting)
                 .foregroundStyle(isTotal ? .white : Color.white.opacity(0.78))
                 .lineLimit(2)
@@ -5267,7 +5295,7 @@ private struct LegendFinanceView: View {
     private func sectionSummary(
         _ section: MobileFinancialHealthSectionResponse
     ) -> String {
-        section.total?.displayValue ?? "Open details"
+        section.total?.displayValue ?? LegendLocalized("Open details")
     }
 
     private func financialSnapshotSectionHeader(
@@ -5288,13 +5316,13 @@ private struct LegendFinanceView: View {
                     .accessibilityHidden(true)
 
                 VStack(alignment: .leading, spacing: LegendNextSpacing.micro) {
-                    Text("FINANCIAL JOURNEY")
+                    Text(LegendLocalized("FINANCIAL JOURNEY"))
                         .font(LegendNextTypography.eyebrow)
                         .tracking(0.8)
                         .foregroundStyle(LegendNextColor.goldBright)
 
                     LegendNextBadge(
-                        section.title.uppercased(),
+                        LegendLocalized(section.title).uppercased(),
                         tone: tone
                     )
                 }
@@ -5302,7 +5330,7 @@ private struct LegendFinanceView: View {
                 Spacer(minLength: LegendNextSpacing.xs)
 
                 if let period = section.period {
-                    Text(period.uppercased())
+                    Text(LegendLocalized(period).uppercased())
                         .font(LegendNextTypography.eyebrow)
                         .tracking(0.6)
                         .foregroundStyle(Color.white.opacity(0.58))
@@ -5359,7 +5387,7 @@ private struct LegendFinanceView: View {
                     alignment: .leading,
                     spacing: LegendNextSpacing.micro
                 ) {
-                    Text("LARGEST OBLIGATION")
+                    Text(LegendLocalized("LARGEST OBLIGATION"))
                         .font(
                             LegendNextTypography.eyebrow
                         )
@@ -5435,7 +5463,7 @@ private struct LegendFinanceView: View {
                     alignment: .leading,
                     spacing: LegendNextSpacing.xs
                 ) {
-                    Text("CASH-FLOW INTELLIGENCE")
+                    Text(LegendLocalized("CASH-FLOW INTELLIGENCE"))
                         .font(
                             LegendNextTypography.eyebrow
                         )
@@ -5444,7 +5472,7 @@ private struct LegendFinanceView: View {
                             LegendNextColor.goldBright
                         )
 
-                    Text("Projection not ready")
+                    Text(LegendLocalized("Projection not ready"))
                         .font(
                             LegendNextTypography.title
                         )
@@ -5474,8 +5502,8 @@ private struct LegendFinanceView: View {
             spacing: LegendNextSpacing.xs
         ) {
             financeSectionLabel(
-                eyebrow: "UPCOMING",
-                title: "Recurring Bills"
+                eyebrow: LegendLocalized("UPCOMING"),
+                title: LegendLocalized("Recurring Bills")
             )
 
             LegendNextSurface(
@@ -5719,7 +5747,7 @@ private struct LegendFinanceView: View {
         let formatter = NumberFormatter()
         formatter.numberStyle = .currency
         formatter.currencyCode = "USD"
-        formatter.locale = Locale(identifier: "en_US")
+        formatter.locale = LegendActiveLocale()
         formatter.minimumFractionDigits = 0
         formatter.maximumFractionDigits =
             abs(scaledValue) >= 100
@@ -5760,11 +5788,11 @@ private enum LegendProfileContentFilter: String, CaseIterable, Identifiable {
     var accessibilityTitle: String {
         switch self {
         case .posts:
-            return "Posts"
+            return LegendLocalized("Posts", context: "accessibility copy")
         case .hacs:
-            return "Hacs"
+            return LegendLocalized("Hacs", context: "accessibility copy")
         case .stories:
-            return "Stories"
+            return LegendLocalized("Stories", context: "accessibility copy")
         }
     }
 
@@ -5843,7 +5871,7 @@ private struct LegendAccountView: View {
                 LegendNextErrorState(
                     title: failure.title,
                     message: failure.message,
-                    retryTitle: "Retry",
+                    retryTitle: LegendLocalized("Retry"),
                     retry: { Task { await bootstrap.refreshProfile() } }
                 )
                 .padding(LegendNextSpacing.sm)
@@ -5901,27 +5929,27 @@ private struct LegendAccountView: View {
             }
         }
         .confirmationDialog(
-            "Sign out of Legend?",
+            LegendLocalized("Sign out of Legend?"),
             isPresented: $isConfirmingSignOut,
             titleVisibility: .visible
         ) {
-            Button("Sign out", role: .destructive) {
+            Button(LegendLocalized("Sign out"), role: .destructive) {
                 onSignOut()
             }
 
-            Button("Cancel", role: .cancel) {}
+            Button(LegendLocalized("Cancel"), role: .cancel) {}
         } message: {
-            Text("You will need to securely sign in again to access your account.")
+            Text(LegendLocalized("You will need to securely sign in again to access your account."))
         }
         .confirmationDialog(
-            "Delete this Hac?",
+            LegendLocalized("Delete this Hac?"),
             isPresented: Binding(
                 get: { deletionTarget != nil },
                 set: { if !$0 { deletionTarget = nil } }
             ),
             titleVisibility: .visible
         ) {
-            Button("Delete Hac", role: .destructive) {
+            Button(LegendLocalized("Delete Hac"), role: .destructive) {
                 guard let post = deletionTarget else { return }
                 deletionTarget = nil
                 Task {
@@ -5929,14 +5957,14 @@ private struct LegendAccountView: View {
                 }
             }
 
-            Button("Cancel", role: .cancel) {
+            Button(LegendLocalized("Cancel"), role: .cancel) {
                 deletionTarget = nil
             }
         } message: {
-            Text("This permanently removes the Hac and its media from Legend.")
+            Text(LegendLocalized("This permanently removes the Hac and its media from Legend."))
         }
         .alert(
-            account.actionFailure?.title ?? "Account update unavailable",
+            account.actionFailure?.title ?? LegendLocalized("Account update unavailable"),
             isPresented: Binding(
                 get: { account.actionFailure != nil },
                 set: {
@@ -5946,19 +5974,19 @@ private struct LegendAccountView: View {
                 }
             ),
             actions: {
-                Button("OK", role: .cancel) {
+                Button(LegendLocalized("OK"), role: .cancel) {
                     account.dismissActionFailure()
                 }
             },
             message: {
                 Text(
                     account.actionFailure?.message
-                    ?? "The account update could not be completed."
+                    ?? LegendLocalized("The account update could not be completed.")
                 )
             }
         )
         .alert(
-            social.actionFailure?.title ?? "Move unavailable",
+            social.actionFailure?.title ?? LegendLocalized("Move unavailable"),
             isPresented: Binding(
                 get: { social.actionFailure != nil },
                 set: {
@@ -5968,14 +5996,14 @@ private struct LegendAccountView: View {
                 }
             ),
             actions: {
-                Button("OK", role: .cancel) {
+                Button(LegendLocalized("OK"), role: .cancel) {
                     social.dismissActionFailure()
                 }
             },
             message: {
                 Text(
                     social.actionFailure?.message
-                    ?? "The move could not be shared."
+                    ?? LegendLocalized("The move could not be shared.")
                 )
             }
         )
@@ -5987,7 +6015,7 @@ private struct LegendAccountView: View {
         Menu {
             Section {
                 Label(
-                    "Current: \(currentSession.actor.identity.participantType.accountLabel)",
+                    LegendLocalized("Current: {value1}", arguments: ["value1": String(describing: (currentSession.actor.identity.participantType.accountLabel))]),
                     systemImage: "checkmark.circle.fill"
                 )
             }
@@ -5999,7 +6027,7 @@ private struct LegendAccountView: View {
                             coordinator.switchToRole(participantType)
                         } label: {
                             Label(
-                                "Continue as \(participantType.accountLabel)",
+                                LegendLocalized("Continue as {value1}", arguments: ["value1": String(describing: (participantType.accountLabel))]),
                                 systemImage: participantType.accountSystemImage
                             )
                         }
@@ -6010,7 +6038,7 @@ private struct LegendAccountView: View {
             let currentID = coordinator.activeSignedInAccountID ?? currentSession.actor.identity.userID
             let otherAccounts = coordinator.signedInAccounts.filter { $0.id != currentID }
             if !otherAccounts.isEmpty {
-                Section("Signed in on this device") {
+                Section(LegendLocalized("Signed in on this device")) {
                     ForEach(otherAccounts) { account in
                         Button {
                             coordinator.switchToSignedInAccount(account.id)
@@ -6044,8 +6072,8 @@ private struct LegendAccountView: View {
             .tracking(0.4)
             .foregroundStyle(LegendNextColor.textPrimary)
         }
-        .accessibilityLabel("\(handle). Account options")
-        .accessibilityHint("Switch accounts or securely add another account")
+        .accessibilityLabel(LegendLocalized("{value1}. Account options", context: "accessibility copy", arguments: ["value1": String(describing: (handle))]))
+        .accessibilityHint(LegendLocalized("Switch accounts or securely add another account", context: "accessibility copy"))
     }
 
     private var profileNavigationHandle: String {
@@ -6154,8 +6182,8 @@ private struct LegendAccountView: View {
                             }
                         }
                         .disabled(isUploadingAvatar)
-                        .accessibilityLabel("Change profile picture")
-                        .accessibilityHint("Choose a picture from your photo library")
+                        .accessibilityLabel(LegendLocalized("Change profile picture", context: "accessibility copy"))
+                        .accessibilityHint(LegendLocalized("Choose a picture from your photo library", context: "accessibility copy"))
 
                     VStack(alignment: .leading, spacing: LegendNextSpacing.micro) {
                         profileAccountMenu
@@ -6182,7 +6210,7 @@ private struct LegendAccountView: View {
                     .buttonStyle(LegendNextIconButtonStyle(
                         tone: .navy,
                         size: LegendNextSize.profileSettingsIcon))
-                    .accessibilityLabel("Open profile settings")
+                    .accessibilityLabel(LegendLocalized("Open profile settings", context: "accessibility copy"))
                 }
 
                 profileDetails(profile)
@@ -6191,10 +6219,10 @@ private struct LegendAccountView: View {
                     Button {
                         selectedContent = .hacs
                     } label: {
-                        profileMetric(value: hacCount, title: "Hacs")
+                        profileMetric(value: hacCount, title: LegendLocalized("Hacs"))
                     }
                     .buttonStyle(.plain)
-                    .accessibilityHint("Show your Hacs")
+                    .accessibilityHint(LegendLocalized("Show your Hacs", context: "accessibility copy"))
 
                     NavigationLink {
                         LegendFollowListView(
@@ -6204,11 +6232,11 @@ private struct LegendAccountView: View {
                     } label: {
                         profileMetric(
                             value: currentProfileMetrics?.followingCount ?? 0,
-                            title: "Following"
+                            title: LegendLocalized("Following")
                         )
                     }
                     .buttonStyle(.plain)
-                    .accessibilityHint("Show people you follow")
+                    .accessibilityHint(LegendLocalized("Show people you follow", context: "accessibility copy"))
 
                     NavigationLink {
                         LegendFollowListView(
@@ -6218,11 +6246,11 @@ private struct LegendAccountView: View {
                     } label: {
                         profileMetric(
                             value: currentProfileMetrics?.followerCount ?? 0,
-                            title: "Followers"
+                            title: LegendLocalized("Followers")
                         )
                     }
                     .buttonStyle(.plain)
-                    .accessibilityHint("Show people who follow you")
+                    .accessibilityHint(LegendLocalized("Show people who follow you", context: "accessibility copy"))
                 }
                 .frame(maxWidth: .infinity)
                 .padding(.top, LegendNextSpacing.micro)
@@ -6279,7 +6307,7 @@ private struct LegendAccountView: View {
         Button {
             isEditing = true
         } label: {
-            Text("Edit profile")
+            Text(LegendLocalized("Edit profile"))
                 .frame(maxWidth: .infinity)
         }
         .buttonStyle(LegendNextButtonStyle(
@@ -6360,7 +6388,7 @@ private struct LegendAccountView: View {
             LegendNextErrorState(
                 title: failure.title,
                 message: failure.message,
-                retryTitle: "Retry",
+                retryTitle: LegendLocalized("Retry"),
                 retry: { Task { await bootstrap.refreshProfile() } }
             )
             .padding(LegendNextSpacing.sm)
@@ -6386,13 +6414,13 @@ private struct LegendAccountView: View {
                                 Button {
                                     editingHac = post
                                 } label: {
-                                    Label("Edit Hac", systemImage: "pencil")
+                                    Label(LegendLocalized("Edit Hac"), systemImage: "pencil")
                                 }
 
                                 Button(role: .destructive) {
                                     deletionTarget = post
                                 } label: {
-                                    Label("Delete Hac", systemImage: "trash")
+                                    Label(LegendLocalized("Delete Hac"), systemImage: "trash")
                                 }
                             }
                         }
@@ -6430,7 +6458,7 @@ private struct LegendAccountView: View {
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: 290)
 
-            Button("Make Your First Move.") {
+            Button(LegendLocalized("Make Your First Move.")) {
                 creationRoute = .menu
             }
             .buttonStyle(LegendNextButtonStyle(kind: .primary))
@@ -6475,7 +6503,7 @@ private struct LegendAccountView: View {
                     ScrollView {
                         VStack(alignment: .leading, spacing: 18) {
                             VStack(alignment: .leading, spacing: 8) {
-                                Text("LEGEND®")
+                                Text(LegendLocalized("LEGEND®"))
                                     .font(.system(size: 13, weight: .black, design: .rounded))
                                     .tracking(2.4)
                                     .foregroundStyle(
@@ -6528,17 +6556,17 @@ private struct LegendAccountView: View {
                             }
 
                             VStack(alignment: .leading, spacing: 5) {
-                                Text("CONTACT LEGEND®")
+                                Text(LegendLocalized("CONTACT LEGEND®"))
                                     .font(.caption.weight(.bold))
                                     .tracking(1.2)
                                     .foregroundStyle(
                                         Color(red: 0.835, green: 0.695, blue: 0.365))
 
-                                Text("connect@mylegnd.com")
+                                Text(LegendLocalized("connect@mylegnd.com"))
                                     .font(.subheadline.weight(.semibold))
                                     .foregroundStyle(.white)
 
-                                Text("Effective August 7, 2026")
+                                Text(LegendLocalized("Effective August 7, 2026"))
                                     .font(.caption)
                                     .foregroundStyle(.white.opacity(0.56))
                             }
@@ -6551,7 +6579,7 @@ private struct LegendAccountView: View {
                 }
                 .toolbar {
                     ToolbarItem(placement: .topBarTrailing) {
-                        Button("Done", action: dismiss)
+                        Button(LegendLocalized("Done"), action: dismiss)
                             .fontWeight(.bold)
                             .tint(
                                 Color(red: 0.835, green: 0.695, blue: 0.365))
@@ -6567,8 +6595,8 @@ private struct LegendAccountView: View {
 
     private func legendPrivacyPolicyView(dismiss: @escaping () -> Void) -> some View {
         LegendLegalDocumentView(
-            eyebrow: "Your Privacy",
-            title: "Privacy Policy",
+            eyebrow: LegendLocalized("Your Privacy"),
+            title: LegendLocalized("Privacy Policy"),
             subtitle: "Your trust is our priority.",
             sections: [
                 LegendLegalSection(
@@ -6664,8 +6692,8 @@ private struct LegendAccountView: View {
 
     private func legendTermsOfUseView(dismiss: @escaping () -> Void) -> some View {
         LegendLegalDocumentView(
-            eyebrow: "LEGEND®",
-            title: "Terms of Use",
+            eyebrow: LegendLocalized("LEGEND®"),
+            title: LegendLocalized("Terms of Use"),
             subtitle: "Using LEGEND® means agreeing to use the platform responsibly and in good faith.",
             sections: [
                 LegendLegalSection(
@@ -6783,9 +6811,9 @@ private struct LegendAccountView: View {
             LegendScrollView(tracksNavigationChrome: false) {
                 VStack(alignment: .leading, spacing: LegendNextSpacing.md) {
                     LegendNextSheetHeader(
-                        eyebrow: "Member experience",
-                        title: "Profile settings",
-                        detail: "Personalize the details people see here. These settings are private to the Legend mobile app.",
+                        eyebrow: LegendLocalized("Member experience"),
+                        title: LegendLocalized("Profile settings"),
+                        detail: LegendLocalized("Personalize the details people see here. These settings are private to the Legend mobile app."),
                         dismiss: { isShowingSettings = false }
                     )
 
@@ -6794,14 +6822,14 @@ private struct LegendAccountView: View {
                             feedback: controlledResourceRequestFeedback)
                     }
 
-                    LegendProfileSettingsSection(title: "Profile") {
+                    LegendProfileSettingsSection(title: LegendLocalized("Profile")) {
                         Button {
                             isShowingSettings = false
                             isEditing = true
                         } label: {
                             LegendProfileSettingsRow(
-                                title: "Edit profile",
-                                detail: "Name, bio, links, and privacy",
+                                title: LegendLocalized("Edit profile"),
+                                detail: LegendLocalized("Name, bio, links, and privacy"),
                                 systemImage: "person.crop.circle",
                                 showsChevron: true)
                         }
@@ -6809,33 +6837,33 @@ private struct LegendAccountView: View {
                     }
 
                     if currentSession.actor.identity.participantType == .agent {
-                        LegendProfileSettingsSection(title: "Agent portal") {
+                        LegendProfileSettingsSection(title: LegendLocalized("Agent portal")) {
                             LegendAgentProfileSettingsRow()
                         }
                     }
 
                     if currentSession.capabilities.contains("founder") {
-                        LegendProfileSettingsSection(title: "Founder management") {
+                        LegendProfileSettingsSection(title: LegendLocalized("Founder management")) {
                             Button {
                                 profileSettingsPresentation = .founderManagement
                             } label: {
                                 LegendProfileSettingsRow(
-                                    title: "Founder management",
-                                    detail: "Manage member access, leadership authority, and creator priority in one place.",
+                                    title: LegendLocalized("Founder management"),
+                                    detail: LegendLocalized("Manage member access, leadership authority, and creator priority in one place."),
                                     systemImage: "crown.fill",
                                     showsChevron: true)
                             }
                             .buttonStyle(.plain)
                         }
 
-                        LegendProfileSettingsSection(title: "Founder diagnostics") {
+                        LegendProfileSettingsSection(title: LegendLocalized("Founder diagnostics")) {
                             VStack(spacing: 0) {
                                 Button {
                                     profileSettingsPresentation = .creatorInsights
                                 } label: {
                                     LegendProfileSettingsRow(
-                                        title: "Creator insights",
-                                        detail: "Review reach and engagement",
+                                        title: LegendLocalized("Creator insights"),
+                                        detail: LegendLocalized("Review reach and engagement"),
                                         systemImage: "chart.line.uptrend.xyaxis",
                                         showsChevron: true)
                                 }
@@ -6848,8 +6876,8 @@ private struct LegendAccountView: View {
                                     isShowingSettings = false
                                 } label: {
                                     LegendProfileSettingsRow(
-                                        title: "Refresh profile",
-                                        detail: "Check for the latest account details",
+                                        title: LegendLocalized("Refresh profile"),
+                                        detail: LegendLocalized("Check for the latest account details"),
                                         systemImage: "arrow.clockwise",
                                         showsChevron: false)
                                 }
@@ -6858,7 +6886,7 @@ private struct LegendAccountView: View {
                                 LegendProfileSettingsDivider()
 
                                 LegendProfileSettingsRow(
-                                    title: "Security checkpoint",
+                                    title: LegendLocalized("Security checkpoint"),
                                     detail: LegendSharedDesign.copy("account.securityCheckpoint"),
                                     systemImage: "calendar.badge.exclamationmark",
                                     showsChevron: false)
@@ -6866,8 +6894,8 @@ private struct LegendAccountView: View {
                                 LegendProfileSettingsDivider()
 
                                 LegendProfileSettingsRow(
-                                    title: "Token storage",
-                                    detail: "iOS Keychain",
+                                    title: LegendLocalized("Token storage"),
+                                    detail: LegendLocalized("iOS Keychain"),
                                     systemImage: "key.fill",
                                     showsChevron: false)
 
@@ -6879,8 +6907,8 @@ private struct LegendAccountView: View {
                                     Task { await bootstrap.stores.notifications.refreshPushDiagnostic() }
                                 } label: {
                                     LegendProfileSettingsRow(
-                                        title: "Push notification status",
-                                        detail: "Review this device's secure delivery state",
+                                        title: LegendLocalized("Push notification status"),
+                                        detail: LegendLocalized("Review this device's secure delivery state"),
                                         systemImage: "bell.badge",
                                         showsChevron: true)
                                 }
@@ -6890,13 +6918,13 @@ private struct LegendAccountView: View {
                     }
 
                     if currentSession.capabilities.contains("scripture-management") {
-                        LegendProfileSettingsSection(title: "Daily scripture") {
+                        LegendProfileSettingsSection(title: LegendLocalized("Daily scripture")) {
                             Button {
                                 profileSettingsPresentation = .dailyScriptureManagement
                             } label: {
                                 LegendProfileSettingsRow(
-                                    title: "Manage Daily Scripture",
-                                    detail: "Schedule and review the scripture shown across Legend.",
+                                    title: LegendLocalized("Manage Daily Scripture"),
+                                    detail: LegendLocalized("Schedule and review the scripture shown across Legend."),
                                     systemImage: "book.closed",
                                     showsChevron: true)
                             }
@@ -6905,13 +6933,13 @@ private struct LegendAccountView: View {
                     }
 
                     if currentSession.capabilities.contains("community-management") {
-                        LegendProfileSettingsSection(title: "Community") {
+                        LegendProfileSettingsSection(title: LegendLocalized("Community")) {
                             Button {
                                 profileSettingsPresentation = .communitySafety
                             } label: {
                                 LegendProfileSettingsRow(
-                                    title: "Community review",
-                                    detail: "Review open member safety reports",
+                                    title: LegendLocalized("Community review"),
+                                    detail: LegendLocalized("Review open member safety reports"),
                                     systemImage: "shield.lefthalf.filled",
                                     showsChevron: true)
                             }
@@ -6919,11 +6947,11 @@ private struct LegendAccountView: View {
                         }
                     }
 
-                    LegendProfileSettingsSection(title: "Privacy") {
+                    LegendProfileSettingsSection(title: LegendLocalized("Privacy")) {
                         VStack(spacing: 0) {
                             LegendProfileSettingsToggleRow(
-                                title: "Private account",
-                                detail: "Only approved followers can view your posts",
+                                title: LegendLocalized("Private account"),
+                                detail: LegendLocalized("Only approved followers can view your posts"),
                                 systemImage: "lock.fill",
                                 isOn: privateAccountBinding)
 
@@ -6934,8 +6962,8 @@ private struct LegendAccountView: View {
                                     profileSettingsPresentation = .followRequests
                                 } label: {
                                     LegendProfileSettingsRow(
-                                        title: "Follow requests",
-                                        detail: "Approve or decline people waiting to follow you",
+                                        title: LegendLocalized("Follow requests"),
+                                        detail: LegendLocalized("Approve or decline people waiting to follow you"),
                                         systemImage: "person.badge.clock",
                                         showsChevron: true)
                                 }
@@ -6948,13 +6976,13 @@ private struct LegendAccountView: View {
                                 profileSettingsPresentation = .privacyPolicy
                             } label: {
                                 LegendProfileSettingsRow(
-                                    title: "Privacy Policy",
-                                    detail: "How LEGEND® handles your information",
+                                    title: LegendLocalized("Privacy Policy"),
+                                    detail: LegendLocalized("How LEGEND® handles your information"),
                                     systemImage: "hand.raised.fill",
                                     showsChevron: true)
                             }
                             .buttonStyle(.plain)
-                            .accessibilityHint("Opens the LEGEND privacy policy")
+                            .accessibilityHint(LegendLocalized("Opens the LEGEND privacy policy", context: "accessibility copy"))
 
                             LegendProfileSettingsDivider()
 
@@ -6962,18 +6990,18 @@ private struct LegendAccountView: View {
                                 profileSettingsPresentation = .termsOfUse
                             } label: {
                                 LegendProfileSettingsRow(
-                                    title: "Terms of Use",
-                                    detail: "Rules governing your use of LEGEND®",
+                                    title: LegendLocalized("Terms of Use"),
+                                    detail: LegendLocalized("Rules governing your use of LEGEND®"),
                                     systemImage: "doc.text.fill",
                                     showsChevron: true)
                             }
                             .buttonStyle(.plain)
-                            .accessibilityHint("Opens the LEGEND terms of use")
+                            .accessibilityHint(LegendLocalized("Opens the LEGEND terms of use", context: "accessibility copy"))
                         }
                     }
 
                     if !profile.isVerified {
-                        LegendProfileSettingsSection(title: "Verification") {
+                        LegendProfileSettingsSection(title: LegendLocalized("Verification")) {
                             Button {
                                 submitControlledResourceRequest(.verificationBadge)
                             } label: {
@@ -6981,7 +7009,7 @@ private struct LegendAccountView: View {
                                     title: messages.isSubmittingControlledResourceRequest
                                         ? "Sending verification request…"
                                         : "Request verification",
-                                    detail: "Submit your profile to the private Legend review team.",
+                                    detail: LegendLocalized("Submit your profile to the private Legend review team."),
                                     systemImage: "checkmark.seal",
                                     showsChevron: true)
                             }
@@ -6990,14 +7018,14 @@ private struct LegendAccountView: View {
                         }
                     }
 
-                    LegendProfileSettingsSection(title: "Language translation") {
+                    LegendProfileSettingsSection(title: LegendLocalized("Language translation")) {
                         VStack(spacing: 0) {
                             if profile.translationAccess.isGranted {
                                 Button {
                                     profileSettingsPresentation = .translationLanguage
                                 } label: {
                                     LegendProfileSettingsRow(
-                                        title: "Translation language",
+                                        title: LegendLocalized("Translation language"),
                                         detail: legendLanguageName(profile.translationAccess.preferredCommunicationLanguage),
                                         systemImage: "character.bubble",
                                         showsChevron: true)
@@ -7010,11 +7038,11 @@ private struct LegendAccountView: View {
                                 } label: {
                                     LegendProfileSettingsRow(
                                         title: profile.translationAccess.isPending
-                                            ? "Translation access pending"
-                                            : "Request translation access",
+                                            ? LegendLocalized("Translation access pending")
+                                            : LegendLocalized("Request translation access"),
                                         detail: profile.translationAccess.isPending
-                                            ? "Your request is with the private Legend review team."
-                                            : "Choose Haitian Creole or another supported language after approval.",
+                                            ? LegendLocalized("Your request is with the private Legend review team.")
+                                            : LegendLocalized("Choose your preferred supported language after approval."),
                                         systemImage: "character.bubble",
                                         showsChevron: !profile.translationAccess.isPending)
                                 }
@@ -7025,16 +7053,16 @@ private struct LegendAccountView: View {
                             LegendProfileSettingsDivider()
 
                             LegendProfileSettingsToggleRow(
-                                title: "Improve LEGEND Connect",
-                                detail: "When every conversation participant opts in, eligible translated conversations can improve LEGEND Connect.",
+                                title: LegendLocalized("Improve LEGEND Connect"),
+                                detail: LegendLocalized("When every conversation participant opts in, eligible translated conversations can improve LEGEND Connect."),
                                 systemImage: "text.book.closed.fill",
                                 isOn: translationLearningBinding)
                         }
                     }
 
-                    LegendProfileSettingsSection(title: "Security") {
+                    LegendProfileSettingsSection(title: LegendLocalized("Security")) {
                         LegendProfileSettingsToggleRow(
-                            title: "Face ID",
+                            title: LegendLocalized("Face ID"),
                             detail: coordinator.isBiometricSignInAvailable
                                 ? "Optional protection for this account on this device"
                                 : "Face ID is not available on this device",
@@ -7045,13 +7073,13 @@ private struct LegendAccountView: View {
                             !coordinator.isBiometricSignInEnabled)
                     }
 
-                    LegendProfileSettingsSection(title: "Account access") {
+                    LegendProfileSettingsSection(title: LegendLocalized("Account access")) {
                         Button {
                             profileSettingsPresentation = .accountAccess
                         } label: {
                             LegendProfileSettingsRow(
-                                title: "Pause or delete account",
-                                detail: "Review pause and account-deletion options",
+                                title: LegendLocalized("Pause or delete account"),
+                                detail: LegendLocalized("Review pause and account-deletion options"),
                                 systemImage: "person.crop.circle.badge.exclamationmark",
                                 showsChevron: true)
                         }
@@ -7063,7 +7091,7 @@ private struct LegendAccountView: View {
                         isConfirmingSignOut = true
                     } label: {
                         LegendProfileSettingsRow(
-                            title: "Sign out",
+                            title: LegendLocalized("Sign out"),
                             detail: nil,
                             systemImage: "rectangle.portrait.and.arrow.right",
                             showsChevron: false,
@@ -7229,7 +7257,7 @@ private struct LegendAccountView: View {
         title: String
     ) -> some View {
         VStack(spacing: 2) {
-            Text(value.formatted())
+            Text(value.formatted(.number.locale(LegendActiveLocale())))
                 .font(.headline.weight(.bold))
                 .foregroundStyle(LegendNextColor.textPrimary)
                 .contentTransition(.numericText())
@@ -7242,11 +7270,11 @@ private struct LegendAccountView: View {
     }
 
     private var emptyTitle: String {
-        "Your Legacy starts here"
+        LegendLocalized("Your Legacy starts here")
     }
 
     private var emptyMessage: String {
-        "Every Move you share becomes part of your journey."
+        LegendLocalized("Every Move you share becomes part of your journey.")
     }
 
     private func normalized(
@@ -7262,8 +7290,8 @@ private struct LegendAccountView: View {
     }
 
     private func legendLanguageName(_ code: String?) -> String {
-        guard let code, !code.isEmpty else { return "Choose a language" }
-        return translationLanguageNames[code] ?? (code == "ht" ? "Haitian Creole" : code)
+        guard let code, !code.isEmpty else { return LegendLocalized("Choose a language") }
+        return translationLanguageNames[code] ?? code
     }
 }
 
@@ -7279,91 +7307,91 @@ private struct LegendPushNotificationStatusSheet: View {
             LegendScrollView(tracksNavigationChrome: false) {
                 VStack(alignment: .leading, spacing: LegendNextSpacing.md) {
                     LegendNextSheetHeader(
-                        eyebrow: "Security",
-                        title: "Push notification status",
-                        detail: "This view reports only this signed-in device's notification state. Device tokens and credentials are never displayed.",
+                        eyebrow: LegendLocalized("Security"),
+                        title: LegendLocalized("Push notification status"),
+                        detail: LegendLocalized("This view reports only this signed-in device's notification state. Device tokens and credentials are never displayed."),
                         dismiss: { dismiss() })
 
-                    LegendProfileSettingsSection(title: "This iPhone") {
+                    LegendProfileSettingsSection(title: LegendLocalized("This iPhone")) {
                         VStack(spacing: 0) {
                             statusRow(
-                                title: "Notification permission",
+                                title: LegendLocalized("Notification permission"),
                                 detail: notificationPermissionDetail,
                                 systemImage: "bell")
                             LegendProfileSettingsDivider()
                             statusRow(
-                                title: "APNs registration",
+                                title: LegendLocalized("APNs registration"),
                                 detail: pushNotifications.registrationState.displayName,
                                 systemImage: "antenna.radiowaves.left.and.right")
                             LegendProfileSettingsDivider()
                             statusRow(
-                                title: "Signed APNs environment",
-                                detail: pushNotifications.signedEnvironment?.displayName ?? "Unavailable",
+                                title: LegendLocalized("Signed APNs environment"),
+                                detail: pushNotifications.signedEnvironment?.displayName ?? LegendLocalized("Unavailable"),
                                 systemImage: "signature")
                             LegendProfileSettingsDivider()
                             statusRow(
-                                title: "Device token",
-                                detail: pushNotifications.deviceToken == nil ? "Missing" : "Registered",
+                                title: LegendLocalized("Device token"),
+                                detail: pushNotifications.deviceToken == nil ? LegendLocalized("Missing") : LegendLocalized("Registered"),
                                 systemImage: "checkmark.shield")
                         }
                     }
 
-                    LegendProfileSettingsSection(title: "Legend server") {
+                    LegendProfileSettingsSection(title: LegendLocalized("Legend server")) {
                         VStack(spacing: 0) {
                             statusRow(
-                                title: "Server registration",
+                                title: LegendLocalized("Server registration"),
                                 detail: registrationDetail,
                                 systemImage: "server.rack")
                             LegendProfileSettingsDivider()
                             statusRow(
-                                title: "Server environment",
+                                title: LegendLocalized("Server environment"),
                                 detail: environmentDetail,
                                 systemImage: "network")
                             LegendProfileSettingsDivider()
                             statusRow(
-                                title: "Latest registration timestamp",
+                                title: LegendLocalized("Latest registration timestamp"),
                                 detail: formatted(lastRegistrationUTC),
                                 systemImage: "clock.arrow.circlepath")
                             LegendProfileSettingsDivider()
                             statusRow(
-                                title: "Last registration result",
+                                title: LegendLocalized("Last registration result"),
                                 detail: registrationResultDetail,
                                 systemImage: "checkmark.circle")
                         }
                     }
 
-                    LegendProfileSettingsSection(title: "Last APNs delivery") {
+                    LegendProfileSettingsSection(title: LegendLocalized("Last APNs delivery")) {
                         VStack(spacing: 0) {
                             statusRow(
-                                title: "Delivery result",
+                                title: LegendLocalized("Delivery result"),
                                 detail: deliveryDetail,
                                 systemImage: "paperplane")
                             LegendProfileSettingsDivider()
                             statusRow(
-                                title: "Delivery timestamp",
+                                title: LegendLocalized("Delivery timestamp"),
                                 detail: formatted(notifications.pushDiagnostic?.lastDeliveryUTC),
                                 systemImage: "clock")
                             LegendProfileSettingsDivider()
                             statusRow(
-                                title: "APNs status",
-                                detail: notifications.pushDiagnostic?.lastAPNSStatus.map(String.init) ?? "Unavailable",
+                                title: LegendLocalized("APNs status"),
+                                detail: notifications.pushDiagnostic?.lastAPNSStatus.map(String.init) ?? LegendLocalized("Unavailable"),
                                 systemImage: "number")
                             LegendProfileSettingsDivider()
                             statusRow(
-                                title: "APNs reason",
-                                detail: notifications.pushDiagnostic?.lastAPNSReason ?? "Unavailable",
+                                title: LegendLocalized("APNs reason"),
+                                detail: notifications.pushDiagnostic?.lastAPNSReason ?? LegendLocalized("Unavailable"),
                                 systemImage: "exclamationmark.bubble")
                             if let attempts = notifications.pushDiagnostic?.deliveryAttemptCount {
                                 LegendProfileSettingsDivider()
                                 statusRow(
-                                    title: "Delivery attempts",
-                                    detail: attempts.formatted(),
+                                    title: LegendLocalized("Delivery attempts"),
+                                    detail: attempts.formatted(.number.locale(LegendActiveLocale())),
                                     systemImage: "arrow.triangle.2.circlepath")
                             }
                         }
                     }
 
-                    Button(notifications.isRefreshingPushDiagnostic ? "Refreshing…" : "Refresh status") {
+                    Button(notifications.isRefreshingPushDiagnostic ? LegendLocalized("Refreshing…") : LegendLocalized("Refresh status")) {
                         pushNotifications.refreshNotificationAuthorizationStatus()
                         Task { await notifications.refreshPushDiagnostic() }
                     }
@@ -7386,51 +7414,51 @@ private struct LegendPushNotificationStatusSheet: View {
 
     private var notificationPermissionDetail: String {
         switch pushNotifications.authorizationStatus {
-        case .authorized: "Authorized"
-        case .denied: "Denied"
-        case .provisional: "Provisional"
-        case .ephemeral: "Ephemeral"
-        case .notDetermined: "Not determined"
-        @unknown default: "Unavailable"
+        case .authorized: LegendLocalized("Authorized")
+        case .denied: LegendLocalized("Denied")
+        case .provisional: LegendLocalized("Provisional")
+        case .ephemeral: LegendLocalized("Ephemeral")
+        case .notDetermined: LegendLocalized("Not determined")
+        @unknown default: LegendLocalized("Unavailable")
         }
     }
 
     private var registrationDetail: String {
         switch notifications.pushRegistrationState {
-        case .registering: return "Registering"
-        case .registered: return "Registered"
-        case .failed: return "Failed"
+        case .registering: return LegendLocalized("Registering")
+        case .registered: return LegendLocalized("Registered")
+        case .failed: return LegendLocalized("Failed")
         case .unknown: break
         }
 
         switch notifications.pushDiagnostic?.registrationState {
-        case "registered": return "Registered"
-        case "inactive": return "Inactive"
-        case "missing": return "Missing"
-        default: return "Unknown"
+        case "registered": return LegendLocalized("Registered")
+        case "inactive": return LegendLocalized("Inactive")
+        case "missing": return LegendLocalized("Missing")
+        default: return LegendLocalized("Unknown")
         }
     }
 
     private var environmentDetail: String {
         switch notifications.pushDiagnostic?.environment {
-        case "sandbox": "Development"
-        case "production": "Production"
-        default: "Unknown"
+        case "sandbox": LegendLocalized("Development")
+        case "production": LegendLocalized("Production")
+        default: LegendLocalized("Unknown")
         }
     }
 
     private var registrationResultDetail: String {
         switch notifications.pushRegistrationState {
-        case .registering: return "Registering"
-        case .registered: return "Registered"
-        case .failed: return "Failed"
+        case .registering: return LegendLocalized("Registering")
+        case .registered: return LegendLocalized("Registered")
+        case .failed: return LegendLocalized("Failed")
         case .unknown: break
         }
 
         switch notifications.pushDiagnostic?.lastRegistrationResult {
-        case "registered": return "Registered"
-        case "inactive": return "Inactive"
-        default: return "Unknown"
+        case "registered": return LegendLocalized("Registered")
+        case "inactive": return LegendLocalized("Inactive")
+        default: return LegendLocalized("Unknown")
         }
     }
 
@@ -7441,17 +7469,19 @@ private struct LegendPushNotificationStatusSheet: View {
 
     private var deliveryDetail: String {
         switch notifications.pushDiagnostic?.deliveryState {
-        case "delivered": "Delivered"
-        case "failed": "Failed"
-        case "pending": "Pending"
-        case "suppressed": "Suppressed"
-        default: "Unknown"
+        case "delivered": LegendLocalized("Delivered")
+        case "failed": LegendLocalized("Failed")
+        case "pending": LegendLocalized("Pending")
+        case "suppressed": LegendLocalized("Suppressed")
+        default: LegendLocalized("Unknown")
         }
     }
 
     private func formatted(_ value: Date?) -> String {
-        guard let value else { return "Unavailable" }
-        return value.formatted(date: .abbreviated, time: .shortened)
+        guard let value else { return LegendLocalized("Unavailable") }
+        return value.formatted(
+            .dateTime.year().month(.abbreviated).day().hour().minute()
+                .locale(LegendActiveLocale()))
     }
 
     private func statusRow(title: String, detail: String, systemImage: String) -> some View {
@@ -7476,18 +7506,18 @@ private struct LegendAccountAccessSheet: View {
             LegendScrollView(tracksNavigationChrome: false) {
                 VStack(alignment: .leading, spacing: LegendNextSpacing.md) {
                     LegendNextSheetHeader(
-                        eyebrow: "Account access",
-                        title: "Pause or delete your account",
-                        detail: "Pausing is reversible. It stops access to Legend until you return here and resume your account.",
+                        eyebrow: LegendLocalized("Account access"),
+                        title: LegendLocalized("Pause or delete your account"),
+                        detail: LegendLocalized("Pausing is reversible. It stops access to Legend until you return here and resume your account."),
                         dismiss: { dismiss() })
 
-                    LegendProfileSettingsSection(title: "Pause account") {
+                    LegendProfileSettingsSection(title: LegendLocalized("Pause account")) {
                         VStack(alignment: .leading, spacing: LegendNextSpacing.sm) {
-                            Text("Choose this if you need time away. Your regular Legend access is disabled until you resume the account.")
+                            Text(LegendLocalized("Choose this if you need time away. Your regular Legend access is disabled until you resume the account."))
                                 .font(.subheadline)
                                 .foregroundStyle(LegendNextColor.textSecondary)
 
-                            Button(account.isUpdatingLifecycle ? "Pausing account…" : "Pause account") {
+                            Button(account.isUpdatingLifecycle ? LegendLocalized("Pausing account…") : LegendLocalized("Pause account")) {
                                 isConfirmingPause = true
                             }
                             .buttonStyle(LegendNextButtonStyle(kind: .primary))
@@ -7495,18 +7525,18 @@ private struct LegendAccountAccessSheet: View {
                         }
                     }
 
-                    LegendProfileSettingsSection(title: "Delete account") {
+                    LegendProfileSettingsSection(title: LegendLocalized("Delete account")) {
                         VStack(alignment: .leading, spacing: LegendNextSpacing.sm) {
-                            Text("Deleting your account removes Legend access immediately. It is not the same as signing out. Account-owned data is handled through the applicable retention process; records required for legal, financial, insurance, security, or audit purposes may remain.")
+                            Text(LegendLocalized("Deleting your account removes Legend access immediately. It is not the same as signing out. Account-owned data is handled through the applicable retention process; records required for legal, financial, insurance, security, or audit purposes may remain."))
                                 .font(.subheadline)
                                 .foregroundStyle(LegendNextColor.textSecondary)
 
-                            Button("Continue to delete account") {
+                            Button(LegendLocalized("Continue to delete account")) {
                                 isPresentingClosureConfirmation = true
                             }
                             .buttonStyle(.plain)
                             .foregroundStyle(LegendNextColor.goldBright)
-                            .accessibilityHint("Opens the account deletion confirmation")
+                            .accessibilityHint(LegendLocalized("Opens the account deletion confirmation", context: "accessibility copy"))
                         }
                     }
 
@@ -7527,20 +7557,20 @@ private struct LegendAccountAccessSheet: View {
         .tint(LegendNextColor.gold)
         .legendNextSheetChrome(detents: [.medium, .large])
         .confirmationDialog(
-            "Pause your Legend account?",
+            LegendLocalized("Pause your Legend account?"),
             isPresented: $isConfirmingPause,
             titleVisibility: .visible
         ) {
-            Button("Pause account") {
+            Button(LegendLocalized("Pause account")) {
                 Task {
                     if await account.pauseAccount() {
                         dismiss()
                     }
                 }
             }
-            Button("Keep account active", role: .cancel) {}
+            Button(LegendLocalized("Keep account active"), role: .cancel) {}
         } message: {
-            Text("You will lose regular Legend access until you return to Account access and resume the account.")
+            Text(LegendLocalized("You will lose regular Legend access until you return to Account access and resume the account."))
         }
         .sheet(isPresented: $isPresentingClosureConfirmation) {
             LegendAccountClosureConfirmationSheet(account: account)
@@ -7562,24 +7592,24 @@ private struct LegendAccountClosureConfirmationSheet: View {
             LegendScrollView(tracksNavigationChrome: false) {
                 VStack(alignment: .leading, spacing: LegendNextSpacing.md) {
                     LegendNextSheetHeader(
-                        eyebrow: "Final confirmation",
-                        title: "Delete your Legend account",
-                        detail: "This sends an account-deletion request and disables Legend access immediately.",
+                        eyebrow: LegendLocalized("Final confirmation"),
+                        title: LegendLocalized("Delete your Legend account"),
+                        detail: LegendLocalized("This sends an account-deletion request and disables Legend access immediately."),
                         dismiss: { dismiss() })
 
-                    LegendProfileSettingsSection(title: "Before you continue") {
-                        Text("You will no longer be able to use Legend while deletion is in progress. This action cannot be undone from the app. If you only need time away, go back and pause your account instead.")
+                    LegendProfileSettingsSection(title: LegendLocalized("Before you continue")) {
+                        Text(LegendLocalized("You will no longer be able to use Legend while deletion is in progress. This action cannot be undone from the app. If you only need time away, go back and pause your account instead."))
                             .font(.subheadline)
                             .foregroundStyle(LegendNextColor.textSecondary)
                     }
 
-                    LegendProfileSettingsSection(title: "Confirm deletion") {
+                    LegendProfileSettingsSection(title: LegendLocalized("Confirm deletion")) {
                         VStack(alignment: .leading, spacing: LegendNextSpacing.sm) {
-                            Text("Type DELETE to confirm that you want to delete this account.")
+                            Text(LegendLocalized("Type DELETE to confirm that you want to delete this account."))
                                 .font(.subheadline)
                                 .foregroundStyle(LegendNextColor.textSecondary)
 
-                            TextField("DELETE", text: $confirmation)
+                            TextField(LegendLocalized("DELETE"), text: $confirmation)
                                 .textInputAutocapitalization(.characters)
                                 .autocorrectionDisabled()
                                 .padding(.horizontal, LegendNextSpacing.sm)
@@ -7592,7 +7622,7 @@ private struct LegendAccountClosureConfirmationSheet: View {
                         }
                     }
 
-                    Button(account.isUpdatingLifecycle ? "Sending deletion request…" : "Request account deletion") {
+                    Button(account.isUpdatingLifecycle ? LegendLocalized("Sending deletion request…") : LegendLocalized("Request account deletion")) {
                         Task {
                             if await account.requestAccountDeletion(confirmation: confirmation) {
                                 dismiss()
@@ -7639,15 +7669,15 @@ private struct LegendTranslationLanguagePicker: View {
             LegendScrollView(tracksNavigationChrome: false) {
                 VStack(alignment: .leading, spacing: LegendNextSpacing.md) {
                     LegendNextSheetHeader(
-                        eyebrow: "Language translation",
-                        title: "Choose your language",
-                        detail: "Messages are translated only for your view. The sender’s original message is always available.",
+                        eyebrow: LegendLocalized("Language translation"),
+                        title: LegendLocalized("Choose your language"),
+                        detail: LegendLocalized("Messages are translated only for your view. The sender’s original message is always available."),
                         dismiss: { dismiss() })
 
-                    LegendProfileSettingsSection(title: "Preferred language") {
+                    LegendProfileSettingsSection(title: LegendLocalized("Preferred language")) {
                         VStack(spacing: 0) {
                             if languages.isEmpty {
-                                ProgressView("Loading available languages")
+                                ProgressView(LegendLocalized("Loading available languages"))
                                     .tint(LegendNextColor.goldBright)
                                     .frame(maxWidth: .infinity, minHeight: 64)
                             } else {
@@ -7679,7 +7709,7 @@ private struct LegendTranslationLanguagePicker: View {
                         }
                     }
 
-                    Button(store.isSaving ? "Saving language…" : "Save language") {
+                    Button(store.isSaving ? LegendLocalized("Saving language…") : LegendLocalized("Save language")) {
                         Task {
                             if await store.savePreferredCommunicationLanguage(selectedLanguageCode) {
                                 dismiss()
@@ -7722,9 +7752,9 @@ struct LegendCommunitySafetyReview: View {
             LegendScrollView(tracksNavigationChrome: false) {
                 VStack(alignment: .leading, spacing: LegendNextSpacing.md) {
                     LegendNextSheetHeader(
-                        eyebrow: "Community",
-                        title: "Safety review",
-                        detail: "Open reports requiring a recorded decision.",
+                        eyebrow: LegendLocalized("Community"),
+                        title: LegendLocalized("Safety review"),
+                        detail: LegendLocalized("Open reports requiring a recorded decision."),
                         dismiss: { dismiss() })
 
                     content
@@ -7739,14 +7769,14 @@ struct LegendCommunitySafetyReview: View {
         .legendNextSheetChrome(detents: [.large])
         .task { await store.load() }
         .alert(
-            store.actionFailure?.title ?? "Community review unavailable",
+            store.actionFailure?.title ?? LegendLocalized("Community review unavailable"),
             isPresented: Binding(
                 get: { store.actionFailure != nil },
                 set: { if !$0 { store.dismissActionFailure() } })
         ) {
-            Button("OK", role: .cancel) { store.dismissActionFailure() }
+            Button(LegendLocalized("OK"), role: .cancel) { store.dismissActionFailure() }
         } message: {
-            Text(store.actionFailure?.message ?? "The report could not be updated.")
+            Text(store.actionFailure?.message ?? LegendLocalized("The report could not be updated."))
         }
     }
 
@@ -7754,19 +7784,19 @@ struct LegendCommunitySafetyReview: View {
     private var content: some View {
         switch store.state {
         case .idle, .loading:
-            ProgressView("Loading community reports")
+            ProgressView(LegendLocalized("Loading community reports"))
                 .frame(maxWidth: .infinity, minHeight: 180)
         case .unavailable(let failure):
             LegendNextErrorState(
                 title: failure.title,
                 message: failure.message,
-                retryTitle: "Retry",
+                retryTitle: LegendLocalized("Retry"),
                 retry: { Task { await store.load() } })
         case .loaded(let reports):
             if reports.isEmpty {
                 LegendNextEmptyState(
-                    title: "All caught up",
-                    message: "There are no open community reports.",
+                    title: LegendLocalized("All caught up"),
+                    message: LegendLocalized("There are no open community reports."),
                     systemImage: "checkmark.shield")
             } else {
                 LazyVStack(spacing: LegendNextSpacing.sm) {
@@ -7836,7 +7866,9 @@ struct LegendCommunitySafetyReview: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
 
-            Text(report.createdUTC.formatted(date: .abbreviated, time: .shortened))
+            Text(report.createdUTC.formatted(
+                .dateTime.year().month(.abbreviated).day().hour().minute()
+                    .locale(LegendActiveLocale())))
                 .font(LegendNextTypography.caption)
                 .foregroundStyle(LegendNextColor.textSecondary.opacity(0.8))
         }
@@ -7873,13 +7905,13 @@ private enum LegendFounderAuthority: CaseIterable, Identifiable {
     var detail: String {
         switch self {
         case .languageTranslation:
-            "Grant or revoke access to LEGEND language translation."
+            LegendLocalized("Grant or revoke access to LEGEND language translation.")
         case .scriptureManagement:
-            "Delegate Daily Scripture scheduling and editorial management."
+            LegendLocalized("Delegate Daily Scripture scheduling and editorial management.")
         case .communityManagement:
-            "Delegate report triage while content removal remains Founder-only."
+            LegendLocalized("Delegate report triage while content removal remains Founder-only.")
         case .socialContentPriority:
-            "Prioritize eligible Posts and Hacs above the standard feed ranking."
+            LegendLocalized("Prioritize eligible Posts and Hacs above the standard feed ranking.")
         }
     }
 
@@ -7922,8 +7954,8 @@ struct LegendFounderManagementModel: View {
             LegendScrollView(tracksNavigationChrome: false) {
                 VStack(alignment: .leading, spacing: LegendNextSpacing.md) {
                     LegendNextSheetHeader(
-                        eyebrow: "Founder management",
-                        title: member?.displayName ?? "Member authority",
+                        eyebrow: LegendLocalized("Founder management"),
+                        title: member?.displayName ?? LegendLocalized("Member authority"),
                         detail: member == nil
                             ? "Manage Founder-only member authority from one place."
                             : "Review and update this member's Founder-managed access in one place.",
@@ -8054,18 +8086,18 @@ private struct LegendFounderMemberAuthorityList: View {
             LegendNextSurface(style: .navy) {
                 VStack(alignment: .leading, spacing: LegendNextSpacing.sm) {
                     Label(
-                        "\(verificationReview.resourceType.displayName) review",
+                        LegendLocalized("{value1} review", arguments: ["value1": String(describing: (verificationReview.resourceType.displayName))]),
                         systemImage: "checkmark.seal.fill"
                     )
                     .font(.headline.weight(.bold))
                     .foregroundStyle(.white)
 
-                    Text("Resolve this member's pending request from Founder management.")
+                    Text(LegendLocalized("Resolve this member's pending request from Founder management."))
                         .font(LegendNextTypography.caption)
                         .foregroundStyle(.white.opacity(0.74))
 
                     TextField(
-                        "Optional member update",
+                        LegendLocalized("Optional member update"),
                         text: $verificationResolutionNote,
                         axis: .vertical
                     )
@@ -8083,7 +8115,7 @@ private struct LegendFounderMemberAuthorityList: View {
                         Button(role: .destructive) {
                             Task { await resolve(verificationReview, approved: false) }
                         } label: {
-                            Text("Decline")
+                            Text(LegendLocalized("Decline"))
                                 .frame(maxWidth: .infinity)
                         }
                         .buttonStyle(LegendNextButtonStyle(
@@ -8100,7 +8132,7 @@ private struct LegendFounderMemberAuthorityList: View {
                                     .tint(LegendNextColor.midnight)
                                     .frame(maxWidth: .infinity)
                             } else {
-                                Text("Approve")
+                                Text(LegendLocalized("Approve"))
                                     .frame(maxWidth: .infinity)
                             }
                         }
@@ -8147,11 +8179,11 @@ private struct LegendFounderMemberAuthorityList: View {
                     .tint(LegendNextColor.gold)
                     .frame(width: 68, height: 34)
             case .unavailable:
-                Text("Unavailable")
+                Text(LegendLocalized("Unavailable"))
                     .font(LegendNextTypography.caption.weight(.semibold))
                     .foregroundStyle(LegendNextColor.textSecondary)
             case .granted, .notGranted:
-                Button(isUpdating ? "Saving…" : (isGranted ? "Revoke" : "Grant")) {
+                Button(isUpdating ? LegendLocalized("Saving…") : (isGranted ? LegendLocalized("Revoke") : LegendLocalized("Grant"))) {
                     Task { await update(resourceType, isGranted: !isGranted) }
                 }
                 .buttonStyle(LegendNextButtonStyle(
@@ -8262,12 +8294,12 @@ struct LegendControlledResourceAccessManager: View {
             LegendScrollView(tracksNavigationChrome: false) {
                 VStack(alignment: .leading, spacing: LegendNextSpacing.md) {
                     LegendNextSheetHeader(
-                        eyebrow: "Founder controls",
+                        eyebrow: LegendLocalized("Founder controls"),
                         title: resourceType.displayName,
-                        detail: "Grant or remove \(resourceType.displayName) for any active Legend profile.",
+                        detail: LegendLocalized("Grant or remove {value1} for any active Legend profile.", arguments: ["value1": String(describing: (resourceType.displayName))]),
                         dismiss: { dismiss() })
 
-                    TextField("Search people", text: $search)
+                    TextField(LegendLocalized("Search people"), text: $search)
                         .textInputAutocapitalization(.words)
                         .autocorrectionDisabled()
                         .padding(.horizontal, LegendNextSpacing.sm)
@@ -8302,21 +8334,21 @@ struct LegendControlledResourceAccessManager: View {
     private var directoryContent: some View {
         switch recipients {
         case .idle, .loading:
-            ProgressView("Loading the Legend directory")
+            ProgressView(LegendLocalized("Loading the Legend directory"))
                 .frame(maxWidth: .infinity, minHeight: 144)
 
         case .unavailable(let failure):
             LegendNextErrorState(
                 title: failure.title,
                 message: failure.message,
-                retryTitle: "Retry",
+                retryTitle: LegendLocalized("Retry"),
                 retry: { Task { await reloadDirectory() } })
 
         case .loaded(let directory):
             if directory.isEmpty {
                 LegendNextEmptyState(
-                    title: "No profiles found",
-                    message: "Try a name, username, or email address.",
+                    title: LegendLocalized("No profiles found"),
+                    message: LegendLocalized("Try a name, username, or email address."),
                     systemImage: "person.crop.circle.badge.questionmark")
             } else {
                 LazyVStack(spacing: LegendNextSpacing.xs) {
@@ -8352,7 +8384,7 @@ struct LegendControlledResourceAccessManager: View {
 
             Spacer(minLength: 0)
 
-            Button(isUpdating ? "Updating…" : (isGranted ? "Remove" : "Grant")) {
+            Button(isUpdating ? LegendLocalized("Updating…") : (isGranted ? LegendLocalized("Remove") : LegendLocalized("Grant"))) {
                 Task { await update(recipient, isGranted: !isGranted) }
             }
             .buttonStyle(LegendNextButtonStyle(
@@ -8377,8 +8409,8 @@ struct LegendControlledResourceAccessManager: View {
             resourceType,
             search: search.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : search) else {
             recipients = .unavailable(UserFacingFailure(
-                title: "Access directory unavailable",
-                message: "The Legend directory could not be loaded. Try again.",
+                title: LegendLocalized("Access directory unavailable"),
+                message: LegendLocalized("The Legend directory could not be loaded. Try again."),
                 correlationID: nil))
             return
         }
@@ -8416,20 +8448,20 @@ private struct LegendFounderAccountRemovalManager: View {
             LegendScrollView(tracksNavigationChrome: false) {
                 VStack(alignment: .leading, spacing: LegendNextSpacing.md) {
                     LegendNextSheetHeader(
-                        eyebrow: "Founder management",
-                        title: scope == .active ? "Account removal" : "Removed accounts",
+                        eyebrow: LegendLocalized("Founder management"),
+                        title: scope == .active ? LegendLocalized("Account removal") : LegendLocalized("Removed accounts"),
                         detail: scope == .active
                             ? "Select accounts together, then close access through the protected workflow."
                             : "Permanently erase selected archived account records from Legend.",
                         dismiss: { dismiss() })
 
-                    Picker("Account directory", selection: $scope) {
-                        Text("Accounts").tag(FounderAccountDirectoryScope.active)
-                        Text("Archive").tag(FounderAccountDirectoryScope.archive)
+                    Picker(LegendLocalized("Account directory"), selection: $scope) {
+                        Text(LegendLocalized("Accounts")).tag(FounderAccountDirectoryScope.active)
+                        Text(LegendLocalized("Archive")).tag(FounderAccountDirectoryScope.archive)
                     }
                     .pickerStyle(.segmented)
 
-                    TextField("Search name, email, or account ID", text: $search)
+                    TextField(LegendLocalized("Search name, email, or account ID"), text: $search)
                         .textInputAutocapitalization(.words)
                         .autocorrectionDisabled()
                         .padding(.horizontal, LegendNextSpacing.sm)
@@ -8493,21 +8525,21 @@ private struct LegendFounderAccountRemovalManager: View {
     private var content: some View {
         switch accounts {
         case .idle, .loading:
-            ProgressView("Loading accounts")
+            ProgressView(LegendLocalized("Loading accounts"))
                 .frame(maxWidth: .infinity, minHeight: 144)
 
         case .unavailable(let failure):
             LegendNextErrorState(
                 title: failure.title,
                 message: failure.message,
-                retryTitle: "Retry",
+                retryTitle: LegendLocalized("Retry"),
                 retry: { Task { await reload() } })
 
         case .loaded(let directory):
             if directory.isEmpty {
                 LegendNextEmptyState(
-                    title: "No accounts found",
-                    message: "Search by name, email address, or account ID.",
+                    title: LegendLocalized("No accounts found"),
+                    message: LegendLocalized("Search by name, email address, or account ID."),
                     systemImage: "person.crop.circle.badge.questionmark")
             } else {
                 LazyVStack(spacing: LegendNextSpacing.xs) {
@@ -8541,7 +8573,7 @@ private struct LegendFounderAccountRemovalManager: View {
                     .font(LegendNextTypography.caption)
                     .foregroundStyle(LegendNextColor.textSecondary)
                     .lineLimit(1)
-                Text(scope == .archive ? "Archived" : "Account active")
+                Text(scope == .archive ? LegendLocalized("Archived") : LegendLocalized("Account active"))
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(scope == .archive ? LegendNextColor.textSecondary : LegendNextColor.gold)
             }
@@ -8586,8 +8618,8 @@ private struct LegendFounderAccountRemovalManager: View {
             search: search.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : search,
             scope: scope) else {
             accounts = .unavailable(UserFacingFailure(
-                title: "Account directory unavailable",
-                message: "Legend could not load the Founder account directory. Try again.",
+                title: LegendLocalized("Account directory unavailable"),
+                message: LegendLocalized("Legend could not load the Founder account directory. Try again."),
                 correlationID: nil))
             return
         }
@@ -8610,12 +8642,16 @@ private enum LegendFounderAccountBatchOperation: Equatable {
     case erase
 
     var confirmationPhrase: String { self == .archive ? "DELETE" : "ERASE" }
-    var title: String { self == .archive ? "Remove selected accounts" : "Erase archived accounts" }
-    var buttonTitle: String { self == .archive ? "Remove selected" : "Erase permanently" }
+    var title: String {
+        self == .archive ? LegendLocalized("Remove selected accounts") : LegendLocalized("Erase archived accounts")
+    }
+    var buttonTitle: String {
+        self == .archive ? LegendLocalized("Remove selected") : LegendLocalized("Erase permanently")
+    }
     var detail: String {
         self == .archive
-            ? "Active subscriptions are cancelled before each account enters the Archive."
-            : "This permanently erases the selected archived account profiles and account-owned application data."
+            ? LegendLocalized("Active subscriptions are cancelled before each account enters the Archive.")
+            : LegendLocalized("This permanently erases the selected archived account profiles and account-owned application data.")
     }
 }
 
@@ -8638,14 +8674,18 @@ private struct LegendFounderAccountBatchConfirmation: View {
             LegendScrollView(tracksNavigationChrome: false) {
                 VStack(alignment: .leading, spacing: LegendNextSpacing.md) {
                     LegendNextSheetHeader(
-                        eyebrow: "Founder action",
+                        eyebrow: LegendLocalized("Founder action"),
                         title: operation.title,
                         detail: operation.detail,
                         dismiss: { dismiss() })
 
                     LegendNextSurface(style: .navy) {
                         VStack(alignment: .leading, spacing: LegendNextSpacing.xs) {
-                            Text("\(accounts.count) account\(accounts.count == 1 ? "" : "s") selected")
+                            Text(LegendLocalized(
+                                accounts.count == 1
+                                    ? "{count} account selected"
+                                    : "{count} accounts selected",
+                                arguments: ["count": accounts.count]))
                                 .font(.subheadline.weight(.bold))
                                 .foregroundStyle(LegendNextColor.gold)
                             Text(accounts.map(\.displayName).joined(separator: " · "))
@@ -8655,7 +8695,7 @@ private struct LegendFounderAccountBatchConfirmation: View {
                         }
                     }
 
-                    TextField("Type \(operation.confirmationPhrase)", text: $confirmation)
+                    TextField(LegendLocalized("Type {value1}", arguments: ["value1": String(describing: (operation.confirmationPhrase))]), text: $confirmation)
                         .textInputAutocapitalization(.characters)
                         .autocorrectionDisabled()
                         .padding(.horizontal, LegendNextSpacing.sm)
@@ -8666,7 +8706,7 @@ private struct LegendFounderAccountBatchConfirmation: View {
 
                     if let outcome {
                         LegendNextSurface(style: .navy) {
-                            Text("\(outcome.completedCount) completed · \(outcome.failedCount) not completed")
+                            Text(LegendLocalized("{value1} completed · {value2} not completed", arguments: ["value1": String(describing: (outcome.completedCount)), "value2": String(describing: (outcome.failedCount))]))
                                 .font(LegendNextTypography.caption)
                                 .foregroundStyle(.white.opacity(0.80))
                         }
@@ -8676,7 +8716,7 @@ private struct LegendFounderAccountBatchConfirmation: View {
                         LegendNextErrorState(
                             title: failure.title,
                             message: failure.message,
-                            retryTitle: "Try again",
+                            retryTitle: LegendLocalized("Try again"),
                             retry: { Task { await perform() } })
                     }
 
@@ -8713,8 +8753,8 @@ private struct LegendFounderAccountBatchConfirmation: View {
             : await messages.purgeFounderAccounts(accounts, confirmation: confirmation)
         guard let result else {
             failure = messages.sendFailure ?? UserFacingFailure(
-                title: "Founder action not completed",
-                message: "Legend could not complete this Founder action. Try again.",
+                title: LegendLocalized("Founder action not completed"),
+                message: LegendLocalized("Legend could not complete this Founder action. Try again."),
                 correlationID: nil)
             return
         }
@@ -8758,10 +8798,10 @@ private struct LegendFounderAccountRemovalRow: View {
                 .background(.red.opacity(0.10), in: Circle())
 
             VStack(alignment: .leading, spacing: 3) {
-                Text("Account archive")
+                Text(LegendLocalized("Account archive"))
                     .font(LegendNextTypography.section)
                     .foregroundStyle(LegendNextColor.textPrimary)
-                Text("Cancel access now, then permanently erase it from the Founder Archive when appropriate.")
+                Text(LegendLocalized("Cancel access now, then permanently erase it from the Founder Archive when appropriate."))
                     .font(LegendNextTypography.caption)
                     .foregroundStyle(LegendNextColor.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -8802,23 +8842,23 @@ private struct LegendFounderAccountRemovalConfirmation: View {
             LegendScrollView(tracksNavigationChrome: false) {
                 VStack(alignment: .leading, spacing: LegendNextSpacing.md) {
                     LegendNextSheetHeader(
-                        eyebrow: "Founder action",
-                        title: "Archive \(account.displayName)",
-                        detail: "Any active subscription is cancelled before this account is archived.",
+                        eyebrow: LegendLocalized("Founder action"),
+                        title: LegendLocalized("Archive {value1}", arguments: ["value1": String(describing: (account.displayName))]),
+                        detail: LegendLocalized("Any active subscription is cancelled before this account is archived."),
                         dismiss: { dismiss() })
 
                     LegendNextSurface(style: .navy) {
                         VStack(alignment: .leading, spacing: LegendNextSpacing.xs) {
-                            Label("Protected account archive", systemImage: "archivebox.fill")
+                            Label(LegendLocalized("Protected account archive"), systemImage: "archivebox.fill")
                                 .font(.subheadline.weight(.bold))
                                 .foregroundStyle(LegendNextColor.gold)
-                            Text("This closes sign-in access and removes the account's Legend content. The Archive provides the separate permanent erase action. Type DELETE to continue.")
+                            Text(LegendLocalized("This closes sign-in access and removes the account's Legend content. The Archive provides the separate permanent erase action. Type DELETE to continue."))
                                 .font(LegendNextTypography.caption)
                                 .foregroundStyle(.white.opacity(0.78))
                         }
                     }
 
-                    TextField("Type DELETE", text: $confirmation)
+                    TextField(LegendLocalized("Type DELETE"), text: $confirmation)
                         .textInputAutocapitalization(.characters)
                         .autocorrectionDisabled()
                         .padding(.horizontal, LegendNextSpacing.sm)
@@ -8839,7 +8879,7 @@ private struct LegendFounderAccountRemovalConfirmation: View {
                         LegendNextErrorState(
                             title: failure.title,
                             message: failure.message,
-                            retryTitle: "Try again",
+                            retryTitle: LegendLocalized("Try again"),
                             retry: { Task { await remove() } })
                     }
 
@@ -8851,7 +8891,7 @@ private struct LegendFounderAccountRemovalConfirmation: View {
                                 .tint(.white)
                                 .frame(maxWidth: .infinity)
                         } else {
-                            Text("Archive account")
+                            Text(LegendLocalized("Archive account"))
                                 .frame(maxWidth: .infinity)
                         }
                     }
@@ -8873,8 +8913,8 @@ private struct LegendFounderAccountRemovalConfirmation: View {
         outcome = nil
         guard let result = await messages.removeFounderAccount(account, confirmation: confirmation) else {
             failure = messages.sendFailure ?? UserFacingFailure(
-                title: "Account removal not completed",
-                message: "Legend could not complete this account removal. Try again.",
+                title: LegendLocalized("Account removal not completed"),
+                message: LegendLocalized("Legend could not complete this account removal. Try again."),
                 correlationID: nil)
             return
         }
@@ -8911,7 +8951,7 @@ private struct LegendFollowListView: View {
         Group {
             switch state {
             case .idle, .loading:
-                ProgressView("Loading \(kind.title.lowercased())")
+                ProgressView(LegendLocalized("Loading {value1}", arguments: ["value1": String(describing: (kind.title.lowercased()))]))
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
 
             case .loaded(let entries):
@@ -8924,10 +8964,13 @@ private struct LegendFollowListView: View {
                     LegendScrollView(tracksNavigationChrome: false) {
                         LazyVStack(alignment: .leading, spacing: LegendNextSpacing.sm) {
                             LegendNextSectionHeader(
-                                eyebrow: "Legend network",
+                                eyebrow: LegendLocalized("Legend network"),
                                 title: kind.title,
-                                detail: "(entries.count) member\(entries.count == 1 ? "" : "s")"
-                            )
+                                detail: LegendLocalized(
+                                    entries.count == 1
+                                        ? "{count} member"
+                                        : "{count} members",
+                                    arguments: ["count": entries.count]))
 
                             ForEach(entries) { entry in
                                 NavigationLink {
@@ -8940,7 +8983,7 @@ private struct LegendFollowListView: View {
                                     followRow(entry)
                                 }
                                 .buttonStyle(.plain)
-                                .accessibilityHint("Visit \(entry.profile.displayName)'s profile")
+                                .accessibilityHint(LegendLocalized("Visit {value1}'s profile", context: "accessibility copy", arguments: ["value1": String(describing: (entry.profile.displayName))]))
                             }
                         }
                         .padding(.horizontal, LegendNextSpacing.sm)
@@ -8953,7 +8996,7 @@ private struct LegendFollowListView: View {
                 LegendNextErrorState(
                     title: failure.title,
                     message: failure.message,
-                    retryTitle: "Retry",
+                    retryTitle: LegendLocalized("Retry"),
                     retry: { Task { await refresh() } })
                 .padding(LegendNextSpacing.sm)
             }
@@ -9020,9 +9063,9 @@ private struct LegendProfileContactLink: View {
 
         var accessibilityAction: String {
             switch self {
-            case .website: "Open website"
-            case .email: "Compose email"
-            case .phone: "Call phone number"
+            case .website: LegendLocalized("Open website", context: "accessibility copy")
+            case .email: LegendLocalized("Compose email", context: "accessibility copy")
+            case .phone: LegendLocalized("Call phone number", context: "accessibility copy")
             }
         }
     }
@@ -9179,7 +9222,7 @@ struct LegendPublicProfileView: View {
                             ProgressView()
                                 .frame(maxWidth: .infinity)
                         } else {
-                            Text("Remove connection")
+                            Text(LegendLocalized("Remove connection"))
                                 .frame(maxWidth: .infinity)
                         }
                     }
@@ -9201,29 +9244,29 @@ struct LegendPublicProfileView: View {
         .navigationTitle(displayedProfile.displayName)
         .navigationBarTitleDisplayMode(.inline)
         .confirmationDialog(
-            "Report \(displayedProfile.displayName)",
+            LegendLocalized("Report {value1}", arguments: ["value1": String(describing: (displayedProfile.displayName))]),
             isPresented: $isReportOptionsPresented,
             titleVisibility: .visible
         ) {
-            Button("Harassment or hate") { submitProfileReport(category: "HarassmentOrHate") }
-            Button("Threat or self-harm") { submitProfileReport(category: "ThreatOrSelfHarm") }
-            Button("Sexual content") { submitProfileReport(category: "SexualContent") }
-            Button("Spam or scam") { submitProfileReport(category: "SpamOrScam") }
-            Button("Cancel", role: .cancel) {}
+            Button(LegendLocalized("Harassment or hate")) { submitProfileReport(category: "HarassmentOrHate") }
+            Button(LegendLocalized("Threat or self-harm")) { submitProfileReport(category: "ThreatOrSelfHarm") }
+            Button(LegendLocalized("Sexual content")) { submitProfileReport(category: "SexualContent") }
+            Button(LegendLocalized("Spam or scam")) { submitProfileReport(category: "SpamOrScam") }
+            Button(LegendLocalized("Cancel"), role: .cancel) {}
         } message: {
-            Text("Choose the reason that best describes the concern.")
+            Text(LegendLocalized("Choose the reason that best describes the concern."))
         }
         .confirmationDialog(
-            "Block \(displayedProfile.displayName)?",
+            LegendLocalized("Block {value1}?", arguments: ["value1": String(describing: (displayedProfile.displayName))]),
             isPresented: $isBlockConfirmationPresented,
             titleVisibility: .visible
         ) {
-            Button("Block profile", role: .destructive) {
+            Button(LegendLocalized("Block profile"), role: .destructive) {
                 Task { await blockProfile() }
             }
-            Button("Cancel", role: .cancel) {}
+            Button(LegendLocalized("Cancel"), role: .cancel) {}
         } message: {
-            Text("This removes the Journey Circles connection and prevents client-to-client messaging with this profile.")
+            Text(LegendLocalized("This removes the Journey Circles connection and prevents client-to-client messaging with this profile."))
         }
         .sheet(isPresented: $isPresentingFounderManagement) {
             if let messaging {
@@ -9263,9 +9306,11 @@ struct LegendPublicProfileView: View {
     }
 
     private var followTitle: String {
-        if isFollowing { return "Following" }
-        if isFollowRequestPending { return "Requested" }
-        return displayedProfile.isPrivate == true ? "Request to follow" : "Follow"
+        if isFollowing { return LegendLocalized("Following") }
+        if isFollowRequestPending { return LegendLocalized("Requested") }
+        return displayedProfile.isPrivate == true
+            ? LegendLocalized("Request to follow")
+            : LegendLocalized("Follow")
     }
 
     private var supportsJourneySafetyActions: Bool {
@@ -9291,11 +9336,11 @@ struct LegendPublicProfileView: View {
             Button {
                 isPresentingFounderManagement = true
             } label: {
-                Label("Founder management", systemImage: "crown.fill")
+                Label(LegendLocalized("Founder management"), systemImage: "crown.fill")
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(LegendNextButtonStyle(kind: .secondary, isFullWidth: true))
-            .accessibilityHint("Manage \(displayedProfile.displayName)'s Founder-controlled access")
+            .accessibilityHint(LegendLocalized("Manage {value1}'s Founder-controlled access", context: "accessibility copy", arguments: ["value1": String(describing: (displayedProfile.displayName))]))
         }
     }
 
@@ -9306,7 +9351,7 @@ struct LegendPublicProfileView: View {
                 Button {
                     isReportOptionsPresented = true
                 } label: {
-                    Text("Report profile")
+                    Text(LegendLocalized("Report profile"))
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(LegendNextButtonStyle(kind: .secondary, controlHeight: 40))
@@ -9319,7 +9364,7 @@ struct LegendPublicProfileView: View {
                         ProgressView()
                             .frame(maxWidth: .infinity)
                     } else {
-                        Text("Block profile")
+                        Text(LegendLocalized("Block profile"))
                             .frame(maxWidth: .infinity)
                     }
                 }
@@ -9400,9 +9445,9 @@ struct LegendPublicProfileView: View {
 
     private var metricRow: some View {
             HStack(spacing: LegendNextSpacing.md) {
-                metric(value: loadedMetrics?.videoCount, title: "Hacs")
-                metric(value: loadedMetrics?.followingCount, title: "Following")
-                metric(value: loadedMetrics?.followerCount, title: "Followers")
+                metric(value: loadedMetrics?.videoCount, title: LegendLocalized("Hacs"))
+                metric(value: loadedMetrics?.followingCount, title: LegendLocalized("Following"))
+                metric(value: loadedMetrics?.followerCount, title: LegendLocalized("Followers"))
             }
             .frame(maxWidth: .infinity)
     }
@@ -9417,7 +9462,7 @@ struct LegendPublicProfileView: View {
         if bio != nil || location != nil || website != nil || publicEmail != nil || publicPhone != nil {
             LegendNextSurface(style: .plain) {
                 VStack(alignment: .leading, spacing: LegendNextSpacing.xs) {
-                    Text("About")
+                    Text(LegendLocalized("About"))
                         .font(LegendNextTypography.section)
                         .foregroundStyle(LegendNextColor.textPrimary)
 
@@ -9456,20 +9501,20 @@ struct LegendPublicProfileView: View {
     @ViewBuilder
     private var updatesSection: some View {
         VStack(alignment: .leading, spacing: LegendNextSpacing.sm) {
-            Text("Updates")
+            Text(LegendLocalized("Updates"))
                 .font(LegendNextTypography.section)
                 .foregroundStyle(LegendNextColor.textPrimary)
 
             switch postsState {
             case .idle, .loading:
-                ProgressView("Loading updates")
+                ProgressView(LegendLocalized("Loading updates"))
                     .frame(maxWidth: .infinity, minHeight: 90)
 
             case .loaded(let posts):
                 if posts.isEmpty {
                     LegendNextEmptyState(
-                        title: "No updates yet",
-                        message: "This member has not shared a public Legend update.",
+                        title: LegendLocalized("No updates yet"),
+                        message: LegendLocalized("This member has not shared a public Legend update."),
                         systemImage: "rectangle.stack")
                 } else {
                     ForEach(posts) { post in
@@ -9484,7 +9529,7 @@ struct LegendPublicProfileView: View {
             case .unavailable(let failure):
                 LegendNextInsetSurface {
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("Updates unavailable")
+                        Text(LegendLocalized("Updates unavailable"))
                             .font(.subheadline.weight(.semibold))
                             .foregroundStyle(LegendNextColor.textPrimary)
                         Text(failure.message)
@@ -9506,7 +9551,7 @@ struct LegendPublicProfileView: View {
 
     private func metric(value: Int?, title: String) -> some View {
         VStack(spacing: 2) {
-            Text(value?.formatted() ?? "—")
+            Text(value?.formatted(.number.locale(LegendActiveLocale())) ?? "—")
                 .font(.headline.weight(.bold))
                 .foregroundStyle(LegendNextColor.textPrimary)
                 .contentTransition(.numericText())
@@ -9608,10 +9653,12 @@ private struct LegendPublicProfilePost: View {
 
                     HStack(spacing: LegendNextSpacing.sm) {
                         Text(post.displayContentType)
-                        Text(post.postedUTC.formatted(date: .abbreviated, time: .omitted))
+                        Text(post.postedUTC.formatted(
+                            .dateTime.year().month(.abbreviated).day()
+                                .locale(LegendActiveLocale())))
                         Spacer(minLength: 0)
-                        Label(post.reactionCount.formatted(), systemImage: "heart")
-                        Label(post.commentCount.formatted(), systemImage: "bubble.right")
+                        Label(post.reactionCount.formatted(.number.locale(LegendActiveLocale())), systemImage: "heart")
+                        Label(post.commentCount.formatted(.number.locale(LegendActiveLocale())), systemImage: "bubble.right")
                     }
                     .font(LegendNextTypography.caption)
                     .foregroundStyle(LegendNextColor.textSecondary)
@@ -9619,7 +9666,7 @@ private struct LegendPublicProfilePost: View {
             }
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("Open \(post.displayContentType) by \(post.author.displayName)")
+        .accessibilityLabel(LegendLocalized("Open {value1} by {value2}", context: "accessibility copy", arguments: ["value1": String(describing: (post.displayContentType)), "value2": String(describing: (post.author.displayName))]))
     }
 }
 
@@ -9749,7 +9796,7 @@ private struct LegendProfileGridTile: View {
         )
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(
-            "\(post.displayContentType) by \(post.author.displayName): \(post.body)"
+            LegendLocalized("{value1} by {value2}: {value3}", context: "accessibility copy", arguments: ["value1": String(describing: (post.displayContentType)), "value2": String(describing: (post.author.displayName)), "value3": String(describing: (post.body))])
         )
     }
 }
@@ -9797,33 +9844,33 @@ private struct LegendAccountEditor: View {
             LegendScrollView(tracksNavigationChrome: false) {
                 VStack(alignment: .leading, spacing: LegendNextSpacing.lg) {
                     LegendNextSheetHeader(
-                        eyebrow: "Your identity",
-                        title: "Shape your Legend",
-                        detail: "These details are specific to the mobile Legend experience. Your secure account email is never shown automatically.",
+                        eyebrow: LegendLocalized("Your identity"),
+                        title: LegendLocalized("Shape your Legend"),
+                        detail: LegendLocalized("These details are specific to the mobile Legend experience. Your secure account email is never shown automatically."),
                         dismiss: { dismiss() }
                     )
 
-                    LegendProfileSettingsSection(title: "Identity") {
+                    LegendProfileSettingsSection(title: LegendLocalized("Identity")) {
                         VStack(spacing: LegendNextSpacing.md) {
                             LegendProfileEditorField(
-                                title: "Display name",
+                                title: LegendLocalized("Display name"),
                                 prompt: "How people know you",
                                 text: $displayName,
                                 contentType: .name)
                             LegendProfileEditorField(
-                                title: "Username",
+                                title: LegendLocalized("Username"),
                                 prompt: "your.legend",
                                 text: $username,
                                 autocapitalization: .never,
                                 autocorrectionDisabled: true)
 
                             if store.isCheckingUsername {
-                                Label("Checking username…", systemImage: "clock")
+                                Label(LegendLocalized("Checking username…"), systemImage: "clock")
                                     .font(LegendNextTypography.caption)
                                     .foregroundStyle(.white.opacity(0.76))
                             } else if let availability = store.usernameAvailability {
                                 Label(
-                                    availability.message ?? "Username available",
+                                    availability.message ?? LegendLocalized("Username available"),
                                     systemImage: availability.isAvailable
                                         ? "checkmark.circle"
                                         : "exclamationmark.circle")
@@ -9840,31 +9887,31 @@ private struct LegendAccountEditor: View {
                         }
                     }
 
-                    LegendProfileSettingsSection(title: "About") {
+                    LegendProfileSettingsSection(title: LegendLocalized("About")) {
                         VStack(spacing: LegendNextSpacing.md) {
                             LegendProfileEditorField(
-                                title: "Bio",
+                                title: LegendLocalized("Bio"),
                                 prompt: "Tell your story",
                                 text: $bio,
                                 isMultiline: true)
                             LegendProfileEditorField(
-                                title: "Website",
+                                title: LegendLocalized("Website"),
                                 prompt: "https://example.com",
                                 text: $website,
                                 keyboardType: .URL,
                                 autocapitalization: .never,
                                 autocorrectionDisabled: true)
                             LegendProfileEditorField(
-                                title: "Location",
+                                title: LegendLocalized("Location"),
                                 prompt: "City, state, or region",
                                 text: $location)
                         }
                     }
 
-                    LegendProfileSettingsSection(title: "Contact privacy") {
+                    LegendProfileSettingsSection(title: LegendLocalized("Contact privacy")) {
                         VStack(spacing: LegendNextSpacing.md) {
                             LegendProfileEditorField(
-                                title: "Profile email",
+                                title: LegendLocalized("Profile email"),
                                 prompt: "The email you want to share",
                                 text: $profileEmail,
                                 keyboardType: .emailAddress,
@@ -9874,10 +9921,10 @@ private struct LegendAccountEditor: View {
 
                             Toggle(isOn: $isEmailVisible) {
                                 VStack(alignment: .leading, spacing: 3) {
-                                    Text("Show email on profile")
+                                    Text(LegendLocalized("Show email on profile"))
                                         .font(.subheadline.weight(.semibold))
                                         .foregroundStyle(.white)
-                                    Text("Only this member-entered address is shown. Your account email remains private.")
+                                    Text(LegendLocalized("Only this member-entered address is shown. Your account email remains private."))
                                         .font(LegendNextTypography.caption)
                                         .foregroundStyle(.white.opacity(0.76))
                                 }
@@ -9885,7 +9932,7 @@ private struct LegendAccountEditor: View {
                             .tint(LegendNextColor.goldBright)
 
                             LegendProfileEditorField(
-                                title: "Phone",
+                                title: LegendLocalized("Phone"),
                                 prompt: "Phone number",
                                 text: $phone,
                                 keyboardType: .phonePad,
@@ -9893,10 +9940,10 @@ private struct LegendAccountEditor: View {
 
                             Toggle(isOn: $isPhoneVisible) {
                                 VStack(alignment: .leading, spacing: 3) {
-                                    Text("Show phone on profile")
+                                    Text(LegendLocalized("Show phone on profile"))
                                         .font(.subheadline.weight(.semibold))
                                         .foregroundStyle(.white)
-                                    Text("Your number stays private unless you turn this on.")
+                                    Text(LegendLocalized("Your number stays private unless you turn this on."))
                                         .font(LegendNextTypography.caption)
                                         .foregroundStyle(.white.opacity(0.76))
                                 }
@@ -9906,15 +9953,15 @@ private struct LegendAccountEditor: View {
                     }
 
                     if profile.participantType == .agent {
-                        LegendProfileSettingsSection(title: "Account details") {
+                        LegendProfileSettingsSection(title: LegendLocalized("Account details")) {
                             VStack(spacing: LegendNextSpacing.md) {
                                 LegendProfileEditorField(
-                                    title: "Professional title",
+                                    title: LegendLocalized("Professional title"),
                                     prompt: "Advisor, coach, or specialist",
                                     text: $title,
                                     contentType: .jobTitle)
                                 LegendProfileEditorField(
-                                    title: "Professional introduction",
+                                    title: LegendLocalized("Professional introduction"),
                                     prompt: "Optional",
                                     text: $shortBio,
                                     isMultiline: true)
@@ -9922,7 +9969,7 @@ private struct LegendAccountEditor: View {
                         }
                     }
 
-                    Button(store.isSaving ? "Saving changes…" : "Save changes") {
+                    Button(store.isSaving ? LegendLocalized("Saving changes…") : LegendLocalized("Save changes")) {
                         saveChanges()
                     }
                     .buttonStyle(LegendNextButtonStyle(kind: .primary))
@@ -9970,9 +10017,13 @@ private struct LegendAccountEditor: View {
     private var usernameChangeLimitDetail: String {
         let remaining = profile.usernameChangesRemaining
         let remainingDetail = remaining == 1
-            ? "1 username change remaining this month."
-            : "\(remaining) username changes remaining this month."
-        return "Your username is searchable across Legend. Your first username is a reservation; after that, you can change it twice per calendar month. \(remainingDetail)"
+            ? LegendLocalized("1 username change remaining this month.")
+            : LegendLocalized(
+                "{count} username changes remaining this month.",
+                arguments: ["count": remaining])
+        return LegendLocalized(
+            "Your username is searchable across Legend. Your first username is a reservation; after that, you can change it twice per calendar month. {remainingDetail}",
+            arguments: ["remainingDetail": remainingDetail])
     }
 }
 
@@ -10013,17 +10064,17 @@ private struct LegendAgentProfileSettingsRow: View {
         if let destination {
             Link(destination: destination) {
                 LegendProfileSettingsRow(
-                    title: "Manage agent profile",
-                    detail: "Open your secure Legend profile in the browser",
+                    title: LegendLocalized("Manage agent profile"),
+                    detail: LegendLocalized("Open your secure Legend profile in the browser"),
                     systemImage: "safari",
                     showsChevron: true)
             }
             .buttonStyle(.plain)
-            .accessibilityHint("Opens your Legend web account outside the app")
+            .accessibilityHint(LegendLocalized("Opens your Legend web account outside the app", context: "accessibility copy"))
         } else {
             LegendProfileSettingsRow(
-                title: "Agent profile unavailable",
-                detail: "This build is missing its secure profile address",
+                title: LegendLocalized("Agent profile unavailable"),
+                detail: LegendLocalized("This build is missing its secure profile address"),
                 systemImage: "exclamationmark.triangle",
                 showsChevron: false)
         }
@@ -10238,7 +10289,7 @@ struct LegendProfileAvatar: View {
                     lineWidth: 1)
         }
         .accessibilityLabel(
-            "Profile image for \(displayName)")
+            LegendLocalized("Profile image for {value1}", context: "accessibility copy", arguments: ["value1": String(describing: (displayName))]))
     }
 
     private var initials: String {
@@ -10656,7 +10707,7 @@ struct LegendFounderAiLauncherButton: View {
             width: size,
             height: size)
         .contentShape(Circle())
-        .accessibilityLabel("Open Legend® Ai")
+        .accessibilityLabel(LegendLocalized("Open Legend® Ai", context: "accessibility copy"))
     }
 }
 
@@ -10726,7 +10777,7 @@ struct LegendFounderAiConversationView: View {
                 radius: 10,
                 y: 5)
 
-            Text("Legend® Ai")
+            Text(LegendLocalized("Legend® Ai"))
                 .font(
                     .system(
                         size: 17,
@@ -10918,19 +10969,19 @@ struct LegendFounderAiConversationView: View {
                             .frame(width: 112, height: 112)
                     }
 
-                    Text("FOUNDER INTELLIGENCE")
+                    Text(LegendLocalized("FOUNDER INTELLIGENCE"))
                         .font(.system(size: 10, weight: .bold))
                         .tracking(1.8)
                         .foregroundStyle(
                             LegendFounderAiPresentationTokens.header)
 
-                    Text("Ask Legend® Ai")
+                    Text(LegendLocalized("Ask Legend® Ai"))
                         .font(.system(size: 28, weight: .bold))
                         .foregroundStyle(
                             LegendFounderAiPresentationTokens.ink)
 
                     Text(
-                        "A governed conversation for inspecting knowledge, " +
+                        LegendLocalized("A governed conversation for inspecting knowledge, ") +
                         "evidence, readiness, and the next legitimate learning step.")
                         .font(.system(size: 15, weight: .medium))
                         .foregroundStyle(
@@ -11310,7 +11361,7 @@ struct LegendFounderAiConversationView: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(
-            "Close conversations")
+            LegendLocalized("Close conversations", context: "accessibility copy"))
     }
 
     private func chatsDrawer(
@@ -11322,13 +11373,13 @@ struct LegendFounderAiConversationView: View {
         ) {
             HStack {
                 VStack(alignment: .leading, spacing: 3) {
-                    Text("FOUNDER SPACE")
+                    Text(LegendLocalized("FOUNDER SPACE"))
                         .font(.system(size: 10, weight: .bold))
                         .tracking(1.5)
                         .foregroundStyle(
                             LegendFounderAiPresentationTokens.action)
 
-                    Text("Conversations")
+                    Text(LegendLocalized("Conversations"))
                         .font(.system(size: 19, weight: .bold))
                 }
 
@@ -11360,7 +11411,7 @@ struct LegendFounderAiConversationView: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(
-                    "Close conversations")
+                    LegendLocalized("Close conversations", context: "accessibility copy"))
             }
 
             Button {
@@ -11368,7 +11419,7 @@ struct LegendFounderAiConversationView: View {
                 chatsOpen = false
             } label: {
                 Label(
-                    "New conversation",
+                    LegendLocalized("New conversation"),
                     systemImage: "plus")
                     .font(
                         .system(
@@ -11403,18 +11454,18 @@ struct LegendFounderAiConversationView: View {
             .disabled(store.isSending)
 
             VStack(alignment: .leading, spacing: 10) {
-                Text("RESPONDER")
+                Text(LegendLocalized("RESPONDER"))
                     .font(.system(size: 10, weight: .bold))
                     .tracking(1.3)
                     .foregroundStyle(LegendFounderAiPresentationTokens.muted)
 
                 HStack(spacing: 8) {
                 modeButton(
-                    title: "Legend® Ai",
+                    title: LegendLocalized("Legend® Ai"),
                     value: "legend")
 
                 modeButton(
-                    title: "OpenAI",
+                    title: LegendLocalized("OpenAI"),
                     value: "teacher")
                 }
             }
@@ -11437,12 +11488,12 @@ struct LegendFounderAiConversationView: View {
                 }
 
                 VStack(alignment: .leading, spacing: 3) {
-                    Text("Native-only")
+                    Text(LegendLocalized("Native-only"))
                         .font(.system(size: 13, weight: .semibold))
                     Text(
                         mode == "legend"
-                            ? "Keep OpenAI off for this direct LEGEND test."
-                            : "Available in Legend® Ai mode.")
+                            ? LegendLocalized("Keep OpenAI off for this direct LEGEND test.")
+                            : LegendLocalized("Available in Legend® Ai mode."))
                         .font(.system(size: 10, weight: .medium))
                         .foregroundStyle(LegendFounderAiPresentationTokens.muted)
                         .fixedSize(horizontal: false, vertical: true)
@@ -11450,7 +11501,7 @@ struct LegendFounderAiConversationView: View {
 
                 Spacer(minLength: 0)
 
-                Toggle("Native-only", isOn: $nativeOnly)
+                Toggle(LegendLocalized("Native-only"), isOn: $nativeOnly)
                     .labelsHidden()
                     .toggleStyle(
                         SwitchToggleStyle(
@@ -11484,7 +11535,7 @@ struct LegendFounderAiConversationView: View {
                         .opacity(0.10))
                 .frame(height: 1)
 
-            Text("RECENT")
+            Text(LegendLocalized("RECENT"))
                 .font(.system(size: 10, weight: .bold))
                 .tracking(1.3)
                 .foregroundStyle(LegendFounderAiPresentationTokens.muted)
@@ -11501,9 +11552,9 @@ struct LegendFounderAiConversationView: View {
                             in: Circle())
 
                     VStack(alignment: .leading, spacing: 3) {
-                        Text("Your first conversation starts here")
+                        Text(LegendLocalized("Your first conversation starts here"))
                             .font(.system(size: 12, weight: .semibold))
-                        Text("New threads stay in this Founder workspace.")
+                        Text(LegendLocalized("New threads stay in this Founder workspace."))
                             .font(.system(size: 10, weight: .medium))
                             .foregroundStyle(LegendFounderAiPresentationTokens.muted)
                     }
@@ -11522,13 +11573,13 @@ struct LegendFounderAiConversationView: View {
                         alignment: .leading,
                         spacing: 4
                     ) {
-                        Text("Active conversation")
+                        Text(LegendLocalized("Active conversation"))
                             .fontWeight(.heavy)
 
                         Text(
                             store.messages.last?
                                 .content
-                                ?? "Legend® Ai")
+                                ?? LegendLocalized("Legend® Ai"))
                             .font(.caption)
                             .lineLimit(2)
                             .foregroundStyle(
@@ -11555,7 +11606,7 @@ struct LegendFounderAiConversationView: View {
                 chatsOpen = false
             } label: {
                 Label(
-                    "Clear conversations",
+                    LegendLocalized("Clear conversations"),
                     systemImage: "trash")
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(LegendFounderAiPresentationTokens.muted)

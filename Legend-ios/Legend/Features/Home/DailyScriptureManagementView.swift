@@ -13,14 +13,14 @@ struct LegendDailyScriptureManagementView: View {
             Group {
                 switch store.state {
                 case .idle, .loading:
-                    ProgressView("Loading Daily Scripture")
+                    ProgressView(LegendLocalized("Loading Daily Scripture"))
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
 
                 case .unavailable(let failure):
                     LegendNextErrorState(
                         title: failure.title,
                         message: failure.message,
-                        retryTitle: "Retry",
+                        retryTitle: LegendLocalized("Retry"),
                         retry: { Task { await store.load() } })
                     .padding(LegendNextSpacing.sm)
 
@@ -43,32 +43,32 @@ struct LegendDailyScriptureManagementView: View {
             DailyScriptureSheet(scripture: scripture)
         }
         .confirmationDialog(
-            "Remove this scheduled scripture?",
+            LegendLocalized("Remove this scheduled scripture?"),
             isPresented: Binding(
                 get: { removalTarget != nil },
                 set: { if !$0 { removalTarget = nil } }),
             titleVisibility: .visible
         ) {
-            Button("Remove override", role: .destructive) {
+            Button(LegendLocalized("Remove override"), role: .destructive) {
                 guard let removalTarget else { return }
                 self.removalTarget = nil
                 Task { _ = await store.remove(id: removalTarget.id) }
             }
-            Button("Cancel", role: .cancel) { removalTarget = nil }
+            Button(LegendLocalized("Cancel"), role: .cancel) { removalTarget = nil }
         } message: {
-            Text("Legend will return to its daily collection for this date unless another override is scheduled.")
+            Text(LegendLocalized("Legend will return to its daily collection for this date unless another override is scheduled."))
         }
         .alert(
-            store.actionFailure?.title ?? "Daily Scripture unavailable",
+            store.actionFailure?.title ?? LegendLocalized("Daily Scripture unavailable"),
             isPresented: Binding(
                 get: { store.actionFailure != nil },
                 set: { if !$0 { store.dismissActionFailure() } }
             ),
             actions: {
-                Button("OK", role: .cancel) { store.dismissActionFailure() }
+                Button(LegendLocalized("OK"), role: .cancel) { store.dismissActionFailure() }
             },
             message: {
-                Text(store.actionFailure?.message ?? "Please try again.")
+                Text(store.actionFailure?.message ?? LegendLocalized("Please try again."))
             }
         )
     }
@@ -80,14 +80,14 @@ struct LegendDailyScriptureManagementView: View {
         LegendScrollView(tracksNavigationChrome: false) {
             VStack(alignment: .leading, spacing: LegendNextSpacing.md) {
                 LegendNextSheetHeader(
-                    eyebrow: "Content management",
-                    title: "Daily Scripture",
-                    detail: "The server resolves each Legend business day. Authored overrides win only on their scheduled date.",
+                    eyebrow: LegendLocalized("Content management"),
+                    title: LegendLocalized("Daily Scripture"),
+                    detail: LegendLocalized("The server resolves each Legend business day. Authored overrides win only on their scheduled date."),
                     dismiss: { dismiss() })
 
                 todayCard(snapshot)
 
-                LegendProfileSettingsSection(title: "Schedule") {
+                LegendProfileSettingsSection(title: LegendLocalized("Schedule")) {
                     VStack(spacing: 0) {
                         Button {
                             editor = DailyScriptureOverrideEditorRoute(
@@ -95,8 +95,8 @@ struct LegendDailyScriptureManagementView: View {
                                 businessDate: nextScheduleDate(after: snapshot.businessDate))
                         } label: {
                             LegendProfileSettingsRow(
-                                title: "Schedule scripture",
-                                detail: "Choose a Legend date and paste the exact passage.",
+                                title: LegendLocalized("Schedule scripture"),
+                                detail: LegendLocalized("Choose a Legend date and paste the exact passage."),
                                 systemImage: "calendar.badge.plus",
                                 showsChevron: true)
                         }
@@ -128,7 +128,7 @@ struct LegendDailyScriptureManagementView: View {
             VStack(alignment: .leading, spacing: LegendNextSpacing.sm) {
                 HStack(alignment: .center, spacing: LegendNextSpacing.xs) {
                     VStack(alignment: .leading, spacing: LegendNextSpacing.micro) {
-                        Text("TODAY")
+                        Text(LegendLocalized("TODAY"))
                             .font(LegendNextTypography.eyebrow)
                             .tracking(1)
                             .foregroundStyle(LegendNextColor.gold)
@@ -151,7 +151,7 @@ struct LegendDailyScriptureManagementView: View {
                     .lineLimit(3)
 
                 HStack(spacing: LegendNextSpacing.xs) {
-                    Button("Preview") {
+                    Button(LegendLocalized("Preview")) {
                         preview = snapshot.current
                     }
                     .buttonStyle(LegendNextButtonStyle(
@@ -159,7 +159,7 @@ struct LegendDailyScriptureManagementView: View {
                         isFullWidth: false,
                         controlHeight: 36))
 
-                    Button(todayOverride == nil ? "Override today" : "Edit today") {
+                    Button(todayOverride == nil ? LegendLocalized("Override today") : LegendLocalized("Edit today")) {
                         editor = DailyScriptureOverrideEditorRoute(
                             existing: todayOverride,
                             businessDate: snapshot.businessDate)
@@ -191,7 +191,7 @@ struct LegendDailyScriptureManagementView: View {
 
                     Spacer(minLength: LegendNextSpacing.xs)
 
-                    Button("Edit") {
+                    Button(LegendLocalized("Edit")) {
                         editor = DailyScriptureOverrideEditorRoute(
                             existing: override,
                             businessDate: snapshot.businessDate)
@@ -207,7 +207,7 @@ struct LegendDailyScriptureManagementView: View {
                     }
                     .buttonStyle(.plain)
                     .foregroundStyle(LegendNextColor.danger)
-                    .accessibilityLabel("Remove \(override.reference) on \(override.displayDate)")
+                    .accessibilityLabel(LegendLocalized("Remove {value1} on {value2}", context: "accessibility copy", arguments: ["value1": String(describing: (override.reference)), "value2": String(describing: (override.displayDate))]))
                 }
                 .padding(.vertical, LegendNextSpacing.xs)
 
@@ -219,7 +219,7 @@ struct LegendDailyScriptureManagementView: View {
     }
 
     private func sourceLabel(_ source: String) -> String {
-        source == "ScheduledOverride" ? "Scheduled override" : "Daily collection"
+        source == "ScheduledOverride" ? LegendLocalized("Scheduled override") : LegendLocalized("Daily collection")
     }
 
     private func nextScheduleDate(after businessDate: String) -> String {
@@ -264,9 +264,9 @@ private struct LegendDailyScriptureOverrideEditor: View {
             LegendScrollView(tracksNavigationChrome: false) {
                 VStack(alignment: .leading, spacing: LegendNextSpacing.md) {
                     LegendNextSheetHeader(
-                        eyebrow: route.existing == nil ? "Schedule scripture" : "Edit scripture",
-                        title: route.existing == nil ? "New override" : "Scheduled override",
-                        detail: "Legend uses America/Phoenix for this date. Your passage is stored exactly as entered.",
+                        eyebrow: route.existing == nil ? LegendLocalized("Schedule scripture") : LegendLocalized("Edit scripture"),
+                        title: route.existing == nil ? LegendLocalized("New override") : LegendLocalized("Scheduled override"),
+                        detail: LegendLocalized("Legend uses America/Phoenix for this date. Your passage is stored exactly as entered."),
                         dismiss: { dismiss() })
 
                     LegendNextSurface(
@@ -280,7 +280,7 @@ private struct LegendDailyScriptureOverrideEditor: View {
                                 selection: $displayDate,
                                 displayedComponents: .date)
 
-                            TextField("Reference (for example, Psalm 121)", text: $reference)
+                            TextField(LegendLocalized("Reference (for example, Psalm 121)"), text: $reference)
                                 .textInputAutocapitalization(.words)
                                 .padding(.horizontal, LegendNextSpacing.sm)
                                 .frame(minHeight: 44)
@@ -288,7 +288,7 @@ private struct LegendDailyScriptureOverrideEditor: View {
                                     cornerRadius: LegendNextRadius.control,
                                     style: .continuous))
 
-                            TextField("Translation", text: $translation)
+                            TextField(LegendLocalized("Translation"), text: $translation)
                                 .textInputAutocapitalization(.characters)
                                 .padding(.horizontal, LegendNextSpacing.sm)
                                 .frame(minHeight: 44)
@@ -296,7 +296,7 @@ private struct LegendDailyScriptureOverrideEditor: View {
                                     cornerRadius: LegendNextRadius.control,
                                     style: .continuous))
 
-                            Text("PASSAGE TEXT")
+                            Text(LegendLocalized("PASSAGE TEXT"))
                                 .font(LegendNextTypography.eyebrow)
                                 .tracking(0.8)
                                 .foregroundStyle(LegendNextColor.gold)
@@ -313,7 +313,7 @@ private struct LegendDailyScriptureOverrideEditor: View {
                     }
 
                     HStack(spacing: LegendNextSpacing.xs) {
-                        Button("Preview") {
+                        Button(LegendLocalized("Preview")) {
                             preview = MobileDailyScripture(
                                 date: LegendDailyScriptureDate.string(from: displayDate),
                                 reference: reference,
@@ -327,7 +327,7 @@ private struct LegendDailyScriptureOverrideEditor: View {
                         .disabled(reference.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ||
                                   passageText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
 
-                        Button(store.isSaving ? "Saving…" : "Save") {
+                        Button(store.isSaving ? LegendLocalized("Saving…") : LegendLocalized("Save")) {
                             Task {
                                 let draft = MobileDailyScriptureOverrideDraft(
                                     displayDate: LegendDailyScriptureDate.string(from: displayDate),

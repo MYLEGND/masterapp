@@ -47,17 +47,17 @@ enum LegendSocialVideoPreparation {
         var errorDescription: String? {
             switch self {
             case .unreadableSource:
-                "This video could not be read on this device. Choose another video and try again."
+                LegendLocalized("This video could not be read on this device. Choose another video and try again.")
             case .noVideoTrack:
-                "This selection does not contain a playable video track."
+                LegendLocalized("This selection does not contain a playable video track.")
             case .noCompatibleExport:
-                "Legend could not prepare this video for reliable playback."
+                LegendLocalized("Legend could not prepare this video for reliable playback.")
             case .exportFailed:
-                "Legend could not finish preparing this video. Please try again."
+                LegendLocalized("Legend could not finish preparing this video. Please try again.")
             case .exceedsUploadLimit:
-                "This video is still too large after optimization. Choose a shorter video and try again."
+                LegendLocalized("This video is still too large after optimization. Choose a shorter video and try again.")
             case .exceedsDurationLimit:
-                "Videos must be 10 minutes or less."
+                LegendLocalized("Videos must be 10 minutes or less.")
             }
         }
     }
@@ -962,7 +962,7 @@ final class MobileSocialStore: ObservableObject {
         } catch {
             actionFailure = failure(
                 for: error,
-                title: "Could not share your update")
+                title: LegendLocalized("Could not share your update"))
             return false
         }
     }
@@ -1051,7 +1051,7 @@ final class MobileSocialStore: ObservableObject {
             replace(post)
             return true
         } catch {
-            actionFailure = failure(for: error, title: "Could not save your update")
+            actionFailure = failure(for: error, title: LegendLocalized("Could not save your update"))
             return false
         }
     }
@@ -1065,7 +1065,7 @@ final class MobileSocialStore: ObservableObject {
             remove(postID)
             return true
         } catch {
-            actionFailure = failure(for: error, title: "Could not delete your update")
+            actionFailure = failure(for: error, title: LegendLocalized("Could not delete your update"))
             return false
         }
     }
@@ -1233,14 +1233,14 @@ final class MobileSocialStore: ObservableObject {
 
     func recordUnreadableImage(assetID: UUID) {
         mediaFailures[assetID] = UserFacingFailure(
-            title: "Media unavailable",
-            message: "This file is not a supported image. Please try again or ask the author to replace it.",
+            title: LegendLocalized("Media unavailable"),
+            message: LegendLocalized("This file is not a supported image. Please try again or ask the author to replace it."),
             correlationID: nil)
     }
 
 
     func toggleReaction(postID: UUID) {
-        perform(key: "reaction:\(postID.uuidString)", title: "Could not update appreciation") { token in
+        perform(key: "reaction:\(postID.uuidString)", title: LegendLocalized("Could not update appreciation")) { token in
             let post = try await self.api.toggleReaction(postID: postID, accessToken: token)
             self.replace(post)
         }
@@ -1251,14 +1251,14 @@ final class MobileSocialStore: ObservableObject {
         let parentKey = parentCommentID?.uuidString ?? "root"
         perform(
             key: "comment:\(postID.uuidString):\(parentKey):\(normalizedBody)",
-            title: "Could not add comment") { token in
+            title: LegendLocalized("Could not add comment")) { token in
             let comment = try await self.api.addComment(postID: postID, request: MobileCreateSocialComment(body: body, parentCommentID: parentCommentID), accessToken: token)
             self.append(comment, to: postID)
         }
     }
 
     func toggleSave(postID: UUID) {
-        perform(key: "save:\(postID.uuidString)", title: "Could not update saved status") { token in
+        perform(key: "save:\(postID.uuidString)", title: LegendLocalized("Could not update saved status")) { token in
             let state = try await self.api.toggleSave(postID: postID, accessToken: token)
             self.mutate(postID: postID) { post in
                 let delta = state.isActive == post.savedByCurrentActor
@@ -1272,7 +1272,7 @@ final class MobileSocialStore: ObservableObject {
     }
 
     func toggleRepost(postID: UUID) {
-        perform(key: "repost:\(postID.uuidString)", title: "Could not update repost") { token in
+        perform(key: "repost:\(postID.uuidString)", title: LegendLocalized("Could not update repost")) { token in
             let state = try await self.api.toggleRepost(postID: postID, accessToken: token)
             self.mutate(postID: postID) { post in
                 let delta = state.isActive == post.repostedByCurrentActor
@@ -1286,7 +1286,7 @@ final class MobileSocialStore: ObservableObject {
     }
 
     func recordShare(postID: UUID) {
-        perform(key: "share:\(postID.uuidString)", title: "Could not record share") { token in
+        perform(key: "share:\(postID.uuidString)", title: LegendLocalized("Could not record share")) { token in
             _ = try await self.api.recordShare(postID: postID, accessToken: token)
         }
     }
@@ -1364,7 +1364,7 @@ final class MobileSocialStore: ObservableObject {
             let token = try await accessTokenProvider()
             return try await api.searchMusic(query: normalized, accessToken: token)
         } catch {
-            actionFailure = failure(for: error, title: "Music search unavailable")
+            actionFailure = failure(for: error, title: LegendLocalized("Music search unavailable"))
             return []
         }
     }
@@ -1375,7 +1375,7 @@ final class MobileSocialStore: ObservableObject {
             let token = try await accessTokenProvider()
             return try await api.postInsights(postID: postID, accessToken: token)
         } catch {
-            actionFailure = failure(for: error, title: "Post insights unavailable")
+            actionFailure = failure(for: error, title: LegendLocalized("Post insights unavailable"))
             return nil
         }
     }
@@ -1386,7 +1386,7 @@ final class MobileSocialStore: ObservableObject {
             key: followMutationKey(
                 userID: author.identity.userID,
                 participantType: author.identity.participantType),
-            title: "Could not update your connection") { token in
+            title: LegendLocalized("Could not update your connection")) { token in
             let result = try await self.api.toggleFollow(
                 MobileToggleSocialFollow(
                     followedUserID: author.identity.userID,
@@ -1450,7 +1450,7 @@ final class MobileSocialStore: ObservableObject {
             }
             return result
         } catch {
-            actionFailure = failure(for: error, title: "Could not update your connection")
+            actionFailure = failure(for: error, title: LegendLocalized("Could not update your connection"))
             return nil
         }
     }
@@ -1469,7 +1469,7 @@ final class MobileSocialStore: ObservableObject {
         } catch {
             return .unavailable(failure(
                 for: error,
-                title: "\(kind.title) unavailable"))
+                title: LegendLocalized("{value1} unavailable", arguments: ["value1": String(describing: (kind.title))])))
         }
     }
 
@@ -1478,7 +1478,7 @@ final class MobileSocialStore: ObservableObject {
             let token = try await accessTokenProvider()
             return .loaded(try await api.incomingFollowRequests(accessToken: token))
         } catch {
-            return .unavailable(failure(for: error, title: "Follow requests unavailable"))
+            return .unavailable(failure(for: error, title: LegendLocalized("Follow requests unavailable")))
         }
     }
 
@@ -1492,7 +1492,7 @@ final class MobileSocialStore: ObservableObject {
             }
             return true
         } catch {
-            actionFailure = failure(for: error, title: "Could not update this follow request")
+            actionFailure = failure(for: error, title: LegendLocalized("Could not update this follow request"))
             return false
         }
     }
@@ -1511,7 +1511,7 @@ final class MobileSocialStore: ObservableObject {
         } catch {
             return .unavailable(failure(
                 for: error,
-                title: "Profile unavailable"))
+                title: LegendLocalized("Profile unavailable")))
         }
     }
 
@@ -1529,7 +1529,7 @@ final class MobileSocialStore: ObservableObject {
         } catch {
             return .unavailable(failure(
                 for: error,
-                title: "Profile updates unavailable"))
+                title: LegendLocalized("Profile updates unavailable")))
         }
     }
 
@@ -1541,8 +1541,8 @@ final class MobileSocialStore: ObservableObject {
         let body = request.body.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !body.isEmpty || !request.files.isEmpty else {
             actionFailure = UserFacingFailure(
-                title: "Could not share your update",
-                message: "Add an update or attach supported media before publishing.",
+                title: LegendLocalized("Could not share your update"),
+                message: LegendLocalized("Add an update or attach supported media before publishing."),
                 correlationID: nil)
             return false
         }
@@ -1550,8 +1550,8 @@ final class MobileSocialStore: ObservableObject {
         if request.contentType.requiresVideo,
            (request.files.count != 1 || request.files.contains(where: { !$0.isVideo })) {
             actionFailure = UserFacingFailure(
-                title: "Could not share your Hac",
-                message: "A Hac requires exactly one video.",
+                title: LegendLocalized("Could not share your Hac"),
+                message: LegendLocalized("A Hac requires exactly one video."),
                 correlationID: nil)
             return false
         }
@@ -1628,7 +1628,7 @@ final class MobileSocialStore: ObservableObject {
             guard publication?.id == identifier else { return }
             let presentation = failure(
                 for: error,
-                title: "Could not share your update")
+                title: LegendLocalized("Could not share your update"))
             actionFailure = presentation
             publication?.stage = .failed
             publication?.failureMessage = presentation.message
@@ -1678,8 +1678,8 @@ final class MobileSocialStore: ObservableObject {
 
                 if refreshed.media.contains(where: { $0.processingState == "Failed" }) {
                     actionFailure = UserFacingFailure(
-                        title: "Video processing needs attention",
-                        message: "Legend could not finish preparing this video. Choose the video again and try publishing.",
+                        title: LegendLocalized("Video processing needs attention"),
+                        message: LegendLocalized("Legend could not finish preparing this video. Choose the video again and try publishing."),
                         correlationID: nil)
                     publication?.stage = .failed
                     publication?.failureMessage = actionFailure?.message
@@ -1746,8 +1746,8 @@ final class MobileSocialStore: ObservableObject {
         let task = Task { [weak self] in
             guard let self else {
                 return MobileStoreLoadResult.failed(UserFacingFailure(
-                    title: "Legend feed unavailable",
-                    message: "The social store is no longer available.",
+                    title: LegendLocalized("Legend feed unavailable"),
+                    message: LegendLocalized("The social store is no longer available."),
                     correlationID: nil))
             }
             return await self.executeFeedRequest(preservingCachedValue: preservingCachedValue)
@@ -1773,8 +1773,8 @@ final class MobileSocialStore: ObservableObject {
         let task = Task { [weak self] in
             guard let self else {
                 return MobileStoreLoadResult.failed(UserFacingFailure(
-                    title: "Profile updates unavailable",
-                    message: "The social store is no longer available.",
+                    title: LegendLocalized("Profile updates unavailable"),
+                    message: LegendLocalized("The social store is no longer available."),
                     correlationID: nil))
             }
             return await self.executeProfilePostsRequest(preservingCachedValue: preservingCachedValue)
@@ -1795,7 +1795,7 @@ final class MobileSocialStore: ObservableObject {
             refreshFailure = nil
             return .loaded
         } catch {
-            let presentation = failure(for: error, title: "Legend feed unavailable")
+            let presentation = failure(for: error, title: LegendLocalized("Legend feed unavailable"))
             if preservingCachedValue {
                 refreshFailure = presentation
             } else {
@@ -1813,7 +1813,7 @@ final class MobileSocialStore: ObservableObject {
             profileRefreshFailure = nil
             return .loaded
         } catch {
-            let presentation = failure(for: error, title: "Profile updates unavailable")
+            let presentation = failure(for: error, title: LegendLocalized("Profile updates unavailable"))
             if preservingCachedValue {
                 profileRefreshFailure = presentation
             } else {
@@ -2024,7 +2024,7 @@ final class MobileSocialStore: ObservableObject {
     }
 
     private func mediaFailurePresentation(for error: Error) -> UserFacingFailure {
-        failure(for: error, title: "Media temporarily unavailable")
+        failure(for: error, title: LegendLocalized("Media temporarily unavailable"))
     }
 
     private func materializeMediaFile(_ media: MobileSocialMedia) async -> URL? {
@@ -2066,8 +2066,8 @@ final class MobileSocialStore: ObservableObject {
                !(await LegendSocialVideoPreparation.isPlayableVideo(at: destination)) {
                 try? FileManager.default.removeItem(at: destination)
                 mediaFailures[media.id] = UserFacingFailure(
-                    title: "Video unavailable",
-                    message: "Legend could not verify this video for playback. Ask the creator to publish it again.",
+                    title: LegendLocalized("Video unavailable"),
+                    message: LegendLocalized("Legend could not verify this video for playback. Ask the creator to publish it again."),
                     correlationID: nil)
                 return nil
             }
@@ -2120,6 +2120,9 @@ final class MobileSocialStore: ObservableObject {
     private func failure(for error: Error, title: String) -> UserFacingFailure {
         let apiError = error as? MobileAPIError
         diagnostics.record(category: .networking, summary: "A native social request could not be completed.", correlationID: apiError?.correlationID)
-        return UserFacingFailure(title: title, message: error.localizedDescription, correlationID: apiError?.correlationID)
+        return UserFacingFailure(
+            title: title,
+            message: LegendLocalized(error.localizedDescription),
+            correlationID: apiError?.correlationID)
     }
 }

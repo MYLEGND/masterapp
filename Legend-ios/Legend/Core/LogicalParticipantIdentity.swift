@@ -51,7 +51,7 @@ enum MobileIdentityError: LocalizedError, Equatable {
     var errorDescription: String? {
         switch self {
         case .emptyUserID:
-            return "The server did not provide a valid participant identity."
+            return LegendLocalized("The server did not provide a valid participant identity.")
         }
     }
 }

@@ -34,6 +34,7 @@ val legendDebugRuntimeRes = legendDebugRuntimeRoot.map { it.dir("res") }
 val legendReleaseRuntimeAssets = legendReleaseRuntimeRoot.map { it.dir("assets") }
 val legendReleaseRuntimeRes = legendReleaseRuntimeRoot.map { it.dir("res") }
 val sharedLegendDesignSpec = rootProject.file("../Legend-Design/legend-design.tokens.json")
+val sharedLegendApplicationCopy = rootProject.file("../Legend-Design/legend-application-copy.json")
 val legendDesignAssets = layout.buildDirectory.dir("generated/legend-design/assets")
 // The iOS asset catalog owns the brand artwork. Android packages that source
 // at build time instead of keeping a second, drift-prone copy in res/.
@@ -118,6 +119,7 @@ val generateLegendReleaseRuntimeConfiguration by tasks.registering(Sync::class) 
 /** Bundles the single cross-platform design authority without copying it into Android source. */
 val bundleLegendDesignSpecification by tasks.registering(Sync::class) {
     from(sharedLegendDesignSpec)
+    from(sharedLegendApplicationCopy)
     into(legendDesignAssets)
 }
 

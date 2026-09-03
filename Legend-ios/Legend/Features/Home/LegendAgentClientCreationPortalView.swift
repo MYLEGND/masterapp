@@ -45,9 +45,9 @@ struct LegendAgentClientCreationPortalView: View {
                     .ignoresSafeArea(edges: .bottom)
             case .failed(let message):
                 LegendNextErrorState(
-                    title: "Client intake unavailable",
+                    title: LegendLocalized("Client intake unavailable"),
                     message: message,
-                    retryTitle: "Retry",
+                    retryTitle: LegendLocalized("Retry"),
                     retry: { Task { await requestLaunch() } })
                     .padding(LegendNextSpacing.sm)
             case .authenticationRequired(let message):
@@ -75,8 +75,8 @@ struct LegendAgentClientCreationPortalView: View {
             state = .ready(try await store.clientCreationPortalLaunch())
         } catch {
             state = requiresInteractiveSignIn(for: error)
-                ? .authenticationRequired(error.localizedDescription)
-                : .failed(error.localizedDescription)
+                ? .authenticationRequired(LegendLocalized(error.localizedDescription))
+                : .failed(LegendLocalized(error.localizedDescription))
             hasRequestedLaunch = false
         }
     }
@@ -130,10 +130,10 @@ struct LegendAgentClientCreationPortalView: View {
     private var portalHeader: some View {
         HStack(spacing: LegendNextSpacing.sm) {
             VStack(alignment: .leading, spacing: 2) {
-                Text("CLIENT CRM")
+                Text(LegendLocalized("CLIENT CRM"))
                     .font(LegendNextTypography.eyebrow)
                     .foregroundStyle(LegendNextColor.gold)
-                Text("Create client")
+                Text(LegendLocalized("Create client"))
                     .font(LegendNextTypography.section)
                     .foregroundStyle(LegendNextColor.textPrimary)
             }
@@ -141,14 +141,14 @@ struct LegendAgentClientCreationPortalView: View {
             Spacer(minLength: 0)
 
             Button(action: dismissPortal) {
-                Label("Close", systemImage: "xmark")
+                Label(LegendLocalized("Close"), systemImage: "xmark")
             }
             .buttonStyle(LegendNextButtonStyle(
                 kind: .secondary,
                 isFullWidth: false,
                 controlHeight: 38
             ))
-            .accessibilityHint("Closes client intake and returns to your clients.")
+            .accessibilityHint(LegendLocalized("Closes client intake and returns to your clients.", context: "accessibility copy"))
         }
         .padding(.horizontal, LegendNextSpacing.sm)
         .padding(.vertical, LegendNextSpacing.xs)
@@ -179,7 +179,7 @@ private struct LegendAgentClientCreationAuthenticationState: View {
                 .font(.system(size: 28, weight: .semibold))
                 .foregroundStyle(LegendNextColor.gold)
 
-            Text("Sign in to continue")
+            Text(LegendLocalized("Sign in to continue"))
                 .font(LegendNextTypography.section)
                 .foregroundStyle(LegendNextColor.textPrimary)
 
@@ -187,10 +187,10 @@ private struct LegendAgentClientCreationAuthenticationState: View {
                 .font(LegendNextTypography.body)
                 .foregroundStyle(LegendNextColor.textSecondary)
 
-            Button("Try secure session again", action: retry)
+            Button(LegendLocalized("Try secure session again"), action: retry)
                 .buttonStyle(LegendNextButtonStyle(kind: .secondary))
 
-            Button("Sign in again", action: signIn)
+            Button(LegendLocalized("Sign in again"), action: signIn)
                 .buttonStyle(LegendNextButtonStyle(kind: .primary))
         }
         .padding(LegendNextSpacing.md)
@@ -354,7 +354,7 @@ private struct LegendAgentClientCreationPortalWebView: UIViewRepresentable {
         private func reportFailure(_ error: Error) {
             let nsError = error as NSError
             guard !isExpectedNavigationInterruption(nsError) else { return }
-            onFailure(error.localizedDescription)
+            onFailure(LegendLocalized(error.localizedDescription))
         }
 
         /// WKWebView reports its own policy cancellations as a failed frame

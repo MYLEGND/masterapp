@@ -159,23 +159,23 @@ struct MessagingHomeView: View {
             }
         }
         .alert(
-            "Remove conversation?",
+            LegendLocalized("Remove conversation?"),
             isPresented: Binding(
                 get: { conversationPendingRemoval != nil },
                 set: { if !$0 { conversationPendingRemoval = nil } }
             )
         ) {
-            Button("Cancel", role: .cancel) {
+            Button(LegendLocalized("Cancel"), role: .cancel) {
                 conversationPendingRemoval = nil
             }
-            Button("Remove", role: .destructive) {
+            Button(LegendLocalized("Remove"), role: .destructive) {
                 if let conversationPendingRemoval {
                     store.removeConversation(conversationID: conversationPendingRemoval.id)
                 }
                 conversationPendingRemoval = nil
             }
         } message: {
-            Text("This removes the conversation from your inbox only. A new message will bring it back.")
+            Text(LegendLocalized("This removes the conversation from your inbox only. A new message will bring it back."))
         }
         .refreshable {
             _ = await store.refresh()
@@ -193,7 +193,7 @@ struct MessagingHomeView: View {
 
         case .unavailable(let message):
             inboxFailure(
-                title: "Messaging is unavailable",
+                title: LegendLocalized("Messaging is unavailable"),
                 message: message,
                 symbol: "lock.message",
                 canRetry: false
@@ -222,7 +222,7 @@ struct MessagingHomeView: View {
                 if let refreshFailure = store.refreshFailure {
                     LegendMessagingStatusBanner(
                         symbol: "exclamationmark.arrow.triangle.2.circlepath",
-                        title: "Messages could not refresh",
+                        title: LegendLocalized("Messages could not refresh"),
                         message: refreshFailure.message
                     )
                     .padding(.horizontal, LegendNextSpacing.pageHorizontal)
@@ -250,7 +250,7 @@ struct MessagingHomeView: View {
         ) {
             HStack(alignment: .center, spacing: LegendNextSpacing.md) {
                 VStack(alignment: .leading, spacing: LegendNextSpacing.xs) {
-                    Text("Messages")
+                    Text(LegendLocalized("Messages"))
                         .font(LegendNextTypography.section)
                         .foregroundStyle(.white)
                 }
@@ -278,7 +278,7 @@ struct MessagingHomeView: View {
                             )
                     }
                     .buttonStyle(LegendMessagingPressButtonStyle())
-                    .accessibilityLabel("Start a new conversation")
+                    .accessibilityLabel(LegendLocalized("Start a new conversation", context: "accessibility copy"))
 
                     Button {
                         isPresentingCallDirectory = true
@@ -294,7 +294,7 @@ struct MessagingHomeView: View {
                             }
                     }
                     .buttonStyle(LegendMessagingPressButtonStyle())
-                    .accessibilityLabel("Call a connection")
+                    .accessibilityLabel(LegendLocalized("Call a connection", context: "accessibility copy"))
                 }
             }
         }
@@ -330,7 +330,7 @@ struct MessagingHomeView: View {
                         .controlSize(.small)
                         .tint(LegendNextColor.gold)
 
-                    Text("Updating")
+                    Text(LegendLocalized("Updating"))
                         .font(.caption.weight(.medium))
                         .foregroundStyle(
                             LegendNextColor.textSecondary
@@ -383,8 +383,8 @@ struct MessagingHomeView: View {
 
                         Text(
                             store.isLoadingMoreConversations
-                                ? "Loading earlier conversations"
-                                : "Load earlier conversations"
+                                ? LegendLocalized("Loading earlier conversations")
+                                : LegendLocalized("Load earlier conversations")
                         )
                     }
                 }
@@ -402,7 +402,7 @@ struct MessagingHomeView: View {
                     LegendNextSpacing.pageHorizontal
                 )
                 .accessibilityHint(
-                    "Loads the next oldest conversations without delaying the latest messages."
+                    LegendLocalized("Loads the next oldest conversations without delaying the latest messages.", context: "accessibility copy")
                 )
             }
         }
@@ -430,7 +430,7 @@ struct MessagingHomeView: View {
             children: .contain
         )
         .accessibilityLabel(
-            "Pinned conversations"
+            LegendLocalized("Pinned conversations", context: "accessibility copy")
         )
     }
 
@@ -496,7 +496,7 @@ struct MessagingHomeView: View {
                             y: -6
                         )
                         .accessibilityLabel(
-                            "\(conversation.unreadCount) unread messages"
+                            LegendLocalized("{value1} unread messages", context: "accessibility copy", arguments: ["value1": String(describing: (conversation.unreadCount))])
                         )
                     }
                 }
@@ -528,10 +528,10 @@ struct MessagingHomeView: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(
-            "\(conversation.title), pinned conversation"
+            LegendLocalized("{value1}, pinned conversation", context: "accessibility copy", arguments: ["value1": String(describing: (conversation.title))])
         )
         .accessibilityHint(
-            "Open conversation"
+            LegendLocalized("Open conversation", context: "accessibility copy")
         )
         .contextMenu {
             conversationContextMenu(
@@ -554,7 +554,7 @@ struct MessagingHomeView: View {
             LegendMessagingPressButtonStyle()
         )
         .accessibilityHint(
-            "Open conversation"
+            LegendLocalized("Open conversation", context: "accessibility copy")
         )
         .contextMenu {
             conversationContextMenu(
@@ -608,7 +608,7 @@ struct MessagingHomeView: View {
                 conversation
         } label: {
             Label(
-                "Remove from inbox",
+                LegendLocalized("Remove from inbox"),
                 systemImage: "trash"
             )
         }
@@ -617,8 +617,8 @@ struct MessagingHomeView: View {
     private var inboxEmptyState: some View {
         LegendMessagingEmptyState(
             symbol: "message.badge.waveform.fill",
-            title: "Start a private conversation",
-            message: "Choose someone in your Legend network to begin.",
+            title: LegendLocalized("Start a private conversation"),
+            message: LegendLocalized("Choose someone in your Legend network to begin."),
             actionTitle: "New message",
             action: {
                 isPresentingNewConversation = true
@@ -644,7 +644,7 @@ struct MessagingHomeView: View {
             .padding(.bottom, 118)
         }
         .scrollIndicators(.hidden)
-        .accessibilityLabel("Loading conversations")
+        .accessibilityLabel(LegendLocalized("Loading conversations", context: "accessibility copy"))
     }
 
     private func inboxFailure(
@@ -693,19 +693,19 @@ private struct LegendMessagingCallDirectory: View {
 
                 LegendScrollView {
                     VStack(alignment: .leading, spacing: LegendNextSpacing.md) {
-                        Text("Call a connection")
+                        Text(LegendLocalized("Call a connection"))
                             .font(LegendNextTypography.section)
                             .foregroundStyle(LegendNextColor.textPrimary)
 
-                        Text("Calls open through your device’s secure Phone or FaceTime experience.")
+                        Text(LegendLocalized("Calls open through your device’s secure Phone or FaceTime experience."))
                             .font(.subheadline)
                             .foregroundStyle(LegendNextColor.textSecondary)
 
                         if directConversations.isEmpty {
                             LegendMessagingEmptyState(
                                 symbol: "phone.down.fill",
-                                title: "No direct conversations",
-                                message: "Start a private conversation to call a connection.",
+                                title: LegendLocalized("No direct conversations"),
+                                message: LegendLocalized("Start a private conversation to call a connection."),
                                 actionTitle: nil,
                                 action: nil)
                         } else {
@@ -726,11 +726,11 @@ private struct LegendMessagingCallDirectory: View {
                 }
                 .scrollIndicators(.hidden)
             }
-            .navigationTitle("Call")
+            .navigationTitle(LegendLocalized("Call"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("Done", action: dismiss)
+                    Button(LegendLocalized("Done"), action: dismiss)
                         .foregroundStyle(LegendNextColor.gold)
                 }
             }
@@ -762,7 +762,7 @@ private struct LegendConversationCallSheet: View {
                 if isLoading {
                     ProgressView()
                         .tint(LegendNextColor.gold)
-                    Text("Preparing secure call options")
+                    Text(LegendLocalized("Preparing secure call options"))
                         .font(.subheadline)
                         .foregroundStyle(LegendNextColor.textSecondary)
                 } else if let options {
@@ -778,7 +778,7 @@ private struct LegendConversationCallSheet: View {
 
                     if let phone = options.phoneNumber {
                         LegendCallActionButton(
-                            title: "Phone call",
+                            title: LegendLocalized("Phone call"),
                             subtitle: "Use your carrier",
                             symbol: "phone.fill",
                             action: { openSystemCall(scheme: "tel", address: phone) })
@@ -786,13 +786,13 @@ private struct LegendConversationCallSheet: View {
 
                     if let faceTime = options.faceTimeAddress {
                         LegendCallActionButton(
-                            title: "FaceTime video",
+                            title: LegendLocalized("FaceTime video"),
                             subtitle: "Open FaceTime",
                             symbol: "video.fill",
                             action: { openSystemCall(scheme: "facetime", address: faceTime) })
 
                         LegendCallActionButton(
-                            title: "FaceTime Audio",
+                            title: LegendLocalized("FaceTime Audio"),
                             subtitle: "Open FaceTime Audio",
                             symbol: "phone.badge.waveform.fill",
                             action: { openSystemCall(scheme: "facetime-audio", address: faceTime) })
@@ -800,8 +800,8 @@ private struct LegendConversationCallSheet: View {
                 } else {
                     LegendMessagingEmptyState(
                         symbol: "phone.down.fill",
-                        title: "Calling unavailable",
-                        message: "\(fallbackName) has not shared a call address for this private conversation.",
+                        title: LegendLocalized("Calling unavailable"),
+                        message: LegendLocalized("{value1} has not shared a call address for this private conversation.", arguments: ["value1": String(describing: (fallbackName))]),
                         actionTitle: nil,
                         action: nil)
                 }
@@ -907,7 +907,7 @@ private struct LegendRecipientPicker: View {
     private var recipientHeader: some View {
         VStack(spacing: LegendNextSpacing.md) {
             HStack(spacing: LegendNextSpacing.md) {
-                Button("Cancel", action: dismiss)
+                Button(LegendLocalized("Cancel"), action: dismiss)
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(.white)
                     .frame(minWidth: 68, minHeight: 44)
@@ -921,13 +921,13 @@ private struct LegendRecipientPicker: View {
                 Spacer()
 
                 VStack(spacing: 2) {
-                    Text(isCreatingGroup ? "New group" : "New message")
+                    Text(isCreatingGroup ? LegendLocalized("New group") : LegendLocalized("New message"))
                         .font(.system(.headline, design: .rounded).weight(.bold))
                         .foregroundStyle(.white)
 
                     Text(isCreatingGroup
-                         ? "Choose at least two connections"
-                         : "Search your Legend network")
+                         ? LegendLocalized("Choose at least two connections")
+                         : LegendLocalized("Search your Legend network"))
                         .font(.caption)
                         .foregroundStyle(.white.opacity(0.66))
                 }
@@ -950,7 +950,10 @@ private struct LegendRecipientPicker: View {
                         .background(.white.opacity(0.10), in: Circle())
                 }
                 .buttonStyle(LegendMessagingPressButtonStyle())
-                .accessibilityLabel(isCreatingGroup ? "Create a direct message" : "Create a group chat")
+                .accessibilityLabel(
+                    isCreatingGroup
+                        ? LegendLocalized("Create a direct message", context: "accessibility copy")
+                        : LegendLocalized("Create a group chat", context: "accessibility copy"))
             }
         }
         .padding(.horizontal, LegendNextSpacing.pageHorizontal)
@@ -978,7 +981,7 @@ private struct LegendRecipientPicker: View {
                         : LegendNextColor.textTertiary
                 )
 
-            TextField("Search people", text: $search)
+            TextField(LegendLocalized("Search people"), text: $search)
                 .font(.body)
                 .foregroundStyle(LegendNextColor.textPrimary)
                 .textInputAutocapitalization(.words)
@@ -993,7 +996,7 @@ private struct LegendRecipientPicker: View {
                         .foregroundStyle(LegendNextColor.textTertiary)
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel("Clear search")
+                .accessibilityLabel(LegendLocalized("Clear search", context: "accessibility copy"))
             }
         }
         .padding(.horizontal, LegendNextSpacing.md)
@@ -1038,10 +1041,10 @@ private struct LegendRecipientPicker: View {
                             },
                             size: 42)
                     }
-                    .accessibilityLabel("Choose group photo")
+                    .accessibilityLabel(LegendLocalized("Choose group photo", context: "accessibility copy"))
                     .disabled(isPreparingGroupImage)
 
-                TextField("Group name", text: $groupSubject)
+                TextField(LegendLocalized("Group name"), text: $groupSubject)
                     .textInputAutocapitalization(.words)
                     .font(.subheadline.weight(.semibold))
                     .padding(.horizontal, LegendNextSpacing.sm)
@@ -1060,7 +1063,10 @@ private struct LegendRecipientPicker: View {
                 hostOptions: groupHostOptions,
                 canManageMeeting: true)
 
-            Button(store.isCreatingGroup ? "Creating group…" : "Create group (\(groupRecipients.count))") {
+            Button(
+                store.isCreatingGroup
+                    ? LegendLocalized("Creating group…")
+                    : LegendLocalized("Create group ({count})", arguments: ["count": groupRecipients.count])) {
                 let recipients = Array(groupRecipients.values)
                 store.createGroup(
                     subject: groupSubject,
@@ -1081,10 +1087,10 @@ private struct LegendRecipientPicker: View {
         }
         .padding(.horizontal, LegendNextSpacing.pageHorizontal)
         .padding(.bottom, LegendNextSpacing.sm)
-        .alert("Group photo could not be prepared", isPresented: $isShowingGroupPhotoPreparationFailure) {
-            Button("OK", role: .cancel) {}
+        .alert(LegendLocalized("Group photo could not be prepared"), isPresented: $isShowingGroupPhotoPreparationFailure) {
+            Button(LegendLocalized("OK"), role: .cancel) {}
         } message: {
-            Text("Choose another photo and try again. Your group was not created without the selected photo.")
+            Text(LegendLocalized("Choose another photo and try again. Your group was not created without the selected photo."))
         }
         .onChange(of: selectedGroupPhoto) { _, item in
             guard let item else { return }
@@ -1108,7 +1114,7 @@ private struct LegendRecipientPicker: View {
                 LegendGroupHostOption(
                     identity: recipient.identity,
                     displayName: recipient.displayName,
-                    detail: recipient.relationshipLabel ?? "Group member")
+                    detail: recipient.relationshipLabel ?? LegendLocalized("Group member"))
             }
             .sorted { $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending }
     }
@@ -1121,7 +1127,7 @@ private struct LegendRecipientPicker: View {
                         search = ""
                         store.selectRecipientScope(scope)
                     } label: {
-                        Label(scope.rawValue, systemImage: scope.icon)
+                        Label(scope.title, systemImage: scope.icon)
                             .font(.subheadline.weight(.semibold))
                             .foregroundStyle(
                                 store.selectedRecipientScope == scope
@@ -1150,7 +1156,7 @@ private struct LegendRecipientPicker: View {
                             }
                     }
                     .buttonStyle(LegendMessagingPressButtonStyle())
-                    .accessibilityLabel("Show \(scope.rawValue.lowercased())")
+                    .accessibilityLabel(LegendLocalized("Show {value1}", context: "accessibility copy", arguments: ["value1": String(describing: (scope.title.lowercased()))]))
                 }
             }
             .padding(.horizontal, LegendNextSpacing.pageHorizontal)
@@ -1204,7 +1210,7 @@ private struct LegendRecipientPicker: View {
     ) -> some View {
         LegendScrollView(tracksNavigationChrome: false) {
             LazyVStack(alignment: .leading, spacing: 3) {
-                Text(store.selectedRecipientScope.rawValue)
+                Text(store.selectedRecipientScope.title)
                     .font(.system(.headline, design: .rounded).weight(.bold))
                     .foregroundStyle(LegendNextColor.textPrimary)
                     .padding(.bottom, LegendNextSpacing.tiny)
@@ -1306,7 +1312,7 @@ private struct LegendRecipientPicker: View {
         recipient.identity.participantType == .agent
             ? publicAgentRoleLabel(
                 roleLabel: recipient.roleLabel)
-            : publicRelationshipLabel(recipient.relationshipLabel) ?? "Connection"
+            : publicRelationshipLabel(recipient.relationshipLabel) ?? LegendLocalized("Connection")
     }
 
     private var recipientLoading: some View {
@@ -1320,7 +1326,7 @@ private struct LegendRecipientPicker: View {
             .padding(.top, LegendNextSpacing.sm)
         }
         .scrollIndicators(.hidden)
-        .accessibilityLabel("Loading people")
+        .accessibilityLabel(LegendLocalized("Loading people", context: "accessibility copy"))
     }
 }
 
@@ -1357,17 +1363,17 @@ private struct LegendGroupMemberPicker: View {
 
     private var header: some View {
         HStack {
-            Button("Cancel", action: dismiss)
+            Button(LegendLocalized("Cancel"), action: dismiss)
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(.white)
 
             Spacer()
 
             VStack(spacing: 2) {
-                Text("Add group member")
+                Text(LegendLocalized("Add group member"))
                     .font(.headline.weight(.bold))
                     .foregroundStyle(.white)
-                Text("Choose one of your connections")
+                Text(LegendLocalized("Choose one of your connections"))
                     .font(.caption)
                     .foregroundStyle(.white.opacity(0.68))
             }
@@ -1386,7 +1392,7 @@ private struct LegendGroupMemberPicker: View {
             Image(systemName: "magnifyingglass")
                 .foregroundStyle(LegendNextColor.textTertiary)
 
-            TextField("Search connections", text: $search)
+            TextField(LegendLocalized("Search connections"), text: $search)
                 .focused($searchIsFocused)
                 .autocorrectionDisabled()
         }
@@ -1431,14 +1437,14 @@ private struct LegendGroupMemberPicker: View {
     private var content: some View {
         switch store.recipientState {
         case .idle, .loading:
-            ProgressView("Loading connections")
+            ProgressView(LegendLocalized("Loading connections"))
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
 
         case .unavailable(let failure):
             LegendNextErrorState(
                 title: failure.title,
                 message: failure.message,
-                retryTitle: "Retry",
+                retryTitle: LegendLocalized("Retry"),
                 retry: { store.loadRecipients(search: search) }
             )
             .padding(LegendNextSpacing.md)
@@ -1457,7 +1463,7 @@ private struct LegendGroupMemberPicker: View {
                                 subtitle: recipient.identity.participantType == .agent
                                     ? publicAgentRoleLabel(
                                         roleLabel: recipient.roleLabel)
-                                    : publicRelationshipLabel(recipient.relationshipLabel) ?? "Connection",
+                                    : publicRelationshipLabel(recipient.relationshipLabel) ?? LegendLocalized("Connection"),
                                 detail: recipient.email,
                                 isVerified: recipient.isVerified == true,
                                 avatar: {
@@ -1546,18 +1552,18 @@ private struct LegendGroupCollaboratorSheet: View {
 
     private var header: some View {
         HStack {
-            Button("Done", action: dismiss)
+            Button(LegendLocalized("Done"), action: dismiss)
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(.white)
 
             Spacer()
 
             VStack(spacing: 2) {
-                Text("Collaborators")
+                Text(LegendLocalized("Collaborators"))
                     .font(.headline.weight(.bold))
                     .foregroundStyle(.white)
 
-                Text("Co-manage this group")
+                Text(LegendLocalized("Co-manage this group"))
                     .font(.caption)
                     .foregroundStyle(.white.opacity(0.68))
             }
@@ -1575,13 +1581,13 @@ private struct LegendGroupCollaboratorSheet: View {
     private var explanatoryCard: some View {
         VStack(alignment: .leading, spacing: LegendNextSpacing.xs) {
             Label(
-                "Owner-controlled access",
+                LegendLocalized("Owner-controlled access"),
                 systemImage: "lock.shield.fill")
                 .font(.subheadline.weight(.bold))
                 .foregroundStyle(LegendNextColor.textPrimary)
 
             Text(
-                "Collaborators can edit the group and add members. "
+                LegendLocalized("Collaborators can edit the group and add members. ")
                 + "They cannot appoint other collaborators or delete the group."
             )
             .font(.footnote)
@@ -1637,8 +1643,8 @@ private struct LegendGroupCollaboratorSheet: View {
 
                             Text(
                                 isManager
-                                    ? "Collaborator"
-                                    : "Make collaborator")
+                                    ? LegendLocalized("Collaborator")
+                                    : LegendLocalized("Make collaborator"))
                                 .font(.caption.weight(.bold))
                         }
                         .foregroundStyle(
@@ -1653,8 +1659,14 @@ private struct LegendGroupCollaboratorSheet: View {
         .disabled(store.isCreatingGroup)
         .accessibilityLabel(
             isManager
-                ? "Remove \(participant.displayName) as collaborator"
-                : "Make \(participant.displayName) a collaborator")
+                ? LegendLocalized(
+                    "Remove {displayName} as collaborator",
+                    context: "accessibility copy",
+                    arguments: ["displayName": participant.displayName])
+                : LegendLocalized(
+                    "Make {displayName} a collaborator",
+                    context: "accessibility copy",
+                    arguments: ["displayName": participant.displayName]))
     }
 }
 
@@ -1670,12 +1682,12 @@ private enum LegendGroupMeetingFrequency: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
-        case .oneTime: return "One time"
-        case .daily: return "Daily"
-        case .weekly: return "Weekly"
-        case .biweekly: return "Every other week"
-        case .monthly: return "Monthly"
-        case .custom: return "Custom"
+        case .oneTime: return LegendLocalized("One time")
+        case .daily: return LegendLocalized("Daily")
+        case .weekly: return LegendLocalized("Weekly")
+        case .biweekly: return LegendLocalized("Every other week")
+        case .monthly: return LegendLocalized("Monthly")
+        case .custom: return LegendLocalized("Custom")
         }
     }
 
@@ -1698,6 +1710,17 @@ private enum LegendGroupMeetingWeekday: String, CaseIterable, Identifiable {
     case saturday = "Saturday"
 
     var id: String { rawValue }
+    var title: String {
+        switch self {
+        case .sunday: LegendLocalized("Sunday")
+        case .monday: LegendLocalized("Monday")
+        case .tuesday: LegendLocalized("Tuesday")
+        case .wednesday: LegendLocalized("Wednesday")
+        case .thursday: LegendLocalized("Thursday")
+        case .friday: LegendLocalized("Friday")
+        case .saturday: LegendLocalized("Saturday")
+        }
+    }
 }
 
 private struct LegendGroupHostOption: Identifiable {
@@ -1823,7 +1846,7 @@ private struct LegendGroupMeetingEditor: View {
         VStack(alignment: .leading, spacing: LegendNextSpacing.sm) {
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Group host")
+                    Text(LegendLocalized("Group host"))
                         .font(.caption.weight(.bold))
                         .foregroundStyle(LegendNextColor.textSecondary)
                     Text(hostName)
@@ -1833,23 +1856,23 @@ private struct LegendGroupMeetingEditor: View {
 
                 Spacer()
 
-                Button("Choose by name") {
+                Button(LegendLocalized("Choose by name")) {
                     isPresentingHostPicker = true
                 }
                 .font(.subheadline.weight(.semibold))
                 .buttonStyle(.bordered)
             }
 
-            Toggle("Add an online meeting", isOn: $draft.isMeetingEnabled)
+            Toggle(LegendLocalized("Add an online meeting"), isOn: $draft.isMeetingEnabled)
                 .font(.subheadline.weight(.semibold))
                 .tint(LegendNextColor.gold)
 
             if draft.isMeetingEnabled {
                 VStack(alignment: .leading, spacing: LegendNextSpacing.xs) {
-                    TextField("Meeting link name (for example, Wednesday Zoom)", text: $draft.linkLabel)
+                    TextField(LegendLocalized("Meeting link name (for example, Wednesday Zoom)"), text: $draft.linkLabel)
                         .textInputAutocapitalization(.words)
                         .autocorrectionDisabled()
-                    TextField("Zoom, Teams, or Google Meet URL", text: $draft.linkURL)
+                    TextField(LegendLocalized("Zoom, Teams, or Google Meet URL"), text: $draft.linkURL)
                         .keyboardType(.URL)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
@@ -1862,7 +1885,7 @@ private struct LegendGroupMeetingEditor: View {
                         cornerRadius: LegendNextRadius.compact,
                         style: .continuous))
 
-                Toggle("Add a recurring schedule", isOn: $draft.isScheduleEnabled)
+                Toggle(LegendLocalized("Add a recurring schedule"), isOn: $draft.isScheduleEnabled)
                     .font(.subheadline.weight(.semibold))
                     .tint(LegendNextColor.gold)
 
@@ -1888,7 +1911,7 @@ private struct LegendGroupMeetingEditor: View {
     @ViewBuilder
     private var meetingScheduleControls: some View {
         VStack(alignment: .leading, spacing: LegendNextSpacing.xs) {
-            Picker("Frequency", selection: $draft.frequency) {
+            Picker(LegendLocalized("Frequency"), selection: $draft.frequency) {
                 ForEach(LegendGroupMeetingFrequency.allCases) { frequency in
                     Text(frequency.title).tag(frequency)
                 }
@@ -1896,9 +1919,9 @@ private struct LegendGroupMeetingEditor: View {
             .pickerStyle(.menu)
 
             if draft.frequency.needsWeekday {
-                Picker("Day", selection: $draft.weekday) {
+                Picker(LegendLocalized("Day"), selection: $draft.weekday) {
                     ForEach(LegendGroupMeetingWeekday.allCases) { weekday in
-                        Text(weekday.rawValue).tag(weekday)
+                        Text(weekday.title).tag(weekday)
                     }
                 }
                 .pickerStyle(.menu)
@@ -1915,14 +1938,14 @@ private struct LegendGroupMeetingEditor: View {
 
             if draft.frequency.usesLocalTime {
                 DatePicker("Time", selection: $draft.time, displayedComponents: .hourAndMinute)
-                TextField("Time zone", text: $draft.timeZoneID)
+                TextField(LegendLocalized("Time zone"), text: $draft.timeZoneID)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
             }
 
             if draft.frequency == .custom {
                 TextField(
-                    "Custom schedule (for example, first and third Wednesday)",
+                    LegendLocalized("Custom schedule (for example, first and third Wednesday)"),
                     text: $draft.customDescription,
                     axis: .vertical)
                     .lineLimit(2...4)
@@ -1939,10 +1962,10 @@ private struct LegendGroupMeetingEditor: View {
 
     private var hostName: String {
         guard let hostIdentity = draft.hostIdentity else {
-            return "You (group owner)"
+            return LegendLocalized("You (group owner)")
         }
         return hostOptions.first(where: { $0.identity == hostIdentity })?.displayName
-            ?? "Selected group member"
+            ?? LegendLocalized("Selected group member")
     }
 }
 
@@ -1960,7 +1983,7 @@ private struct LegendGroupHostPicker: View {
                     selectedHost = nil
                     dismiss()
                 } label: {
-                    Label("You (group owner)", systemImage: "person.crop.circle")
+                    Label(LegendLocalized("You (group owner)"), systemImage: "person.crop.circle")
                 }
 
                 ForEach(filteredOptions) { option in
@@ -1979,11 +2002,11 @@ private struct LegendGroupHostPicker: View {
                 }
             }
             .searchable(text: $search, prompt: "Search group members by name")
-            .navigationTitle("Choose group host")
+            .navigationTitle(LegendLocalized("Choose group host"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") {
+                    Button(LegendLocalized("Cancel")) {
                         dismiss()
                     }
                 }
@@ -2039,14 +2062,14 @@ private struct LegendGroupProfileEditor: View {
                                 avatar: replacementAvatar ?? conversation.groupAvatar,
                                 size: 92)
                         }
-                        .accessibilityLabel("Change group photo")
+                        .accessibilityLabel(LegendLocalized("Change group photo", context: "accessibility copy"))
                         .disabled(isPreparingReplacementImage)
 
                     VStack(alignment: .leading, spacing: LegendNextSpacing.xs) {
-                        Text("Group name")
+                        Text(LegendLocalized("Group name"))
                             .font(.caption.weight(.bold))
                             .foregroundStyle(LegendNextColor.textSecondary)
-                        TextField("Group name", text: $subject)
+                        TextField(LegendLocalized("Group name"), text: $subject)
                             .textInputAutocapitalization(.words)
                             .padding(.horizontal, LegendNextSpacing.md)
                             .frame(minHeight: 48)
@@ -2066,8 +2089,8 @@ private struct LegendGroupProfileEditor: View {
 
                     Text(
                         conversation.canManageMeeting == true
-                            ? "Only the group owner can set the host, meeting link, and schedule. Collaborators can still manage the group name, photo, and membership."
-                            : "Group owners and collaborators can manage the group name, photo, and membership.")
+                            ? LegendLocalized("Only the group owner can set the host, meeting link, and schedule. Collaborators can still manage the group name, photo, and membership.")
+                            : LegendLocalized("Group owners and collaborators can manage the group name, photo, and membership."))
                         .font(.footnote)
                         .foregroundStyle(LegendNextColor.textSecondary)
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -2076,16 +2099,16 @@ private struct LegendGroupProfileEditor: View {
                 }
                 .padding(LegendNextSpacing.pageHorizontal)
             }
-            .navigationTitle("Group profile")
+            .navigationTitle(LegendLocalized("Group profile"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") {
+                    Button(LegendLocalized("Cancel")) {
                         dismiss()
                     }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button(store.isCreatingGroup ? "Saving…" : "Save") {
+                    Button(store.isCreatingGroup ? LegendLocalized("Saving…") : LegendLocalized("Save")) {
                         store.updateGroup(
                             conversationID: conversation.id,
                             subject: subject,
@@ -2102,10 +2125,10 @@ private struct LegendGroupProfileEditor: View {
                         (conversation.canManageMeeting == true && !meetingDraft.isValid))
                 }
             }
-            .alert("Group photo could not be prepared", isPresented: $isShowingGroupPhotoPreparationFailure) {
-                Button("OK", role: .cancel) {}
+            .alert(LegendLocalized("Group photo could not be prepared"), isPresented: $isShowingGroupPhotoPreparationFailure) {
+                Button(LegendLocalized("OK"), role: .cancel) {}
             } message: {
-                Text("Choose another photo and try again. Your existing group photo was not changed.")
+                Text(LegendLocalized("Choose another photo and try again. Your existing group photo was not changed."))
             }
             .onChange(of: selectedPhoto) { _, item in
                 guard let item else { return }
@@ -2139,7 +2162,7 @@ private struct LegendGroupProfileEditor: View {
                 LegendGroupHostOption(
                     identity: participant.identity,
                     displayName: participant.displayName,
-                    detail: participant.roleLabel ?? "Group member")
+                    detail: participant.roleLabel ?? LegendLocalized("Group member"))
             }
             .sorted { $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending }
     }
@@ -2213,20 +2236,20 @@ struct ConversationThreadView: View {
             }
         }
         .confirmationDialog(
-            "Delete this group?",
+            LegendLocalized("Delete this group?"),
             isPresented: $isConfirmingDeleteGroup,
             titleVisibility: .visible
         ) {
-            Button("Delete Group for Everyone", role: .destructive) {
+            Button(LegendLocalized("Delete Group for Everyone"), role: .destructive) {
                 store.deleteGroup(conversationID: conversationID) {
                     dismissThread()
                 }
             }
 
-            Button("Cancel", role: .cancel) {}
+            Button(LegendLocalized("Cancel"), role: .cancel) {}
         } message: {
             Text(
-                "This permanently closes the group for every member. "
+                LegendLocalized("This permanently closes the group for every member. ")
                 + "Only the group owner can perform this action."
             )
         }
@@ -2267,7 +2290,7 @@ struct ConversationThreadView: View {
 
         case .unavailable(let message):
             conversationFailure(
-                title: "Conversation unavailable",
+                title: LegendLocalized("Conversation unavailable"),
                 message: message,
                 canRetry: false
             )
@@ -2347,7 +2370,7 @@ struct ConversationThreadView: View {
             if let sendFailure = store.sendFailure {
                 LegendMessagingStatusBanner(
                     symbol: "exclamationmark.circle.fill",
-                    title: "Message not sent",
+                    title: LegendLocalized("Message not sent"),
                     message: sendFailure.message
                 )
                 .padding(.top, LegendNextSpacing.xs)
@@ -2393,13 +2416,13 @@ struct ConversationThreadView: View {
                     matching: .images,
                     photoLibrary: PHPhotoLibrary.shared()
                 ) {
-                    Label("Photo Library", systemImage: "photo.on.rectangle")
+                    Label(LegendLocalized("Photo Library"), systemImage: "photo.on.rectangle")
                 }
 
                 Button {
                     isImportingFile = true
                 } label: {
-                    Label("Files", systemImage: "doc")
+                    Label(LegendLocalized("Files"), systemImage: "doc")
                 }
             } label: {
                 Image(systemName: "plus")
@@ -2409,10 +2432,10 @@ struct ConversationThreadView: View {
                     .background(LegendNextColor.fill, in: Circle())
             }
             .buttonStyle(LegendMessagingPressButtonStyle())
-            .accessibilityLabel("Add photo or file")
+            .accessibilityLabel(LegendLocalized("Add photo or file", context: "accessibility copy"))
 
             TextField(
-                "Write a message",
+                LegendLocalized("Write a message"),
                 text: $draft,
                 axis: .vertical
             )
@@ -2451,7 +2474,7 @@ struct ConversationThreadView: View {
                     lineWidth: 1
                 )
             }
-            .accessibilityLabel("Message")
+            .accessibilityLabel(LegendLocalized("Message", context: "accessibility copy"))
 
             Button {
                 if canSend {
@@ -2510,11 +2533,11 @@ struct ConversationThreadView: View {
                 .foregroundStyle(LegendNextColor.gold)
 
             VStack(alignment: .leading, spacing: 2) {
-                Text("Conversation closed")
+                Text(LegendLocalized("Conversation closed"))
                     .font(.subheadline.weight(.bold))
                     .foregroundStyle(LegendNextColor.textPrimary)
 
-                Text("New messages cannot be sent in this conversation.")
+                Text(LegendLocalized("New messages cannot be sent in this conversation."))
                     .font(.caption)
                     .foregroundStyle(LegendNextColor.textSecondary)
             }
@@ -2717,7 +2740,7 @@ private struct LegendMessageAttachmentStaging: View {
             .padding(.vertical, 2)
         }
         .scrollIndicators(.hidden)
-        .accessibilityLabel("Attachments ready to send")
+        .accessibilityLabel(LegendLocalized("Attachments ready to send", context: "accessibility copy"))
     }
 
     @ViewBuilder
@@ -2748,14 +2771,14 @@ private struct LegendMessageAttachmentStaging: View {
     ) -> some View {
         switch attachment.state {
         case .ready:
-            Text("Ready to send")
+            Text(LegendLocalized("Ready to send"))
                 .font(.caption2)
                 .foregroundStyle(LegendNextColor.textSecondary)
         case .uploading:
             HStack(spacing: 4) {
                 ProgressView()
                     .controlSize(.mini)
-                Text("Uploading")
+                Text(LegendLocalized("Uploading"))
             }
             .font(.caption2)
             .foregroundStyle(LegendNextColor.textSecondary)
@@ -2781,7 +2804,7 @@ private struct LegendMessageAttachmentStaging: View {
                     .foregroundStyle(LegendNextColor.textTertiary)
             }
             .buttonStyle(.plain)
-            .accessibilityLabel("Remove \(attachment.fileName)")
+            .accessibilityLabel(LegendLocalized("Remove {value1}", context: "accessibility copy", arguments: ["value1": String(describing: (attachment.fileName))]))
         case .failed:
             Button {
                 onRetry(attachment.id)
@@ -2790,7 +2813,7 @@ private struct LegendMessageAttachmentStaging: View {
                     .foregroundStyle(LegendNextColor.gold)
             }
             .buttonStyle(.plain)
-            .accessibilityLabel("Retry \(attachment.fileName)")
+            .accessibilityLabel(LegendLocalized("Retry {value1}", context: "accessibility copy", arguments: ["value1": String(describing: (attachment.fileName))]))
         }
     }
 }
@@ -2805,7 +2828,7 @@ private struct LegendConversationRow: View {
     var body: some View {
         LegendContactCard(
             displayName: conversation.title,
-            subtitle: conversation.lastMessagePreview ?? "Start your conversation",
+            subtitle: conversation.lastMessagePreview ?? LegendLocalized("Start your conversation"),
             detail: relationshipTitle,
             isVerified: !isGroup && conversation.counterparty.isVerified == true,
             avatar: {
@@ -2833,7 +2856,7 @@ private struct LegendConversationRow: View {
                         Image(systemName: "pin.fill")
                             .font(.caption2.weight(.semibold))
                             .foregroundStyle(LegendNextColor.gold)
-                            .accessibilityLabel("Pinned conversation")
+                            .accessibilityLabel(LegendLocalized("Pinned conversation", context: "accessibility copy"))
                     }
 
                     if conversation.unreadCount > 0 {
@@ -2843,7 +2866,7 @@ private struct LegendConversationRow: View {
                             .frame(minWidth: 21, minHeight: 21)
                             .padding(.horizontal, conversation.unreadCount > 9 ? 4 : 0)
                             .background(unreadColor, in: Capsule())
-                            .accessibilityLabel("\(conversation.unreadCount) unread messages")
+                            .accessibilityLabel(LegendLocalized("{value1} unread messages", context: "accessibility copy", arguments: ["value1": String(describing: (conversation.unreadCount))]))
                     } else if conversation.isMuted {
                         Image(systemName: "bell.slash.fill")
                             .font(.caption.weight(.semibold))
@@ -2861,7 +2884,7 @@ private struct LegendConversationRow: View {
 
     private var relationshipTitle: String? {
         if isGroup {
-            return "Group chat"
+            return LegendLocalized("Group chat")
         }
 
         switch conversation.counterparty.identity.participantType {
@@ -2869,7 +2892,7 @@ private struct LegendConversationRow: View {
             return publicAgentRoleLabel(roleLabel: conversation.counterparty.roleLabel)
 
         case .client:
-            return "Connection"
+            return LegendLocalized("Connection")
         }
     }
 
@@ -2915,7 +2938,10 @@ private struct LegendRecipientRow: View {
                         .tint(LegendNextColor.gold)
                 } else {
                     HStack(spacing: 5) {
-                        Text(recipient.existingConversationID == nil ? "Message" : "Open")
+                        Text(
+                            recipient.existingConversationID == nil
+                                ? LegendLocalized("Message")
+                                : LegendLocalized("Open"))
                             .font(.caption.weight(.bold))
 
                         Image(systemName: "arrow.up.right")
@@ -2938,7 +2964,7 @@ private struct LegendRecipientRow: View {
 
         case .client:
             return publicRelationshipLabel(recipient.relationshipLabel)
-                ?? "Connection"
+                ?? LegendLocalized("Connection")
         }
     }
 
@@ -3006,7 +3032,7 @@ private struct LegendConversationHeader: View {
                     }
             }
             .buttonStyle(LegendMessagingPressButtonStyle())
-            .accessibilityLabel("Back")
+            .accessibilityLabel(LegendLocalized("Back", context: "accessibility copy"))
 
             if isGroup {
                 LegendMessagingGroupAvatar(
@@ -3041,8 +3067,8 @@ private struct LegendConversationHeader: View {
                             .foregroundStyle(LegendNextColor.goldBright)
 
                         Text(conversation.isClosed
-                             ? "CLOSED LEGEND CONVERSATION"
-                             : "PRIVATE GROUP CHAT")
+                             ? LegendLocalized("CLOSED LEGEND CONVERSATION")
+                             : LegendLocalized("PRIVATE GROUP CHAT"))
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(.white.opacity(0.72))
                             .lineLimit(1)
@@ -3058,7 +3084,7 @@ private struct LegendConversationHeader: View {
                             .foregroundStyle(LegendNextColor.goldBright)
 
                         Text(conversation.isClosed
-                             ? "Closed Legend conversation"
+                             ? LegendLocalized("Closed Legend conversation")
                              : relationshipSubtitle)
                             .font(.caption)
                             .foregroundStyle(.white.opacity(0.72))
@@ -3079,12 +3105,12 @@ private struct LegendConversationHeader: View {
                 Menu {
                     if conversation.canManageMembers {
                         Button(action: editGroup) {
-                            Label("Edit Group", systemImage: "pencil")
+                            Label(LegendLocalized("Edit Group"), systemImage: "pencil")
                         }
 
                         Button(action: addMember) {
                             Label(
-                                "Add Members",
+                                LegendLocalized("Add Members"),
                                 systemImage: "person.badge.plus")
                         }
                     }
@@ -3094,7 +3120,7 @@ private struct LegendConversationHeader: View {
 
                         Button(action: manageCollaborators) {
                             Label(
-                                "Collaborators",
+                                LegendLocalized("Collaborators"),
                                 systemImage: "person.2.badge.gearshape")
                         }
                     }
@@ -3104,7 +3130,7 @@ private struct LegendConversationHeader: View {
 
                         Button(role: .destructive, action: deleteGroup) {
                             Label(
-                                "Delete Group",
+                                LegendLocalized("Delete Group"),
                                 systemImage: "trash")
                         }
                     }
@@ -3132,7 +3158,7 @@ private struct LegendConversationHeader: View {
                         .background(LegendNextGradient.gold, in: Circle())
                 }
                 .buttonStyle(LegendMessagingPressButtonStyle())
-                .accessibilityLabel("Group management")
+                .accessibilityLabel(LegendLocalized("Group management", context: "accessibility copy"))
             } else if !isGroup {
                 Button(action: startCall) {
                     Image(systemName: "phone.fill")
@@ -3142,7 +3168,7 @@ private struct LegendConversationHeader: View {
                         .background(LegendNextGradient.gold, in: Circle())
                 }
                 .buttonStyle(LegendMessagingPressButtonStyle())
-                .accessibilityLabel("Call \(conversation.title)")
+                .accessibilityLabel(LegendLocalized("Call {value1}", context: "accessibility copy", arguments: ["value1": String(describing: (conversation.title))]))
             }
         }
         .padding(.horizontal, LegendNextSpacing.pageHorizontal)
@@ -3166,16 +3192,16 @@ private struct LegendConversationHeader: View {
 
     private var relationshipSubtitle: String {
         guard let counterparty else {
-            return "Private Legend conversation"
+            return LegendLocalized("Private Legend conversation")
         }
 
         switch counterparty.identity.participantType {
         case .agent:
             return publicAgentRoleLabel(roleLabel: counterparty.roleLabel)
-                ?? "Private Legend conversation"
+                ?? LegendLocalized("Private Legend conversation")
 
         case .client:
-            return "Private connection"
+            return LegendLocalized("Private connection")
         }
     }
 
@@ -3208,7 +3234,7 @@ private struct LegendGroupMeetingHeaderDetail: View {
                         .foregroundStyle(LegendNextColor.goldBright)
                         .lineLimit(1)
                 }
-                .accessibilityLabel("Open \(link.label)")
+                .accessibilityLabel(LegendLocalized("Open {value1}", context: "accessibility copy", arguments: ["value1": String(describing: (link.label))]))
             }
 
             Text(detail)
@@ -3231,7 +3257,9 @@ private struct LegendGroupMeetingHeaderDetail: View {
     }
 
     private var detail: String {
-        let host = "Hosted by \(meeting.host.displayName)"
+        let host = LegendLocalized(
+            "Hosted by {displayName}",
+            arguments: ["displayName": meeting.host.displayName])
         guard let schedule = meeting.schedule else { return host }
         return "\(host) · \(scheduleDescription(schedule))"
     }
@@ -3244,26 +3272,53 @@ private struct LegendGroupMeetingHeaderDetail: View {
         switch schedule.frequency {
         case "OneTime":
             if let startsUTC = schedule.startsUTC {
-                return startsUTC.formatted(date: .abbreviated, time: .shortened)
+                return startsUTC.formatted(
+                    .dateTime
+                        .year().month(.abbreviated).day()
+                        .hour().minute()
+                        .locale(LegendActiveLocale()))
             }
-            return "One-time meeting"
+            return LegendLocalized("One-time meeting")
         case "Daily":
-            return "Daily\(timeDetail.isEmpty ? "" : " at \(timeDetail)")"
+            return timeDetail.isEmpty
+                ? LegendLocalized("Daily")
+                : LegendLocalized("Daily at {time}", arguments: ["time": timeDetail])
         case "Weekly":
-            return "Weekly on \(weekdayText(schedule))\(timeDetail.isEmpty ? "" : " at \(timeDetail)")"
+            return timeDetail.isEmpty
+                ? LegendLocalized("Weekly on {weekdays}", arguments: ["weekdays": weekdayText(schedule)])
+                : LegendLocalized("Weekly on {weekdays} at {time}", arguments: ["weekdays": weekdayText(schedule), "time": timeDetail])
         case "Biweekly":
-            return "Every other \(weekdayText(schedule))\(timeDetail.isEmpty ? "" : " at \(timeDetail)")"
+            return timeDetail.isEmpty
+                ? LegendLocalized("Every other {weekdays}", arguments: ["weekdays": weekdayText(schedule)])
+                : LegendLocalized("Every other {weekdays} at {time}", arguments: ["weekdays": weekdayText(schedule), "time": timeDetail])
         case "Monthly":
-            return "Monthly\(timeDetail.isEmpty ? "" : " at \(timeDetail)")"
+            return timeDetail.isEmpty
+                ? LegendLocalized("Monthly")
+                : LegendLocalized("Monthly at {time}", arguments: ["time": timeDetail])
         case "Custom":
-            return normalized(schedule.customDescription) ?? "Custom schedule"
+            return normalized(schedule.customDescription) ?? LegendLocalized("Custom schedule")
         default:
-            return "Scheduled meeting"
+            return LegendLocalized("Scheduled meeting")
         }
     }
 
     private func weekdayText(_ schedule: MessagingGroupMeetingSchedule) -> String {
-        schedule.weekdays.isEmpty ? "selected days" : schedule.weekdays.joined(separator: ", ")
+        schedule.weekdays.isEmpty
+            ? LegendLocalized("selected days")
+            : schedule.weekdays.map(localizedWeekday).joined(separator: ", ")
+    }
+
+    private func localizedWeekday(_ value: String) -> String {
+        switch value.lowercased() {
+        case "monday": return LegendLocalized("Monday")
+        case "tuesday": return LegendLocalized("Tuesday")
+        case "wednesday": return LegendLocalized("Wednesday")
+        case "thursday": return LegendLocalized("Thursday")
+        case "friday": return LegendLocalized("Friday")
+        case "saturday": return LegendLocalized("Saturday")
+        case "sunday": return LegendLocalized("Sunday")
+        default: return value
+        }
     }
 
     private func displayTime(_ value: String?) -> String? {
@@ -3273,6 +3328,7 @@ private struct LegendGroupMeetingHeaderDetail: View {
         parser.dateFormat = "HH:mm"
         guard let date = parser.date(from: value) else { return value }
         let formatter = DateFormatter()
+        formatter.locale = LegendActiveLocale()
         formatter.timeStyle = .short
         return formatter.string(from: date)
     }
@@ -3301,9 +3357,9 @@ private struct LegendConversationFallbackHeader: View {
                     .background(.white.opacity(0.08), in: Circle())
             }
             .buttonStyle(LegendMessagingPressButtonStyle())
-            .accessibilityLabel("Back")
+            .accessibilityLabel(LegendLocalized("Back", context: "accessibility copy"))
 
-            Text("Conversation")
+            Text(LegendLocalized("Conversation"))
                 .font(.system(.headline, design: .rounded).weight(.bold))
                 .foregroundStyle(.white)
 
@@ -3345,7 +3401,7 @@ private struct LegendMessageTimeline: View {
                                 ProgressView()
                                     .controlSize(.small)
                             } else {
-                                Label("Load earlier messages", systemImage: "arrow.up.circle")
+                                Label(LegendLocalized("Load earlier messages"), systemImage: "arrow.up.circle")
                                     .font(.caption.weight(.semibold))
                             }
                         }
@@ -3357,8 +3413,8 @@ private struct LegendMessageTimeline: View {
                     if messages.isEmpty {
                         LegendMessagingEmptyState(
                             symbol: "bubble.left.and.bubble.right.fill",
-                            title: "Begin the conversation",
-                            message: "Your messages will appear here.",
+                            title: LegendLocalized("Begin the conversation"),
+                            message: LegendLocalized("Your messages will appear here."),
                             actionTitle: nil,
                             action: nil
                         )
@@ -3493,7 +3549,7 @@ private struct LegendMessageReplyComposerPreview: View {
                     Image(systemName: "arrowshape.turn.up.left.fill")
                         .font(.system(size: 9, weight: .bold))
 
-                    Text("Replying to \(replyTargetName)")
+                    Text(LegendLocalized("Replying to {value1}", arguments: ["value1": String(describing: (replyTargetName))]))
                         .font(.caption.weight(.bold))
                 }
                 .foregroundStyle(LegendNextColor.gold)
@@ -3519,7 +3575,7 @@ private struct LegendMessageReplyComposerPreview: View {
             }
             .buttonStyle(.plain)
             .contentShape(Circle())
-            .accessibilityLabel("Cancel reply")
+            .accessibilityLabel(LegendLocalized("Cancel reply", context: "accessibility copy"))
         }
         .padding(.horizontal, LegendNextSpacing.md)
         .padding(.vertical, 10)
@@ -3670,7 +3726,7 @@ private struct LegendMessageBubble: View {
                     onReply()
                 } label: {
                     Label(
-                        "Reply",
+                        LegendLocalized("Reply"),
                         systemImage: "arrowshape.turn.up.left.fill"
                     )
                 }
@@ -3680,7 +3736,7 @@ private struct LegendMessageBubble: View {
                     copyFeedbackTrigger += 1
                 } label: {
                     Label(
-                        "Copy",
+                        LegendLocalized("Copy"),
                         systemImage: "doc.on.doc.fill"
                     )
                 }
@@ -3688,7 +3744,7 @@ private struct LegendMessageBubble: View {
                 if message.isMine {
                     Divider()
                     Button(role: .destructive, action: onDelete) {
-                        Label("Unsend", systemImage: "trash")
+                        Label(LegendLocalized("Unsend"), systemImage: "trash")
                     }
                 }
             }
@@ -3724,7 +3780,7 @@ private struct LegendMessageBubble: View {
                 alignment: message.isMine ? .trailing : .leading,
                 spacing: LegendNextSpacing.xs
             ) {
-                Text(message.isDeleted ? "Message unsent" : displayedMessageBody)
+                Text(message.isDeleted ? LegendLocalized("Message unsent") : displayedMessageBody)
                     .font(.system(size: 15, weight: .regular))
                     .italic(message.isDeleted)
                     .lineSpacing(0)
@@ -3763,7 +3819,7 @@ private struct LegendMessageBubble: View {
                             .padding(.top, 2)
                     }
                     .buttonStyle(.plain)
-                    .accessibilityHint("Switch between the translated and original message")
+                    .accessibilityHint(LegendLocalized("Switch between the translated and original message", context: "accessibility copy"))
                 }
 
                 if let onOpenVerificationProfile,
@@ -3781,7 +3837,7 @@ private struct LegendMessageBubble: View {
                             .padding(.top, 2)
                     }
                     .buttonStyle(.plain)
-                    .accessibilityHint("Open this member’s profile for \(review.resourceType.displayName) review")
+                    .accessibilityHint(LegendLocalized("Open this member’s profile for {value1} review", context: "accessibility copy", arguments: ["value1": String(describing: (review.resourceType.displayName))]))
                 }
             }
             .padding(.horizontal, 10)
@@ -3813,19 +3869,7 @@ private struct LegendMessageBubble: View {
     }
 
     private func languageName(_ code: String) -> String {
-        switch code {
-        case "ht": "Haitian Creole"
-        case "en": "English"
-        case "es": "Spanish"
-        case "fr": "French"
-        case "pt": "Portuguese"
-        case "de": "German"
-        case "ja": "Japanese"
-        case "ko": "Korean"
-        case "zh-Hans": "Chinese (Simplified)"
-        case "ar": "Arabic"
-        default: code
-        }
+        LegendActiveLocale().localizedString(forLanguageCode: code) ?? code
     }
 
     @ViewBuilder
@@ -3903,24 +3947,37 @@ private struct LegendMessageBubble: View {
     private var accessibilityDescription: String {
         if message.isDeleted {
             return message.isMine
-                ? "Sent message unsent."
-                : "Received message unsent by " + message.sender.displayName + "."
+                ? LegendLocalized("Sent message unsent.", context: "accessibility copy")
+                : LegendLocalized(
+                    "Received message unsent by {displayName}.",
+                    context: "accessibility copy",
+                    arguments: ["displayName": message.sender.displayName])
         }
 
         let attachmentDescription = message.attachments.isEmpty
             ? ""
-            : " Includes \(message.attachments.count) attachment"
-                + (message.attachments.count == 1 ? "." : "s.")
+            : LegendLocalized(
+                message.attachments.count == 1
+                    ? " Includes {count} attachment."
+                    : " Includes {count} attachments.",
+                context: "accessibility copy",
+                arguments: ["count": message.attachments.count])
 
         if message.isMine {
-            return "Sent message. \(message.body)\(attachmentDescription)"
+            return LegendLocalized(
+                "Sent message. {body}{attachmentDescription}",
+                context: "accessibility copy",
+                arguments: ["body": message.body, "attachmentDescription": attachmentDescription])
         }
 
-        return "Received message from "
-            + message.sender.displayName
-            + ". "
-            + message.body
-            + attachmentDescription
+        return LegendLocalized(
+            "Received message from {displayName}. {body}{attachmentDescription}",
+            context: "accessibility copy",
+            arguments: [
+                "displayName": message.sender.displayName,
+                "body": message.body,
+                "attachmentDescription": attachmentDescription
+            ])
     }
 }
 
@@ -4010,7 +4067,7 @@ private struct LegendConversationLoadingView: View {
             }
             .padding(LegendNextSpacing.pageHorizontal)
         }
-        .accessibilityLabel("Loading conversation")
+        .accessibilityLabel(LegendLocalized("Loading conversation", context: "accessibility copy"))
     }
 }
 
@@ -4249,13 +4306,13 @@ private enum LegendMessagingDateFormatter {
 
         if calendar.isDateInToday(date) {
             return date.formatted(
-                date: .omitted,
-                time: .shortened
+                .dateTime.hour().minute()
+                    .locale(LegendActiveLocale())
             )
         }
 
         if calendar.isDateInYesterday(date) {
-            return "Yesterday"
+            return LegendLocalized("Yesterday")
         }
 
         if let weekAgo = calendar.date(
@@ -4266,11 +4323,13 @@ private enum LegendMessagingDateFormatter {
            date >= weekAgo {
             return date.formatted(
                 .dateTime.weekday(.abbreviated)
+                    .locale(LegendActiveLocale())
             )
         }
 
         return date.formatted(
             .dateTime.month(.abbreviated).day()
+                .locale(LegendActiveLocale())
         )
     }
 
@@ -4280,11 +4339,11 @@ private enum LegendMessagingDateFormatter {
         let calendar = Calendar.current
 
         if calendar.isDateInToday(date) {
-            return "Today"
+            return LegendLocalized("Today")
         }
 
         if calendar.isDateInYesterday(date) {
-            return "Yesterday"
+            return LegendLocalized("Yesterday")
         }
 
         return date.formatted(
@@ -4292,6 +4351,7 @@ private enum LegendMessagingDateFormatter {
                 .weekday(.abbreviated)
                 .month(.abbreviated)
                 .day()
+                .locale(LegendActiveLocale())
         )
     }
 }

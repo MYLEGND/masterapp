@@ -160,6 +160,6 @@ struct LegendVerifiedBadge: View {
         Image(systemName: "checkmark.seal.fill")
             .font(.caption.weight(.bold))
             .foregroundStyle(LegendNextColor.verified)
-            .accessibilityLabel("Verified")
+            .accessibilityLabel(LegendLocalized("Verified", context: "accessibility copy"))
     }
 }

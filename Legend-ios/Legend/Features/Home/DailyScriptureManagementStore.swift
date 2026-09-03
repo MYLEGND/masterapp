@@ -145,8 +145,8 @@ final class MobileDailyScriptureManagementStore: ObservableObject {
             state = .loaded(snapshot)
         } catch {
             let failure = UserFacingFailure(
-                title: "Daily Scripture unavailable",
-                message: "Legend could not load the scripture schedule. Try again.",
+                title: LegendLocalized("Daily Scripture unavailable"),
+                message: LegendLocalized("Legend could not load the scripture schedule. Try again."),
                 correlationID: (error as? MobileAPIError)?.correlationID)
             state = .unavailable(failure)
             diagnostics.record(
@@ -200,8 +200,8 @@ final class MobileDailyScriptureManagementStore: ObservableObject {
             return true
         } catch {
             let failure = UserFacingFailure(
-                title: "Daily Scripture was not saved",
-                message: "Your changes were not applied. Review the passage and try again.",
+                title: LegendLocalized("Daily Scripture was not saved"),
+                message: LegendLocalized("Your changes were not applied. Review the passage and try again."),
                 correlationID: (error as? MobileAPIError)?.correlationID)
             actionFailure = failure
             diagnostics.record(

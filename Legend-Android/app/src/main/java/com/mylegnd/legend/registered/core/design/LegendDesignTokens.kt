@@ -179,7 +179,7 @@ private data class LegendDesignSpecification(
 )
 
 object LegendCopy {
-    fun value(key: String): String = LegendDesignAuthority.copy(key)
+    fun value(key: String): String = legendLocalized(LegendDesignAuthority.copy(key))
 }
 
 /** The shared iOS-authored account-retention authority. */

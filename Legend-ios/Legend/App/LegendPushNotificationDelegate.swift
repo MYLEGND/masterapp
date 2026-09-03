@@ -19,8 +19,8 @@ enum LegendAPNSEnvironment: String, Equatable, Sendable {
 
     var displayName: String {
         switch self {
-        case .sandbox: "Development"
-        case .production: "Production"
+        case .sandbox: LegendLocalized("Development")
+        case .production: LegendLocalized("Production")
         }
     }
 }
@@ -31,7 +31,7 @@ enum LegendAPNSRegistrationState: String, Equatable, Sendable {
     case failed
 
     var displayName: String {
-        rawValue.capitalized
+        LegendLocalized(rawValue.capitalized)
     }
 }
 
