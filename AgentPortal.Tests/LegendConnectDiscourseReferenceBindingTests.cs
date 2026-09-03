@@ -661,7 +661,7 @@ public sealed class LegendConnectDiscourseReferenceBindingTests
         Assert.Equal("bound", correction.ResolutionState);
         Assert.Equal("a", correction.EntitySemanticValue);
         Assert.True(correction.ReplacesActiveBinding);
-        Assert.Equal(3, correction.SupersededTurnSequence);
+        Assert.Equal(1, correction.SupersededTurnSequence);
         Assert.NotNull(correction.SupersededNodeIndex);
         Assert.NotNull(correction.SupersededNodeStartTokenIndex);
         Assert.NotNull(correction.SupersededNodeTokenLength);

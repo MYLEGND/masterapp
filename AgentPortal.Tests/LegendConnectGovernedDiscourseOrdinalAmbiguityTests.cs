@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Net.Http;
 using System.Reflection;
+using System.Text.Json;
 using System.Threading.Tasks;
 using AgentPortal.Models;
 using AgentPortal.Services;
@@ -269,6 +270,109 @@ public sealed class LegendConnectGovernedDiscourseOrdinalAmbiguityTests
         {
             Environment.SetEnvironmentVariable("FOUNDER_OID", previousFounderOid);
         }
+    }
+
+    [Fact]
+    public void PersistedExactOccurrence_RemainsBoundAfterOnlyItsIncidentRelationsAreRemoved()
+    {
+        var sourceTurnId = Guid.NewGuid();
+        var containingTurnId = Guid.NewGuid();
+        var sourceNodes = new[]
+        {
+            new LegendConnectUtteranceMeaningNode("alpha", "choice", "alpha", 0, 1, 3),
+            new LegendConnectUtteranceMeaningNode("beta", "choice", "beta", 1, 1, 3),
+            new LegendConnectUtteranceMeaningNode("note", "choice_note", "stable", 2, 1, 3)
+        };
+        var sourceRelationsAfterRemoval = new[]
+        {
+            new LegendConnectUtteranceMeaningRelation("alpha-note", "described-as", 0, 2, 3)
+        };
+        Assert.DoesNotContain(sourceRelationsAfterRemoval, relation =>
+            relation.SourceNodeIndex == 1 || relation.TargetNodeIndex == 1);
+
+        var sourceTurn = new LegendFounderAiDiscourseTurn
+        {
+            Id = sourceTurnId,
+            SequenceNumber = 1,
+            Role = "user",
+            MeaningGraphJson = JsonSerializer.Serialize(new
+            {
+                IsComposed = true,
+                Nodes = sourceNodes,
+                Relations = sourceRelationsAfterRemoval,
+                ReasonCode = "composed"
+            })
+        };
+        var binding = new LegendFounderAiDiscourseReferenceBinding(
+            "bound",
+            "governed_reference_resolved",
+            "selector",
+            "choice",
+            "alpha",
+            "alpha",
+            sourceTurnId,
+            1,
+            0,
+            true,
+            "rule",
+            sourceTurnId,
+            1,
+            1,
+            1,
+            1,
+            "en",
+            "ordinal",
+            1,
+            "user",
+            "beta",
+            "choice",
+            "beta",
+            containingTurnId,
+            2,
+            0,
+            0,
+            1);
+        var containingGraph = new LegendConnectUtteranceMeaningGraphSnapshot(
+            true,
+            [new LegendConnectUtteranceMeaningNode("selector", "reference_selector", "ordinal_one", 0, 1, 3)],
+            [],
+            [],
+            "composed");
+        var containingTurn = new LegendFounderAiDiscourseTurn
+        {
+            Id = containingTurnId,
+            SequenceNumber = 2,
+            Role = "user",
+            MeaningGraphJson = JsonSerializer.Serialize(new
+            {
+                containingGraph.IsComposed,
+                containingGraph.Nodes,
+                containingGraph.Relations,
+                containingGraph.ReasonCode
+            }),
+            ResolvedBindingsJson = JsonSerializer.Serialize(new[] { binding })
+        };
+        var method = typeof(LegendFounderAiDiscourseStateService).GetMethod(
+            "DeserializeAndValidateBindings",
+            BindingFlags.NonPublic | BindingFlags.Static,
+            null,
+            [typeof(LegendFounderAiDiscourseTurn), typeof(IReadOnlyList<LegendFounderAiDiscourseTurn>)],
+            null);
+        Assert.NotNull(method);
+
+        var validated = Assert.IsAssignableFrom<
+            IReadOnlyList<LegendFounderAiDiscourseReferenceBinding>>(
+            method!.Invoke(null, [containingTurn, new[] { sourceTurn, containingTurn }]));
+        var validatedBinding = Assert.Single(validated);
+        Assert.Equal("bound", validatedBinding.ResolutionState);
+        Assert.Equal(sourceTurnId, validatedBinding.SupersededTurnId);
+        Assert.Equal(1, validatedBinding.SupersededTurnSequence);
+        Assert.Equal(1, validatedBinding.SupersededNodeIndex);
+        Assert.Equal("beta", validatedBinding.SupersededEntitySemanticSignature);
+        Assert.Equal("choice", validatedBinding.SupersededEntitySemanticDimension);
+        Assert.Equal("beta", validatedBinding.SupersededEntitySemanticValue);
+        Assert.Equal(1, validatedBinding.SupersededNodeStartTokenIndex);
+        Assert.Equal(1, validatedBinding.SupersededNodeTokenLength);
     }
 
     [Fact]
