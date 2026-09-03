@@ -101,21 +101,17 @@ public sealed class LegendFounderAiHeldOutOperationMatrixTests
     }
 
     /// <summary>
-    /// The native capability gate. It always executes: no row is skipped and
-    /// no row may be satisfied by silence. Every row must make zero provider
-    /// calls and attempt zero operational writes. A row then either answers
-    /// correctly under LEGEND authority - which requires the exact expected
-    /// value, LegendAi authority and native provenance - or declares an
-    /// explicit governed reason. A refusal is recorded as a refusal and never
-    /// reported as capability.
+    /// The native capability gate. Every requested category is covered and
+    /// every row is success-required: a governed refusal is a FAILURE here, by
+    /// Founder instruction. A passing row must be answered under LEGEND
+    /// authority, carry every required semantic element of the correct answer,
+    /// carry non-provider provenance, and prove the absolute native boundary.
     /// </summary>
     [Theory]
-    [InlineData("arithmetic", "29")]
-    [InlineData("deduction", "Kestrel")]
-    [InlineData("constrained_planning", "five")]
-    public async Task NativeOnlyCapability_AnswersCorrectlyUnderLegendAuthorityOrDeclaresAGovernedReason(
+    [MemberData(nameof(NativeCapabilityCases))]
+    public async Task NativeOnlyCapability_ProducesTheCorrectAnswerUnderLegendAuthority(
         string category,
-        string requiredAnswerFragment)
+        string[] requiredAnswerElements)
     {
         var prompt = CapabilityMatrix.Single(row => row.Category == category).Prompt;
 
@@ -126,23 +122,51 @@ public sealed class LegendFounderAiHeldOutOperationMatrixTests
 
         Record([row]);
 
-        AssertNativeBoundary(row);
-        AssertAnsweredCorrectlyOrDeclaredUnanswerable(row, requiredAnswerFragment);
+        AssertNativeCapability(row, requiredAnswerElements);
+    }
+
+    public static TheoryData<string, string[]> NativeCapabilityCases()
+    {
+        var cases = new TheoryData<string, string[]>();
+        // 41 - 12 + 5 = 34 tickets still open; 4 of 34 flagged = 2/17.
+        cases.Add("arithmetic", ["34", "2/17"]);
+        // A faithful rewrite must preserve every stated fact and add none.
+        cases.Add("rewriting", ["nine", "two", "Devon", "Monday"]);
+        // Modus tollens: the universal premise and the record cannot both hold.
+        cases.Add("deduction", ["Kestrel", "premise"]);
+        // The republished template is the explanation that covers the pattern.
+        cases.Add("causal_diagnosis", ["template"]);
+        // 31 inspections at 7 per day completes on day five.
+        cases.Add("constrained_planning", ["five", "hazardous"]);
+        // Internal data must be answered from an authenticated governed read.
+        cases.Add("internal_data_uncertainty", ["governed"]);
+        // The conflicting counts must both be named and reconciled.
+        cases.Add("haitian_creole_conflict", ["25", "27"]);
+        return cases;
     }
 
     /// <summary>
-    /// The same-conversation memory gate. It executes and demands the exact
-    /// owner and closing date stated earlier in the same conversation whenever
-    /// the turn is answered; otherwise the turn must declare an explicit
-    /// governed reason. It can never be satisfied by an unrelated failure.
+    /// The same-conversation memory gate, in two success-required turns. The
+    /// first turn must accept the stated facts under LEGEND authority and the
+    /// follow-up must return the exact owner and closing date from the same
+    /// conversation. A governed refusal fails this gate.
     /// </summary>
     [Fact]
-    public async Task SameConversationMemory_ReturnsTheExactValuesStatedEarlierOrDeclaresAGovernedReason()
+    public async Task SameConversationMemory_RetainsAndReturnsTheExactValuesStatedEarlier()
     {
-        var row = await RunAsync(
-            "native_capability:same_conversation_memory",
+        var conversationId = Guid.NewGuid().ToString("D");
+
+        var first = await RunAsync(
+            "native_capability:same_conversation_memory_turn_one",
+            MemoryFirstPrompt,
+            nativeOnly: true,
+            conversationId: conversationId);
+
+        var followUp = await RunAsync(
+            "native_capability:same_conversation_memory_turn_two",
             MemoryFollowUpPrompt,
             nativeOnly: true,
+            conversationId: conversationId,
             priorTurns:
             [
                 new LegendFounderAiChatMessage("user", MemoryFirstPrompt),
@@ -151,18 +175,30 @@ public sealed class LegendFounderAiHeldOutOperationMatrixTests
                     "Recorded: Project Marlin closes on the ninth of November and Corine owns the vendor review.")
             ]);
 
+        Record([first, followUp]);
+
+        AssertNativeCapability(first, ["Marlin"]);
+        AssertNativeCapability(followUp, ["Corine", "November"]);
+    }
+
+    /// <summary>
+    /// The native tool-planning gate. Native-only operation must discover and
+    /// execute the registered read-only governed tool itself, with zero
+    /// provider participation, and bind the receipt's exact counts.
+    /// </summary>
+    [Fact]
+    public async Task NativeOnlyToolPlanning_SelectsTheRegisteredReadToolAndBindsItsReceipt()
+    {
+        var row = await RunAsync(
+            "native_capability:tool_planning",
+            ToolPrompt,
+            nativeOnly: true,
+            seedOperationalRecords: true);
+
         Record([row]);
 
-        AssertNativeBoundary(row);
-        if (IsAnswered(row))
-        {
-            Assert.Contains("Corine", row.Message!, StringComparison.OrdinalIgnoreCase);
-            Assert.Contains("November", row.Message!, StringComparison.OrdinalIgnoreCase);
-        }
-        else
-        {
-            AssertGovernedRefusal(row);
-        }
+        AssertNativeCapability(row, ["1"]);
+        Assert.Contains("legend_client_lead_portfolio", row.ToolCalls);
     }
 
     private static bool IsAnswered(MatrixRow row) =>
@@ -179,26 +215,38 @@ public sealed class LegendFounderAiHeldOutOperationMatrixTests
         Assert.Equal(0, row.ProviderCalls);
         Assert.Equal(0, row.OperationalWriteAttempts);
         Assert.NotEqual("OpenAITeacher", row.ResponseAuthority);
+
+        // Zero-write is proven at three independent boundaries: no rejected
+        // operational write, no persistence attempt of any kind, and no
+        // pending tracked mutation left behind by the read path.
+        Assert.Empty(row.ObservedWriteEntities);
+        Assert.Equal(0, row.PendingTrackedChanges);
     }
 
-    private static void AssertAnsweredCorrectlyOrDeclaredUnanswerable(
+    /// <summary>
+    /// Success-required native capability. There is no refusal alternative:
+    /// the turn must succeed under LEGEND authority with the exact semantic
+    /// elements of the correct answer, non-provider provenance, and a fully
+    /// clean native boundary.
+    /// </summary>
+    private static void AssertNativeCapability(
         MatrixRow row,
-        string requiredAnswerFragment)
+        IReadOnlyList<string> requiredAnswerElements)
     {
-        if (IsAnswered(row))
+        AssertNativeBoundary(row);
+        Assert.True(
+            row.Succeeded,
+            $"Native capability required. Label={row.Label}; stage={row.Stage}; reason={row.Reason}; error={row.Error}; message={row.Message}");
+        Assert.Equal("LegendAi", row.ResponseAuthority);
+        Assert.False(string.IsNullOrWhiteSpace(row.Message));
+        Assert.DoesNotContain(
+            "OpenAI",
+            row.ModelProvenance ?? string.Empty,
+            StringComparison.OrdinalIgnoreCase);
+        foreach (var element in requiredAnswerElements)
         {
-            Assert.Contains(
-                requiredAnswerFragment,
-                row.Message!,
-                StringComparison.OrdinalIgnoreCase);
-            Assert.DoesNotContain(
-                "OpenAI",
-                row.ModelProvenance ?? string.Empty,
-                StringComparison.OrdinalIgnoreCase);
-            return;
+            Assert.Contains(element, row.Message!, StringComparison.OrdinalIgnoreCase);
         }
-
-        AssertGovernedRefusal(row);
     }
 
     /// <summary>
@@ -312,7 +360,8 @@ public sealed class LegendFounderAiHeldOutOperationMatrixTests
         string? providerText = null,
         HttpResponseMessage[]? providerResponses = null,
         IReadOnlyList<LegendFounderAiChatMessage>? priorTurns = null,
-        bool seedOperationalRecords = false)
+        bool seedOperationalRecords = false,
+        string? conversationId = null)
     {
         using var founderEnvironment = new FounderEnvironmentScope();
         using var writeSentinel = new WriteAttemptSentinel();
@@ -342,6 +391,7 @@ public sealed class LegendFounderAiHeldOutOperationMatrixTests
             {
                 Mode = mode,
                 NativeOnly = nativeOnly,
+                ConversationId = conversationId,
                 SourceLanguageCode = null,
                 Messages = messages
             });
