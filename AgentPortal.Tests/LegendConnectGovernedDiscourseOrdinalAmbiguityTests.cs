@@ -216,7 +216,7 @@ public sealed class LegendConnectGovernedDiscourseOrdinalAmbiguityTests
             Assert.NotNull(directBinding.SupersededCurrentTurnNodeIndex);
             Assert.Equal("choice", directBinding.SupersededCurrentTurnSemanticDimension);
             Assert.NotNull(directBinding.SupersededCurrentTurnSemanticSignature);
-            Assert.NotNull(directBinding.SupersededCurrentTurnSemanticValue);
+            Assert.Equal("beta", directBinding.SupersededCurrentTurnSemanticValue);
             Assert.NotNull(directBinding.SupersededCurrentTurnNodeStartTokenIndex);
             Assert.NotNull(directBinding.SupersededCurrentTurnNodeTokenLength);
 
