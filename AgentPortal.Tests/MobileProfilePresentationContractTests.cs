@@ -104,7 +104,7 @@ public sealed class MobileProfilePresentationContractTests
             "registered", "ui", "LegendFounderAiConversation.kt");
         var manifest = Read("Legend-Android", "app", "src", "main", "AndroidManifest.xml");
         var adaptiveIcon = Read(
-            "Legend-Android", "app", "src", "main", "res", "mipmap-anydpi-v26",
+            "Legend-Android", "app", "src", "main", "res", "mipmap-anydpi",
             "ic_legend_launcher.xml");
 
         Assert.Contains(".navigationBarsPadding()", android, StringComparison.Ordinal);
@@ -144,6 +144,31 @@ public sealed class MobileProfilePresentationContractTests
             "android:drawable=\"@drawable/ic_legend_launcher_foreground\"",
             adaptiveIcon,
             StringComparison.Ordinal);
+        Assert.Contains(
+            "<monochrome android:drawable=\"@drawable/ic_legend_notification\" />",
+            adaptiveIcon,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void AndroidPush_UsesFirebaseInstallationRegistrationWithoutDeprecatedTokenApis()
+    {
+        var manifest = Read("Legend-Android", "app", "src", "main", "AndroidManifest.xml");
+        var coordinator = Read(
+            "Legend-Android", "app", "src", "main", "java", "com", "mylegnd", "legend",
+            "registered", "core", "push", "FcmPushRegistrationCoordinator.kt");
+        var service = Read(
+            "Legend-Android", "app", "src", "main", "java", "com", "mylegnd", "legend",
+            "registered", "core", "push", "LegendFirebaseMessagingService.kt");
+
+        Assert.Contains("firebase_messaging_installation_id_enabled", manifest, StringComparison.Ordinal);
+        Assert.Contains("FirebaseMessaging.getInstance().register()", coordinator, StringComparison.Ordinal);
+        Assert.Contains("FirebaseMessaging.getInstance().unregister()", coordinator, StringComparison.Ordinal);
+        Assert.Contains("FirebaseInstallations.getInstance().id", coordinator, StringComparison.Ordinal);
+        Assert.Contains("override fun onRegistered(installationId: String)", service, StringComparison.Ordinal);
+        Assert.DoesNotContain(".deleteToken()", coordinator, StringComparison.Ordinal);
+        Assert.DoesNotContain(".token.awaitResult()", coordinator, StringComparison.Ordinal);
+        Assert.DoesNotContain("override fun onNewToken", service, StringComparison.Ordinal);
     }
 
     [Fact]

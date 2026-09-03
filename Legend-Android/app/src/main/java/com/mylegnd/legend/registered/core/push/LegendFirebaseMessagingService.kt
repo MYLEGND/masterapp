@@ -1,5 +1,6 @@
 package com.mylegnd.legend.registered.core.push
 
+import android.annotation.SuppressLint
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
@@ -14,12 +15,15 @@ import com.mylegnd.legend.registered.core.navigation.LegendNotificationNavigatio
 import com.mylegnd.legend.registered.core.realtime.LegendRealtimeEvents
 
 /** FCM is transport only. Notification text, recipient selection, and badges remain server-owned. */
+// Android lint has not yet learned Firebase Messaging's replacement callback;
+// onRegistered is the supported FID refresh callback in the installed SDK.
+@SuppressLint("MissingFirebaseInstanceTokenRefresh")
 class LegendFirebaseMessagingService : FirebaseMessagingService() {
-    override fun onNewToken(token: String) {
-        // The opaque FCM transport token is forwarded directly to
+    override fun onRegistered(installationId: String) {
+        // The opaque Firebase Installation ID is forwarded directly to
         // the authenticated platform-aware endpoint; it is never logged or
         // persisted by Legend Android.
-        (application as? LegendApplication)?.container?.fcmPushRegistration?.registerFreshToken(token)
+        (application as? LegendApplication)?.container?.fcmPushRegistration?.registerInstallation(installationId)
     }
     override fun onMessageReceived(message: RemoteMessage) {
         // FCM and SignalR intentionally converge on one small server-issued

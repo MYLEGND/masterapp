@@ -46,11 +46,11 @@ import com.mylegnd.legend.registered.core.design.*
 @Composable
 fun LegendContactCard(
     displayName: String,
+    modifier: Modifier = Modifier,
     nameStatus: String? = null,
     subtitle: String? = null,
     detail: String? = null,
     isVerified: Boolean = false,
-    modifier: Modifier = Modifier,
     onClick: (() -> Unit)? = null,
     onLongClick: (() -> Unit)? = null,
     avatar: @Composable () -> Unit,

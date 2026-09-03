@@ -248,6 +248,7 @@ dependencies {
     implementation(libs.media3.ui)
     implementation(libs.msal)
     implementation(platform(libs.firebase.bom))
+    implementation(libs.firebase.installations)
     implementation(libs.firebase.messaging)
 
     testImplementation(libs.junit)
