@@ -498,6 +498,8 @@ public sealed class LegendFounderAiDiscourseStateService
             rule.EntitySemanticDimension);
         if (!active.HasBinding)
         {
+            if (!rule.ReplacesActiveBinding)
+                return ActiveDiscourseBindingResolution.None;
             var latestCandidates = priorTurns
                 .Where(item => rule.AllowedSourceRoles.Contains(item.Role, StringComparer.Ordinal))
                 .OrderByDescending(item => item.SequenceNumber)
