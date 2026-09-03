@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Domain.Entities;
@@ -211,80 +210,25 @@ public sealed class LegendConnectNativeReasoningModelServingTests
         Assert.Contains("symbolic evidence", assisted.AuthoritySummary, StringComparison.Ordinal);
     }
 
-    [Fact]
-    public async Task NovelGeneralRequest_UsesQualifiedPromotedLegendModel()
+    [Theory]
+    [InlineData("This surface has no governed meaning.")]
+    [InlineData("What was Project Zephyr's exact conversion rate last Tuesday? Do not estimate.")]
+    [InlineData("Explain a new operational scenario with owners, constraints, risks, and observable success signals.")]
+    public async Task UnsupportedSymbolicRequest_NeverInvokesQualifiedModel(string request)
     {
         await using var db = ControllerTestHelpers.BuildDb();
         await SeedPromotedReasoningModelAsync(db, "Promoted");
-        var transport = FakeTransport.Success(
-            "The exact number cannot be determined from this conversation; inspect the dated conversion report.");
+        var transport = FakeTransport.Success("invented answer");
         var fixture = CreateFixture(db, transport);
-
-        var result = await fixture.Operations.TryInferConversationWithDiscourseAsync(
-            "What was Project Zephyr's exact conversion rate last Tuesday? Do not estimate.",
-            [new LegendConnectConversationContextItem("user", "Use only established facts.")],
-            new LegendConnectDiscourseStateSnapshot([]));
-
-        Assert.True(result.Supported, result.ReasonCode);
-        Assert.Equal(
-            "The exact number cannot be determined from this conversation; inspect the dated conversion report.",
-            result.Answer);
-        Assert.Equal("active_reasoning_model_governed", result.ReasonCode);
-        Assert.Equal("EvaluatedPromotedModel", result.EvidenceStandard);
-        Assert.Equal("EvaluatedPromotedModelResponse", result.ArticulationMode);
-        Assert.Equal(1, transport.CallCount);
-        Assert.NotNull(transport.LastTask);
-        Assert.Equal(
-            "governed_reasoning_response_text_only",
-            transport.LastTask!.OutputContract);
-        Assert.Contains("Project Zephyr", transport.LastTask.Input, StringComparison.Ordinal);
-        Assert.Contains("Use only established facts", transport.LastTask.Input, StringComparison.Ordinal);
-        Assert.DoesNotContain("authorized_symbolic_answer", transport.LastTask.Input, StringComparison.Ordinal);
-        var assistance = Assert.IsType<LegendConnectNativeModelAssistanceSnapshot>(
-            result.ModelAssistance);
-        Assert.Equal("Applied", assistance.State);
-        Assert.Equal("active_reasoning_model_response_governed", assistance.ReasonCode);
-        Assert.Equal(
-            LegendConnectNativeModelAssistanceContracts.ResponseProvenance,
-            assistance.Provenance);
-    }
-
-    [Fact]
-    public async Task LongNovelRequest_UsesModelInsteadOfTreatingSymbolicSpanBoundAsInvalidUserInput()
-    {
-        await using var db = ControllerTestHelpers.BuildDb();
-        await SeedPromotedReasoningModelAsync(db, "Promoted");
-        var transport = FakeTransport.Success("A bounded three-step plan.");
-        var fixture = CreateFixture(db, transport);
-        var request = string.Join(' ', Enumerable.Repeat(
-            "consider owner evidence constraint timing risk and observable success signal",
-            8));
 
         var result = await fixture.Operations.TryInferConversationWithDiscourseAsync(
             request,
             [],
             new LegendConnectDiscourseStateSnapshot([]));
 
-        Assert.True(result.Supported, result.ReasonCode);
-        Assert.Equal("A bounded three-step plan.", result.Answer);
-        Assert.Equal("active_reasoning_model_governed", result.ReasonCode);
-        Assert.Equal(1, transport.CallCount);
-    }
-
-    [Fact]
-    public async Task NovelGeneralRequest_WithoutQualifiedModel_FailsClosed()
-    {
-        await using var db = ControllerTestHelpers.BuildDb();
-        var transport = FakeTransport.Success("must not be served");
-        var fixture = CreateFixture(db, transport);
-
-        var result = await fixture.Operations.TryInferConversationWithDiscourseAsync(
-            "Explain a new operational scenario.",
-            [],
-            new LegendConnectDiscourseStateSnapshot([]));
-
         Assert.False(result.Supported);
         Assert.Null(result.Answer);
+        Assert.Equal(0, result.EvidenceCount);
         Assert.Equal(0, transport.CallCount);
         var assistance = Assert.IsType<LegendConnectNativeModelAssistanceSnapshot>(
             result.ModelAssistance);

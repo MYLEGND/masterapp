@@ -1445,6 +1445,17 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
         {
             return Finish(NativeInferenceUnsupported(composed.Reasons.FirstOrDefault() ?? "semantic_transition_not_governed"));
         }
+        // V20.3: native Founder conversation inference is governed by the
+        // reusable meaning-graph authority only.
+        //
+        // Do not fall backward into the legacy source-frame evaluator when
+        // Stage 1 cannot establish reusable meaning. That older path is kept
+        // for historical diagnostics/regression compatibility, but it is no
+        // longer a production chat authority.
+        //
+        // Unknown, unproven, ambiguous, contradicted, unresolved-content, and
+        // unrealizable meaning all remain fail-closed and may use the existing
+        // external escalation path owned by LegendFounderAiConversationService.
         var reasonCode =
             composed.Reasons.FirstOrDefault() ??
             "reusable_meaning_graph_not_governed";
@@ -1459,72 +1470,9 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
         // or its required governed transition is missing. Ambiguous,
         // contradicted, unresolved-content, and unrealizable governed states
         // remain fail-closed.
-        if (CanEscalateFromUnavailableComposedSource(composed))
-        {
-            var modelResponse = await TryApplyPromotedReasoningModelDirectlyAsync(
-                input ?? string.Empty,
-                context,
-                sourceLanguageCode,
-                cancellationToken);
-            if (modelResponse is not null)
-                return Finish(modelResponse);
-        }
-
         return Finish(NativeInferenceUnsupported(
             reasonCode,
             CanEscalateFromUnavailableComposedSource(composed)));
-    }
-
-    private async Task<LegendConnectNativeInferenceSnapshot?>
-        TryApplyPromotedReasoningModelDirectlyAsync(
-            string founderInput,
-            IReadOnlyList<LegendConnectConversationContextItem> context,
-            string sourceLanguageCode,
-            CancellationToken cancellationToken)
-    {
-        if (_activeModelInference is null)
-            return null;
-
-        var governedSourceLanguage =
-            await _registry.NormalizeEnabledTranslationLanguageAsync(
-                sourceLanguageCode,
-                cancellationToken);
-        if (governedSourceLanguage is null)
-            return null;
-
-        var generated = await _activeModelInference
-            .TryGenerateGovernedReasoningCandidateAsync(
-                new LegendConnectGovernedReasoningCandidateRequest(
-                    governedSourceLanguage,
-                    founderInput,
-                    AuthorizedSymbolicText: null,
-                    EvidenceCount: 0,
-                    EvidenceStandard: "EvaluatedPromotedModel",
-                    ArticulationMode: "EvaluatedPromotedModelResponse",
-                    ConversationContext: context),
-                cancellationToken);
-
-        if (!generated.Succeeded || string.IsNullOrWhiteSpace(generated.Text))
-            return null;
-
-        return new LegendConnectNativeInferenceSnapshot(
-            true,
-            0m,
-            generated.Text,
-            "active_reasoning_model_governed",
-            0,
-            "The exact evaluated and promoted LEGEND reasoning model answered the general reasoning request without claiming canonical data, tool execution, or learning authority.",
-            false,
-            "EvaluatedPromotedModel",
-            "EvaluatedPromotedModelResponse",
-            ModelAssistance: new LegendConnectNativeModelAssistanceSnapshot(
-                "Applied",
-                "active_reasoning_model_response_governed",
-                LegendConnectNativeModelAssistanceContracts.GovernedReasoningCapability,
-                generated.ModelVersion,
-                generated.ModelTrainingRunId,
-                LegendConnectNativeModelAssistanceContracts.ResponseProvenance,
-                generated.CostMicrounits));
     }
 
     private async Task<LegendConnectNativeInferenceSnapshot>
@@ -1701,12 +1649,10 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
     private static bool CanEscalateFromUnavailableComposedSource(
         LegendSemanticTransitionInference inference) =>
         inference.Reasons.FirstOrDefault() is
-            "meaning_graph_input_invalid" or
             "meaning_graph_component_unknown" or
             "meaning_graph_retrieval_bound_exceeded" or
             "meaning_graph_relation_unproven" or
-            "semantic_transition_not_supported" or
-            "semantic_transition_evidence_unknown";
+            "semantic_transition_not_supported";
 
     private static LegendConnectNativeInferenceSnapshot WithResearchDecision(
         string input,

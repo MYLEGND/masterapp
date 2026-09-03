@@ -199,8 +199,7 @@ public sealed class MobileProfilePresentationContractTests
         var androidSignIn = Between(
             android,
             "private fun SignInScreen(",
-            "private fun RoleSelectionScreen(")
-            .Replace("\r\n", "\n", StringComparison.Ordinal);
+            "private fun RoleSelectionScreen(");
         Assert.Contains("LegendPrimaryButton(\n                \"Sign in securely\"", androidSignIn, StringComparison.Ordinal);
         Assert.Contains(
             "onAppReviewSignIn(normalizedUsername, submittedPassword)",
