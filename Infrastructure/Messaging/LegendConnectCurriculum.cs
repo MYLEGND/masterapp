@@ -4924,7 +4924,7 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
             string input,
             CancellationToken cancellationToken = default)
     {
-        var languageCode = await _languages.NormalizeEnabledTranslationLanguageAsync(
+        var languageCode = await _languages.NormalizeEnabledTranslationLanguageReadOnlyAsync(
             sourceLanguageCode,
             cancellationToken);
         var normalizedInput = LegendLanguageIdentity.NormalizeText(input);

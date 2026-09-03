@@ -277,8 +277,7 @@ public sealed class LegendFounderAiConversationService
                 // identification service leaves the meaning intact, and only
                 // that case continues on the single existing escalation path.
                 if (request.NativeOnly ||
-                    !IsTransientLanguageIdentificationOutage(
-                        sourceLanguage.Reason))
+                    !sourceLanguage.IsTransientIdentificationOutage)
                 {
                     return LegendFounderAiChatResponse.ModeFailure(
                         mode,
@@ -1267,19 +1266,6 @@ public sealed class LegendFounderAiConversationService
         }
     }
 
-    /// <summary>
-    /// Separates a transient outage of the identification service from a
-    /// governed semantic determination. Only the outage may continue on the
-    /// existing escalation path; ambiguity, an unsupported language, and an
-    /// invalid declared code are authority results that fail closed.
-    /// </summary>
-    internal static bool IsTransientLanguageIdentificationOutage(
-        string? reason) =>
-        string.Equals(
-            reason,
-            "source_language_identification_unavailable",
-            StringComparison.Ordinal);
-
     private async Task<FounderAiSourceLanguageResolution> ResolveSourceLanguageAsync(
         string? declaredLanguageCode,
         string sourceText,
@@ -1292,15 +1278,20 @@ public sealed class LegendFounderAiConversationService
                     out var normalizedCode))
             {
                 return FounderAiSourceLanguageResolution.Failure(
+                    FounderAiSourceLanguageOutcome.InvalidDeclaration,
                     "source_language_code_invalid");
             }
 
+            // Founder conversation is a read path. Language identity is read
+            // from the seeded governed registry and never provisions baseline
+            // rows from a reply; initialization keeps its own authority.
             var enabledLanguage =
-                await _languages.NormalizeEnabledTranslationLanguageAsync(
+                await _languages.NormalizeEnabledTranslationLanguageReadOnlyAsync(
                     normalizedCode,
                     cancellationToken);
             return enabledLanguage is null
                 ? FounderAiSourceLanguageResolution.Failure(
+                    FounderAiSourceLanguageOutcome.UnsupportedLanguage,
                     "source_language_unsupported")
                 : FounderAiSourceLanguageResolution.Success(
                     enabledLanguage);
@@ -1324,20 +1315,28 @@ public sealed class LegendFounderAiConversationService
                 exception,
                 "LEGEND Founder AI source-language identification was unavailable.");
             return FounderAiSourceLanguageResolution.Failure(
+                FounderAiSourceLanguageOutcome
+                    .TransientIdentificationUnavailable,
                 "source_language_identification_unavailable");
         }
 
         if (!detected.Succeeded)
         {
-            return FounderAiSourceLanguageResolution.Failure(
-                detected.ErrorCode switch
-                {
-                    "translation_language_ambiguous" =>
-                        "source_language_ambiguous",
-                    "translation_language_unsupported" =>
-                        "source_language_unsupported",
-                    _ => "source_language_identification_unavailable"
-                });
+            return detected.ErrorCode switch
+            {
+                "translation_language_ambiguous" =>
+                    FounderAiSourceLanguageResolution.Failure(
+                        FounderAiSourceLanguageOutcome.SemanticAmbiguity,
+                        "source_language_ambiguous"),
+                "translation_language_unsupported" =>
+                    FounderAiSourceLanguageResolution.Failure(
+                        FounderAiSourceLanguageOutcome.UnsupportedLanguage,
+                        "source_language_unsupported"),
+                _ => FounderAiSourceLanguageResolution.Failure(
+                    FounderAiSourceLanguageOutcome
+                        .TransientIdentificationUnavailable,
+                    "source_language_identification_unavailable")
+            };
         }
 
         if (!LegendLanguageIdentity.TryNormalize(
@@ -1345,15 +1344,17 @@ public sealed class LegendFounderAiConversationService
                 out var detectedCode))
         {
             return FounderAiSourceLanguageResolution.Failure(
+                FounderAiSourceLanguageOutcome.SemanticAmbiguity,
                 "source_language_ambiguous");
         }
 
         var enabledDetectedLanguage =
-            await _languages.NormalizeEnabledTranslationLanguageAsync(
+            await _languages.NormalizeEnabledTranslationLanguageReadOnlyAsync(
                 detectedCode,
                 cancellationToken);
         return enabledDetectedLanguage is null
             ? FounderAiSourceLanguageResolution.Failure(
+                FounderAiSourceLanguageOutcome.UnsupportedLanguage,
                 "source_language_unsupported")
             : FounderAiSourceLanguageResolution.Success(
                 enabledDetectedLanguage);
@@ -3610,18 +3611,48 @@ Never upgrade an unresolved, rejected or contradicted record merely because it a
         public string FailureKind { get; }
     }
 
-    private sealed record FounderAiSourceLanguageResolution(
+    /// <summary>
+    /// The typed result category of governed source-language resolution. The
+    /// caller routes on this category; the accompanying reason stays the exact
+    /// detail for observability and never becomes the routing key.
+    /// </summary>
+    internal enum FounderAiSourceLanguageOutcome
+    {
+        Resolved,
+        SemanticAmbiguity,
+        UnsupportedLanguage,
+        InvalidDeclaration,
+        TransientIdentificationUnavailable
+    }
+
+    internal sealed record FounderAiSourceLanguageResolution(
         bool Succeeded,
         string? LanguageCode,
-        string Reason)
+        string Reason,
+        FounderAiSourceLanguageOutcome Outcome)
     {
+        /// <summary>
+        /// Only a transient outage of the identification service leaves the
+        /// governed meaning of the request intact. Ambiguity, an unsupported
+        /// language, and an invalid declared code are semantic authority
+        /// results that fail closed in every mode.
+        /// </summary>
+        internal bool IsTransientIdentificationOutage =>
+            Outcome ==
+            FounderAiSourceLanguageOutcome.TransientIdentificationUnavailable;
+
         internal static FounderAiSourceLanguageResolution Success(
             string languageCode) =>
-            new(true, languageCode, string.Empty);
+            new(
+                true,
+                languageCode,
+                string.Empty,
+                FounderAiSourceLanguageOutcome.Resolved);
 
         internal static FounderAiSourceLanguageResolution Failure(
+            FounderAiSourceLanguageOutcome outcome,
             string reason) =>
-            new(false, null, reason);
+            new(false, null, reason, outcome);
     }
 
 }

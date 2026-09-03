@@ -9,6 +9,7 @@ using AgentPortal.Services;
 using Domain.Billing;
 using AgentPortal.Services.Tracking;
 using AgentPortal.Hubs;
+using Domain.Entities;
 using Infrastructure.Data;
 using Domain.Messaging;
 using Infrastructure.Identity;
@@ -49,6 +50,40 @@ internal static class ControllerTestHelpers
             .ConfigureWarnings(warnings => warnings.Ignore(InMemoryEventId.TransactionIgnoredWarning))
             .Options;
         return new MasterAppDbContext(options);
+    }
+
+    /// <summary>
+    /// Production seeds the governed language registry through migrations, and
+    /// Founder read paths resolve language identity read-only instead of
+    /// provisioning it during a reply. Test databases start from the same
+    /// seeded state.
+    /// </summary>
+    internal static void SeedGovernedLanguageBaseline(
+        MasterAppDbContext db,
+        params string[] languageCodes)
+    {
+        foreach (var code in languageCodes.Length == 0
+            ? ["en", "ht"]
+            : languageCodes)
+        {
+            db.Add(new LegendLanguageDefinition
+            {
+                Id = Guid.NewGuid(),
+                LanguageCode = code,
+                BaseLanguageCode = code,
+                CanonicalName = code,
+                NativeName = code,
+                IsEnabled = true,
+                IsTranslationEnabled = true,
+                IsLearningEnabled = true,
+                DatasetNamespace = "/" + code,
+                StoragePartition = "/" + code,
+                CreatedUtc = DateTime.UtcNow,
+                UpdatedUtc = DateTime.UtcNow
+            });
+        }
+
+        db.SaveChanges();
     }
 
     public static ITranslationService BuildTranslationService(

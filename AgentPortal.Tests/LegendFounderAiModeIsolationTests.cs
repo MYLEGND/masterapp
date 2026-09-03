@@ -1842,6 +1842,10 @@ public sealed class LegendFounderAiModeIsolationTests
             IsActive = true
         });
         await db.SaveChangesAsync();
+        // Production seeds the governed language registry through migrations;
+        // the Founder read path resolves language identity read-only.
+        ControllerTestHelpers.SeedGovernedLanguageBaseline(
+            db, "en", "fr", "es", "ht");
         return ControllerTestHelpers.BuildUser(founderId);
     }
 

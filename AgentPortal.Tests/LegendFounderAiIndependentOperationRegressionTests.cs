@@ -104,9 +104,58 @@ public sealed class LegendFounderAiIndependentOperationRegressionTests
         Assert.Equal("source_language_identification", response.Stage);
         Assert.Equal(expectedReason, response.Reason);
         Assert.Equal(0, handler.RequestCount);
-        Assert.False(
-            LegendFounderAiConversationService
-                .IsTransientLanguageIdentificationOutage(response.Reason));
+    }
+
+    // Routing is decided by the typed resolution category, not by matching a
+    // reason string: a detector outage is transient infrastructure, while
+    // ambiguity, an unsupported language and an invalid declared code are
+    // semantic authority results that can never escalate.
+    [Theory]
+    [InlineData("translation_provider_failed", null, "TransientIdentificationUnavailable", true)]
+    [InlineData("translation_language_ambiguous", null, "SemanticAmbiguity", false)]
+    [InlineData("translation_language_unsupported", null, "UnsupportedLanguage", false)]
+    [InlineData(null, "not-a-language-code!", "InvalidDeclaration", false)]
+    public async Task SourceLanguageResolution_ReturnsATypedOutcomeCategoryThatDecidesEscalation(
+        string? detectorError,
+        string? declaredLanguageCode,
+        string expectedOutcome,
+        bool expectedTransient)
+    {
+        using var founderEnvironment = new FounderEnvironmentScope();
+        await using var db = ControllerTestHelpers.BuildDb();
+        var operations = new Mock<ILegendConnectOperations>(MockBehavior.Strict);
+        var service = CreateService(
+            db,
+            operations.Object,
+            new RecordingProviderHandler(),
+            detectorError is null
+                ? null
+                : new FixedLanguageDetector(
+                    new TranslationDetectionResult(false, null, detectorError)));
+
+        var resolve = typeof(LegendFounderAiConversationService).GetMethod(
+            "ResolveSourceLanguageAsync",
+            BindingFlags.NonPublic | BindingFlags.Instance);
+        Assert.NotNull(resolve);
+
+        var task = (Task)resolve!.Invoke(
+            service,
+            [declaredLanguageCode, "A held-out governed request.", CancellationToken.None])!;
+        await task;
+        var resolution = task.GetType().GetProperty("Result")!.GetValue(task)!;
+
+        object Read(string property) =>
+            resolution.GetType()
+                .GetProperty(
+                    property,
+                    BindingFlags.Instance |
+                    BindingFlags.Public |
+                    BindingFlags.NonPublic)!
+                .GetValue(resolution)!;
+
+        Assert.False((bool)Read("Succeeded"));
+        Assert.Equal(expectedOutcome, Read("Outcome").ToString());
+        Assert.Equal(expectedTransient, (bool)Read("IsTransientIdentificationOutage"));
     }
 
     // The same failure in native-only testing remains an absolute zero-OpenAI
@@ -586,6 +635,92 @@ public sealed class LegendFounderAiIndependentOperationRegressionTests
             softwareRemediation: null,
             operationalPortfolio: operationalPortfolio);
 
+    // Structural finding F, stated as executable evidence rather than as an
+    // assertion in prose: the governed-reasoning realization authority admits
+    // only a provider-trained promoted run. A run that is promoted, evaluated,
+    // proof-carrying and identical in every other respect is rejected when its
+    // training provider is not the provider, so no native realization model
+    // can be served today. This test claims no capability; it names the exact
+    // missing artifact.
+    [Theory]
+    [InlineData("OpenAI", true)]
+    [InlineData("LegendNative", false)]
+    public async Task GovernedReasoningRealization_AdmitsOnlyAProviderTrainedPromotedModel(
+        string trainingProvider,
+        bool expectedSelectable)
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var now = DateTime.UtcNow;
+        db.Add(new LegendConnectModelTrainingRun
+        {
+            Id = Guid.NewGuid(),
+            RunKey = $"realization-{trainingProvider.ToLowerInvariant()}",
+            ScopeKey = $"capability:{LegendModelCapabilityKeys.GovernedReasoning}",
+            Generation = 1,
+            DatasetIdentity = "governed-reasoning-dataset",
+            DatasetEvaluatorVersion =
+                LegendConnectLanguageIntelligenceEvaluatorVersion.Current,
+            TrainingProvider = trainingProvider,
+            BaseModel = "reasoning-base",
+            ChallengerModelVersion = "legend:reasoning-active",
+            State = "TrainingCompleted",
+            EvaluationState = "Passed",
+            PromotionState = "Promoted",
+            TrainingExampleCount = 12,
+            ValidationExampleCount = 4,
+            HeldOutScore = 1m,
+            RegressionScore = 1m,
+            FailureDetail = RealizationRuntimeProof,
+            CompletedUtc = now.AddMinutes(-1),
+            PromotedUtc = now,
+            UpdatedUtc = now
+        });
+        await db.SaveChangesAsync();
+
+        var transport = new CountingInferenceTransport("Realized answer.");
+        var inference = new LegendConnectActiveModelInference(db, transport);
+
+        var result = await inference.TryGenerateGovernedReasoningCandidateAsync(
+            new LegendConnectGovernedReasoningCandidateRequest(
+                "en",
+                "A held-out governed request.",
+                "A symbolically authorized answer.",
+                3,
+                "governed",
+                "declarative"));
+
+        if (expectedSelectable)
+        {
+            Assert.True(result.Succeeded, result.ErrorCode);
+            Assert.Equal(1, transport.CallCount);
+            return;
+        }
+
+        Assert.False(result.Succeeded);
+        Assert.Equal("active_reasoning_model_unavailable", result.ErrorCode);
+        Assert.Equal(0, transport.CallCount);
+    }
+
+    private const string RealizationRuntimeProof =
+        "evaluated=1;reference=1.000000;blocking=0;protected=0;leakage=0;prompt_set=test-v1;code_sha=0123456789abcdef0123456789abcdef01234567;runtime_mode=LockedHeldOutEvaluation;response_authority=LegendConnectActiveModelInference;settings=responses-v1,store=false,max_output_tokens=1200;criteria=governed-reference-policy-v1,held_out>=0.950000,regression>=1.000000,protected>=0.980000,blocking=0,leakage=0,runtime_model=exact;proof_set=abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789;latency_us=1;cost_micro=1";
+
+    private sealed class CountingInferenceTransport(string text)
+        : ILegendConnectModelInferenceTransport
+    {
+        internal int CallCount { get; private set; }
+
+        public Task<LegendModelEvaluationGenerationResult> GenerateAsync(
+            string model,
+            LegendModelTaskRequest task,
+            CancellationToken cancellationToken = default)
+        {
+            CallCount++;
+            return Task.FromResult(
+                new LegendModelEvaluationGenerationResult(true, text));
+        }
+    }
+
+
     private static async Task<ClaimsPrincipal> AddFounderProfileAsync(
         Infrastructure.Data.MasterAppDbContext db)
     {
@@ -598,6 +733,7 @@ public sealed class LegendFounderAiIndependentOperationRegressionTests
             IsActive = true
         });
         await db.SaveChangesAsync();
+        ControllerTestHelpers.SeedGovernedLanguageBaseline(db);
         return ControllerTestHelpers.BuildUser(
             FounderEnvironmentScope.FounderId);
     }
@@ -620,15 +756,19 @@ public sealed class LegendFounderAiIndependentOperationRegressionTests
         };
 
     private static Infrastructure.Data.MasterAppDbContext BuildSentinelDb(
-        WriteAttemptSentinel sentinel) =>
-        new(new DbContextOptionsBuilder<Infrastructure.Data.MasterAppDbContext>()
-            .UseInMemoryDatabase(Guid.NewGuid().ToString())
-            .ConfigureWarnings(warnings =>
-                warnings.Ignore(
-                    Microsoft.EntityFrameworkCore.Diagnostics.InMemoryEventId
-                        .TransactionIgnoredWarning))
-            .AddInterceptors(sentinel)
-            .Options);
+        WriteAttemptSentinel sentinel)
+    {
+        var db = new Infrastructure.Data.MasterAppDbContext(
+            new DbContextOptionsBuilder<Infrastructure.Data.MasterAppDbContext>()
+                .UseInMemoryDatabase(Guid.NewGuid().ToString())
+                .ConfigureWarnings(warnings =>
+                    warnings.Ignore(
+                        Microsoft.EntityFrameworkCore.Diagnostics.InMemoryEventId
+                            .TransactionIgnoredWarning))
+                .AddInterceptors(sentinel)
+                .Options);
+        return db;
+    }
 
     /// <summary>
     /// Observes every persistence attempt on the read path. Any attempt that
