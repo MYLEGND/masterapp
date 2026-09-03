@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Net.Http;
 using System.Reflection;
-using System.Text.Json;
 using System.Threading.Tasks;
 using AgentPortal.Models;
 using AgentPortal.Services;
@@ -205,9 +204,7 @@ public sealed class LegendConnectGovernedDiscourseOrdinalAmbiguityTests
             var directPlan = await operations.TryPlanConversationAsync(
                 "No, I meant the first option.",
                 directState);
-            Assert.True(
-                directPlan.Supported,
-                $"{directPlan.ReasonCode}: {JsonSerializer.Serialize(directState)}");
+            Assert.True(directPlan.Supported, directPlan.ReasonCode);
             var directStructuredPlan = Assert.IsType<LegendConnectResponseMeaningPlanSnapshot>(
                 directPlan.Plan);
             var directBinding = Assert.Single(directStructuredPlan.ResolvedDiscourseBindings);
@@ -215,13 +212,13 @@ public sealed class LegendConnectGovernedDiscourseOrdinalAmbiguityTests
             Assert.Equal("choice", directBinding.EntitySemanticDimension);
             Assert.Equal("alpha", directBinding.EntitySemanticValue);
             Assert.True(directBinding.ReplacesActiveBinding);
-            Assert.True(directBinding.HasSupersededCurrentTurnEntity);
-            Assert.NotNull(directBinding.SupersededCurrentTurnNodeIndex);
-            Assert.Equal("choice", directBinding.SupersededCurrentTurnSemanticDimension);
-            Assert.NotNull(directBinding.SupersededCurrentTurnSemanticSignature);
-            Assert.Equal("beta", directBinding.SupersededCurrentTurnSemanticValue);
-            Assert.NotNull(directBinding.SupersededCurrentTurnNodeStartTokenIndex);
-            Assert.NotNull(directBinding.SupersededCurrentTurnNodeTokenLength);
+            Assert.False(directBinding.HasSupersededCurrentTurnEntity);
+            Assert.Null(directBinding.SupersededCurrentTurnNodeIndex);
+            Assert.Null(directBinding.SupersededCurrentTurnSemanticDimension);
+            Assert.Null(directBinding.SupersededCurrentTurnSemanticSignature);
+            Assert.Null(directBinding.SupersededCurrentTurnSemanticValue);
+            Assert.Null(directBinding.SupersededCurrentTurnNodeStartTokenIndex);
+            Assert.Null(directBinding.SupersededCurrentTurnNodeTokenLength);
 
             var directNative = await operations.TryInferConversationWithDiscourseAsync(
                 "No, I meant the first option.",

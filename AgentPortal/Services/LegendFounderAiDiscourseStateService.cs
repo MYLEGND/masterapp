@@ -497,7 +497,23 @@ public sealed class LegendFounderAiDiscourseStateService
             BindingEntries(priorTurns, validatedBindings),
             rule.EntitySemanticDimension);
         if (!active.HasBinding)
-            return ActiveDiscourseBindingResolution.None;
+        {
+            var latestCandidates = priorTurns
+                .Where(item => rule.AllowedSourceRoles.Contains(item.Role, StringComparer.Ordinal))
+                .OrderByDescending(item => item.SequenceNumber)
+                .Select(item => ActiveDiscourseEntityCandidates(item)
+                    .Where(candidate => string.Equals(
+                        candidate.Node.SemanticDimension,
+                        rule.EntitySemanticDimension,
+                        StringComparison.Ordinal))
+                    .ToArray())
+                .FirstOrDefault(candidates => candidates.Length > 0);
+            return latestCandidates?.Length == 1
+                ? new(true, latestCandidates[0])
+                : latestCandidates is null
+                    ? ActiveDiscourseBindingResolution.None
+                    : ActiveDiscourseBindingResolution.Invalid;
+        }
         if (active.Binding is null)
             return ActiveDiscourseBindingResolution.Invalid;
 
