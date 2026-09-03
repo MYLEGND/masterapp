@@ -4,6 +4,8 @@ import android.app.Activity
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.mylegnd.legend.registered.core.auth.CachedLegendSession
+import com.mylegnd.legend.registered.core.auth.AuthenticationCancelledException
+import com.mylegnd.legend.registered.core.auth.AuthenticationConnectivityException
 import com.mylegnd.legend.registered.core.auth.LegendAuthClient
 import com.mylegnd.legend.registered.core.auth.LegendAuthenticatedAccount
 import com.mylegnd.legend.registered.core.auth.LegendBearerTokenAuthority
@@ -198,7 +200,7 @@ class SessionViewModel(private val repository: SessionRepository) : ViewModel() 
     fun signIn(activity: Activity) = viewModelScope.launch {
         _state.value = SessionState.Authenticating
         _state.value = runCatching { repository.signIn(activity) }
-            .getOrElse { SessionState.Failure("Secure sign-in could not be completed.") }
+            .getOrElse(::signInFailure)
     }
 
     fun signInForAppReview(username: String, password: String) = viewModelScope.launch {
@@ -244,5 +246,13 @@ class SessionViewModel(private val repository: SessionRepository) : ViewModel() 
     fun signOut() = viewModelScope.launch {
         repository.signOut()
         _state.value = SessionState.SignedOut
+    }
+
+    private fun signInFailure(error: Throwable): SessionState = when (error) {
+        is AuthenticationCancelledException -> SessionState.SignedOut
+        is AuthenticationConnectivityException -> SessionState.Failure(
+            "Secure sign-in needs a working internet connection. Check the connection and try again.",
+        )
+        else -> SessionState.Failure("Secure sign-in could not be completed.")
     }
 }

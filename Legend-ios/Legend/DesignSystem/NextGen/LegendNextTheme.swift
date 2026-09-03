@@ -11,6 +11,7 @@ enum LegendNextColor {
     static let navy = LegendSharedDesign.color("navy")
     static let navyElevated = LegendSharedDesign.color("navyElevated")
     static let royal = LegendSharedDesign.color("royal")
+    static let aiResponseRoyal = LegendSharedDesign.color("aiResponseRoyal")
     static let gold = LegendSharedDesign.color("gold")
     static let goldBright = LegendSharedDesign.color("goldBright")
     static let goldSoft = LegendSharedDesign.color("goldSoft")

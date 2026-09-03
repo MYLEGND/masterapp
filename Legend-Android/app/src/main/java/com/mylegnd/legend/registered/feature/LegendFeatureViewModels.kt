@@ -24,6 +24,7 @@ import android.content.Context
 import android.net.Uri
 import com.mylegnd.legend.registered.core.media.ProfileAvatarPreparer
 import java.util.UUID
+import java.time.Instant
 
 data class FounderAiTranscriptMessage(
     val role: String,
@@ -599,7 +600,7 @@ class NotificationsViewModel(private val repository: NotificationRepository, pri
         val nextBadge = NotificationBadge(
             unreadCount = unreadCount,
             revision = revision,
-            updatedUtc = event.occurredUtc ?: currentBadge?.updatedUtc ?: java.time.Instant.now().toString(),
+            updatedUtc = event.occurredUtc ?: currentBadge?.updatedUtc ?: Instant.now().toString(),
         )
         _state.value = LoadState.Data((current ?: NotificationSnapshot(nextBadge)).copy(badge = nextBadge))
     }

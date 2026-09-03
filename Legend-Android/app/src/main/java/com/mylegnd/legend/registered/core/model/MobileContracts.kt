@@ -298,7 +298,9 @@ internal object FinancialPresentationOrder {
 @Serializable data class ConversationCallOptions(@SerialName("conversationId") val conversationId: String, @SerialName("displayName") val displayName: String, @SerialName("phoneNumber") val phoneNumber: String? = null, @SerialName("faceTimeAddress") val faceTimeAddress: String? = null)
 
 @Serializable data class SocialSnapshot(
-    val stories: List<SocialPost> = emptyList(), val posts: List<SocialPost> = emptyList(), val hacs: List<SocialPost> = emptyList(),
+    val stories: List<SocialPost> = emptyList(),
+    val posts: List<SocialPost> = emptyList(),
+    @SerialName("hacs") val shortVideos: List<SocialPost> = emptyList(),
     val activity: List<SocialActivity> = emptyList(), @SerialName("activityCount") val activityCount: Int = 0,
     @SerialName("currentProfileMetrics") val currentProfileMetrics: SocialProfileMetrics? = null,
     @SerialName("creatorInsights") val creatorInsights: CreatorInsights? = null,

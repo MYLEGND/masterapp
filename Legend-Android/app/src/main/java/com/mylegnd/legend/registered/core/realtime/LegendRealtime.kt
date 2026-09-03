@@ -6,6 +6,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
+import kotlin.time.Duration.Companion.milliseconds
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.launch
@@ -161,7 +162,7 @@ class MobileMessagingRealtimeClient(
         val delayMillis = RECONNECT_DELAYS_MILLIS[minOf(reconnectAttempt, RECONNECT_DELAYS_MILLIS.lastIndex)]
         reconnectAttempt += 1
         scope.launch {
-            delay(delayMillis)
+            delay(delayMillis.milliseconds)
             if (shouldRemainConnected && connectionGeneration == generation && socket == null) connect(connectionGeneration)
         }
     }

@@ -49,6 +49,8 @@
     --legend-ai-navy-925: var(--legend-design-navy, #10254c);
     --legend-ai-navy-900: var(--legend-design-navy, #10254c);
     --legend-ai-navy-850: var(--legend-design-navyElevated, #3159bf);
+    --legend-ai-response: var(--legend-design-aiResponseRoyal, var(--legend-ai-navy-850));
+    --legend-ai-on-response: var(--legend-design-onNavy, #fff);
     --legend-ai-gold-800: var(--legend-design-gold, #a68023);
     --legend-ai-gold-700: var(--legend-design-gold, #a68023);
     --legend-ai-gold-600: var(--legend-design-goldBright, #e0b853);
@@ -862,10 +864,15 @@
 }
 
 .legend-founder-ai-message.is-assistant .legend-founder-ai-bubble {
-    padding: 4px 0 16px 13px;
-    border-left: 3px solid var(--legend-ai-gold-600);
-    color: var(--legend-ai-text);
-    filter: drop-shadow(-3px 0 7px rgba(224,184,83,.18));
+    max-width: min(82%, 860px);
+    padding: 12px 14px 13px;
+    border: 1px solid color-mix(in srgb, var(--legend-ai-on-response) 24%, transparent);
+    border-radius: 16px 16px 16px 5px;
+    background: var(--legend-ai-response);
+    color: var(--legend-ai-on-response);
+    box-shadow:
+        0 12px 28px color-mix(in srgb, var(--legend-ai-response) 28%, transparent),
+        inset 0 1px 0 color-mix(in srgb, var(--legend-ai-on-response) 20%, transparent);
 }
 
 .legend-founder-ai-response-authority {
@@ -892,6 +899,12 @@
     border-color: color-mix(in srgb, var(--legend-ai-provider) 38%, transparent);
     color: var(--legend-ai-provider);
     background: var(--legend-ai-provider-surface);
+}
+
+.legend-founder-ai-message.is-assistant .legend-founder-ai-response-authority {
+    border-color: color-mix(in srgb, var(--legend-ai-on-response) 26%, transparent);
+    color: var(--legend-ai-on-response);
+    background: color-mix(in srgb, var(--legend-ai-on-response) 14%, transparent);
 }
 
 .legend-founder-ai-status {
@@ -1340,7 +1353,9 @@
     }
 
     .legend-founder-ai-message.is-assistant .legend-founder-ai-bubble {
-        padding: 2px 0 13px 10px;
+        max-width: 92%;
+        padding: 10px 12px 11px;
+        border-radius: 15px 15px 15px 4px;
     }
 
     .legend-founder-ai-status {
