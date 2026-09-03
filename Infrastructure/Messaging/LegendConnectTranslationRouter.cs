@@ -617,6 +617,40 @@ internal sealed class LegendConnectTranslationRouter : IAccountScopedTranslation
         string text,
         CancellationToken cancellationToken = default)
     {
+        if (_structuralComposition is not null &&
+            !string.IsNullOrWhiteSpace(LegendLanguageIdentity.NormalizeText(text)))
+        {
+            var governedMatches = new List<string>();
+            var languages = await _languages
+                .ListEnabledTranslationLanguagesReadOnlyAsync(
+                    cancellationToken);
+            foreach (var candidate in languages)
+            {
+                var understanding = await _structuralComposition
+                    .AnalyzeShadowSourceSemanticsAsync(
+                        candidate.Code,
+                        text,
+                        cancellationToken);
+                if (understanding.State ==
+                        LegendShadowSourceUnderstanding
+                            .SupportedForShadowEvaluation &&
+                    understanding.Components.Count > 0)
+                {
+                    governedMatches.Add(candidate.Code);
+                    if (governedMatches.Count > 1)
+                        break;
+                }
+            }
+
+            if (governedMatches.Count == 1)
+            {
+                return new TranslationDetectionResult(
+                    true,
+                    governedMatches[0],
+                    Confidence: 1m);
+            }
+        }
+
         var result = await _azure.DetectLanguageAsync(text, cancellationToken);
         if (!result.Succeeded)
             return result;

@@ -56,7 +56,7 @@ public sealed class MobileFounderAiController : MobileApiControllerBase
         Response.Headers["X-Accel-Buffering"] = "no";
         HttpContext.Features.Get<IHttpResponseBodyFeature>()?.DisableBuffering();
 
-        var reader = _progress.Subscribe(operationId);
+        var reader = _progress.Subscribe(User, operationId);
         var started = Stopwatch.GetTimestamp();
         LegendFounderAiProgressEvent? last = null;
 
@@ -94,7 +94,7 @@ public sealed class MobileFounderAiController : MobileApiControllerBase
                 request,
                 cancellationToken,
                 operationId.HasValue
-                    ? (update, token) => _progress.PublishAsync(operationId.Value, update, token)
+                    ? (update, token) => _progress.PublishAsync(User, operationId.Value, update, token)
                     : null);
             return Ok(result);
         }
@@ -122,7 +122,7 @@ public sealed class MobileFounderAiController : MobileApiControllerBase
         }
         finally
         {
-            if (operationId.HasValue) _progress.Complete(operationId.Value);
+            if (operationId.HasValue) _progress.Complete(User, operationId.Value);
         }
     }
 

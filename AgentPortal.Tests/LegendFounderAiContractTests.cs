@@ -202,7 +202,11 @@ public sealed class LegendFounderAiContractTests
         Assert.Contains("sourceLanguageCode: null", script, StringComparison.Ordinal);
         Assert.Contains("result.responseAuthority ||", script, StringComparison.Ordinal);
         Assert.Contains("'Legend® Ai'", script, StringComparison.Ordinal);
+        Assert.Contains("responseAuthority === 'GovernedResearch'", script, StringComparison.Ordinal);
+        Assert.Contains("'LEGEND governed research'", script, StringComparison.Ordinal);
         Assert.Contains("'OpenAI'", script, StringComparison.Ordinal);
+        Assert.Contains("responseAuthority === 'SystemDiagnostic'", script, StringComparison.Ordinal);
+        Assert.Contains("'System diagnostic'", script, StringComparison.Ordinal);
         Assert.DoesNotContain("Verified native LEGEND · OpenAI responder not used", script, StringComparison.Ordinal);
         Assert.DoesNotContain("OpenAI Teacher · ${stage || 'provider response'}", script, StringComparison.Ordinal);
         Assert.Contains("OpenAI escalation is blocked for this clean conversation", script, StringComparison.Ordinal);
@@ -339,6 +343,12 @@ public sealed class LegendFounderAiContractTests
             mobile,
             StringComparison.Ordinal);
         Assert.Contains("responseAuthority", mobile, StringComparison.Ordinal);
+        Assert.Contains("case \"LegendAi\":", mobile, StringComparison.Ordinal);
+        Assert.Contains("case \"GovernedResearch\":", mobile, StringComparison.Ordinal);
+        Assert.Contains("case \"OpenAITeacher\":", mobile, StringComparison.Ordinal);
+        Assert.Contains("case \"SystemDiagnostic\":", mobile, StringComparison.Ordinal);
+        Assert.Contains("LEGEND governed research", mobile, StringComparison.Ordinal);
+        Assert.Contains("System diagnostic", mobile, StringComparison.Ordinal);
         Assert.Contains("LegendNextColor.aiResponseRoyal", mobile, StringComparison.Ordinal);
         Assert.Contains("LegendAiIcon.imageset/legendai.png", androidBuild, StringComparison.Ordinal);
         Assert.Contains("FounderAiRepository", androidRepository, StringComparison.Ordinal);
@@ -352,6 +362,10 @@ public sealed class LegendFounderAiContractTests
         Assert.DoesNotContain("LegendColors.BrandBlueSurface", androidPresentation, StringComparison.Ordinal);
         Assert.DoesNotContain(".width(3.dp)", androidPresentation, StringComparison.Ordinal);
         Assert.Contains("responseAuthority", androidPresentation, StringComparison.Ordinal);
+        Assert.Contains("\"LegendAi\" -> legendLocalized(\"Legend® Ai\")", androidPresentation, StringComparison.Ordinal);
+        Assert.Contains("\"GovernedResearch\" -> legendLocalized(\"LEGEND governed research\")", androidPresentation, StringComparison.Ordinal);
+        Assert.Contains("\"OpenAITeacher\" -> legendLocalized(\"OpenAI\")", androidPresentation, StringComparison.Ordinal);
+        Assert.Contains("\"SystemDiagnostic\" -> legendLocalized(\"System diagnostic\")", androidPresentation, StringComparison.Ordinal);
         Assert.Contains("LegendColors.AiResponseRoyal", androidPresentation, StringComparison.Ordinal);
         Assert.DoesNotContain("Governed intelligence conversation", androidPresentation, StringComparison.Ordinal);
         Assert.Contains("FounderAiHeaderAction(Icons.Default.Menu", androidPresentation, StringComparison.Ordinal);
