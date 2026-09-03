@@ -296,7 +296,7 @@ end
     /\b(?:Currency|Percentage|Text|DualProtection)\(\s*#{LITERAL}\s*,\s*(#{LITERAL})/,
     /new MobileFinancialHealthGroup\(\s*#{LITERAL}\s*,\s*(#{LITERAL})/m
   ],
-  ROOT.join("Shared/Finance/LegendLivingBalanceSheetCalculator.cs") => [
+  ROOT.join("SHARED/Finance/LegendLivingBalanceSheetCalculator.cs") => [
     /\n\s*(#{LITERAL})\s*\n\s*\);/
   ]
 }.each do |path, patterns|
