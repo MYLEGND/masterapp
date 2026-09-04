@@ -1828,6 +1828,12 @@ public sealed class LegendFounderAiNativeOnlyProviderIsolationTests
                 {
                     ContentBindingProvenance = [],
                     ResearchDecision = null
+                },
+                completed with
+                {
+                    ContentBindingProvenance =
+                        [authenticReceipt, authenticReceipt],
+                    ResearchDecision = null
                 }
             };
             foreach (var missingAuthority in missingAuthorityInferences)
