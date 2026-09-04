@@ -121,8 +121,7 @@ public sealed class LegendFounderAiModeIsolationTests
                 It.IsAny<IReadOnlyList<LegendConnectConversationContextItem>>(),
                 It.IsAny<LegendConnectDiscourseStateSnapshot?>(),
                 It.IsAny<CancellationToken>(),
-                "en",
-                It.IsAny<LegendConnectExternalProviderPolicy?>()))
+                "en"))
             .ReturnsAsync(new LegendConnectNativeInferenceSnapshot(
                 false,
                 0m,
@@ -231,8 +230,7 @@ public sealed class LegendFounderAiModeIsolationTests
                 It.IsAny<IReadOnlyList<LegendConnectConversationContextItem>>(),
                 It.IsAny<LegendConnectDiscourseStateSnapshot?>(),
                 It.IsAny<CancellationToken>(),
-                expectedLanguage,
-                It.IsAny<LegendConnectExternalProviderPolicy?>()))
+                expectedLanguage))
             .ReturnsAsync(NativeLanguageAnswer(expectedLanguage));
         var detector = new FounderAiLanguageDetector(
             new TranslationDetectionResult(
@@ -263,8 +261,7 @@ public sealed class LegendFounderAiModeIsolationTests
             It.IsAny<IReadOnlyList<LegendConnectConversationContextItem>>(),
             It.IsAny<LegendConnectDiscourseStateSnapshot?>(),
             It.IsAny<CancellationToken>(),
-            expectedLanguage,
-            It.IsAny<LegendConnectExternalProviderPolicy?>()), Times.Once);
+            expectedLanguage), Times.Once);
     }
 
     [Fact]
@@ -280,8 +277,7 @@ public sealed class LegendFounderAiModeIsolationTests
                 It.IsAny<IReadOnlyList<LegendConnectConversationContextItem>>(),
                 It.IsAny<LegendConnectDiscourseStateSnapshot?>(),
                 It.IsAny<CancellationToken>(),
-                "fr",
-                It.IsAny<LegendConnectExternalProviderPolicy?>()))
+                "fr"))
             .ReturnsAsync(NativeLanguageAnswer("fr"));
         var detector = new FounderAiLanguageDetector(
             new TranslationDetectionResult(false, null, "must_not_detect"));
@@ -306,8 +302,7 @@ public sealed class LegendFounderAiModeIsolationTests
             It.IsAny<IReadOnlyList<LegendConnectConversationContextItem>>(),
             It.IsAny<LegendConnectDiscourseStateSnapshot?>(),
             It.IsAny<CancellationToken>(),
-            "fr",
-            It.IsAny<LegendConnectExternalProviderPolicy?>()), Times.Once);
+            "fr"), Times.Once);
     }
 
     [Theory]
@@ -453,8 +448,7 @@ public sealed class LegendFounderAiModeIsolationTests
                 It.IsAny<IReadOnlyList<LegendConnectConversationContextItem>>(),
                 It.IsAny<LegendConnectDiscourseStateSnapshot?>(),
                 It.IsAny<CancellationToken>(),
-                "en",
-                It.IsAny<LegendConnectExternalProviderPolicy?>()))
+                "en"))
             .ReturnsAsync(new LegendConnectNativeInferenceSnapshot(
                 false,
                 0m,
@@ -482,16 +476,13 @@ public sealed class LegendFounderAiModeIsolationTests
                 It.IsAny<LegendConnectDiscourseStateSnapshot?>(),
                 It.IsAny<LegendConnectReadOnlyContentBindingReceipt>(),
                 It.IsAny<CancellationToken>(),
-                "en",
-                It.IsAny<LegendConnectExternalProviderPolicy?>()))
+                "en"))
             .Callback((string _input,
                 IReadOnlyList<LegendConnectConversationContextItem> _context,
                 LegendConnectDiscourseStateSnapshot? _discourseState,
                 LegendConnectReadOnlyContentBindingReceipt receipt,
                 CancellationToken _cancellationToken,
-                string _language,
-                LegendConnectExternalProviderPolicy? _providerPolicy) =>
-                    observedReceipt = receipt)
+                string _language) => observedReceipt = receipt)
             .ReturnsAsync(() => new LegendConnectNativeInferenceSnapshot(
                 true,
                 1m,
@@ -749,8 +740,7 @@ public sealed class LegendFounderAiModeIsolationTests
                 It.IsAny<IReadOnlyList<LegendConnectConversationContextItem>>(),
                 It.IsAny<LegendConnectDiscourseStateSnapshot?>(),
                 It.IsAny<CancellationToken>(),
-                "en",
-                It.IsAny<LegendConnectExternalProviderPolicy?>()))
+                "en"))
             .ReturnsAsync(new LegendConnectNativeInferenceSnapshot(
                 false, 0m, null, "meaning_graph_component_unknown", 0,
                 "A reusable meaning distinction is missing.", true));
@@ -1346,8 +1336,7 @@ public sealed class LegendFounderAiModeIsolationTests
                 It.IsAny<IReadOnlyList<LegendConnectConversationContextItem>>(),
                 It.IsAny<LegendConnectDiscourseStateSnapshot?>(),
                 It.IsAny<CancellationToken>(),
-                "en",
-                It.IsAny<LegendConnectExternalProviderPolicy?>()))
+                "en"))
             .ReturnsAsync(new LegendConnectNativeInferenceSnapshot(
                 true,
                 1m,
@@ -1397,8 +1386,7 @@ public sealed class LegendFounderAiModeIsolationTests
                 It.IsAny<IReadOnlyList<LegendConnectConversationContextItem>>(),
                 It.IsAny<LegendConnectDiscourseStateSnapshot?>(),
                 It.IsAny<CancellationToken>(),
-                "es",
-                It.IsAny<LegendConnectExternalProviderPolicy?>()))
+                "es"))
             .ReturnsAsync(new LegendConnectNativeInferenceSnapshot(
                 false,
                 0m,
@@ -1435,8 +1423,7 @@ public sealed class LegendFounderAiModeIsolationTests
                 It.IsAny<IReadOnlyList<LegendConnectConversationContextItem>>(),
                 It.IsAny<LegendConnectDiscourseStateSnapshot?>(),
                 It.IsAny<CancellationToken>(),
-                "en",
-                It.IsAny<LegendConnectExternalProviderPolicy?>()))
+                "en"))
             .ReturnsAsync(new LegendConnectNativeInferenceSnapshot(
                 true,
                 1m,
@@ -1475,8 +1462,7 @@ public sealed class LegendFounderAiModeIsolationTests
                 It.IsAny<IReadOnlyList<LegendConnectConversationContextItem>>(),
                 It.IsAny<LegendConnectDiscourseStateSnapshot?>(),
                 It.IsAny<CancellationToken>(),
-                "en",
-                It.IsAny<LegendConnectExternalProviderPolicy?>()))
+                "en"))
             .ReturnsAsync(new LegendConnectNativeInferenceSnapshot(
                 false,
                 0m,
@@ -1537,8 +1523,7 @@ public sealed class LegendFounderAiModeIsolationTests
                 It.IsAny<IReadOnlyList<LegendConnectConversationContextItem>>(),
                 It.IsAny<LegendConnectDiscourseStateSnapshot?>(),
                 It.IsAny<CancellationToken>(),
-                "en",
-                It.IsAny<LegendConnectExternalProviderPolicy?>()))
+                "en"))
             .ReturnsAsync(new LegendConnectNativeInferenceSnapshot(
                 false,
                 0m,
@@ -1857,10 +1842,6 @@ public sealed class LegendFounderAiModeIsolationTests
             IsActive = true
         });
         await db.SaveChangesAsync();
-        // Production seeds the governed language registry through migrations;
-        // the Founder read path resolves language identity read-only.
-        ControllerTestHelpers.SeedGovernedLanguageBaseline(
-            db, "en", "fr", "es", "ht");
         return ControllerTestHelpers.BuildUser(founderId);
     }
 
@@ -2066,8 +2047,7 @@ public sealed class LegendFounderAiModeIsolationTests
 
         public Task<TranslationDetectionResult> DetectLanguageAsync(
             string text,
-            CancellationToken cancellationToken = default,
-        LegendConnectExternalProviderPolicy? providerPolicy = null)
+            CancellationToken cancellationToken = default)
         {
             DetectionCount++;
             return Task.FromResult(result);
@@ -2077,8 +2057,7 @@ public sealed class LegendFounderAiModeIsolationTests
             string text,
             string targetLanguage,
             string? sourceLanguage = null,
-            CancellationToken cancellationToken = default,
-        LegendConnectExternalProviderPolicy? providerPolicy = null) =>
+            CancellationToken cancellationToken = default) =>
             throw new InvalidOperationException(
                 "Founder AI language identification must not translate text.");
     }
