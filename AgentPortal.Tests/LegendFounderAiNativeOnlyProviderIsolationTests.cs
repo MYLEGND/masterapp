@@ -1664,14 +1664,77 @@ public sealed class LegendFounderAiNativeOnlyProviderIsolationTests
             // claim is changed after issuance. OutputHash deliberately remains
             // unchanged so each row proves the omitted field itself is bound.
             var authenticReceipt = provenance;
+            var opaqueAttestation =
+                Assert.IsAssignableFrom<ILegendConnectReadOnlyContentBindingAttestation>(
+                    completed.ReadOnlyContentAttestation);
+            Assert.False(
+                opaqueAttestation.GetType().IsPublic ||
+                opaqueAttestation.GetType().IsNestedPublic);
+            Assert.Empty(opaqueAttestation.GetType().GetConstructors());
+
             var decidedUtc = researched.DecidedUtc;
             var receiptMutations = new[]
             {
+                (
+                    "request-identity",
+                    authenticReceipt with
+                    {
+                        RequestIdentity = authenticReceipt.RequestIdentity + "-mutated"
+                    }),
+                (
+                    "transition-signature",
+                    authenticReceipt with
+                    {
+                        TransitionSignature = authenticReceipt.TransitionSignature + "-mutated"
+                    }),
+                (
+                    "result-frame-signature",
+                    authenticReceipt with
+                    {
+                        ResultSemanticFrameSignature =
+                            authenticReceipt.ResultSemanticFrameSignature + "-mutated"
+                    }),
+                (
+                    "tool-name",
+                    authenticReceipt with
+                    {
+                        ToolName = authenticReceipt.ToolName + "-mutated"
+                    }),
+                (
+                    "arguments-hash",
+                    authenticReceipt with
+                    {
+                        ArgumentsHash = authenticReceipt.ArgumentsHash + "-mutated"
+                    }),
+                (
+                    "value-path",
+                    authenticReceipt with
+                    {
+                        ValuePath = authenticReceipt.ValuePath + "-mutated"
+                    }),
+                (
+                    "semantic-variable",
+                    authenticReceipt with
+                    {
+                        SemanticVariable = authenticReceipt.SemanticVariable + "-mutated"
+                    }),
+                (
+                    "result-dimension",
+                    authenticReceipt with
+                    {
+                        ResultDimension = authenticReceipt.ResultDimension + "-mutated"
+                    }),
                 (
                     "semantic-value",
                     authenticReceipt with
                     {
                         SemanticValue = authenticReceipt.SemanticValue + "-mutated"
+                    }),
+                (
+                    "output-hash",
+                    authenticReceipt with
+                    {
+                        OutputHash = authenticReceipt.OutputHash + "-mutated"
                     }),
                 (
                     "provenance",
@@ -1736,6 +1799,40 @@ public sealed class LegendFounderAiNativeOnlyProviderIsolationTests
             Assert.NotEqual(
                 LegendConnectResearchNeed.ExistingGovernedKnowledge,
                 changedClaimDecision.Need);
+
+            var missingAuthorityInferences = new[]
+            {
+                completed with
+                {
+                    ReadOnlyContentAttestation = null,
+                    ResearchDecision = null
+                },
+                completed with
+                {
+                    ContentBindingProvenance = null,
+                    ResearchDecision = null
+                },
+                completed with
+                {
+                    ContentBindingProvenance = [],
+                    ResearchDecision = null
+                }
+            };
+            foreach (var missingAuthority in missingAuthorityInferences)
+            {
+                var missingAuthorityDecision =
+                    LegendConnectOperations.DecideResearchNeeded(
+                        ReadOnlyContentRequestText,
+                        "en",
+                        missingAuthority,
+                        decidedUtc);
+                Assert.NotEqual(
+                    "governed_read_only_content_binding_answers_request",
+                    missingAuthorityDecision.ReasonCode);
+                Assert.NotEqual(
+                    LegendConnectResearchNeed.ExistingGovernedKnowledge,
+                    missingAuthorityDecision.Need);
+            }
 
             var expiredDecision = LegendConnectOperations.DecideResearchNeeded(
                 ReadOnlyContentRequestText,
