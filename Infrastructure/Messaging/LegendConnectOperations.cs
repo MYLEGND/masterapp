@@ -1826,9 +1826,8 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
         }
 
         var provenance = inference.ContentBindingProvenance;
-        return provenance is { Count: > 0 } &&
-            provenance.All(receipt =>
-                attestation.Attests(receipt, inference.Answer, decidedUtc));
+        return provenance is { Count: 1 } &&
+            attestation.Attests(provenance[0], inference.Answer, decidedUtc);
     }
 
     private static bool HasCurrentTurnDiscourseAuthority(
