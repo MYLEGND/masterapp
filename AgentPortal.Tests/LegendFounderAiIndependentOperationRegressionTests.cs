@@ -723,7 +723,7 @@ public sealed class LegendFounderAiIndependentOperationRegressionTests
         var decision = LegendConnectOperations.DecideResearchNeeded(
             question,
             "en",
-            UnsupportedEscalatable(),
+            UnsupportedEscalatable(AdmittedOwnedRecordIntent()),
             new DateTime(2026, 9, 3, 0, 0, 0, DateTimeKind.Utc));
 
         Assert.False(decision.ResearchRequired);
@@ -747,7 +747,10 @@ public sealed class LegendFounderAiIndependentOperationRegressionTests
                 "meaning_graph_relation_unproven",
                 7,
                 "Unrelated governed evidence was available.",
-                true),
+                true)
+            {
+                OwnedRecordIntent = AdmittedOwnedRecordIntent()
+            },
             new DateTime(2026, 9, 3, 0, 0, 0, DateTimeKind.Utc));
 
         Assert.False(decision.ResearchRequired);

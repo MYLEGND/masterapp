@@ -10,6 +10,19 @@ namespace AgentPortal.Tests;
 
 public sealed class LegendFounderAiConversationRoutingTests
 {
+    /// <summary>
+    /// The governed meaning-graph result for a request whose admitted relations
+    /// established an owned-record state inspection. RequiresGovernedInspection
+    /// now consumes this typed classification instead of matching request text,
+    /// so a row that must require inspection has to supply the classification
+    /// the production analysis would have produced for it.
+    /// </summary>
+    private static readonly LegendConnectOwnedRecordClassification
+        EstablishedOwnedRecordIntent = new(
+            LegendConnectOwnedRecordIntent.OwnedRecordStateInspection,
+            true,
+            null);
+
     [Theory]
     [InlineData("Hi")]
     [InlineData("Hello")]
@@ -25,7 +38,7 @@ public sealed class LegendFounderAiConversationRoutingTests
             .GetMethod("RequiresGovernedInspection", BindingFlags.NonPublic | BindingFlags.Static);
         Assert.NotNull(method);
         IReadOnlyList<LegendFounderAiChatMessage> conversation = [new("user", text)];
-        Assert.False(Assert.IsType<bool>(method!.Invoke(null, new object[] { conversation, "legend" })));
+        Assert.False(Assert.IsType<bool>(method!.Invoke(null, new object?[] { conversation, "legend", null })));
     }
 
     [Theory]
@@ -41,7 +54,9 @@ public sealed class LegendFounderAiConversationRoutingTests
             .GetMethod("RequiresGovernedInspection", BindingFlags.NonPublic | BindingFlags.Static);
         Assert.NotNull(method);
         IReadOnlyList<LegendFounderAiChatMessage> conversation = [new("user", text)];
-        Assert.True(Assert.IsType<bool>(method!.Invoke(null, new object[] { conversation, "legend" })));
+        Assert.True(Assert.IsType<bool>(method!.Invoke(
+            null,
+            new object?[] { conversation, "legend", EstablishedOwnedRecordIntent })));
     }
 
     [Fact]
@@ -51,7 +66,7 @@ public sealed class LegendFounderAiConversationRoutingTests
             .GetMethod("RequiresGovernedInspection", BindingFlags.NonPublic | BindingFlags.Static);
         Assert.NotNull(method);
         IReadOnlyList<LegendFounderAiChatMessage> conversation = [new("user", "Hi")];
-        Assert.False(Assert.IsType<bool>(method!.Invoke(null, new object[] { conversation, "teacher" })));
+        Assert.False(Assert.IsType<bool>(method!.Invoke(null, new object?[] { conversation, "teacher", null })));
     }
 
     [Theory]
@@ -140,7 +155,9 @@ public sealed class LegendFounderAiConversationRoutingTests
         var snapshot = new LegendConnectNativeInferenceSnapshot(
             false, 0m, null, "ambiguous_composed_meaning", 0,
             "No unique governed semantic transition could be selected.", true);
-        Assert.True(Assert.IsType<bool>(method!.Invoke(null, new object?[] { conversation, "legend", snapshot, null })));
+        Assert.True(Assert.IsType<bool>(method!.Invoke(
+            null,
+            new object?[] { conversation, "legend", null, snapshot, null })));
     }
 
     [Fact]
@@ -153,7 +170,9 @@ public sealed class LegendFounderAiConversationRoutingTests
         var snapshot = new LegendConnectNativeInferenceSnapshot(
             true, 1m, "I'm doing great, thanks.", "supported", 4,
             "Governed native response selected.", false);
-        Assert.False(Assert.IsType<bool>(method!.Invoke(null, new object?[] { conversation, "legend", snapshot, null })));
+        Assert.False(Assert.IsType<bool>(method!.Invoke(
+            null,
+            new object?[] { conversation, "legend", null, snapshot, null })));
     }
 
     [Fact]
