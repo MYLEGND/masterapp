@@ -154,32 +154,66 @@ public sealed class LegendFounderAiHeldOutOperationMatrixTests
     [Fact]
     public async Task SameConversationMemory_RetainsAndReturnsTheExactValuesStatedEarlier()
     {
+        using var founderEnvironment = new FounderEnvironmentScope();
+        using var writeSentinel = new WriteAttemptSentinel();
+        await using var db = BuildSentinelDb(writeSentinel);
+        var founder = await AddFounderProfileAsync(db);
+        ControllerTestHelpers.SeedGovernedLanguageBaseline(db);
+        var handler = new RecordingProviderHandler();
+        var service = CreateService(db, handler);
         var conversationId = Guid.NewGuid().ToString("D");
 
-        var first = await RunAsync(
-            "native_capability:same_conversation_memory_turn_one",
-            MemoryFirstPrompt,
-            nativeOnly: true,
-            conversationId: conversationId);
+        writeSentinel.Arm();
 
-        var followUp = await RunAsync(
+        async Task<MatrixRow> SendAsync(string label, string prompt)
+        {
+            var providerCallsBefore = handler.RequestCount;
+            var response = await service.ReplyAsync(
+                founder,
+                new LegendFounderAiChatRequest
+                {
+                    Mode = "legend",
+                    NativeOnly = true,
+                    ConversationId = conversationId,
+                    SourceLanguageCode = "en",
+                    Messages = [new LegendFounderAiChatMessage("user", prompt)]
+                });
+
+            return new MatrixRow(
+                label,
+                prompt,
+                response.Succeeded,
+                response.Message,
+                response.Error,
+                response.ResponseAuthority,
+                response.Stage,
+                response.Reason,
+                response.ResearchOutcome?.Session.ClaimEvidence.Count ?? 0,
+                response.ModelProvenance,
+                handler.RequestCount - providerCallsBefore,
+                handler.ToolCalls.ToArray(),
+                string.Empty,
+                writeSentinel.OperationalWriteAttempts,
+                writeSentinel.ObservedWriteEntities.ToArray(),
+                db.ChangeTracker.Entries().Count(entry =>
+                    entry.State != EntityState.Unchanged));
+        }
+
+        var first = await SendAsync(
+            "native_capability:same_conversation_memory_turn_one",
+            MemoryFirstPrompt);
+
+        // Force the follow-up to reload canonical persisted discourse state.
+        // No assistant answer or expected value is injected into the request.
+        db.ChangeTracker.Clear();
+        service = CreateService(db, handler);
+
+        var followUp = await SendAsync(
             "native_capability:same_conversation_memory_turn_two",
-            MemoryFollowUpPrompt,
-            nativeOnly: true,
-            conversationId: conversationId,
-            priorTurns:
-            [
-                new LegendFounderAiChatMessage("user", MemoryFirstPrompt),
-                new LegendFounderAiChatMessage(
-                    "assistant",
-                    "Recorded: Project Marlin closes on the ninth of November and Corine owns the vendor review.")
-            ]);
+            MemoryFollowUpPrompt);
 
         Record([first, followUp]);
 
-        // Retaining the conversation is the behavior under test, so exactly the
-        // two canonical discourse entities may be written and nothing else.
-        // The live-production shadow gate remains absolute zero-write.
         string[] canonicalDiscourseWrites =
         [
             "LegendFounderAiDiscourseConversation",
