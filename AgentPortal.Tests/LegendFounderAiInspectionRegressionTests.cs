@@ -1,4 +1,3 @@
-using Domain.Messaging;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -10,19 +9,6 @@ namespace AgentPortal.Tests;
 
 public sealed class LegendFounderAiInspectionRegressionTests
 {
-    /// <summary>
-    /// The governed meaning-graph result for a request whose admitted relations
-    /// established an owned-record state inspection. RequiresGovernedInspection
-    /// now consumes this typed classification instead of matching request text,
-    /// so a row that must require inspection has to supply the classification
-    /// the production analysis would have produced for it.
-    /// </summary>
-    private static readonly LegendConnectOwnedRecordClassification
-        EstablishedOwnedRecordIntent = new(
-            LegendConnectOwnedRecordIntent.OwnedRecordStateInspection,
-            true,
-            null);
-
     [Theory]
     [InlineData("Hi")]
     [InlineData("Tell me a joke.")]
@@ -38,7 +24,7 @@ public sealed class LegendFounderAiInspectionRegressionTests
         IReadOnlyList<LegendFounderAiChatMessage> conversation = [new("user", text)];
 
         Assert.False(Assert.IsType<bool>(
-            method!.Invoke(null, new object?[] { conversation, "teacher", null })));
+            method!.Invoke(null, new object[] { conversation, "teacher" })));
     }
 
     [Theory]
@@ -55,9 +41,8 @@ public sealed class LegendFounderAiInspectionRegressionTests
         Assert.NotNull(method);
         IReadOnlyList<LegendFounderAiChatMessage> conversation = [new("user", text)];
 
-        Assert.True(Assert.IsType<bool>(method!.Invoke(
-            null,
-            new object?[] { conversation, "teacher", EstablishedOwnedRecordIntent })));
+        Assert.True(Assert.IsType<bool>(
+            method!.Invoke(null, new object[] { conversation, "teacher" })));
     }
 
     [Fact]

@@ -613,10 +613,15 @@ internal sealed class LegendConnectTranslationRouter : IAccountScopedTranslation
         _coalescer = coalescer ?? new TranslationRequestCoalescer();
     }
 
+    public Task<TranslationDetectionResult> DetectLanguageAsync(
+        string text,
+        CancellationToken cancellationToken = default) =>
+        DetectLanguageAsync(text, cancellationToken, null);
+
     public async Task<TranslationDetectionResult> DetectLanguageAsync(
         string text,
-        CancellationToken cancellationToken = default,
-        LegendConnectExternalProviderPolicy? providerPolicy = null)
+        CancellationToken cancellationToken,
+        LegendConnectExternalProviderPolicy? providerPolicy)
     {
         var policy = LegendConnectExternalProviderPolicy.Resolve(providerPolicy);
         if (_structuralComposition is not null &&
@@ -681,12 +686,19 @@ internal sealed class LegendConnectTranslationRouter : IAccountScopedTranslation
                 Confidence: result.Confidence);
     }
 
-    public async Task<TranslationProviderResult> TranslateAsync(
+    public Task<TranslationProviderResult> TranslateAsync(
         string text,
         string targetLanguage,
         string? sourceLanguage = null,
-        CancellationToken cancellationToken = default,
-        LegendConnectExternalProviderPolicy? providerPolicy = null)
+        CancellationToken cancellationToken = default) =>
+        TranslateAsync(text, targetLanguage, sourceLanguage, cancellationToken, null);
+
+    public async Task<TranslationProviderResult> TranslateAsync(
+        string text,
+        string targetLanguage,
+        string? sourceLanguage,
+        CancellationToken cancellationToken,
+        LegendConnectExternalProviderPolicy? providerPolicy)
     {
         // Native-only forbids the external boundary, not Legend's own
         // translation authority. The policy is carried into the core so every

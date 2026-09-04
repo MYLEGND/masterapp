@@ -336,14 +336,27 @@ public sealed class FounderLegendConnectService
             LegendConnectExternalProviderPolicy? providerPolicy = null)
     {
         _ = await ResolveFounderActorAsync(user, cancellationToken);
-        return await _operations.TryInferConversationWithReadOnlyContentAsync(
-            input,
-            context,
-            discourseState,
-            receipt,
-            cancellationToken,
-            sourceLanguageCode,
-            providerPolicy);
+
+        // An undeclared policy is the existing provider-enabled default, so
+        // the request keeps using the operations authority's established
+        // entry point. Only a request that actually declares a policy needs
+        // the policy-carrying entry point.
+        return providerPolicy is null
+            ? await _operations.TryInferConversationWithReadOnlyContentAsync(
+                input,
+                context,
+                discourseState,
+                receipt,
+                cancellationToken,
+                sourceLanguageCode)
+            : await _operations.TryInferConversationWithReadOnlyContentAsync(
+                input,
+                context,
+                discourseState,
+                receipt,
+                cancellationToken,
+                sourceLanguageCode,
+                providerPolicy);
     }
 
     /// <summary>

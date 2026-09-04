@@ -575,13 +575,7 @@ public sealed class LegendFounderAiHeldOutOperationMatrixTests
             new LegendFounderAiDiscourseStateService(db, accessResolver, operations),
             registry,
             ControllerTestHelpers.BuildTranslationService(),
-            softwareRemediation: null,
-            agencyCommand: new AgencyCommandService(
-                db,
-                new ProductionService(
-                    db,
-                    NullLogger<ProductionService>.Instance),
-                NullLogger<AgencyCommandService>.Instance));
+            softwareRemediation: null);
     }
 
     private static async Task<ClaimsPrincipal> AddFounderProfileAsync(

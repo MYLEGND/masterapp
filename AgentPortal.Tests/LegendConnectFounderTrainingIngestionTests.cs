@@ -752,16 +752,14 @@ public sealed class LegendConnectFounderTrainingIngestionTests
         public int TranslateCalls { get; private set; }
         public List<string> TargetLanguages { get; } = [];
 
-        public Task<TranslationDetectionResult> DetectLanguageAsync(string text, System.Threading.CancellationToken cancellationToken = default,
-            LegendConnectExternalProviderPolicy? providerPolicy = null) =>
+        public Task<TranslationDetectionResult> DetectLanguageAsync(string text, System.Threading.CancellationToken cancellationToken = default) =>
             Task.FromResult(new TranslationDetectionResult(true, "en"));
 
         public Task<TranslationProviderResult> TranslateAsync(
             string text,
             string targetLanguage,
             string? sourceLanguage = null,
-            System.Threading.CancellationToken cancellationToken = default,
-            LegendConnectExternalProviderPolicy? providerPolicy = null)
+            System.Threading.CancellationToken cancellationToken = default)
         {
             TranslateCalls++;
             TargetLanguages.Add(targetLanguage);

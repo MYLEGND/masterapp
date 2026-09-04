@@ -843,9 +843,6 @@ public sealed class LegendConnectMeaningGraphTests
                 IsActive = true
             });
             await db.SaveChangesAsync();
-            // Production seeds the governed language registry through
-            // migrations; the Founder read path resolves it read-only.
-            ControllerTestHelpers.SeedGovernedLanguageBaseline(db, "en");
 
             var configuration = Configuration();
             var registry = new LegendLanguageRegistry(db, configuration);

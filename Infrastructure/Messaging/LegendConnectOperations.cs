@@ -1411,8 +1411,25 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
             LegendConnectDiscourseStateSnapshot? discourseState,
             LegendConnectReadOnlyContentBindingReceipt receipt,
             CancellationToken cancellationToken = default,
-            string sourceLanguageCode = "en",
-            LegendConnectExternalProviderPolicy? providerPolicy = null) =>
+            string sourceLanguageCode = "en") =>
+        TryInferConversationWithReadOnlyContentAsync(
+            input,
+            context,
+            discourseState,
+            receipt,
+            cancellationToken,
+            sourceLanguageCode,
+            null);
+
+    public Task<LegendConnectNativeInferenceSnapshot>
+        TryInferConversationWithReadOnlyContentAsync(
+            string input,
+            IReadOnlyList<LegendConnectConversationContextItem> context,
+            LegendConnectDiscourseStateSnapshot? discourseState,
+            LegendConnectReadOnlyContentBindingReceipt receipt,
+            CancellationToken cancellationToken,
+            string sourceLanguageCode,
+            LegendConnectExternalProviderPolicy? providerPolicy) =>
         TryInferConversationCoreAsync(
             input,
             context,

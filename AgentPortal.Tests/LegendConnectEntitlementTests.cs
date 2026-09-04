@@ -673,16 +673,14 @@ public sealed class LegendConnectEntitlementTests
         public string ProviderName => "AzureTranslator";
         public int TranslateCalls { get; private set; }
 
-        public Task<TranslationDetectionResult> DetectLanguageAsync(string text, CancellationToken cancellationToken = default,
-        LegendConnectExternalProviderPolicy? providerPolicy = null) =>
+        public Task<TranslationDetectionResult> DetectLanguageAsync(string text, CancellationToken cancellationToken = default) =>
             Task.FromResult(new TranslationDetectionResult(true, "en"));
 
         public Task<TranslationProviderResult> TranslateAsync(
             string text,
             string targetLanguage,
             string? sourceLanguage = null,
-            CancellationToken cancellationToken = default,
-        LegendConnectExternalProviderPolicy? providerPolicy = null)
+            CancellationToken cancellationToken = default)
         {
             TranslateCalls++;
             return Task.FromResult(_succeed
@@ -717,8 +715,7 @@ public sealed class LegendConnectEntitlementTests
         public string? LastDetectedLanguage { get; private set; }
         public Dictionary<string, int> TargetCounts { get; } = new(StringComparer.OrdinalIgnoreCase);
 
-        public Task<TranslationDetectionResult> DetectLanguageAsync(string text, CancellationToken cancellationToken = default,
-        LegendConnectExternalProviderPolicy? providerPolicy = null)
+        public Task<TranslationDetectionResult> DetectLanguageAsync(string text, CancellationToken cancellationToken = default)
         {
             DetectionCalls++;
             LastDetectedLanguage = "en";
@@ -729,8 +726,7 @@ public sealed class LegendConnectEntitlementTests
             string text,
             string targetLanguage,
             string? sourceLanguage = null,
-            CancellationToken cancellationToken = default,
-        LegendConnectExternalProviderPolicy? providerPolicy = null) =>
+            CancellationToken cancellationToken = default) =>
             Task.FromResult(new TranslationProviderResult(true, $"{targetLanguage}:{text}", sourceLanguage, "TestTranslator"));
 
         public Task<TranslationProviderResult> TranslateForAccountAsync(

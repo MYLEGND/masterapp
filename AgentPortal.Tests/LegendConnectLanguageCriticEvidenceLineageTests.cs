@@ -634,16 +634,14 @@ public sealed class LegendConnectLanguageCriticEvidenceLineageTests
 
         public Task<TranslationDetectionResult> DetectLanguageAsync(
             string text,
-            CancellationToken cancellationToken = default,
-        LegendConnectExternalProviderPolicy? providerPolicy = null) =>
+            CancellationToken cancellationToken = default) =>
             Task.FromResult(new TranslationDetectionResult(true, "en"));
 
         public Task<TranslationProviderResult> TranslateAsync(
             string text,
             string targetLanguage,
             string? sourceLanguage = null,
-            CancellationToken cancellationToken = default,
-        LegendConnectExternalProviderPolicy? providerPolicy = null) =>
+            CancellationToken cancellationToken = default) =>
             throw new InvalidOperationException(
                 "Critic evidence tests cannot invoke translation.");
     }

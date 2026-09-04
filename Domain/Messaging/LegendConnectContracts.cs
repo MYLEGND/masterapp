@@ -2688,8 +2688,40 @@ public interface ILegendConnectOperations
             LegendConnectDiscourseStateSnapshot? discourseState,
             LegendConnectReadOnlyContentBindingReceipt receipt,
             CancellationToken cancellationToken = default,
-            string sourceLanguageCode = "en",
-            LegendConnectExternalProviderPolicy? providerPolicy = null);
+            string sourceLanguageCode = "en");
+
+    /// <summary>
+    /// Completes the second pass under an explicit external-provider policy.
+    /// An implementation that has not opted into policy awareness cannot honor
+    /// a native-only request, so this default refuses it rather than silently
+    /// dropping the policy.
+    /// </summary>
+    Task<LegendConnectNativeInferenceSnapshot>
+        TryInferConversationWithReadOnlyContentAsync(
+            string input,
+            IReadOnlyList<LegendConnectConversationContextItem> context,
+            LegendConnectDiscourseStateSnapshot? discourseState,
+            LegendConnectReadOnlyContentBindingReceipt receipt,
+            CancellationToken cancellationToken,
+            string sourceLanguageCode,
+            LegendConnectExternalProviderPolicy? providerPolicy) =>
+        LegendConnectExternalProviderPolicy.Resolve(providerPolicy)
+                .ForbidsExternalProviders
+            ? Task.FromResult(new LegendConnectNativeInferenceSnapshot(
+                false,
+                0m,
+                null,
+                "native_only_inference_boundary_not_policy_aware",
+                0,
+                "native_only_inference_boundary_not_policy_aware",
+                false))
+            : TryInferConversationWithReadOnlyContentAsync(
+                input,
+                context,
+                discourseState,
+                receipt,
+                cancellationToken,
+                sourceLanguageCode);
 
     Task<LegendConnectResponseMeaningPlanResult> TryPlanConversationAsync(
         string input,

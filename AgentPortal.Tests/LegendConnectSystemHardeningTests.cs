@@ -236,16 +236,14 @@ public sealed class LegendConnectSystemHardeningTests
         public string ProviderName => "AzureTranslator";
         public int TranslateCalls { get; private set; }
 
-        public Task<TranslationDetectionResult> DetectLanguageAsync(string text, System.Threading.CancellationToken cancellationToken = default,
-            LegendConnectExternalProviderPolicy? providerPolicy = null) =>
+        public Task<TranslationDetectionResult> DetectLanguageAsync(string text, System.Threading.CancellationToken cancellationToken = default) =>
             Task.FromResult(new TranslationDetectionResult(true, "en"));
 
         public Task<TranslationProviderResult> TranslateAsync(
             string text,
             string targetLanguage,
             string? sourceLanguage = null,
-            System.Threading.CancellationToken cancellationToken = default,
-            LegendConnectExternalProviderPolicy? providerPolicy = null)
+            System.Threading.CancellationToken cancellationToken = default)
         {
             TranslateCalls++;
             return Task.FromResult(new TranslationProviderResult(

@@ -34,10 +34,15 @@ internal sealed class AzureTranslatorService : ITranslationProvider
     public string ProviderName => ProviderIdentifier;
     public string ProviderVersion => "text-api-v3.0";
 
+    public Task<TranslationDetectionResult> DetectLanguageAsync(
+        string text,
+        CancellationToken cancellationToken = default) =>
+        DetectLanguageAsync(text, cancellationToken, null);
+
     public async Task<TranslationDetectionResult> DetectLanguageAsync(
         string text,
-        CancellationToken cancellationToken = default,
-        LegendConnectExternalProviderPolicy? providerPolicy = null)
+        CancellationToken cancellationToken,
+        LegendConnectExternalProviderPolicy? providerPolicy)
     {
         // This is an external provider boundary. A native-only request must
         // never reach it, so it fails closed before any configuration is read
@@ -123,12 +128,19 @@ internal sealed class AzureTranslatorService : ITranslationProvider
         }
     }
 
-    public async Task<TranslationProviderResult> TranslateAsync(
+    public Task<TranslationProviderResult> TranslateAsync(
         string text,
         string targetLanguage,
         string? sourceLanguage = null,
-        CancellationToken cancellationToken = default,
-        LegendConnectExternalProviderPolicy? providerPolicy = null)
+        CancellationToken cancellationToken = default) =>
+        TranslateAsync(text, targetLanguage, sourceLanguage, cancellationToken, null);
+
+    public async Task<TranslationProviderResult> TranslateAsync(
+        string text,
+        string targetLanguage,
+        string? sourceLanguage,
+        CancellationToken cancellationToken,
+        LegendConnectExternalProviderPolicy? providerPolicy)
     {
         if (LegendConnectExternalProviderPolicy.Resolve(providerPolicy)
             .ForbidsExternalProviders)

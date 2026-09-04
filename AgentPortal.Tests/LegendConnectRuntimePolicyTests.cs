@@ -702,11 +702,9 @@ public sealed class LegendConnectRuntimePolicyTests
         public int TranslateCalls => _translateCalls;
         public List<string> SourceTexts { get; } = [];
         public List<string> TargetLanguages { get; } = [];
-        public Task<TranslationDetectionResult> DetectLanguageAsync(string text, CancellationToken cancellationToken = default,
-        LegendConnectExternalProviderPolicy? providerPolicy = null) =>
+        public Task<TranslationDetectionResult> DetectLanguageAsync(string text, CancellationToken cancellationToken = default) =>
             Task.FromResult(new TranslationDetectionResult(true, "en"));
-        public Task<TranslationProviderResult> TranslateAsync(string text, string targetLanguage, string? sourceLanguage = null, CancellationToken cancellationToken = default,
-        LegendConnectExternalProviderPolicy? providerPolicy = null)
+        public Task<TranslationProviderResult> TranslateAsync(string text, string targetLanguage, string? sourceLanguage = null, CancellationToken cancellationToken = default)
         {
             System.Threading.Interlocked.Increment(ref _translateCalls);
             lock (SourceTexts)
