@@ -513,6 +513,8 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
         // general bypass for supported answers: the claim must actually carry
         // complete, canonical, unexpired receipt provenance.
         if (internalAvailable &&
+            !stale &&
+            !conflicted &&
             IsAnsweredByAttestedGovernedRead(internalInference))
         {
             return Decision(
