@@ -1649,6 +1649,8 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
             _output.WriteLine(
                 $"PRODUCTION READ COMMANDS: {readOnlyGuard.ReadCommandCount}");
             _output.WriteLine(
+                $"PRODUCTION WRITE COMMANDS: {readOnlyGuard.RejectedWriteCommandCount}");
+            _output.WriteLine(
                 $"PRODUCTION WRITE ATTEMPTS: {readOnlyGuard.RejectedWriteCommandCount}");
 
             var resultPath = Environment.GetEnvironmentVariable(
@@ -1676,6 +1678,10 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
                             ProviderClientCount = factory.CreateClientCalls,
                             ProductionReadCommandCount =
                                 readOnlyGuard.ReadCommandCount,
+                            // Preserve the established workflow contract while
+                            // reporting the stricter attempted-write measure.
+                            ProductionWriteCommandCount =
+                                readOnlyGuard.RejectedWriteCommandCount,
                             ProductionWriteAttemptCount =
                                 readOnlyGuard.RejectedWriteCommandCount,
                             Categories = requiredCategories,
