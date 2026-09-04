@@ -1286,38 +1286,8 @@ public sealed record LegendConnectReadOnlyContentBindingReceipt(
 /// never any validity flag a caller could set independently, and it is
 /// produced in exactly one place: the successful read-only content binding.
 /// </summary>
-public sealed record LegendConnectReadOnlyContentBindingAttestation(
-    string RequestIdentity,
-    string TransitionSignature,
-    string ResultSemanticFrameSignature,
-    string ToolName,
-    string ArgumentsHash,
-    string ValuePath,
-    string SemanticVariable,
-    string ResultDimension,
-    string OutputHash)
+public interface ILegendConnectReadOnlyContentBindingAttestation
 {
-    /// <summary>
-    /// True only when this attestation was issued for the exact receipt
-    /// supplied. Identity is compared across every dimension the canonical
-    /// validator bound, so a receipt from another request, transition, result
-    /// frame, tool, argument set, value path, semantic variable, result
-    /// dimension, or output cannot borrow this attestation.
-    /// </summary>
-    public bool Attests(LegendConnectReadOnlyContentBindingReceipt? receipt) =>
-        receipt is not null &&
-        string.Equals(RequestIdentity, receipt.RequestIdentity, StringComparison.Ordinal) &&
-        string.Equals(TransitionSignature, receipt.TransitionSignature, StringComparison.Ordinal) &&
-        string.Equals(
-            ResultSemanticFrameSignature,
-            receipt.ResultSemanticFrameSignature,
-            StringComparison.Ordinal) &&
-        string.Equals(ToolName, receipt.ToolName, StringComparison.Ordinal) &&
-        string.Equals(ArgumentsHash, receipt.ArgumentsHash, StringComparison.Ordinal) &&
-        string.Equals(ValuePath, receipt.ValuePath, StringComparison.Ordinal) &&
-        string.Equals(SemanticVariable, receipt.SemanticVariable, StringComparison.Ordinal) &&
-        string.Equals(ResultDimension, receipt.ResultDimension, StringComparison.Ordinal) &&
-        string.Equals(OutputHash, receipt.OutputHash, StringComparison.Ordinal);
 }
 
 public sealed record LegendConnectReadOnlyContentBindingResult(
@@ -2534,7 +2504,7 @@ public sealed record LegendConnectNativeInferenceSnapshot(
     LegendConnectResearchNeededDecision? ResearchDecision = null,
     LegendConnectResponsePresentationConstraintsSnapshot? PresentationConstraints = null,
     LegendConnectOwnedRecordClassification? OwnedRecordIntent = null,
-    LegendConnectReadOnlyContentBindingAttestation? ReadOnlyContentAttestation = null);
+    ILegendConnectReadOnlyContentBindingAttestation? ReadOnlyContentAttestation = null);
 
 /// <summary>
 /// The one immutable, per-request decision about whether this serving request
