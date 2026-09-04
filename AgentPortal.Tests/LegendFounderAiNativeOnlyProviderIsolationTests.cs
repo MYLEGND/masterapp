@@ -38,6 +38,7 @@ namespace AgentPortal.Tests;
 /// Zero counted attempts under a native-only policy is therefore evidence that
 /// no external provider was reachable, not merely that none answered.
 /// </summary>
+[Collection("LegendConnectFounderEnvironment")]
 public sealed class LegendFounderAiNativeOnlyProviderIsolationTests
 {
     /// <summary>
