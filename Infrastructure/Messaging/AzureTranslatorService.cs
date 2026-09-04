@@ -34,10 +34,28 @@ internal sealed class AzureTranslatorService : ITranslationProvider
     public string ProviderName => ProviderIdentifier;
     public string ProviderVersion => "text-api-v3.0";
 
+    public Task<TranslationDetectionResult> DetectLanguageAsync(
+        string text,
+        CancellationToken cancellationToken = default) =>
+        DetectLanguageAsync(text, cancellationToken, null);
+
     public async Task<TranslationDetectionResult> DetectLanguageAsync(
         string text,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken,
+        LegendConnectExternalProviderPolicy? providerPolicy)
     {
+        // This is an external provider boundary. A native-only request must
+        // never reach it, so it fails closed before any configuration is read
+        // or any client is constructed.
+        if (LegendConnectExternalProviderPolicy.Resolve(providerPolicy)
+            .ForbidsExternalProviders)
+        {
+            return new TranslationDetectionResult(
+                false,
+                null,
+                "external_provider_forbidden_by_native_only_policy");
+        }
+
         if (!TryGetConfiguration(out var endpoint, out var key, out var region))
             return new TranslationDetectionResult(false, null, "translation_provider_unavailable");
 
@@ -110,12 +128,31 @@ internal sealed class AzureTranslatorService : ITranslationProvider
         }
     }
 
-    public async Task<TranslationProviderResult> TranslateAsync(
+    public Task<TranslationProviderResult> TranslateAsync(
         string text,
         string targetLanguage,
         string? sourceLanguage = null,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default) =>
+        TranslateAsync(text, targetLanguage, sourceLanguage, cancellationToken, null);
+
+    public async Task<TranslationProviderResult> TranslateAsync(
+        string text,
+        string targetLanguage,
+        string? sourceLanguage,
+        CancellationToken cancellationToken,
+        LegendConnectExternalProviderPolicy? providerPolicy)
     {
+        if (LegendConnectExternalProviderPolicy.Resolve(providerPolicy)
+            .ForbidsExternalProviders)
+        {
+            return new TranslationProviderResult(
+                false,
+                null,
+                null,
+                ProviderIdentifier,
+                "external_provider_forbidden_by_native_only_policy");
+        }
+
         if (!CommunicationLanguages.TryNormalize(targetLanguage, out var normalizedTarget))
             return new TranslationProviderResult(false, null, null, ProviderIdentifier, "translation_language_unsupported");
         if (!TryGetConfiguration(out var endpoint, out var key, out var region))

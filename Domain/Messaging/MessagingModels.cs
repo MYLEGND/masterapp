@@ -50,6 +50,45 @@ public interface ITranslationService
         string targetLanguage,
         string? sourceLanguage = null,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Identifies the source language under an explicit external-provider
+    /// policy. A boundary that has not opted into policy awareness cannot
+    /// honor a native-only request, so this default refuses it rather than
+    /// silently dropping the policy and reaching the external detector.
+    /// </summary>
+    Task<TranslationDetectionResult> DetectLanguageAsync(
+        string text,
+        CancellationToken cancellationToken,
+        LegendConnectExternalProviderPolicy? providerPolicy) =>
+        LegendConnectExternalProviderPolicy.Resolve(providerPolicy)
+                .ForbidsExternalProviders
+            ? Task.FromResult(new TranslationDetectionResult(
+                false,
+                null,
+                "native_only_translation_boundary_not_policy_aware"))
+            : DetectLanguageAsync(text, cancellationToken);
+
+    /// <summary>
+    /// Produces target-language text under an explicit external-provider
+    /// policy, with the same fail-closed default for boundaries that have not
+    /// opted into policy awareness.
+    /// </summary>
+    Task<TranslationProviderResult> TranslateAsync(
+        string text,
+        string targetLanguage,
+        string? sourceLanguage,
+        CancellationToken cancellationToken,
+        LegendConnectExternalProviderPolicy? providerPolicy) =>
+        LegendConnectExternalProviderPolicy.Resolve(providerPolicy)
+                .ForbidsExternalProviders
+            ? Task.FromResult(new TranslationProviderResult(
+                false,
+                null,
+                null,
+                "none",
+                "native_only_translation_boundary_not_policy_aware"))
+            : TranslateAsync(text, targetLanguage, sourceLanguage, cancellationToken);
 }
 
 public sealed record TranslationDetectionResult(

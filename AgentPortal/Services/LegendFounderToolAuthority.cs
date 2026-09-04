@@ -32,6 +32,7 @@ internal sealed class LegendFounderToolAuthority
 
     private readonly FounderLegendConnectService _legend;
     private readonly IFounderSoftwareRemediationService? _softwareRemediation;
+    private readonly AgencyCommandService? _agencyCommand;
     private readonly HashSet<string> _consumedMutationAuthorizations =
         new(StringComparer.Ordinal);
     private readonly object _mutationAuthorizationLock = new();
@@ -45,10 +46,12 @@ internal sealed class LegendFounderToolAuthority
 
     internal LegendFounderToolAuthority(
         FounderLegendConnectService legend,
-        IFounderSoftwareRemediationService? softwareRemediation)
+        IFounderSoftwareRemediationService? softwareRemediation,
+        AgencyCommandService? agencyCommand = null)
     {
         _legend = legend;
         _softwareRemediation = softwareRemediation;
+        _agencyCommand = agencyCommand;
     }
 
     internal IReadOnlyList<object> Tools => BuildFounderTools();
@@ -86,6 +89,7 @@ internal sealed class LegendFounderToolAuthority
             "legend_target_realizations" or
             "legend_search_retained_knowledge" or
             "legend_metric_detail" or
+            "legend_client_lead_portfolio" or
             "legend_language_state";
 
     private static bool IsReadOnlyFounderTool(
@@ -107,6 +111,7 @@ internal sealed class LegendFounderToolAuthority
             "legend_search_retained_knowledge" or
             "legend_research_internet" or
             "legend_metric_detail" or
+            "legend_client_lead_portfolio" or
             "legend_language_state";
 
     /// <summary>
@@ -165,7 +170,8 @@ internal sealed class LegendFounderToolAuthority
         string sourceLanguageCode,
         LegendConnectNativeInferenceSnapshot? internalInference,
         FounderAiMutationAuthorization? restrictedAuthorization,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        LegendConnectExternalProviderPolicy? providerPolicy = null)
     {
         var decision = internalInference?.ResearchDecision ??
             await _legend.DecideResearchNeededAsync(
@@ -173,7 +179,8 @@ internal sealed class LegendFounderToolAuthority
                 question,
                 sourceLanguageCode,
                 internalInference,
-                cancellationToken);
+                cancellationToken,
+                providerPolicy);
         var requestId = Guid.NewGuid();
         if (!decision.ResearchRequired)
         {
@@ -254,7 +261,8 @@ internal sealed class LegendFounderToolAuthority
         return await _legend.ExecuteResearchAsync(
             founder,
             request,
-            cancellationToken);
+            cancellationToken,
+            providerPolicy);
     }
 
 
@@ -442,6 +450,21 @@ internal sealed class LegendFounderToolAuthority
                         safety = "BLOCKED or DEGRADED readiness intentionally prevents new acquisition claims. Never bypass historical convergence, worker health, capacity, live reserve, or language-registry gates."
                     }
                 });
+            }
+
+            case "legend_client_lead_portfolio":
+            {
+                // Adapted from the canonical client/lead visibility owner;
+                // this registry never queries those records itself.
+                if (_agencyCommand is null)
+                {
+                    return """{"error":"client_lead_portfolio_unavailable"}""";
+                }
+
+                return SerializeUnbounded(
+                    await _agencyCommand.GetFounderPortfolioCountsAsync(
+                        founder,
+                        cancellationToken));
             }
 
             case "legend_provider_capacity":
@@ -1746,6 +1769,21 @@ internal sealed class LegendFounderToolAuthority
                         }
                     },
                     required = new[] { "metric_key" },
+                    additionalProperties = false
+                },
+                strict = true
+            },
+            new
+            {
+                type = "function",
+                name = "legend_client_lead_portfolio",
+                description =
+                    "Read the current Founder-visible counts of client and lead records held by this deployment, including the canonical CRM status breakdown of workstation leads. Use this for any question about how many clients or leads exist; never answer such a question from recollection or the public internet. This is read-only, zero-write, and returns counts only.",
+                parameters = new
+                {
+                    type = "object",
+                    properties = new { },
+                    required = Array.Empty<string>(),
                     additionalProperties = false
                 },
                 strict = true

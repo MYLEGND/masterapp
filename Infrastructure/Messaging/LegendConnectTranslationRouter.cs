@@ -613,10 +613,17 @@ internal sealed class LegendConnectTranslationRouter : IAccountScopedTranslation
         _coalescer = coalescer ?? new TranslationRequestCoalescer();
     }
 
+    public Task<TranslationDetectionResult> DetectLanguageAsync(
+        string text,
+        CancellationToken cancellationToken = default) =>
+        DetectLanguageAsync(text, cancellationToken, null);
+
     public async Task<TranslationDetectionResult> DetectLanguageAsync(
         string text,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken,
+        LegendConnectExternalProviderPolicy? providerPolicy)
     {
+        var policy = LegendConnectExternalProviderPolicy.Resolve(providerPolicy);
         if (_structuralComposition is not null &&
             !string.IsNullOrWhiteSpace(LegendLanguageIdentity.NormalizeText(text)))
         {
@@ -651,7 +658,22 @@ internal sealed class LegendConnectTranslationRouter : IAccountScopedTranslation
             }
         }
 
-        var result = await _azure.DetectLanguageAsync(text, cancellationToken);
+        // Governed structural composition above is the only identification
+        // authority a native-only request may use. When it cannot name exactly
+        // one governed language the request fails closed here: the external
+        // detection provider is not consulted and no client is constructed.
+        if (policy.ForbidsExternalProviders)
+        {
+            return new TranslationDetectionResult(
+                false,
+                null,
+                "native_only_governed_source_language_undetermined");
+        }
+
+        var result = await _azure.DetectLanguageAsync(
+            text,
+            cancellationToken,
+            policy);
         if (!result.Succeeded)
             return result;
 
@@ -664,18 +686,35 @@ internal sealed class LegendConnectTranslationRouter : IAccountScopedTranslation
                 Confidence: result.Confidence);
     }
 
-    public async Task<TranslationProviderResult> TranslateAsync(
+    public Task<TranslationProviderResult> TranslateAsync(
         string text,
         string targetLanguage,
         string? sourceLanguage = null,
-        CancellationToken cancellationToken = default)
-        => await TranslateCoreAsync(
+        CancellationToken cancellationToken = default) =>
+        TranslateAsync(text, targetLanguage, sourceLanguage, cancellationToken, null);
+
+    public async Task<TranslationProviderResult> TranslateAsync(
+        string text,
+        string targetLanguage,
+        string? sourceLanguage,
+        CancellationToken cancellationToken,
+        LegendConnectExternalProviderPolicy? providerPolicy)
+    {
+        // Native-only forbids the external boundary, not Legend's own
+        // translation authority. The policy is carried into the core so every
+        // internal stage - same-language, trusted exact memory, structural
+        // composition, contextual composition and reusable governed
+        // observation - still runs, and only the external model and the
+        // quota/capacity/Azure fallback are refused.
+        return await TranslateCoreAsync(
             text,
             targetLanguage,
             sourceLanguage,
             account: null,
             requestReference: null,
-            cancellationToken);
+            cancellationToken,
+            providerPolicy: providerPolicy);
+    }
 
     public async Task<TranslationProviderResult> TranslateForAccountAsync(
         string text,
@@ -1292,8 +1331,11 @@ internal sealed class LegendConnectTranslationRouter : IAccountScopedTranslation
         string? requestReference,
         CancellationToken cancellationToken,
         bool allowProviderObservationReuse = true,
-        bool allowLegacyIntelligence = true)
+        bool allowLegacyIntelligence = true,
+        LegendConnectExternalProviderPolicy? providerPolicy = null)
     {
+        var externalProviderPolicy =
+            LegendConnectExternalProviderPolicy.Resolve(providerPolicy);
         var target = await _languages.NormalizeEnabledTranslationLanguageAsync(targetLanguage, cancellationToken);
         if (target is null)
             return new TranslationProviderResult(false, null, null, _azure.ProviderName, "translation_language_unsupported");
@@ -1436,7 +1478,8 @@ internal sealed class LegendConnectTranslationRouter : IAccountScopedTranslation
                         "LegendConnectContextualComposition");
                 }
 
-                if (_activeModelInference is not null)
+                if (_activeModelInference is not null &&
+                    !externalProviderPolicy.ForbidsExternalProviders)
                 {
                     var neural =
                         await _activeModelInference.TryTranslateAsync(
@@ -1557,6 +1600,21 @@ internal sealed class LegendConnectTranslationRouter : IAccountScopedTranslation
                 contextualCompositionObserved: contextualSuggestion is not null,
                 neuralModelFailed: promotedTranslationModelFailed,
                 cancellationToken: cancellationToken);
+        }
+
+        // Every internal Legend stage above has been given its chance. What
+        // remains below is the external boundary: quota and capacity
+        // accounting for the external provider, and the Azure fallback call
+        // itself. A native-only request fails closed here, with no provider
+        // identity claimed, rather than being attributed to Azure.
+        if (externalProviderPolicy.ForbidsExternalProviders)
+        {
+            return new TranslationProviderResult(
+                false,
+                null,
+                source,
+                "None",
+                "external_provider_forbidden_by_native_only_policy");
         }
 
         TranslationQuotaReservation? quotaReservation = null;

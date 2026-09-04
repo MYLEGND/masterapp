@@ -1023,6 +1023,67 @@ public sealed record LegendConnectUtteranceMeaningRelation(
     int TargetNodeIndex,
     int IndependentSupportCount);
 
+/// <summary>
+/// The typed intent a request carries about records this deployment owns.
+/// It is established only by the governed meaning-graph authority from the
+/// admitted relations of one analysis, never from surface text.
+/// </summary>
+public enum LegendConnectOwnedRecordIntent
+{
+    /// <summary>
+    /// No admitted governed relation established an owned-record meaning. This
+    /// is the fail-closed value.
+    /// </summary>
+    Unknown = 0,
+
+    /// <summary>
+    /// An admitted governed relation established that the request demands the
+    /// present state of records this deployment owns.
+    /// </summary>
+    OwnedRecordStateInspection = 1,
+
+    /// <summary>
+    /// The governed meaning-graph analysis could not run, so no intent could be
+    /// established either way. This is not absence of intent: the request must
+    /// fail closed onto mandatory governed inspection rather than be answered
+    /// from recollection.
+    /// </summary>
+    AnalysisUnavailable = 2
+}
+
+/// <summary>
+/// The typed classification of one analyzed request against the admitted
+/// relations of its governed meaning graph, with the receipt obligation and,
+/// when the graph could not establish the intent, the exact governed relation
+/// kind that was missing.
+/// </summary>
+public sealed record LegendConnectOwnedRecordClassification(
+    LegendConnectOwnedRecordIntent Intent,
+    bool RequiresGovernedReadReceipt,
+    string? MissingRelationKind,
+    string? Diagnostic = null)
+{
+    /// <summary>
+    /// True when the request may not be answered until the registered governed
+    /// read returns a receipt. Only an established owned-record intent imposes
+    /// the receipt obligation; an unavailable analysis must not fabricate a
+    /// record tool it has no evidence to require.
+    /// </summary>
+    public bool RequiresMandatoryGovernedInspection =>
+        RequiresGovernedReadReceipt;
+
+    /// <summary>
+    /// True when no classification could be made because the governed
+    /// meaning-graph analysis did not run. This is not an established absence
+    /// of operational intent: the request cannot be answered at all, because
+    /// the authority that would decide whether an authenticated receipt is
+    /// required never produced a result. Callers must fail closed on this and
+    /// surface <see cref="Diagnostic"/>.
+    /// </summary>
+    public bool IsAnalysisUnavailable =>
+        Intent == LegendConnectOwnedRecordIntent.AnalysisUnavailable;
+}
+
 public sealed record LegendConnectUtteranceMeaningGraphSnapshot(
     bool IsComposed,
     IReadOnlyList<LegendConnectUtteranceMeaningNode> Nodes,
@@ -1213,6 +1274,21 @@ public sealed record LegendConnectReadOnlyContentBindingReceipt(
     string Provenance,
     bool IsReadOnly,
     bool ZeroWrite);
+
+/// <summary>
+/// The single immutable attestation issued by the canonical curriculum
+/// receipt-validation and content-composition authority after one exact
+/// read-only receipt has been fully validated against the exact governed
+/// binding request it answers.
+///
+/// It exists so downstream governed decisions can trust that validation
+/// without repeating it. It carries only the identity of the validated claim,
+/// never any validity flag a caller could set independently, and it is
+/// produced in exactly one place: the successful read-only content binding.
+/// </summary>
+public interface ILegendConnectReadOnlyContentBindingAttestation
+{
+}
 
 public sealed record LegendConnectReadOnlyContentBindingResult(
     bool Succeeded,
@@ -2426,7 +2502,60 @@ public sealed record LegendConnectNativeInferenceSnapshot(
     IReadOnlyList<LegendConnectReadOnlyContentBindingReceipt>? ContentBindingProvenance = null,
     LegendConnectNativeModelAssistanceSnapshot? ModelAssistance = null,
     LegendConnectResearchNeededDecision? ResearchDecision = null,
-    LegendConnectResponsePresentationConstraintsSnapshot? PresentationConstraints = null);
+    LegendConnectResponsePresentationConstraintsSnapshot? PresentationConstraints = null,
+    LegendConnectOwnedRecordClassification? OwnedRecordIntent = null,
+    ILegendConnectReadOnlyContentBindingAttestation? ReadOnlyContentAttestation = null);
+
+/// <summary>
+/// The one immutable, per-request decision about whether this serving request
+/// is allowed to reach any external provider at all.
+///
+/// It is deliberately a value carried explicitly through the existing serving
+/// boundary rather than ambient or mutable state: there is no static, global,
+/// or per-thread scope that another authority could observe, race with, or
+/// reset mid-request. Every external boundary reached during Founder serving
+/// (conversation provider, promoted model inference, translation detection and
+/// translation, research search, and research page retrieval) consults this
+/// same value, so native-only isolation is decided once and cannot drift
+/// between the layers that enforce it.
+///
+/// When <see cref="AllowExternalProviders"/> is false the caller has declared a
+/// native-only request. Each boundary must then be structurally unreachable:
+/// the provider client is never constructed and never invoked, and the
+/// boundary fails closed with its own precise reason. It must never be
+/// satisfied by relabelling provider output as native.
+/// </summary>
+public sealed record LegendConnectExternalProviderPolicy(
+    bool AllowExternalProviders)
+{
+    /// <summary>
+    /// An absolute zero-external-provider request.
+    /// </summary>
+    public static readonly LegendConnectExternalProviderPolicy NativeOnly =
+        new(AllowExternalProviders: false);
+
+    /// <summary>
+    /// A provider-enabled request. External escalation remains governed by the
+    /// single existing escalation authority; this policy only declines to
+    /// forbid it, and never itself authorizes or attributes provider output.
+    /// </summary>
+    public static readonly LegendConnectExternalProviderPolicy ProviderEnabled =
+        new(AllowExternalProviders: true);
+
+    /// <summary>
+    /// Resolves an absent policy to the provider-enabled default so existing
+    /// non-Founder callers keep their current behavior, while a declared
+    /// native-only policy is always honored.
+    /// </summary>
+    public static LegendConnectExternalProviderPolicy Resolve(
+        LegendConnectExternalProviderPolicy? policy) =>
+        policy ?? ProviderEnabled;
+
+    /// <summary>
+    /// True when this request forbids every external provider boundary.
+    /// </summary>
+    public bool ForbidsExternalProviders => !AllowExternalProviders;
+}
 
 /// <summary>
 /// The sole read/write authority for Legend Connect operations. Presentation
@@ -2510,11 +2639,13 @@ public interface ILegendConnectOperations
         string input,
         string sourceLanguageCode,
         LegendConnectNativeInferenceSnapshot? internalInference,
-        CancellationToken cancellationToken = default);
+        CancellationToken cancellationToken = default,
+        LegendConnectExternalProviderPolicy? providerPolicy = null);
 
     Task<LegendConnectResearchOutcome> ExecuteResearchAsync(
         LegendConnectResearchRequest request,
-        CancellationToken cancellationToken = default);
+        CancellationToken cancellationToken = default,
+        LegendConnectExternalProviderPolicy? providerPolicy = null);
 
     /// <summary>
     /// Writes sanitized, bounded operational receipts for the completed
@@ -2541,7 +2672,8 @@ public interface ILegendConnectOperations
         IReadOnlyList<LegendConnectConversationContextItem> context,
         LegendConnectDiscourseStateSnapshot? discourseState,
         CancellationToken cancellationToken = default,
-        string sourceLanguageCode = "en");
+        string sourceLanguageCode = "en",
+        LegendConnectExternalProviderPolicy? providerPolicy = null);
 
     /// <summary>
     /// Completes the same native inference path with one proof-carrying receipt
@@ -2557,6 +2689,39 @@ public interface ILegendConnectOperations
             LegendConnectReadOnlyContentBindingReceipt receipt,
             CancellationToken cancellationToken = default,
             string sourceLanguageCode = "en");
+
+    /// <summary>
+    /// Completes the second pass under an explicit external-provider policy.
+    /// An implementation that has not opted into policy awareness cannot honor
+    /// a native-only request, so this default refuses it rather than silently
+    /// dropping the policy.
+    /// </summary>
+    Task<LegendConnectNativeInferenceSnapshot>
+        TryInferConversationWithReadOnlyContentAsync(
+            string input,
+            IReadOnlyList<LegendConnectConversationContextItem> context,
+            LegendConnectDiscourseStateSnapshot? discourseState,
+            LegendConnectReadOnlyContentBindingReceipt receipt,
+            CancellationToken cancellationToken,
+            string sourceLanguageCode,
+            LegendConnectExternalProviderPolicy? providerPolicy) =>
+        LegendConnectExternalProviderPolicy.Resolve(providerPolicy)
+                .ForbidsExternalProviders
+            ? Task.FromResult(new LegendConnectNativeInferenceSnapshot(
+                false,
+                0m,
+                null,
+                "native_only_inference_boundary_not_policy_aware",
+                0,
+                "native_only_inference_boundary_not_policy_aware",
+                false))
+            : TryInferConversationWithReadOnlyContentAsync(
+                input,
+                context,
+                discourseState,
+                receipt,
+                cancellationToken,
+                sourceLanguageCode);
 
     Task<LegendConnectResponseMeaningPlanResult> TryPlanConversationAsync(
         string input,

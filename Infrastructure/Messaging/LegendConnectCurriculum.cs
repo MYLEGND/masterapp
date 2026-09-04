@@ -145,13 +145,105 @@ internal sealed record LegendSemanticTransitionInference(
     IReadOnlyList<string> Reasons,
     LegendConnectReadOnlyContentBindingRequest? ReadOnlyContentRequest = null,
     IReadOnlyList<LegendConnectReadOnlyContentBindingReceipt>? ContentBindingProvenance = null,
-    LegendConnectResponsePresentationConstraintsSnapshot? PresentationConstraints = null)
+    LegendConnectResponsePresentationConstraintsSnapshot? PresentationConstraints = null,
+    LegendConnectOwnedRecordClassification? OwnedRecordIntent = null,
+    LegendConnectReadOnlyContentBindingAttestation? ReadOnlyContentAttestation = null)
 {
     internal const string Supported = "Supported";
     internal const string InsufficientEvidence = "InsufficientEvidence";
     internal const string Ambiguous = "Ambiguous";
     internal const string Contradicted = "Contradicted";
     internal const string ReadOnlyContentRequired = "ReadOnlyContentRequired";
+}
+
+internal sealed class LegendConnectReadOnlyContentBindingAttestation :
+    ILegendConnectReadOnlyContentBindingAttestation
+{
+    internal LegendConnectReadOnlyContentBindingAttestation(
+        LegendConnectReadOnlyContentBindingRequest request,
+        LegendConnectReadOnlyContentBindingReceipt receipt,
+        string realizedAnswer)
+    {
+        RequestIdentity = receipt.RequestIdentity;
+        TransitionSignature = receipt.TransitionSignature;
+        ResultSemanticFrameSignature = receipt.ResultSemanticFrameSignature;
+        ToolName = receipt.ToolName;
+        ArgumentsHash = receipt.ArgumentsHash;
+        ValuePath = receipt.ValuePath;
+        SemanticVariable = receipt.SemanticVariable;
+        ResultDimension = receipt.ResultDimension;
+        SemanticValue = receipt.SemanticValue;
+        OutputHash = receipt.OutputHash;
+        ObservedUtc = receipt.ObservedUtc;
+        ExecutedUtc = receipt.ExecutedUtc;
+        Provenance = receipt.Provenance;
+        IsReadOnly = receipt.IsReadOnly;
+        ZeroWrite = receipt.ZeroWrite;
+        MaximumAgeSeconds = request.MaximumAgeSeconds;
+        ValidThroughUtc = (receipt.ObservedUtc <= receipt.ExecutedUtc
+                ? receipt.ObservedUtc
+                : receipt.ExecutedUtc)
+            .AddSeconds(request.MaximumAgeSeconds);
+        RealizedAnswerHash = LegendLanguageIdentity.TextHash(realizedAnswer);
+    }
+
+    private string RequestIdentity { get; }
+    private string TransitionSignature { get; }
+    private string ResultSemanticFrameSignature { get; }
+    private string ToolName { get; }
+    private string ArgumentsHash { get; }
+    private string ValuePath { get; }
+    private string SemanticVariable { get; }
+    private string ResultDimension { get; }
+    private string SemanticValue { get; }
+    private string OutputHash { get; }
+    private DateTime ObservedUtc { get; }
+    private DateTime ExecutedUtc { get; }
+    private string Provenance { get; }
+    private bool IsReadOnly { get; }
+    private bool ZeroWrite { get; }
+    private int MaximumAgeSeconds { get; }
+    private DateTime ValidThroughUtc { get; }
+    private string RealizedAnswerHash { get; }
+
+    /// <summary>
+    /// Consumes the opaque attestation only for the exact validated receipt,
+    /// exact realized claim, and request-specific validity window for which
+    /// the canonical curriculum authority issued it. Every validity-bearing
+    /// receipt field is bound; post-issuance mutation fails closed.
+    /// </summary>
+    internal bool Attests(
+        LegendConnectReadOnlyContentBindingReceipt? receipt,
+        string? realizedAnswer,
+        DateTime decidedUtc) =>
+        receipt is not null &&
+        decidedUtc.Kind == DateTimeKind.Utc &&
+        decidedUtc <= ValidThroughUtc &&
+        ExecutedUtc <= decidedUtc.AddSeconds(5) &&
+        ObservedUtc <= decidedUtc.AddSeconds(5) &&
+        !string.IsNullOrWhiteSpace(realizedAnswer) &&
+        string.Equals(
+            RealizedAnswerHash,
+            LegendLanguageIdentity.TextHash(realizedAnswer),
+            StringComparison.Ordinal) &&
+        string.Equals(RequestIdentity, receipt.RequestIdentity, StringComparison.Ordinal) &&
+        string.Equals(TransitionSignature, receipt.TransitionSignature, StringComparison.Ordinal) &&
+        string.Equals(
+            ResultSemanticFrameSignature,
+            receipt.ResultSemanticFrameSignature,
+            StringComparison.Ordinal) &&
+        string.Equals(ToolName, receipt.ToolName, StringComparison.Ordinal) &&
+        string.Equals(ArgumentsHash, receipt.ArgumentsHash, StringComparison.Ordinal) &&
+        string.Equals(ValuePath, receipt.ValuePath, StringComparison.Ordinal) &&
+        string.Equals(SemanticVariable, receipt.SemanticVariable, StringComparison.Ordinal) &&
+        string.Equals(ResultDimension, receipt.ResultDimension, StringComparison.Ordinal) &&
+        string.Equals(SemanticValue, receipt.SemanticValue, StringComparison.Ordinal) &&
+        string.Equals(OutputHash, receipt.OutputHash, StringComparison.Ordinal) &&
+        ObservedUtc == receipt.ObservedUtc &&
+        ExecutedUtc == receipt.ExecutedUtc &&
+        string.Equals(Provenance, receipt.Provenance, StringComparison.Ordinal) &&
+        IsReadOnly == receipt.IsReadOnly &&
+        ZeroWrite == receipt.ZeroWrite;
 }
 
 /// <summary>
@@ -4924,7 +5016,7 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
             string input,
             CancellationToken cancellationToken = default)
     {
-        var languageCode = await _languages.NormalizeEnabledTranslationLanguageAsync(
+        var languageCode = await _languages.NormalizeEnabledTranslationLanguageReadOnlyAsync(
             sourceLanguageCode,
             cancellationToken);
         var normalizedInput = LegendLanguageIdentity.NormalizeText(input);
@@ -5406,6 +5498,17 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
         if (!completion.Succeeded)
             return SemanticTransitionInsufficient(completion.ReasonCode);
         var graph = completion.Graph;
+
+        // One analysis, one classification: the typed operational intent is
+        // derived here from the admitted relations of this graph and carried on
+        // every result of this evaluation. No caller re-runs graph analysis and
+        // no caller inspects surface text.
+        var ownedRecordIntent = LegendConnectOwnedRecordRequest.Classify(graph);
+
+        LegendSemanticTransitionInference WithOwnedRecordIntent(
+            LegendSemanticTransitionInference inference) =>
+            inference with { OwnedRecordIntent = ownedRecordIntent };
+
         var selection = await SelectSemanticTransitionAsync(
             sourceLanguageCode,
             input,
@@ -5416,11 +5519,12 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
             cancellationToken: cancellationToken);
         if (selection.Selected is null)
         {
-            return selection.IsAmbiguous
-                ? SemanticTransitionAmbiguous(selection.ReasonCode)
-                : selection.IsContradicted
-                    ? SemanticTransitionContradicted(selection.ReasonCode)
-                    : SemanticTransitionInsufficient(selection.ReasonCode);
+            return WithOwnedRecordIntent(
+                selection.IsAmbiguous
+                    ? SemanticTransitionAmbiguous(selection.ReasonCode)
+                    : selection.IsContradicted
+                        ? SemanticTransitionContradicted(selection.ReasonCode)
+                        : SemanticTransitionInsufficient(selection.ReasonCode));
         }
 
         var content = await ResolveGovernedResponseContentAsync(
@@ -5430,17 +5534,18 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
             readOnlyContentReceipt);
         if (content.ReadOnlyContentRequest is not null)
         {
-            return new LegendSemanticTransitionInference(
+            return WithOwnedRecordIntent(new LegendSemanticTransitionInference(
                 LegendSemanticTransitionInference.ReadOnlyContentRequired,
                 null,
                 selection.Selected.IndependentEvidenceCount +
                 selection.Selected.ReasoningEvidenceCount,
                 ["read_only_content_binding_required"],
-                content.ReadOnlyContentRequest);
+                content.ReadOnlyContentRequest));
         }
         if (content.IsRequired && !content.Succeeded)
         {
-            return SemanticTransitionInsufficient(content.ReasonCode);
+            return WithOwnedRecordIntent(
+                SemanticTransitionInsufficient(content.ReasonCode));
         }
 
         var candidate = content.Succeeded
@@ -5462,9 +5567,10 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
             cancellationToken: cancellationToken);
         if (realization.Reason is not null)
         {
-            return realization.IsAmbiguous
-                ? SemanticTransitionAmbiguous(realization.Reason)
-                : SemanticTransitionInsufficient(realization.Reason);
+            return WithOwnedRecordIntent(
+                realization.IsAmbiguous
+                    ? SemanticTransitionAmbiguous(realization.Reason)
+                    : SemanticTransitionInsufficient(realization.Reason));
         }
         if (!TryInstantiateResponsePlanFrame(
                 candidate.ResultFrame,
@@ -5472,8 +5578,8 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
                 out var realizedDimensions,
                 out _))
         {
-            return SemanticTransitionInsufficient(
-                "result_presentation_frame_unavailable");
+            return WithOwnedRecordIntent(SemanticTransitionInsufficient(
+                "result_presentation_frame_unavailable"));
         }
         if (!TryResolveGovernedPresentationConstraints(
                 realizedDimensions,
@@ -5481,10 +5587,20 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
                 out var realizedPresentationReason,
                 out _))
         {
-            return SemanticTransitionInsufficient(realizedPresentationReason);
+            return WithOwnedRecordIntent(
+                SemanticTransitionInsufficient(realizedPresentationReason));
         }
 
-        return new LegendSemanticTransitionInference(
+        var readOnlyContentAttestation =
+            content.ValidatedReadOnlyContentRequest is { } validatedRequest &&
+            content.ReadOnlyContentReceipts.Count == 1
+                ? new LegendConnectReadOnlyContentBindingAttestation(
+                    validatedRequest,
+                    content.ReadOnlyContentReceipts[0],
+                    realization.Text!)
+                : null;
+
+        return WithOwnedRecordIntent(new LegendSemanticTransitionInference(
             LegendSemanticTransitionInference.Supported,
             realization.Text,
             selection.Selected.IndependentEvidenceCount + selection.Selected.ReasoningEvidenceCount + content.EvidenceCount + realization.LayoutEvidenceCount,
@@ -5506,7 +5622,8 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
             ],
             null,
             content.ReadOnlyContentReceipts,
-            realizedPresentationConstraints);
+            realizedPresentationConstraints,
+            ReadOnlyContentAttestation: readOnlyContentAttestation));
     }
 
     internal async Task<LegendConnectResponseMeaningPlanResult> TryPlanResponseMeaningAsync(
@@ -7903,6 +8020,7 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
                     [readOnlyContentRequest.SemanticVariable] =
                         readOnlyContentReceipt.SemanticValue
                 },
+                readOnlyContentRequest,
                 readOnlyContentReceipt);
         }
         if (unbound.Count == 0)
@@ -8229,7 +8347,8 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
             string.IsNullOrWhiteSpace(receipt.OutputHash) ||
             !IsBoundedReadOnlyScalar(receipt.SemanticValue) ||
             receipt.ExecutedUtc.Kind != DateTimeKind.Utc ||
-            receipt.ObservedUtc.Kind != DateTimeKind.Utc)
+            receipt.ObservedUtc.Kind != DateTimeKind.Utc ||
+            receipt.ObservedUtc > receipt.ExecutedUtc)
         {
             reasonCode = "read_only_content_binding_receipt_malformed";
             return false;
@@ -15309,7 +15428,8 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
         int EvidenceCount,
         int EvidenceStandard,
         LegendConnectReadOnlyContentBindingRequest? ReadOnlyContentRequest,
-        IReadOnlyList<LegendConnectReadOnlyContentBindingReceipt> ReadOnlyContentReceipts)
+        IReadOnlyList<LegendConnectReadOnlyContentBindingReceipt> ReadOnlyContentReceipts,
+        LegendConnectReadOnlyContentBindingRequest? ValidatedReadOnlyContentRequest = null)
     {
         internal static GovernedContentResolution NotRequired(
             IReadOnlyDictionary<string, string> bindings) =>
@@ -15337,10 +15457,12 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
             IReadOnlyDictionary<string, string> mergedBindings,
             IReadOnlyDictionary<string, string> contentBindings,
             IReadOnlyDictionary<string, string> contentSurfaces,
+            LegendConnectReadOnlyContentBindingRequest request,
             LegendConnectReadOnlyContentBindingReceipt receipt) =>
             new(true, true, "read_only_content_bound_governed", mergedBindings,
                 contentBindings, contentSurfaces, [], 1,
-                HigherGovernedEvidenceStandard, null, [receipt]);
+                HigherGovernedEvidenceStandard, null, [receipt],
+                ValidatedReadOnlyContentRequest: request);
 
         internal static GovernedContentResolution Success(
             IReadOnlyDictionary<string, string> mergedBindings,
