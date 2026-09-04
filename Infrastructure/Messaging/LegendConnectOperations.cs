@@ -504,6 +504,25 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
                 "named_external_source_requires_research");
         }
 
+        // A supported answer that was composed from a validated, claim-bound,
+        // read-only zero-write receipt is already current internal governed
+        // knowledge. The authenticated service returned that value during this
+        // exchange, so nothing public can be more authoritative or more recent
+        // and no surface wording ("current", "right now", "today") may
+        // reclassify the satisfied claim as internet research. This is not a
+        // general bypass for supported answers: the claim must actually carry
+        // complete, canonical, unexpired receipt provenance.
+        if (internalAvailable &&
+            HasCompleteReadOnlyContentBindingProvenance(
+                internalInference,
+                decidedUtc))
+        {
+            return Decision(
+                false,
+                LegendConnectResearchNeed.ExistingGovernedKnowledge,
+                "governed_read_only_content_binding_answers_request");
+        }
+
         // Current internal LEGEND state must stay with existing governed
         // operational tools. Internet research is never a substitute for the
         // database, runtime, model, training, capacity, or readiness authority.
@@ -1782,6 +1801,42 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
                 DateTime.UtcNow,
                 discourseState: discourseState)
         };
+
+    /// <summary>
+    /// True only when every claim-bound receipt carried by the finished
+    /// inference is a complete, canonical, read-only, zero-write governed read
+    /// that was observed inside the existing binding freshness window. A
+    /// missing, empty, malformed, foreign-provenance, mutation-capable, or
+    /// expired receipt set is not governed knowledge and must not suppress the
+    /// research decision.
+    /// </summary>
+    private static bool HasCompleteReadOnlyContentBindingProvenance(
+        LegendConnectNativeInferenceSnapshot? inference,
+        DateTime decidedUtc)
+    {
+        var provenance = inference?.ContentBindingProvenance;
+        if (provenance is null || provenance.Count == 0)
+            return false;
+
+        return provenance.All(receipt =>
+            receipt is not null &&
+            receipt.IsReadOnly &&
+            receipt.ZeroWrite &&
+            string.Equals(
+                receipt.Provenance,
+                LegendConnectReadOnlyContentBindingContracts.Provenance,
+                StringComparison.Ordinal) &&
+            !string.IsNullOrWhiteSpace(receipt.RequestIdentity) &&
+            !string.IsNullOrWhiteSpace(receipt.TransitionSignature) &&
+            !string.IsNullOrWhiteSpace(receipt.ResultSemanticFrameSignature) &&
+            !string.IsNullOrWhiteSpace(receipt.ToolName) &&
+            !string.IsNullOrWhiteSpace(receipt.ArgumentsHash) &&
+            !string.IsNullOrWhiteSpace(receipt.OutputHash) &&
+            !string.IsNullOrWhiteSpace(receipt.SemanticValue) &&
+            receipt.ObservedUtc <= decidedUtc &&
+            (decidedUtc - receipt.ObservedUtc).TotalSeconds <=
+                LegendConnectReadOnlyContentBindingContracts.MaximumAgeSeconds);
+    }
 
     private static bool HasCurrentTurnDiscourseAuthority(
         LegendConnectDiscourseStateSnapshot? discourseState)

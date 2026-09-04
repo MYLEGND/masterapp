@@ -1642,10 +1642,40 @@ public sealed class LegendFounderAiNativeOnlyProviderIsolationTests
             Assert.Equal(readRequest.RequestIdentity, provenance.RequestIdentity);
             Assert.True(provenance.IsReadOnly);
             Assert.True(provenance.ZeroWrite);
+
+            // Canonical receipt/research invariant: this claim was answered
+            // from an authenticated, claim-bound, zero-write governed read
+            // during this exchange, so it is existing internal governed
+            // knowledge. The word "current" in the request surface must not
+            // reclassify the already-satisfied claim as public research.
+            var researched = Assert.IsType<LegendConnectResearchNeededDecision>(
+                completed.ResearchDecision);
+            Assert.False(researched.ResearchRequired);
+            Assert.Equal(
+                LegendConnectResearchNeed.ExistingGovernedKnowledge,
+                researched.Need);
+            Assert.Equal(
+                "governed_read_only_content_binding_answers_request",
+                researched.ReasonCode);
+            Assert.True(researched.InternalKnowledgeAvailable);
         }
         else
         {
             Assert.Null(completed.Answer);
+
+            // A rejected receipt is not governed knowledge. The same
+            // time-sensitive surface must fall back to the ordinary research
+            // classification rather than inheriting the satisfied-claim
+            // exemption.
+            var rejected = Assert.IsType<LegendConnectResearchNeededDecision>(
+                completed.ResearchDecision);
+            Assert.NotEqual(
+                "governed_read_only_content_binding_answers_request",
+                rejected.ReasonCode);
+            Assert.NotEqual(
+                LegendConnectResearchNeed.ExistingGovernedKnowledge,
+                rejected.Need);
+            Assert.False(rejected.InternalKnowledgeAvailable);
             // A rejected governed receipt must not become a reason to leave the
             // native boundary.
             Assert.False(completed.RequiresEscalation);
@@ -1663,6 +1693,52 @@ public sealed class LegendFounderAiNativeOnlyProviderIsolationTests
         AssertNoExternalProviderWasReached(
             scope.External,
             "the whole two-pass read-only exchange is native-only");
+    }
+
+    /// <summary>
+    /// External-public-fact control for the receipt/research invariant.
+    ///
+    /// The satisfied-claim exemption above must not become a general research
+    /// bypass. A public factual question that carries no governed read receipt
+    /// is still classified as requiring research, even though the same native
+    /// authority produced the decision, and the classification itself must not
+    /// construct or contact any external provider.
+    /// </summary>
+    [Theory]
+    [InlineData("Who currently holds the record for the deepest ocean dive?")]
+    [InlineData("What is the current published exchange rate for the euro?")]
+    public async Task NativeOnly_PublicFactWithoutAGovernedReceipt_StillRequiresResearch(
+        string publicFactRequest)
+    {
+        using var founderEnvironment = new FounderEnvironmentScope(FounderId);
+        await using var scope = BuildProductionEquivalentScope();
+        await SeedFounderAsync(scope.Db);
+
+        var operations = scope.Resolve<ILegendConnectOperations>();
+        var inference = await operations.TryInferConversationWithDiscourseAsync(
+            publicFactRequest,
+            Array.Empty<LegendConnectConversationContextItem>(),
+            new LegendConnectDiscourseStateSnapshot([]),
+            CancellationToken.None,
+            "en",
+            LegendConnectExternalProviderPolicy.NativeOnly);
+
+        var decision = Assert.IsType<LegendConnectResearchNeededDecision>(
+            inference.ResearchDecision);
+        Assert.True(decision.ResearchRequired);
+        Assert.NotEqual(
+            LegendConnectResearchNeed.ExistingGovernedKnowledge,
+            decision.Need);
+        Assert.NotEqual(
+            "governed_read_only_content_binding_answers_request",
+            decision.ReasonCode);
+        Assert.False(decision.InternalKnowledgeAvailable);
+        Assert.True(
+            inference.ContentBindingProvenance is null ||
+            inference.ContentBindingProvenance.Count == 0);
+        AssertNoExternalProviderWasReached(
+            scope.External,
+            "research classification itself must never leave the native boundary");
     }
 
     /// <summary>
