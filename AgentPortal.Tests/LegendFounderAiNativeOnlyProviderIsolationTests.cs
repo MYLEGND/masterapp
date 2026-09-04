@@ -1175,4 +1175,209 @@ public sealed class LegendFounderAiNativeOnlyProviderIsolationTests
             "external_provider_forbidden_by_native_only_policy",
             allowed.ErrorCode);
     }
+
+    /// <summary>
+    /// The two research boundaries, observed through independent counting
+    /// doubles rather than through the HTTP factory, so the search transport
+    /// and the page retriever are counted separately and cannot mask each
+    /// other.
+    ///
+    /// Native-only must call neither. Provider-enabled must call each exactly
+    /// once and carry the transport provenance through to the outcome.
+    /// </summary>
+    [Fact]
+    public async Task ResearchTransports_AreNeverCalledUnderNativeOnly()
+    {
+        var nativeSearch = new CountingResearchSearchTransport();
+        var nativePages = new CountingResearchPageRetriever();
+        await using var nativeScope = BuildProductionEquivalentScope(
+            configureServices: services =>
+            {
+                services.RemoveAll<ILegendConnectResearchSearchTransport>();
+                services.RemoveAll<ILegendConnectResearchPageRetriever>();
+                services.AddSingleton<ILegendConnectResearchSearchTransport>(
+                    nativeSearch);
+                services.AddSingleton<ILegendConnectResearchPageRetriever>(
+                    nativePages);
+            });
+
+        var nativeOutcome = await nativeScope.Resolve<ILegendConnectOperations>()
+            .ExecuteResearchAsync(
+                ResearchRequest(),
+                CancellationToken.None,
+                LegendConnectExternalProviderPolicy.NativeOnly);
+
+        Assert.Equal(
+            LegendConnectResearchOutcomeState.Failure,
+            nativeOutcome.State);
+        Assert.Equal(0, nativeSearch.CallCount);
+        Assert.Equal(0, nativePages.CallCount);
+        AssertNoExternalProviderWasReached(
+            nativeScope.External,
+            "Native-only research must reach no transport,");
+
+        // NOT PROVEN HERE: the paired provider-enabled 1/1 control.
+        //
+        // Stated exactly rather than asserted loosely: with providers allowed,
+        // this fixture's research request is rejected by an earlier governed
+        // validation gate, so the search transport is not reached and a "1/1"
+        // expectation cannot be satisfied honestly. Building a request that
+        // survives full governed validation is a fixture task that is not
+        // complete, so the control is reported as outstanding instead of being
+        // weakened into a passing assertion.
+        //
+        // What this test does prove is the native-only half above: with the
+        // identical request and independent per-transport counters, neither the
+        // search transport nor the page retriever is called, and the outcome is
+        // an explicit governed failure rather than silent success.
+    }
+
+    private static LegendConnectResearchRequest ResearchRequest()
+    {
+        const string Question = "Verify the current public evidence.";
+        var decidedUtc = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+        var decision = new LegendConnectResearchNeededDecision(
+            true,
+            LegendConnectResearchNeed.InternalKnowledgeGap,
+            "external_factual_internal_knowledge_gap",
+            LegendConnectResearchAccessClass.PublicReadOnly,
+            "en",
+            false,
+            false,
+            false,
+            null,
+            decidedUtc);
+
+        return new LegendConnectResearchRequest(
+            Guid.NewGuid(),
+            Question,
+            decision,
+            [
+                new LegendConnectBoundedSearchQuery(
+                    "query-1",
+                    1,
+                    Question,
+                    "en",
+                    4)
+            ],
+            4,
+            4,
+            8,
+            2_000,
+            1,
+            new LegendConnectResearchAuthorization(
+                true,
+                "founder-authorization",
+                "correlation-1",
+                LegendConnectResearchAccessClass.PublicReadOnly,
+                true,
+                true),
+            null,
+            "meaning_graph_component_unknown",
+            0,
+            decidedUtc);
+    }
+
+    private sealed class CountingResearchSearchTransport
+        : ILegendConnectResearchSearchTransport
+    {
+        public int CallCount;
+
+        public Task<LegendConnectResearchSearchTransportResult> SearchAsync(
+            LegendConnectResearchSearchTransportRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            Interlocked.Increment(ref CallCount);
+            var retrievedUtc =
+                new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+            var source = new LegendConnectResearchSourceIdentity(
+                "source-1",
+                "https://records.example/evidence",
+                "Source One",
+                "Publisher One",
+                LegendConnectResearchSourceClass.PrimaryOfficialRecord,
+                retrievedUtc,
+                retrievedUtc,
+                DocumentLanguageCode: "en",
+                Author: "Record Custodian One",
+                ProvenanceComplete: true,
+                LineageKind:
+                    LegendConnectResearchSourceLineageKind.Original,
+                AuthorityScopes:
+                    [LegendConnectResearchAuthorityScope.GeneralRecord]);
+
+            var searchResult = new LegendConnectSearchResult(
+                "search-result-1",
+                request.Queries[0].QueryIdentity,
+                1,
+                source.SourceIdentity,
+                "Source One",
+                source.CanonicalUri,
+                "A bounded public snippet.",
+                "en",
+                "en");
+
+            return Task.FromResult(
+                new LegendConnectResearchSearchTransportResult(
+                    true,
+                    "CountingSearchTransport",
+                    "CountingSearchProvider",
+                    null,
+                    "counting-settings",
+                    request.Queries,
+                    [
+                        new LegendConnectResearchSearchQueryReceipt(
+                            "receipt-1",
+                            request.Queries[0].QueryIdentity,
+                            request.Queries[0].Query,
+                            "en",
+                            retrievedUtc,
+                            "CountingSearchTransport",
+                            "CountingSearchProvider",
+                            1,
+                            null,
+                            "Recorded",
+                            true,
+                            true)
+                    ],
+                    [searchResult],
+                    [source],
+                    [],
+                    [],
+                    1,
+                    null,
+                    null,
+                    false));
+        }
+    }
+
+    private sealed class CountingResearchPageRetriever
+        : ILegendConnectResearchPageRetriever
+    {
+        public int CallCount;
+
+        public string? ObservedSearchTransport { get; private set; }
+
+        public Task<LegendConnectResearchPageRetrievalResult> RetrieveAsync(
+            LegendConnectResearchPageRetrievalRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            Interlocked.Increment(ref CallCount);
+            ObservedSearchTransport = "CountingSearchTransport";
+            return Task.FromResult(
+                new LegendConnectResearchPageRetrievalResult(
+                    false,
+                    "CountingPageRetriever",
+                    "counting-settings",
+                    request.SearchResults,
+                    request.Sources,
+                    [],
+                    [],
+                    [],
+                    [],
+                    1,
+                    "counting_double_returns_no_documents",
+                    false));
+        }
+    }
 }
