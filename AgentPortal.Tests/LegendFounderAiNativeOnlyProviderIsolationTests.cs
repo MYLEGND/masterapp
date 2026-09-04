@@ -1318,6 +1318,325 @@ public sealed class LegendFounderAiNativeOnlyProviderIsolationTests
             decidedUtc);
     }
 
+    /// <summary>
+    /// The two-pass read-only governed receipt continuity matrix, executed
+    /// entirely under one immutable NativeOnly policy.
+    ///
+    /// The valid row is end to end: pass one refuses to answer and returns the
+    /// governed read request; that request is then handed to the real
+    /// registered <see cref="LegendFounderToolAuthority"/>, composed exactly as
+    /// production composes it, which executes the canonical read-only tool
+    /// <c>legend_translation_quality</c> against the authenticated database and
+    /// issues the receipt itself. The test never fabricates a valid receipt, so
+    /// this proves the whole request/execute/bind loop rather than only the
+    /// second-pass validator.
+    ///
+    /// The negative rows mutate that authority-issued receipt: a wrong request
+    /// identity, a receipt declaring it did not guarantee zero writes, and one
+    /// executed outside the governed freshness window must each fail closed
+    /// with no answer and no escalation.
+    ///
+    /// Both passes use the same NativeOnly policy instance, the governed read
+    /// executes exactly once, no row may construct or contact an external
+    /// provider, and no row may write to the database.
+    /// </summary>
+    [Theory]
+    [InlineData("valid", true, "semantic_transition_governed_composed")]
+    [InlineData("wrong-identity", false, "read_only_content_binding_receipt_malformed")]
+    [InlineData("malformed-zero-write", false, "read_only_content_binding_receipt_malformed")]
+    [InlineData("stale", false, "read_only_content_binding_stale")]
+    public async Task NativeOnly_TwoPassReadOnlyContentBinding_AnswersOnlyForTheExactGovernedReceipt(
+        string receiptCase,
+        bool expectSupported,
+        string expectedReasonCode)
+    {
+        using var founderEnvironment = new FounderEnvironmentScope(FounderId);
+        await using var scope = BuildProductionEquivalentScope();
+        var founder = await SeedFounderAsync(scope.Db);
+        var curriculum = scope.Resolve<LegendConnectCurriculumService>();
+        for (var support = 1; support <= 3; support++)
+        {
+            var submitted = await curriculum.SubmitFounderBatchAsync(
+                ReadOnlyContentBindingFamily(support));
+            Assert.True(submitted.Succeeded, submitted.Message);
+        }
+
+        // One immutable policy object is used for both passes, so continuity of
+        // the native-only decision across the tool round trip is proved rather
+        // than assumed.
+        var policy = LegendConnectExternalProviderPolicy.NativeOnly;
+        var realOperations = scope.Resolve<ILegendConnectOperations>();
+
+        // Counts the governed read at the canonical operations boundary the
+        // tool actually reads through, so "executed exactly once" is observed,
+        // not inferred from the number of test calls.
+        var countingOperations =
+            CountingOperationsProxy.Wrap(realOperations, out var counter);
+
+        var toolAuthority = new LegendFounderToolAuthority(
+            new FounderLegendConnectService(
+                countingOperations,
+                new AgentProfileAccessResolver(scope.Db)),
+            null);
+
+        var pending = await realOperations.TryInferConversationWithDiscourseAsync(
+            ReadOnlyContentRequestText,
+            Array.Empty<LegendConnectConversationContextItem>(),
+            new LegendConnectDiscourseStateSnapshot([]),
+            CancellationToken.None,
+            "en",
+            policy);
+
+        Assert.False(pending.Supported);
+        Assert.False(pending.RequiresEscalation);
+        Assert.Equal("read_only_content_binding_required", pending.ReasonCode);
+        var readRequest = Assert.IsType<LegendConnectReadOnlyContentBindingRequest>(
+            pending.ReadOnlyContentRequest);
+        Assert.Equal("legend_translation_quality", readRequest.ToolName);
+        Assert.Equal("needsReviewCount", readRequest.ValuePath);
+        AssertNoExternalProviderWasReached(
+            scope.External,
+            "native-only pass one must resolve the governed read request internally");
+
+        var writesBeforeRead = scope.Db.ChangeTracker.Entries().Count();
+        var bound = await toolAuthority.BindReadOnlyResultAsync(
+            founder,
+            readRequest,
+            CancellationToken.None);
+
+        Assert.True(bound.Succeeded, bound.ReasonCode);
+        Assert.Equal("read_only_content_binding_receipt_governed", bound.ReasonCode);
+        var issued = bound.Receipt!;
+
+        // The governed read ran exactly once, through the canonical authority.
+        Assert.Equal(1, counter.TranslationQualityReads);
+
+        // The receipt carries real, complete lineage back to the request the
+        // curriculum authority produced.
+        Assert.Equal(readRequest.RequestIdentity, issued.RequestIdentity);
+        Assert.Equal(readRequest.TransitionSignature, issued.TransitionSignature);
+        Assert.Equal(
+            readRequest.ResultSemanticFrameSignature,
+            issued.ResultSemanticFrameSignature);
+        Assert.Equal("legend_translation_quality", issued.ToolName);
+        Assert.Equal(
+            LegendLanguageIdentity.TextHash(readRequest.ArgumentsJson),
+            issued.ArgumentsHash);
+        Assert.Equal(readRequest.ValuePath, issued.ValuePath);
+        Assert.Equal(readRequest.SemanticVariable, issued.SemanticVariable);
+        Assert.Equal(readRequest.ResultDimension, issued.ResultDimension);
+        Assert.Equal(
+            LegendConnectReadOnlyContentBindingContracts.Provenance,
+            issued.Provenance);
+        Assert.True(issued.IsReadOnly);
+        Assert.True(issued.ZeroWrite);
+        Assert.False(string.IsNullOrWhiteSpace(issued.OutputHash));
+
+        // The bound scalar is the value the canonical operations authority
+        // actually reports, not a value chosen by this test.
+        var expectedScalar = (await realOperations
+                .GetTranslationQualityAsync(CancellationToken.None))
+            .NeedsReviewCount
+            .ToString(System.Globalization.CultureInfo.InvariantCulture);
+        Assert.Equal(expectedScalar, issued.SemanticValue);
+
+        var receipt = receiptCase switch
+        {
+            "wrong-identity" => issued with
+            {
+                RequestIdentity = Guid.NewGuid().ToString("N")
+            },
+            "malformed-zero-write" => issued with { ZeroWrite = false },
+            "stale" => issued with
+            {
+                ExecutedUtc = DateTime.UtcNow.AddMinutes(-10),
+                ObservedUtc = DateTime.UtcNow.AddMinutes(-10)
+            },
+            _ => issued
+        };
+
+        var completed = await realOperations.TryInferConversationWithReadOnlyContentAsync(
+            ReadOnlyContentRequestText,
+            Array.Empty<LegendConnectConversationContextItem>(),
+            new LegendConnectDiscourseStateSnapshot([]),
+            receipt,
+            CancellationToken.None,
+            "en",
+            policy);
+
+        Assert.Equal(expectedReasonCode, completed.ReasonCode);
+        Assert.Equal(expectSupported, completed.Supported);
+
+        if (expectSupported)
+        {
+            // The exact governed conclusion realized from the governed scalar,
+            // not merely a non-empty answer.
+            Assert.Equal($"Open issues {expectedScalar}.", completed.Answer);
+            var provenance = Assert.Single(completed.ContentBindingProvenance!);
+            Assert.Equal(
+                LegendConnectReadOnlyContentBindingContracts.Provenance,
+                provenance.Provenance);
+            Assert.Equal(readRequest.RequestIdentity, provenance.RequestIdentity);
+            Assert.True(provenance.IsReadOnly);
+            Assert.True(provenance.ZeroWrite);
+        }
+        else
+        {
+            Assert.Null(completed.Answer);
+            // A rejected governed receipt must not become a reason to leave the
+            // native boundary.
+            Assert.False(completed.RequiresEscalation);
+            Assert.True(
+                completed.ContentBindingProvenance is null ||
+                completed.ContentBindingProvenance.Count == 0);
+        }
+
+        // The second pass revalidates; it must never execute the tool again.
+        Assert.Equal(1, counter.TranslationQualityReads);
+        Assert.Equal(writesBeforeRead, scope.Db.ChangeTracker.Entries().Count());
+        AssertNoExternalProviderWasReached(
+            scope.External,
+            "the whole two-pass read-only exchange is native-only");
+    }
+
+    /// <summary>
+    /// Counts governed reads at the real operations boundary while delegating
+    /// every call to the production instance. Nothing is stubbed; this only
+    /// observes.
+    /// </summary>
+    private class CountingOperationsProxy : DispatchProxy
+    {
+        private ILegendConnectOperations _inner = null!;
+
+        public int TranslationQualityReads { get; private set; }
+
+        public static ILegendConnectOperations Wrap(
+            ILegendConnectOperations inner,
+            out CountingOperationsProxy counter)
+        {
+            var proxy = Create<ILegendConnectOperations, CountingOperationsProxy>();
+            counter = (CountingOperationsProxy)(object)proxy;
+            counter._inner = inner;
+            return proxy;
+        }
+
+        protected override object? Invoke(MethodInfo? targetMethod, object?[]? args)
+        {
+            if (targetMethod is null)
+                throw new ArgumentNullException(nameof(targetMethod));
+
+            if (string.Equals(
+                    targetMethod.Name,
+                    nameof(ILegendConnectOperations.GetTranslationQualityAsync),
+                    StringComparison.Ordinal))
+            {
+                TranslationQualityReads++;
+            }
+
+            try
+            {
+                return targetMethod.Invoke(_inner, args);
+            }
+            catch (TargetInvocationException exception)
+                when (exception.InnerException is not null)
+            {
+                throw exception.InnerException;
+            }
+        }
+    }
+
+    private const string ReadOnlyContentRequestText =
+        "What is the current open issue count?";
+
+    /// <summary>
+    /// The canonical read-only content-binding curriculum family, matching the
+    /// established fixture in
+    /// <see cref="LegendConnectSemanticSpanGroundingTests"/>. It declares the
+    /// governed tool, arguments, value path and freshness window on the result
+    /// frame, so the read request under test is produced by the curriculum
+    /// authority rather than by this test.
+    /// </summary>
+    private static LegendConnectCurriculumBatchSubmission ReadOnlyContentBindingFamily(
+        int support)
+    {
+        var countSurface = support switch
+        {
+            1 => "two",
+            2 => "four",
+            _ => "six"
+        };
+        var countValue = (support * 2).ToString(
+            System.Globalization.CultureInfo.InvariantCulture);
+        var resultVariations = new Dictionary<string, string>
+        {
+            ["response_kind"] = "current_issue_count",
+            ["current_issue_count"] = countValue,
+            ["content_binding_authority"] = "legend_founder_tool_authority",
+            ["content_binding_access"] = "read_only",
+            ["content_binding_tool"] = "legend_translation_quality",
+            ["content_binding_arguments"] = "{}",
+            ["content_binding_value_path"] = "needsReviewCount",
+            ["content_binding_max_age_seconds"] = "60"
+        };
+        var resultFrame = new Dictionary<string, string>(resultVariations)
+        {
+            ["current_issue_count"] = "$IssueCount"
+        };
+
+        return new LegendConnectCurriculumBatchSubmission(
+            $"response.read-only-content.{support}",
+            "Founder-governed read-only operational content binding",
+            [
+                new LegendConnectCurriculumExampleSubmission(
+                    $"Founder current issue request {support}: {ReadOnlyContentRequestText}",
+                    new Dictionary<string, string>
+                    {
+                        ["request_surface"] = ReadOnlyContentRequestText,
+                        ["conversation_function"] = "current_issue_count_request"
+                    },
+                    new LegendConnectMeaningGraphSubmission(
+                    [
+                        new LegendConnectMeaningNodeSubmission(
+                            "function",
+                            "conversation_function",
+                            "current_issue_count_request",
+                            "What is the current open issue count")
+                    ],
+                    [])),
+                new LegendConnectCurriculumExampleSubmission(
+                    $"Open issues {countSurface}.",
+                    resultVariations,
+                    new LegendConnectMeaningGraphSubmission(
+                    [
+                        new LegendConnectMeaningNodeSubmission(
+                            "label",
+                            "response_kind",
+                            "current_issue_count",
+                            "Open issues"),
+                        new LegendConnectMeaningNodeSubmission(
+                            "count",
+                            "current_issue_count",
+                            countValue,
+                            countSurface)
+                    ],
+                    [new LegendConnectMeaningRelationSubmission(
+                        "label", "reports", "count")]))
+            ],
+            [
+                new LegendConnectSemanticTransitionSubmission(
+                    new LegendConnectSemanticFrameSubmission(
+                        new Dictionary<string, string>
+                        {
+                            ["conversation_function"] = "current_issue_count_request"
+                        }),
+                    new LegendConnectSemanticFrameSubmission(resultFrame))
+            ],
+            support == 1
+                ? [new LegendConnectSemanticSpanGroundingSubmission(
+                    "conversation_function", "request_surface")]
+                : []);
+    }
+
     private sealed class CountingResearchSearchTransport
         : ILegendConnectResearchSearchTransport
     {
