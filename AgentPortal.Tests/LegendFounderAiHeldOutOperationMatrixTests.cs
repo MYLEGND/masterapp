@@ -87,7 +87,7 @@ public sealed class LegendFounderAiHeldOutOperationMatrixTests
 
         Record(rows);
 
-        Assert.All(rows, AssertNativeBoundary);
+        Assert.All(rows, row => AssertNativeBoundary(row));
 
         // A row is never required to refuse. It must either be answered under
         // LEGEND authority or declare an explicit governed reason.
@@ -177,8 +177,20 @@ public sealed class LegendFounderAiHeldOutOperationMatrixTests
 
         Record([first, followUp]);
 
-        AssertNativeCapability(first, ["Marlin"]);
-        AssertNativeCapability(followUp, ["Corine", "November"]);
+        // Retaining the conversation is the behavior under test, so exactly the
+        // two canonical discourse entities may be written and nothing else.
+        // The live-production shadow gate remains absolute zero-write.
+        string[] canonicalDiscourseWrites =
+        [
+            "LegendFounderAiDiscourseConversation",
+            "LegendFounderAiDiscourseTurn"
+        ];
+
+        AssertNativeCapability(first, ["Marlin"], canonicalDiscourseWrites);
+        AssertNativeCapability(
+            followUp,
+            ["Corine", "November"],
+            canonicalDiscourseWrites);
     }
 
     /// <summary>
@@ -210,16 +222,22 @@ public sealed class LegendFounderAiHeldOutOperationMatrixTests
     /// The absolute native-only boundary: no provider HTTP call, no attempted
     /// operational write and no provider authority, whatever the outcome.
     /// </summary>
-    private static void AssertNativeBoundary(MatrixRow row)
+    private static void AssertNativeBoundary(
+        MatrixRow row,
+        IReadOnlyList<string>? allowedWriteEntities = null)
     {
         Assert.Equal(0, row.ProviderCalls);
         Assert.Equal(0, row.OperationalWriteAttempts);
         Assert.NotEqual("OpenAITeacher", row.ResponseAuthority);
 
         // Zero-write is proven at three independent boundaries: no rejected
-        // operational write, no persistence attempt of any kind, and no
-        // pending tracked mutation left behind by the read path.
-        Assert.Empty(row.ObservedWriteEntities);
+        // operational write, no persistence attempt outside the explicitly
+        // bounded set under test, and no pending tracked mutation left behind.
+        var allowed = allowedWriteEntities ?? [];
+
+        Assert.Empty(
+            row.ObservedWriteEntities
+                .Where(entity => !allowed.Contains(entity, StringComparer.Ordinal)));
         Assert.Equal(0, row.PendingTrackedChanges);
     }
 
@@ -231,9 +249,10 @@ public sealed class LegendFounderAiHeldOutOperationMatrixTests
     /// </summary>
     private static void AssertNativeCapability(
         MatrixRow row,
-        IReadOnlyList<string> requiredAnswerElements)
+        IReadOnlyList<string> requiredAnswerElements,
+        IReadOnlyList<string>? allowedWriteEntities = null)
     {
-        AssertNativeBoundary(row);
+        AssertNativeBoundary(row, allowedWriteEntities);
         Assert.True(
             row.Succeeded,
             $"Native capability required. Label={row.Label}; stage={row.Stage}; reason={row.Reason}; error={row.Error}; message={row.Message}");
@@ -523,7 +542,12 @@ public sealed class LegendFounderAiHeldOutOperationMatrixTests
             registry,
             ControllerTestHelpers.BuildTranslationService(),
             softwareRemediation: null,
-            operationalPortfolio: new FounderOperationalPortfolioService(db));
+            agencyCommand: new AgencyCommandService(
+                db,
+                new ProductionService(
+                    db,
+                    NullLogger<ProductionService>.Instance),
+                NullLogger<AgencyCommandService>.Instance));
     }
 
     private static async Task<ClaimsPrincipal> AddFounderProfileAsync(

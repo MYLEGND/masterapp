@@ -32,7 +32,7 @@ internal sealed class LegendFounderToolAuthority
 
     private readonly FounderLegendConnectService _legend;
     private readonly IFounderSoftwareRemediationService? _softwareRemediation;
-    private readonly FounderOperationalPortfolioService? _operationalPortfolio;
+    private readonly AgencyCommandService? _agencyCommand;
     private readonly HashSet<string> _consumedMutationAuthorizations =
         new(StringComparer.Ordinal);
     private readonly object _mutationAuthorizationLock = new();
@@ -47,11 +47,11 @@ internal sealed class LegendFounderToolAuthority
     internal LegendFounderToolAuthority(
         FounderLegendConnectService legend,
         IFounderSoftwareRemediationService? softwareRemediation,
-        FounderOperationalPortfolioService? operationalPortfolio = null)
+        AgencyCommandService? agencyCommand = null)
     {
         _legend = legend;
         _softwareRemediation = softwareRemediation;
-        _operationalPortfolio = operationalPortfolio;
+        _agencyCommand = agencyCommand;
     }
 
     internal IReadOnlyList<object> Tools => BuildFounderTools();
@@ -451,13 +451,15 @@ internal sealed class LegendFounderToolAuthority
 
             case "legend_client_lead_portfolio":
             {
-                if (_operationalPortfolio is null)
+                // Adapted from the canonical client/lead visibility owner;
+                // this registry never queries those records itself.
+                if (_agencyCommand is null)
                 {
                     return """{"error":"client_lead_portfolio_unavailable"}""";
                 }
 
                 return SerializeUnbounded(
-                    await _operationalPortfolio.GetPortfolioAsync(
+                    await _agencyCommand.GetFounderPortfolioCountsAsync(
                         founder,
                         cancellationToken));
             }

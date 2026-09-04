@@ -129,7 +129,6 @@ builder.Services.AddScoped<AgentProfileAccessResolver>();
 builder.Services.AddScoped<AgencyCommandService>();
 builder.Services.AddScoped<FounderSubscribersService>();
 builder.Services.AddScoped<FounderLegendConnectService>();
-builder.Services.AddScoped<FounderOperationalPortfolioService>();
 builder.Services.AddScoped<LegendIntelligenceEvaluationService>();
 builder.Services.AddScoped<ILegendIntelligenceEvaluationService>(provider =>
     provider.GetRequiredService<LegendIntelligenceEvaluationService>());

@@ -86,7 +86,7 @@ public sealed class LegendFounderAiConversationService
         ILegendLanguageRegistry languages,
         ITranslationService translation,
         IFounderSoftwareRemediationService? softwareRemediation = null,
-        FounderOperationalPortfolioService? operationalPortfolio = null)
+        AgencyCommandService? agencyCommand = null)
     {
         _httpClientFactory = httpClientFactory;
         _configuration = configuration;
@@ -98,7 +98,7 @@ public sealed class LegendFounderAiConversationService
             new LegendFounderToolAuthority(
                 legend,
                 softwareRemediation,
-                operationalPortfolio);
+                agencyCommand);
         _logger = logger;
 
         _timeoutSeconds =
@@ -3226,11 +3226,17 @@ Never upgrade an unresolved, rejected or contradicted record merely because it a
 
         var text = latest.ToLowerInvariant();
 
-        // Records this deployment owns are governed resources. The one
-        // ownership-deixis authority decides this, so no subject-matter phrase
-        // list is maintained here, and the request cannot complete until a
-        // registered governed read returns a successful receipt.
-        if (LegendConnectOwnedRecordRequest.RequestsOwnedRecordState(text))
+        // Records this deployment owns are governed resources. Typing a request
+        // as an owned-record inspection is a governed semantic decision made by
+        // the single owned-record authority from production-eligible governed
+        // relations. This entry point holds no meaning-graph relation kinds, so
+        // the classification fails closed; when it does establish the intent the
+        // request cannot complete until a registered governed read returns a
+        // successful receipt.
+        var ownedRecord =
+            LegendConnectOwnedRecordRequest.Classify(governedRelationKinds: null);
+
+        if (ownedRecord.RequiresGovernedReadReceipt)
             return true;
 
         var explicitGovernedSignals = new[]

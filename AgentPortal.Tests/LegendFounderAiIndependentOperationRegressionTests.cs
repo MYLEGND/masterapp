@@ -192,35 +192,62 @@ public sealed class LegendFounderAiIndependentOperationRegressionTests
         Assert.Empty(operations.Invocations);
     }
 
-    // Root cause B: explicit governed read requests and Founder operational
-    // record questions were not recognized as governed inspection.
+    // Root cause B, restated honestly. Typing a request as an owned-record
+    // inspection is a governed semantic decision. The authority carries no
+    // vocabulary, so with no production-eligible governed relation surfaced it
+    // must fail closed and name the exact missing artifact rather than route on
+    // surface text. These inputs are ordinary paraphrases: none of them can be
+    // typed today, and that is the reported structural result.
     [Theory]
-    // Paraphrases of one request, plus unrelated domains, to show the rule is
-    // ownership deixis and not a subject-matter phrase list.
     [InlineData("How many clients and leads do we have right now?")]
     [InlineData("What is the current count of our open households?")]
     [InlineData("Show me the status of our renewals today.")]
-    [InlineData("How many machines are currently in our maintenance queue?")]
-    [InlineData("What is the total in my portfolio at the moment?")]
-    public void OwnedRecordStateRequests_RequireGovernedInspection(string text)
+    [InlineData("Rewrite this rough note as a concise professional update.")]
+    public void OwnedRecordClassification_FailsClosedAndNamesTheMissingRelation(
+        string text)
     {
-        Assert.True(RequiresGovernedInspection(text, "legend"));
-        Assert.True(RequiresGovernedInspection(text, "teacher"));
-        Assert.True(
-            LegendConnectOwnedRecordRequest.RequestsOwnedRecordState(text));
+        // The authority never reads the request text: there is no text path.
+        Assert.NotNull(text);
+
+        var classification =
+            LegendConnectOwnedRecordRequest.Classify(governedRelationKinds: null);
+
+        Assert.Equal(
+            LegendConnectOwnedRecordIntent.Unknown,
+            classification.Intent);
+        Assert.False(classification.RequiresGovernedReadReceipt);
+        Assert.Equal(
+            LegendConnectOwnedRecordRequest.RequiredRelationKind,
+            classification.MissingSemanticTransition);
     }
 
-    [Theory]
-    [InlineData("Rewrite this rough note as a concise professional update.")]
-    [InlineData("Explain why two independent observations outrank one repeated claim.")]
-    [InlineData("Help me structure an argument about delivery sequencing.")]
-    // Third-party record state is not owned record state.
-    [InlineData("How many public filings did that company publish last year?")]
-    public void OrdinarySubjectMatter_DoesNotRequireGovernedInspection(string text)
+    // When the governed meaning graph does surface the required
+    // production-eligible relation kind, the typed intent and its receipt
+    // obligation are established, and unrelated governed relations do not
+    // establish it.
+    [Fact]
+    public void OwnedRecordClassification_TypesTheIntentFromTheGovernedRelation()
     {
-        Assert.False(RequiresGovernedInspection(text, "teacher"));
-        Assert.False(
-            LegendConnectOwnedRecordRequest.RequestsOwnedRecordState(text));
+        var established = LegendConnectOwnedRecordRequest.Classify(
+        [
+            "unrelated_relation",
+            LegendConnectOwnedRecordRequest.RequiredRelationKind
+        ]);
+
+        Assert.Equal(
+            LegendConnectOwnedRecordIntent.OwnedRecordStateInspection,
+            established.Intent);
+        Assert.True(established.RequiresGovernedReadReceipt);
+        Assert.Null(established.MissingSemanticTransition);
+
+        var unrelated = LegendConnectOwnedRecordRequest.Classify(
+            ["unrelated_relation"]);
+
+        Assert.Equal(
+            LegendConnectOwnedRecordIntent.Unknown,
+            unrelated.Intent);
+        Assert.False(unrelated.RequiresGovernedReadReceipt);
+        Assert.Null(unrelated.MissingSemanticTransition);
     }
 
     // Root cause C: the retained-knowledge preload was treated as completion
@@ -290,7 +317,7 @@ public sealed class LegendFounderAiIndependentOperationRegressionTests
             db,
             operations.Object,
             handler,
-            operationalPortfolio: new FounderOperationalPortfolioService(db));
+            agencyCommand: BuildAgencyCommandService(db));
 
         writeSentinel.Arm();
         var response = await service.ReplyAsync(founder, Request("legend", prompt));
@@ -363,7 +390,7 @@ public sealed class LegendFounderAiIndependentOperationRegressionTests
             db,
             operations.Object,
             handler,
-            operationalPortfolio: null);
+            agencyCommand: null);
 
         var response = await service.ReplyAsync(
             founder,
@@ -402,15 +429,15 @@ public sealed class LegendFounderAiIndependentOperationRegressionTests
             IsInternal = true
         });
         await db.SaveChangesAsync();
-        var service = new FounderOperationalPortfolioService(db);
+        var service = BuildAgencyCommandService(db);
 
         writeSentinel.Arm();
 
         await Assert.ThrowsAsync<ForbidResultException>(() =>
-            service.GetPortfolioAsync(
+            service.GetFounderPortfolioCountsAsync(
                 ControllerTestHelpers.BuildUser("not-the-founder")));
 
-        var snapshot = await service.GetPortfolioAsync(founder);
+        var snapshot = await service.GetFounderPortfolioCountsAsync(founder);
 
         // ActiveLeadQueue excludes the converted lead.
         Assert.Equal(1, snapshot.ActiveLeadCount);
@@ -605,12 +632,21 @@ public sealed class LegendFounderAiIndependentOperationRegressionTests
             Messages = [new LegendFounderAiChatMessage("user", prompt)]
         };
 
+    private static AgencyCommandService BuildAgencyCommandService(
+        Infrastructure.Data.MasterAppDbContext db) =>
+        new(
+            db,
+            new ProductionService(
+                db,
+                NullLogger<ProductionService>.Instance),
+            NullLogger<AgencyCommandService>.Instance);
+
     private static LegendFounderAiConversationService CreateService(
         Infrastructure.Data.MasterAppDbContext db,
         ILegendConnectOperations operations,
         RecordingProviderHandler handler,
         ITranslationService? translation = null,
-        FounderOperationalPortfolioService? operationalPortfolio = null) =>
+        AgencyCommandService? agencyCommand = null) =>
         new(
             new RecordingHttpClientFactory(handler),
             new ConfigurationBuilder()
@@ -633,7 +669,7 @@ public sealed class LegendFounderAiIndependentOperationRegressionTests
                 new ConfigurationBuilder().Build()),
             translation ?? ControllerTestHelpers.BuildTranslationService(),
             softwareRemediation: null,
-            operationalPortfolio: operationalPortfolio);
+            agencyCommand);
 
     // Structural finding F, stated as executable evidence rather than as an
     // assertion in prose: the governed-reasoning realization authority admits

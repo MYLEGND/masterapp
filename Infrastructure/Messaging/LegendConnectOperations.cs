@@ -495,12 +495,17 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
                     : "internal_legend_state_requires_governed_tools");
         }
 
-        // Records this deployment owns are authenticated governed resources.
-        // The public internet holds no authority over them. Generic retained
-        // evidence is availability, not relevance: it cannot prove the exact
-        // requested record state, so the request stays on the authenticated
-        // read path and must complete with a governed read receipt.
-        if (LegendConnectOwnedRecordRequest.RequestsOwnedRecordState(normalized))
+        // Records this deployment owns are authenticated governed resources and
+        // the public internet holds no authority over them. Typing a request as
+        // such an inspection is a governed semantic decision, so it is made only
+        // from production-eligible governed relations. This decision point holds
+        // no meaning-graph relation kinds, so the classification fails closed
+        // and names the exact missing artifact rather than guessing from text.
+        var ownedRecordClassification =
+            LegendConnectOwnedRecordRequest.Classify(governedRelationKinds: null);
+
+        if (ownedRecordClassification.Intent ==
+            LegendConnectOwnedRecordIntent.OwnedRecordStateInspection)
         {
             return Decision(
                 false,
