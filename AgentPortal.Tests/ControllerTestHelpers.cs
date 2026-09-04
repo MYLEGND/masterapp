@@ -93,7 +93,8 @@ internal static class ControllerTestHelpers
         translation
             .Setup(service => service.DetectLanguageAsync(
                 It.IsAny<string>(),
-                It.IsAny<CancellationToken>()))
+                It.IsAny<CancellationToken>(),
+                It.IsAny<LegendConnectExternalProviderPolicy?>()))
             .ReturnsAsync(new TranslationDetectionResult(
                 true,
                 detectedLanguage,

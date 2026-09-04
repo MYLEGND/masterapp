@@ -140,7 +140,16 @@ public sealed class LegendFounderAiIndependentOperationRegressionTests
 
         var task = (Task)resolve!.Invoke(
             service,
-            [declaredLanguageCode, "A held-out governed request.", CancellationToken.None])!;
+            [
+                declaredLanguageCode,
+                "A held-out governed request.",
+                CancellationToken.None,
+                // Provider-enabled: this theory covers the escalation-relevant
+                // outcomes of the existing identification path. Native-only
+                // isolation of the same path is proved separately, at the real
+                // boundary, in LegendFounderAiNativeOnlyProviderIsolationTests.
+                LegendConnectExternalProviderPolicy.ProviderEnabled
+            ])!;
         await task;
         var resolution = task.GetType().GetProperty("Result")!.GetValue(task)!;
 
@@ -301,7 +310,8 @@ public sealed class LegendFounderAiIndependentOperationRegressionTests
                 It.IsAny<IReadOnlyList<LegendConnectConversationContextItem>>(),
                 It.IsAny<LegendConnectDiscourseStateSnapshot?>(),
                 It.IsAny<CancellationToken>(),
-                It.IsAny<string>()))
+                It.IsAny<string>(),
+                It.IsAny<LegendConnectExternalProviderPolicy?>()))
             .ReturnsAsync(UnsupportedEscalatable(AdmittedOwnedRecordIntent()));
         operations
             .Setup(operation => operation.SearchRetainedKnowledgeAsync(
@@ -616,7 +626,8 @@ public sealed class LegendFounderAiIndependentOperationRegressionTests
                 It.IsAny<IReadOnlyList<LegendConnectConversationContextItem>>(),
                 It.IsAny<LegendConnectDiscourseStateSnapshot?>(),
                 It.IsAny<CancellationToken>(),
-                It.IsAny<string>()))
+                It.IsAny<string>(),
+                It.IsAny<LegendConnectExternalProviderPolicy?>()))
             .ReturnsAsync(UnsupportedEscalatable());
         operations
             .Setup(operation => operation.SearchRetainedKnowledgeAsync(
