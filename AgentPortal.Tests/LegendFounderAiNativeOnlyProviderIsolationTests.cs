@@ -1658,6 +1658,97 @@ public sealed class LegendFounderAiNativeOnlyProviderIsolationTests
                 "governed_read_only_content_binding_answers_request",
                 researched.ReasonCode);
             Assert.True(researched.InternalKnowledgeAvailable);
+
+            // The same authentic issuer/validator/composer artifact must fail
+            // closed if any validity-bearing receipt field or the realized
+            // claim is changed after issuance. OutputHash deliberately remains
+            // unchanged so each row proves the omitted field itself is bound.
+            var authenticReceipt = provenance;
+            var decidedUtc = researched.DecidedUtc;
+            var receiptMutations = new[]
+            {
+                (
+                    "semantic-value",
+                    authenticReceipt with
+                    {
+                        SemanticValue = authenticReceipt.SemanticValue + "-mutated"
+                    }),
+                (
+                    "provenance",
+                    authenticReceipt with
+                    {
+                        Provenance = authenticReceipt.Provenance + "-mutated"
+                    }),
+                (
+                    "read-only",
+                    authenticReceipt with { IsReadOnly = false }),
+                (
+                    "zero-write",
+                    authenticReceipt with { ZeroWrite = false }),
+                (
+                    "observed-time",
+                    authenticReceipt with
+                    {
+                        ObservedUtc = authenticReceipt.ObservedUtc.AddTicks(1)
+                    }),
+                (
+                    "executed-time",
+                    authenticReceipt with
+                    {
+                        ExecutedUtc = authenticReceipt.ExecutedUtc.AddTicks(1)
+                    })
+            };
+
+            foreach (var mutation in receiptMutations)
+            {
+                var mutatedInference = completed with
+                {
+                    ContentBindingProvenance = [mutation.Item2],
+                    ResearchDecision = null
+                };
+                var mutationDecision = LegendConnectOperations.DecideResearchNeeded(
+                    ReadOnlyContentRequestText,
+                    "en",
+                    mutatedInference,
+                    decidedUtc);
+
+                Assert.NotEqual(
+                    "governed_read_only_content_binding_answers_request",
+                    mutationDecision.ReasonCode);
+                Assert.NotEqual(
+                    LegendConnectResearchNeed.ExistingGovernedKnowledge,
+                    mutationDecision.Need);
+            }
+
+            var changedClaim = completed with
+            {
+                Answer = completed.Answer + " Mutated.",
+                ResearchDecision = null
+            };
+            var changedClaimDecision = LegendConnectOperations.DecideResearchNeeded(
+                ReadOnlyContentRequestText,
+                "en",
+                changedClaim,
+                decidedUtc);
+            Assert.NotEqual(
+                "governed_read_only_content_binding_answers_request",
+                changedClaimDecision.ReasonCode);
+            Assert.NotEqual(
+                LegendConnectResearchNeed.ExistingGovernedKnowledge,
+                changedClaimDecision.Need);
+
+            var expiredDecision = LegendConnectOperations.DecideResearchNeeded(
+                ReadOnlyContentRequestText,
+                "en",
+                completed with { ResearchDecision = null },
+                authenticReceipt.ObservedUtc.AddSeconds(
+                    readRequest.MaximumAgeSeconds + 1));
+            Assert.NotEqual(
+                "governed_read_only_content_binding_answers_request",
+                expiredDecision.ReasonCode);
+            Assert.NotEqual(
+                LegendConnectResearchNeed.ExistingGovernedKnowledge,
+                expiredDecision.Need);
         }
         else
         {
