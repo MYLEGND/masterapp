@@ -500,6 +500,21 @@ public sealed class LegendFounderAiNativeOnlyProviderIsolationTests
     /// supported symbolic result and therefore actually reaches the
     /// promoted-model boundary. Without this the request fails earlier and any
     /// zero-provider count would be vacuous.
+    ///
+    /// SCOPE, stated exactly: the request exercised by these tests is the
+    /// admitted curriculum surface itself. These are therefore
+    /// ADMITTED-REQUEST PROVIDER-BOUNDARY REACHABILITY proofs. They are NOT
+    /// held-out or generalized-composition evidence and must not be counted as
+    /// such.
+    ///
+    /// OPEN DEFECT, recorded for the next repair group rather than claimed as
+    /// a P0 pass: held-out semantic composition is unproven here. An attempt to
+    /// drive an unseen paraphrase through a self-invented metadata dimension
+    /// was refused at curriculum submission, which was a defect in that test
+    /// fixture, not evidence about the product. A valid held-out proof must
+    /// reuse an already-governed component with a real oracle (see
+    /// LegendConnectCompositionalUnderstandingTests and
+    /// LegendConnectGovernedReasoningExecutorTests) and is not attempted here.
     /// </summary>
     private static async Task SeedSupportedSymbolicTransitionAsync(
         TestScope scope)
@@ -568,7 +583,7 @@ public sealed class LegendFounderAiNativeOnlyProviderIsolationTests
     /// the native-only zeros are a decision, not an inert fixture.
     /// </summary>
     [Fact]
-    public async Task ReplyAsync_NativeOnly_ServesSymbolicAnswerWithDormantModelAndNoExternalClient()
+    public async Task ReplyAsync_NativeOnly_AdmittedRequest_ServesSymbolicAnswerWithDormantModelAndNoExternalClient()
     {
         using var founderEnvironment = new FounderEnvironmentScope(FounderId);
         await using var scope = BuildProductionEquivalentScope();
@@ -599,8 +614,17 @@ public sealed class LegendFounderAiNativeOnlyProviderIsolationTests
             founder,
             NativeRequest(SymbolicRequestText, nativeOnly: true));
 
-        Assert.NotNull(response);
-        Assert.NotEqual("OpenAITeacher", response.ResponseAuthority);
+        // The real serving response, not merely "not the provider": LEGEND
+        // must succeed under its own authority and return the exact governed
+        // conclusion. A SystemDiagnostic, a wrong native authority, an empty
+        // message or different text now fails this test.
+        Assert.True(response.Succeeded, response.Error);
+        Assert.Equal("LegendAi", response.ResponseAuthority);
+        Assert.Contains(
+            SymbolicAnswer,
+            response.Message,
+            StringComparison.Ordinal);
+
         Assert.Equal(0, scope.External.CallsTo("LegendModelEvaluation"));
         Assert.Equal(0, scope.External.CallsTo("OpenAI"));
         AssertNoExternalProviderWasReached(
@@ -609,7 +633,7 @@ public sealed class LegendFounderAiNativeOnlyProviderIsolationTests
     }
 
     [Fact]
-    public async Task ProviderEnabled_SupportedSymbolicRequest_MakesExactlyOneModelCallAndKeepsProvenance()
+    public async Task ProviderEnabled_AdmittedRequest_MakesExactlyOneModelCallAndKeepsProvenance()
     {
         await using var scope = BuildProductionEquivalentScope(
             new Dictionary<string, string>
@@ -1186,7 +1210,7 @@ public sealed class LegendFounderAiNativeOnlyProviderIsolationTests
     /// once and carry the transport provenance through to the outcome.
     /// </summary>
     [Fact]
-    public async Task ResearchTransports_AreNeverCalledUnderNativeOnly()
+    public async Task ResearchTransports_AreNeverCalledNativeOnlyAndCalledExactlyOnceWhenAllowed()
     {
         var nativeSearch = new CountingResearchSearchTransport();
         var nativePages = new CountingResearchPageRetriever();
@@ -1216,20 +1240,36 @@ public sealed class LegendFounderAiNativeOnlyProviderIsolationTests
             nativeScope.External,
             "Native-only research must reach no transport,");
 
-        // NOT PROVEN HERE: the paired provider-enabled 1/1 control.
-        //
-        // Stated exactly rather than asserted loosely: with providers allowed,
-        // this fixture's research request is rejected by an earlier governed
-        // validation gate, so the search transport is not reached and a "1/1"
-        // expectation cannot be satisfied honestly. Building a request that
-        // survives full governed validation is a fixture task that is not
-        // complete, so the control is reported as outstanding instead of being
-        // weakened into a passing assertion.
-        //
-        // What this test does prove is the native-only half above: with the
-        // identical request and independent per-transport counters, neither the
-        // search transport nor the page retriever is called, and the outcome is
-        // an explicit governed failure rather than silent success.
+        var allowedSearch = new CountingResearchSearchTransport();
+        var allowedPages = new CountingResearchPageRetriever();
+        await using var allowedScope = BuildProductionEquivalentScope(
+            configureServices: services =>
+            {
+                services.RemoveAll<ILegendConnectResearchSearchTransport>();
+                services.RemoveAll<ILegendConnectResearchPageRetriever>();
+                services.AddSingleton<ILegendConnectResearchSearchTransport>(
+                    allowedSearch);
+                services.AddSingleton<ILegendConnectResearchPageRetriever>(
+                    allowedPages);
+            });
+
+        await allowedScope.Resolve<ILegendConnectOperations>()
+            .ExecuteResearchAsync(
+                ResearchRequest(),
+                CancellationToken.None,
+                LegendConnectExternalProviderPolicy.ProviderEnabled);
+
+        // Counted independently, so neither boundary can mask the other.
+        Assert.Equal(1, allowedSearch.CallCount);
+        Assert.Equal(1, allowedPages.CallCount);
+
+        // The page retriever received the search transport's own governed
+        // output, so provenance crosses the boundary rather than being
+        // regenerated.
+        Assert.Equal("source-1", allowedPages.ObservedSourceIdentity);
+        Assert.Equal(
+            "search-result-1",
+            allowedPages.ObservedSearchResultIdentity);
     }
 
     private static LegendConnectResearchRequest ResearchRequest()
@@ -1267,8 +1307,8 @@ public sealed class LegendFounderAiNativeOnlyProviderIsolationTests
             1,
             new LegendConnectResearchAuthorization(
                 true,
-                "founder-authorization",
-                "correlation-1",
+                LegendConnectResearchContracts.PublicAuthorizationProvenance,
+                Guid.NewGuid().ToString("N"),
                 LegendConnectResearchAccessClass.PublicReadOnly,
                 true,
                 true),
@@ -1356,14 +1396,23 @@ public sealed class LegendFounderAiNativeOnlyProviderIsolationTests
     {
         public int CallCount;
 
-        public string? ObservedSearchTransport { get; private set; }
+        public string? ObservedSourceIdentity { get; private set; }
+
+        public string? ObservedSearchResultIdentity { get; private set; }
 
         public Task<LegendConnectResearchPageRetrievalResult> RetrieveAsync(
             LegendConnectResearchPageRetrievalRequest request,
             CancellationToken cancellationToken = default)
         {
             Interlocked.Increment(ref CallCount);
-            ObservedSearchTransport = "CountingSearchTransport";
+            ObservedSourceIdentity =
+                request.Sources.Count > 0
+                    ? request.Sources[0].SourceIdentity
+                    : null;
+            ObservedSearchResultIdentity =
+                request.SearchResults.Count > 0
+                    ? request.SearchResults[0].SearchResultIdentity
+                    : null;
             return Task.FromResult(
                 new LegendConnectResearchPageRetrievalResult(
                     false,
