@@ -14,6 +14,10 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using System.Reflection;
+using System.Security.Claims;
+using AgentPortal.Services;
+using Domain.Entities;
+using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
 
 namespace AgentPortal.Tests;
@@ -42,9 +46,48 @@ public sealed class LegendFounderAiNativeOnlyProviderIsolationTests
     /// recorded even if the caller never sends, so a provider path that is
     /// merely prepared is still observed.
     /// </summary>
-    private sealed class RefusingHttpClientFactory : IHttpClientFactory
+
+    /// <summary>
+    /// Records every external client by name and, unlike the refusing factory,
+    /// can answer a named boundary with a governed canned payload. This is what
+    /// makes the paired provider-enabled controls non-vacuous: a boundary that
+    /// only ever throws can never demonstrate preserved provider provenance.
+    /// </summary>
+    private sealed class TestScope : IAsyncDisposable
     {
+        public required ServiceProvider Provider { get; init; }
+        public required IServiceScope Scope { get; init; }
+        public required MasterAppDbContext Db { get; init; }
+        public required ScriptedHttpClientFactory External { get; init; }
+
+        public T Resolve<T>() where T : notnull =>
+            Scope.ServiceProvider.GetRequiredService<T>();
+
+        /// <summary>
+        /// A fresh request scope over the same provider, the same in-memory
+        /// database and the same counting client factory. Production resolves
+        /// one scope per request; concurrent requests must therefore be
+        /// modelled as concurrent scopes, not as concurrent use of a single
+        /// scoped DbContext (which is not thread safe by design).
+        /// </summary>
+        public IServiceScope NewRequestScope() => Provider.CreateScope();
+
+        public async ValueTask DisposeAsync()
+        {
+            Scope.Dispose();
+            await Db.DisposeAsync();
+            await Provider.DisposeAsync();
+        }
+    }
+
+    private sealed class ScriptedHttpClientFactory : IHttpClientFactory
+    {
+        private readonly Dictionary<string, string> _responses;
         private readonly List<string> _clients = new();
+
+        public ScriptedHttpClientFactory(
+            Dictionary<string, string>? responses = null) =>
+            _responses = responses ?? new Dictionary<string, string>();
 
         public IReadOnlyList<string> CreatedClients
         {
@@ -57,52 +100,71 @@ public sealed class LegendFounderAiNativeOnlyProviderIsolationTests
 
         public int SendAttempts;
 
+        public int CallsTo(string clientName) =>
+            CreatedClients.Count(name =>
+                string.Equals(name, clientName, StringComparison.Ordinal));
+
         public HttpClient CreateClient(string name)
         {
             lock (_clients)
                 _clients.Add(name);
-            return new HttpClient(new RefusingHandler(this))
+
+            _responses.TryGetValue(name, out var body);
+            return new HttpClient(new ScriptedHandler(this, body))
             {
                 BaseAddress = new Uri("https://external.invalid/")
             };
         }
 
-        private sealed class RefusingHandler : HttpMessageHandler
+        private sealed class ScriptedHandler(
+            ScriptedHttpClientFactory owner,
+            string? body)
+            : HttpMessageHandler
         {
-            private readonly RefusingHttpClientFactory _owner;
-
-            public RefusingHandler(RefusingHttpClientFactory owner) =>
-                _owner = owner;
-
             protected override Task<HttpResponseMessage> SendAsync(
                 HttpRequestMessage request,
                 CancellationToken cancellationToken)
             {
-                Interlocked.Increment(ref _owner.SendAttempts);
-                throw new InvalidOperationException(
-                    "An external provider boundary was reached: " +
-                    request.RequestUri);
+                Interlocked.Increment(ref owner.SendAttempts);
+                if (body is null)
+                {
+                    throw new InvalidOperationException(
+                        "An external provider boundary was reached: " +
+                        request.RequestUri);
+                }
+
+                return Task.FromResult(new HttpResponseMessage(
+                    System.Net.HttpStatusCode.OK)
+                {
+                    Content = new StringContent(
+                        body,
+                        System.Text.Encoding.UTF8,
+                        "application/json")
+                });
             }
         }
     }
 
-    private sealed class TestScope : IAsyncDisposable
-    {
-        public required ServiceProvider Provider { get; init; }
-        public required IServiceScope Scope { get; init; }
-        public required MasterAppDbContext Db { get; init; }
-        public required RefusingHttpClientFactory External { get; init; }
-
-        public T Resolve<T>() where T : notnull =>
-            Scope.ServiceProvider.GetRequiredService<T>();
-
-        public async ValueTask DisposeAsync()
+    /// <summary>
+    /// A minimal OpenAI Responses payload carrying one completed output text.
+    /// </summary>
+    private static string ResponsesPayload(string text) =>
+        System.Text.Json.JsonSerializer.Serialize(new
         {
-            Scope.Dispose();
-            await Db.DisposeAsync();
-            await Provider.DisposeAsync();
-        }
-    }
+            status = "completed",
+            output = new[]
+            {
+                new
+                {
+                    type = "message",
+                    content = new[]
+                    {
+                        new { type = "output_text", text }
+                    }
+                }
+            }
+        });
+
 
     /// <summary>
     /// Builds the production registration graph. Provider credentials are
@@ -110,12 +172,23 @@ public sealed class LegendFounderAiNativeOnlyProviderIsolationTests
     /// because it was unconfigured; the only thing standing between the code
     /// and an external call is the policy under test.
     /// </summary>
-    private static TestScope BuildProductionEquivalentScope()
+    private static TestScope BuildProductionEquivalentScope(
+        Dictionary<string, string>? scriptedResponses = null,
+        Action<IServiceCollection>? configureServices = null)
     {
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?>
             {
                 ["OpenAI:ApiKey"] = "test-openai-key",
+                // The promoted governed-reasoning model transport reads its own
+                // credential prefix. Without it that boundary reports
+                // "model_inference_provider_unavailable" and is never reached,
+                // which would silently hide the promoted-model leak.
+                ["LegendConnect:ModelEvaluation:ApiKey"] = "test-model-key",
+                ["LegendConnect:ModelEvaluation:Endpoint"] =
+                    "https://external.invalid/responses",
+                ["LegendConnect:ModelEvaluation:CodeSha"] =
+                    "0123456789abcdef0123456789abcdef01234567",
                 ["AzureTranslator:Endpoint"] = "https://external.invalid/",
                 ["AzureTranslator:Key"] = "test-azure-key",
                 ["AzureTranslator:Region"] = "eastus",
@@ -134,9 +207,11 @@ public sealed class LegendFounderAiNativeOnlyProviderIsolationTests
                 warnings.Ignore(InMemoryEventId.TransactionIgnoredWarning)));
         services.AddMasterAppMessaging(configuration);
 
-        var external = new RefusingHttpClientFactory();
+        var external = new ScriptedHttpClientFactory(scriptedResponses);
         services.RemoveAll<IHttpClientFactory>();
         services.AddSingleton<IHttpClientFactory>(external);
+
+        configureServices?.Invoke(services);
 
         var provider = services.BuildServiceProvider();
         var scope = provider.CreateScope();
@@ -151,7 +226,7 @@ public sealed class LegendFounderAiNativeOnlyProviderIsolationTests
     }
 
     private static void AssertNoExternalProviderWasReached(
-        RefusingHttpClientFactory external,
+        ScriptedHttpClientFactory external,
         string because)
     {
         Assert.True(
@@ -188,8 +263,21 @@ public sealed class LegendFounderAiNativeOnlyProviderIsolationTests
             "reasoning transport would simply be absent from the object under test.");
     }
 
+    /// <summary>
+    /// The conversation inference entry point itself must reach no provider
+    /// under native-only.
+    ///
+    /// This deliberately claims no more than that. The in-memory corpus is
+    /// empty, so this request is not proven to reach a *supported* symbolic
+    /// result, and it therefore does not on its own prove that the
+    /// promoted-model boundary was exercised. That vulnerable path is proven
+    /// separately and deterministically by
+    /// <see cref="PromotedModelInference_IsReachedWhenAllowedAndNeverWhenNativeOnly"/>,
+    /// which supplies an admitted promoted model and a snapshot satisfying
+    /// every authorization gate.
+    /// </summary>
     [Fact]
-    public async Task NativeOnly_SupportedSymbolicRequest_ReachesNoExternalProvider()
+    public async Task NativeOnly_ConversationInference_ReachesNoExternalProvider()
     {
         await using var scope = BuildProductionEquivalentScope();
         var operations = scope.Resolve<ILegendConnectOperations>();
@@ -205,7 +293,7 @@ public sealed class LegendFounderAiNativeOnlyProviderIsolationTests
         Assert.NotNull(inference);
         AssertNoExternalProviderWasReached(
             scope.External,
-            "A native-only symbolic request must be served or fail closed natively,");
+            "A native-only conversation inference must be served or fail closed natively,");
     }
 
     /// <summary>
@@ -399,35 +487,692 @@ public sealed class LegendFounderAiNativeOnlyProviderIsolationTests
         Assert.Contains("AzureTranslator", scope.External.CreatedClients);
     }
 
+
+    private const string SymbolicRequestText =
+        "Give the governed model answer.";
+
+    private const string SymbolicAnswer =
+        "Founder governed model answer.";
+
     /// <summary>
-    /// The policy is a value carried per request, not ambient state. A
-    /// native-only request must not close the boundary for a subsequent
-    /// provider-enabled request resolved from the same scope, and vice versa.
+    /// Seeds a genuinely supported governed symbolic transition through the
+    /// real curriculum authority, so the request under test actually reaches a
+    /// supported symbolic result and therefore actually reaches the
+    /// promoted-model boundary. Without this the request fails earlier and any
+    /// zero-provider count would be vacuous.
+    /// </summary>
+    private static async Task SeedSupportedSymbolicTransitionAsync(
+        TestScope scope)
+    {
+        ControllerTestHelpers.SeedGovernedLanguageBaseline(scope.Db);
+        var curriculum = scope.Resolve<LegendConnectCurriculumService>();
+        var submitted = await curriculum.SubmitFounderBatchAsync(
+            new LegendConnectCurriculumBatchSubmission(
+                "response.model-serving.reasoning",
+                "Founder-governed symbolic authority before model realization",
+                [
+                    new LegendConnectCurriculumExampleSubmission(
+                        $"Founder model serving request: {SymbolicRequestText}",
+                        new Dictionary<string, string>
+                        {
+                            ["request_surface"] = SymbolicRequestText,
+                            ["conversation_function"] = "governed_model_request"
+                        },
+                        new LegendConnectMeaningGraphSubmission(
+                        [
+                            new LegendConnectMeaningNodeSubmission(
+                                "function",
+                                "conversation_function",
+                                "governed_model_request",
+                                SymbolicRequestText.TrimEnd('.'))
+                        ],
+                        [])),
+                    new LegendConnectCurriculumExampleSubmission(
+                        SymbolicAnswer,
+                        new Dictionary<string, string>
+                        {
+                            ["conversation_function"] = "governed_model_answer"
+                        })
+                ],
+                [
+                    new LegendConnectSemanticTransitionSubmission(
+                        new LegendConnectSemanticFrameSubmission(
+                            new Dictionary<string, string>
+                            {
+                                ["conversation_function"] = "governed_model_request"
+                            }),
+                        new LegendConnectSemanticFrameSubmission(
+                            new Dictionary<string, string>
+                            {
+                                ["conversation_function"] = "governed_model_answer"
+                            }))
+                ],
+                [
+                    new LegendConnectSemanticSpanGroundingSubmission(
+                        "conversation_function",
+                        "request_surface")
+                ]));
+
+        Assert.True(submitted.Succeeded, submitted.Message);
+    }
+
+    /// <summary>
+    /// The end-to-end model-state pair on a genuinely supported symbolic
+    /// request.
+    ///
+    /// Native-only must serve Legend's own symbolic answer, hold the promoted
+    /// model Dormant with the policy reason, and create neither the
+    /// LegendModelEvaluation client nor the conversation OpenAI client. The
+    /// provider-enabled control proves the same request really does reach the
+    /// model boundary exactly once and keeps Applied provider provenance, so
+    /// the native-only zeros are a decision, not an inert fixture.
     /// </summary>
     [Fact]
-    public async Task Policy_IsPerRequestAndDoesNotLeakBetweenRequests()
+    public async Task ReplyAsync_NativeOnly_ServesSymbolicAnswerWithDormantModelAndNoExternalClient()
     {
+        using var founderEnvironment = new FounderEnvironmentScope(FounderId);
         await using var scope = BuildProductionEquivalentScope();
-        var translation = scope.Resolve<ITranslationService>();
+        var founder = await SeedFounderAsync(scope.Db);
+        await SeedSupportedSymbolicTransitionAsync(scope);
+        await SeedPromotedReasoningModelAsync(scope.Db);
 
-        var native = await translation.DetectLanguageAsync(
-            "Which files are still open?",
-            CancellationToken.None,
-            LegendConnectExternalProviderPolicy.NativeOnly);
-        Assert.False(native.Succeeded);
+        var inference = await scope.Resolve<ILegendConnectOperations>()
+            .TryInferConversationWithDiscourseAsync(
+                SymbolicRequestText,
+                Array.Empty<LegendConnectConversationContextItem>(),
+                discourseState: null,
+                CancellationToken.None,
+                "en",
+                LegendConnectExternalProviderPolicy.NativeOnly);
+
+        Assert.True(inference.Supported, inference.ReasonCode);
+        Assert.Equal(SymbolicAnswer, inference.Answer);
+        Assert.Equal(
+            "Dormant",
+            inference.ModelAssistance?.State);
+        Assert.Equal(
+            "native_only_external_model_inference_forbidden",
+            inference.ModelAssistance?.ReasonCode);
+        Assert.Null(inference.ModelAssistance?.ModelVersion);
+
+        var response = await BuildConversationService(scope).ReplyAsync(
+            founder,
+            NativeRequest(SymbolicRequestText, nativeOnly: true));
+
+        Assert.NotNull(response);
+        Assert.NotEqual("OpenAITeacher", response.ResponseAuthority);
+        Assert.Equal(0, scope.External.CallsTo("LegendModelEvaluation"));
+        Assert.Equal(0, scope.External.CallsTo("OpenAI"));
         AssertNoExternalProviderWasReached(
             scope.External,
-            "The native-only request must not reach a provider,");
+            "A native-only supported symbolic reply must reach no provider,");
+    }
 
-        await Assert.ThrowsAsync<InvalidOperationException>(
-            () => translation.DetectLanguageAsync(
-                "Which files are still open?",
+    [Fact]
+    public async Task ProviderEnabled_SupportedSymbolicRequest_MakesExactlyOneModelCallAndKeepsProvenance()
+    {
+        await using var scope = BuildProductionEquivalentScope(
+            new Dictionary<string, string>
+            {
+                ["LegendModelEvaluation"] =
+                    ResponsesPayload(SymbolicAnswer)
+            });
+        await SeedSupportedSymbolicTransitionAsync(scope);
+        await SeedPromotedReasoningModelAsync(scope.Db);
+
+        var inference = await scope.Resolve<ILegendConnectOperations>()
+            .TryInferConversationWithDiscourseAsync(
+                SymbolicRequestText,
+                Array.Empty<LegendConnectConversationContextItem>(),
+                discourseState: null,
                 CancellationToken.None,
-                LegendConnectExternalProviderPolicy.ProviderEnabled));
+                "en",
+                LegendConnectExternalProviderPolicy.ProviderEnabled);
+
+        Assert.True(inference.Supported, inference.ReasonCode);
+        Assert.Equal(
+            1,
+            scope.External.CallsTo("LegendModelEvaluation"));
+        Assert.Equal("Applied", inference.ModelAssistance?.State);
+        Assert.Equal(
+            "ft:legend:reasoning-active",
+            inference.ModelAssistance?.ModelVersion);
+        Assert.NotNull(inference.ModelAssistance?.ModelTrainingRunId);
+    }
+
+    /// <summary>
+    /// The unresolved-request pair. Native-only must still create no
+    /// conversation OpenAI client; the provider-enabled control must reach the
+    /// provider and remain attributed to it, never to Legend.
+    /// </summary>
+    [Fact]
+    public async Task ReplyAsync_UnknownRequest_NativeOnlyMakesNoOpenAiCallAndProviderEnabledStaysAttributed()
+    {
+        const string Unknown =
+            "Reconcile the unfamiliar governed position for this account.";
+
+        using var founderEnvironment = new FounderEnvironmentScope(FounderId);
+
+        await using var nativeScope = BuildProductionEquivalentScope();
+        var nativeFounder = await SeedFounderAsync(nativeScope.Db);
+        await nativeScope.Resolve<ILegendLanguageRegistry>()
+            .NormalizeEnabledTranslationLanguageAsync("en", CancellationToken.None);
+
+        var nativeResponse = await BuildConversationService(nativeScope)
+            .ReplyAsync(
+                nativeFounder,
+                NativeRequest(Unknown, nativeOnly: true));
+
+        Assert.NotNull(nativeResponse);
+        Assert.NotEqual("OpenAITeacher", nativeResponse.ResponseAuthority);
+        Assert.Equal(0, nativeScope.External.CallsTo("OpenAI"));
+        AssertNoExternalProviderWasReached(
+            nativeScope.External,
+            "A native-only unresolved reply must reach no provider,");
+
+        await using var providerScope = BuildProductionEquivalentScope(
+            new Dictionary<string, string>
+            {
+                ["OpenAI"] = ResponsesPayload(
+                    "The provider answered this unresolved request.")
+            });
+        var providerFounder = await SeedFounderAsync(providerScope.Db);
+
+        var providerResponse = await BuildConversationService(providerScope)
+            .ReplyAsync(
+                providerFounder,
+                NativeRequest(Unknown, nativeOnly: false));
+
+        Assert.NotNull(providerResponse);
+        Assert.True(
+            providerScope.External.CallsTo("OpenAI") > 0,
+            "Provider-enabled serving must reach the conversation provider; " +
+            "otherwise the native-only zero above proves nothing.");
+        Assert.Equal("OpenAITeacher", providerResponse.ResponseAuthority);
+    }
+
+    private static LegendFounderAiChatRequest NativeRequest(
+        string prompt,
+        bool nativeOnly) =>
+        new()
+        {
+            Mode = "legend",
+            NativeOnly = nativeOnly,
+            SourceLanguageCode = "en",
+            Messages = [new LegendFounderAiChatMessage("user", prompt)]
+        };
+
+    private const string FounderId = "6b3c1d70-2f5a-49f2-9a2b-1f4a4a2d77b1";
+
+    /// <summary>
+    /// Seeds the Founder identity and the governed language baseline so the
+    /// serving path is authorized and language identity is resolvable from
+    /// governed data alone.
+    /// </summary>
+    private static async Task<ClaimsPrincipal> SeedFounderAsync(
+        MasterAppDbContext db)
+    {
+        db.AgentProfiles.Add(new AgentProfile
+        {
+            Id = Guid.NewGuid(),
+            AgentUserId = FounderId,
+            AgentUpn = "native-only-isolation@legend.test",
+            NormalizedEmail = "native-only-isolation@legend.test",
+            IsActive = true
+        });
+        await db.SaveChangesAsync();
+        ControllerTestHelpers.SeedGovernedLanguageBaseline(db);
+        return ControllerTestHelpers.BuildUser(FounderId);
+    }
+
+    /// <summary>
+    /// Builds the real conversation service over the DI-resolved operations
+    /// authority. The conversation provider client, the promoted model
+    /// transport, Azure detection/translation and both research transports all
+    /// obtain their clients from the same counting/refusing factory, so one
+    /// counter observes every external boundary of a real reply.
+    /// </summary>
+    private static LegendFounderAiConversationService BuildConversationService(
+        TestScope scope)
+    {
+        var operations = scope.Resolve<ILegendConnectOperations>();
+        var profiles = new AgentProfileAccessResolver(scope.Db);
+        return new LegendFounderAiConversationService(
+            scope.External,
+            new ConfigurationBuilder()
+                .AddInMemoryCollection(new Dictionary<string, string?>
+                {
+                    ["OpenAI:ApiKey"] = "test-openai-key",
+                    ["OpenAI:LegendFounderAiTimeoutSeconds"] = "120"
+                })
+                .Build(),
+            new FounderLegendConnectService(operations, profiles),
+            NullLogger<LegendFounderAiConversationService>.Instance,
+            new LegendFounderAiDiscourseStateService(
+                scope.Db,
+                profiles,
+                operations),
+            scope.Resolve<ILegendLanguageRegistry>(),
+            scope.Resolve<ITranslationService>());
+    }
+
+    /// <summary>
+    /// The end-to-end serving boundary. A real native-only
+    /// <see cref="LegendFounderAiConversationService.ReplyAsync"/> must create
+    /// the policy, carry it through the Founder wrapper and tool authority, and
+    /// reach no external provider at all — including the conversation OpenAI
+    /// client the service resolves for itself.
+    /// </summary>
+    [Theory]
+    [InlineData("A queue holds 38 cases; nine close and seven arrive. How many remain?")]
+    [InlineData("Rewrite this note as a concise professional update without changing facts.")]
+    [InlineData("Konbyen dosye ki poko fini nan lis la?")]
+    public async Task NativeOnly_ReplyAsync_ReachesNoExternalProviderEndToEnd(
+        string prompt)
+    {
+        using var founderEnvironment = new FounderEnvironmentScope(FounderId);
+        await using var scope = BuildProductionEquivalentScope();
+        var founder = await SeedFounderAsync(scope.Db);
+        var service = BuildConversationService(scope);
+
+        var response = await service.ReplyAsync(
+            founder,
+            new LegendFounderAiChatRequest
+            {
+                Mode = "legend",
+                NativeOnly = true,
+                SourceLanguageCode = "en",
+                Messages =
+                [
+                    new LegendFounderAiChatMessage("user", prompt)
+                ]
+            });
+
+        Assert.NotNull(response);
+
+        // The response must never be attributed to a provider under
+        // native-only, whether it succeeded or failed closed.
+        Assert.NotEqual("OpenAITeacher", response.ResponseAuthority);
+
+        AssertNoExternalProviderWasReached(
+            scope.External,
+            "A native-only ReplyAsync must reach no external provider,");
+    }
+
+    /// <summary>
+    /// The provider-enabled control for the same end-to-end boundary. Without
+    /// it, the zero counts above could mean the conversation path is simply
+    /// inert in this fixture rather than closed by the policy.
+    /// </summary>
+    [Fact]
+    public async Task ProviderEnabled_ReplyAsync_StillReachesTheConversationProvider()
+    {
+        using var founderEnvironment = new FounderEnvironmentScope(FounderId);
+        await using var scope = BuildProductionEquivalentScope();
+        var founder = await SeedFounderAsync(scope.Db);
+        var service = BuildConversationService(scope);
+
+        var response = await service.ReplyAsync(
+            founder,
+            new LegendFounderAiChatRequest
+            {
+                Mode = "legend",
+                NativeOnly = false,
+                SourceLanguageCode = "en",
+                Messages =
+                [
+                    new LegendFounderAiChatMessage(
+                        "user",
+                        "A queue holds 38 cases; nine close and seven arrive. How many remain?")
+                ]
+            });
+
+        Assert.NotNull(response);
+        Assert.True(
+            scope.External.SendAttempts > 0,
+            "Provider-enabled serving must still reach the conversation " +
+            "provider; otherwise the native-only zero counts prove nothing.");
+    }
+
+    /// <summary>
+    /// Proves the vulnerable promoted-model path itself, without depending on
+    /// an admitted corpus.
+    ///
+    /// The empty in-memory corpus cannot produce a supported symbolic answer,
+    /// so a full-request test would fail before ever reaching
+    /// <c>TryApplyPromotedReasoningModelAsync</c> and would prove nothing about
+    /// it. This drives that method directly with a symbolic snapshot that
+    /// satisfies every one of its authorization gates — supported, non-blank
+    /// answer, no escalation, evidence present, higher-standard evidence, the
+    /// composed reason code, and no content-binding provenance — so the call
+    /// genuinely reaches the model authority.
+    ///
+    /// The same snapshot is then run under both policies. Provider-enabled
+    /// reaches the external transport; native-only does not, and is reported
+    /// dormant with its exact reason. Identical input, opposite outcome,
+    /// decided only by the policy.
+    /// </summary>
+    [Fact]
+    public async Task PromotedModelInference_IsReachedWhenAllowedAndNeverWhenNativeOnly()
+    {
+        await using var scope = BuildProductionEquivalentScope();
+        await SeedPromotedReasoningModelAsync(scope.Db);
+        var operations = scope.Resolve<ILegendConnectOperations>();
+
+        var symbolic = new LegendConnectNativeInferenceSnapshot(
+            Supported: true,
+            Confidence: 1m,
+            "The governed symbolic authority already established this answer.",
+            "semantic_transition_governed_composed",
+            EvidenceCount: 3,
+            "LEGEND composed governed meaning and selected higher-standard evidence.",
+            RequiresEscalation: false,
+            EvidenceStandard: "HigherStandard",
+            ArticulationMode: "OriginalComposition");
+
+        var apply = typeof(LegendConnectOperations).GetMethod(
+            "TryApplyPromotedReasoningModelAsync",
+            BindingFlags.Instance | BindingFlags.NonPublic);
+        Assert.NotNull(apply);
+
+        async Task<LegendConnectNativeInferenceSnapshot> ApplyAsync(
+            LegendConnectExternalProviderPolicy policy)
+        {
+            var task = (Task)apply!.Invoke(
+                operations,
+                [
+                    "A held-out governed request.",
+                    "en",
+                    symbolic,
+                    policy,
+                    CancellationToken.None
+                ])!;
+            await task;
+            return (LegendConnectNativeInferenceSnapshot)task
+                .GetType()
+                .GetProperty("Result")!
+                .GetValue(task)!;
+        }
+
+        // Provider-enabled: the path must genuinely reach the transport. The
+        // transport catches its own transport failures, so reaching it is
+        // observed through the counting factory rather than through a throw.
+        string? allowedReason = null;
+        try
+        {
+            allowedReason =
+                (await ApplyAsync(
+                    LegendConnectExternalProviderPolicy.ProviderEnabled))
+                .ModelAssistance?.ReasonCode;
+        }
+        catch (InvalidOperationException)
+        {
+            // The refusing double reached the boundary and refused it. That is
+            // the outcome being proven, not a failure.
+        }
 
         Assert.True(
             scope.External.SendAttempts > 0,
-            "The later provider-enabled request must be unaffected by the " +
-            "earlier native-only request.");
+            "The promoted-model path must actually reach the external model " +
+            "transport when providers are allowed; otherwise the native-only " +
+            "result below would be vacuous. Model assistance reported: " +
+            (allowedReason ?? "<none>"));
+
+        // Identical governed state: the same admitted promoted model and the
+        // same governed language baseline. Only the policy differs.
+        await using var nativeScope = BuildProductionEquivalentScope();
+        await SeedPromotedReasoningModelAsync(nativeScope.Db);
+        var nativeOperations = nativeScope.Resolve<ILegendConnectOperations>();
+
+        var nativeTask = (Task)apply!.Invoke(
+            nativeOperations,
+            [
+                "A held-out governed request.",
+                "en",
+                symbolic,
+                LegendConnectExternalProviderPolicy.NativeOnly,
+                CancellationToken.None
+            ])!;
+        await nativeTask;
+        var served = (LegendConnectNativeInferenceSnapshot)nativeTask
+            .GetType()
+            .GetProperty("Result")!
+            .GetValue(nativeTask)!;
+
+        // The governed symbolic answer is served unchanged and unrelabelled.
+        Assert.True(served.Supported);
+        Assert.Equal(symbolic.Answer, served.Answer);
+        Assert.Equal(
+            "native_only_external_model_inference_forbidden",
+            served.ModelAssistance?.ReasonCode);
+        AssertNoExternalProviderWasReached(
+            nativeScope.External,
+            "Native-only promoted-model inference must not reach a transport,");
+    }
+
+    /// <summary>
+    /// Seeds the governed language baseline and one genuinely admitted
+    /// promoted governed-reasoning model, so promoted-model assistance is
+    /// actually eligible. Without this the model authority reports
+    /// <c>active_reasoning_model_unavailable</c> and never reaches a
+    /// transport, which would make any native-only zero count vacuous.
+    /// </summary>
+    private static async Task SeedPromotedReasoningModelAsync(
+        MasterAppDbContext db)
+    {
+        ControllerTestHelpers.SeedGovernedLanguageBaseline(db);
+        var now = DateTime.UtcNow;
+        db.Add(new LegendConnectModelTrainingRun
+        {
+            Id = Guid.NewGuid(),
+            RunKey = "native-only-isolation-realization",
+            ScopeKey =
+                $"capability:{LegendModelCapabilityKeys.GovernedReasoning}",
+            Generation = 1,
+            DatasetIdentity = "governed-reasoning-dataset",
+            DatasetEvaluatorVersion =
+                LegendConnectLanguageIntelligenceEvaluatorVersion.Current,
+            TrainingProvider = "OpenAI",
+            BaseModel = "reasoning-base",
+            ChallengerModelVersion = "ft:legend:reasoning-active",
+            State = "TrainingCompleted",
+            EvaluationState = "Passed",
+            PromotionState = "Promoted",
+            TrainingExampleCount = 12,
+            ValidationExampleCount = 4,
+            HeldOutScore = 1m,
+            RegressionScore = 1m,
+            FailureDetail = RealizationRuntimeProof,
+            CompletedUtc = now.AddMinutes(-1),
+            PromotedUtc = now,
+            UpdatedUtc = now
+        });
+        await db.SaveChangesAsync();
+    }
+
+    private const string RealizationRuntimeProof =
+        "evaluated=1;reference=1.000000;blocking=0;protected=0;leakage=0;prompt_set=test-v1;code_sha=0123456789abcdef0123456789abcdef01234567;runtime_mode=LockedHeldOutEvaluation;response_authority=LegendConnectActiveModelInference;settings=responses-v1,store=false,max_output_tokens=1200;criteria=governed-reference-policy-v1,held_out>=0.950000,regression>=1.000000,protected>=0.980000,blocking=0,leakage=0,runtime_model=exact;proof_set=abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789;latency_us=1;cost_micro=1";
+
+    private sealed class FounderEnvironmentScope : IDisposable
+    {
+        private readonly string? _previous =
+            Environment.GetEnvironmentVariable("FOUNDER_OID");
+
+        public FounderEnvironmentScope(string founderId) =>
+            Environment.SetEnvironmentVariable("FOUNDER_OID", founderId);
+
+        public void Dispose() =>
+            Environment.SetEnvironmentVariable("FOUNDER_OID", _previous);
+    }
+
+    /// <summary>
+    /// The policy is a value carried per request, not ambient state. Running
+    /// native-only and provider-enabled requests *concurrently* on the same
+    /// scope is the real test: a sequential pair could pass even if the policy
+    /// were stored in shared mutable state, because the writes would not
+    /// overlap. Here they do overlap, and every native-only request must still
+    /// refuse while every provider-enabled request still reaches the boundary.
+    /// </summary>
+    [Fact]
+    public async Task Policy_IsPerRequestUnderConcurrentMixedTraffic()
+    {
+        await using var scope = BuildProductionEquivalentScope();
+
+        const int Pairs = 24;
+        var nativeResults =
+            new TranslationDetectionResult[Pairs];
+        var providerReachedBoundary = new bool[Pairs];
+
+        var work = new List<Task>();
+        for (var index = 0; index < Pairs; index++)
+        {
+            var slot = index;
+            work.Add(Task.Run(async () =>
+            {
+                using var requestScope = scope.NewRequestScope();
+                nativeResults[slot] = await requestScope.ServiceProvider
+                    .GetRequiredService<ITranslationService>()
+                    .DetectLanguageAsync(
+                        "Which files are still open?",
+                        CancellationToken.None,
+                        LegendConnectExternalProviderPolicy.NativeOnly);
+            }));
+
+            work.Add(Task.Run(async () =>
+            {
+                using var requestScope = scope.NewRequestScope();
+                try
+                {
+                    await requestScope.ServiceProvider
+                        .GetRequiredService<ITranslationService>()
+                        .DetectLanguageAsync(
+                            "Which files are still open?",
+                            CancellationToken.None,
+                            LegendConnectExternalProviderPolicy.ProviderEnabled);
+                }
+                catch (InvalidOperationException)
+                {
+                    // Reaching the refusing boundary is the expected outcome.
+                    providerReachedBoundary[slot] = true;
+                }
+            }));
+        }
+
+        await Task.WhenAll(work);
+
+        // Every native-only request failed closed with its own governed reason.
+        Assert.All(nativeResults, result =>
+        {
+            Assert.False(result.Succeeded);
+            Assert.Equal(
+                "native_only_governed_source_language_undetermined",
+                result.ErrorCode);
+        });
+
+        // Every provider-enabled request still reached the boundary.
+        Assert.All(
+            providerReachedBoundary,
+            reached => Assert.True(
+                reached,
+                "A provider-enabled request was wrongly refused while " +
+                "native-only requests ran concurrently."));
+
+        // The external boundary was reached exactly as many times as there
+        // were provider-enabled requests: the native-only ones added nothing.
+        Assert.Equal(Pairs, scope.External.CallsTo("AzureTranslator"));
+    }
+
+    /// <summary>
+    /// The stage-preservation repair.
+    ///
+    /// Native-only forbids the external boundary, not Legend's own translation
+    /// authority. A same-language request is resolved by Legend's internal
+    /// same-language stage, so it must still SUCCEED under native-only with no
+    /// external call at all. Before the repair this returned a bare refusal,
+    /// because the policy short-circuited the whole router ahead of every
+    /// internal stage.
+    /// </summary>
+    [Fact]
+    public async Task NativeOnly_SameLanguageTranslation_IsServedInternallyWithNoExternalCall()
+    {
+        await using var scope = BuildProductionEquivalentScope();
+        ControllerTestHelpers.SeedGovernedLanguageBaseline(scope.Db);
+        var translation = scope.Resolve<ITranslationService>();
+
+        var result = await translation.TranslateAsync(
+            "The governed position is unchanged.",
+            "en",
+            "en",
+            CancellationToken.None,
+            LegendConnectExternalProviderPolicy.NativeOnly);
+
+        Assert.True(result.Succeeded, result.ErrorCode);
+        Assert.Equal("The governed position is unchanged.", result.TranslatedText);
+        Assert.Equal("LegendConnectSameLanguage", result.Provider);
+        AssertNoExternalProviderWasReached(
+            scope.External,
+            "Legend's own same-language stage must reach no provider,");
+    }
+
+    /// <summary>
+    /// The cross-language counterpart. No internal stage can serve it, so
+    /// native-only must fail closed at the external boundary claiming no
+    /// provider identity, while the paired control still reaches Azure and
+    /// keeps the AzureTranslator identity.
+    /// </summary>
+    [Fact]
+    public async Task CrossLanguageTranslation_FailsClosedNativelyAndKeepsAzureIdentityWhenAllowed()
+    {
+        await using var scope = BuildProductionEquivalentScope();
+        ControllerTestHelpers.SeedGovernedLanguageBaseline(scope.Db);
+        var translation = scope.Resolve<ITranslationService>();
+
+        var native = await translation.TranslateAsync(
+            "The governed position is unchanged.",
+            "ht",
+            "en",
+            CancellationToken.None,
+            LegendConnectExternalProviderPolicy.NativeOnly);
+
+        Assert.False(native.Succeeded);
+        Assert.Equal(
+            "external_provider_forbidden_by_native_only_policy",
+            native.ErrorCode);
+        Assert.Equal("None", native.Provider);
+        AssertNoExternalProviderWasReached(
+            scope.External,
+            "Native-only cross-language translation must reach no provider,");
+
+        await using var providerScope = BuildProductionEquivalentScope();
+        ControllerTestHelpers.SeedGovernedLanguageBaseline(providerScope.Db);
+
+        var allowed = await providerScope.Resolve<ITranslationService>()
+            .TranslateAsync(
+                "The governed position is unchanged.",
+                "ht",
+                "en",
+                CancellationToken.None,
+                LegendConnectExternalProviderPolicy.ProviderEnabled);
+
+        // The same request, with providers allowed, advances past the exact
+        // point at which native-only stopped and enters the external
+        // quota/capacity/Azure region, where it is attributed to Azure.
+        //
+        // Stated exactly: this fixture provisions no translation capacity, so
+        // the request is stopped by the capacity gate that sits inside that
+        // region rather than by the Azure HTTP call itself. That is still
+        // decisive for this test, because reaching a distinctly external-region
+        // outcome under AzureTranslator identity is only possible if the
+        // native-only return point above is what stopped the first request.
+        // Azure's own HTTP boundary being genuinely reachable in this fixture
+        // is proven separately by
+        // <see cref="Policy_IsPerRequestUnderConcurrentMixedTraffic"/>, which
+        // observes real AzureTranslator client creation.
+        Assert.False(allowed.Succeeded);
+        Assert.Equal("AzureTranslator", allowed.Provider);
+        Assert.Equal("translation_capacity_unavailable", allowed.ErrorCode);
+        Assert.NotEqual(
+            "external_provider_forbidden_by_native_only_policy",
+            allowed.ErrorCode);
     }
 }
