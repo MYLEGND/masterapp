@@ -1064,19 +1064,21 @@ public sealed record LegendConnectOwnedRecordClassification(
     string? Diagnostic = null)
 {
     /// <summary>
-    /// True when the request may not be answered until a registered governed
-    /// read returns a receipt. Only an established intent imposes the block:
-    /// an unavailable analysis is reported through <see cref="Diagnostic"/> and
-    /// <see cref="Intent"/> so it is visible rather than silently absent, but it
-    /// cannot by itself force every unclassified turn into tool inspection.
+    /// True when the request may not be answered until the registered governed
+    /// read returns a receipt. Only an established owned-record intent imposes
+    /// the receipt obligation; an unavailable analysis must not fabricate a
+    /// record tool it has no evidence to require.
     /// </summary>
     public bool RequiresMandatoryGovernedInspection =>
         RequiresGovernedReadReceipt;
 
     /// <summary>
     /// True when no classification could be made because the governed
-    /// meaning-graph analysis did not run. Callers must surface this rather
-    /// than treat it as an established absence of operational intent.
+    /// meaning-graph analysis did not run. This is not an established absence
+    /// of operational intent: the request cannot be answered at all, because
+    /// the authority that would decide whether an authenticated receipt is
+    /// required never produced a result. Callers must fail closed on this and
+    /// surface <see cref="Diagnostic"/>.
     /// </summary>
     public bool IsAnalysisUnavailable =>
         Intent == LegendConnectOwnedRecordIntent.AnalysisUnavailable;

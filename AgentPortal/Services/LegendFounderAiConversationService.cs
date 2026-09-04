@@ -588,6 +588,25 @@ public sealed class LegendFounderAiConversationService
                 governedSourceLanguageCode,
                 cancellationToken);
 
+        // Fail closed on an unavailable analysis. The authority that decides
+        // whether this request needs an authenticated governed receipt did not
+        // produce a result, so neither mode may answer from recollection and no
+        // record tool is fabricated in its place.
+        if (ownedRecordIntent?.IsAnalysisUnavailable == true)
+        {
+            return LegendFounderAiChatResponse.ModeFailure(
+                mode,
+                FailureMessageForMode(
+                    mode,
+                    "The governed meaning-graph analysis that determines whether this " +
+                    "request requires an authenticated LEGEND read was unavailable, " +
+                    "so no answer was accepted."),
+                "governed_analysis",
+                "governed_request_classification",
+                ownedRecordIntent.Diagnostic ??
+                    "governed_meaning_graph_analysis_unavailable");
+        }
+
         var requiresMandatoryGovernedInspection =
             RequiresGovernedInspection(
                 conversation,

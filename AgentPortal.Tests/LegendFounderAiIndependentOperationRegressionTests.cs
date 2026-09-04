@@ -482,6 +482,99 @@ public sealed class LegendFounderAiIndependentOperationRegressionTests
             StringComparison.Ordinal);
     }
 
+    // The governed analysis that decides whether an authenticated read is
+    // required must never fail open. When it throws, no answer may be accepted
+    // from provider recollection, no record tool may be fabricated in its
+    // place, the precise diagnostic must be surfaced, and nothing may be
+    // written.
+    [Fact]
+    public async Task TeacherMode_AnalysisUnavailable_FailsClosedWithThePreciseReason()
+    {
+        using var founderEnvironment = new FounderEnvironmentScope();
+        using var writeSentinel = new WriteAttemptSentinel();
+        await using var db = BuildSentinelDb(writeSentinel);
+        var founder = await AddFounderProfileAsync(db);
+
+        var operations = new Mock<ILegendConnectOperations>(MockBehavior.Loose);
+        operations
+            .Setup(operation => operation.AnalyzeReusableMeaningGraphAsync(
+                It.IsAny<string>(),
+                It.IsAny<CancellationToken>(),
+                It.IsAny<string>()))
+            .ThrowsAsync(new InvalidOperationException(
+                "governed meaning-graph analysis failed"));
+
+        var handler = new RecordingProviderHandler(
+            ProviderText("There are plenty of records on file."));
+        var service = CreateService(
+            db,
+            operations.Object,
+            handler,
+            agencyCommand: BuildAgencyCommandService(db));
+
+        writeSentinel.Arm();
+        var response = await service.ReplyAsync(
+            founder,
+            Request("teacher", "Give me the present record state you hold."));
+
+        // The provider was never consulted and its recollection was not used.
+        Assert.False(response.Succeeded);
+        Assert.Equal(0, handler.RequestCount);
+
+        // The precise analysis-unavailable reason is surfaced, and no
+        // unrelated operational tool was fabricated to compensate.
+        Assert.Equal("governed_request_classification", response.Stage);
+        Assert.StartsWith(
+            "governed_meaning_graph_analysis_unavailable",
+            response.Reason,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            nameof(InvalidOperationException),
+            response.Reason,
+            StringComparison.Ordinal);
+        Assert.Empty(writeSentinel.ObservedWriteEntities);
+        Assert.Equal(0, writeSentinel.OperationalWriteAttempts);
+    }
+
+    // Cancellation must still propagate through the same path rather than
+    // being converted into an analysis-unavailable classification.
+    [Fact]
+    public async Task TeacherMode_CancellationDuringAnalysis_StillPropagates()
+    {
+        using var founderEnvironment = new FounderEnvironmentScope();
+        await using var db = ControllerTestHelpers.BuildDb();
+        var founder = await AddFounderProfileAsync(db);
+        using var cancellation = new CancellationTokenSource();
+
+        var operations = new Mock<ILegendConnectOperations>(MockBehavior.Loose);
+        operations
+            .Setup(operation => operation.AnalyzeReusableMeaningGraphAsync(
+                It.IsAny<string>(),
+                It.IsAny<CancellationToken>(),
+                It.IsAny<string>()))
+            .Returns<string, CancellationToken, string>((_, _, _) =>
+            {
+                cancellation.Cancel();
+                throw new OperationCanceledException(cancellation.Token);
+            });
+
+        var handler = new RecordingProviderHandler(
+            ProviderText("Unreachable."));
+        var service = CreateService(
+            db,
+            operations.Object,
+            handler,
+            agencyCommand: BuildAgencyCommandService(db));
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+            service.ReplyAsync(
+                founder,
+                Request("teacher", "Give me the present record state you hold."),
+                cancellationToken: cancellation.Token));
+
+        Assert.Equal(0, handler.RequestCount);
+    }
+
     private static Mock<ILegendConnectOperations> TeacherModeOperations(
         LegendConnectUtteranceMeaningGraphSnapshot graph)
     {

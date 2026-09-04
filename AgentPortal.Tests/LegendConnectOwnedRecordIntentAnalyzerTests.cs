@@ -104,31 +104,102 @@ public class LegendConnectOwnedRecordIntentAnalyzerTests
             LegendConnectOwnedRecordRequest.Classify(graph).Intent);
     }
 
+    /// <summary>
+    /// Both anchors of the held-out surface exist and are Founder-approved, but
+    /// they are taught in disjoint curriculum families and no family ever
+    /// declares a relation between them. The analyzer requires the source and
+    /// target node families to overlap the relation's families, so the
+    /// forbidden cross-family relation must not be admitted and the intent must
+    /// not type.
+    /// </summary>
     [Fact]
-    public async Task CrossFamilyAnchorsWithoutSharedEvidence_CannotTypeTheIntent()
+    public async Task CrossFamilyAnchorsWithoutSharedRelation_CannotTypeTheIntent()
     {
         await using var db = ControllerTestHelpers.BuildDb();
         ControllerTestHelpers.SeedGovernedLanguageBaseline(db);
 
-        // The two anchors of the held-out surface are taught in disjoint
-        // families, so no family overlap can admit a relation between them.
         for (var family = 1; family <= 3; family++)
         {
-            var result = await CreateCurriculum(db).SubmitFounderBatchAsync(
-                new LegendConnectCurriculumBatchSubmission(
-                    $"owned.record.split.{family}",
-                    "Founder-governed split-anchor evidence",
-                    [
-                        SplitAnchorExample(family),
-                        SplitAnchorExample(family + 100)
-                    ]));
-            Assert.True(result.Succeeded, result.Message);
+            await SubmitAsync(
+                db,
+                $"owned.record.owner.only.{family}",
+                [
+                    SingleAnchorExample(family, "owner", "record_owner", "portfolio"),
+                    SingleAnchorExample(family + 100, "owner", "record_owner", "portfolio")
+                ]);
+
+            await SubmitAsync(
+                db,
+                $"owned.record.state.only.{family}",
+                [
+                    SingleAnchorExample(family, "state", "record_state", "record_state"),
+                    SingleAnchorExample(family + 100, "state", "record_state", "record_state")
+                ]);
         }
 
         var graph = await CreateOperations(db)
             .AnalyzeReusableMeaningGraphAsync(HeldOutSurface);
 
+        // Both anchors are genuinely present; only the relation is absent.
+        Assert.Contains(
+            graph.Nodes,
+            node => string.Equals(
+                node.SemanticDimension, "record_owner", StringComparison.Ordinal));
+        Assert.Contains(
+            graph.Nodes,
+            node => string.Equals(
+                node.SemanticDimension, "record_state", StringComparison.Ordinal));
+
         AssertCannotType(graph);
+    }
+
+    /// <summary>
+    /// Contradicted evidence: the same anchor pair is taught with the required
+    /// relation and with a competing relation of another kind under the same
+    /// signature endpoints. The contradiction must not resolve silently into
+    /// the owned-record intent.
+    /// </summary>
+    [Fact]
+    public async Task ContradictedRelationEvidence_CannotTypeTheIntentSilently()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        ControllerTestHelpers.SeedGovernedLanguageBaseline(db);
+
+        for (var family = 1; family <= 3; family++)
+        {
+            await SubmitAsync(
+                db,
+                $"owned.record.contradiction.{family}",
+                [
+                    OwnedRecordExample(family, RequiredKind),
+                    OwnedRecordExample(family + 100, "owned_record_state_denied")
+                ]);
+        }
+
+        var graph = await CreateOperations(db)
+            .AnalyzeReusableMeaningGraphAsync(HeldOutSurface);
+
+        // CONFIRMED by execution: the analyzer admits both competing kinds for
+        // the same anchor pair, so the contradiction is unresolved at the graph
+        // layer. The classification authority must therefore fail closed rather
+        // than pick the required kind out of contradicted evidence.
+        var admittedKinds = graph.Relations
+            .Select(relation => relation.RelationKind)
+            .ToList();
+
+        Assert.Contains(RequiredKind, admittedKinds);
+        Assert.Contains("owned_record_state_denied", admittedKinds);
+
+        var classification = LegendConnectOwnedRecordRequest.Classify(graph);
+
+        Assert.Equal(
+            LegendConnectOwnedRecordIntent.Unknown,
+            classification.Intent);
+        Assert.False(classification.RequiresGovernedReadReceipt);
+        Assert.Equal(RequiredKind, classification.MissingRelationKind);
+        Assert.Equal(
+            "owned_record_relation_contradicted: owned_record_state_denied",
+            classification.Diagnostic);
     }
 
     [Fact]
@@ -184,15 +255,31 @@ public class LegendConnectOwnedRecordIntentAnalyzerTests
         }
     }
 
-    private static LegendConnectCurriculumExampleSubmission SplitAnchorExample(
-        int index) =>
+    private static async Task SubmitAsync(
+        MasterAppDbContext db,
+        string familyKey,
+        IReadOnlyList<LegendConnectCurriculumExampleSubmission> examples)
+    {
+        var result = await CreateCurriculum(db).SubmitFounderBatchAsync(
+            new LegendConnectCurriculumBatchSubmission(
+                familyKey,
+                "Founder-governed owned-record evidence",
+                examples));
+        Assert.True(result.Succeeded, result.Message);
+    }
+
+    private static LegendConnectCurriculumExampleSubmission SingleAnchorExample(
+        int index,
+        string role,
+        string dimension,
+        string value) =>
         new(
-            $"portfolio {index}",
+            $"{value} {index}",
             Variations(),
             new LegendConnectMeaningGraphSubmission(
                 [
                     new LegendConnectMeaningNodeSubmission(
-                        "owner", "record_owner", "portfolio", "portfolio")
+                        role, dimension, value, value)
                 ],
                 []));
 

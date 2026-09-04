@@ -55,20 +55,52 @@ public static class LegendConnectOwnedRecordRequest
                 MissingRelationKind: RequiredRelationKind);
         }
 
-        var established = graph.Relations.Any(relation =>
-            string.Equals(
+        var admitted = graph.Relations
+            .Where(relation => string.Equals(
                 relation.RelationKind,
                 RequiredRelationKind,
-                StringComparison.Ordinal));
+                StringComparison.Ordinal))
+            .ToList();
 
-        return established
-            ? new LegendConnectOwnedRecordClassification(
-                LegendConnectOwnedRecordIntent.OwnedRecordStateInspection,
-                RequiresGovernedReadReceipt: true,
-                MissingRelationKind: null)
-            : new LegendConnectOwnedRecordClassification(
+        if (admitted.Count == 0)
+        {
+            return new LegendConnectOwnedRecordClassification(
                 LegendConnectOwnedRecordIntent.Unknown,
                 RequiresGovernedReadReceipt: false,
                 MissingRelationKind: RequiredRelationKind);
+        }
+
+        // Contradiction fails closed. When the same anchor pair also carries a
+        // competing relation kind, the governed evidence does not settle what
+        // the request means, so the intent is not established and the competing
+        // kinds are reported instead of silently resolved.
+        var contradicting = admitted
+            .SelectMany(required => graph.Relations.Where(other =>
+                other.SourceNodeIndex == required.SourceNodeIndex &&
+                other.TargetNodeIndex == required.TargetNodeIndex &&
+                !string.Equals(
+                    other.RelationKind,
+                    RequiredRelationKind,
+                    StringComparison.Ordinal)))
+            .Select(other => other.RelationKind)
+            .Distinct(StringComparer.Ordinal)
+            .OrderBy(kind => kind, StringComparer.Ordinal)
+            .ToList();
+
+        if (contradicting.Count > 0)
+        {
+            return new LegendConnectOwnedRecordClassification(
+                LegendConnectOwnedRecordIntent.Unknown,
+                RequiresGovernedReadReceipt: false,
+                MissingRelationKind: RequiredRelationKind,
+                Diagnostic:
+                    "owned_record_relation_contradicted: " +
+                    string.Join(",", contradicting));
+        }
+
+        return new LegendConnectOwnedRecordClassification(
+            LegendConnectOwnedRecordIntent.OwnedRecordStateInspection,
+            RequiresGovernedReadReceipt: true,
+            MissingRelationKind: null);
     }
 }
