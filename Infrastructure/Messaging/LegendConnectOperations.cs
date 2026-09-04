@@ -513,9 +513,7 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
         // general bypass for supported answers: the claim must actually carry
         // complete, canonical, unexpired receipt provenance.
         if (internalAvailable &&
-            !stale &&
-            !conflicted &&
-            IsAnsweredByAttestedGovernedRead(internalInference))
+            IsAnsweredByAttestedGovernedRead(internalInference, decidedUtc))
         {
             return Decision(
                 false,
@@ -1818,14 +1816,19 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
     /// output cannot suppress the research decision.
     /// </summary>
     private static bool IsAnsweredByAttestedGovernedRead(
-        LegendConnectNativeInferenceSnapshot? inference)
+        LegendConnectNativeInferenceSnapshot? inference,
+        DateTime decidedUtc)
     {
-        if (inference?.ReadOnlyContentAttestation is not { } attestation)
+        if (inference?.ReadOnlyContentAttestation is not
+            LegendConnectReadOnlyContentBindingAttestation attestation)
+        {
             return false;
+        }
 
         var provenance = inference.ContentBindingProvenance;
         return provenance is { Count: > 0 } &&
-            provenance.All(attestation.Attests);
+            provenance.All(receipt =>
+                attestation.Attests(receipt, inference.Answer, decidedUtc));
     }
 
     private static bool HasCurrentTurnDiscourseAuthority(
