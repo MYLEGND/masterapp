@@ -145,7 +145,8 @@ internal sealed record LegendSemanticTransitionInference(
     IReadOnlyList<string> Reasons,
     LegendConnectReadOnlyContentBindingRequest? ReadOnlyContentRequest = null,
     IReadOnlyList<LegendConnectReadOnlyContentBindingReceipt>? ContentBindingProvenance = null,
-    LegendConnectResponsePresentationConstraintsSnapshot? PresentationConstraints = null)
+    LegendConnectResponsePresentationConstraintsSnapshot? PresentationConstraints = null,
+    LegendConnectOwnedRecordClassification? OwnedRecordIntent = null)
 {
     internal const string Supported = "Supported";
     internal const string InsufficientEvidence = "InsufficientEvidence";
@@ -5406,6 +5407,17 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
         if (!completion.Succeeded)
             return SemanticTransitionInsufficient(completion.ReasonCode);
         var graph = completion.Graph;
+
+        // One analysis, one classification: the typed operational intent is
+        // derived here from the admitted relations of this graph and carried on
+        // every result of this evaluation. No caller re-runs graph analysis and
+        // no caller inspects surface text.
+        var ownedRecordIntent = LegendConnectOwnedRecordRequest.Classify(graph);
+
+        LegendSemanticTransitionInference WithOwnedRecordIntent(
+            LegendSemanticTransitionInference inference) =>
+            inference with { OwnedRecordIntent = ownedRecordIntent };
+
         var selection = await SelectSemanticTransitionAsync(
             sourceLanguageCode,
             input,
@@ -5416,11 +5428,12 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
             cancellationToken: cancellationToken);
         if (selection.Selected is null)
         {
-            return selection.IsAmbiguous
-                ? SemanticTransitionAmbiguous(selection.ReasonCode)
-                : selection.IsContradicted
-                    ? SemanticTransitionContradicted(selection.ReasonCode)
-                    : SemanticTransitionInsufficient(selection.ReasonCode);
+            return WithOwnedRecordIntent(
+                selection.IsAmbiguous
+                    ? SemanticTransitionAmbiguous(selection.ReasonCode)
+                    : selection.IsContradicted
+                        ? SemanticTransitionContradicted(selection.ReasonCode)
+                        : SemanticTransitionInsufficient(selection.ReasonCode));
         }
 
         var content = await ResolveGovernedResponseContentAsync(
@@ -5430,17 +5443,18 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
             readOnlyContentReceipt);
         if (content.ReadOnlyContentRequest is not null)
         {
-            return new LegendSemanticTransitionInference(
+            return WithOwnedRecordIntent(new LegendSemanticTransitionInference(
                 LegendSemanticTransitionInference.ReadOnlyContentRequired,
                 null,
                 selection.Selected.IndependentEvidenceCount +
                 selection.Selected.ReasoningEvidenceCount,
                 ["read_only_content_binding_required"],
-                content.ReadOnlyContentRequest);
+                content.ReadOnlyContentRequest));
         }
         if (content.IsRequired && !content.Succeeded)
         {
-            return SemanticTransitionInsufficient(content.ReasonCode);
+            return WithOwnedRecordIntent(
+                SemanticTransitionInsufficient(content.ReasonCode));
         }
 
         var candidate = content.Succeeded
@@ -5462,9 +5476,10 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
             cancellationToken: cancellationToken);
         if (realization.Reason is not null)
         {
-            return realization.IsAmbiguous
-                ? SemanticTransitionAmbiguous(realization.Reason)
-                : SemanticTransitionInsufficient(realization.Reason);
+            return WithOwnedRecordIntent(
+                realization.IsAmbiguous
+                    ? SemanticTransitionAmbiguous(realization.Reason)
+                    : SemanticTransitionInsufficient(realization.Reason));
         }
         if (!TryInstantiateResponsePlanFrame(
                 candidate.ResultFrame,
@@ -5472,8 +5487,8 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
                 out var realizedDimensions,
                 out _))
         {
-            return SemanticTransitionInsufficient(
-                "result_presentation_frame_unavailable");
+            return WithOwnedRecordIntent(SemanticTransitionInsufficient(
+                "result_presentation_frame_unavailable"));
         }
         if (!TryResolveGovernedPresentationConstraints(
                 realizedDimensions,
@@ -5481,10 +5496,11 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
                 out var realizedPresentationReason,
                 out _))
         {
-            return SemanticTransitionInsufficient(realizedPresentationReason);
+            return WithOwnedRecordIntent(
+                SemanticTransitionInsufficient(realizedPresentationReason));
         }
 
-        return new LegendSemanticTransitionInference(
+        return WithOwnedRecordIntent(new LegendSemanticTransitionInference(
             LegendSemanticTransitionInference.Supported,
             realization.Text,
             selection.Selected.IndependentEvidenceCount + selection.Selected.ReasoningEvidenceCount + content.EvidenceCount + realization.LayoutEvidenceCount,
@@ -5506,7 +5522,7 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
             ],
             null,
             content.ReadOnlyContentReceipts,
-            realizedPresentationConstraints);
+            realizedPresentationConstraints));
     }
 
     internal async Task<LegendConnectResponseMeaningPlanResult> TryPlanResponseMeaningAsync(

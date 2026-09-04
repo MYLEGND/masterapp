@@ -1,46 +1,6 @@
+using Domain.Messaging;
+
 namespace Infrastructure.Messaging;
-
-/// <summary>
-/// The typed intent a request carries about records this deployment owns.
-/// </summary>
-public enum LegendConnectOwnedRecordIntent
-{
-    /// <summary>
-    /// No governed semantic transition established an owned-record meaning for
-    /// this request. This is the fail-closed value: it is returned both when the
-    /// request genuinely is not about owned records and when the governed
-    /// evidence required to decide is absent.
-    /// </summary>
-    Unknown = 0,
-
-    /// <summary>
-    /// A governed, production-eligible semantic relation established that the
-    /// request demands the present state of records this deployment owns.
-    /// </summary>
-    OwnedRecordStateInspection = 1
-}
-
-/// <summary>
-/// The typed outcome of classifying a request against the governed meaning
-/// graph, including the receipt obligation and, when the classification could
-/// not be made, the exact governed artifact that was missing.
-/// </summary>
-/// <param name="Intent">The established intent, or <see cref="LegendConnectOwnedRecordIntent.Unknown"/>.</param>
-/// <param name="RequiresGovernedReadReceipt">
-/// True only when <paramref name="Intent"/> is
-/// <see cref="LegendConnectOwnedRecordIntent.OwnedRecordStateInspection"/>: the
-/// answer may then not complete until a registered governed read tool returns a
-/// receipt.
-/// </param>
-/// <param name="MissingSemanticTransition">
-/// When the classification failed closed, the exact relation kind that must
-/// exist as a production-eligible governed semantic relation before this
-/// request can be typed. Null when the classification succeeded.
-/// </param>
-public readonly record struct LegendConnectOwnedRecordClassification(
-    LegendConnectOwnedRecordIntent Intent,
-    bool RequiresGovernedReadReceipt,
-    string? MissingSemanticTransition);
 
 /// <summary>
 /// The one authority that types a request as an inspection of records this
@@ -49,53 +9,53 @@ public readonly record struct LegendConnectOwnedRecordClassification(
 /// or the public internet.
 ///
 /// It carries no vocabulary: no ownership phrase list, no demand phrase list,
-/// no subject nouns, and no substring routing. The decision is made only from
-/// the governed semantic relations the existing meaning-graph analysis surfaced
-/// for the request. When that analysis produced no production-eligible relation
-/// of the required kind, this authority fails closed and names the exact
-/// missing artifact instead of guessing from surface text.
+/// no subject nouns and no substring routing. The decision is made only from
+/// the admitted relations of the governed meaning graph that the curriculum
+/// authority already produced for the request, so there is exactly one
+/// analysis and one classification. When that analysis admitted no relation of
+/// the required kind the classification fails closed and names the exact
+/// missing governed artifact.
 /// </summary>
 public static class LegendConnectOwnedRecordRequest
 {
     /// <summary>
-    /// The governed relation kind that must be promoted and production-eligible
-    /// for an owned-record inspection intent to be established. It is a
+    /// The governed relation kind that must be admitted for an owned-record
+    /// inspection intent to be established. It is a
     /// <c>LegendLanguageMeaningRelation.RelationKind</c> value; absent such a
-    /// relation there is no authority in this system that can type the request.
+    /// relation no authority in this system can type the request.
     /// </summary>
     public const string RequiredRelationKind = "owned_record_state_inspection";
 
     /// <summary>
-    /// Types the request from the production-eligible governed relation kinds
-    /// the meaning-graph analysis surfaced for it.
+    /// Types the request from the admitted relations of its governed meaning
+    /// graph. A null graph means the analysis never completed, which is
+    /// reported as the missing required relation rather than guessed.
     /// </summary>
-    /// <param name="governedRelationKinds">
-    /// The relation kinds of the production-eligible governed semantic
-    /// relations selected for this request, or null when the meaning-graph
-    /// analysis could not complete.
-    /// </param>
     public static LegendConnectOwnedRecordClassification Classify(
-        IReadOnlyCollection<string>? governedRelationKinds)
+        LegendConnectUtteranceMeaningGraphSnapshot? graph)
     {
-        if (governedRelationKinds is null || governedRelationKinds.Count == 0)
+        if (graph is null)
         {
             return new LegendConnectOwnedRecordClassification(
                 LegendConnectOwnedRecordIntent.Unknown,
                 RequiresGovernedReadReceipt: false,
-                MissingSemanticTransition: RequiredRelationKind);
+                MissingRelationKind: RequiredRelationKind);
         }
 
-        var established = governedRelationKinds.Any(kind =>
-            string.Equals(kind, RequiredRelationKind, StringComparison.Ordinal));
+        var established = graph.Relations.Any(relation =>
+            string.Equals(
+                relation.RelationKind,
+                RequiredRelationKind,
+                StringComparison.Ordinal));
 
         return established
             ? new LegendConnectOwnedRecordClassification(
                 LegendConnectOwnedRecordIntent.OwnedRecordStateInspection,
                 RequiresGovernedReadReceipt: true,
-                MissingSemanticTransition: null)
+                MissingRelationKind: null)
             : new LegendConnectOwnedRecordClassification(
                 LegendConnectOwnedRecordIntent.Unknown,
                 RequiresGovernedReadReceipt: false,
-                MissingSemanticTransition: null);
+                MissingRelationKind: RequiredRelationKind);
     }
 }

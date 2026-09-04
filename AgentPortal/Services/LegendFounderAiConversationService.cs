@@ -575,15 +575,32 @@ public sealed class LegendFounderAiConversationService
 
         var model = ResolveProviderModel();
 
+        // One typed classification for both modes. Legend mode reuses the
+        // classification the native meaning-graph analysis already produced;
+        // Teacher mode, which never attempts a native answer, obtains it from
+        // the same Founder-gated read-only analysis authority. Neither mode
+        // falls back to surface text, and no analysis is duplicated.
+        var ownedRecordIntent =
+            nativeInference?.OwnedRecordIntent ??
+            (governedSourceLanguageCode is null
+                ? null
+                : await ClassifyOwnedRecordIntentAsync(
+                    founder,
+                    conversation,
+                    governedSourceLanguageCode,
+                    cancellationToken));
+
         var requiresMandatoryGovernedInspection =
             RequiresGovernedInspection(
                 conversation,
-                mode);
+                mode,
+                ownedRecordIntent);
 
         var requiresGovernedInspection =
             RequiresProviderGovernedInspection(
                 conversation,
                 mode,
+                ownedRecordIntent,
                 nativeInference,
                 nativeFailureDetail);
 
@@ -1218,6 +1235,52 @@ public sealed class LegendFounderAiConversationService
                 "governed_execution",
                 "governed_execution",
                 "unexpected_governed_failure");
+        }
+    }
+
+    /// <summary>
+    /// Obtains the typed operational intent for the latest request from the
+    /// existing Founder-gated, observational, read-only meaning-graph analysis.
+    /// It is used only when the native inference result did not already carry
+    /// the classification, so exactly one analysis produces exactly one
+    /// classification per request.
+    /// </summary>
+    private async Task<LegendConnectOwnedRecordClassification?>
+        ClassifyOwnedRecordIntentAsync(
+            ClaimsPrincipal founder,
+            IReadOnlyList<LegendFounderAiChatMessage> conversation,
+            string sourceLanguageCode,
+            CancellationToken cancellationToken)
+    {
+        var latest = conversation
+            .LastOrDefault(message =>
+                string.Equals(message.Role, "user", StringComparison.Ordinal))
+            ?.Content?.Trim();
+
+        if (string.IsNullOrWhiteSpace(latest))
+            return null;
+
+        try
+        {
+            var graph = await _legend.AnalyzeReusableMeaningGraphAsync(
+                founder,
+                latest,
+                sourceLanguageCode,
+                cancellationToken);
+
+            return LegendConnectOwnedRecordRequest.Classify(graph);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception exception)
+        {
+            // A failed observation must fail closed, never guess from text.
+            _logger.LogDebug(
+                exception,
+                "LEGEND could not classify the request intent from the governed meaning graph.");
+            return null;
         }
     }
 
@@ -3215,7 +3278,8 @@ Never upgrade an unresolved, rejected or contradicted record merely because it a
 
     private static bool RequiresGovernedInspection(
         IReadOnlyList<LegendFounderAiChatMessage> conversation,
-        string mode)
+        string mode,
+        LegendConnectOwnedRecordClassification? ownedRecordIntent)
     {
         var latest = conversation
             .Last(message => string.Equals(message.Role, "user", StringComparison.Ordinal))
@@ -3226,17 +3290,12 @@ Never upgrade an unresolved, rejected or contradicted record merely because it a
 
         var text = latest.ToLowerInvariant();
 
-        // Records this deployment owns are governed resources. Typing a request
-        // as an owned-record inspection is a governed semantic decision made by
-        // the single owned-record authority from production-eligible governed
-        // relations. This entry point holds no meaning-graph relation kinds, so
-        // the classification fails closed; when it does establish the intent the
-        // request cannot complete until a registered governed read returns a
-        // successful receipt.
-        var ownedRecord =
-            LegendConnectOwnedRecordRequest.Classify(governedRelationKinds: null);
-
-        if (ownedRecord.RequiresGovernedReadReceipt)
+        // Records this deployment owns are governed resources. The typed intent
+        // is not decided here: it is the one classification the meaning-graph
+        // analysis already produced for this request. When it establishes the
+        // owned-record inspection intent the request cannot complete until a
+        // registered governed read returns a successful receipt.
+        if (ownedRecordIntent?.RequiresGovernedReadReceipt == true)
             return true;
 
         var explicitGovernedSignals = new[]
@@ -3370,9 +3429,10 @@ Never upgrade an unresolved, rejected or contradicted record merely because it a
     private static bool RequiresProviderGovernedInspection(
         IReadOnlyList<LegendFounderAiChatMessage> conversation,
         string mode,
+        LegendConnectOwnedRecordClassification? ownedRecordIntent,
         LegendConnectNativeInferenceSnapshot? nativeInference,
         string? nativeFailureDetail) =>
-        RequiresGovernedInspection(conversation, mode) ||
+        RequiresGovernedInspection(conversation, mode, ownedRecordIntent) ||
         nativeInference is { Supported: false, RequiresEscalation: true } ||
         !string.IsNullOrWhiteSpace(nativeFailureDetail);
 

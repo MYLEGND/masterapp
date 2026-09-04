@@ -1023,6 +1023,37 @@ public sealed record LegendConnectUtteranceMeaningRelation(
     int TargetNodeIndex,
     int IndependentSupportCount);
 
+/// <summary>
+/// The typed intent a request carries about records this deployment owns.
+/// It is established only by the governed meaning-graph authority from the
+/// admitted relations of one analysis, never from surface text.
+/// </summary>
+public enum LegendConnectOwnedRecordIntent
+{
+    /// <summary>
+    /// No admitted governed relation established an owned-record meaning. This
+    /// is the fail-closed value.
+    /// </summary>
+    Unknown = 0,
+
+    /// <summary>
+    /// An admitted governed relation established that the request demands the
+    /// present state of records this deployment owns.
+    /// </summary>
+    OwnedRecordStateInspection = 1
+}
+
+/// <summary>
+/// The typed classification of one analyzed request against the admitted
+/// relations of its governed meaning graph, with the receipt obligation and,
+/// when the graph could not establish the intent, the exact governed relation
+/// kind that was missing.
+/// </summary>
+public sealed record LegendConnectOwnedRecordClassification(
+    LegendConnectOwnedRecordIntent Intent,
+    bool RequiresGovernedReadReceipt,
+    string? MissingRelationKind);
+
 public sealed record LegendConnectUtteranceMeaningGraphSnapshot(
     bool IsComposed,
     IReadOnlyList<LegendConnectUtteranceMeaningNode> Nodes,
@@ -2426,7 +2457,8 @@ public sealed record LegendConnectNativeInferenceSnapshot(
     IReadOnlyList<LegendConnectReadOnlyContentBindingReceipt>? ContentBindingProvenance = null,
     LegendConnectNativeModelAssistanceSnapshot? ModelAssistance = null,
     LegendConnectResearchNeededDecision? ResearchDecision = null,
-    LegendConnectResponsePresentationConstraintsSnapshot? PresentationConstraints = null);
+    LegendConnectResponsePresentationConstraintsSnapshot? PresentationConstraints = null,
+    LegendConnectOwnedRecordClassification? OwnedRecordIntent = null);
 
 /// <summary>
 /// The sole read/write authority for Legend Connect operations. Presentation

@@ -496,15 +496,11 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
         }
 
         // Records this deployment owns are authenticated governed resources and
-        // the public internet holds no authority over them. Typing a request as
-        // such an inspection is a governed semantic decision, so it is made only
-        // from production-eligible governed relations. This decision point holds
-        // no meaning-graph relation kinds, so the classification fails closed
-        // and names the exact missing artifact rather than guessing from text.
-        var ownedRecordClassification =
-            LegendConnectOwnedRecordRequest.Classify(governedRelationKinds: null);
-
-        if (ownedRecordClassification.Intent ==
+        // the public internet holds no authority over them. The typed intent
+        // was established by the meaning-graph analysis that produced this
+        // inference; absent an admitted relation it is Unknown and the request
+        // is not diverted here.
+        if (internalInference?.OwnedRecordIntent?.Intent ==
             LegendConnectOwnedRecordIntent.OwnedRecordStateInspection)
         {
             return Decision(
@@ -1378,12 +1374,22 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
             string sourceLanguageCode)
     {
         cancellationToken.ThrowIfCancellationRequested();
+
+        // The typed operational intent is produced by the single meaning-graph
+        // analysis below and carried on every finished result, so research
+        // classification and Founder tool routing consume one classification
+        // instead of re-analyzing or matching text.
+        LegendConnectOwnedRecordClassification? ownedRecordIntent = null;
+
         LegendConnectNativeInferenceSnapshot Finish(
             LegendConnectNativeInferenceSnapshot inference) =>
             WithResearchDecision(
                 input ?? string.Empty,
                 sourceLanguageCode,
-                inference,
+                inference with
+                {
+                    OwnedRecordIntent = inference.OwnedRecordIntent ?? ownedRecordIntent
+                },
                 discourseState);
         if (string.IsNullOrWhiteSpace(LegendLanguageIdentity.NormalizeText(input ?? string.Empty)))
             return Finish(NativeInferenceUnsupported("invalid_input"));
@@ -1395,6 +1401,7 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
             discourseState,
             cancellationToken,
             readOnlyContentReceipt);
+        ownedRecordIntent = composed.OwnedRecordIntent;
         if (string.Equals(
                 composed.State,
                 LegendSemanticTransitionInference.ReadOnlyContentRequired,

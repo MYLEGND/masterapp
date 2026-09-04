@@ -193,62 +193,67 @@ public sealed class LegendFounderAiIndependentOperationRegressionTests
     }
 
     // Root cause B, restated honestly. Typing a request as an owned-record
-    // inspection is a governed semantic decision. The authority carries no
-    // vocabulary, so with no production-eligible governed relation surfaced it
-    // must fail closed and name the exact missing artifact rather than route on
-    // surface text. These inputs are ordinary paraphrases: none of them can be
-    // typed today, and that is the reported structural result.
-    [Theory]
-    [InlineData("How many clients and leads do we have right now?")]
-    [InlineData("What is the current count of our open households?")]
-    [InlineData("Show me the status of our renewals today.")]
-    [InlineData("Rewrite this rough note as a concise professional update.")]
-    public void OwnedRecordClassification_FailsClosedAndNamesTheMissingRelation(
-        string text)
+    // inspection is a governed semantic decision made only from the admitted
+    // relations of the governed meaning graph. The authority has no text path,
+    // so a missing or relation-free analysis fails closed and names the exact
+    // governed relation kind that was absent.
+    [Fact]
+    public void OwnedRecordClassification_FailsClosedAndNamesTheMissingRelation()
     {
-        // The authority never reads the request text: there is no text path.
-        Assert.NotNull(text);
-
-        var classification =
-            LegendConnectOwnedRecordRequest.Classify(governedRelationKinds: null);
+        var noAnalysis = LegendConnectOwnedRecordRequest.Classify(graph: null);
 
         Assert.Equal(
             LegendConnectOwnedRecordIntent.Unknown,
-            classification.Intent);
-        Assert.False(classification.RequiresGovernedReadReceipt);
+            noAnalysis.Intent);
+        Assert.False(noAnalysis.RequiresGovernedReadReceipt);
         Assert.Equal(
             LegendConnectOwnedRecordRequest.RequiredRelationKind,
-            classification.MissingSemanticTransition);
+            noAnalysis.MissingRelationKind);
+
+        var unrelatedRelations = LegendConnectOwnedRecordRequest.Classify(
+            BuildGraph("unrelated_relation"));
+
+        Assert.Equal(
+            LegendConnectOwnedRecordIntent.Unknown,
+            unrelatedRelations.Intent);
+        Assert.False(unrelatedRelations.RequiresGovernedReadReceipt);
+        Assert.Equal(
+            LegendConnectOwnedRecordRequest.RequiredRelationKind,
+            unrelatedRelations.MissingRelationKind);
     }
 
-    // When the governed meaning graph does surface the required
-    // production-eligible relation kind, the typed intent and its receipt
-    // obligation are established, and unrelated governed relations do not
-    // establish it.
+    // When the governed meaning graph admits the required relation kind, the
+    // typed intent and its receipt obligation are established.
     [Fact]
-    public void OwnedRecordClassification_TypesTheIntentFromTheGovernedRelation()
+    public void OwnedRecordClassification_TypesTheIntentFromTheAdmittedRelation()
     {
         var established = LegendConnectOwnedRecordRequest.Classify(
-        [
-            "unrelated_relation",
-            LegendConnectOwnedRecordRequest.RequiredRelationKind
-        ]);
+            BuildGraph(
+                "unrelated_relation",
+                LegendConnectOwnedRecordRequest.RequiredRelationKind));
 
         Assert.Equal(
             LegendConnectOwnedRecordIntent.OwnedRecordStateInspection,
             established.Intent);
         Assert.True(established.RequiresGovernedReadReceipt);
-        Assert.Null(established.MissingSemanticTransition);
-
-        var unrelated = LegendConnectOwnedRecordRequest.Classify(
-            ["unrelated_relation"]);
-
-        Assert.Equal(
-            LegendConnectOwnedRecordIntent.Unknown,
-            unrelated.Intent);
-        Assert.False(unrelated.RequiresGovernedReadReceipt);
-        Assert.Null(unrelated.MissingSemanticTransition);
+        Assert.Null(established.MissingRelationKind);
     }
+
+    private static LegendConnectUtteranceMeaningGraphSnapshot BuildGraph(
+        params string[] relationKinds) =>
+        new(
+            true,
+            [],
+            relationKinds
+                .Select((kind, index) => new LegendConnectUtteranceMeaningRelation(
+                    "relation:" + kind,
+                    kind,
+                    index,
+                    index + 1,
+                    2))
+                .ToList(),
+            [],
+            "composed");
 
     // Root cause C: the retained-knowledge preload was treated as completion
     // of governed inspection, so the governed tool catalog was never offered
