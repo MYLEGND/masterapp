@@ -377,14 +377,16 @@ public sealed class ApplicationLocalizationArchitectureTests
 
         public Task<TranslationDetectionResult> DetectLanguageAsync(
             string text,
-            CancellationToken cancellationToken = default) =>
+            CancellationToken cancellationToken = default,
+        LegendConnectExternalProviderPolicy? providerPolicy = null) =>
             Task.FromResult(new TranslationDetectionResult(true, "en"));
 
         public async Task<TranslationProviderResult> TranslateAsync(
             string text,
             string targetLanguage,
             string? sourceLanguage = null,
-            CancellationToken cancellationToken = default)
+            CancellationToken cancellationToken = default,
+        LegendConnectExternalProviderPolicy? providerPolicy = null)
         {
             Interlocked.Increment(ref _translateOperations);
             LastText = text;

@@ -615,8 +615,10 @@ internal sealed class LegendConnectTranslationRouter : IAccountScopedTranslation
 
     public async Task<TranslationDetectionResult> DetectLanguageAsync(
         string text,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        LegendConnectExternalProviderPolicy? providerPolicy = null)
     {
+        var policy = LegendConnectExternalProviderPolicy.Resolve(providerPolicy);
         if (_structuralComposition is not null &&
             !string.IsNullOrWhiteSpace(LegendLanguageIdentity.NormalizeText(text)))
         {
@@ -651,7 +653,22 @@ internal sealed class LegendConnectTranslationRouter : IAccountScopedTranslation
             }
         }
 
-        var result = await _azure.DetectLanguageAsync(text, cancellationToken);
+        // Governed structural composition above is the only identification
+        // authority a native-only request may use. When it cannot name exactly
+        // one governed language the request fails closed here: the external
+        // detection provider is not consulted and no client is constructed.
+        if (policy.ForbidsExternalProviders)
+        {
+            return new TranslationDetectionResult(
+                false,
+                null,
+                "native_only_governed_source_language_undetermined");
+        }
+
+        var result = await _azure.DetectLanguageAsync(
+            text,
+            cancellationToken,
+            policy);
         if (!result.Succeeded)
             return result;
 
@@ -668,14 +685,30 @@ internal sealed class LegendConnectTranslationRouter : IAccountScopedTranslation
         string text,
         string targetLanguage,
         string? sourceLanguage = null,
-        CancellationToken cancellationToken = default)
-        => await TranslateCoreAsync(
+        CancellationToken cancellationToken = default,
+        LegendConnectExternalProviderPolicy? providerPolicy = null)
+    {
+        // Provider-backed translation is an external boundary. A native-only
+        // request fails closed before the routed provider path is entered.
+        if (LegendConnectExternalProviderPolicy.Resolve(providerPolicy)
+            .ForbidsExternalProviders)
+        {
+            return new TranslationProviderResult(
+                false,
+                null,
+                null,
+                "LegendNative",
+                "external_provider_forbidden_by_native_only_policy");
+        }
+
+        return await TranslateCoreAsync(
             text,
             targetLanguage,
             sourceLanguage,
             account: null,
             requestReference: null,
             cancellationToken);
+    }
 
     public async Task<TranslationProviderResult> TranslateForAccountAsync(
         string text,

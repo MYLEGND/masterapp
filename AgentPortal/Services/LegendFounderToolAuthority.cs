@@ -170,7 +170,8 @@ internal sealed class LegendFounderToolAuthority
         string sourceLanguageCode,
         LegendConnectNativeInferenceSnapshot? internalInference,
         FounderAiMutationAuthorization? restrictedAuthorization,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        LegendConnectExternalProviderPolicy? providerPolicy = null)
     {
         var decision = internalInference?.ResearchDecision ??
             await _legend.DecideResearchNeededAsync(
@@ -178,7 +179,8 @@ internal sealed class LegendFounderToolAuthority
                 question,
                 sourceLanguageCode,
                 internalInference,
-                cancellationToken);
+                cancellationToken,
+                providerPolicy);
         var requestId = Guid.NewGuid();
         if (!decision.ResearchRequired)
         {
@@ -259,7 +261,8 @@ internal sealed class LegendFounderToolAuthority
         return await _legend.ExecuteResearchAsync(
             founder,
             request,
-            cancellationToken);
+            cancellationToken,
+            providerPolicy);
     }
 
 

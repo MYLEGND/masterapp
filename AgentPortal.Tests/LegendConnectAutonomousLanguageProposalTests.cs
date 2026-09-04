@@ -878,7 +878,8 @@ public sealed class LegendConnectAutonomousLanguageProposalTests
 
         public Task<TranslationDetectionResult> DetectLanguageAsync(
             string text,
-            CancellationToken cancellationToken = default) =>
+            CancellationToken cancellationToken = default,
+        LegendConnectExternalProviderPolicy? providerPolicy = null) =>
             Task.FromResult(
                 new TranslationDetectionResult(
                     true,
@@ -888,7 +889,8 @@ public sealed class LegendConnectAutonomousLanguageProposalTests
             string text,
             string targetLanguage,
             string? sourceLanguage = null,
-            CancellationToken cancellationToken = default)
+            CancellationToken cancellationToken = default,
+        LegendConnectExternalProviderPolicy? providerPolicy = null)
         {
             TranslateCalls++;
 

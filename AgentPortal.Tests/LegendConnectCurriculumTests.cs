@@ -1196,14 +1196,16 @@ public sealed class LegendConnectCurriculumTests
     {
         public string ProviderName => "AzureTranslator";
 
-        public Task<TranslationDetectionResult> DetectLanguageAsync(string text, CancellationToken cancellationToken = default) =>
+        public Task<TranslationDetectionResult> DetectLanguageAsync(string text, CancellationToken cancellationToken = default,
+        LegendConnectExternalProviderPolicy? providerPolicy = null) =>
             Task.FromResult(new TranslationDetectionResult(true, "en"));
 
         public Task<TranslationProviderResult> TranslateAsync(
             string text,
             string targetLanguage,
             string? sourceLanguage = null,
-            CancellationToken cancellationToken = default) =>
+            CancellationToken cancellationToken = default,
+        LegendConnectExternalProviderPolicy? providerPolicy = null) =>
             Task.FromResult(new TranslationProviderResult(true, $"{targetLanguage} form {Suffix(text)}", sourceLanguage, ProviderName));
     }
 
@@ -1211,14 +1213,16 @@ public sealed class LegendConnectCurriculumTests
     {
         public string ProviderName => "AzureTranslator";
 
-        public Task<TranslationDetectionResult> DetectLanguageAsync(string text, CancellationToken cancellationToken = default) =>
+        public Task<TranslationDetectionResult> DetectLanguageAsync(string text, CancellationToken cancellationToken = default,
+        LegendConnectExternalProviderPolicy? providerPolicy = null) =>
             Task.FromResult(new TranslationDetectionResult(true, "en"));
 
         public Task<TranslationProviderResult> TranslateAsync(
             string text,
             string targetLanguage,
             string? sourceLanguage = null,
-            CancellationToken cancellationToken = default)
+            CancellationToken cancellationToken = default,
+        LegendConnectExternalProviderPolicy? providerPolicy = null)
         {
             var translated = text.Contains("red", StringComparison.Ordinal)
                 ? $"{targetLanguage} x a"
@@ -1236,14 +1240,16 @@ public sealed class LegendConnectCurriculumTests
         public string ProviderName => "AzureTranslator";
         public int TranslateCalls { get; private set; }
 
-        public Task<TranslationDetectionResult> DetectLanguageAsync(string text, CancellationToken cancellationToken = default) =>
+        public Task<TranslationDetectionResult> DetectLanguageAsync(string text, CancellationToken cancellationToken = default,
+        LegendConnectExternalProviderPolicy? providerPolicy = null) =>
             Task.FromResult(new TranslationDetectionResult(true, "en"));
 
         public Task<TranslationProviderResult> TranslateAsync(
             string text,
             string targetLanguage,
             string? sourceLanguage = null,
-            CancellationToken cancellationToken = default)
+            CancellationToken cancellationToken = default,
+        LegendConnectExternalProviderPolicy? providerPolicy = null)
         {
             TranslateCalls++;
             return Task.FromResult(new TranslationProviderResult(true, "Azure fallback result", sourceLanguage, ProviderName));

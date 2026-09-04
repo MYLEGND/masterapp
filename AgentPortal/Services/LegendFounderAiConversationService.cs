@@ -217,6 +217,14 @@ public sealed class LegendFounderAiConversationService
                 "invalid_messages");
         }
 
+        // One immutable external-provider decision for this request. It is
+        // established once, before any authority runs, and is then carried
+        // explicitly into every boundary that could reach an external
+        // provider. Nothing downstream may widen it.
+        var providerPolicy = request.NativeOnly
+            ? LegendConnectExternalProviderPolicy.NativeOnly
+            : LegendConnectExternalProviderPolicy.ProviderEnabled;
+
         if (request.NativeOnly && IsTeacherMode(mode))
         {
             return LegendFounderAiChatResponse.ModeFailure(
@@ -264,7 +272,8 @@ public sealed class LegendFounderAiConversationService
             var sourceLanguage = await ResolveSourceLanguageAsync(
                 request.SourceLanguageCode,
                 conversation[^1].Content ?? string.Empty,
-                effectiveToken);
+                effectiveToken,
+                providerPolicy);
             if (!sourceLanguage.Succeeded)
             {
                 // Native-only testing is an absolute boundary: an unusable
@@ -336,7 +345,8 @@ public sealed class LegendFounderAiConversationService
                     context,
                     discourseState,
                     sourceLanguageCode,
-                    effectiveToken);
+                    effectiveToken,
+                    providerPolicy);
                 if (nativeInference.ReadOnlyContentRequest is { } readRequest)
                 {
                     var binding = await _toolAuthority.BindReadOnlyResultAsync(
@@ -366,7 +376,8 @@ public sealed class LegendFounderAiConversationService
                                 discourseState,
                                 sourceLanguageCode,
                                 binding.Receipt,
-                                effectiveToken);
+                                effectiveToken,
+                                providerPolicy);
                     }
                 }
             }
@@ -444,7 +455,8 @@ public sealed class LegendFounderAiConversationService
                             ? new FounderAiMutationAuthorization(
                                 Guid.NewGuid().ToString("N"))
                             : null,
-                        researchBudget.Token);
+                        researchBudget.Token,
+                        providerPolicy);
                 }
                 catch (OperationCanceledException)
                     when (!effectiveToken.IsCancellationRequested)
@@ -1380,7 +1392,8 @@ public sealed class LegendFounderAiConversationService
     private async Task<FounderAiSourceLanguageResolution> ResolveSourceLanguageAsync(
         string? declaredLanguageCode,
         string sourceText,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        LegendConnectExternalProviderPolicy? providerPolicy = null)
     {
         if (!string.IsNullOrWhiteSpace(declaredLanguageCode))
         {
@@ -1413,7 +1426,8 @@ public sealed class LegendFounderAiConversationService
         {
             detected = await _translation.DetectLanguageAsync(
                 sourceText,
-                cancellationToken);
+                cancellationToken,
+                providerPolicy);
         }
         catch (OperationCanceledException)
             when (cancellationToken.IsCancellationRequested)
@@ -1443,6 +1457,18 @@ public sealed class LegendFounderAiConversationService
                     FounderAiSourceLanguageResolution.Failure(
                         FounderAiSourceLanguageOutcome.UnsupportedLanguage,
                         "source_language_unsupported"),
+                // Under a native-only policy the governed identification
+                // authority reached its own conclusion without any external
+                // provider. That is a semantic result, not a transient outage,
+                // so it must never be reported as one or escalated.
+                "native_only_governed_source_language_undetermined" =>
+                    FounderAiSourceLanguageResolution.Failure(
+                        FounderAiSourceLanguageOutcome.SemanticAmbiguity,
+                        "native_only_governed_source_language_undetermined"),
+                "external_provider_forbidden_by_native_only_policy" =>
+                    FounderAiSourceLanguageResolution.Failure(
+                        FounderAiSourceLanguageOutcome.SemanticAmbiguity,
+                        "external_provider_forbidden_by_native_only_policy"),
                 _ => FounderAiSourceLanguageResolution.Failure(
                     FounderAiSourceLanguageOutcome
                         .TransientIdentificationUnavailable,

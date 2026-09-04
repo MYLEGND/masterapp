@@ -2491,6 +2491,57 @@ public sealed record LegendConnectNativeInferenceSnapshot(
     LegendConnectOwnedRecordClassification? OwnedRecordIntent = null);
 
 /// <summary>
+/// The one immutable, per-request decision about whether this serving request
+/// is allowed to reach any external provider at all.
+///
+/// It is deliberately a value carried explicitly through the existing serving
+/// boundary rather than ambient or mutable state: there is no static, global,
+/// or per-thread scope that another authority could observe, race with, or
+/// reset mid-request. Every external boundary reached during Founder serving
+/// (conversation provider, promoted model inference, translation detection and
+/// translation, research search, and research page retrieval) consults this
+/// same value, so native-only isolation is decided once and cannot drift
+/// between the layers that enforce it.
+///
+/// When <see cref="AllowExternalProviders"/> is false the caller has declared a
+/// native-only request. Each boundary must then be structurally unreachable:
+/// the provider client is never constructed and never invoked, and the
+/// boundary fails closed with its own precise reason. It must never be
+/// satisfied by relabelling provider output as native.
+/// </summary>
+public sealed record LegendConnectExternalProviderPolicy(
+    bool AllowExternalProviders)
+{
+    /// <summary>
+    /// An absolute zero-external-provider request.
+    /// </summary>
+    public static readonly LegendConnectExternalProviderPolicy NativeOnly =
+        new(AllowExternalProviders: false);
+
+    /// <summary>
+    /// A provider-enabled request. External escalation remains governed by the
+    /// single existing escalation authority; this policy only declines to
+    /// forbid it, and never itself authorizes or attributes provider output.
+    /// </summary>
+    public static readonly LegendConnectExternalProviderPolicy ProviderEnabled =
+        new(AllowExternalProviders: true);
+
+    /// <summary>
+    /// Resolves an absent policy to the provider-enabled default so existing
+    /// non-Founder callers keep their current behavior, while a declared
+    /// native-only policy is always honored.
+    /// </summary>
+    public static LegendConnectExternalProviderPolicy Resolve(
+        LegendConnectExternalProviderPolicy? policy) =>
+        policy ?? ProviderEnabled;
+
+    /// <summary>
+    /// True when this request forbids every external provider boundary.
+    /// </summary>
+    public bool ForbidsExternalProviders => !AllowExternalProviders;
+}
+
+/// <summary>
 /// The sole read/write authority for Legend Connect operations. Presentation
 /// layers may use it only after their established Founder authorization guard
 /// succeeds; it owns neither identity authorization nor mobile contracts.
@@ -2572,11 +2623,13 @@ public interface ILegendConnectOperations
         string input,
         string sourceLanguageCode,
         LegendConnectNativeInferenceSnapshot? internalInference,
-        CancellationToken cancellationToken = default);
+        CancellationToken cancellationToken = default,
+        LegendConnectExternalProviderPolicy? providerPolicy = null);
 
     Task<LegendConnectResearchOutcome> ExecuteResearchAsync(
         LegendConnectResearchRequest request,
-        CancellationToken cancellationToken = default);
+        CancellationToken cancellationToken = default,
+        LegendConnectExternalProviderPolicy? providerPolicy = null);
 
     /// <summary>
     /// Writes sanitized, bounded operational receipts for the completed
@@ -2603,7 +2656,8 @@ public interface ILegendConnectOperations
         IReadOnlyList<LegendConnectConversationContextItem> context,
         LegendConnectDiscourseStateSnapshot? discourseState,
         CancellationToken cancellationToken = default,
-        string sourceLanguageCode = "en");
+        string sourceLanguageCode = "en",
+        LegendConnectExternalProviderPolicy? providerPolicy = null);
 
     /// <summary>
     /// Completes the same native inference path with one proof-carrying receipt
@@ -2618,7 +2672,8 @@ public interface ILegendConnectOperations
             LegendConnectDiscourseStateSnapshot? discourseState,
             LegendConnectReadOnlyContentBindingReceipt receipt,
             CancellationToken cancellationToken = default,
-            string sourceLanguageCode = "en");
+            string sourceLanguageCode = "en",
+            LegendConnectExternalProviderPolicy? providerPolicy = null);
 
     Task<LegendConnectResponseMeaningPlanResult> TryPlanConversationAsync(
         string input,

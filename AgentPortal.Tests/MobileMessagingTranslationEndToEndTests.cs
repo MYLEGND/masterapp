@@ -480,7 +480,8 @@ public sealed class MobileMessagingTranslationEndToEndTests
 
         public Task<TranslationDetectionResult> DetectLanguageAsync(
             string text,
-            CancellationToken cancellationToken = default)
+            CancellationToken cancellationToken = default,
+        LegendConnectExternalProviderPolicy? providerPolicy = null)
         {
             DetectionCalls++;
             return Task.FromResult(new TranslationDetectionResult(true, "en-US"));
@@ -490,7 +491,8 @@ public sealed class MobileMessagingTranslationEndToEndTests
             string text,
             string targetLanguage,
             string? sourceLanguage = null,
-            CancellationToken cancellationToken = default)
+            CancellationToken cancellationToken = default,
+        LegendConnectExternalProviderPolicy? providerPolicy = null)
         {
             TranslateCalls++;
             return Task.FromResult(new TranslationProviderResult(
@@ -508,14 +510,16 @@ public sealed class MobileMessagingTranslationEndToEndTests
 
         public Task<TranslationDetectionResult> DetectLanguageAsync(
             string text,
-            CancellationToken cancellationToken = default) =>
+            CancellationToken cancellationToken = default,
+        LegendConnectExternalProviderPolicy? providerPolicy = null) =>
             Task.FromResult(new TranslationDetectionResult(true, "en-US"));
 
         public Task<TranslationProviderResult> TranslateAsync(
             string text,
             string targetLanguage,
             string? sourceLanguage = null,
-            CancellationToken cancellationToken = default)
+            CancellationToken cancellationToken = default,
+        LegendConnectExternalProviderPolicy? providerPolicy = null)
         {
             TranslateCalls++;
             return Task.FromResult(new TranslationProviderResult(

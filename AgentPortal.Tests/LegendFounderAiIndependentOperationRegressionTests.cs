@@ -1231,7 +1231,8 @@ public sealed class LegendFounderAiIndependentOperationRegressionTests
 
         public Task<TranslationDetectionResult> DetectLanguageAsync(
             string text,
-            CancellationToken cancellationToken = default)
+            CancellationToken cancellationToken = default,
+        LegendConnectExternalProviderPolicy? providerPolicy = null)
         {
             DetectionCount++;
             return Task.FromResult(result);
@@ -1241,7 +1242,8 @@ public sealed class LegendFounderAiIndependentOperationRegressionTests
             string text,
             string targetLanguage,
             string? sourceLanguage = null,
-            CancellationToken cancellationToken = default) =>
+            CancellationToken cancellationToken = default,
+        LegendConnectExternalProviderPolicy? providerPolicy = null) =>
             throw new InvalidOperationException(
                 "Founder AI language identification must not translate text.");
     }

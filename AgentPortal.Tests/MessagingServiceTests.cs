@@ -3933,7 +3933,8 @@ public sealed class MessagingServiceTests
 
         public Task<TranslationDetectionResult> DetectLanguageAsync(
             string text,
-            CancellationToken cancellationToken = default)
+            CancellationToken cancellationToken = default,
+        LegendConnectExternalProviderPolicy? providerPolicy = null)
         {
             DetectionCallCount++;
 
@@ -3952,7 +3953,8 @@ public sealed class MessagingServiceTests
             string text,
             string targetLanguage,
             string? sourceLanguage = null,
-            CancellationToken cancellationToken = default)
+            CancellationToken cancellationToken = default,
+        LegendConnectExternalProviderPolicy? providerPolicy = null)
         {
             TranslationCallCount++;
 
@@ -3979,14 +3981,16 @@ public sealed class MessagingServiceTests
 
         public Task<TranslationDetectionResult> DetectLanguageAsync(
             string text,
-            CancellationToken cancellationToken = default) =>
+            CancellationToken cancellationToken = default,
+        LegendConnectExternalProviderPolicy? providerPolicy = null) =>
             Task.FromResult(new TranslationDetectionResult(true, "fr"));
 
         public Task<TranslationProviderResult> TranslateAsync(
             string text,
             string targetLanguage,
             string? sourceLanguage = null,
-            CancellationToken cancellationToken = default)
+            CancellationToken cancellationToken = default,
+        LegendConnectExternalProviderPolicy? providerPolicy = null)
         {
             Routes.Add((sourceLanguage ?? string.Empty, targetLanguage));
             return Task.FromResult(new TranslationProviderResult(
@@ -4001,7 +4005,8 @@ public sealed class MessagingServiceTests
     {
         public Task<TranslationDetectionResult> DetectLanguageAsync(
             string text,
-            CancellationToken cancellationToken = default) =>
+            CancellationToken cancellationToken = default,
+        LegendConnectExternalProviderPolicy? providerPolicy = null) =>
             Task.FromResult(new TranslationDetectionResult(
                 false,
                 null,
@@ -4011,7 +4016,8 @@ public sealed class MessagingServiceTests
             string text,
             string targetLanguage,
             string? sourceLanguage = null,
-            CancellationToken cancellationToken = default) =>
+            CancellationToken cancellationToken = default,
+        LegendConnectExternalProviderPolicy? providerPolicy = null) =>
             Task.FromResult(new TranslationProviderResult(
                 false,
                 null,

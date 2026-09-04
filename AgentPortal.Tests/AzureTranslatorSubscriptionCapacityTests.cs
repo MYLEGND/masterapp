@@ -363,14 +363,16 @@ public sealed class AzureTranslatorSubscriptionCapacityTests
 
         public Task<TranslationDetectionResult> DetectLanguageAsync(
             string text,
-            CancellationToken cancellationToken = default) =>
+            CancellationToken cancellationToken = default,
+        LegendConnectExternalProviderPolicy? providerPolicy = null) =>
             Task.FromResult(new TranslationDetectionResult(false, null, "translation_provider_failed"));
 
         public Task<TranslationProviderResult> TranslateAsync(
             string text,
             string targetLanguage,
             string? sourceLanguage = null,
-            CancellationToken cancellationToken = default) =>
+            CancellationToken cancellationToken = default,
+        LegendConnectExternalProviderPolicy? providerPolicy = null) =>
             Task.FromResult(new TranslationProviderResult(
                 false, null, sourceLanguage, ProviderName, "translation_provider_timeout"));
     }

@@ -396,8 +396,32 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
             string input,
             string sourceLanguageCode,
             LegendConnectNativeInferenceSnapshot? internalInference,
-            CancellationToken cancellationToken = default)
+            CancellationToken cancellationToken = default,
+            LegendConnectExternalProviderPolicy? providerPolicy = null)
     {
+        // Internet research is an external boundary. A native-only request may
+        // not be routed to it, so the decision is refused here rather than
+        // being refused later by an unavailable transport.
+        if (LegendConnectExternalProviderPolicy.Resolve(providerPolicy)
+            .ForbidsExternalProviders)
+        {
+            return new LegendConnectResearchNeededDecision(
+                ResearchRequired: false,
+                LegendConnectResearchNeed.NotResearchable,
+                "native_only_external_research_forbidden",
+                LegendConnectResearchAccessClass.PublicReadOnly,
+                sourceLanguageCode,
+                InternalKnowledgeAvailable: internalInference is
+                {
+                    Supported: true,
+                    Answer: not null
+                },
+                InternalEvidenceStale: false,
+                InternalEvidenceConflicted: false,
+                NamedSource: null,
+                DateTime.UtcNow);
+        }
+
         var governedLanguage =
             await _registry.NormalizeEnabledTranslationLanguageAsync(
                 sourceLanguageCode,
@@ -605,9 +629,12 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
 
     public async Task<LegendConnectResearchOutcome> ExecuteResearchAsync(
         LegendConnectResearchRequest request,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        LegendConnectExternalProviderPolicy? providerPolicy = null)
     {
         ArgumentNullException.ThrowIfNull(request);
+        var externalResearchPolicy =
+            LegendConnectExternalProviderPolicy.Resolve(providerPolicy);
         var startedUtc = DateTime.UtcNow;
         var sessionId = Guid.NewGuid();
 
@@ -684,6 +711,16 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
                     retryable,
                     text),
                 provenance);
+        }
+
+        // The research search and page transports are external boundaries. A
+        // native-only request fails closed here, before either transport is
+        // consulted, so no external client is constructed or invoked.
+        if (externalResearchPolicy.ForbidsExternalProviders)
+        {
+            return Failure(
+                "native_only_external_research_forbidden",
+                "LEGEND did not start internet research because this request forbids every external provider.");
         }
 
         if (!TryValidateResearchRequest(request, out var requestFailure))
@@ -1339,14 +1376,16 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
             IReadOnlyList<LegendConnectConversationContextItem> context,
             LegendConnectDiscourseStateSnapshot? discourseState,
             CancellationToken cancellationToken = default,
-            string sourceLanguageCode = "en") =>
+            string sourceLanguageCode = "en",
+            LegendConnectExternalProviderPolicy? providerPolicy = null) =>
         TryInferConversationCoreAsync(
             input,
             context,
             discourseState,
             readOnlyContentReceipt: null,
             cancellationToken: cancellationToken,
-            sourceLanguageCode: sourceLanguageCode);
+            sourceLanguageCode: sourceLanguageCode,
+            providerPolicy: providerPolicy);
 
     public Task<LegendConnectNativeInferenceSnapshot>
         TryInferConversationWithReadOnlyContentAsync(
@@ -1355,14 +1394,16 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
             LegendConnectDiscourseStateSnapshot? discourseState,
             LegendConnectReadOnlyContentBindingReceipt receipt,
             CancellationToken cancellationToken = default,
-            string sourceLanguageCode = "en") =>
+            string sourceLanguageCode = "en",
+            LegendConnectExternalProviderPolicy? providerPolicy = null) =>
         TryInferConversationCoreAsync(
             input,
             context,
             discourseState,
             receipt,
             cancellationToken,
-            sourceLanguageCode);
+            sourceLanguageCode,
+            providerPolicy);
 
     private async Task<LegendConnectNativeInferenceSnapshot>
         TryInferConversationCoreAsync(
@@ -1371,9 +1412,12 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
             LegendConnectDiscourseStateSnapshot? discourseState,
             LegendConnectReadOnlyContentBindingReceipt? readOnlyContentReceipt,
             CancellationToken cancellationToken,
-            string sourceLanguageCode)
+            string sourceLanguageCode,
+            LegendConnectExternalProviderPolicy? providerPolicy = null)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        var externalProviderPolicy =
+            LegendConnectExternalProviderPolicy.Resolve(providerPolicy);
 
         // The typed operational intent is produced by the single meaning-graph
         // analysis below and carried on every finished result, so research
@@ -1457,6 +1501,7 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
                 input ?? string.Empty,
                 sourceLanguageCode,
                 symbolic,
+                externalProviderPolicy,
                 cancellationToken);
             return Finish(served);
         }
@@ -1513,8 +1558,22 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
             string founderInput,
             string sourceLanguageCode,
             LegendConnectNativeInferenceSnapshot symbolic,
+            LegendConnectExternalProviderPolicy providerPolicy,
             CancellationToken cancellationToken)
     {
+        // The promoted reasoning model is transported by an external provider.
+        // A native-only request therefore never reaches it: the model
+        // authority is left dormant with its own precise reason and the
+        // governed symbolic answer is served unchanged and unrelabelled.
+        if (providerPolicy.ForbidsExternalProviders)
+        {
+            return symbolic with
+            {
+                ModelAssistance = DormantModelAssistance(
+                    "native_only_external_model_inference_forbidden")
+            };
+        }
+
         if (!symbolic.Supported ||
             string.IsNullOrWhiteSpace(symbolic.Answer))
         {

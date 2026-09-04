@@ -41,15 +41,28 @@ public sealed record CommunicationLanguage(string Code, string DisplayName);
 /// <summary>Trusted server-side boundary for a translation provider.</summary>
 public interface ITranslationService
 {
+    /// <summary>
+    /// Identifies the source language. When <paramref name="providerPolicy"/>
+    /// forbids external providers the implementation must resolve the language
+    /// from governed authority alone and fail closed rather than contact an
+    /// external detection service.
+    /// </summary>
     Task<TranslationDetectionResult> DetectLanguageAsync(
         string text,
-        CancellationToken cancellationToken = default);
+        CancellationToken cancellationToken = default,
+        LegendConnectExternalProviderPolicy? providerPolicy = null);
 
+    /// <summary>
+    /// Produces target-language text. When <paramref name="providerPolicy"/>
+    /// forbids external providers the implementation must not contact an
+    /// external translation service and must fail closed instead.
+    /// </summary>
     Task<TranslationProviderResult> TranslateAsync(
         string text,
         string targetLanguage,
         string? sourceLanguage = null,
-        CancellationToken cancellationToken = default);
+        CancellationToken cancellationToken = default,
+        LegendConnectExternalProviderPolicy? providerPolicy = null);
 }
 
 public sealed record TranslationDetectionResult(
