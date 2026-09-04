@@ -8,7 +8,6 @@ using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 using AgentPortal.Services.Analytics;
 using Domain.Messaging;
-using Infrastructure.Messaging;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 
@@ -85,8 +84,7 @@ public sealed class LegendFounderAiConversationService
         LegendFounderAiDiscourseStateService discourse,
         ILegendLanguageRegistry languages,
         ITranslationService translation,
-        IFounderSoftwareRemediationService? softwareRemediation = null,
-        AgencyCommandService? agencyCommand = null)
+        IFounderSoftwareRemediationService? softwareRemediation = null)
     {
         _httpClientFactory = httpClientFactory;
         _configuration = configuration;
@@ -97,8 +95,7 @@ public sealed class LegendFounderAiConversationService
         _toolAuthority =
             new LegendFounderToolAuthority(
                 legend,
-                softwareRemediation,
-                agencyCommand);
+                softwareRemediation);
         _logger = logger;
 
         _timeoutSeconds =
@@ -217,14 +214,6 @@ public sealed class LegendFounderAiConversationService
                 "invalid_messages");
         }
 
-        // One immutable external-provider decision for this request. It is
-        // established once, before any authority runs, and is then carried
-        // explicitly into every boundary that could reach an external
-        // provider. Nothing downstream may widen it.
-        var providerPolicy = request.NativeOnly
-            ? LegendConnectExternalProviderPolicy.NativeOnly
-            : LegendConnectExternalProviderPolicy.ProviderEnabled;
-
         if (request.NativeOnly && IsTeacherMode(mode))
         {
             return LegendFounderAiChatResponse.ModeFailure(
@@ -272,45 +261,19 @@ public sealed class LegendFounderAiConversationService
             var sourceLanguage = await ResolveSourceLanguageAsync(
                 request.SourceLanguageCode,
                 conversation[^1].Content ?? string.Empty,
-                effectiveToken,
-                providerPolicy);
+                effectiveToken);
             if (!sourceLanguage.Succeeded)
             {
-                // Native-only testing is an absolute boundary: an unusable
-                // governed source language fails closed with its exact reason.
-                // A governed determination that the source language is
-                // ambiguous, unsupported, or invalidly declared is a semantic
-                // authority result and also fails closed in every mode: without
-                // a proven language identity neither input nor translation
-                // semantics can be established. Only a transient outage of the
-                // identification service leaves the meaning intact, and only
-                // that case continues on the single existing escalation path.
-                if (request.NativeOnly ||
-                    !sourceLanguage.IsTransientIdentificationOutage)
-                {
-                    return LegendFounderAiChatResponse.ModeFailure(
-                        mode,
-                        $"Legend® Ai could not identify a governed source language. SourceLanguageFailure={sourceLanguage.Reason}.",
-                        "language_identification",
-                        "source_language_identification",
-                        sourceLanguage.Reason);
-                }
-
-                nativeFailureDetail =
-                    $"Governed source-language identification was unavailable. SourceLanguageFailure={sourceLanguage.Reason}.";
-                _logger.LogWarning(
-                    "LEGEND Founder AI source-language identification failed; preserving the failure and using the existing escalation path. Reason={Reason}",
+                return LegendFounderAiChatResponse.ModeFailure(
+                    mode,
+                    $"Legend® Ai could not identify a governed source language. SourceLanguageFailure={sourceLanguage.Reason}.",
+                    "language_identification",
+                    "source_language_identification",
                     sourceLanguage.Reason);
             }
-            else
-            {
-                governedSourceLanguageCode = sourceLanguage.LanguageCode!;
-            }
-        }
 
-        if (governedSourceLanguageCode is not null)
-        {
-            var sourceLanguageCode = governedSourceLanguageCode;
+            var sourceLanguageCode = sourceLanguage.LanguageCode!;
+            governedSourceLanguageCode = sourceLanguageCode;
             var nativeStarted = Stopwatch.GetTimestamp();
             await ReportProgressAsync(
                 progress,
@@ -345,8 +308,7 @@ public sealed class LegendFounderAiConversationService
                     context,
                     discourseState,
                     sourceLanguageCode,
-                    effectiveToken,
-                    providerPolicy);
+                    effectiveToken);
                 if (nativeInference.ReadOnlyContentRequest is { } readRequest)
                 {
                     var binding = await _toolAuthority.BindReadOnlyResultAsync(
@@ -376,8 +338,7 @@ public sealed class LegendFounderAiConversationService
                                 discourseState,
                                 sourceLanguageCode,
                                 binding.Receipt,
-                                effectiveToken,
-                                providerPolicy);
+                                effectiveToken);
                     }
                 }
             }
@@ -455,8 +416,7 @@ public sealed class LegendFounderAiConversationService
                             ? new FounderAiMutationAuthorization(
                                 Guid.NewGuid().ToString("N"))
                             : null,
-                        researchBudget.Token,
-                        providerPolicy);
+                        researchBudget.Token);
                 }
                 catch (OperationCanceledException)
                     when (!effectiveToken.IsCancellationRequested)
@@ -587,49 +547,15 @@ public sealed class LegendFounderAiConversationService
 
         var model = ResolveProviderModel();
 
-        // One typed classification for both modes. Legend mode reuses the
-        // classification the native meaning-graph analysis already produced;
-        // Teacher mode, which never attempts a native answer, obtains it from
-        // the same Founder-gated read-only analysis authority. Neither mode
-        // falls back to surface text, and no analysis is duplicated.
-        var ownedRecordIntent =
-            nativeInference?.OwnedRecordIntent ??
-            await ClassifyOwnedRecordIntentAsync(
-                founder,
-                conversation,
-                governedSourceLanguageCode,
-                cancellationToken);
-
-        // Fail closed on an unavailable analysis. The authority that decides
-        // whether this request needs an authenticated governed receipt did not
-        // produce a result, so neither mode may answer from recollection and no
-        // record tool is fabricated in its place.
-        if (ownedRecordIntent?.IsAnalysisUnavailable == true)
-        {
-            return LegendFounderAiChatResponse.ModeFailure(
-                mode,
-                FailureMessageForMode(
-                    mode,
-                    "The governed meaning-graph analysis that determines whether this " +
-                    "request requires an authenticated LEGEND read was unavailable, " +
-                    "so no answer was accepted."),
-                "governed_analysis",
-                "governed_request_classification",
-                ownedRecordIntent.Diagnostic ??
-                    "governed_meaning_graph_analysis_unavailable");
-        }
-
         var requiresMandatoryGovernedInspection =
             RequiresGovernedInspection(
                 conversation,
-                mode,
-                ownedRecordIntent);
+                mode);
 
         var requiresGovernedInspection =
             RequiresProviderGovernedInspection(
                 conversation,
                 mode,
-                ownedRecordIntent,
                 nativeInference,
                 nativeFailureDetail);
 
@@ -729,13 +655,9 @@ public sealed class LegendFounderAiConversationService
             var successfulGovernedEvidenceTools =
                 new HashSet<string>(StringComparer.Ordinal);
 
-            // Retained-knowledge preload is a passive context read performed by
-            // this service, not an executed governed inspection. It can never
-            // satisfy a request whose answer depends on current governed state,
-            // and it must not withdraw the governed tool catalog from the
-            // escalated round.
             var governedInspectionCompleted =
-                !requiresGovernedInspection;
+                !requiresGovernedInspection ||
+                preloadRetainedKnowledge;
 
             var confirmedLearningMutationRequired =
                 request.FounderCommandConfirmed &&
@@ -1267,83 +1189,6 @@ public sealed class LegendFounderAiConversationService
         }
     }
 
-    /// <summary>
-    /// Obtains the typed operational intent for the latest request from the
-    /// existing Founder-gated, observational, read-only meaning-graph analysis.
-    /// It is used only when the native inference result did not already carry
-    /// the classification, so exactly one analysis produces exactly one
-    /// classification per request.
-    /// </summary>
-    private async Task<LegendConnectOwnedRecordClassification?>
-        ClassifyOwnedRecordIntentAsync(
-            ClaimsPrincipal founder,
-            IReadOnlyList<LegendFounderAiChatMessage> conversation,
-            string? governedSourceLanguageCode,
-            CancellationToken cancellationToken)
-    {
-        var latest = conversation
-            .LastOrDefault(message =>
-                string.Equals(message.Role, "user", StringComparison.Ordinal))
-            ?.Content?.Trim();
-
-        if (string.IsNullOrWhiteSpace(latest))
-            return null;
-
-        try
-        {
-            // Direct Teacher mode never resolves a source language for native
-            // inference, so the same governed identification authority is used
-            // here before analysis. No language is ever assumed.
-            var sourceLanguageCode = governedSourceLanguageCode;
-
-            if (sourceLanguageCode is null)
-            {
-                await _legend.EnsureFounderAuthorizedAsync(
-                    founder,
-                    cancellationToken);
-
-                var sourceLanguage = await ResolveSourceLanguageAsync(
-                    null,
-                    latest,
-                    cancellationToken);
-
-                if (!sourceLanguage.Succeeded)
-                {
-                    return LegendConnectOwnedRecordRequest.AnalysisUnavailable(
-                        "governed_source_language_unavailable: " +
-                        sourceLanguage.Reason);
-                }
-
-                sourceLanguageCode = sourceLanguage.LanguageCode!;
-            }
-
-            var graph = await _legend.AnalyzeReusableMeaningGraphAsync(
-                founder,
-                latest,
-                sourceLanguageCode,
-                cancellationToken);
-
-            return LegendConnectOwnedRecordRequest.Classify(graph);
-        }
-        catch (OperationCanceledException)
-        {
-            throw;
-        }
-        catch (Exception exception)
-        {
-            // A failed analysis is not absence of intent. It fails closed onto
-            // mandatory governed inspection and carries a precise diagnostic;
-            // it is never collapsed to null and never guessed from text.
-            _logger.LogWarning(
-                exception,
-                "LEGEND could not classify the request intent from the governed meaning graph; failing closed onto mandatory governed inspection.");
-
-            return LegendConnectOwnedRecordRequest.AnalysisUnavailable(
-                "governed_meaning_graph_analysis_unavailable: " +
-                exception.GetType().Name);
-        }
-    }
-
     private async Task ObserveDiscourseMeaningAsync(
         ClaimsPrincipal founder,
         string? conversationId,
@@ -1392,8 +1237,7 @@ public sealed class LegendFounderAiConversationService
     private async Task<FounderAiSourceLanguageResolution> ResolveSourceLanguageAsync(
         string? declaredLanguageCode,
         string sourceText,
-        CancellationToken cancellationToken,
-        LegendConnectExternalProviderPolicy? providerPolicy = null)
+        CancellationToken cancellationToken)
     {
         if (!string.IsNullOrWhiteSpace(declaredLanguageCode))
         {
@@ -1402,20 +1246,15 @@ public sealed class LegendFounderAiConversationService
                     out var normalizedCode))
             {
                 return FounderAiSourceLanguageResolution.Failure(
-                    FounderAiSourceLanguageOutcome.InvalidDeclaration,
                     "source_language_code_invalid");
             }
 
-            // Founder conversation is a read path. Language identity is read
-            // from the seeded governed registry and never provisions baseline
-            // rows from a reply; initialization keeps its own authority.
             var enabledLanguage =
-                await _languages.NormalizeEnabledTranslationLanguageReadOnlyAsync(
+                await _languages.NormalizeEnabledTranslationLanguageAsync(
                     normalizedCode,
                     cancellationToken);
             return enabledLanguage is null
                 ? FounderAiSourceLanguageResolution.Failure(
-                    FounderAiSourceLanguageOutcome.UnsupportedLanguage,
                     "source_language_unsupported")
                 : FounderAiSourceLanguageResolution.Success(
                     enabledLanguage);
@@ -1426,8 +1265,7 @@ public sealed class LegendFounderAiConversationService
         {
             detected = await _translation.DetectLanguageAsync(
                 sourceText,
-                cancellationToken,
-                providerPolicy);
+                cancellationToken);
         }
         catch (OperationCanceledException)
             when (cancellationToken.IsCancellationRequested)
@@ -1440,40 +1278,20 @@ public sealed class LegendFounderAiConversationService
                 exception,
                 "LEGEND Founder AI source-language identification was unavailable.");
             return FounderAiSourceLanguageResolution.Failure(
-                FounderAiSourceLanguageOutcome
-                    .TransientIdentificationUnavailable,
                 "source_language_identification_unavailable");
         }
 
         if (!detected.Succeeded)
         {
-            return detected.ErrorCode switch
-            {
-                "translation_language_ambiguous" =>
-                    FounderAiSourceLanguageResolution.Failure(
-                        FounderAiSourceLanguageOutcome.SemanticAmbiguity,
-                        "source_language_ambiguous"),
-                "translation_language_unsupported" =>
-                    FounderAiSourceLanguageResolution.Failure(
-                        FounderAiSourceLanguageOutcome.UnsupportedLanguage,
-                        "source_language_unsupported"),
-                // Under a native-only policy the governed identification
-                // authority reached its own conclusion without any external
-                // provider. That is a semantic result, not a transient outage,
-                // so it must never be reported as one or escalated.
-                "native_only_governed_source_language_undetermined" =>
-                    FounderAiSourceLanguageResolution.Failure(
-                        FounderAiSourceLanguageOutcome.SemanticAmbiguity,
-                        "native_only_governed_source_language_undetermined"),
-                "external_provider_forbidden_by_native_only_policy" =>
-                    FounderAiSourceLanguageResolution.Failure(
-                        FounderAiSourceLanguageOutcome.SemanticAmbiguity,
-                        "external_provider_forbidden_by_native_only_policy"),
-                _ => FounderAiSourceLanguageResolution.Failure(
-                    FounderAiSourceLanguageOutcome
-                        .TransientIdentificationUnavailable,
-                    "source_language_identification_unavailable")
-            };
+            return FounderAiSourceLanguageResolution.Failure(
+                detected.ErrorCode switch
+                {
+                    "translation_language_ambiguous" =>
+                        "source_language_ambiguous",
+                    "translation_language_unsupported" =>
+                        "source_language_unsupported",
+                    _ => "source_language_identification_unavailable"
+                });
         }
 
         if (!LegendLanguageIdentity.TryNormalize(
@@ -1481,17 +1299,15 @@ public sealed class LegendFounderAiConversationService
                 out var detectedCode))
         {
             return FounderAiSourceLanguageResolution.Failure(
-                FounderAiSourceLanguageOutcome.SemanticAmbiguity,
                 "source_language_ambiguous");
         }
 
         var enabledDetectedLanguage =
-            await _languages.NormalizeEnabledTranslationLanguageReadOnlyAsync(
+            await _languages.NormalizeEnabledTranslationLanguageAsync(
                 detectedCode,
                 cancellationToken);
         return enabledDetectedLanguage is null
             ? FounderAiSourceLanguageResolution.Failure(
-                FounderAiSourceLanguageOutcome.UnsupportedLanguage,
                 "source_language_unsupported")
             : FounderAiSourceLanguageResolution.Success(
                 enabledDetectedLanguage);
@@ -3350,18 +3166,9 @@ Never upgrade an unresolved, rejected or contradicted record merely because it a
         return false;
     }
 
-    /// <summary>
-    /// Governed inspection is a typed semantic decision. It is established only
-    /// by the single governed meaning-graph classification for this request, so
-    /// no substring, paraphrase, homonym or non-English surface form can force
-    /// or suppress it. When the analysis itself was unavailable the request
-    /// fails closed onto mandatory inspection rather than being answered from
-    /// recollection.
-    /// </summary>
     private static bool RequiresGovernedInspection(
         IReadOnlyList<LegendFounderAiChatMessage> conversation,
-        string mode,
-        LegendConnectOwnedRecordClassification? ownedRecordIntent)
+        string mode)
     {
         var latest = conversation
             .Last(message => string.Equals(message.Role, "user", StringComparison.Ordinal))
@@ -3370,7 +3177,70 @@ Never upgrade an unresolved, rejected or contradicted record merely because it a
         if (latest.Length == 0)
             return false;
 
-        return ownedRecordIntent?.RequiresMandatoryGovernedInspection == true;
+        var text = latest.ToLowerInvariant();
+
+        var explicitGovernedSignals = new[]
+        {
+            "canonical", "retained knowledge", "retained evidence",
+            "governed inspection", "current authority",
+            "curriculum", "train legend", "training status",
+            "model readiness", "system state", "system status",
+            "provider capacity", "production deployment",
+            "deployment", "repository", "github", "pull request",
+            "branch", "commit", "workflow", "tool registry",
+            "machineproposed", "machine proposed"
+        };
+
+        if (explicitGovernedSignals.Any(signal =>
+                text.Contains(signal, StringComparison.Ordinal)))
+        {
+            return true;
+        }
+
+        // General words such as "evidence", "reasoning", "respond", and
+        // "prompt" also describe ordinary subject matter. They must not turn
+        // OpenAI Direct into a mandatory LEGEND tool inspection. Operational
+        // vocabulary requires an explicit LEGEND/system subject.
+        var operationalSignals = new[]
+        {
+            "readiness", "alignment", "provenance", "metrics", "metric",
+            "azure", "corpus", "production", "ci", "coverage",
+            "architecture", "database", "data model", "schema", "configuration",
+            "config", "observability", "logs", "logging", "telemetry", "trace",
+            "system prompt", "routing", "fallback",
+            "tooling", "permission", "retrieval", "memory", "ingestion", "index",
+            "embedding", "evaluation", "validator", "critic", "promotion",
+            "learning pipeline", "reuse knowledge"
+        };
+
+        var operationalSubjects = new[]
+        {
+            "legend", "our system", "our database", "our model",
+            "our provider", "our deployment", "our repository"
+        };
+
+        if (operationalSignals.Any(signal =>
+                text.Contains(signal, StringComparison.Ordinal)) &&
+            operationalSubjects.Any(subject =>
+                text.Contains(subject, StringComparison.Ordinal)))
+            return true;
+
+        var currentStateSignals = new[]
+        {
+            "current", "currently", "latest", "today",
+            "right now", "update", "how many", "count", "status"
+        };
+
+        var currentStateSubjects = new[]
+        {
+            "legend", "language", "learning", "knowledge",
+            "model", "provider", "translation", "haitian creole"
+        };
+
+        return currentStateSignals.Any(signal =>
+                   text.Contains(signal, StringComparison.Ordinal)) &&
+               currentStateSubjects.Any(subject =>
+                   text.Contains(subject, StringComparison.Ordinal));
     }
 
     private static bool RequestsFounderLearningMutation(
@@ -3440,10 +3310,9 @@ Never upgrade an unresolved, rejected or contradicted record merely because it a
     private static bool RequiresProviderGovernedInspection(
         IReadOnlyList<LegendFounderAiChatMessage> conversation,
         string mode,
-        LegendConnectOwnedRecordClassification? ownedRecordIntent,
         LegendConnectNativeInferenceSnapshot? nativeInference,
         string? nativeFailureDetail) =>
-        RequiresGovernedInspection(conversation, mode, ownedRecordIntent) ||
+        RequiresGovernedInspection(conversation, mode) ||
         nativeInference is { Supported: false, RequiresEscalation: true } ||
         !string.IsNullOrWhiteSpace(nativeFailureDetail);
 
@@ -3688,48 +3557,18 @@ Never upgrade an unresolved, rejected or contradicted record merely because it a
         public string FailureKind { get; }
     }
 
-    /// <summary>
-    /// The typed result category of governed source-language resolution. The
-    /// caller routes on this category; the accompanying reason stays the exact
-    /// detail for observability and never becomes the routing key.
-    /// </summary>
-    internal enum FounderAiSourceLanguageOutcome
-    {
-        Resolved,
-        SemanticAmbiguity,
-        UnsupportedLanguage,
-        InvalidDeclaration,
-        TransientIdentificationUnavailable
-    }
-
-    internal sealed record FounderAiSourceLanguageResolution(
+    private sealed record FounderAiSourceLanguageResolution(
         bool Succeeded,
         string? LanguageCode,
-        string Reason,
-        FounderAiSourceLanguageOutcome Outcome)
+        string Reason)
     {
-        /// <summary>
-        /// Only a transient outage of the identification service leaves the
-        /// governed meaning of the request intact. Ambiguity, an unsupported
-        /// language, and an invalid declared code are semantic authority
-        /// results that fail closed in every mode.
-        /// </summary>
-        internal bool IsTransientIdentificationOutage =>
-            Outcome ==
-            FounderAiSourceLanguageOutcome.TransientIdentificationUnavailable;
-
         internal static FounderAiSourceLanguageResolution Success(
             string languageCode) =>
-            new(
-                true,
-                languageCode,
-                string.Empty,
-                FounderAiSourceLanguageOutcome.Resolved);
+            new(true, languageCode, string.Empty);
 
         internal static FounderAiSourceLanguageResolution Failure(
-            FounderAiSourceLanguageOutcome outcome,
             string reason) =>
-            new(false, null, reason, outcome);
+            new(false, null, reason);
     }
 
 }
