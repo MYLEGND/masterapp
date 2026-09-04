@@ -513,6 +513,8 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
         // general bypass for supported answers: the claim must actually carry
         // complete, canonical, unexpired receipt provenance.
         if (internalAvailable &&
+            !stale &&
+            !conflicted &&
             HasCompleteReadOnlyContentBindingProvenance(
                 internalInference,
                 decidedUtc))
@@ -1815,8 +1817,12 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
         DateTime decidedUtc)
     {
         var provenance = inference?.ContentBindingProvenance;
-        if (provenance is null || provenance.Count == 0)
+        if (decidedUtc.Kind != DateTimeKind.Utc ||
+            provenance is null ||
+            provenance.Count == 0)
+        {
             return false;
+        }
 
         return provenance.All(receipt =>
             receipt is not null &&
@@ -1833,7 +1839,13 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
             !string.IsNullOrWhiteSpace(receipt.ArgumentsHash) &&
             !string.IsNullOrWhiteSpace(receipt.OutputHash) &&
             !string.IsNullOrWhiteSpace(receipt.SemanticValue) &&
+            receipt.ExecutedUtc.Kind == DateTimeKind.Utc &&
+            receipt.ObservedUtc.Kind == DateTimeKind.Utc &&
+            receipt.ObservedUtc <= receipt.ExecutedUtc &&
+            receipt.ExecutedUtc <= decidedUtc &&
             receipt.ObservedUtc <= decidedUtc &&
+            (decidedUtc - receipt.ExecutedUtc).TotalSeconds <=
+                LegendConnectReadOnlyContentBindingContracts.MaximumAgeSeconds &&
             (decidedUtc - receipt.ObservedUtc).TotalSeconds <=
                 LegendConnectReadOnlyContentBindingContracts.MaximumAgeSeconds);
     }
