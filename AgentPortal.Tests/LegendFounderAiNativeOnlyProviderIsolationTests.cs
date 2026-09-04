@@ -1496,6 +1496,22 @@ public sealed class LegendFounderAiNativeOnlyProviderIsolationTests
     /// executes exactly once, no row may construct or contact an external
     /// provider, and no row may write to the database.
     /// </summary>
+    /// <summary>
+    /// Ages an authentic receipt beyond its request-specific freshness window
+    /// while preserving the canonical execution/observation ordering, so the
+    /// stale row proves expiry rather than malformed time lineage.
+    /// </summary>
+    private static LegendConnectReadOnlyContentBindingReceipt StaleCopy(
+        LegendConnectReadOnlyContentBindingReceipt receipt)
+    {
+        var executedUtc = DateTime.UtcNow.AddMinutes(-10);
+        return receipt with
+        {
+            ExecutedUtc = executedUtc,
+            ObservedUtc = executedUtc
+        };
+    }
+
     [Theory]
     [InlineData("valid", true, "semantic_transition_governed_composed")]
     [InlineData("wrong-identity", false, "read_only_content_binding_receipt_malformed")]
@@ -1610,11 +1626,7 @@ public sealed class LegendFounderAiNativeOnlyProviderIsolationTests
                 RequestIdentity = Guid.NewGuid().ToString("N")
             },
             "malformed-zero-write" => issued with { ZeroWrite = false },
-            "stale" => issued with
-            {
-                ExecutedUtc = DateTime.UtcNow.AddMinutes(-10),
-                ObservedUtc = DateTime.UtcNow.AddMinutes(-10)
-            },
+            "stale" => StaleCopy(issued),
             _ => issued
         };
 

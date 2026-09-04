@@ -5592,7 +5592,7 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
         }
 
         var readOnlyContentAttestation =
-            content.ReadOnlyContentRequest is { } validatedRequest &&
+            content.ValidatedReadOnlyContentRequest is { } validatedRequest &&
             content.ReadOnlyContentReceipts.Count == 1
                 ? new LegendConnectReadOnlyContentBindingAttestation(
                     validatedRequest,
@@ -15428,7 +15428,8 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
         int EvidenceCount,
         int EvidenceStandard,
         LegendConnectReadOnlyContentBindingRequest? ReadOnlyContentRequest,
-        IReadOnlyList<LegendConnectReadOnlyContentBindingReceipt> ReadOnlyContentReceipts)
+        IReadOnlyList<LegendConnectReadOnlyContentBindingReceipt> ReadOnlyContentReceipts,
+        LegendConnectReadOnlyContentBindingRequest? ValidatedReadOnlyContentRequest = null)
     {
         internal static GovernedContentResolution NotRequired(
             IReadOnlyDictionary<string, string> bindings) =>
@@ -15460,7 +15461,8 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
             LegendConnectReadOnlyContentBindingReceipt receipt) =>
             new(true, true, "read_only_content_bound_governed", mergedBindings,
                 contentBindings, contentSurfaces, [], 1,
-                HigherGovernedEvidenceStandard, request, [receipt]);
+                HigherGovernedEvidenceStandard, null, [receipt],
+                ValidatedReadOnlyContentRequest: request);
 
         internal static GovernedContentResolution Success(
             IReadOnlyDictionary<string, string> mergedBindings,
