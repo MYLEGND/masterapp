@@ -146,7 +146,8 @@ internal sealed record LegendSemanticTransitionInference(
     LegendConnectReadOnlyContentBindingRequest? ReadOnlyContentRequest = null,
     IReadOnlyList<LegendConnectReadOnlyContentBindingReceipt>? ContentBindingProvenance = null,
     LegendConnectResponsePresentationConstraintsSnapshot? PresentationConstraints = null,
-    LegendConnectOwnedRecordClassification? OwnedRecordIntent = null)
+    LegendConnectOwnedRecordClassification? OwnedRecordIntent = null,
+    LegendConnectReadOnlyContentBindingAttestation? ReadOnlyContentAttestation = null)
 {
     internal const string Supported = "Supported";
     internal const string InsufficientEvidence = "InsufficientEvidence";
@@ -5522,7 +5523,8 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
             ],
             null,
             content.ReadOnlyContentReceipts,
-            realizedPresentationConstraints));
+            realizedPresentationConstraints,
+            ReadOnlyContentAttestation: content.ReadOnlyContentAttestation));
     }
 
     internal async Task<LegendConnectResponseMeaningPlanResult> TryPlanResponseMeaningAsync(
@@ -7919,7 +7921,17 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
                     [readOnlyContentRequest.SemanticVariable] =
                         readOnlyContentReceipt.SemanticValue
                 },
-                readOnlyContentReceipt);
+                readOnlyContentReceipt,
+                new LegendConnectReadOnlyContentBindingAttestation(
+                    readOnlyContentRequest.RequestIdentity,
+                    readOnlyContentRequest.TransitionSignature,
+                    readOnlyContentRequest.ResultSemanticFrameSignature,
+                    readOnlyContentRequest.ToolName,
+                    LegendLanguageIdentity.TextHash(readOnlyContentRequest.ArgumentsJson),
+                    readOnlyContentRequest.ValuePath,
+                    readOnlyContentRequest.SemanticVariable,
+                    readOnlyContentRequest.ResultDimension,
+                    readOnlyContentReceipt.OutputHash));
         }
         if (unbound.Count == 0)
         {
@@ -15325,7 +15337,8 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
         int EvidenceCount,
         int EvidenceStandard,
         LegendConnectReadOnlyContentBindingRequest? ReadOnlyContentRequest,
-        IReadOnlyList<LegendConnectReadOnlyContentBindingReceipt> ReadOnlyContentReceipts)
+        IReadOnlyList<LegendConnectReadOnlyContentBindingReceipt> ReadOnlyContentReceipts,
+        LegendConnectReadOnlyContentBindingAttestation? ReadOnlyContentAttestation = null)
     {
         internal static GovernedContentResolution NotRequired(
             IReadOnlyDictionary<string, string> bindings) =>
@@ -15353,10 +15366,11 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
             IReadOnlyDictionary<string, string> mergedBindings,
             IReadOnlyDictionary<string, string> contentBindings,
             IReadOnlyDictionary<string, string> contentSurfaces,
-            LegendConnectReadOnlyContentBindingReceipt receipt) =>
+            LegendConnectReadOnlyContentBindingReceipt receipt,
+            LegendConnectReadOnlyContentBindingAttestation attestation) =>
             new(true, true, "read_only_content_bound_governed", mergedBindings,
                 contentBindings, contentSurfaces, [], 1,
-                HigherGovernedEvidenceStandard, null, [receipt]);
+                HigherGovernedEvidenceStandard, null, [receipt], attestation);
 
         internal static GovernedContentResolution Success(
             IReadOnlyDictionary<string, string> mergedBindings,

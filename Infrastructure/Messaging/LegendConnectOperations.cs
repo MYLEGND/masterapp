@@ -513,9 +513,7 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
         // general bypass for supported answers: the claim must actually carry
         // complete, canonical, unexpired receipt provenance.
         if (internalAvailable &&
-            HasCompleteReadOnlyContentBindingProvenance(
-                internalInference,
-                decidedUtc))
+            IsAnsweredByAttestedGovernedRead(internalInference))
         {
             return Decision(
                 false,
@@ -1514,7 +1512,8 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
                 articulationMode,
                 null,
                 composed.ContentBindingProvenance,
-                PresentationConstraints: composed.PresentationConstraints);
+                PresentationConstraints: composed.PresentationConstraints,
+                ReadOnlyContentAttestation: composed.ReadOnlyContentAttestation);
 
             var served = await TryApplyPromotedReasoningModelAsync(
                 input ?? string.Empty,
@@ -1803,39 +1802,28 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
         };
 
     /// <summary>
-    /// True only when every claim-bound receipt carried by the finished
-    /// inference is a complete, canonical, read-only, zero-write governed read
-    /// that was observed inside the existing binding freshness window. A
-    /// missing, empty, malformed, foreign-provenance, mutation-capable, or
-    /// expired receipt set is not governed knowledge and must not suppress the
-    /// research decision.
+    /// True only when the canonical curriculum receipt-validation and content
+    /// composition authority issued an attestation for this exact finished
+    /// claim, and every receipt carried on the claim is the one that
+    /// attestation was issued for.
+    ///
+    /// No receipt field is revalidated here and no validity is inferred from a
+    /// string: validity is owned solely by
+    /// <c>LegendConnectCurriculumService.TryValidateReadOnlyContentBindingReceipt</c>.
+    /// This only binds the attested identity to the claim being decided, so a
+    /// receipt belonging to another request, transition, result frame, tool,
+    /// argument set, value path, semantic variable, result dimension, or
+    /// output cannot suppress the research decision.
     /// </summary>
-    private static bool HasCompleteReadOnlyContentBindingProvenance(
-        LegendConnectNativeInferenceSnapshot? inference,
-        DateTime decidedUtc)
+    private static bool IsAnsweredByAttestedGovernedRead(
+        LegendConnectNativeInferenceSnapshot? inference)
     {
-        var provenance = inference?.ContentBindingProvenance;
-        if (provenance is null || provenance.Count == 0)
+        if (inference?.ReadOnlyContentAttestation is not { } attestation)
             return false;
 
-        return provenance.All(receipt =>
-            receipt is not null &&
-            receipt.IsReadOnly &&
-            receipt.ZeroWrite &&
-            string.Equals(
-                receipt.Provenance,
-                LegendConnectReadOnlyContentBindingContracts.Provenance,
-                StringComparison.Ordinal) &&
-            !string.IsNullOrWhiteSpace(receipt.RequestIdentity) &&
-            !string.IsNullOrWhiteSpace(receipt.TransitionSignature) &&
-            !string.IsNullOrWhiteSpace(receipt.ResultSemanticFrameSignature) &&
-            !string.IsNullOrWhiteSpace(receipt.ToolName) &&
-            !string.IsNullOrWhiteSpace(receipt.ArgumentsHash) &&
-            !string.IsNullOrWhiteSpace(receipt.OutputHash) &&
-            !string.IsNullOrWhiteSpace(receipt.SemanticValue) &&
-            receipt.ObservedUtc <= decidedUtc &&
-            (decidedUtc - receipt.ObservedUtc).TotalSeconds <=
-                LegendConnectReadOnlyContentBindingContracts.MaximumAgeSeconds);
+        var provenance = inference.ContentBindingProvenance;
+        return provenance is { Count: > 0 } &&
+            provenance.All(attestation.Attests);
     }
 
     private static bool HasCurrentTurnDiscourseAuthority(

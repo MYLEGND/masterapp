@@ -759,6 +759,215 @@ public sealed class LegendFounderAiIndependentOperationRegressionTests
             decision.ReasonCode);
     }
 
+    // The canonical curriculum authority owns receipt validity. The research
+    // decision may only trust the attestation that authority issues, bound to
+    // the exact claim it was issued for. These controls act directly on the
+    // research-decision boundary: every one of them carries provenance that
+    // looks complete, and every one of them must still be researched because
+    // no attestation covers that exact claim.
+    [Theory]
+    [InlineData("foreign-request-identity")]
+    [InlineData("transition-mismatch")]
+    [InlineData("result-frame-mismatch")]
+    [InlineData("tool-mismatch")]
+    [InlineData("arguments-mismatch")]
+    [InlineData("value-path-mismatch")]
+    [InlineData("semantic-variable-mismatch")]
+    [InlineData("result-dimension-mismatch")]
+    [InlineData("output-mismatch")]
+    [InlineData("mutation-capable")]
+    [InlineData("malformed-scalar")]
+    [InlineData("non-utc-execution")]
+    [InlineData("future-execution")]
+    [InlineData("stale-observation")]
+    [InlineData("missing-provenance")]
+    [InlineData("no-attestation")]
+    public void UnattestedGovernedReadProvenance_DoesNotSuppressResearch(
+        string defect)
+    {
+        var decidedUtc = new DateTime(2026, 9, 3, 12, 0, 0, DateTimeKind.Utc);
+        var attestation = CanonicalAttestation();
+        var receipt = AttestedReceipt(decidedUtc);
+
+        // Only the identity the canonical authority attested is mutated; the
+        // receipt otherwise stays well formed, so any suppression would have to
+        // come from an unbound or independently reconstructed validity claim.
+        receipt = defect switch
+        {
+            "foreign-request-identity" => receipt with
+            {
+                RequestIdentity = Guid.NewGuid().ToString("N")
+            },
+            "transition-mismatch" => receipt with
+            {
+                TransitionSignature = "other-transition"
+            },
+            "result-frame-mismatch" => receipt with
+            {
+                ResultSemanticFrameSignature = "other-result-frame"
+            },
+            "tool-mismatch" => receipt with { ToolName = "other_tool" },
+            "arguments-mismatch" => receipt with { ArgumentsHash = "other-args" },
+            "value-path-mismatch" => receipt with { ValuePath = "otherPath" },
+            "semantic-variable-mismatch" => receipt with
+            {
+                SemanticVariable = "?other"
+            },
+            "result-dimension-mismatch" => receipt with
+            {
+                ResultDimension = "other_dimension"
+            },
+            "output-mismatch" => receipt with { OutputHash = "other-output" },
+            "mutation-capable" => receipt with
+            {
+                IsReadOnly = false,
+                ZeroWrite = false,
+                OutputHash = "mutating-output"
+            },
+            "malformed-scalar" => receipt with
+            {
+                SemanticValue = new string('9', 512),
+                OutputHash = "malformed-output"
+            },
+            "non-utc-execution" => receipt with
+            {
+                ExecutedUtc = DateTime.SpecifyKind(
+                    decidedUtc.AddSeconds(-5),
+                    DateTimeKind.Local),
+                OutputHash = "unkinded-output"
+            },
+            "future-execution" => receipt with
+            {
+                ExecutedUtc = decidedUtc.AddMinutes(5),
+                ObservedUtc = decidedUtc.AddMinutes(5),
+                OutputHash = "future-output"
+            },
+            "stale-observation" => receipt with
+            {
+                ExecutedUtc = decidedUtc.AddHours(-4),
+                ObservedUtc = decidedUtc.AddHours(-4),
+                OutputHash = "stale-output"
+            },
+            _ => receipt
+        };
+
+        // A defect the canonical validator would have rejected can only reach
+        // the research boundary as an unattested receipt, so the attestation is
+        // withheld for exactly those rows.
+        var attested = defect is
+            "foreign-request-identity" or "transition-mismatch" or
+            "result-frame-mismatch" or "tool-mismatch" or "arguments-mismatch" or
+            "value-path-mismatch" or "semantic-variable-mismatch" or
+            "result-dimension-mismatch" or "output-mismatch"
+                ? attestation
+                : defect is "missing-provenance" or "no-attestation"
+                    ? attestation
+                    : null;
+
+        var provenance = defect == "missing-provenance"
+            ? Array.Empty<LegendConnectReadOnlyContentBindingReceipt>()
+            : new[] { receipt };
+
+        var inference = new LegendConnectNativeInferenceSnapshot(
+            true,
+            0m,
+            "Open issues 4,458.",
+            "semantic_transition_governed_composed",
+            1,
+            "LEGEND composed governed meaning.",
+            false,
+            "HigherStandard",
+            "CanonicalGovernedEndpoint",
+            null,
+            provenance)
+        {
+            ReadOnlyContentAttestation =
+                defect == "no-attestation" ? null : attested
+        };
+
+        var decision = LegendConnectOperations.DecideResearchNeeded(
+            "What is the current open issue count in the public tracker?",
+            "en",
+            inference,
+            decidedUtc);
+
+        Assert.NotEqual(
+            "governed_read_only_content_binding_answers_request",
+            decision.ReasonCode);
+    }
+
+    // The positive control for the same boundary: the attestation the canonical
+    // authority issued, bound to the exact receipt it was issued for, is
+    // existing governed knowledge even though the surface says "current".
+    [Fact]
+    public void AttestedGovernedReadProvenance_IsExistingGovernedKnowledge()
+    {
+        var decidedUtc = new DateTime(2026, 9, 3, 12, 0, 0, DateTimeKind.Utc);
+        var inference = new LegendConnectNativeInferenceSnapshot(
+            true,
+            0m,
+            "Open issues 4,458.",
+            "semantic_transition_governed_composed",
+            1,
+            "LEGEND composed governed meaning.",
+            false,
+            "HigherStandard",
+            "CanonicalGovernedEndpoint",
+            null,
+            new[] { AttestedReceipt(decidedUtc) })
+        {
+            ReadOnlyContentAttestation = CanonicalAttestation()
+        };
+
+        var decision = LegendConnectOperations.DecideResearchNeeded(
+            "What is the current open issue count in the public tracker?",
+            "en",
+            inference,
+            decidedUtc);
+
+        Assert.False(decision.ResearchRequired);
+        Assert.Equal(
+            LegendConnectResearchNeed.ExistingGovernedKnowledge,
+            decision.Need);
+        Assert.Equal(
+            "governed_read_only_content_binding_answers_request",
+            decision.ReasonCode);
+    }
+
+    private const string AttestedRequestIdentity = "attested-request-identity";
+
+    private static LegendConnectReadOnlyContentBindingAttestation
+        CanonicalAttestation() =>
+        new(
+            AttestedRequestIdentity,
+            "attested-transition",
+            "attested-result-frame",
+            "legend_translation_quality",
+            "attested-arguments-hash",
+            "needsReviewCount",
+            "?count",
+            "issue_count",
+            "attested-output-hash");
+
+    private static LegendConnectReadOnlyContentBindingReceipt AttestedReceipt(
+        DateTime decidedUtc) =>
+        new(
+            AttestedRequestIdentity,
+            "attested-transition",
+            "attested-result-frame",
+            "legend_translation_quality",
+            "attested-arguments-hash",
+            "needsReviewCount",
+            "?count",
+            "issue_count",
+            "4458",
+            "attested-output-hash",
+            decidedUtc.AddSeconds(-5),
+            decidedUtc.AddSeconds(-5),
+            LegendConnectReadOnlyContentBindingContracts.Provenance,
+            true,
+            true);
+
     [Theory]
     [InlineData("What is the current published inflation rate?")]
     [InlineData("Which public standard defines this exchange format?")]
