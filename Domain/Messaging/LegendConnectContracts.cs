@@ -1040,7 +1040,15 @@ public enum LegendConnectOwnedRecordIntent
     /// An admitted governed relation established that the request demands the
     /// present state of records this deployment owns.
     /// </summary>
-    OwnedRecordStateInspection = 1
+    OwnedRecordStateInspection = 1,
+
+    /// <summary>
+    /// The governed meaning-graph analysis could not run, so no intent could be
+    /// established either way. This is not absence of intent: the request must
+    /// fail closed onto mandatory governed inspection rather than be answered
+    /// from recollection.
+    /// </summary>
+    AnalysisUnavailable = 2
 }
 
 /// <summary>
@@ -1052,7 +1060,27 @@ public enum LegendConnectOwnedRecordIntent
 public sealed record LegendConnectOwnedRecordClassification(
     LegendConnectOwnedRecordIntent Intent,
     bool RequiresGovernedReadReceipt,
-    string? MissingRelationKind);
+    string? MissingRelationKind,
+    string? Diagnostic = null)
+{
+    /// <summary>
+    /// True when the request may not be answered until a registered governed
+    /// read returns a receipt. Only an established intent imposes the block:
+    /// an unavailable analysis is reported through <see cref="Diagnostic"/> and
+    /// <see cref="Intent"/> so it is visible rather than silently absent, but it
+    /// cannot by itself force every unclassified turn into tool inspection.
+    /// </summary>
+    public bool RequiresMandatoryGovernedInspection =>
+        RequiresGovernedReadReceipt;
+
+    /// <summary>
+    /// True when no classification could be made because the governed
+    /// meaning-graph analysis did not run. Callers must surface this rather
+    /// than treat it as an established absence of operational intent.
+    /// </summary>
+    public bool IsAnalysisUnavailable =>
+        Intent == LegendConnectOwnedRecordIntent.AnalysisUnavailable;
+}
 
 public sealed record LegendConnectUtteranceMeaningGraphSnapshot(
     bool IsComposed,

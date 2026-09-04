@@ -27,6 +27,19 @@ public static class LegendConnectOwnedRecordRequest
     public const string RequiredRelationKind = "owned_record_state_inspection";
 
     /// <summary>
+    /// The explicit outcome when the governed meaning-graph analysis could not
+    /// run. It is never collapsed into "no intent": the caller must fail closed
+    /// onto mandatory governed inspection and surface the diagnostic.
+    /// </summary>
+    public static LegendConnectOwnedRecordClassification AnalysisUnavailable(
+        string diagnostic) =>
+        new(
+            LegendConnectOwnedRecordIntent.AnalysisUnavailable,
+            RequiresGovernedReadReceipt: false,
+            MissingRelationKind: RequiredRelationKind,
+            Diagnostic: diagnostic);
+
+    /// <summary>
     /// Types the request from the admitted relations of its governed meaning
     /// graph. A null graph means the analysis never completed, which is
     /// reported as the missing required relation rather than guessed.

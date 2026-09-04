@@ -582,13 +582,11 @@ public sealed class LegendFounderAiConversationService
         // falls back to surface text, and no analysis is duplicated.
         var ownedRecordIntent =
             nativeInference?.OwnedRecordIntent ??
-            (governedSourceLanguageCode is null
-                ? null
-                : await ClassifyOwnedRecordIntentAsync(
-                    founder,
-                    conversation,
-                    governedSourceLanguageCode,
-                    cancellationToken));
+            await ClassifyOwnedRecordIntentAsync(
+                founder,
+                conversation,
+                governedSourceLanguageCode,
+                cancellationToken);
 
         var requiresMandatoryGovernedInspection =
             RequiresGovernedInspection(
@@ -1249,7 +1247,7 @@ public sealed class LegendFounderAiConversationService
         ClassifyOwnedRecordIntentAsync(
             ClaimsPrincipal founder,
             IReadOnlyList<LegendFounderAiChatMessage> conversation,
-            string sourceLanguageCode,
+            string? governedSourceLanguageCode,
             CancellationToken cancellationToken)
     {
         var latest = conversation
@@ -1262,6 +1260,32 @@ public sealed class LegendFounderAiConversationService
 
         try
         {
+            // Direct Teacher mode never resolves a source language for native
+            // inference, so the same governed identification authority is used
+            // here before analysis. No language is ever assumed.
+            var sourceLanguageCode = governedSourceLanguageCode;
+
+            if (sourceLanguageCode is null)
+            {
+                await _legend.EnsureFounderAuthorizedAsync(
+                    founder,
+                    cancellationToken);
+
+                var sourceLanguage = await ResolveSourceLanguageAsync(
+                    null,
+                    latest,
+                    cancellationToken);
+
+                if (!sourceLanguage.Succeeded)
+                {
+                    return LegendConnectOwnedRecordRequest.AnalysisUnavailable(
+                        "governed_source_language_unavailable: " +
+                        sourceLanguage.Reason);
+                }
+
+                sourceLanguageCode = sourceLanguage.LanguageCode!;
+            }
+
             var graph = await _legend.AnalyzeReusableMeaningGraphAsync(
                 founder,
                 latest,
@@ -1276,11 +1300,16 @@ public sealed class LegendFounderAiConversationService
         }
         catch (Exception exception)
         {
-            // A failed observation must fail closed, never guess from text.
-            _logger.LogDebug(
+            // A failed analysis is not absence of intent. It fails closed onto
+            // mandatory governed inspection and carries a precise diagnostic;
+            // it is never collapsed to null and never guessed from text.
+            _logger.LogWarning(
                 exception,
-                "LEGEND could not classify the request intent from the governed meaning graph.");
-            return null;
+                "LEGEND could not classify the request intent from the governed meaning graph; failing closed onto mandatory governed inspection.");
+
+            return LegendConnectOwnedRecordRequest.AnalysisUnavailable(
+                "governed_meaning_graph_analysis_unavailable: " +
+                exception.GetType().Name);
         }
     }
 
@@ -3276,6 +3305,14 @@ Never upgrade an unresolved, rejected or contradicted record merely because it a
         return false;
     }
 
+    /// <summary>
+    /// Governed inspection is a typed semantic decision. It is established only
+    /// by the single governed meaning-graph classification for this request, so
+    /// no substring, paraphrase, homonym or non-English surface form can force
+    /// or suppress it. When the analysis itself was unavailable the request
+    /// fails closed onto mandatory inspection rather than being answered from
+    /// recollection.
+    /// </summary>
     private static bool RequiresGovernedInspection(
         IReadOnlyList<LegendFounderAiChatMessage> conversation,
         string mode,
@@ -3288,78 +3325,7 @@ Never upgrade an unresolved, rejected or contradicted record merely because it a
         if (latest.Length == 0)
             return false;
 
-        var text = latest.ToLowerInvariant();
-
-        // Records this deployment owns are governed resources. The typed intent
-        // is not decided here: it is the one classification the meaning-graph
-        // analysis already produced for this request. When it establishes the
-        // owned-record inspection intent the request cannot complete until a
-        // registered governed read returns a successful receipt.
-        if (ownedRecordIntent?.RequiresGovernedReadReceipt == true)
-            return true;
-
-        var explicitGovernedSignals = new[]
-        {
-            "canonical", "retained knowledge", "retained evidence",
-            "governed inspection", "current authority",
-            "curriculum", "train legend", "training status",
-            "model readiness", "system state", "system status",
-            "provider capacity", "production deployment",
-            "deployment", "repository", "github", "pull request",
-            "branch", "commit", "workflow", "tool registry",
-            "machineproposed", "machine proposed"
-        };
-
-        if (explicitGovernedSignals.Any(signal =>
-                text.Contains(signal, StringComparison.Ordinal)))
-        {
-            return true;
-        }
-
-        // General words such as "evidence", "reasoning", "respond", and
-        // "prompt" also describe ordinary subject matter. They must not turn
-        // OpenAI Direct into a mandatory LEGEND tool inspection. Operational
-        // vocabulary requires an explicit LEGEND/system subject.
-        var operationalSignals = new[]
-        {
-            "readiness", "alignment", "provenance", "metrics", "metric",
-            "azure", "corpus", "production", "ci", "coverage",
-            "architecture", "database", "data model", "schema", "configuration",
-            "config", "observability", "logs", "logging", "telemetry", "trace",
-            "system prompt", "routing", "fallback",
-            "tooling", "permission", "retrieval", "memory", "ingestion", "index",
-            "embedding", "evaluation", "validator", "critic", "promotion",
-            "learning pipeline", "reuse knowledge"
-        };
-
-        var operationalSubjects = new[]
-        {
-            "legend", "our system", "our database", "our model",
-            "our provider", "our deployment", "our repository"
-        };
-
-        if (operationalSignals.Any(signal =>
-                text.Contains(signal, StringComparison.Ordinal)) &&
-            operationalSubjects.Any(subject =>
-                text.Contains(subject, StringComparison.Ordinal)))
-            return true;
-
-        var currentStateSignals = new[]
-        {
-            "current", "currently", "latest", "today",
-            "right now", "update", "how many", "count", "status"
-        };
-
-        var currentStateSubjects = new[]
-        {
-            "legend", "language", "learning", "knowledge",
-            "model", "provider", "translation", "haitian creole"
-        };
-
-        return currentStateSignals.Any(signal =>
-                   text.Contains(signal, StringComparison.Ordinal)) &&
-               currentStateSubjects.Any(subject =>
-                   text.Contains(subject, StringComparison.Ordinal));
+        return ownedRecordIntent?.RequiresMandatoryGovernedInspection == true;
     }
 
     private static bool RequestsFounderLearningMutation(
