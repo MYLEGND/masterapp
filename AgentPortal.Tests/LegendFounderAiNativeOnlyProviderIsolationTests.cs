@@ -320,6 +320,11 @@ public sealed class LegendFounderAiNativeOnlyProviderIsolationTests
             if (writeSentinel is not null)
                 options.AddInterceptors(writeSentinel);
         });
+        // Program.cs adds SignalR before the messaging graph; the notification
+        // realtime publisher registered by AddMasterAppMessaging depends on
+        // IHubContext<MessagingHub>, so the production shape requires it here
+        // too. No hub transport is started by this registration.
+        services.AddSignalR();
         services.AddMasterAppMessaging(configuration);
 
         // Match the scoped AgentPortal registrations consumed by the
