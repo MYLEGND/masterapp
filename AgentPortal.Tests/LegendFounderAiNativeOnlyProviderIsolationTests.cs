@@ -1742,6 +1742,112 @@ public sealed class LegendFounderAiNativeOnlyProviderIsolationTests
     }
 
     /// <summary>
+    /// A receipt-shaped object must never override contradictory or stale
+    /// evidence, and malformed time lineage must not suppress a legitimate
+    /// current-public-fact research decision. This exercises the research
+    /// authority independently from the earlier receipt issuer/consumer check.
+    /// </summary>
+    [Theory]
+    [InlineData(
+        "conflicted",
+        "contradictory_evidence",
+        LegendConnectResearchNeed.ConflictingInternalEvidence)]
+    [InlineData(
+        "stale",
+        "stale_evidence",
+        LegendConnectResearchNeed.StaleInternalEvidence)]
+    [InlineData(
+        "future-execution",
+        "semantic_transition_governed_composed",
+        LegendConnectResearchNeed.CurrentOrTimeSensitiveInformation)]
+    [InlineData(
+        "non-utc",
+        "semantic_transition_governed_composed",
+        LegendConnectResearchNeed.CurrentOrTimeSensitiveInformation)]
+    [InlineData(
+        "observed-after-execution",
+        "semantic_transition_governed_composed",
+        LegendConnectResearchNeed.CurrentOrTimeSensitiveInformation)]
+    public async Task ResearchDecision_ReceiptCannotOverrideConflictOrMalformedTimeLineage(
+        string receiptCase,
+        string inferenceReasonCode,
+        LegendConnectResearchNeed expectedNeed)
+    {
+        await using var scope = BuildProductionEquivalentScope();
+        var operations = scope.Resolve<ILegendConnectOperations>();
+        var now = DateTime.UtcNow;
+        var receipt = new LegendConnectReadOnlyContentBindingReceipt(
+            "request-identity",
+            "transition-signature",
+            "result-frame-signature",
+            "legend_translation_quality",
+            "arguments-hash",
+            "needsReviewCount",
+            "current_count",
+            "count",
+            "7",
+            "output-hash",
+            now.AddSeconds(-1),
+            now.AddSeconds(-1),
+            LegendConnectReadOnlyContentBindingContracts.Provenance,
+            IsReadOnly: true,
+            ZeroWrite: true);
+
+        receipt = receiptCase switch
+        {
+            "future-execution" => receipt with
+            {
+                ExecutedUtc = now.AddMinutes(1)
+            },
+            "non-utc" => receipt with
+            {
+                ExecutedUtc = DateTime.SpecifyKind(
+                    receipt.ExecutedUtc,
+                    DateTimeKind.Unspecified),
+                ObservedUtc = DateTime.SpecifyKind(
+                    receipt.ObservedUtc,
+                    DateTimeKind.Unspecified)
+            },
+            "observed-after-execution" => receipt with
+            {
+                ObservedUtc = now,
+                ExecutedUtc = now.AddSeconds(-1)
+            },
+            _ => receipt
+        };
+
+        var inference = new LegendConnectNativeInferenceSnapshot(
+            true,
+            1m,
+            "A receipt-backed answer.",
+            inferenceReasonCode,
+            3,
+            receiptCase == "conflicted"
+                ? "Conflicting evidence remains unresolved."
+                : receiptCase == "stale"
+                    ? "Stale evidence remains unresolved."
+                    : "Governed receipt candidate.",
+            false,
+            ContentBindingProvenance: [receipt]);
+
+        var decision = await operations.DecideResearchNeededAsync(
+            "What is the current published exchange rate for the euro?",
+            "en",
+            inference,
+            CancellationToken.None,
+            LegendConnectExternalProviderPolicy.ProviderEnabled);
+
+        Assert.True(decision.ResearchRequired);
+        Assert.Equal(expectedNeed, decision.Need);
+        Assert.NotEqual(
+            "governed_read_only_content_binding_answers_request",
+            decision.ReasonCode);
+        AssertNoExternalProviderWasReached(
+            scope.External,
+            "research classification must remain transport-free");
+    }
+
+    /// <summary>
     /// Counts governed reads at the real operations boundary while delegating
     /// every call to the production instance. Nothing is stubbed; this only
     /// observes.
