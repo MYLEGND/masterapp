@@ -864,6 +864,57 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
             var fixtureFailures = new List<ProductionNativeProofResult>();
             var preflightFailures = new List<ProductionNativeProofResult>();
 
+            // Exact-endpoint coverage comes from deterministic active
+            // Founder-governed production evidence. Greetings are deliberately
+            // excluded because they are not meaningful capability proof.
+            async Task<IReadOnlyList<string>>
+                FindNonConversationalExactEndpointSourcesAsync() =>
+                await (
+                    from transition in db.LegendSemanticTransitionEvidence.AsNoTracking()
+                    join source in db.LegendCurriculumExamples.AsNoTracking()
+                        on transition.SourceCurriculumExampleId equals source.Id
+                    join unit in db.LegendLanguageTextUnits.AsNoTracking()
+                        on source.TextUnitId equals unit.Id
+                    where transition.SupersededUtc == null &&
+                        transition.ContributionState == "Supported" &&
+                        transition.IsHumanVerifiedSupport &&
+                        transition.Provenance ==
+                            LegendConnectKnowledgeProvenance.FounderApproved &&
+                        transition.SourceLanguageCode == "en" &&
+                        source.SupersededUtc == null &&
+                        source.Provenance ==
+                            LegendConnectKnowledgeProvenance.FounderApproved &&
+                        unit.LanguageCode == "en" &&
+                        unit.IsTrainingEligible &&
+                        unit.Provenance ==
+                            LegendConnectKnowledgeProvenance.FounderApproved &&
+                        unit.Text != "" &&
+                        !db.LegendCurriculumExampleVariations.AsNoTracking().Any(
+                            variation =>
+                                variation.CurriculumExampleId == source.Id &&
+                                variation.Dimension == "conversation_function" &&
+                                variation.Value == "conversation_opening") &&
+                        db.LegendSemanticTransitionEvidence.AsNoTracking()
+                            .Where(candidate =>
+                                candidate.SupersededUtc == null &&
+                                candidate.ContributionState == "Supported" &&
+                                candidate.IsHumanVerifiedSupport &&
+                                candidate.Provenance ==
+                                    LegendConnectKnowledgeProvenance.FounderApproved &&
+                                candidate.SourceCurriculumExampleId ==
+                                    transition.SourceCurriculumExampleId &&
+                                candidate.ResultCurriculumExampleId ==
+                                    transition.ResultCurriculumExampleId)
+                            .Select(candidate =>
+                                candidate.IndependentSourceIdentity)
+                            .Distinct()
+                            .Count() >= 3
+                    select unit.Text)
+                    .Distinct()
+                    .OrderBy(text => text)
+                    .Take(3)
+                    .ToListAsync();
+
             async Task<string?> FindReasoningFixtureAsync(
                 string reference,
                 string category,
@@ -956,6 +1007,32 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
                 }
             }
 
+            IReadOnlyList<string> exactEndpointSources = [];
+            try
+            {
+                exactEndpointSources =
+                    await FindNonConversationalExactEndpointSourcesAsync();
+            }
+            catch (Exception exception)
+            {
+                preflightFailures.Add(
+                    ProductionNativeProofResult.FailedInfrastructurePreflight(
+                        "fixture-non-conversation-exact-endpoints",
+                        "exact_endpoint",
+                        exception));
+            }
+            if (exactEndpointSources.Count < 3 &&
+                !preflightFailures.Any(item =>
+                    item.Reference ==
+                        "fixture-non-conversation-exact-endpoints"))
+            {
+                fixtureFailures.Add(
+                    ProductionNativeProofResult.FailedFixture(
+                        "fixture-non-conversation-exact-endpoints",
+                        "exact_endpoint",
+                        "The production matrix requires three deterministic active Founder-governed non-conversation transition sources."));
+            }
+
             var heldOutCases = new[]
             {
                 ProductionNativeProofCase.Positive(
@@ -1011,28 +1088,31 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
 
             var matrix = new List<ProductionNativeProofCase>
             {
-                ProductionNativeProofCase.Positive(
-                    "exact-endpoint-hi-there",
-                    "exact_endpoint",
-                    "Hi there.",
-                    expectedEvidenceStandard: "HigherStandard"),
-                ProductionNativeProofCase.Positive(
-                    "exact-endpoint-hi-legend",
-                    "exact_endpoint",
-                    "Hi Legend.",
-                    expectedEvidenceStandard: "HigherStandard"),
-                ProductionNativeProofCase.Positive(
-                    "declared-language-normalization",
-                    "language_routing",
-                    "Hello.",
-                    declaredSourceLanguageCode: " en_US ",
-                    nativeSourceLanguageCode: "en",
-                    expectedEvidenceStandard: "HigherStandard"),
                 ProductionNativeProofCase.Negative(
                     "native-only-provider-isolation",
                     "native_only_isolation",
                     "Uncatalogued zephyr request.")
             };
+            if (exactEndpointSources.Count >= 3)
+            {
+                matrix.Add(ProductionNativeProofCase.Positive(
+                    "exact-endpoint-governed-source-1",
+                    "exact_endpoint",
+                    exactEndpointSources[0],
+                    expectedEvidenceStandard: "HigherStandard"));
+                matrix.Add(ProductionNativeProofCase.Positive(
+                    "exact-endpoint-governed-source-2",
+                    "exact_endpoint",
+                    exactEndpointSources[1],
+                    expectedEvidenceStandard: "HigherStandard"));
+                matrix.Add(ProductionNativeProofCase.Positive(
+                    "declared-language-normalization",
+                    "language_routing",
+                    exactEndpointSources[2],
+                    declaredSourceLanguageCode: " en_US ",
+                    nativeSourceLanguageCode: "en",
+                    expectedEvidenceStandard: "HigherStandard"));
+            }
             foreach (var heldOutCase in heldOutCases)
             {
                 string? failure;
@@ -1286,6 +1366,9 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
             foreach (var proofCase in matrix)
             {
                 var caseStarted = Stopwatch.GetTimestamp();
+                var readCommandsBefore = readOnlyGuard.ReadCommandCount;
+                var writeAttemptsBefore =
+                    readOnlyGuard.RejectedWriteCommandCount;
                 executed++;
                 try
                 {
@@ -1454,6 +1537,10 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
                     negativePasses++;
                 }
 
+                var caseWriteAttempts =
+                    readOnlyGuard.RejectedWriteCommandCount -
+                    writeAttemptsBefore;
+                Assert.Equal(0, caseWriteAttempts);
                 results.Add(ProductionNativeProofResult.PassedCase(
                     proofCase.Reference,
                     proofCase.Category,
@@ -1464,7 +1551,27 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
                     reply.ResponseAuthority,
                     reply.Stage,
                     factory.CreateClientCalls,
-                    Stopwatch.GetElapsedTime(caseStarted).TotalMilliseconds));
+                    Stopwatch.GetElapsedTime(caseStarted).TotalMilliseconds,
+                    request: currentPrompt,
+                    nativeAnswer: native.Answer,
+                    finalResponse: reply.Message,
+                    authoritySummary: native.AuthoritySummary,
+                    evidenceStandard: native.EvidenceStandard,
+                    articulationMode: native.ArticulationMode,
+                    modelAssistanceState:
+                        native.ModelAssistance?.State ??
+                        reply.ModelAssistanceState,
+                    modelVersion:
+                        native.ModelAssistance?.ModelVersion ??
+                        reply.ModelVersion,
+                    modelProvenance:
+                        native.ModelAssistance?.Provenance ??
+                        reply.ModelProvenance,
+                    readOnlyContentReceiptCount:
+                        native.ContentBindingProvenance?.Count ?? 0,
+                    productionReadCommandCount:
+                        readOnlyGuard.ReadCommandCount - readCommandsBefore,
+                    productionWriteAttemptCount: caseWriteAttempts));
 
                 _output.WriteLine(
                     $"MATRIX CASE: reference={proofCase.Reference}; " +
@@ -1472,7 +1579,14 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
                     $"native_supported={native.Supported}; reason={native.ReasonCode}; " +
                     $"evidence={native.EvidenceCount}; authority={reply.ResponseAuthority}; " +
                     $"stage={reply.Stage}; provider_clients={factory.CreateClientCalls}; " +
+                    $"production_reads={readOnlyGuard.ReadCommandCount - readCommandsBefore}; " +
+                    $"production_write_attempts={caseWriteAttempts}; " +
                     $"elapsed_ms={Stopwatch.GetElapsedTime(caseStarted).TotalMilliseconds:0}");
+                _output.WriteLine($"MATRIX REQUEST: {currentPrompt}");
+                _output.WriteLine(
+                    $"MATRIX NATIVE RESPONSE: {native.Answer ?? "<NULL>"}");
+                _output.WriteLine(
+                    $"MATRIX FINAL RESPONSE: {reply.Message ?? reply.Error ?? "<NULL>"}");
                 }
                 catch (Exception exception)
                 {
@@ -1483,7 +1597,14 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
                         proofCase.ExpectNative,
                         exception.Message,
                         factory.CreateClientCalls,
-                        elapsedMilliseconds));
+                        elapsedMilliseconds,
+                        request: proofCase.Messages[^1].Content,
+                        productionReadCommandCount:
+                            readOnlyGuard.ReadCommandCount -
+                            readCommandsBefore,
+                        productionWriteAttemptCount:
+                            readOnlyGuard.RejectedWriteCommandCount -
+                            writeAttemptsBefore));
                     _output.WriteLine(
                         $"MATRIX CASE FAILED: reference={proofCase.Reference}; " +
                         $"category={proofCase.Category}; expected_native={proofCase.ExpectNative}; " +
@@ -1523,8 +1644,12 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
             _output.WriteLine($"PRODUCTION PROOF MATRIX CASES EXECUTED: {executed}");
             _output.WriteLine($"PRODUCTION PROOF MATRIX NATIVE PASSES: {nativePasses}");
             _output.WriteLine($"PRODUCTION PROOF MATRIX NEGATIVE PASSES: {negativePasses}");
+            Assert.Equal(0, readOnlyGuard.RejectedWriteCommandCount);
             _output.WriteLine("OPENAI HTTP CALLS: 0");
-            _output.WriteLine("PRODUCTION WRITE COMMANDS: 0");
+            _output.WriteLine(
+                $"PRODUCTION READ COMMANDS: {readOnlyGuard.ReadCommandCount}");
+            _output.WriteLine(
+                $"PRODUCTION WRITE ATTEMPTS: {readOnlyGuard.RejectedWriteCommandCount}");
 
             var resultPath = Environment.GetEnvironmentVariable(
                 "LEGEND_PRODUCTION_PROOF_RESULT_PATH");
@@ -1549,7 +1674,10 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
                             NativePasses = nativePasses,
                             NegativePasses = negativePasses,
                             ProviderClientCount = factory.CreateClientCalls,
-                            ProductionWriteCommandCount = 0,
+                            ProductionReadCommandCount =
+                                readOnlyGuard.ReadCommandCount,
+                            ProductionWriteAttemptCount =
+                                readOnlyGuard.RejectedWriteCommandCount,
                             Categories = requiredCategories,
                             CaseResults = results
                         },
@@ -3531,7 +3659,19 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
         string? ResponseAuthority,
         string? Stage,
         int ProviderClientCount,
-        double ElapsedMilliseconds)
+        double ElapsedMilliseconds,
+        string? Request = null,
+        string? NativeAnswer = null,
+        string? FinalResponse = null,
+        string? AuthoritySummary = null,
+        string? EvidenceStandard = null,
+        string? ArticulationMode = null,
+        string? ModelAssistanceState = null,
+        string? ModelVersion = null,
+        string? ModelProvenance = null,
+        int ReadOnlyContentReceiptCount = 0,
+        int ProductionReadCommandCount = 0,
+        int ProductionWriteAttemptCount = 0)
     {
         internal static ProductionNativeProofResult FailedFixture(
             string reference,
@@ -3564,7 +3704,19 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
             string? responseAuthority,
             string? stage,
             int providerClientCount,
-            double elapsedMilliseconds) =>
+            double elapsedMilliseconds,
+            string? request = null,
+            string? nativeAnswer = null,
+            string? finalResponse = null,
+            string? authoritySummary = null,
+            string? evidenceStandard = null,
+            string? articulationMode = null,
+            string? modelAssistanceState = null,
+            string? modelVersion = null,
+            string? modelProvenance = null,
+            int readOnlyContentReceiptCount = 0,
+            int productionReadCommandCount = 0,
+            int productionWriteAttemptCount = 0) =>
             new(
                 reference,
                 category,
@@ -3580,7 +3732,19 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
                 responseAuthority,
                 stage,
                 providerClientCount,
-                elapsedMilliseconds);
+                elapsedMilliseconds,
+                request,
+                nativeAnswer,
+                finalResponse,
+                authoritySummary,
+                evidenceStandard,
+                articulationMode,
+                modelAssistanceState,
+                modelVersion,
+                modelProvenance,
+                readOnlyContentReceiptCount,
+                productionReadCommandCount,
+                productionWriteAttemptCount);
 
         internal static ProductionNativeProofResult FailedCase(
             string reference,
@@ -3588,7 +3752,10 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
             bool expectedNative,
             string failure,
             int providerClientCount,
-            double elapsedMilliseconds) =>
+            double elapsedMilliseconds,
+            string? request = null,
+            int productionReadCommandCount = 0,
+            int productionWriteAttemptCount = 0) =>
             new(
                 reference,
                 category,
@@ -3604,7 +3771,12 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
                 null,
                 null,
                 providerClientCount,
-                elapsedMilliseconds);
+                elapsedMilliseconds,
+                Request: request,
+                ProductionReadCommandCount:
+                    productionReadCommandCount,
+                ProductionWriteAttemptCount:
+                    productionWriteAttemptCount);
 
         internal static ProductionNativeProofResult FailedInfrastructurePreflight(
             string reference,
@@ -4257,18 +4429,28 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
     /// </summary>
     private sealed class ReadOnlyLegendDbCommandInterceptor : DbCommandInterceptor
     {
+        private int _readCommandCount;
+        private int _rejectedWriteCommandCount;
+
+        public int ReadCommandCount =>
+            Volatile.Read(ref _readCommandCount);
+
+        public int RejectedWriteCommandCount =>
+            Volatile.Read(ref _rejectedWriteCommandCount);
+
         public override InterceptionResult<int> NonQueryExecuting(
             DbCommand command,
             CommandEventData eventData,
             InterceptionResult<int> result) =>
-            throw NewWriteBlocked(command);
+            throw RejectWrite(command);
 
         public override ValueTask<InterceptionResult<int>> NonQueryExecutingAsync(
             DbCommand command,
             CommandEventData eventData,
             InterceptionResult<int> result,
             CancellationToken cancellationToken = default) =>
-            ValueTask.FromException<InterceptionResult<int>>(NewWriteBlocked(command));
+            ValueTask.FromException<InterceptionResult<int>>(
+                RejectWrite(command));
 
         public override InterceptionResult<DbDataReader> ReaderExecuting(
             DbCommand command,
@@ -4308,14 +4490,22 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
             return ValueTask.FromResult(result);
         }
 
-        private static void EnsureSelect(DbCommand command)
+        private void EnsureSelect(DbCommand command)
         {
             if (!command.CommandText.TrimStart().StartsWith(
                     "SELECT",
                     StringComparison.OrdinalIgnoreCase))
             {
-                throw NewWriteBlocked(command);
+                throw RejectWrite(command);
             }
+
+            Interlocked.Increment(ref _readCommandCount);
+        }
+
+        private InvalidOperationException RejectWrite(DbCommand command)
+        {
+            Interlocked.Increment(ref _rejectedWriteCommandCount);
+            return NewWriteBlocked(command);
         }
 
         private static InvalidOperationException NewWriteBlocked(DbCommand command) =>
