@@ -17,7 +17,6 @@ using System.Reflection;
 using System.Security.Claims;
 using AgentPortal.Services;
 using Domain.Entities;
-using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
 
 namespace AgentPortal.Tests;
@@ -80,14 +79,117 @@ public sealed class LegendFounderAiNativeOnlyProviderIsolationTests
         }
     }
 
+    /// <summary>
+    /// Observes the persistence boundary itself after fixture seeding. Merely
+    /// comparing tracked-entry counts cannot prove zero writes: an update may
+    /// save an already tracked entity and leave the count unchanged. This
+    /// sentinel counts and rejects every synchronous or asynchronous
+    /// SaveChanges attempt while armed.
+    /// </summary>
+    private sealed class WriteAttemptSentinel : SaveChangesInterceptor
+    {
+        private int _armed;
+        private int _attempts;
+
+        public int Attempts => Volatile.Read(ref _attempts);
+
+        public void Arm() => Volatile.Write(ref _armed, 1);
+
+        public override InterceptionResult<int> SavingChanges(
+            DbContextEventData eventData,
+            InterceptionResult<int> result)
+        {
+            Observe(eventData);
+            return base.SavingChanges(eventData, result);
+        }
+
+        public override ValueTask<InterceptionResult<int>> SavingChangesAsync(
+            DbContextEventData eventData,
+            InterceptionResult<int> result,
+            CancellationToken cancellationToken = default)
+        {
+            Observe(eventData);
+            return base.SavingChangesAsync(
+                eventData,
+                result,
+                cancellationToken);
+        }
+
+        private void Observe(DbContextEventData eventData)
+        {
+            if (Volatile.Read(ref _armed) == 0)
+                return;
+
+            Interlocked.Increment(ref _attempts);
+            var entities = eventData.Context?.ChangeTracker
+                .Entries()
+                .Where(entry => entry.State is
+                    EntityState.Added or
+                    EntityState.Modified or
+                    EntityState.Deleted)
+                .Select(entry => entry.Entity.GetType().Name)
+                .OrderBy(name => name, StringComparer.Ordinal)
+                .ToArray() ?? [];
+            throw new InvalidOperationException(
+                "Native-only zero-write proof rejected a SaveChanges attempt" +
+                (entities.Length == 0
+                    ? "."
+                    : ": " + string.Join(", ", entities)));
+        }
+    }
+
+    /// <summary>
+    /// Holds provider-enabled requests after they have entered the external
+    /// HTTP boundary. Native-only workers can then run while those requests are
+    /// demonstrably in flight, making mixed-policy overlap deterministic.
+    /// </summary>
+    private sealed class ExternalBoundaryHoldGate
+    {
+        private readonly int _expectedEntrants;
+        private readonly TaskCompletionSource _allEntered = new(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly TaskCompletionSource _release = new(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        private int _entrants;
+
+        public ExternalBoundaryHoldGate(int expectedEntrants)
+        {
+            if (expectedEntrants <= 0)
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(expectedEntrants));
+            }
+
+            _expectedEntrants = expectedEntrants;
+        }
+
+        public Task AllEntered => _allEntered.Task;
+
+        public async Task EnterAndHoldAsync(
+            CancellationToken cancellationToken)
+        {
+            if (Interlocked.Increment(ref _entrants) == _expectedEntrants)
+                _allEntered.TrySetResult();
+
+            await _release.Task.WaitAsync(cancellationToken);
+        }
+
+        public void Release() => _release.TrySetResult();
+    }
+
     private sealed class ScriptedHttpClientFactory : IHttpClientFactory
     {
         private readonly Dictionary<string, string> _responses;
         private readonly List<string> _clients = new();
+        private readonly ExternalBoundaryHoldGate? _holdGate;
 
         public ScriptedHttpClientFactory(
-            Dictionary<string, string>? responses = null) =>
+            Dictionary<string, string>? responses = null,
+            ExternalBoundaryHoldGate? holdGate = null)
+        {
             _responses = responses ?? new Dictionary<string, string>();
+            _holdGate = holdGate;
+        }
 
         public IReadOnlyList<string> CreatedClients
         {
@@ -110,7 +212,7 @@ public sealed class LegendFounderAiNativeOnlyProviderIsolationTests
                 _clients.Add(name);
 
             _responses.TryGetValue(name, out var body);
-            return new HttpClient(new ScriptedHandler(this, body))
+            return new HttpClient(new ScriptedHandler(this, body, _holdGate))
             {
                 BaseAddress = new Uri("https://external.invalid/")
             };
@@ -118,14 +220,18 @@ public sealed class LegendFounderAiNativeOnlyProviderIsolationTests
 
         private sealed class ScriptedHandler(
             ScriptedHttpClientFactory owner,
-            string? body)
+            string? body,
+            ExternalBoundaryHoldGate? holdGate)
             : HttpMessageHandler
         {
-            protected override Task<HttpResponseMessage> SendAsync(
+            protected override async Task<HttpResponseMessage> SendAsync(
                 HttpRequestMessage request,
                 CancellationToken cancellationToken)
             {
                 Interlocked.Increment(ref owner.SendAttempts);
+                if (holdGate is not null)
+                    await holdGate.EnterAndHoldAsync(cancellationToken);
+
                 if (body is null)
                 {
                     throw new InvalidOperationException(
@@ -133,14 +239,14 @@ public sealed class LegendFounderAiNativeOnlyProviderIsolationTests
                         request.RequestUri);
                 }
 
-                return Task.FromResult(new HttpResponseMessage(
+                return new HttpResponseMessage(
                     System.Net.HttpStatusCode.OK)
                 {
                     Content = new StringContent(
                         body,
                         System.Text.Encoding.UTF8,
                         "application/json")
-                });
+                };
             }
         }
     }
@@ -174,12 +280,15 @@ public sealed class LegendFounderAiNativeOnlyProviderIsolationTests
     /// </summary>
     private static TestScope BuildProductionEquivalentScope(
         Dictionary<string, string>? scriptedResponses = null,
-        Action<IServiceCollection>? configureServices = null)
+        Action<IServiceCollection>? configureServices = null,
+        WriteAttemptSentinel? writeSentinel = null,
+        ExternalBoundaryHoldGate? externalBoundaryHoldGate = null)
     {
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?>
             {
                 ["OpenAI:ApiKey"] = "test-openai-key",
+                ["OpenAI:LegendFounderAiTimeoutSeconds"] = "120",
                 // The promoted governed-reasoning model transport reads its own
                 // credential prefix. Without it that boundary reports
                 // "model_inference_provider_unavailable" and is never reached,
@@ -201,13 +310,34 @@ public sealed class LegendFounderAiNativeOnlyProviderIsolationTests
         var databaseName = Guid.NewGuid().ToString();
         var services = new ServiceCollection();
         services.AddLogging();
-        services.AddDbContext<MasterAppDbContext>(options => options
-            .UseInMemoryDatabase(databaseName)
-            .ConfigureWarnings(warnings =>
-                warnings.Ignore(InMemoryEventId.TransactionIgnoredWarning)));
+        services.AddDbContext<MasterAppDbContext>(options =>
+        {
+            options
+                .UseInMemoryDatabase(databaseName)
+                .ConfigureWarnings(warnings => warnings.Ignore(
+                    InMemoryEventId.TransactionIgnoredWarning));
+            if (writeSentinel is not null)
+                options.AddInterceptors(writeSentinel);
+        });
         services.AddMasterAppMessaging(configuration);
 
-        var external = new ScriptedHttpClientFactory(scriptedResponses);
+        // Match the scoped AgentPortal registrations consumed by the
+        // production conversation entry point. AddMasterAppMessaging above
+        // supplies the registry, translation, model, research and operations
+        // authorities; these registrations complete the Program.cs graph.
+        services.AddScoped<AgentProfileAccessResolver>();
+        services.AddScoped<ProductionService>();
+        services.AddScoped<AgencyCommandService>();
+        services.AddScoped<FounderLegendConnectService>();
+        services.AddScoped<LegendFounderAiDiscourseStateService>();
+        services.AddScoped<
+            IFounderSoftwareRemediationService,
+            FounderSoftwareRemediationService>();
+        services.AddScoped<LegendFounderAiConversationService>();
+
+        var external = new ScriptedHttpClientFactory(
+            scriptedResponses,
+            externalBoundaryHoldGate);
         services.RemoveAll<IHttpClientFactory>();
         services.AddSingleton<IHttpClientFactory>(external);
 
@@ -610,9 +740,10 @@ public sealed class LegendFounderAiNativeOnlyProviderIsolationTests
             inference.ModelAssistance?.ReasonCode);
         Assert.Null(inference.ModelAssistance?.ModelVersion);
 
-        var response = await BuildConversationService(scope).ReplyAsync(
-            founder,
-            NativeRequest(SymbolicRequestText, nativeOnly: true));
+        var response = await scope.Resolve<LegendFounderAiConversationService>()
+            .ReplyAsync(
+                founder,
+                NativeRequest(SymbolicRequestText, nativeOnly: true));
 
         // The real serving response, not merely "not the provider": LEGEND
         // must succeed under its own authority and return the exact governed
@@ -620,10 +751,7 @@ public sealed class LegendFounderAiNativeOnlyProviderIsolationTests
         // message or different text now fails this test.
         Assert.True(response.Succeeded, response.Error);
         Assert.Equal("LegendAi", response.ResponseAuthority);
-        Assert.Contains(
-            SymbolicAnswer,
-            response.Message,
-            StringComparison.Ordinal);
+        Assert.Equal(SymbolicAnswer, response.Message);
 
         Assert.Equal(0, scope.External.CallsTo("LegendModelEvaluation"));
         Assert.Equal(0, scope.External.CallsTo("OpenAI"));
@@ -682,7 +810,8 @@ public sealed class LegendFounderAiNativeOnlyProviderIsolationTests
         await nativeScope.Resolve<ILegendLanguageRegistry>()
             .NormalizeEnabledTranslationLanguageAsync("en", CancellationToken.None);
 
-        var nativeResponse = await BuildConversationService(nativeScope)
+        var nativeResponse = await nativeScope
+            .Resolve<LegendFounderAiConversationService>()
             .ReplyAsync(
                 nativeFounder,
                 NativeRequest(Unknown, nativeOnly: true));
@@ -702,7 +831,8 @@ public sealed class LegendFounderAiNativeOnlyProviderIsolationTests
             });
         var providerFounder = await SeedFounderAsync(providerScope.Db);
 
-        var providerResponse = await BuildConversationService(providerScope)
+        var providerResponse = await providerScope
+            .Resolve<LegendFounderAiConversationService>()
             .ReplyAsync(
                 providerFounder,
                 NativeRequest(Unknown, nativeOnly: false));
@@ -750,37 +880,6 @@ public sealed class LegendFounderAiNativeOnlyProviderIsolationTests
     }
 
     /// <summary>
-    /// Builds the real conversation service over the DI-resolved operations
-    /// authority. The conversation provider client, the promoted model
-    /// transport, Azure detection/translation and both research transports all
-    /// obtain their clients from the same counting/refusing factory, so one
-    /// counter observes every external boundary of a real reply.
-    /// </summary>
-    private static LegendFounderAiConversationService BuildConversationService(
-        TestScope scope)
-    {
-        var operations = scope.Resolve<ILegendConnectOperations>();
-        var profiles = new AgentProfileAccessResolver(scope.Db);
-        return new LegendFounderAiConversationService(
-            scope.External,
-            new ConfigurationBuilder()
-                .AddInMemoryCollection(new Dictionary<string, string?>
-                {
-                    ["OpenAI:ApiKey"] = "test-openai-key",
-                    ["OpenAI:LegendFounderAiTimeoutSeconds"] = "120"
-                })
-                .Build(),
-            new FounderLegendConnectService(operations, profiles),
-            NullLogger<LegendFounderAiConversationService>.Instance,
-            new LegendFounderAiDiscourseStateService(
-                scope.Db,
-                profiles,
-                operations),
-            scope.Resolve<ILegendLanguageRegistry>(),
-            scope.Resolve<ITranslationService>());
-    }
-
-    /// <summary>
     /// The end-to-end serving boundary. A real native-only
     /// <see cref="LegendFounderAiConversationService.ReplyAsync"/> must create
     /// the policy, carry it through the Founder wrapper and tool authority, and
@@ -797,7 +896,7 @@ public sealed class LegendFounderAiNativeOnlyProviderIsolationTests
         using var founderEnvironment = new FounderEnvironmentScope(FounderId);
         await using var scope = BuildProductionEquivalentScope();
         var founder = await SeedFounderAsync(scope.Db);
-        var service = BuildConversationService(scope);
+        var service = scope.Resolve<LegendFounderAiConversationService>();
 
         var response = await service.ReplyAsync(
             founder,
@@ -834,7 +933,7 @@ public sealed class LegendFounderAiNativeOnlyProviderIsolationTests
         using var founderEnvironment = new FounderEnvironmentScope(FounderId);
         await using var scope = BuildProductionEquivalentScope();
         var founder = await SeedFounderAsync(scope.Db);
-        var service = BuildConversationService(scope);
+        var service = scope.Resolve<LegendFounderAiConversationService>();
 
         var response = await service.ReplyAsync(
             founder,
@@ -1040,19 +1139,45 @@ public sealed class LegendFounderAiNativeOnlyProviderIsolationTests
     [Fact]
     public async Task Policy_IsPerRequestUnderConcurrentMixedTraffic()
     {
-        await using var scope = BuildProductionEquivalentScope();
-
         const int Pairs = 24;
+        const int Workers = Pairs * 2;
+        var externalBoundary = new ExternalBoundaryHoldGate(Pairs);
+        await using var scope = BuildProductionEquivalentScope(
+            externalBoundaryHoldGate: externalBoundary);
         var nativeResults =
             new TranslationDetectionResult[Pairs];
         var providerReachedBoundary = new bool[Pairs];
+        var allWorkersReady = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseWorkers = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var readyWorkers = 0;
+        var clientsWhileProviderRequestsHeld = -1;
+        var sendsWhileProviderRequestsHeld = -1;
 
-        var work = new List<Task>();
+        async Task EnterStartGateAsync()
+        {
+            if (Interlocked.Increment(ref readyWorkers) == Workers)
+                allWorkersReady.TrySetResult();
+
+            await releaseWorkers.Task;
+        }
+
+        var nativeWork = new List<Task>(Pairs);
+        var providerWork = new List<Task>(Pairs);
         for (var index = 0; index < Pairs; index++)
         {
             var slot = index;
-            work.Add(Task.Run(async () =>
+            nativeWork.Add(Task.Run(async () =>
             {
+                await EnterStartGateAsync();
+
+                // Provider-enabled requests are held inside the external HTTP
+                // boundary before native-only detection starts. The policy
+                // executions therefore overlap deterministically rather than
+                // relying on Task.Run scheduling.
+                await externalBoundary.AllEntered.WaitAsync(
+                    TimeSpan.FromSeconds(15));
                 using var requestScope = scope.NewRequestScope();
                 nativeResults[slot] = await requestScope.ServiceProvider
                     .GetRequiredService<ITranslationService>()
@@ -1062,8 +1187,9 @@ public sealed class LegendFounderAiNativeOnlyProviderIsolationTests
                         LegendConnectExternalProviderPolicy.NativeOnly);
             }));
 
-            work.Add(Task.Run(async () =>
+            providerWork.Add(Task.Run(async () =>
             {
+                await EnterStartGateAsync();
                 using var requestScope = scope.NewRequestScope();
                 try
                 {
@@ -1082,9 +1208,31 @@ public sealed class LegendFounderAiNativeOnlyProviderIsolationTests
             }));
         }
 
-        await Task.WhenAll(work);
+        try
+        {
+            await allWorkersReady.Task.WaitAsync(TimeSpan.FromSeconds(15));
+            releaseWorkers.TrySetResult();
+            await externalBoundary.AllEntered.WaitAsync(
+                TimeSpan.FromSeconds(15));
+            await Task.WhenAll(nativeWork).WaitAsync(
+                TimeSpan.FromSeconds(15));
 
-        // Every native-only request failed closed with its own governed reason.
+            // While every provider-enabled request is still held inside its
+            // external send, every native-only request has independently
+            // completed without constructing or sending through that boundary.
+            clientsWhileProviderRequestsHeld =
+                scope.External.CallsTo("AzureTranslator");
+            sendsWhileProviderRequestsHeld = scope.External.SendAttempts;
+        }
+        finally
+        {
+            releaseWorkers.TrySetResult();
+            externalBoundary.Release();
+        }
+
+        await Task.WhenAll(providerWork).WaitAsync(
+            TimeSpan.FromSeconds(15));
+
         Assert.All(nativeResults, result =>
         {
             Assert.False(result.Succeeded);
@@ -1092,6 +1240,8 @@ public sealed class LegendFounderAiNativeOnlyProviderIsolationTests
                 "native_only_governed_source_language_undetermined",
                 result.ErrorCode);
         });
+        Assert.Equal(Pairs, clientsWhileProviderRequestsHeld);
+        Assert.Equal(Pairs, sendsWhileProviderRequestsHeld);
 
         // Every provider-enabled request still reached the boundary.
         Assert.All(
@@ -1351,7 +1501,9 @@ public sealed class LegendFounderAiNativeOnlyProviderIsolationTests
         string expectedReasonCode)
     {
         using var founderEnvironment = new FounderEnvironmentScope(FounderId);
-        await using var scope = BuildProductionEquivalentScope();
+        var writeSentinel = new WriteAttemptSentinel();
+        await using var scope = BuildProductionEquivalentScope(
+            writeSentinel: writeSentinel);
         var founder = await SeedFounderAsync(scope.Db);
         var curriculum = scope.Resolve<LegendConnectCurriculumService>();
         for (var support = 1; support <= 3; support++)
@@ -1360,6 +1512,11 @@ public sealed class LegendFounderAiNativeOnlyProviderIsolationTests
                 ReadOnlyContentBindingFamily(support));
             Assert.True(submitted.Succeeded, submitted.Message);
         }
+
+        // Fixture writes are complete. From pass one through receipt binding
+        // and pass two, any SaveChanges call is independently observed and
+        // rejected at the EF persistence boundary.
+        writeSentinel.Arm();
 
         // One immutable policy object is used for both passes, so continuity of
         // the native-only decision across the tool round trip is proved rather
@@ -1398,7 +1555,7 @@ public sealed class LegendFounderAiNativeOnlyProviderIsolationTests
             scope.External,
             "native-only pass one must resolve the governed read request internally");
 
-        var writesBeforeRead = scope.Db.ChangeTracker.Entries().Count();
+        var trackedEntriesBeforeRead = scope.Db.ChangeTracker.Entries().Count();
         var bound = await toolAuthority.BindReadOnlyResultAsync(
             founder,
             readRequest,
@@ -1493,7 +1650,10 @@ public sealed class LegendFounderAiNativeOnlyProviderIsolationTests
 
         // The second pass revalidates; it must never execute the tool again.
         Assert.Equal(1, counter.TranslationQualityReads);
-        Assert.Equal(writesBeforeRead, scope.Db.ChangeTracker.Entries().Count());
+        Assert.Equal(0, writeSentinel.Attempts);
+        Assert.Equal(
+            trackedEntriesBeforeRead,
+            scope.Db.ChangeTracker.Entries().Count());
         AssertNoExternalProviderWasReached(
             scope.External,
             "the whole two-pass read-only exchange is native-only");
