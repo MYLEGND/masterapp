@@ -1092,6 +1092,7 @@ public class CalendarController : Controller
 
     public sealed class CreateEventRequest
     {
+        public string? ServiceId { get; set; }
         public string? ClientUserId { get; set; }
         public Guid? ClientProfileId { get; set; }
         public string? WorkstationLeadId { get; set; }
@@ -1106,6 +1107,7 @@ public class CalendarController : Controller
 
     public sealed class UpdateAppointmentRequest
     {
+        public string? ServiceId { get; set; }
         public Guid? AppointmentId { get; set; }
         public string? ClientUserId { get; set; }
         public Guid? ClientProfileId { get; set; }
@@ -1479,6 +1481,16 @@ public class CalendarController : Controller
                 .Select(x => (x.Start, x.End))
                 .ToList();
 
+            var canonicalBookings = await _db.LeadAppointments.AsNoTracking()
+                .Where(a => a.OwnerAgentUserId.ToLower() == agentOid && a.ScheduledStartUtc < utcEnd &&
+                    a.ScheduledEndUtc > utcStart &&
+                    (a.Status == LeadAppointmentStatus.Booked || a.Status == LeadAppointmentStatus.Confirmed || a.Status == LeadAppointmentStatus.Rescheduled) &&
+                    (excludedEventId == null || a.CalendarEventId != excludedEventId))
+                .Select(a => new { a.ScheduledStartUtc, a.ScheduledEndUtc }).ToListAsync(HttpContext.RequestAborted);
+            busyRanges.AddRange(canonicalBookings.Select(a => (
+                TimeZoneInfo.ConvertTimeFromUtc(DateTime.SpecifyKind(a.ScheduledStartUtc!.Value, DateTimeKind.Utc), agentTimeZone),
+                TimeZoneInfo.ConvertTimeFromUtc(DateTime.SpecifyKind(a.ScheduledEndUtc!.Value, DateTimeKind.Utc), agentTimeZone))));
+
             var freeRanges = SubtractBusyRanges(
                 availabilityItems.Select(x => (x.Start, x.End)),
                 busyRanges);
@@ -1631,6 +1643,8 @@ public class CalendarController : Controller
                 ? (string.IsNullOrWhiteSpace(leadProfile?.AgentUserId) ? agentOid : leadProfile!.AgentUserId)
                 : agentOid;
 
+            await using var calendarLease = await CalendarBookingLock.AcquireAsync(_db, ownerAgentUserId, cancellationToken);
+
             var lockRecordKey = profile != null
                 ? profile.Id.ToString()
                 : (leadProfile?.LeadId ?? clientUserId ?? string.Empty);
@@ -1716,9 +1730,12 @@ public class CalendarController : Controller
                 return BadRequest("Agent booking configuration missing.");
 
             var durationMinutes = MinutesBetween(localStart, localEnd);
-            var bookingService = await ResolveBookingServiceByDurationAsync(bookingBusinessId, durationMinutes, HttpContext.RequestAborted);
+            var bookingService = await ResolveBookingServiceByDurationAsync(bookingBusinessId, durationMinutes, HttpContext.RequestAborted, req.ServiceId);
             if (bookingService == null || string.IsNullOrWhiteSpace(bookingService.Id))
                 return BadRequest($"No Microsoft Bookings service matches {durationMinutes} minutes.");
+
+            var unavailableSlot = await ValidateBookingSlotAsync(localStart, localEnd, bookingService, null);
+            if (unavailableSlot != null) return unavailableSlot;
 
             var customerName = profile != null
                 ? $"{profile.FirstName} {profile.LastName}".Trim()
@@ -2247,6 +2264,8 @@ public class CalendarController : Controller
                         DateTimeKind.Unspecified),
                     agentTimeZone);
 
+            await using var calendarLease = await CalendarBookingLock.AcquireAsync(_db, context.CurrentAgentUserId, cancellationToken);
+
             var duplicateAppointment =
                 await FindExistingAppointmentForSameTimeAsync(
                     context.CurrentAgentUserId,
@@ -2269,7 +2288,7 @@ public class CalendarController : Controller
                 await ResolveBookingServiceByDurationAsync(
                     bookingBusinessId,
                     durationMinutes,
-                    cancellationToken);
+                    cancellationToken, req.ServiceId);
 
             if (bookingService == null ||
                 string.IsNullOrWhiteSpace(bookingService.Id))
@@ -2277,6 +2296,9 @@ public class CalendarController : Controller
                 return BadRequest(
                     $"No Microsoft Bookings service matches {durationMinutes} minutes.");
             }
+
+            var unavailableSlot = await ValidateBookingSlotAsync(localStart, localEnd, bookingService, context.Appointment.CalendarEventId);
+            if (unavailableSlot != null) return unavailableSlot;
 
             var zoomJoinUrl =
                 string.IsNullOrWhiteSpace(req.ZoomJoinUrl)
@@ -2703,6 +2725,30 @@ public class CalendarController : Controller
 
 
 
+    private async Task<IActionResult?> ValidateBookingSlotAsync(DateTime start, DateTime end, BookingService service, string? excludedEventId)
+    {
+        // The same live availability projection drives both the web calendar and
+        // the final submit check. A stale UI selection never authorizes a booking.
+        if (TimeZoneInfo.ConvertTimeToUtc(DateTime.SpecifyKind(start, DateTimeKind.Unspecified), _agentTimeZoneResolver.Resolve(HttpContext)) <= DateTime.UtcNow)
+            return Conflict("Choose a future appointment time.");
+        var availability = await DayAvailability(start.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture), excludedEventId);
+        if (availability is not OkObjectResult { Value: not null } ok)
+            return StatusCode(503, "Live calendar availability could not be verified. Refresh and try again.");
+        var payload = JsonSerializer.SerializeToElement(ok.Value);
+        if (!payload.TryGetProperty("connected", out var connected) || !connected.GetBoolean() ||
+            !payload.TryGetProperty("freeSlots", out var slots))
+            return StatusCode(503, "Live calendar availability could not be verified. Refresh and try again.");
+        var requiredStart = start.Subtract(service.PreBuffer ?? TimeSpan.Zero);
+        var requiredEnd = end.Add(service.PostBuffer ?? TimeSpan.Zero);
+        foreach (var slot in slots.EnumerateArray())
+        {
+            if (DateTime.TryParse(slot.GetProperty("startIso").GetString(), CultureInfo.InvariantCulture, DateTimeStyles.None, out var freeStart) &&
+                DateTime.TryParse(slot.GetProperty("endIso").GetString(), CultureInfo.InvariantCulture, DateTimeStyles.None, out var freeEnd) &&
+                requiredStart >= freeStart && requiredEnd <= freeEnd) return null;
+        }
+        return Conflict("That time is no longer available. Refresh the calendar and choose another time.");
+    }
+
     private static List<(DateTime Start, DateTime End)> SubtractBusyRanges(
         IEnumerable<(DateTime Start, DateTime End)> freeRanges,
         IEnumerable<(DateTime Start, DateTime End)> busyRanges)
@@ -2745,7 +2791,7 @@ public class CalendarController : Controller
     private static int MinutesBetween(DateTime start, DateTime end)
         => Math.Max(1, (int)Math.Round((end - start).TotalMinutes));
 
-    private async Task<BookingService?> ResolveBookingServiceByDurationAsync(string businessId, int durationMinutes, CancellationToken ct)
+    private async Task<BookingService?> ResolveBookingServiceByDurationAsync(string businessId, int durationMinutes, CancellationToken ct, string? serviceId = null)
     {
         var services = await _appGraph.Solutions.BookingBusinesses[businessId].Services.GetAsync(cancellationToken: ct);
 
@@ -2765,7 +2811,8 @@ public class CalendarController : Controller
         );
 
         return services?.Value?
-            .Where(x => x.IsHiddenFromCustomers != true && x.DefaultDuration.HasValue)
+            .Where(x => x.IsHiddenFromCustomers != true && x.DefaultDuration.HasValue &&
+                (string.IsNullOrWhiteSpace(serviceId) || x.Id == serviceId))
             .Select(x => new { Service = x, Minutes = (int)Math.Round(x.DefaultDuration!.Value.TotalMinutes) })
             .OrderBy(x => Math.Abs(x.Minutes - durationMinutes))
             .FirstOrDefault(x => Math.Abs(x.Minutes - durationMinutes) <= 2)

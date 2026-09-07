@@ -23,6 +23,10 @@ interface AccessTokenProvider { suspend fun accessToken(): String? }
 class LegendApiException(val status: Int, val problem: MobileApiProblem?, cause: Throwable? = null) : IOException(problem?.message ?: "Legend request failed.", cause)
 
 interface LegendApi {
+    @GET("api/v1/mobile/agent/clients/{id}/booking-access") suspend fun bookingAccess(@Header("X-Legend-Participant-Type") role: String, @Path("id") id: String): Response<MobileBookingAccess>
+    @POST("api/v1/mobile/agent/clients/{id}/booking-launch") suspend fun bookingLaunch(@Header("X-Legend-Participant-Type") role: String, @Path("id") id: String): Response<MobileClientCreationPortalLaunch>
+    @GET("api/v1/mobile/agent/crm/schedule") suspend fun agentSchedule(@Header("X-Legend-Participant-Type") role: String): Response<List<MobileCrmAppointment>>
+    @GET("api/v1/mobile/agent/crm/{kind}/{id}") suspend fun agentCrmRecord(@Header("X-Legend-Participant-Type") role: String, @Path("kind") kind: String, @Path("id") id: String): Response<MobileCrmRecord>
     @POST("api/v1/mobile/review-session") suspend fun reviewSession(@Body request: MobileReviewSignInRequest): Response<MobileReviewTokenResponse>
     @GET("api/v1/mobile/session") suspend fun session(@Header("X-Legend-Participant-Type") participantType: String? = null): Response<MobileSessionResponse>
     @POST("api/v1/mobile/session/select-role") suspend fun selectRole(@Body request: SelectRoleRequest): Response<MobileRoleSelectionResponse>

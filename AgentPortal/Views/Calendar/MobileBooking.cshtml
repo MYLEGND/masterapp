@@ -1,0 +1,33 @@
+@model AgentPortal.Mobile.MobileClientBookingPage
+@{ Layout = null; }
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="referrer" content="no-referrer" />
+    <title>Book Appointment</title>
+    <link rel="stylesheet" href="~/lib/bootstrap/dist/css/bootstrap.min.css" />
+    <link rel="stylesheet" href="~/css/qv-booking.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/css/mobile-client-booking.css" asp-append-version="true" />
+</head>
+<body class="mobile-client-booking">
+    <div id="mobileBookingContext" hidden data-ticket="@Model.Ticket" data-profile-id="@Model.ProfileId"
+         data-client-user-id="@Model.ClientUserId" data-time-zone="@Model.TimeZone">
+        <span id="dName">@Model.DisplayName</span><span id="dEmail">@Model.Email</span><span id="dPhone">@Model.Phone</span>
+        <input id="dNextDate" /><input id="dNextText" value="Client appointment" />
+    </div>
+    @await Html.PartialAsync("_QuickViewBookingModal")
+    <section id="mobileClientAppointments" class="qv-booking-panel" aria-label="Existing appointments" hidden>
+        <div class="qv-booking-panel-title">Your appointments with this client</div>
+        <p id="mobileBookingTimeZone" class="qv-booking-panel-note"></p>
+        <div id="mobileAppointmentList"></div>
+        <button id="mobileNewBooking" type="button" class="btn qv-booking-launch">New appointment</button>
+        <p id="mobileBookingNotice" role="status" aria-live="polite"></p>
+    </section>
+    <script src="~/lib/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="~/js/legend-modal.js" asp-append-version="true"></script>
+    <script src="~/js/scheduling/qv-booking.js" asp-append-version="true"></script>
+    <script src="~/js/scheduling/mobile-client-booking.js" asp-append-version="true"></script>
+</body>
+</html>
