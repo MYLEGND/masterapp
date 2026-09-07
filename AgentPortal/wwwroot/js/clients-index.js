@@ -3178,7 +3178,7 @@ document.addEventListener("click", (e) => {
 
   const deleteClientId = e.target.closest("[data-delete-client]")?.getAttribute("data-delete-client");
   if (deleteClientId){
-    if (!confirm("Delete this client? This will remove the profile + household + Entra login for this client.")) return;
+    if (!confirm("Delete this client account? This cancels active subscriptions, closes portal access for all assigned agents, and moves the account to Archive / Deleted.")) return;
 
     void deleteClientRecord(deleteClientId)
       .catch(err => toast(err.message || "Delete failed.", { error:true, persistent:true }));
@@ -5046,7 +5046,7 @@ btnResendClientInvite?.addEventListener("click", () => {
 
 btnDeleteClient?.addEventListener("click", () => {
   if (!activeClientId) return;
-  if (!confirm("ARE YOU SURE YOU WANT TO DELETE THIS CLIENT? This removes the profile, household, and portal access.")) return;
+  if (!confirm("Delete this client account? This cancels active subscriptions, closes portal access for all assigned agents, and moves the account to Archive / Deleted.")) return;
 
   void deleteClientRecord(activeClientId)
     .catch(err => toast(err.message || "Delete failed.", { error:true, persistent:true }));
@@ -6095,7 +6095,7 @@ document.addEventListener("click", (e) => {
     const clientId = card.getAttribute("data-cardid");
     if (!clientId) return;
 
-    if (!confirm("Delete this client? This will remove the profile + household + Entra login for this client.")) return;
+    if (!confirm("Delete this client account? This cancels active subscriptions, closes portal access for all assigned agents, and moves the account to Archive / Deleted.")) return;
 
     const f = document.getElementById("__af");
     if (!f) return toast("Missing antiforgery form.");

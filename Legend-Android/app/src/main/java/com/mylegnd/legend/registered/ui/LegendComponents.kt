@@ -141,3 +141,17 @@ fun LegendContactCard(
         }
     }
 }
+
+/** Shared branded heading for page and workflow sections. */
+@Composable
+fun LegendSectionPill(title: String, detail: String? = null, eyebrow: String? = null) {
+    Surface(modifier = Modifier.fillMaxWidth().border(1.dp, LegendColors.Gold.copy(alpha = 0.35f), LegendShapes.Card),
+        color = LegendColors.Navy, shape = LegendShapes.Card) {
+        Column(Modifier.padding(horizontal = LegendSpacing.Md, vertical = LegendSpacing.Sm), verticalArrangement = Arrangement.spacedBy(LegendSpacing.Micro)) {
+            if (!eyebrow.isNullOrBlank() && !title.contains(eyebrow, ignoreCase = true))
+                Text(legendLocalized(eyebrow).uppercase(), style = LegendTypography.Eyebrow, color = LegendColors.GoldBright)
+            Text(legendLocalized(title), style = LegendTypography.Section, color = LegendColors.OnNavy)
+            if (!detail.isNullOrBlank()) Text(legendLocalized(detail), style = LegendTypography.Supporting, color = LegendColors.OnNavy.copy(alpha = 0.72f))
+        }
+    }
+}

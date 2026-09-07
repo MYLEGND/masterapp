@@ -4,6 +4,24 @@ import XCTest
 
 @MainActor
 final class MobileNativeContractTests: XCTestCase {
+    func testCrmSearchMatchesNameEmailAndFormattedPhone() {
+        let values: [String?] = ["Ana García", "ana@example.com", "(602) 555-0123"]
+        XCTAssertTrue(legendCrmMatchesSearch("ana garcia", values: values))
+        XCTAssertTrue(legendCrmMatchesSearch("@example.com", values: values))
+        XCTAssertTrue(legendCrmMatchesSearch("602555", values: values))
+        XCTAssertFalse(legendCrmMatchesSearch("missing", values: values))
+    }
+
+    func testCrmContactEditPreservesTheExactServerRevision() throws {
+        let json = #"{"id":"lead-1","kind":"Lead","displayName":"A Lead","firstName":"A","lastName":"Lead","stage":"NewLead","managementPath":"/Leads?leadId=lead-1","updatedUtc":"2026-09-07T01:02:03.1234567Z","archived":false}"#
+        let record = try JSONDecoder().decode(MobileCrmRecord.self, from: Data(json.utf8))
+        let encoded = try JSONEncoder().encode(MobileCrmContactInput(record))
+        let saved = try XCTUnwrap(JSONSerialization.jsonObject(with: encoded) as? [String: Any])
+        XCTAssertEqual(saved["updatedUtc"] as? String, "2026-09-07T01:02:03.1234567Z")
+        XCTAssertEqual(saved["firstName"] as? String, "A")
+        XCTAssertEqual(record.archived, false)
+    }
+
     func testSignedAPNSEnvironmentMapsOnlyTheAppEntitlementValues() {
         XCTAssertEqual(
             LegendAPNSEnvironment.fromSignedEntitlement("development"),

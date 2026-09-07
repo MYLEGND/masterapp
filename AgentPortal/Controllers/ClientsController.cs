@@ -1931,6 +1931,8 @@ namespace AgentPortal.Controllers;
         string ContactChannel,
         bool ClearMeetingDetails = false);
 
+    public static bool SupportsOutcome(string code) => BuildOutcomePlan(code) is not null;
+
     private static OutcomePlan? BuildOutcomePlan(string? rawOutcome)
     {
         var today = DateTime.UtcNow.Date;
@@ -2146,6 +2148,9 @@ namespace AgentPortal.Controllers;
                   ac => ac.ClientUserId,
                   cp => cp.ClientUserId,
                   (ac, cp) => cp)
+              .Where(p => !_db.AccountLifecycleRecords.Any(lifecycle => lifecycle.ProfileId == p.Id &&
+                  lifecycle.ParticipantType == MessagingParticipantTypes.Client &&
+                  (lifecycle.State == Domain.Accounts.AccountLifecycleStates.Closed || lifecycle.State == Domain.Accounts.AccountLifecycleStates.DeletionRequested)))
               .AsNoTracking();
 
         if (!string.IsNullOrWhiteSpace(q))
@@ -6001,6 +6006,47 @@ namespace AgentPortal.Controllers;
         });
     }
 
+    // The mobile bridge and portal use the same contact/identity authority.
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> SaveContact(string clientUserId, [FromBody] CrmContactUpdate request)
+    {
+        string agentOid;
+        try { agentOid = GetAgentOidOrThrow(); } catch { return Challenge(); }
+        if (!TryValidateModel(request)) return BadRequest(ModelState);
+        var profile = await GetOwnedClientProfileAsync(agentOid, clientUserId);
+        if (profile is null) return NotFound();
+        var closed = await Infrastructure.Mobile.CrmArchiveScope.ClosedClientKeysAsync(_db, HttpContext.RequestAborted);
+        if (Infrastructure.Mobile.CrmArchiveScope.ArchivedStatus(profile.CrmStatus) || closed.Contains(profile.Id.ToString()) || closed.Contains(profile.ClientUserId)) return Conflict("Archived accounts cannot be edited.");
+        if (profile.UpdatedUtc != request.UpdatedUtc) return Conflict("This record changed. Reload before saving your edits.");
+        var email = NormalizeEmail(request.Email);
+        if (HasPortalAccess(profile.ClientUserId) && string.IsNullOrWhiteSpace(email))
+            return BadRequest("Portal-enabled clients require a real email address.");
+        if (!string.IsNullOrWhiteSpace(email) && await _db.ClientProfiles.AsNoTracking()
+            .AnyAsync(p => p.NormalizedEmail == email && p.Id != profile.Id))
+            return Conflict("Email already exists on another client.");
+        var previousEmail = profile.NormalizedEmail ?? profile.Email;
+        await using var tx = await _db.Database.BeginTransactionAsync(HttpContext.RequestAborted);
+        profile.FirstName = request.FirstName.Trim();
+        profile.LastName = request.LastName.Trim();
+        profile.Email = email ?? "";
+        profile.NormalizedEmail = email;
+        profile.Phone = request.Phone?.Trim() ?? "";
+        var meta = EnsureMeta(ClientCrmMetaSerializer.Deserialize(profile.CrmNotes));
+        meta.Phone2 = request.Phone2?.Trim(); meta.AddressLine = request.AddressLine?.Trim();
+        meta.City = request.City?.Trim(); meta.State = request.State?.Trim(); meta.ZipCode = request.ZipCode?.Trim();
+        profile.CrmNotes = ClientCrmMetaSerializer.Serialize(meta);
+        profile.UpdatedUtc = DateTime.UtcNow;
+        await _db.SaveChangesAsync(HttpContext.RequestAborted);
+        var sync = await SyncPortalEmailAsync(profile, previousEmail, HttpContext.RequestAborted);
+        if (!sync.Success) { await tx.RollbackAsync(); return StatusCode(500, sync.Error); }
+        await _db.SaveChangesAsync(HttpContext.RequestAborted);
+        await tx.CommitAsync(HttpContext.RequestAborted);
+        var warning = sync.RequiresReplacementSubscriptionInvitation
+            ? await SendReplacementSubscriptionInvitationAsync(profile, agentOid, HttpContext.RequestAborted) : null;
+        return Json(new { ok = true, warning });
+    }
+
     [HttpPost]
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> Reorder([FromBody] ReorderRequest request)
@@ -6337,9 +6383,8 @@ namespace AgentPortal.Controllers;
         var isFetchRequest = string.Equals(Request.Headers["X-Requested-With"], "fetch", StringComparison.OrdinalIgnoreCase)
             || string.Equals(Request.Headers["X-Requested-With"], "XMLHttpRequest", StringComparison.OrdinalIgnoreCase);
 
-        // The founder override is deliberately opt-in and checked server-side.
-        // A posted boolean never grants a scoped agent cross-client authority.
-        var isFounderOverride = founderOverride && FounderGuard.IsFounder(User);
+        // Founder scope comes from the authenticated identity; a posted boolean grants no authority.
+        var isFounderOverride = FounderGuard.IsFounder(User);
         if (founderOverride && !isFounderOverride)
             return Forbid();
 
@@ -6364,42 +6409,23 @@ namespace AgentPortal.Controllers;
         if (!linked && !isFounderOverride)
             return Forbid();
 
-        var allLinks = await _db.AgentClients
-            .Where(x => x.ClientUserId == clientUserIdNorm)
-            .ToListAsync();
-
-        var currentAgentLinks = allLinks
-            .Where(x => x.AgentUserId == agentOid)
-            .ToList();
-
-        // If another agent also has this client, remove only this agent's relationship.
-        // Deleting the shared profile/account would break the other agent and the client app.
-        if (!isFounderOverride && allLinks.Count > currentAgentLinks.Count)
+        var profile = await _db.ClientProfiles.AsNoTracking()
+            .SingleOrDefaultAsync(p => p.ClientUserId.ToLower() == clientUserIdNorm, HttpContext.RequestAborted);
+        if (profile is null) return NotFound();
+        var removal = HttpContext.RequestServices.GetRequiredService<IFounderAccountRemovalService>();
+        var actorId = User.FindFirstValue("oid") ?? agentOid;
+        var result = isFounderOverride
+            ? await removal.RemoveAsync(new FounderAccountRemovalCommand(profile.Id, MessagingParticipantTypes.Client, actorId, HttpContext.TraceIdentifier), HttpContext.RequestAborted)
+            : await removal.RemoveAssignedClientAsync(profile.Id, agentOid, HttpContext.TraceIdentifier, HttpContext.RequestAborted);
+        if (!result.Succeeded)
         {
-            if (currentAgentLinks.Count > 0)
-                _db.AgentClients.RemoveRange(currentAgentLinks);
-            await _db.SaveChangesAsync();
-
-            const string unlinkedMessage = "Client removed from your Agent Portal. The shared client profile remains active for the other assigned agent(s).";
-            TempData["Created"] = unlinkedMessage;
-
-            if (isFetchRequest)
-                return Json(new { ok = true, removedOnly = true, message = unlinkedMessage, redirectUrl = Url.Action(nameof(Index)) ?? "/Clients" });
-
+            if (isFetchRequest) return Conflict(new { ok = false, error = result.Message });
+            TempData["Created"] = result.Message;
             return RedirectToAction(nameof(Index));
         }
-
-        const string accountClosureMessage = "This action cannot delete a Legend account. The member must start account closure from Account access; account data, identity, billing, and retention are handled through the central lifecycle.";
-        _logger.LogInformation(
-            "Blocked CRM account deletion. AgentOid={AgentOid} ClientUserId={ClientUserId} FounderOverride={FounderOverride}",
-            agentOid,
-            clientUserIdNorm,
-            isFounderOverride);
-
-        if (isFetchRequest)
-            return Conflict(new { ok = false, error = accountClosureMessage });
-
-        TempData["Created"] = accountClosureMessage;
+        TempData["Created"] = result.Message;
+        if (isFetchRequest) return Json(new { ok = true, completed = result.Completed, message = result.Message, redirectUrl = Url.Action(nameof(Index)) ?? "/Clients" });
         return RedirectToAction(nameof(Index));
     }
+
 }

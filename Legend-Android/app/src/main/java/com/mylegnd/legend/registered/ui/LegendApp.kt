@@ -1818,8 +1818,13 @@ private fun AgentClientsScreen(
     val clientCreationPortal by agentWorkspaceViewModel.clientCreationPortal.collectAsStateWithLifecycle()
     val recipients by messagingViewModel.recipients.collectAsStateWithLifecycle()
     val isStartingConversation by messagingViewModel.isSending.collectAsStateWithLifecycle()
-    val clientCount = (clients as? LoadState.Data)?.value?.size
     var leadsOpen by remember { mutableStateOf(false) }
+    var leadStage by remember { mutableStateOf("") }
+    var clientSearch by remember { mutableStateOf("") }
+    var leadSearch by remember { mutableStateOf("") }
+    var clientArchive by remember { mutableStateOf(false) }
+    var leadArchive by remember { mutableStateOf(false) }
+    val clientCount = (clients as? LoadState.Data)?.value?.count { it.archived == clientArchive && legendCrmMatchesSearch(clientSearch, it.displayName, it.email, it.phone) }
     var scheduleOpen by remember { mutableStateOf(false) }
     var selectedRecord by remember { mutableStateOf<Pair<String, String>?>(null) }
 
@@ -1834,21 +1839,17 @@ private fun AgentClientsScreen(
         verticalArrangement = Arrangement.spacedBy(LegendSpacing.Sm),
     ) {
         item {
-            Column(verticalArrangement = Arrangement.spacedBy(LegendSpacing.Micro)) {
-                Text(legendLocalized("CRM"), style = LegendTypography.Eyebrow, color = LegendColors.Gold)
-                Text(legendLocalized("Client CRM"), style = LegendTypography.Title, color = LegendColors.TextPrimary)
-                Text(
-                    clientCount?.let { legendLocalized("{count} live records", mapOf("count" to it)) } ?: legendLocalized("Live server-authorized records"),
-                    style = LegendTypography.Supporting,
-                    color = LegendColors.TextSecondary,
-                )
-            }
+            LegendSectionPill(if (clientArchive) "Archived clients" else "Client CRM", clientCount?.let { legendLocalized("{count} records", mapOf("count" to it)) }, "CRM")
         }
         item {
-            OutlinedButton(onClick = { scheduleOpen = true }, modifier = Modifier.fillMaxWidth(), shape = LegendShapes.Control) {
-                Icon(Icons.Default.CalendarMonth, null)
-                Spacer(Modifier.width(LegendSpacing.Sm))
-                Text(legendLocalized("Schedule"))
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(LegendSpacing.Sm)) {
+                Box(Modifier.weight(1f)) { LegendCrmSearchField("Search clients", clientSearch) { clientSearch = it } }
+                Button(onClick = { scheduleOpen = true }, modifier = Modifier.heightIn(min = 48.dp), shape = LegendShapes.Control,
+                    colors = ButtonDefaults.buttonColors(containerColor = LegendColors.Navy, contentColor = LegendColors.OnNavy)) {
+                    Icon(Icons.Default.CalendarMonth, null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(LegendSpacing.Xs))
+                    Text(legendLocalized("Schedule"))
+                }
             }
         }
         item {
@@ -1880,13 +1881,17 @@ private fun AgentClientsScreen(
                 }
             }
         }
+        item { Row(horizontalArrangement = Arrangement.spacedBy(LegendSpacing.Sm)) {
+            FilterChip(selected = !clientArchive, onClick = { clientArchive = false }, label = { Text(legendLocalized("Active")) })
+            FilterChip(selected = clientArchive, onClick = { clientArchive = true }, label = { Text(legendLocalized("Archive / Deleted")) })
+        } }
         when (val clientState = clients) {
             LoadState.Idle, LoadState.Loading -> items(6) { LegendClientRowSkeleton() }
             is LoadState.Error -> item {
                 LegendInlineRetry(clientState.message, agentWorkspaceViewModel::load)
             }
             is LoadState.Data -> {
-                if (clientState.value.isEmpty()) {
+                if (clientState.value.none { it.archived == clientArchive && legendCrmMatchesSearch(clientSearch, it.displayName, it.email, it.phone) }) {
                     item {
                         LegendEmptyState(
                             "No active client members",
@@ -1894,14 +1899,14 @@ private fun AgentClientsScreen(
                         )
                     }
                 } else {
-                    items(clientState.value, key = { it.profileId }) { client ->
+                    items(clientState.value.filter { it.archived == clientArchive && legendCrmMatchesSearch(clientSearch, it.displayName, it.email, it.phone) }, key = { it.profileId }) { client ->
                         Surface(
-                            color = LegendColors.Surface,
+                            color = LegendColors.ContactNavy,
                             shape = LegendShapes.Card,
                             shadowElevation = 3.dp,
                             modifier = Modifier.fillMaxWidth().clickable { selectedRecord = "clients" to client.profileId }.border(
                                 1.dp,
-                                LegendColors.Divider,
+                                LegendColors.Gold.copy(alpha = 0.35f),
                                 LegendShapes.Card,
                             ),
                         ) {
@@ -1918,9 +1923,9 @@ private fun AgentClientsScreen(
                                     size = 46.dp,
                                 )
                                 Column(Modifier.weight(1f)) {
-                                    Text(client.displayName, style = LegendTypography.CardTitle, color = LegendColors.TextPrimary)
-                                    Text(client.email, style = LegendTypography.Supporting, color = LegendColors.TextSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                    Text(client.crmStatus, style = LegendTypography.Caption, color = LegendColors.TextTertiary)
+                                    Text(client.displayName, style = LegendTypography.CardTitle, color = LegendColors.OnNavy)
+                                    Text(client.email, style = LegendTypography.Supporting, color = LegendColors.OnNavy.copy(alpha = 0.72f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    Text(if (client.archived) legendLocalized("Archived / Deleted") else client.crmStatus, style = LegendTypography.Caption, color = LegendColors.GoldBright)
                                 }
                                 Button(
                                     onClick = {
@@ -1929,7 +1934,7 @@ private fun AgentClientsScreen(
                                             openConversation,
                                         )
                                     },
-                                    enabled = !isStartingConversation,
+                                    enabled = !isStartingConversation && !client.archived,
                                     shape = LegendShapes.Compact,
                                     colors = ButtonDefaults.buttonColors(
                                         containerColor = LegendColors.Navy,
@@ -1959,18 +1964,30 @@ private fun AgentClientsScreen(
                 contentPadding = PaddingValues(LegendSpacing.Md),
                 verticalArrangement = Arrangement.spacedBy(LegendSpacing.Sm),
             ) {
-                item { Text(legendLocalized("Leads"), style = LegendTypography.Title, color = LegendColors.TextPrimary) }
+                item { LegendSectionPill("Lead pipeline", "Select a contact to record an outcome or manage the next meeting") }
+                item { LegendCrmSearchField("Search leads", leadSearch) { leadSearch = it } }
+                item { TextButton(onClick = { leadsOpen = false }) { Text(legendLocalized("Done")) } }
                 when (val leadState = leads) {
                     is LoadState.Data -> if (leadState.value.isEmpty()) {
                         item { LegendEmptyState("No leads", "Live CRM leads will appear here.") }
                     } else {
-                        items(leadState.value, key = { it.leadId }) { lead ->
-                            Row(Modifier.fillMaxWidth().clip(LegendShapes.Card).background(LegendColors.Surface).clickable { selectedRecord = "leads" to lead.leadId }.padding(LegendSpacing.Sm), verticalAlignment = Alignment.CenterVertically) {
+                        item { Row(horizontalArrangement = Arrangement.spacedBy(LegendSpacing.Sm)) {
+                            FilterChip(selected = !leadArchive, onClick = { leadArchive = false }, label = { Text(legendLocalized("Active")) })
+                            FilterChip(selected = leadArchive, onClick = { leadArchive = true }, label = { Text(legendLocalized("Archive / Deleted")) })
+                        } }
+                        item { LazyRow(horizontalArrangement = Arrangement.spacedBy(LegendSpacing.Sm)) {
+                            items(listOf("") + leadState.value.map { it.crmStage }.distinct().sorted()) { stage ->
+                                FilterChip(selected = leadStage == stage, onClick = { leadStage = stage }, label = { Text(if (stage.isEmpty()) legendLocalized("All stages") else legendCrmLabel(stage)) })
+                            }
+                        } }
+                        if (leadState.value.none { it.archived == leadArchive && legendCrmMatchesSearch(leadSearch, it.displayName, it.email, it.phone) && (leadStage.isEmpty() || it.crmStage == leadStage) }) item { Text(legendLocalized("No matching leads"), color = LegendColors.TextSecondary) }
+                        items(leadState.value.filter { it.archived == leadArchive && legendCrmMatchesSearch(leadSearch, it.displayName, it.email, it.phone) && (leadStage.isEmpty() || it.crmStage == leadStage) }, key = { it.leadId }) { lead ->
+                            Row(Modifier.fillMaxWidth().clip(LegendShapes.Card).background(LegendColors.ContactNavy).border(1.dp, LegendColors.Gold.copy(alpha = 0.35f), LegendShapes.Card).clickable { selectedRecord = "leads" to lead.leadId }.padding(LegendSpacing.Sm), verticalAlignment = Alignment.CenterVertically) {
                                 Column(Modifier.weight(1f)) {
-                                    Text(lead.displayName, style = LegendTypography.BodyEmphasis, color = LegendColors.TextPrimary)
-                                    Text(lead.crmStage, style = LegendTypography.Supporting, color = LegendColors.TextSecondary)
+                                    Text(lead.displayName, style = LegendTypography.BodyEmphasis, color = LegendColors.OnNavy)
+                                    Text(legendCrmLabel(lead.crmStage), style = LegendTypography.Supporting, color = LegendColors.OnNavy.copy(alpha = 0.72f))
                                 }
-                                Text(legendCompactTime(lead.updatedUtc), style = LegendTypography.Caption, color = LegendColors.TextTertiary)
+                                Text(legendCompactTime(lead.updatedUtc), style = LegendTypography.Caption, color = LegendColors.GoldBright)
                             }
                         }
                     }
@@ -2052,8 +2069,7 @@ private fun LegendAgentClientCreationPortal(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Column(Modifier.weight(1f)) {
-                        Text(legendLocalized("CLIENT CRM"), style = LegendTypography.Eyebrow, color = LegendColors.Gold)
-                        Text(legendLocalized(title), style = LegendTypography.Section, color = LegendColors.TextPrimary)
+                        LegendSectionPill(title, eyebrow = "Client CRM")
                     }
                     IconButton(
                         onClick = dismiss,
@@ -2950,8 +2966,7 @@ private fun LegendMessagingCallDirectorySheet(
             item {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
-                        Text(legendLocalized("CALL"), style = LegendTypography.Eyebrow, color = LegendColors.Gold)
-                        Text(legendLocalized("Call a connection"), style = LegendTypography.Section, color = LegendColors.TextPrimary)
+                        LegendSectionPill("Call a connection", null, "CALL")
                         Text(
                             legendLocalized("Calls open through your device’s secure Phone experience."),
                             style = LegendTypography.Supporting,
@@ -3394,9 +3409,7 @@ private fun LegendGroupMeetingEditorSheet(
             item {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
-                        Text(legendLocalized("GROUP MEETING"), style = LegendTypography.Eyebrow, color = LegendColors.Gold)
-                        Text(legendLocalized("Meeting details"), style = LegendTypography.Section, color = LegendColors.TextPrimary)
-                        Text(legendLocalized("Only the server-authorized group owner can save host or meeting details."), style = LegendTypography.Supporting, color = LegendColors.TextSecondary)
+                        LegendSectionPill("Meeting details", "Only the server-authorized group owner can save host or meeting details.", "GROUP MEETING")
                     }
                     TextButton(onClick = dismiss) { Text(legendLocalized("Cancel"), color = LegendColors.Gold) }
                 }
@@ -5681,9 +5694,7 @@ private fun LegendCreatorInsightsSheet(
             item {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
-                        Text(legendLocalized("CREATOR INTELLIGENCE"), style = LegendTypography.Eyebrow, color = LegendColors.Gold)
-                        Text(legendLocalized("Your LEGEND impact"), style = LegendTypography.Section, color = LegendColors.TextPrimary)
-                        Text(legendLocalized("Reach and engagement generated from protected LEGEND activity."), style = LegendTypography.Supporting, color = LegendColors.TextSecondary)
+                        LegendSectionPill("Your LEGEND impact", "Reach and engagement generated from protected LEGEND activity.", "CREATOR INTELLIGENCE")
                     }
                     IconButton(onClick = dismiss) { Icon(Icons.Default.Close, legendLocalized("Close creator insights", "accessibility copy"), tint = LegendColors.TextPrimary) }
                 }
@@ -5868,9 +5879,7 @@ private fun LegendDailyScriptureManagementSheet(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Column(Modifier.weight(1f)) {
-                    Text(legendLocalized("CONTENT MANAGEMENT"), style = LegendTypography.Eyebrow, color = LegendColors.Gold)
-                    Text(legendLocalized("Daily Scripture"), style = LegendTypography.Section, color = LegendColors.TextPrimary)
-                    Text(legendLocalized("The server resolves each LEGEND business day. Scheduled overrides apply only on their date."), style = LegendTypography.Supporting, color = LegendColors.TextSecondary)
+                    LegendSectionPill("Daily Scripture", "The server resolves each LEGEND business day. Scheduled overrides apply only on their date.", "CONTENT MANAGEMENT")
                 }
                 TextButton(onClick = dismiss) { Text(legendLocalized("Done"), color = LegendColors.Gold) }
             }
@@ -6006,9 +6015,7 @@ private fun LegendCommunitySafetyReviewSheet(
         Column(Modifier.fillMaxHeight(.88f)) {
             Row(Modifier.fillMaxWidth().padding(horizontal = LegendSpacing.PageHorizontal, vertical = LegendSpacing.Md), verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
-                    Text(legendLocalized("COMMUNITY"), style = LegendTypography.Eyebrow, color = LegendColors.Gold)
-                    Text(legendLocalized("Safety review"), style = LegendTypography.Section, color = LegendColors.TextPrimary)
-                    Text(legendLocalized("Open reports requiring a recorded server-authorized decision."), style = LegendTypography.Supporting, color = LegendColors.TextSecondary)
+                    LegendSectionPill("Safety review", "Open reports requiring a recorded server-authorized decision.", "COMMUNITY")
                 }
                 TextButton(onClick = dismiss) { Text(legendLocalized("Done"), color = LegendColors.Gold) }
             }
@@ -6257,8 +6264,7 @@ private fun LegendFollowRequestsSheet(
         Column(Modifier.fillMaxHeight(.78f)) {
             Row(Modifier.fillMaxWidth().padding(horizontal = LegendSpacing.PageHorizontal, vertical = LegendSpacing.Md), verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
-                    Text(legendLocalized("FOLLOW REQUESTS"), style = LegendTypography.Eyebrow, color = LegendColors.Gold)
-                    Text(legendLocalized("Your private audience"), style = LegendTypography.Section, color = LegendColors.TextPrimary)
+                    LegendSectionPill("Your private audience", null, "FOLLOW REQUESTS")
                 }
                 TextButton(onClick = dismiss) { Text(legendLocalized("Done"), color = LegendColors.Gold) }
             }
@@ -7591,6 +7597,12 @@ private fun LegendAgentSchedule(
     val bookingRevision by workspace.bookingRevision.collectAsStateWithLifecycle()
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     val uriHandler = LocalUriHandler.current
+    var showWeek by remember { mutableStateOf(false) }
+    var selectedMeeting by remember { mutableStateOf<MobileCrmAppointment?>(null) }
+    var confirmCancel by remember { mutableStateOf(false) }
+    var saving by remember { mutableStateOf(false) }
+    var actionFailure by remember { mutableStateOf<String?>(null) }
+    val scope = rememberCoroutineScope()
     LaunchedEffect(workspace, revision, lifecycle, bookingRevision) {
         lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
             while (true) {
@@ -7606,27 +7618,33 @@ private fun LegendAgentSchedule(
         LazyColumn(contentPadding = PaddingValues(LegendSpacing.Md), verticalArrangement = Arrangement.spacedBy(LegendSpacing.Sm)) {
             item {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f)) {
-                        Text(legendLocalized("YOUR AGENDA"), style = LegendTypography.Eyebrow, color = LegendColors.Gold)
-                        Text(legendLocalized("Schedule"), style = LegendTypography.Title)
-                        Text(java.time.ZoneId.systemDefault().id, style = LegendTypography.Caption, color = LegendColors.TextSecondary)
-                    }
+                    Box(Modifier.weight(1f)) { LegendSectionPill(if (showWeek) "This week" else "Today’s appointments", java.time.ZoneId.systemDefault().id) }
                     IconButton(onClick = { revision++ }) { Icon(Icons.Default.Refresh, legendLocalized("Refresh schedule")) }
                     TextButton(onClick = dismiss) { Text(legendLocalized("Done")) }
                 }
             }
+            item { Row(horizontalArrangement = Arrangement.spacedBy(LegendSpacing.Sm)) {
+                FilterChip(selected = !showWeek, onClick = { showWeek = false }, label = { Text(legendLocalized("Today")) })
+                FilterChip(selected = showWeek, onClick = { showWeek = true }, label = { Text(legendLocalized("This week")) })
+            } }
             when (val current = state) {
                 is LoadState.Data -> {
                     listOf("Client" to "Client meetings", "Lead" to "Lead meetings").forEach { (kind, title) ->
-                        val meetings = current.value.filter { it.kind == kind }
-                        item(key = kind) { Text(legendLocalized(title), style = LegendTypography.CardTitle, color = LegendColors.Gold) }
-                        if (meetings.isEmpty()) item { Text(legendLocalized("No upcoming meetings"), style = LegendTypography.Supporting, color = LegendColors.TextSecondary) }
+                        val today = java.time.LocalDate.now()
+                        val first = if (showWeek) today.with(java.time.temporal.TemporalAdjusters.previousOrSame(java.time.DayOfWeek.MONDAY)) else today
+                        val last = first.plusDays(if (showWeek) 7 else 1)
+                        val meetings = current.value.filter { meeting ->
+                            val date = runCatching { java.time.Instant.parse(meeting.startUtc).atZone(java.time.ZoneId.systemDefault()).toLocalDate() }.getOrNull()
+                            meeting.kind == kind && date != null && !date.isBefore(first) && date.isBefore(last)
+                        }
+                        item(key = kind) { LegendSectionPill(title, meetings.size.toString()) }
+                        if (meetings.isEmpty()) item { Text(legendLocalized(if (showWeek) "No meetings this week" else "No meetings today"), style = LegendTypography.Supporting, color = LegendColors.TextSecondary) }
                         items(meetings, key = { it.id }) { meeting ->
                             Column(Modifier.fillMaxWidth().clip(LegendShapes.Card).background(LegendColors.Navy)
                                 .border(1.dp, LegendColors.Gold.copy(alpha = 0.35f), LegendShapes.Card)
                                 .padding(LegendSpacing.Md), verticalArrangement = Arrangement.spacedBy(LegendSpacing.Sm)) {
-                                Column(Modifier.fillMaxWidth().clickable(enabled = meeting.recordId != null) {
-                                    meeting.recordId?.let { openRecord(if (kind == "Client") "clients" else "leads", it) }
+                                Column(Modifier.fillMaxWidth().clickable {
+                                    selectedMeeting = meeting; actionFailure = null
                                 }, verticalArrangement = Arrangement.spacedBy(LegendSpacing.Xs)) {
                                     Row(verticalAlignment = Alignment.CenterVertically) {
                                         Text(meeting.displayName, modifier = Modifier.weight(1f), style = LegendTypography.CardTitle, color = LegendColors.OnNavy)
@@ -7654,6 +7672,38 @@ private fun LegendAgentSchedule(
             }
         }
     }
+    selectedMeeting?.let { meeting ->
+        AlertDialog(onDismissRequest = { if (!saving) selectedMeeting = null }, containerColor = LegendColors.Canvas,
+            title = { LegendSectionPill(meeting.displayName, legendMeetingTime(meeting.startUtc), if (meeting.kind == "Client") "Client meeting" else "Lead meeting") },
+            text = { Column(verticalArrangement = Arrangement.spacedBy(LegendSpacing.Sm)) {
+                Text(legendCrmLabel(meeting.status))
+                meeting.endUtc?.let { Text(legendLocalized("Ends") + " " + legendMeetingTime(it)) }
+                meeting.meetingUrl?.takeIf { Uri.parse(it).scheme == "https" }?.let { url ->
+                    Button(onClick = { uriHandler.openUri(url) }) { Text(legendLocalized("Join meeting")) }
+                }
+                meeting.recordId?.let { id ->
+                    OutlinedButton(onClick = { selectedMeeting = null; openRecord(if (meeting.kind == "Client") "clients" else "leads", id) }) { Text(legendLocalized("Manage meeting & contact")) }
+                }
+                TextButton(enabled = !saving, onClick = { confirmCancel = true }) { Text(legendLocalized(if (saving) "Cancelling…" else "Cancel appointment"), color = LegendColors.Error) }
+                actionFailure?.let { Text(it, color = LegendColors.Error) }
+            } }, confirmButton = { TextButton(onClick = { selectedMeeting = null }, enabled = !saving) { Text(legendLocalized("Done")) } })
+        if (confirmCancel) AlertDialog(onDismissRequest = { confirmCancel = false },
+            title = { Text(legendLocalized("Cancel this appointment?")) },
+            text = { Text(legendLocalized("The meeting will be cancelled and its time released for booking.")) },
+            confirmButton = { TextButton(onClick = {
+                confirmCancel = false; saving = true
+                scope.launch {
+                    when (val result = workspace.cancelAppointment(meeting.id)) {
+                        is LoadState.Data -> { selectedMeeting = null; revision++; workspace.bookingClosed() }
+                        is LoadState.Error -> actionFailure = result.message
+                        else -> Unit
+                    }
+                    saving = false
+                }
+            }) { Text(legendLocalized("Cancel appointment")) } },
+            dismissButton = { TextButton(onClick = { confirmCancel = false }) { Text(legendLocalized("Keep appointment")) } })
+    }
+
 }
 
 @Composable
@@ -7670,6 +7720,12 @@ private fun LegendAgentCrmRecord(
     val sending by messages.isSending.collectAsStateWithLifecycle()
     val recipients by messages.recipients.collectAsStateWithLifecycle()
     val uriHandler = LocalUriHandler.current
+    val scope = rememberCoroutineScope()
+    var editing by remember { mutableStateOf<MobileCrmRecord?>(null) }
+    var outcome by remember { mutableStateOf("") }
+    var note by remember { mutableStateOf("") }
+    var saving by remember { mutableStateOf(false) }
+    var actionFailure by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(kind, id, revision) { state = workspace.record(kind, id) }
     ModalBottomSheet(onDismissRequest = dismiss, containerColor = LegendColors.Canvas, contentColor = LegendColors.TextPrimary,
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
@@ -7682,14 +7738,33 @@ private fun LegendAgentCrmRecord(
                 is LoadState.Data -> {
                     val record = current.value
                     item {
-                        Text(legendLocalized(if (record.kind == "Client") "Client account" else "Lead record"), style = LegendTypography.Eyebrow, color = LegendColors.Gold)
-                        Text(record.displayName, style = LegendTypography.Title)
-                        Text(legendLocalized(record.stage), style = LegendTypography.Supporting, color = LegendColors.TextSecondary)
+                        LegendSectionPill(record.displayName, legendCrmLabel(record.stage), if (!record.archived && record.kind == "Client") "Client account" else "Lead record")
                     }
-                    record.profileId?.let { profileId -> item { LegendBookClientAppointmentButton(profileId, knownAssigned = true) } }
-                    record.email?.takeIf { it.isNotBlank() }?.let { item { Text(it, style = LegendTypography.Body) } }
-                    record.phone?.takeIf { it.isNotBlank() }?.let { item { Text(it, style = LegendTypography.Body) } }
-                    if (record.kind == "Client" && record.profileId != null) item {
+                    if (!record.archived) item { OutlinedButton(onClick = { editing = record }, modifier = Modifier.fillMaxWidth()) { Text(legendLocalized("Edit contact information")) } }
+                    else item { Text(legendLocalized("Archived / Deleted · Read only")) }
+                    record.profileId?.takeIf { !record.archived }?.let { profileId -> item { LegendBookClientAppointmentButton(profileId, knownAssigned = true) } }
+                    record.email?.takeIf { it.isNotBlank() }?.let { email -> item { TextButton(onClick = { uriHandler.openUri("mailto:" + Uri.encode(email)) }) { Text(email) } } }
+                    record.phone?.takeIf { it.isNotBlank() }?.let { phone -> item { TextButton(onClick = { uriHandler.openUri("tel:" + Uri.encode(phone)) }) { Text(phone) } } }
+                    if (!record.archived && record.availableOutcomes.isNotEmpty()) {
+                        item { LegendSectionPill("Next step", "Record the outcome of your latest conversation.") }
+                        item { LazyRow(horizontalArrangement = Arrangement.spacedBy(LegendSpacing.Sm)) {
+                            items(record.availableOutcomes) { code -> FilterChip(selected = outcome == code, onClick = { outcome = code }, label = { Text(legendCrmLabel(code)) }) }
+                        } }
+                        item { OutlinedTextField(value = note, onValueChange = { note = it }, label = { Text(legendLocalized("Conversation note (optional)")) }, modifier = Modifier.fillMaxWidth(), minLines = 2) }
+                        item { Button(enabled = !saving && outcome.isNotEmpty() && note.length <= 4000, onClick = {
+                            saving = true; actionFailure = null
+                            scope.launch {
+                                when (val result = workspace.outcome(kind, id, outcome, note)) {
+                                    is LoadState.Data -> { outcome = ""; note = ""; revision++; workspace.load() }
+                                    is LoadState.Error -> actionFailure = result.message
+                                    else -> Unit
+                                }
+                                saving = false
+                            }
+                        }, modifier = Modifier.fillMaxWidth(), shape = LegendShapes.Control) { Text(legendLocalized(if (saving) "Saving…" else "Save outcome")) } }
+                        actionFailure?.let { item { Text(it, color = LegendColors.Error) } }
+                    }
+                    if (!record.archived && record.kind == "Client" && record.profileId != null) item {
                         Button(onClick = { messages.startConversationForClient(record.profileId, openConversation) }, enabled = !sending,
                             modifier = Modifier.fillMaxWidth(), shape = LegendShapes.Control,
                             colors = ButtonDefaults.buttonColors(containerColor = LegendColors.GoldBright, contentColor = LegendColors.OnGold)) {
@@ -7699,11 +7774,11 @@ private fun LegendAgentCrmRecord(
                         }
                     }
                     (recipients as? LoadState.Error)?.let { item { Text(legendLocalized(it.message), color = LegendColors.Error) } }
-                    record.accountPath?.let { path -> item {
+                    record.accountPath?.takeIf { !record.archived }?.let { path -> item {
                         OutlinedButton(onClick = { uriHandler.openUri(path) }, modifier = Modifier.fillMaxWidth(), shape = LegendShapes.Control) { Text(legendLocalized("Open full account")) }
                     } }
                     item {
-                        OutlinedButton(onClick = { uriHandler.openUri(record.managementPath) }, modifier = Modifier.fillMaxWidth(), shape = LegendShapes.Control) { Text(legendLocalized("Manage in AgentPortal")) }
+                        OutlinedButton(enabled = !record.archived, onClick = { uriHandler.openUri(record.managementPath) }, modifier = Modifier.fillMaxWidth(), shape = LegendShapes.Control) { Text(legendLocalized("Manage in AgentPortal")) }
                     }
                 }
                 is LoadState.Error -> item { LegendInlineRetry(current.message) { revision++ } }
@@ -7711,6 +7786,8 @@ private fun LegendAgentCrmRecord(
             }
         }
     }
+    editing?.let { record -> LegendCrmContactEditor(workspace, kind, id, record, dismiss = { editing = null }, saved = { editing = null; revision++; workspace.load() }) }
+
 }
 
 /** Every profile surface uses this action; the server resolves the live agent assignment. */
@@ -7749,4 +7826,58 @@ private fun LegendBookClientAppointmentButton(profileId: String, knownAssigned: 
                 else { renewed = true; openBooking() }
             })
     }
+}
+
+private fun legendCrmLabel(value: String): String = legendLocalized(value.replace(Regex("([a-z])([A-Z])"), "$1 $2"))
+
+@Composable
+private fun LegendCrmContactEditor(workspace: AgentWorkspaceViewModel, kind: String, id: String, record: MobileCrmRecord, dismiss: () -> Unit, saved: () -> Unit) {
+    var input by remember(record.id) { mutableStateOf(MobileCrmContactInput(record.firstName.orEmpty(), record.lastName.orEmpty(), record.email.orEmpty(), record.phone.orEmpty(), record.phone2.orEmpty(), record.addressLine.orEmpty(), record.city.orEmpty(), record.state.orEmpty(), record.zipCode.orEmpty(), record.updatedUtc)) }
+    var saving by remember { mutableStateOf(false) }
+    var failure by remember { mutableStateOf<String?>(null) }
+    val scope = rememberCoroutineScope()
+    ModalBottomSheet(onDismissRequest = { if (!saving) dismiss() }, containerColor = LegendColors.Canvas,
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
+        LazyColumn(contentPadding = PaddingValues(LegendSpacing.Md), verticalArrangement = Arrangement.spacedBy(LegendSpacing.Sm)) {
+            item { LegendSectionPill("Contact information", "Changes update this CRM account everywhere.") }
+            item { OutlinedTextField(input.firstName, { input = input.copy(firstName = it) }, label = { Text(legendLocalized("First name")) }, enabled = !saving, modifier = Modifier.fillMaxWidth()) }
+            item { OutlinedTextField(input.lastName, { input = input.copy(lastName = it) }, label = { Text(legendLocalized("Last name")) }, enabled = !saving, modifier = Modifier.fillMaxWidth()) }
+            item { OutlinedTextField(input.email, { input = input.copy(email = it) }, label = { Text(legendLocalized("Email")) }, enabled = !saving, modifier = Modifier.fillMaxWidth()) }
+            item { OutlinedTextField(input.phone, { input = input.copy(phone = it) }, label = { Text(legendLocalized("Phone")) }, enabled = !saving, modifier = Modifier.fillMaxWidth()) }
+            item { OutlinedTextField(input.phone2, { input = input.copy(phone2 = it) }, label = { Text(legendLocalized("Other phone")) }, enabled = !saving, modifier = Modifier.fillMaxWidth()) }
+            item { OutlinedTextField(input.addressLine, { input = input.copy(addressLine = it) }, label = { Text(legendLocalized("Street address")) }, enabled = !saving, modifier = Modifier.fillMaxWidth()) }
+            item { OutlinedTextField(input.city, { input = input.copy(city = it) }, label = { Text(legendLocalized("City")) }, enabled = !saving, modifier = Modifier.fillMaxWidth()) }
+            item { OutlinedTextField(input.state, { input = input.copy(state = it) }, label = { Text(legendLocalized("State")) }, enabled = !saving, modifier = Modifier.fillMaxWidth()) }
+            item { OutlinedTextField(input.zipCode, { input = input.copy(zipCode = it) }, label = { Text(legendLocalized("Postal code")) }, enabled = !saving, modifier = Modifier.fillMaxWidth()) }
+            failure?.let { item { Text(it, color = LegendColors.Error) } }
+            item { Button(enabled = !saving && input.firstName.isNotBlank(), onClick = {
+                saving = true; failure = null
+                scope.launch {
+                    when (val result = workspace.contact(kind, id, input)) {
+                        is LoadState.Data -> saved()
+                        is LoadState.Error -> failure = result.message
+                        else -> Unit
+                    }
+                    saving = false
+                }
+            }, modifier = Modifier.fillMaxWidth()) { Text(legendLocalized(if (saving) "Saving…" else "Save")) } }
+            item { TextButton(enabled = !saving, onClick = dismiss) { Text(legendLocalized("Cancel")) } }
+        }
+    }
+}
+
+private fun legendCrmMatchesSearch(query: String, vararg values: String?): Boolean {
+    val text = values.filterNotNull().joinToString(" ")
+    return query.trim().split(Regex("\\s+")).filter { it.isNotEmpty() }.all { term ->
+        val digits = term.filter(Char::isDigit)
+        text.contains(term, ignoreCase = true) || (digits.length >= 3 && term.all { it.isDigit() || it in "()+-." } && values.filterNotNull().any { it.filter(Char::isDigit).contains(digits) })
+    }
+}
+
+@Composable
+private fun LegendCrmSearchField(title: String, value: String, changed: (String) -> Unit) {
+    OutlinedTextField(value = value, onValueChange = changed, singleLine = true,
+        label = { Text(legendLocalized(title)) }, leadingIcon = { Icon(Icons.Default.Search, null) },
+        trailingIcon = { if (value.isNotEmpty()) IconButton(onClick = { changed("") }) { Icon(Icons.Default.Close, legendLocalized("Clear search")) } },
+        modifier = Modifier.fillMaxWidth(), shape = LegendShapes.Control)
 }

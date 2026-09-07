@@ -53,7 +53,7 @@ public sealed class MobileAgentScheduleTests
     }
 
     [Fact]
-    public async Task Schedule_IsOwnerScoped_OnlyBookedUpcomingOrOngoing_AndNotLimitedToHomePreview()
+    public async Task Schedule_IsOwnerScoped_IncludesCurrentWeekHistory_AndNotLimitedToHomePreview()
     {
         await using var db = ControllerTestHelpers.BuildDb();
         var future = Enumerable.Range(0, 12).Select(_ => Booking(null)).ToArray();
@@ -63,7 +63,7 @@ public sealed class MobileAgentScheduleTests
         foreach (var status in new[] { LeadAppointmentStatus.Cancelled, LeadAppointmentStatus.Completed, LeadAppointmentStatus.NoShow, LeadAppointmentStatus.Requested, LeadAppointmentStatus.FailedConfirmation })
         { var excluded = Booking(null); excluded.Status = status; db.LeadAppointments.Add(excluded); }
         var other = Booking(null); other.OwnerAgentUserId = "agent-b"; db.LeadAppointments.Add(other);
-        var past = Booking(null); past.ScheduledStartUtc = DateTime.UtcNow.AddDays(-1); db.LeadAppointments.Add(past);
+        var past = Booking(null); past.ScheduledStartUtc = DateTime.UtcNow.AddDays(-8); db.LeadAppointments.Add(past);
         await db.SaveChangesAsync();
         var service = new MobileAgentCrmService(db);
         var result = await service.ScheduleAsync(Actor(), default);

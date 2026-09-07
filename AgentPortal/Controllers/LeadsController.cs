@@ -138,6 +138,8 @@ public class LeadsController : Controller
         ["DoNotCallList"] = "DoNotCallList"
     };
 
+    public static IReadOnlyList<string> CanonicalOutcomeCodes => OutcomeStageMap.Keys.ToArray();
+
     private static string? ResolveOriginalLeadType(string? originalLeadType, string? currentBucket, string? fallbackBucket = null)
         => NormalizeBucket(originalLeadType)
            ?? NormalizeBucket(currentBucket)
@@ -2451,6 +2453,27 @@ public class LeadsController : Controller
         {
             payload = await BuildLeadPayloadAsync(lead, nowUtc, agentWideDialTotals.Today, agentWideDialTotals.Week, dialTimeZone)
         });
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> SaveContact(string clientUserId, [FromBody] CrmContactUpdate request)
+    {
+        string agentId;
+        try { agentId = GetAgentIdOrChallenge(); } catch { return Challenge(); }
+        if (!TryValidateModel(request)) return BadRequest(ModelState);
+        var lead = await LoadCanonicalLeadAsync(agentId, clientUserId, "SaveContact");
+        if (lead is null) return NotFound();
+        var closed = await Infrastructure.Mobile.CrmArchiveScope.ClosedClientKeysAsync(_db, HttpContext.RequestAborted);
+        if (Infrastructure.Mobile.CrmArchiveScope.ArchivedStatus(lead.CrmStatus) || Infrastructure.Mobile.CrmArchiveScope.ArchivedStatus(lead.CrmStage) || closed.Contains(lead.LeadId)) return Conflict("Archived accounts cannot be edited.");
+        if (lead.UpdatedUtc != request.UpdatedUtc) return Conflict("This record changed. Reload before saving your edits.");
+        lead.FirstName = request.FirstName.Trim(); lead.LastName = request.LastName.Trim();
+        lead.Email = request.Email?.Trim() ?? ""; lead.Phone = request.Phone?.Trim() ?? "";
+        lead.Phone2 = request.Phone2?.Trim(); lead.AddressLine = request.AddressLine?.Trim();
+        lead.City = request.City?.Trim(); lead.State = request.State?.Trim(); lead.ZipCode = request.ZipCode?.Trim();
+        lead.UpdatedUtc = DateTime.UtcNow;
+        await _db.SaveChangesAsync(HttpContext.RequestAborted);
+        return Json(new { ok = true });
     }
 
     [HttpPost]
