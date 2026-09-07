@@ -40,6 +40,16 @@ public sealed class LegendFounderAiDiscourseStateService
         string role,
         LegendConnectUtteranceMeaningGraphSnapshot meaning,
         CancellationToken cancellationToken = default,
+        string sourceLanguageCode = "en") =>
+        _ = await RecordCurrentObservationAsync(
+            founder, conversationId, role, meaning, cancellationToken, sourceLanguageCode);
+
+    internal async Task<int?> RecordCurrentObservationAsync(
+        ClaimsPrincipal founder,
+        string? conversationId,
+        string role,
+        LegendConnectUtteranceMeaningGraphSnapshot meaning,
+        CancellationToken cancellationToken = default,
         string sourceLanguageCode = "en")
     {
         ArgumentNullException.ThrowIfNull(meaning);
@@ -47,7 +57,7 @@ public sealed class LegendFounderAiDiscourseStateService
         if (!Guid.TryParse(conversationId, out var parsedConversationId) ||
             role is not ("user" or "assistant"))
         {
-            return;
+            return null;
         }
 
         var profile = await _profiles.ResolveCurrentAsync(
@@ -56,20 +66,19 @@ public sealed class LegendFounderAiDiscourseStateService
             cancellationToken);
         var actor = profile?.AgentUserId?.Trim().ToLowerInvariant();
         if (string.IsNullOrWhiteSpace(actor))
-            return;
+            return null;
 
         for (var attempt = 1; ; attempt++)
         {
             try
             {
-                await RecordObservationOnceAsync(
+                return await RecordObservationOnceAsync(
                     actor,
                     parsedConversationId,
                     role,
                     meaning,
                     sourceLanguageCode,
                     cancellationToken);
-                return;
             }
             catch (Exception exception)
                 when (attempt < MaximumConcurrentWriteAttempts && IsRetryableConcurrencyFailure(exception))
@@ -80,7 +89,7 @@ public sealed class LegendFounderAiDiscourseStateService
         }
     }
 
-    private async Task RecordObservationOnceAsync(
+    private async Task<int> RecordObservationOnceAsync(
         string actor,
         Guid parsedConversationId,
         string role,
@@ -88,6 +97,7 @@ public sealed class LegendFounderAiDiscourseStateService
         string sourceLanguageCode,
         CancellationToken cancellationToken)
     {
+        meaning = await ReadCurrentSourceSlotGraphAsync(meaning, cancellationToken);
         await using var transaction = _db.Database.IsRelational()
             ? await _db.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable, cancellationToken)
             : null;
@@ -119,7 +129,7 @@ public sealed class LegendFounderAiDiscourseStateService
         var bindings = await ResolveReferenceBindingsAsync(
             role,
             meaning,
-            priorTurns,
+            await ReadCurrentSourceSlotTurnsAsync(priorTurns, cancellationToken),
             turnId,
             turnSequence,
             sourceLanguageCode,
@@ -163,6 +173,7 @@ public sealed class LegendFounderAiDiscourseStateService
 
         if (transaction is not null)
             await transaction.CommitAsync(cancellationToken);
+        return turnSequence;
     }
 
     internal async Task<IReadOnlyList<LegendFounderAiDiscourseTurn>> GetTurnsAsync(
@@ -183,7 +194,8 @@ public sealed class LegendFounderAiDiscourseStateService
         Guid conversationId,
         CancellationToken cancellationToken = default)
     {
-        var latest = await GetTurnsAsync(founderAgentUserId, conversationId, cancellationToken);
+        var latest = await ReadCurrentSourceSlotTurnsAsync(
+            await GetTurnsAsync(founderAgentUserId, conversationId, cancellationToken), cancellationToken);
         if (latest.Count == 0)
             return [];
         var validated = await LoadValidatedBindingsAsync(latest, cancellationToken);
@@ -195,7 +207,8 @@ public sealed class LegendFounderAiDiscourseStateService
         Guid conversationId,
         CancellationToken cancellationToken = default)
     {
-        var turns = await GetTurnsAsync(founderAgentUserId, conversationId, cancellationToken);
+        var turns = await ReadCurrentSourceSlotTurnsAsync(
+            await GetTurnsAsync(founderAgentUserId, conversationId, cancellationToken), cancellationToken);
         var validated = await LoadValidatedBindingsAsync(turns, cancellationToken);
         var entries = BindingEntries(turns, validated);
         return entries
@@ -220,7 +233,8 @@ public sealed class LegendFounderAiDiscourseStateService
     internal async Task<LegendConnectDiscourseStateSnapshot?> GetStateAsync(
         ClaimsPrincipal founder,
         string? conversationId,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        int? currentTurnSequence = null)
     {
         if (!Guid.TryParse(conversationId, out var parsedConversationId))
             return null;
@@ -230,6 +244,16 @@ public sealed class LegendFounderAiDiscourseStateService
             return null;
 
         var turns = await GetTurnsAsync(actor, parsedConversationId, cancellationToken);
+        if (currentTurnSequence is int sequence)
+        {
+            // Another request may append while this one is preparing its
+            // inference. The current input must remain the exact turn this
+            // request committed, never the most recent concurrent turn.
+            if (!turns.Any(turn => turn.SequenceNumber == sequence))
+                return null;
+            turns = turns.Where(turn => turn.SequenceNumber <= sequence).ToArray();
+        }
+        turns = await ReadCurrentSourceSlotTurnsAsync(turns, cancellationToken);
         var validated = await LoadValidatedBindingsAsync(turns, cancellationToken);
         return new LegendConnectDiscourseStateSnapshot(
             turns.Select(turn =>
@@ -605,6 +629,45 @@ public sealed class LegendFounderAiDiscourseStateService
         }
         foreach (var nodeIndex in activeIndexes.OrderBy(item => item))
             yield return new MeaningGraphEntityCandidate(graph.Nodes[nodeIndex], nodeIndex);
+    }
+
+    private async Task<LegendConnectUtteranceMeaningGraphSnapshot> ReadCurrentSourceSlotGraphAsync(
+        LegendConnectUtteranceMeaningGraphSnapshot graph,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (!graph.Nodes.Any(node => node.SourceSlotBinding is not null || node.Provenance == "CurrentTurnAssertion") ||
+            await _operations.AreSourceSlotBindingsActiveAsync(graph.Nodes, cancellationToken))
+            return graph;
+        return new(false, [], [], [], "source_slot_evidence_unavailable");
+    }
+
+    private async Task<IReadOnlyList<LegendFounderAiDiscourseTurn>> ReadCurrentSourceSlotTurnsAsync(
+        IReadOnlyList<LegendFounderAiDiscourseTurn> turns,
+        CancellationToken cancellationToken)
+    {
+        var current = new List<LegendFounderAiDiscourseTurn>(turns.Count);
+        foreach (var turn in turns)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var graph = DeserializeMeaning(turn.MeaningGraphJson);
+            var validated = await ReadCurrentSourceSlotGraphAsync(graph, cancellationToken);
+            // Keep the original turn coordinates and replacement history.
+            // Filtering out a stale turn could reactivate an older binding.
+            // This projection is read-only; retained observations stay intact.
+            current.Add(ReferenceEquals(graph, validated) ? turn : new LegendFounderAiDiscourseTurn
+            {
+                Id = turn.Id,
+                DiscourseConversationId = turn.DiscourseConversationId,
+                SequenceNumber = turn.SequenceNumber,
+                Role = turn.Role,
+                MeaningGraphJson = JsonSerializer.Serialize(ToPersistedMeaningGraph(validated)),
+                ResolvedBindingsJson = turn.ResolvedBindingsJson,
+                AnalysisReasonCode = validated.ReasonCode,
+                CreatedUtc = turn.CreatedUtc
+            });
+        }
+        return current;
     }
 
     private static LegendFounderAiDiscourseReferenceBinding Unresolved(

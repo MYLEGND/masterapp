@@ -25,7 +25,7 @@ public sealed class LegendFounderAiConversationRoutingTests
             .GetMethod("RequiresGovernedInspection", BindingFlags.NonPublic | BindingFlags.Static);
         Assert.NotNull(method);
         IReadOnlyList<LegendFounderAiChatMessage> conversation = [new("user", text)];
-        Assert.False(Assert.IsType<bool>(method!.Invoke(null, new object[] { conversation, "legend" })));
+        Assert.False(Assert.IsType<bool>(method!.Invoke(null, new object?[] { conversation, "legend", UnclassifiedIntent() })));
     }
 
     [Theory]
@@ -35,13 +35,23 @@ public sealed class LegendFounderAiConversationRoutingTests
     [InlineData("Train LEGEND on this curriculum.")]
     [InlineData("What is our current model readiness?")]
     [InlineData("Search retained knowledge for discourse markers.")]
-    public void SystemKnowledgeAndTrainingRequests_RequireGovernedInspection(string text)
+    public void GovernedInspection_UsesAdmittedIntentInsteadOfOperationalKeywords(string text)
     {
         var method = typeof(LegendFounderAiConversationService)
             .GetMethod("RequiresGovernedInspection", BindingFlags.NonPublic | BindingFlags.Static);
         Assert.NotNull(method);
         IReadOnlyList<LegendFounderAiChatMessage> conversation = [new("user", text)];
-        Assert.True(Assert.IsType<bool>(method!.Invoke(null, new object[] { conversation, "legend" })));
+        var admitted = LegendConnectOwnedRecordRequest.Classify(
+            new LegendConnectUtteranceMeaningGraphSnapshot(
+                true, [],
+                [new LegendConnectUtteranceMeaningRelation(
+                    "admitted-owned-record", LegendConnectOwnedRecordRequest.RequiredRelationKind, 0, 1, 3)],
+                [], "composed"));
+        Assert.True(admitted.RequiresGovernedReadReceipt);
+        Assert.True(Assert.IsType<bool>(method!.Invoke(null,
+            new object?[] { conversation, "legend", admitted })));
+        Assert.False(Assert.IsType<bool>(method.Invoke(null,
+            new object?[] { conversation, "legend", UnclassifiedIntent() })));
     }
 
     [Fact]
@@ -51,7 +61,7 @@ public sealed class LegendFounderAiConversationRoutingTests
             .GetMethod("RequiresGovernedInspection", BindingFlags.NonPublic | BindingFlags.Static);
         Assert.NotNull(method);
         IReadOnlyList<LegendFounderAiChatMessage> conversation = [new("user", "Hi")];
-        Assert.False(Assert.IsType<bool>(method!.Invoke(null, new object[] { conversation, "teacher" })));
+        Assert.False(Assert.IsType<bool>(method!.Invoke(null, new object?[] { conversation, "teacher", UnclassifiedIntent() })));
     }
 
     [Theory]
@@ -138,9 +148,9 @@ public sealed class LegendFounderAiConversationRoutingTests
         Assert.NotNull(method);
         IReadOnlyList<LegendFounderAiChatMessage> conversation = [new("user", "Hi")];
         var snapshot = new LegendConnectNativeInferenceSnapshot(
-            false, 0m, null, "ambiguous_composed_meaning", 0,
-            "No unique governed semantic transition could be selected.", true);
-        Assert.True(Assert.IsType<bool>(method!.Invoke(null, new object?[] { conversation, "legend", snapshot, null })));
+            false, 0m, null, "meaning_graph_component_unknown", 0,
+            "A required governed meaning component is not available.", true);
+        Assert.True(Assert.IsType<bool>(method!.Invoke(null, new object?[] { conversation, "legend", UnclassifiedIntent(), snapshot, null })));
     }
 
     [Fact]
@@ -153,7 +163,7 @@ public sealed class LegendFounderAiConversationRoutingTests
         var snapshot = new LegendConnectNativeInferenceSnapshot(
             true, 1m, "I'm doing great, thanks.", "supported", 4,
             "Governed native response selected.", false);
-        Assert.False(Assert.IsType<bool>(method!.Invoke(null, new object?[] { conversation, "legend", snapshot, null })));
+        Assert.False(Assert.IsType<bool>(method!.Invoke(null, new object?[] { conversation, "legend", UnclassifiedIntent(), snapshot, null })));
     }
 
     [Fact]
@@ -216,5 +226,10 @@ public sealed class LegendFounderAiConversationRoutingTests
         Assert.Contains("no remaining credits", response.Message);
         Assert.DoesNotContain("does not yet have enough governed evidence", response.Message);
     }
+
+    private static LegendConnectOwnedRecordClassification UnclassifiedIntent() =>
+        LegendConnectOwnedRecordRequest.Classify(
+            new LegendConnectUtteranceMeaningGraphSnapshot(
+                false, [], [], [], "meaning_graph_component_unknown"));
 
 }

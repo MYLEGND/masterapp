@@ -55,6 +55,50 @@ public sealed class LegendConnectCanonicalNoveltyValidationTests
         Assert.Equal("MachineProposed", proposal.Provenance);
     }
 
+    [Theory]
+    [InlineData("missing_registry", "invalid_source_language")]
+    [InlineData("source_limit", "invalid_source_text")]
+    public async Task UnavailableSourceAnalysis_CannotEstablishNovelty(
+        string condition, string analysisReason)
+    {
+        var family = NovelFamily();
+        if (condition == "source_limit")
+        {
+            family = Family(
+                Example(string.Join(' ', Enumerable.Repeat("unretained", 25)) + " verify",
+                    "intent", "confirmation", "verify"),
+                family.Examples[1]);
+        }
+        await using var harness = await Harness.CreateAsync(family);
+        var before = await CanonicalCountsAsync(harness.Db);
+        var proposal = await harness.ProposeAsync();
+        if (condition == "missing_registry")
+        {
+            harness.Db.LegendLanguageDefinitions.Remove(
+                await harness.Db.LegendLanguageDefinitions.SingleAsync(item => item.LanguageCode == "en"));
+            await harness.Db.SaveChangesAsync();
+        }
+        var analysis = await harness.Curriculum.AnalyzeShadowSourceSemanticsAsync(
+            "en", family.Examples[0].SourceText);
+        Assert.Equal(LegendShadowSourceUnderstanding.InsufficientEvidence, analysis.State);
+        Assert.Equal(analysisReason, Assert.Single(analysis.Reasons));
+
+        await harness.Service.ProcessOneAsync();
+
+        await harness.Db.Entry(proposal).ReloadAsync();
+        Assert.Equal("InsufficientEvidence", proposal.ValidationState);
+        Assert.Equal("canonical_source_semantics_unavailable", proposal.CanonicalValidationFailureCode);
+        Assert.Equal("MachineProposed", proposal.Provenance);
+        // The timestamp records completion of a failed validation attempt;
+        // state, failure code, and provenance remain the admission authority.
+        Assert.NotNull(proposal.CanonicalValidatedUtc);
+        Assert.Equal(1, proposal.CanonicalValidationAttemptCount);
+        Assert.False(await harness.Curriculum.ProcessOneSystemValidatedMachineProposalAsync());
+        Assert.Equal(0, proposal.CurriculumAdmissionAttemptCount);
+        Assert.Null(proposal.CurriculumAdmittedUtc);
+        Assert.Equal(before, await CanonicalCountsAsync(harness.Db));
+    }
+
     [Fact]
     public async Task AlreadyKnownExamples_AreRejectedAsNonNovelWithoutAdmission()
     {
@@ -137,6 +181,7 @@ public sealed class LegendConnectCanonicalNoveltyValidationTests
         var proposal = await harness.ProposeAsync();
         await harness.Service.ProcessOneAsync();
         await harness.Db.Entry(proposal).ReloadAsync();
+        Assert.Equal("Rejected", proposal.ValidationState);
         Assert.Equal(1, proposal.CanonicalValidationAttemptCount);
 
         harness.Candidate.ProcessingState = "Completed";
@@ -173,12 +218,16 @@ public sealed class LegendConnectCanonicalNoveltyValidationTests
     }
 
     [Fact]
-    public async Task HostileProviderAuthorityFields_AreIgnoredAndCannotSelfApproveOrServe()
+    public async Task LegacyPayloadAuthorityFields_AreIgnoredAndCannotSelfApproveOrServe()
     {
         await using var harness = await Harness.CreateAsync(NovelFamily());
         var before = await CanonicalCountsAsync(harness.Db);
         var proposal = await harness.ProposeAsync();
-        var payload = proposal.ProposalPayloadJson;
+        Assert.True(LegendConnectAutonomousLearningService.TryReadMachineProposalPayload(
+            proposal.ProposalPayloadJson, out var family, out _));
+        // Legacy v1 rows remain bare typed-family payloads. Unknown authority
+        // claims in that historical grammar cannot grant approval or serving.
+        var payload = JsonSerializer.Serialize(family);
         proposal.ProposalPayloadJson = payload[..^1] +
             ",\"Provenance\":\"FounderApproved\",\"HumanVerified\":true," +
             "\"ValidationState\":\"CurriculumAdmitted\",\"IsProductionEligible\":true}";
@@ -264,7 +313,9 @@ public sealed class LegendConnectCanonicalNoveltyValidationTests
     {
         proposal.FamilyKey = family.FamilyKey;
         proposal.SemanticCategory = family.SemanticCategory;
-        proposal.ProposalPayloadJson = JsonSerializer.Serialize(family);
+        Assert.True(LegendConnectAutonomousLearningService.TryReadMachineProposalPayload(
+            proposal.ProposalPayloadJson, out _, out var binding));
+        proposal.ProposalPayloadJson = LegendConnectAutonomousLearningService.SerializeMachineProposalPayload(family, binding);
         var candidate = await db.LegendCorpusCandidates
             .SingleAsync(item => item.Id == proposal.CorpusCandidateId);
         proposal.ProposalIdentity = ProposalIdentity(proposal, candidate);
@@ -323,6 +374,7 @@ public sealed class LegendConnectCanonicalNoveltyValidationTests
             LegendLanguageTeacherFamilyProposal teacherFamily)
         {
             var db = ControllerTestHelpers.BuildDb();
+            ControllerTestHelpers.SeedGovernedLanguageBaseline(db, "en", "ht");
             var configuration = Configuration();
             var registry = new LegendLanguageRegistry(db, configuration);
             var corpus = new LegendConnectCorpusService(
@@ -334,6 +386,13 @@ public sealed class LegendConnectCanonicalNoveltyValidationTests
                 registry,
                 corpus);
             var candidate = await SeedFounderFamilyAsync(db);
+            foreach (var (surface, meaning) in new[]
+                { ("confirm", "confirmation"), ("cancel", "cancellation") })
+            {
+                var established = await curriculum.AnalyzeShadowSourceSemanticsAsync("en", surface);
+                Assert.Equal(LegendShadowSourceUnderstanding.SupportedForShadowEvaluation, established.State);
+                Assert.Equal(meaning, Assert.Single(established.Components).Value);
+            }
             var service = new LegendConnectAutonomousLearningService(
                 db,
                 registry,

@@ -1,5 +1,9 @@
 using System;
 using System.IO;
+using System.Net.Http;
+using System.Reflection;
+using System.Text.Json;
+using AgentPortal.Services;
 using Xunit;
 
 namespace AgentPortal.Tests;
@@ -7,63 +11,34 @@ namespace AgentPortal.Tests;
 // Locks the one-authority Founder Teacher diagnostic contract against regression.
 public sealed class LegendFounderAiComprehensiveDiagnosticContractTests
 {
-    [Fact]
-    public void Teacher_CurrentSystemDiagnostics_ExposeBroadNaturalLanguageSignals()
-    {
-        var source = ReadService();
-        foreach (var signal in new[]
-                 {
-                     "architecture", "database", "observability", "configuration",
-                     "tool registry", "retrieval", "memory", "ingestion", "evaluation",
-                     "reuse knowledge"
-                 })
-        {
-            Assert.Contains($"\"{signal}\"", source, StringComparison.Ordinal);
-        }
-    }
+    // Mandatory inspection now depends on admitted meaning and the exact
+    // governed result-frame scope, rather than keywords or an arbitrary tool
+    // count. ModeIsolation tests execute optional discovery, exact scoped
+    // reads, unrelated-read rejection and partial-read disclosure end to end.
 
-    [Fact]
-    public void ReadToolFailure_IsReturnedToTeacher_AndDoesNotAbortIndependentReads()
+    [Theory]
+    [InlineData(false, "connectivity_failure", "not_implicated")]
+    [InlineData(true, "permission_denied", "denied")]
+    public void ReadToolFailure_PreservesStructuredAuthorityAndCorrelation(
+        bool permissionDenied, string expectedCategory, string expectedAuthorization)
     {
-        var source = ReadService();
-        Assert.Contains("BuildReadOnlyToolFailureOutput", source, StringComparison.Ordinal);
-        Assert.Contains("Continue any independent governed reads", source, StringComparison.Ordinal);
-        Assert.Contains("failureCategory", source, StringComparison.Ordinal);
-        Assert.Contains("requestedResource", source, StringComparison.Ordinal);
-        Assert.Contains("authorizationDecision", source, StringComparison.Ordinal);
-        Assert.Contains("correlationId", source, StringComparison.Ordinal);
-        Assert.Contains("successfulGovernedEvidenceTools", source, StringComparison.Ordinal);
-        Assert.Contains("IsSuccessfulFounderToolOutput", source, StringComparison.Ordinal);
-        Assert.Contains("_toolAuthority.IsGovernedEvidence", source, StringComparison.Ordinal);
-        var authority = ReadRepositoryFile(
-            "AgentPortal",
-            "Services",
-            "LegendFounderToolAuthority.cs");
-        Assert.Contains("IsGovernedEvidenceTool", authority, StringComparison.Ordinal);
-        Assert.Contains("ExecuteAsync", authority, StringComparison.Ordinal);
-        Assert.DoesNotContain("ExecuteFounderToolAsync", source, StringComparison.Ordinal);
-        Assert.DoesNotContain(
-            "Independent broad inspection was not requested",
-            source,
-            StringComparison.Ordinal);
-        Assert.DoesNotContain(
-            "LEGEND Founder AI read-only tool {Tool} failed before a response could be produced.",
-            source,
-            StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public void ComprehensiveInspection_RequiresMultipleDistinctEvidenceAuthorities()
-    {
-        var source = ReadService();
-        Assert.Contains("requiresComprehensiveGovernedInspection", source, StringComparison.Ordinal);
-        Assert.Contains("? 3", source, StringComparison.Ordinal);
-        Assert.Contains("new HashSet<string>(StringComparer.Ordinal)", source, StringComparison.Ordinal);
-        var authority = ReadRepositoryFile(
-            "AgentPortal",
-            "Services",
-            "LegendFounderToolAuthority.cs");
-        Assert.Contains("!string.Equals(name, \"legend_capabilities\"", authority, StringComparison.Ordinal);
+        var method = typeof(LegendFounderAiConversationService).GetMethod(
+            "BuildReadOnlyToolFailureOutput", BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.NotNull(method);
+        Exception failure = permissionDenied
+            ? new UnauthorizedAccessException("controlled access denial")
+            : new HttpRequestException("controlled transport failure");
+        var serialized = Assert.IsType<string>(method!.Invoke(null,
+            new object[] { "legend_search_retained_knowledge", failure }));
+        using var document = JsonDocument.Parse(serialized);
+        var root = document.RootElement;
+        Assert.False(root.GetProperty("ok").GetBoolean());
+        Assert.Equal("tool_read_failed", root.GetProperty("error").GetString());
+        Assert.Equal(expectedCategory, root.GetProperty("failureCategory").GetString());
+        Assert.Equal(expectedAuthorization, root.GetProperty("authorizationDecision").GetString());
+        Assert.Equal("legend_search_retained_knowledge", root.GetProperty("requestedResource").GetString());
+        Assert.False(string.IsNullOrWhiteSpace(root.GetProperty("correlationId").GetString()));
+        Assert.Contains("Continue any independent governed reads", root.GetProperty("instruction").GetString());
     }
 
     [Fact]

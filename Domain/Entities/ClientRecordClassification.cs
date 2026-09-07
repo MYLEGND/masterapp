@@ -23,7 +23,11 @@ public static class ClientRecordClassification
         string? crmNotes,
         string? crmStatus = null)
     {
-        var resolved = Resolve(clientUserId, crmNotes);
+        var explicitRecordType = NormalizeRecordType(ReadMetadataValue(crmNotes, "recordType"));
+        if (explicitRecordType is not null)
+            return explicitRecordType == Lead;
+
+        var resolved = Resolve(clientUserId, null, ReadMetadataValue(crmNotes, "pipelineStage"));
         if (resolved is Client or BusinessClient)
             return false;
 
@@ -89,6 +93,7 @@ public static class ClientRecordClassification
         var normalized = Normalize(value);
         return normalized switch
         {
+            "lead" => Lead,
             "client" => Client,
             "businessclient" => BusinessClient,
             _ => null

@@ -3,7 +3,9 @@ using System.Linq;
 using System.Security.Claims;
 using AgentPortal.Models;
 using AgentPortal.Security;
+using Domain.Entities;
 using Infrastructure.Data;
+using Infrastructure.Mobile;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 
@@ -39,22 +41,7 @@ public class AgencyCommandService
     }
 
     private static string ResolveClientRecordType(string? clientUserId, string? crmNotes)
-    {
-        var meta = ClientCrmMetaSerializer.Deserialize(crmNotes);
-        var explicitRecordType = ClientCrmMetaSerializer.NormalizeRecordType(meta.RecordType, defaultToLead: false);
-        if (!string.IsNullOrWhiteSpace(explicitRecordType))
-            return explicitRecordType;
-
-        var stage = ClientCrmMetaSerializer.NormalizePipelineStage(meta.PipelineStage);
-        if (string.Equals(stage, "BusinessClient", StringComparison.OrdinalIgnoreCase))
-            return "BusinessClient";
-        if (string.Equals(stage, "Client", StringComparison.OrdinalIgnoreCase))
-            return "Client";
-        if (Guid.TryParse((clientUserId ?? string.Empty).Trim(), out _))
-            return "Client";
-
-        return "Lead";
-    }
+        => ClientRecordClassification.Resolve(clientUserId, crmNotes);
 
     private static bool IsClientRecordType(string? recordType)
         => string.Equals(recordType, "Client", StringComparison.OrdinalIgnoreCase)
@@ -224,6 +211,97 @@ public class AgencyCommandService
         }
 
         return map;
+    }
+
+    /// <summary>
+    /// The smallest Founder-authorized count snapshot of the client and lead
+    /// records this deployment owns, produced by this service so client/lead
+    /// visibility keeps a single owner. Every count reuses the canonical
+    /// visibility rules at their authoritative source:
+    /// <see cref="LegendMemberDirectory"/> for active subscribed members and
+    /// canonical identity, <see cref="ClientRecordClassification"/>
+    /// for agent-linked clients, <see cref="WorkstationLeadConversionLifecycle"/>
+    /// for the active lead queue, and the website-lead exclusion of internal
+    /// and deleted rows. It counts only: no mutation, no tracking, and no
+    /// personally identifiable client or lead content.
+    /// </summary>
+    public async Task<AgencyCommandPortfolioCountsVm> GetFounderPortfolioCountsAsync(
+        ClaimsPrincipal user,
+        CancellationToken cancellationToken = default)
+    {
+        // SECURITY: founder-only, enforced at the service layer exactly as the
+        // dashboard projection above.
+        FounderGuard.EnsureFounderOrThrow(user);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var activeSubscribedProfiles = await LegendMemberDirectory
+            .ActiveSubscribedProfiles(_db)
+            .ToListAsync(cancellationToken);
+
+        var activeClientCount = LegendMemberDirectory
+            .Collapse(activeSubscribedProfiles)
+            .Count;
+
+        var agentLinkedRows = await (
+                from link in _db.AgentClients.AsNoTracking()
+                join profile in _db.ClientProfiles.AsNoTracking()
+                    on link.ClientUserId equals profile.ClientUserId
+                select new
+                {
+                    profile.ClientUserId,
+                    profile.ExternalIdentityObjectId,
+                    profile.CrmNotes
+                })
+            .ToListAsync(cancellationToken);
+
+        var agentLinkedClientCount = agentLinkedRows
+            .Where(row => IsClientRecordType(
+                ResolveClientRecordType(row.ClientUserId, row.CrmNotes)))
+            .Select(row => LegendMemberDirectory.CanonicalIdentityKey(
+                row.ClientUserId,
+                row.ExternalIdentityObjectId))
+            .Where(key => !string.IsNullOrWhiteSpace(key))
+            .Distinct(StringComparer.Ordinal)
+            .Count();
+
+        var activeLeads = _db.WorkstationLeadProfiles
+            .AsNoTracking()
+            .ActiveLeadQueue();
+
+        var leadsByCrmStatus = await activeLeads
+            .GroupBy(lead => lead.CrmStatus)
+            .Select(group => new AgencyCommandPortfolioStatusCountVm(
+                group.Key,
+                group.Count()))
+            .ToListAsync(cancellationToken);
+
+        var websiteLeadCount = await _db.WebsiteLeads
+            .AsNoTracking()
+            .Where(lead => !lead.IsInternal && !lead.IsDeleted)
+            .CountAsync(cancellationToken);
+
+        cancellationToken.ThrowIfCancellationRequested();
+
+        return new AgencyCommandPortfolioCountsVm(
+            DateTime.UtcNow,
+            activeClientCount,
+            agentLinkedClientCount,
+            leadsByCrmStatus.Sum(item => item.Count),
+            leadsByCrmStatus
+                .OrderByDescending(item => item.Count)
+                .ThenBy(item => item.CrmStatus, StringComparer.Ordinal)
+                .ToList(),
+            websiteLeadCount,
+            "ActiveClientCount applies LegendMemberDirectory.ActiveSubscribedProfiles " +
+            "and Collapse (available CRM status, current client-app entitlement, " +
+            "client record type, one row per canonical identity). " +
+            "AgentLinkedClientCount counts distinct canonical client identities " +
+            "linked through AgentClients whose ClientRecordClassification record type is Client or " +
+            "BusinessClient. ActiveLeadCount and ActiveLeadsByCrmStatus apply " +
+            "WorkstationLeadConversionLifecycle.ActiveLeadQueue, so converted " +
+            "leads are excluded. WebsiteLeadCount excludes internal and deleted " +
+            "website leads. No other lifecycle meaning is inferred here.",
+            "read_only_zero_write");
     }
 
     public async Task<AgencyCommandDashboardVm> GetDashboardAsync(ClaimsPrincipal user)
@@ -554,3 +632,17 @@ public class AgencyCommandService
         catch { return TimeZoneInfo.Local; }
     }
 }
+
+public sealed record AgencyCommandPortfolioStatusCountVm(
+    string CrmStatus,
+    int Count);
+
+public sealed record AgencyCommandPortfolioCountsVm(
+    DateTime ObservedUtc,
+    int ActiveClientCount,
+    int AgentLinkedClientCount,
+    int ActiveLeadCount,
+    IReadOnlyList<AgencyCommandPortfolioStatusCountVm> ActiveLeadsByCrmStatus,
+    int WebsiteLeadCount,
+    string Definitions,
+    string AccessClass);

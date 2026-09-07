@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Reflection;
 using AgentPortal.Services;
+using Domain.Messaging;
 using Xunit;
 
 namespace AgentPortal.Tests;
@@ -24,7 +25,7 @@ public sealed class LegendFounderAiInspectionRegressionTests
         IReadOnlyList<LegendFounderAiChatMessage> conversation = [new("user", text)];
 
         Assert.False(Assert.IsType<bool>(
-            method!.Invoke(null, new object[] { conversation, "teacher" })));
+            method!.Invoke(null, new object?[] { conversation, "teacher", null })));
     }
 
     [Theory]
@@ -33,7 +34,7 @@ public sealed class LegendFounderAiInspectionRegressionTests
     [InlineData("What changed in production deployment?")]
     [InlineData("Inspect the current GitHub repository state.")]
     [InlineData("What is our current provider capacity?")]
-    public void LiveLegendFacts_RequireGovernedInspectionInTeacherMode(string text)
+    public void UnclassifiedLiveFactWords_DoNotInventGovernedInspectionScope(string text)
     {
         var method = typeof(LegendFounderAiConversationService)
             .GetMethod("RequiresGovernedInspection", BindingFlags.NonPublic | BindingFlags.Static);
@@ -41,8 +42,27 @@ public sealed class LegendFounderAiInspectionRegressionTests
         Assert.NotNull(method);
         IReadOnlyList<LegendFounderAiChatMessage> conversation = [new("user", text)];
 
-        Assert.True(Assert.IsType<bool>(
-            method!.Invoke(null, new object[] { conversation, "teacher" })));
+        Assert.False(Assert.IsType<bool>(
+            method!.Invoke(null, new object?[] { conversation, "teacher", null })));
+    }
+
+    [Theory]
+    [InlineData("Show those.")]
+    [InlineData("Give me the totals.")]
+    public void AdmittedOwnedRecordIntent_RequiresInspectionWithoutLexicalRouting(string text)
+    {
+        var method = typeof(LegendFounderAiConversationService)
+            .GetMethod("RequiresGovernedInspection", BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.NotNull(method);
+        IReadOnlyList<LegendFounderAiChatMessage> conversation = [new("user", text)];
+        var classification = new LegendConnectOwnedRecordClassification(
+            LegendConnectOwnedRecordIntent.OwnedRecordStateInspection,
+            RequiresGovernedReadReceipt: true,
+            MissingRelationKind: null);
+
+        Assert.True(Assert.IsType<bool>(method!.Invoke(
+            null,
+            new object?[] { conversation, "teacher", classification })));
     }
 
     [Fact]

@@ -846,6 +846,9 @@ public sealed class LegendConnectMeaningGraphTests
 
             var configuration = Configuration();
             var registry = new LegendLanguageRegistry(db, configuration);
+            // Initialize this English fixture before the conversation's read-only
+            // source validation; no request meaning is admitted by this setup.
+            await registry.ListEnabledTranslationLanguagesAsync();
             var corpus = new LegendConnectCorpusService(
                 db,
                 registry,
@@ -876,6 +879,7 @@ public sealed class LegendConnectMeaningGraphTests
                 new LegendFounderAiChatRequest
                 {
                     Mode = "legend",
+                    SourceLanguageCode = "en",
                     ConversationId = conversationId.ToString(),
                     Messages = [new LegendFounderAiChatMessage("user", unseenInput)]
             });
