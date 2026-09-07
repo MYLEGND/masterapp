@@ -373,3 +373,119 @@ private struct LegendAgentClientCreationPortalWebView: UIViewRepresentable {
         }
     }
 }
+
+private struct LegendAgentWorkspaceEnvironmentKey: EnvironmentKey {
+    static let defaultValue: MobileAgentWorkspaceStore? = nil
+}
+extension EnvironmentValues {
+    var legendAgentWorkspace: MobileAgentWorkspaceStore? {
+        get { self[LegendAgentWorkspaceEnvironmentKey.self] }
+        set { self[LegendAgentWorkspaceEnvironmentKey.self] = newValue }
+    }
+}
+
+/// Shared by CRM, Discover and all public-profile entry points (including chat).
+struct LegendBookClientAppointmentButton: View {
+    let profileID: String
+    var knownAssigned = false
+    @Environment(\.legendAgentWorkspace) private var workspace
+    @State private var allowed = false
+    @State private var failure: String?
+    @State private var isPresented = false
+
+    var body: some View {
+        if let workspace, let id = UUID(uuidString: profileID) {
+            Group {
+                if knownAssigned || allowed {
+                    Button { isPresented = true } label: {
+                        Label(LegendLocalized("Book Appointment"), systemImage: "calendar.badge.plus")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(LegendPortalBookingButtonStyle())
+                } else if failure != nil {
+                    Button(LegendLocalized("Retry booking access")) { Task { await checkAccess(workspace, id: id) } }
+                        .buttonStyle(LegendNextButtonStyle(kind: .secondary))
+                }
+            }
+            .task(id: profileID) { if !knownAssigned { await checkAccess(workspace, id: id) } }
+            .fullScreenCover(isPresented: $isPresented, onDismiss: workspace.bookingClosed) {
+                LegendClientBookingPortalView(store: workspace, profileID: id)
+            }
+        }
+    }
+
+    @MainActor private func checkAccess(_ store: MobileAgentWorkspaceStore, id: UUID) async {
+        do { allowed = try await store.bookingAccess(profileID: id); failure = nil }
+        catch { allowed = false; failure = error.localizedDescription }
+    }
+}
+
+private struct LegendClientBookingPortalView: View {
+    let store: MobileAgentWorkspaceStore
+    let profileID: UUID
+    @Environment(\.dismiss) private var dismiss
+    @State private var launchURL: URL?
+    @State private var failure: String?
+    @State private var isLoading = false
+    @State private var renewed = false
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack {
+                Text(LegendLocalized("Book Appointment")).font(LegendNextTypography.bodyEmphasis)
+                Spacer()
+                Button(LegendLocalized("Done")) { dismiss() }
+            }.padding(LegendNextSpacing.md)
+            if let launchURL {
+                LegendAgentClientCreationPortalWebView(launchURL: launchURL,
+                    onCreated: { dismiss() }, onCancelled: { dismiss() },
+                    onPortalSessionExpired: {
+                        guard !renewed else {
+                            self.launchURL = nil
+                            failure = LegendLocalized("Booking access has expired or changed. Close this screen and try again.")
+                            return
+                        }
+                        renewed = true
+                        Task { await launch() }
+                    }, onPortalLoaded: {}, onFailure: { message in self.launchURL = nil; failure = message })
+                    .id(launchURL)
+            } else if let failure {
+                LegendNextErrorState(title: LegendLocalized("Booking unavailable"), message: failure,
+                    retryTitle: LegendLocalized("Retry"), retry: { Task { renewed = false; await launch() } })
+                    .padding(LegendNextSpacing.md)
+                Spacer()
+            } else {
+                ProgressView().tint(LegendNextColor.goldBright)
+                Spacer()
+            }
+        }
+        .foregroundStyle(LegendNextColor.textPrimary)
+        .background(LegendNextCanvas())
+        .tint(LegendNextColor.goldBright)
+        .task { await launch() }
+    }
+
+    @MainActor private func launch() async {
+        guard !isLoading else { return }
+        isLoading = true; failure = nil; launchURL = nil
+        defer { isLoading = false }
+        do { launchURL = try await store.bookingLaunch(profileID: profileID) }
+        catch { failure = error.localizedDescription }
+    }
+}
+
+/// Matches the shared AgentPortal qv-booking-launch control.
+private struct LegendPortalBookingButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(LegendNextTypography.bodyEmphasis)
+            .padding(.horizontal, LegendNextSpacing.md)
+            .frame(maxWidth: .infinity, minHeight: 50)
+            .foregroundStyle(LegendSharedDesign.color("bookingOnGold"))
+            .background(LinearGradient(colors: [LegendSharedDesign.color("bookingGoldLight"),
+                LegendSharedDesign.color("bookingGold"), LegendSharedDesign.color("bookingGoldDark")],
+                startPoint: .top, endPoint: .bottom), in: RoundedRectangle(cornerRadius: 14))
+            .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(LegendSharedDesign.color("bookingGoldLight"), lineWidth: 1))
+            .opacity(configuration.isPressed ? 0.85 : 1)
+    }
+}

@@ -157,12 +157,30 @@ android {
         manifestPlaceholders["msalSignatureHash"] = productionMsalSignatureHash
     }
 
+    // Local release signing is optional; CI signs its bundle in the release workflow.
+    val localReleaseStorePassword = System.getenv("LEGEND_STORE_PASSWORD")
+    val localReleaseKeyPassword = System.getenv("LEGEND_KEY_PASSWORD")
+    val localReleaseKeystore = rootProject.file("Legend.jks")
+    val hasLocalReleaseSigning = localReleaseKeystore.exists() &&
+        !localReleaseStorePassword.isNullOrBlank() && !localReleaseKeyPassword.isNullOrBlank()
+    if (hasLocalReleaseSigning) {
+        signingConfigs.create("release") {
+            storeFile = localReleaseKeystore
+            storePassword = localReleaseStorePassword
+            keyAlias = "legend-upload-2026"
+            keyPassword = localReleaseKeyPassword
+        }
+    }
+
     buildTypes {
         debug {
             versionNameSuffix = "-debug"
             manifestPlaceholders["msalSignatureHash"] = debugMsalSignatureHash
         }
         release {
+            if (hasLocalReleaseSigning) {
+                signingConfig = signingConfigs.getByName("release")
+            }
             isMinifyEnabled = true
             isShrinkResources = true
             manifestPlaceholders["msalSignatureHash"] = productionMsalSignatureHash

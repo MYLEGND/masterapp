@@ -190,6 +190,13 @@ class HomeViewModel(private val repository: HomeRepository, private val role: St
     }
 }
 class AgentWorkspaceViewModel(private val repository: AgentWorkspaceRepository, private val role: String) : ViewModel() {
+    private val _bookingRevision = MutableStateFlow(0)
+    val bookingRevision = _bookingRevision.asStateFlow()
+    suspend fun bookingAccess(profileId: String) = repository.bookingAccess(role, profileId)
+    suspend fun bookingLaunch(profileId: String) = repository.bookingLaunch(role, profileId)
+    fun bookingClosed() { _bookingRevision.value++; load() }
+    suspend fun schedule() = repository.schedule(role)
+    suspend fun record(kind: String, id: String) = repository.record(role, kind, id)
     private val _clients = MutableStateFlow<LoadState<List<MobileAgentClient>>>(LoadState.Idle)
     val clients: StateFlow<LoadState<List<MobileAgentClient>>> = _clients.asStateFlow()
     private val _leads = MutableStateFlow<LoadState<List<MobileAgentLead>>>(LoadState.Idle)

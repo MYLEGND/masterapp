@@ -65,6 +65,25 @@ class FounderAiRepository(private val client: LegendApiClient) {
     }.flowOn(Dispatchers.IO)
 }
 class AgentWorkspaceRepository(private val client: LegendApiClient) {
+    suspend fun bookingAccess(role: String, profileId: String) = request { client.api.bookingAccess(role, profileId).legendBody() }
+    suspend fun bookingLaunch(role: String, profileId: String) = request {
+        val launch = client.api.bookingLaunch(role, profileId).legendBody()
+        val base = client.baseUrl.toHttpUrlOrNull() ?: error("Invalid API origin")
+        val url = base.resolve(launch.launchPath) ?: error("Invalid booking location")
+        check(url.scheme == base.scheme && url.host == base.host && url.port == base.port && url.encodedPath == "/mobile/agent/booking")
+        launch.copy(launchPath = url.toString())
+    }
+    suspend fun schedule(role: String) = request { client.api.agentSchedule(role).legendBody() }
+    suspend fun record(role: String, kind: String, id: String) = request {
+        val record = client.api.agentCrmRecord(role, kind, id).legendBody()
+        val base = client.baseUrl.toHttpUrlOrNull() ?: error("Invalid API origin")
+        fun absolute(path: String): String {
+            val url = base.resolve(path) ?: error("Invalid CRM location")
+            check(url.scheme == base.scheme && url.host == base.host && url.port == base.port)
+            return url.toString()
+        }
+        record.copy(managementPath = absolute(record.managementPath), accountPath = record.accountPath?.let(::absolute))
+    }
     suspend fun clients(role: String) = request { client.api.agentClients(role).legendBody() }
     suspend fun leads(role: String) = request { client.api.agentLeads(role).legendBody() }
 

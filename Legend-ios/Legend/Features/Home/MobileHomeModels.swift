@@ -1084,3 +1084,35 @@ struct MobileJourneyTaxonomy: Codable, Equatable, Sendable {
     let communicationStyles: [String]
     let accountabilityFrequencies: [String]
 }
+
+struct MobileCrmAppointment: Decodable, Identifiable, Sendable {
+    let id: UUID
+    let startUtc: Date
+    let endUtc: Date?
+    let status: String
+    let kind: String
+    let recordId: String?
+    let displayName: String
+    let meetingUrl: String?
+    let updatedUtc: Date
+}
+
+struct MobileCrmRecord: Decodable, Identifiable, Sendable {
+    let id: String
+    let kind: String
+    let profileId: String?
+    let displayName: String
+    let email: String?
+    let phone: String?
+    let stage: String
+    var managementPath: String
+    var accountPath: String?
+}
+
+struct LegendCrmDestination: Identifiable {
+    let kind: String
+    let recordId: String
+    var id: String { kind + ":" + recordId }
+}
+
+struct MobileBookingAccess: Decodable, Sendable { let allowed: Bool }

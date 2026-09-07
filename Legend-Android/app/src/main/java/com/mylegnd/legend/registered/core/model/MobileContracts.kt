@@ -437,3 +437,16 @@ val SocialPost.legendContentType: LegendSocialContentType?
 @Serializable data class FounderAccountBatchResponse(@SerialName("completedCount") val completedCount: Int, @SerialName("failedCount") val failedCount: Int, val results: List<FounderAccountBatchItemResponse>)
 
 @Serializable data class MobileApiProblem(val code: String? = null, val message: String? = null, @SerialName("correlationId") val correlationId: String? = null)
+
+@Serializable data class MobileCrmAppointment(
+    val id: String, val startUtc: String, val endUtc: String? = null,
+    val status: String, val kind: String, val recordId: String? = null,
+    val displayName: String, val meetingUrl: String? = null, val updatedUtc: String,
+)
+@Serializable data class MobileCrmRecord(
+    val id: String, val kind: String, val profileId: String? = null,
+    val displayName: String, val email: String? = null, val phone: String? = null,
+    val stage: String, val managementPath: String, val accountPath: String? = null,
+)
+
+@Serializable data class MobileBookingAccess(val allowed: Boolean)

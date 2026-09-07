@@ -11,6 +11,7 @@ struct LegendContactCard<Avatar: View, Action: View>: View {
     let isVerified: Bool
     let avatar: Avatar
     let action: Action
+    let onOpen: (() -> Void)?
 
     init(
         displayName: String,
@@ -18,9 +19,11 @@ struct LegendContactCard<Avatar: View, Action: View>: View {
         subtitle: String? = nil,
         detail: String? = nil,
         isVerified: Bool = false,
+        onOpen: (() -> Void)? = nil,
         @ViewBuilder avatar: () -> Avatar,
         @ViewBuilder action: () -> Action
     ) {
+        self.onOpen = onOpen
         self.displayName = displayName
         self.nameStatus = nameStatus
         self.subtitle = subtitle
@@ -31,6 +34,42 @@ struct LegendContactCard<Avatar: View, Action: View>: View {
     }
 
     var body: some View {
+        HStack(spacing: LegendNextSpacing.sm) {
+            if let onOpen {
+                Button(action: onOpen) { identityContent }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(LegendLocalized("Open record") + ", " + displayName)
+            } else {
+                identityContent
+            }
+
+            Spacer(minLength: LegendNextSpacing.xs)
+
+            action
+                .foregroundStyle(LegendNextColor.contactAction)
+        }
+        .padding(.horizontal, LegendNextSpacing.sm)
+        .padding(.vertical, LegendNextSpacing.xs)
+        .frame(maxWidth: .infinity, minHeight: 64, alignment: .leading)
+        .background(
+            LegendNextColor.contactNavy,
+            in: RoundedRectangle(
+                cornerRadius: LegendNextRadius.control,
+                style: .continuous
+            )
+        )
+        .overlay {
+            RoundedRectangle(
+                cornerRadius: LegendNextRadius.control,
+                style: .continuous
+            )
+            .strokeBorder(LegendNextColor.contactBorder.opacity(0.82), lineWidth: 1)
+        }
+        .shadow(color: LegendNextColor.midnight.opacity(0.24), radius: 7, y: 3)
+        .contentShape(Rectangle())
+    }
+
+    private var identityContent: some View {
         HStack(spacing: LegendNextSpacing.sm) {
             avatar
 
@@ -67,29 +106,9 @@ struct LegendContactCard<Avatar: View, Action: View>: View {
                 }
             }
 
-            Spacer(minLength: LegendNextSpacing.xs)
-
-            action
-                .foregroundStyle(LegendNextColor.contactAction)
+            Spacer(minLength: 0)
         }
-        .padding(.horizontal, LegendNextSpacing.sm)
-        .padding(.vertical, LegendNextSpacing.xs)
-        .frame(maxWidth: .infinity, minHeight: 64, alignment: .leading)
-        .background(
-            LegendNextColor.contactNavy,
-            in: RoundedRectangle(
-                cornerRadius: LegendNextRadius.control,
-                style: .continuous
-            )
-        )
-        .overlay {
-            RoundedRectangle(
-                cornerRadius: LegendNextRadius.control,
-                style: .continuous
-            )
-            .strokeBorder(LegendNextColor.contactBorder.opacity(0.82), lineWidth: 1)
-        }
-        .shadow(color: LegendNextColor.midnight.opacity(0.24), radius: 7, y: 3)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .contentShape(Rectangle())
     }
 

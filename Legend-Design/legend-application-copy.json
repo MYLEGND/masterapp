@@ -1,5 +1,5 @@
 {
-  "catalogVersion": "application-copy-v1-f098865e3f91172f",
+  "catalogVersion": "application-copy-v1-6dde2032ea2f95a5",
   "sourceLanguageCode": "en",
   "entries": [
     {
@@ -458,17 +458,6 @@
       "source": "Close call directory",
       "context": "accessibility copy",
       "sourceRevision": "b659c5d7b41da0e7",
-      "placeholders": [
-
-      ],
-      "translationPolicy": "AzureAllowed",
-      "reuseScope": "Global"
-    },
-    {
-      "id": "application.copy.f15ded0c4fd4d840163ff6c5",
-      "source": "Close client intake",
-      "context": "accessibility copy",
-      "sourceRevision": "0381886d49e9e011",
       "placeholders": [
 
       ],
@@ -4210,6 +4199,39 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.5d1c7fec5b88158d17f3330f",
+      "source": "Book Appointment",
+      "context": "visual interface copy",
+      "sourceRevision": "503926aa838d5d07",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.3209bc31dd220532ffca1811",
+      "source": "Booking access has expired or changed. Close this screen and try again.",
+      "context": "visual interface copy",
+      "sourceRevision": "007c2c2c7e59d38e",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.e834967bdeaa0bc8a482e583",
+      "source": "Booking unavailable",
+      "context": "visual interface copy",
+      "sourceRevision": "8905fcdb0413ef10",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.2b41289fe434b840d528a8fb",
       "source": "Brightness",
       "context": "visual interface copy",
@@ -6994,6 +7016,17 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.a8f56433542b0e88f5d0dd01",
+      "source": "Ends",
+      "context": "visual interface copy",
+      "sourceRevision": "e98982c9f2ba3332",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.714f0532553595a53c1e68d9",
       "source": "Engagement",
       "context": "visual interface copy",
@@ -8383,10 +8416,43 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.97737a8733eebbe1ae158476",
+      "source": "Invalid API origin",
+      "context": "visual interface copy",
+      "sourceRevision": "d18e7d4458abeb8f",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.e3d84623100c7052e035d8b9",
+      "source": "Invalid CRM location",
+      "context": "visual interface copy",
+      "sourceRevision": "9e7a56bca33e096c",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.bf678263d881aa8b1e46b3e5",
       "source": "Invalid LEGEND color token.",
       "context": "visual interface copy",
       "sourceRevision": "9050df54bdeab0be",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.bb3ef9a202a1325305d1ab93",
+      "source": "Invalid booking location",
+      "context": "visual interface copy",
+      "sourceRevision": "d568f8f9df3b9bfd",
       "placeholders": [
 
       ],
@@ -8453,6 +8519,17 @@
       "source": "Join Journey Circles",
       "context": "visual interface copy",
       "sourceRevision": "95417ec482f72fa9",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.2c6c50960015620632351b44",
+      "source": "Join meeting",
+      "context": "visual interface copy",
+      "sourceRevision": "b167216c64c7894a",
       "placeholders": [
 
       ],
@@ -9704,6 +9781,17 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.a3ccf258015348cb62967feb",
+      "source": "Manage in AgentPortal",
+      "context": "visual interface copy",
+      "sourceRevision": "46897364e3d6ab5e",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.2fb83484c0e4609ac4b7b194",
       "source": "Manage member access, leadership authority, and creator priority in one place.",
       "context": "visual interface copy",
@@ -10783,6 +10871,17 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.fda2274ee5f0ef03e2bc29d8",
+      "source": "No upcoming meetings",
+      "context": "visual interface copy",
+      "sourceRevision": "d885234d2bd985b1",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.6986f30f1574414f7df85ccc",
       "source": "No updates yet",
       "context": "visual interface copy",
@@ -11113,12 +11212,34 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.f9445390eb0abba336761b58",
+      "source": "Open full account",
+      "context": "visual interface copy",
+      "sourceRevision": "5204c307d85cf0dd",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.56f6d17f7f36898a73fb555e",
       "source": "Open notifications, {count} recent interactions",
       "context": "visual interface copy",
       "sourceRevision": "beb7bf11a224b5c7",
       "placeholders": [
         "count"
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.7c2fb91812f7e238ff4f0c51",
+      "source": "Open record",
+      "context": "visual interface copy",
+      "sourceRevision": "7c035f7a130bcea5",
+      "placeholders": [
+
       ],
       "translationPolicy": "AzureAllowed",
       "reuseScope": "Global"
@@ -12400,6 +12521,17 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.6745e164ca5990716743e2ae",
+      "source": "Record unavailable",
+      "context": "visual interface copy",
+      "sourceRevision": "929ae77e7ff0435c",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.7a05ae84484cf13ee7599933",
       "source": "Recording · tap to finish",
       "context": "visual interface copy",
@@ -12437,6 +12569,17 @@
       "source": "Refresh profile",
       "context": "visual interface copy",
       "sourceRevision": "b32b3b55f102ef96",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.63281b974d08fbe001d4afcd",
+      "source": "Refresh schedule",
+      "context": "visual interface copy",
+      "sourceRevision": "4db9e32876c91a81",
       "placeholders": [
 
       ],
@@ -13049,6 +13192,17 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.1a71bc930c4a8eafa46ec0c7",
+      "source": "Retry booking access",
+      "context": "visual interface copy",
+      "sourceRevision": "57f2a7fa56b88fec",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.9aa6988086354e43d07ce203",
       "source": "Retry media",
       "context": "visual interface copy",
@@ -13570,6 +13724,17 @@
       "source": "Schedule scripture",
       "context": "visual interface copy",
       "sourceRevision": "1443711dd18a5eb7",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.01994c6a193209c73bc48b77",
+      "source": "Schedule unavailable",
+      "context": "visual interface copy",
+      "sourceRevision": "2d7efbe611a0b196",
       "placeholders": [
 
       ],
@@ -16373,6 +16538,17 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.e1282e772731fb885e0f8b07",
+      "source": "Updated",
+      "context": "visual interface copy",
+      "sourceRevision": "3a5ecca188c0579c",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.97ee7d808ba73c747de58e6f",
       "source": "Updated {date}",
       "context": "visual interface copy",
@@ -16968,6 +17144,17 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.d2ddc438785123e154494c4d",
+      "source": "YOUR AGENDA",
+      "context": "visual interface copy",
+      "sourceRevision": "bcaffdabfefd4499",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.4d37e64c45d87573d6e8f2a5",
       "source": "Yearly",
       "context": "visual interface copy",
@@ -17148,6 +17335,17 @@
       "source": "Your active CRM lead records will appear here.",
       "context": "visual interface copy",
       "sourceRevision": "76f8bce01caab675",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.8f72893b2d3f4e40b1be616a",
+      "source": "Your agenda",
+      "context": "visual interface copy",
+      "sourceRevision": "2ba7f578b2248410",
       "placeholders": [
 
       ],

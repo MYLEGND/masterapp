@@ -21,6 +21,8 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.ui.platform.LocalUriHandler
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.BorderStroke
@@ -76,6 +78,7 @@ import androidx.core.view.WindowCompat
 import androidx.fragment.app.FragmentActivity
 import com.mylegnd.legend.registered.LegendContainer
 import com.mylegnd.legend.registered.LegendViewModelFactory
+import com.mylegnd.legend.registered.core.design.LegendDesignAuthority
 import com.mylegnd.legend.registered.core.design.LegendColors
 import com.mylegnd.legend.registered.core.design.LegendCopy
 import com.mylegnd.legend.registered.core.design.LegendAccountSessionPolicy
@@ -529,6 +532,7 @@ internal enum class LegendTab(private val copyKey: String) {
  * recipient, conversation, or message cache: those remain in MessagingViewModel
  * and its existing repository, just as the iOS global share control does.
  */
+private val LocalLegendAgentWorkspace = staticCompositionLocalOf<AgentWorkspaceViewModel?> { null }
 private val LocalLegendSocialShare = staticCompositionLocalOf<(SocialPost) -> Unit> { {} }
 
 /** A shell event, not a second home controller. Home remains the owner of creation. */
@@ -883,7 +887,8 @@ private fun AuthenticatedShell(
         container.notificationNavigation.markHandled(destination)
     }
 
-    CompositionLocalProvider(LocalLegendSocialShare provides { post -> sharingPost = post }) {
+    CompositionLocalProvider(LocalLegendSocialShare provides { post -> sharingPost = post },
+        LocalLegendAgentWorkspace provides agentWorkspace.takeIf { participantType.equals("Agent", ignoreCase = true) }) {
     Scaffold(
         topBar = {
             // A thread alone hides chrome. A stale detail callback must never
@@ -1254,6 +1259,9 @@ private fun LegendDiscoveryProfileSheet(
                     }
                     TextButton(onClick = dismiss) { Text(legendLocalized("Done"), color = LegendColors.Gold) }
                 }
+            }
+            if (author.identity.participantType.equals("Client", ignoreCase = true)) {
+                item { LegendBookClientAppointmentButton(author.profileId) }
             }
             when (state) {
                 is LoadState.Data -> {
@@ -1812,6 +1820,8 @@ private fun AgentClientsScreen(
     val isStartingConversation by messagingViewModel.isSending.collectAsStateWithLifecycle()
     val clientCount = (clients as? LoadState.Data)?.value?.size
     var leadsOpen by remember { mutableStateOf(false) }
+    var scheduleOpen by remember { mutableStateOf(false) }
+    var selectedRecord by remember { mutableStateOf<Pair<String, String>?>(null) }
 
     LaunchedEffect(Unit) { agentWorkspaceViewModel.load() }
 
@@ -1832,6 +1842,13 @@ private fun AgentClientsScreen(
                     style = LegendTypography.Supporting,
                     color = LegendColors.TextSecondary,
                 )
+            }
+        }
+        item {
+            OutlinedButton(onClick = { scheduleOpen = true }, modifier = Modifier.fillMaxWidth(), shape = LegendShapes.Control) {
+                Icon(Icons.Default.CalendarMonth, null)
+                Spacer(Modifier.width(LegendSpacing.Sm))
+                Text(legendLocalized("Schedule"))
             }
         }
         item {
@@ -1882,7 +1899,7 @@ private fun AgentClientsScreen(
                             color = LegendColors.Surface,
                             shape = LegendShapes.Card,
                             shadowElevation = 3.dp,
-                            modifier = Modifier.fillMaxWidth().border(
+                            modifier = Modifier.fillMaxWidth().clickable { selectedRecord = "clients" to client.profileId }.border(
                                 1.dp,
                                 LegendColors.Divider,
                                 LegendShapes.Card,
@@ -1948,7 +1965,7 @@ private fun AgentClientsScreen(
                         item { LegendEmptyState("No leads", "Live CRM leads will appear here.") }
                     } else {
                         items(leadState.value, key = { it.leadId }) { lead ->
-                            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                            Row(Modifier.fillMaxWidth().clip(LegendShapes.Card).background(LegendColors.Surface).clickable { selectedRecord = "leads" to lead.leadId }.padding(LegendSpacing.Sm), verticalAlignment = Alignment.CenterVertically) {
                                 Column(Modifier.weight(1f)) {
                                     Text(lead.displayName, style = LegendTypography.BodyEmphasis, color = LegendColors.TextPrimary)
                                     Text(lead.crmStage, style = LegendTypography.Supporting, color = LegendColors.TextSecondary)
@@ -1963,6 +1980,17 @@ private fun AgentClientsScreen(
                 item { Spacer(Modifier.height(LegendSpacing.Md)) }
             }
         }
+    }
+
+    if (scheduleOpen) {
+        LegendAgentSchedule(agentWorkspaceViewModel, dismiss = { scheduleOpen = false },
+            openRecord = { kind, id -> selectedRecord = kind to id })
+    }
+    selectedRecord?.let { (kind, id) ->
+        LegendAgentCrmRecord(agentWorkspaceViewModel, messagingViewModel, kind, id,
+            dismiss = { selectedRecord = null }, openConversation = {
+                selectedRecord = null; scheduleOpen = false; leadsOpen = false; openConversation(it)
+            })
     }
 
     (clientCreationPortal as? LoadState.Data<MobileClientCreationPortalLaunch>)?.value?.let { launch ->
@@ -2007,6 +2035,7 @@ private fun LegendAgentClientCreationPortal(
     launchPath: String,
     dismiss: () -> Unit,
     recoverExpiredTicket: () -> Unit,
+    title: String = "Create client",
 ) {
     var failure by remember(launchPath) { mutableStateOf<String?>(null) }
     Dialog(
@@ -2024,12 +2053,12 @@ private fun LegendAgentClientCreationPortal(
                 ) {
                     Column(Modifier.weight(1f)) {
                         Text(legendLocalized("CLIENT CRM"), style = LegendTypography.Eyebrow, color = LegendColors.Gold)
-                        Text(legendLocalized("Create client"), style = LegendTypography.Section, color = LegendColors.TextPrimary)
+                        Text(legendLocalized(title), style = LegendTypography.Section, color = LegendColors.TextPrimary)
                     }
                     IconButton(
                         onClick = dismiss,
                         modifier = Modifier.size(LegendSize.MinimumTapTarget).background(LegendColors.SurfaceInset, CircleShape),
-                    ) { Icon(Icons.Default.Close, legendLocalized("Close client intake", "accessibility copy"), tint = LegendColors.TextPrimary) }
+                    ) { Icon(Icons.Default.Close, legendLocalized("Close", "accessibility copy"), tint = LegendColors.TextPrimary) }
                 }
                 HorizontalDivider(color = LegendColors.Divider)
                 if (failure == null) {
@@ -2054,7 +2083,7 @@ private fun LegendAgentClientCreationPortal(
                         modifier = Modifier.fillMaxSize().padding(LegendSpacing.Xl),
                         verticalArrangement = Arrangement.Center,
                     ) {
-                        Text(legendLocalized("Client intake unavailable"), style = LegendTypography.Section, color = LegendColors.TextPrimary)
+                        Text(legendLocalized("Page unavailable"), style = LegendTypography.Section, color = LegendColors.TextPrimary)
                         Spacer(Modifier.height(LegendSpacing.Xs))
                         Text(failure.orEmpty(), style = LegendTypography.Body, color = LegendColors.TextSecondary)
                         Spacer(Modifier.height(LegendSpacing.Md))
@@ -2629,14 +2658,13 @@ private fun MessagesScreen(
     var managingGroup by remember { mutableStateOf<ConversationDetail?>(null) }
     var addingGroupMember by remember { mutableStateOf<ConversationDetail?>(null) }
     LaunchedEffect(Unit) { viewModel.load() }
-    LaunchedEffect(requestedConversationId, conversations) {
+    LaunchedEffect(requestedConversationId) {
         val requestedId = requestedConversationId ?: return@LaunchedEffect
-        val rows = (conversations as? LoadState.Data<List<ConversationSummary>>)?.value ?: return@LaunchedEffect
-        rows.firstOrNull { it.id == requestedId }?.let { conversation ->
-            selectedConversationId = conversation.id
-            viewModel.open(conversation.id)
-            onRequestedConversationOpened()
-        }
+        // The canonical start-conversation response already supplies the ID.
+        // Open it even if the inbox is loading or does not yet contain the chat.
+        selectedConversationId = requestedId
+        viewModel.open(requestedId)
+        onRequestedConversationOpened()
     }
     DisposableEffect(selectedConversationId) {
         onThreadOpenChanged(selectedConversationId != null)
@@ -4880,6 +4908,9 @@ private fun LegendSocialProfileSheet(
                     }
                     TextButton(onClick = dismiss) { Text(legendLocalized("Done"), color = LegendColors.Gold) }
                 }
+            }
+            if (author.identity.participantType.equals("Client", ignoreCase = true)) {
+                item { LegendBookClientAppointmentButton(author.profileId) }
             }
             author.bio?.takeIf(String::isNotBlank)?.let { bio -> item { Text(bio, style = LegendTypography.Body, color = LegendColors.TextPrimary) } }
             item {
@@ -7542,4 +7573,182 @@ private fun financialDestinationIcon(destination: FinancialDetailDestination): I
     FinancialDetailDestination.TaxProfile -> Icons.AutoMirrored.Filled.ReceiptLong
     FinancialDetailDestination.UpcomingActivity -> Icons.Default.CalendarMonth
     FinancialDetailDestination.DataAttention -> Icons.Default.WarningAmber
+}
+
+private fun legendMeetingTime(value: String): String = runCatching {
+    val instant = java.time.OffsetDateTime.parse(value).toInstant()
+    java.time.format.DateTimeFormatter.ofLocalizedDateTime(java.time.format.FormatStyle.MEDIUM, java.time.format.FormatStyle.SHORT)
+        .withLocale(java.util.Locale.getDefault()).withZone(java.time.ZoneId.systemDefault()).format(instant)
+}.getOrDefault(value)
+
+@Composable
+private fun LegendAgentSchedule(
+    workspace: AgentWorkspaceViewModel,
+    dismiss: () -> Unit,
+    openRecord: (String, String) -> Unit,
+) {
+    var state by remember { mutableStateOf<LoadState<List<MobileCrmAppointment>>>(LoadState.Loading) }
+    var revision by remember { mutableIntStateOf(0) }
+    var updatedAt by remember { mutableStateOf<String?>(null) }
+    val bookingRevision by workspace.bookingRevision.collectAsStateWithLifecycle()
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    val uriHandler = LocalUriHandler.current
+    LaunchedEffect(workspace, revision, lifecycle, bookingRevision) {
+        lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+            while (true) {
+                state = workspace.schedule()
+                updatedAt = if (state is LoadState.Data) java.time.LocalTime.now()
+                    .format(java.time.format.DateTimeFormatter.ofLocalizedTime(java.time.format.FormatStyle.SHORT)) else null
+                delay(30_000)
+            }
+        }
+    }
+    ModalBottomSheet(onDismissRequest = dismiss, containerColor = LegendColors.Canvas, contentColor = LegendColors.TextPrimary,
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
+        LazyColumn(contentPadding = PaddingValues(LegendSpacing.Md), verticalArrangement = Arrangement.spacedBy(LegendSpacing.Sm)) {
+            item {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text(legendLocalized("YOUR AGENDA"), style = LegendTypography.Eyebrow, color = LegendColors.Gold)
+                        Text(legendLocalized("Schedule"), style = LegendTypography.Title)
+                        Text(java.time.ZoneId.systemDefault().id, style = LegendTypography.Caption, color = LegendColors.TextSecondary)
+                    }
+                    IconButton(onClick = { revision++ }) { Icon(Icons.Default.Refresh, legendLocalized("Refresh schedule")) }
+                    TextButton(onClick = dismiss) { Text(legendLocalized("Done")) }
+                }
+            }
+            when (val current = state) {
+                is LoadState.Data -> {
+                    listOf("Client" to "Client meetings", "Lead" to "Lead meetings").forEach { (kind, title) ->
+                        val meetings = current.value.filter { it.kind == kind }
+                        item(key = kind) { Text(legendLocalized(title), style = LegendTypography.CardTitle, color = LegendColors.Gold) }
+                        if (meetings.isEmpty()) item { Text(legendLocalized("No upcoming meetings"), style = LegendTypography.Supporting, color = LegendColors.TextSecondary) }
+                        items(meetings, key = { it.id }) { meeting ->
+                            Column(Modifier.fillMaxWidth().clip(LegendShapes.Card).background(LegendColors.Navy)
+                                .border(1.dp, LegendColors.Gold.copy(alpha = 0.35f), LegendShapes.Card)
+                                .padding(LegendSpacing.Md), verticalArrangement = Arrangement.spacedBy(LegendSpacing.Sm)) {
+                                Column(Modifier.fillMaxWidth().clickable(enabled = meeting.recordId != null) {
+                                    meeting.recordId?.let { openRecord(if (kind == "Client") "clients" else "leads", it) }
+                                }, verticalArrangement = Arrangement.spacedBy(LegendSpacing.Xs)) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text(meeting.displayName, modifier = Modifier.weight(1f), style = LegendTypography.CardTitle, color = LegendColors.OnNavy)
+                                        if (meeting.recordId != null) Icon(Icons.Default.ChevronRight, legendLocalized("Open record"), tint = LegendColors.Gold)
+                                    }
+                                    Text(legendMeetingTime(meeting.startUtc), style = LegendTypography.Supporting, color = LegendColors.OnNavy)
+                                    meeting.endUtc?.let { Text(legendLocalized("Ends") + " " + legendMeetingTime(it), style = LegendTypography.Caption, color = LegendColors.OnNavy) }
+                                    Text(legendLocalized(meeting.status), style = LegendTypography.Caption, color = LegendColors.Gold)
+                                }
+                                meeting.meetingUrl?.takeIf { Uri.parse(it).scheme == "https" }?.let { url ->
+                                    Button(onClick = { uriHandler.openUri(url) }, shape = LegendShapes.Control,
+                                        colors = ButtonDefaults.buttonColors(containerColor = LegendColors.GoldBright, contentColor = LegendColors.OnGold)) {
+                                        Icon(Icons.Default.Videocam, null)
+                                        Spacer(Modifier.width(LegendSpacing.Xs))
+                                        Text(legendLocalized("Join meeting"))
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    updatedAt?.let { item { Text(legendLocalized("Updated") + " " + it, style = LegendTypography.Caption, color = LegendColors.TextSecondary) } }
+                }
+                is LoadState.Error -> item { LegendInlineRetry(current.message) { revision++ } }
+                else -> item { LegendLoadingState() }
+            }
+        }
+    }
+}
+
+@Composable
+private fun LegendAgentCrmRecord(
+    workspace: AgentWorkspaceViewModel,
+    messages: MessagingViewModel,
+    kind: String,
+    id: String,
+    dismiss: () -> Unit,
+    openConversation: (String) -> Unit,
+) {
+    var state by remember(kind, id) { mutableStateOf<LoadState<MobileCrmRecord>>(LoadState.Loading) }
+    var revision by remember { mutableIntStateOf(0) }
+    val sending by messages.isSending.collectAsStateWithLifecycle()
+    val recipients by messages.recipients.collectAsStateWithLifecycle()
+    val uriHandler = LocalUriHandler.current
+    LaunchedEffect(kind, id, revision) { state = workspace.record(kind, id) }
+    ModalBottomSheet(onDismissRequest = dismiss, containerColor = LegendColors.Canvas, contentColor = LegendColors.TextPrimary,
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
+        LazyColumn(contentPadding = PaddingValues(LegendSpacing.Md), verticalArrangement = Arrangement.spacedBy(LegendSpacing.Md)) {
+            item { Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(legendLocalized("CRM"), Modifier.weight(1f), style = LegendTypography.Eyebrow, color = LegendColors.Gold)
+                TextButton(onClick = dismiss) { Text(legendLocalized("Done")) }
+            } }
+            when (val current = state) {
+                is LoadState.Data -> {
+                    val record = current.value
+                    item {
+                        Text(legendLocalized(if (record.kind == "Client") "Client account" else "Lead record"), style = LegendTypography.Eyebrow, color = LegendColors.Gold)
+                        Text(record.displayName, style = LegendTypography.Title)
+                        Text(legendLocalized(record.stage), style = LegendTypography.Supporting, color = LegendColors.TextSecondary)
+                    }
+                    record.profileId?.let { profileId -> item { LegendBookClientAppointmentButton(profileId, knownAssigned = true) } }
+                    record.email?.takeIf { it.isNotBlank() }?.let { item { Text(it, style = LegendTypography.Body) } }
+                    record.phone?.takeIf { it.isNotBlank() }?.let { item { Text(it, style = LegendTypography.Body) } }
+                    if (record.kind == "Client" && record.profileId != null) item {
+                        Button(onClick = { messages.startConversationForClient(record.profileId, openConversation) }, enabled = !sending,
+                            modifier = Modifier.fillMaxWidth(), shape = LegendShapes.Control,
+                            colors = ButtonDefaults.buttonColors(containerColor = LegendColors.GoldBright, contentColor = LegendColors.OnGold)) {
+                            Icon(Icons.Default.ChatBubble, null)
+                            Spacer(Modifier.width(LegendSpacing.Sm))
+                            Text(legendLocalized("Message"))
+                        }
+                    }
+                    (recipients as? LoadState.Error)?.let { item { Text(legendLocalized(it.message), color = LegendColors.Error) } }
+                    record.accountPath?.let { path -> item {
+                        OutlinedButton(onClick = { uriHandler.openUri(path) }, modifier = Modifier.fillMaxWidth(), shape = LegendShapes.Control) { Text(legendLocalized("Open full account")) }
+                    } }
+                    item {
+                        OutlinedButton(onClick = { uriHandler.openUri(record.managementPath) }, modifier = Modifier.fillMaxWidth(), shape = LegendShapes.Control) { Text(legendLocalized("Manage in AgentPortal")) }
+                    }
+                }
+                is LoadState.Error -> item { LegendInlineRetry(current.message) { revision++ } }
+                else -> item { LegendLoadingState() }
+            }
+        }
+    }
+}
+
+/** Every profile surface uses this action; the server resolves the live agent assignment. */
+@Composable
+private fun LegendBookClientAppointmentButton(profileId: String, knownAssigned: Boolean = false) {
+    val workspace = LocalLegendAgentWorkspace.current ?: return
+    var access by remember(profileId, workspace) { mutableStateOf<LoadState<MobileBookingAccess>>(LoadState.Loading) }
+    var launch by remember(profileId, workspace) { mutableStateOf<LoadState<MobileClientCreationPortalLaunch>>(LoadState.Idle) }
+    var revision by remember { mutableIntStateOf(0) }
+    var renewed by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+    LaunchedEffect(profileId, workspace, revision) { if (!knownAssigned) access = workspace.bookingAccess(profileId) }
+    val openBooking: () -> Unit = {
+        scope.launch { launch = LoadState.Loading; launch = workspace.bookingLaunch(profileId) }
+    }
+    if (knownAssigned || (access as? LoadState.Data)?.value?.allowed == true) {
+        Button(onClick = { renewed = false; openBooking() }, enabled = launch !is LoadState.Loading,
+            modifier = Modifier.fillMaxWidth().background(Brush.verticalGradient(listOf(
+                LegendDesignAuthority.color("bookingGoldLight"), LegendDesignAuthority.color("bookingGold"),
+                LegendDesignAuthority.color("bookingGoldDark"))), LegendShapes.Control), shape = LegendShapes.Control,
+            colors = ButtonDefaults.buttonColors(containerColor = Color.Transparent,
+                contentColor = LegendDesignAuthority.color("bookingOnGold"))) {
+            Icon(Icons.Default.EventAvailable, null)
+            Spacer(Modifier.width(LegendSpacing.Sm))
+            Text(legendLocalized(if (launch is LoadState.Loading) "Opening booking…" else "Book Appointment"))
+        }
+    } else if (access is LoadState.Error) {
+        TextButton(onClick = { revision++ }) { Text(legendLocalized("Retry booking access")) }
+    }
+    (launch as? LoadState.Error)?.let { LegendInlineRetry(it.message, openBooking) }
+    (launch as? LoadState.Data)?.value?.let { value ->
+        LegendAgentClientCreationPortal(launchPath = value.launchPath, title = "Book Appointment",
+            dismiss = { launch = LoadState.Idle; workspace.bookingClosed() },
+            recoverExpiredTicket = {
+                if (renewed) launch = LoadState.Error("Booking access has expired or changed. Close this screen and try again.")
+                else { renewed = true; openBooking() }
+            })
+    }
 }

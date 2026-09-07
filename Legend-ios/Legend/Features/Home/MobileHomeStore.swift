@@ -62,9 +62,24 @@ extension MobileJourneyCirclesAPI {
 }
 
 protocol MobileAgentWorkspaceAPI: Sendable {
+    func bookingAccess(profileID: UUID, accessToken: String) async throws -> MobileBookingAccess
+    func bookingLaunch(profileID: UUID, accessToken: String) async throws -> URL
+    func schedule(accessToken: String) async throws -> [MobileCrmAppointment]
+    func record(kind: String, id: String, accessToken: String) async throws -> MobileCrmRecord
     func clients(accessToken: String) async throws -> [MobileAgentClientSummary]
     func leads(accessToken: String) async throws -> [MobileAgentLeadSummary]
     func clientCreationPortalLaunch(accessToken: String) async throws -> MobileClientCreationPortalLaunch
+}
+
+extension MobileAgentWorkspaceAPI {
+    func bookingAccess(profileID: UUID, accessToken: String) async throws -> MobileBookingAccess { throw MobileAPIError.invalidServerResponse }
+    func bookingLaunch(profileID: UUID, accessToken: String) async throws -> URL { throw MobileAPIError.invalidServerResponse }
+    func schedule(accessToken: String) async throws -> [MobileCrmAppointment] {
+        throw MobileAPIError.invalidServerResponse
+    }
+    func record(kind: String, id: String, accessToken: String) async throws -> MobileCrmRecord {
+        throw MobileAPIError.invalidServerResponse
+    }
 }
 
 struct MobileUnavailableHomeAPI: MobileHomeAPI {
@@ -234,6 +249,42 @@ struct URLSessionMobileAgentWorkspaceAPI: MobileAgentWorkspaceAPI {
     let client: MobileHTTPClient
 
     private let participantHeader = ["X-Legend-Participant-Type": ParticipantType.agent.rawValue]
+
+    func bookingAccess(profileID: UUID, accessToken: String) async throws -> MobileBookingAccess {
+        try await client.get("/api/v1/mobile/agent/clients/\(profileID.uuidString)/booking-access",
+            accessToken: accessToken, headers: participantHeader, response: MobileBookingAccess.self)
+    }
+    func bookingLaunch(profileID: UUID, accessToken: String) async throws -> URL {
+        let result: MobileClientCreationPortalLaunch = try await client.post(
+            "/api/v1/mobile/agent/clients/\(profileID.uuidString)/booking-launch", body: MobileEmptyRequest(),
+            accessToken: accessToken, idempotencyKey: UUID(), headers: participantHeader,
+            response: MobileClientCreationPortalLaunch.self)
+        guard let url = URL(string: result.launchPath, relativeTo: client.baseURL)?.absoluteURL,
+              url.scheme == client.baseURL.scheme, url.host == client.baseURL.host, url.port == client.baseURL.port,
+              url.path == "/mobile/agent/booking" else { throw MobileAPIError.invalidServerResponse }
+        return url
+    }
+
+    func schedule(accessToken: String) async throws -> [MobileCrmAppointment] {
+        try await client.get("/api/v1/mobile/agent/crm/schedule", accessToken: accessToken,
+                             headers: participantHeader, response: [MobileCrmAppointment].self)
+    }
+
+    func record(kind: String, id: String, accessToken: String) async throws -> MobileCrmRecord {
+        guard let encoded = id.addingPercentEncoding(withAllowedCharacters: .alphanumerics),
+              ["clients", "leads"].contains(kind) else { throw MobileAPIError.invalidServerResponse }
+        var record: MobileCrmRecord = try await client.get("/api/v1/mobile/agent/crm/\(kind)/\(encoded)",
+            accessToken: accessToken, headers: participantHeader, response: MobileCrmRecord.self)
+        func absolute(_ path: String) throws -> String {
+            guard let url = URL(string: path, relativeTo: client.baseURL)?.absoluteURL,
+                  url.scheme == client.baseURL.scheme, url.host == client.baseURL.host,
+                  url.port == client.baseURL.port else { throw MobileAPIError.invalidServerResponse }
+            return url.absoluteString
+        }
+        record.managementPath = try absolute(record.managementPath)
+        record.accountPath = try record.accountPath.map(absolute)
+        return record
+    }
 
     func clients(accessToken: String) async throws -> [MobileAgentClientSummary] {
         try await client.get(
@@ -804,6 +855,26 @@ final class MobileAgentWorkspaceStore: ObservableObject {
         self.api = api
         self.accessTokenProvider = accessTokenProvider
         self.diagnostics = diagnostics
+    }
+
+    @Published private(set) var bookingRevision = 0
+    func bookingAccess(profileID: UUID) async throws -> Bool {
+        try await api.bookingAccess(profileID: profileID, accessToken: accessTokenProvider()).allowed
+    }
+    func bookingLaunch(profileID: UUID) async throws -> URL {
+        try await api.bookingLaunch(profileID: profileID, accessToken: accessTokenProvider())
+    }
+    func bookingClosed() {
+        bookingRevision += 1
+        Task { _ = await refreshClients(); _ = await refreshLeads() }
+    }
+
+    func schedule() async throws -> [MobileCrmAppointment] {
+        try await api.schedule(accessToken: accessTokenProvider())
+    }
+
+    func record(kind: String, id: String) async throws -> MobileCrmRecord {
+        try await api.record(kind: kind, id: id, accessToken: accessTokenProvider())
     }
 
     func loadClients() {
