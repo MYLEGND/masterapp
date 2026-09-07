@@ -1,5 +1,5 @@
 {
-  "catalogVersion": "application-copy-v1-6dde2032ea2f95a5",
+  "catalogVersion": "application-copy-v1-c0b7b0f839745d83",
   "sourceLanguageCode": "en",
   "entries": [
     {
@@ -3154,17 +3154,6 @@
       "reuseScope": "Global"
     },
     {
-      "id": "application.copy.b6ffb74cc913d66fdb2488fe",
-      "source": "Active leads",
-      "context": "visual interface copy",
-      "sourceRevision": "3598ba973d8736eb",
-      "placeholders": [
-
-      ],
-      "translationPolicy": "AzureAllowed",
-      "reuseScope": "Global"
-    },
-    {
       "id": "application.copy.d32d9f750e0ed05ba36ba18a",
       "source": "Active member and agent profiles",
       "context": "visual interface copy",
@@ -3495,6 +3484,17 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.d16ec74dd6bd73ff3f0bcf92",
+      "source": "Address",
+      "context": "visual interface copy",
+      "sourceRevision": "56ef8f20955f2564",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.b218c8d5d5b480c1c3a0e365",
       "source": "Adjust",
       "context": "visual interface copy",
@@ -3598,6 +3598,17 @@
       "source": "All required native configuration values are present.",
       "context": "visual interface copy",
       "sourceRevision": "3b17145e5df0f085",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.a51ed4eeab06896f71c550b4",
+      "source": "All stages",
+      "context": "visual interface copy",
+      "sourceRevision": "e7974b8dac0b6352",
       "placeholders": [
 
       ],
@@ -3759,6 +3770,17 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.99c531fa075eea388e199443",
+      "source": "Appointment",
+      "context": "visual interface copy",
+      "sourceRevision": "8a4f957e08cbc33d",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.b3e1a6d36af4a6d01f9e666c",
       "source": "Appointments",
       "context": "visual interface copy",
@@ -3807,6 +3829,17 @@
       "source": "Archive",
       "context": "visual interface copy",
       "sourceRevision": "66f4804ee23ddc09",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.938943ed662851edadb388f8",
+      "source": "Archive / Deleted",
+      "context": "visual interface copy",
+      "sourceRevision": "969d3ef58e198766",
       "placeholders": [
 
       ],
@@ -3873,6 +3906,28 @@
       "source": "Archived",
       "context": "visual interface copy",
       "sourceRevision": "bdb86505f8062d15",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.dc9d686e22f84d2b99bd8eea",
+      "source": "Archived / Deleted",
+      "context": "visual interface copy",
+      "sourceRevision": "54b235d7a74d5804",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.167a1a531168d7d7546ba322",
+      "source": "Archived / Deleted · Read only",
+      "context": "visual interface copy",
+      "sourceRevision": "ad0439a6843dbcc6",
       "placeholders": [
 
       ],
@@ -4122,17 +4177,6 @@
       "reuseScope": "Global"
     },
     {
-      "id": "application.copy.8c804b00750b8f8d0d8c1fa8",
-      "source": "Bills",
-      "context": "visual interface copy",
-      "sourceRevision": "245ad028f7d23252",
-      "placeholders": [
-
-      ],
-      "translationPolicy": "AzureAllowed",
-      "reuseScope": "Global"
-    },
-    {
       "id": "application.copy.fa75d2605a33cb7b7b1b7d17",
       "source": "Bio",
       "context": "visual interface copy",
@@ -4309,17 +4353,6 @@
       "reuseScope": "Global"
     },
     {
-      "id": "application.copy.90ea41852b68e2379e0cfebd",
-      "source": "CALL",
-      "context": "visual interface copy",
-      "sourceRevision": "86c4446cd3075629",
-      "placeholders": [
-
-      ],
-      "translationPolicy": "AzureAllowed",
-      "reuseScope": "Global"
-    },
-    {
       "id": "application.copy.b14f77b69a09a9578f5c04d6",
       "source": "CARRY IT WITH YOU",
       "context": "visual interface copy",
@@ -4386,17 +4419,6 @@
       "reuseScope": "Global"
     },
     {
-      "id": "application.copy.74037f1f84c74d6ea44c58d6",
-      "source": "COMMUNITY",
-      "context": "visual interface copy",
-      "sourceRevision": "7928371f73038254",
-      "placeholders": [
-
-      ],
-      "translationPolicy": "AzureAllowed",
-      "reuseScope": "Global"
-    },
-    {
       "id": "application.copy.752bfab16ac2b14b855a0f2f",
       "source": "CONTACT LEGEND®",
       "context": "visual interface copy",
@@ -4419,32 +4441,21 @@
       "reuseScope": "Global"
     },
     {
-      "id": "application.copy.bd16d7c72a1a307a2f3401ef",
-      "source": "CONTENT MANAGEMENT",
-      "context": "visual interface copy",
-      "sourceRevision": "e73190b9b8b0eb76",
-      "placeholders": [
-
-      ],
-      "translationPolicy": "AzureAllowed",
-      "reuseScope": "Global"
-    },
-    {
-      "id": "application.copy.f9de7864e8f55a4965c425b5",
-      "source": "CREATOR INTELLIGENCE",
-      "context": "visual interface copy",
-      "sourceRevision": "f326658dd60c0055",
-      "placeholders": [
-
-      ],
-      "translationPolicy": "AzureAllowed",
-      "reuseScope": "Global"
-    },
-    {
       "id": "application.copy.dc8c47290d7bf680aab1d0f2",
       "source": "CRM",
       "context": "visual interface copy",
       "sourceRevision": "130f70ae5b44ed4c",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.e588cb3deb96b1d3e3ec4348",
+      "source": "CRM records",
+      "context": "visual interface copy",
+      "sourceRevision": "bb168a25fd385110",
       "placeholders": [
 
       ],
@@ -4573,6 +4584,28 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.7afcfe50982c2150665f757a",
+      "source": "Cancel appointment",
+      "context": "visual interface copy",
+      "sourceRevision": "efd06e321fd82fa9",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.b900821bb4b3027d3a85f03f",
+      "source": "Cancel this appointment?",
+      "context": "visual interface copy",
+      "sourceRevision": "ec60908e49ffb12f",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.d2f76ba860109d178d87d94f",
       "source": "Caption",
       "context": "visual interface copy",
@@ -4610,6 +4643,17 @@
       "source": "Change group photo",
       "context": "visual interface copy",
       "sourceRevision": "029d701635baa67b",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.2b79a5bf65485b938241bbf4",
+      "source": "Changes update this CRM account everywhere.",
+      "context": "visual interface copy",
+      "sourceRevision": "d7186aedc07b3e7e",
       "placeholders": [
 
       ],
@@ -4881,6 +4925,17 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.5e98a696ecaeef9dd279b98c",
+      "source": "Choose outcome",
+      "context": "visual interface copy",
+      "sourceRevision": "8bea0a36e0b4cd77",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.15cb37e2b97cd86efa639231",
       "source": "Choose someone in your Legend network to begin.",
       "context": "visual interface copy",
@@ -5025,6 +5080,17 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.0b610c227fd868905df3a076",
+      "source": "City",
+      "context": "visual interface copy",
+      "sourceRevision": "fc33f73246f48295",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.be39bdc066743e1f9bf83e32",
       "source": "Clean",
       "context": "visual interface copy",
@@ -5069,10 +5135,10 @@
       "reuseScope": "Global"
     },
     {
-      "id": "application.copy.110ff192dc411180aa6abfa4",
-      "source": "Client",
+      "id": "application.copy.f35d710838b5478d65d24065",
+      "source": "Clear search",
       "context": "visual interface copy",
-      "sourceRevision": "0c77fe09ab336a3e",
+      "sourceRevision": "3b7ea51793e9d906",
       "placeholders": [
 
       ],
@@ -5080,10 +5146,10 @@
       "reuseScope": "Global"
     },
     {
-      "id": "application.copy.edd828211df7cc1dd65d1fd5",
-      "source": "Client CRM",
+      "id": "application.copy.110ff192dc411180aa6abfa4",
+      "source": "Client",
       "context": "visual interface copy",
-      "sourceRevision": "bd7f73d658b10bac",
+      "sourceRevision": "0c77fe09ab336a3e",
       "placeholders": [
 
       ],
@@ -5531,6 +5597,28 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.a756d67ad806cc6d5ce87324",
+      "source": "Contact",
+      "context": "visual interface copy",
+      "sourceRevision": "2b5c3d26721ae9c3",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.8a645418b9a6c93f18f38b89",
+      "source": "Contact information",
+      "context": "visual interface copy",
+      "sourceRevision": "cbc7311e953e2ca2",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.4f8f9a78ec52374079697a06",
       "source": "Contact privacy",
       "context": "visual interface copy",
@@ -5689,6 +5777,17 @@
       "source": "Conversation not updated",
       "context": "visual interface copy",
       "sourceRevision": "7c7c1c86a511efe4",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.a3649ba7c6518e0786ab9617",
+      "source": "Conversation note (optional)",
+      "context": "visual interface copy",
+      "sourceRevision": "af5cd5857f34f362",
       "placeholders": [
 
       ],
@@ -6873,6 +6972,28 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.377056b610656239805d5bd8",
+      "source": "Edit contact",
+      "context": "visual interface copy",
+      "sourceRevision": "81cd065a45d6368f",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.0c3de3222ddcd77bbf6eb6aa",
+      "source": "Edit contact information",
+      "context": "visual interface copy",
+      "sourceRevision": "3e02cc616e4ea43b",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.36257a11d4b2e09d4143a3e7",
       "source": "Edit group meeting",
       "context": "visual interface copy",
@@ -6976,6 +7097,17 @@
       "source": "Effective Tax Rate",
       "context": "visual interface copy",
       "sourceRevision": "a84c9403f4918a52",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.e809daf2e130245440defbab",
+      "source": "Email",
+      "context": "visual interface copy",
+      "sourceRevision": "969ccbd3cf6300ec",
       "placeholders": [
 
       ],
@@ -7241,17 +7373,6 @@
       "source": "FINANCIAL JOURNEY",
       "context": "visual interface copy",
       "sourceRevision": "1231230fc214a1e8",
-      "placeholders": [
-
-      ],
-      "translationPolicy": "AzureAllowed",
-      "reuseScope": "Global"
-    },
-    {
-      "id": "application.copy.f4240b5cd42289fac1ca2205",
-      "source": "FOLLOW REQUESTS",
-      "context": "visual interface copy",
-      "sourceRevision": "760ae3afec6053bc",
       "placeholders": [
 
       ],
@@ -7556,6 +7677,17 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.98c52503cf829035d338e260",
+      "source": "First name",
+      "context": "visual interface copy",
+      "sourceRevision": "702ef921ed1d89bf",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.ae5fbc80f7935645685df234",
       "source": "Follow",
       "context": "visual interface copy",
@@ -7791,17 +7923,6 @@
       "source": "From your Legend network",
       "context": "visual interface copy",
       "sourceRevision": "fcf879bc0dffafb0",
-      "placeholders": [
-
-      ],
-      "translationPolicy": "AzureAllowed",
-      "reuseScope": "Global"
-    },
-    {
-      "id": "application.copy.e892a5c9596b16f8f9856111",
-      "source": "GROUP MEETING",
-      "context": "visual interface copy",
-      "sourceRevision": "15da08c75e4f6641",
       "placeholders": [
 
       ],
@@ -8614,6 +8735,17 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.5d15cf1db11f5d60b0e4716c",
+      "source": "Keep appointment",
+      "context": "visual interface copy",
+      "sourceRevision": "7681394cf622234d",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.d1024f4bc8688140900137a2",
       "source": "Keep editing",
       "context": "visual interface copy",
@@ -8916,6 +9048,17 @@
       "source": "Last APNs delivery",
       "context": "visual interface copy",
       "sourceRevision": "abc890879fae5936",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.3c7a7dfd7e4f22ec23d2b5df",
+      "source": "Last name",
+      "context": "visual interface copy",
+      "sourceRevision": "7b4888049459f04a",
       "placeholders": [
 
       ],
@@ -9462,17 +9605,6 @@
       "reuseScope": "Global"
     },
     {
-      "id": "application.copy.207c36db479797cc73da6075",
-      "source": "Live server-authorized records",
-      "context": "visual interface copy",
-      "sourceRevision": "9bcdeedea984475b",
-      "placeholders": [
-
-      ],
-      "translationPolicy": "AzureAllowed",
-      "reuseScope": "Global"
-    },
-    {
       "id": "application.copy.93c7548c033b8ecbd085d45d",
       "source": "Load earlier conversations",
       "context": "visual interface copy",
@@ -9737,6 +9869,17 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.cd506c61ea0bb3f7e823ced5",
+      "source": "Manage / reschedule",
+      "context": "visual interface copy",
+      "sourceRevision": "f6cc061999f80b1f",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.32dc35f551e46fa2f2261996",
       "source": "Manage Daily Scripture",
       "context": "visual interface copy",
@@ -9785,6 +9928,17 @@
       "source": "Manage in AgentPortal",
       "context": "visual interface copy",
       "sourceRevision": "46897364e3d6ab5e",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.d5953e6f70ff516832ea917d",
+      "source": "Manage meeting & contact",
+      "context": "visual interface copy",
+      "sourceRevision": "29cd992852596cef",
       "placeholders": [
 
       ],
@@ -9851,17 +10005,6 @@
       "source": "Medium",
       "context": "visual interface copy",
       "sourceRevision": "8e588cd187741f1c",
-      "placeholders": [
-
-      ],
-      "translationPolicy": "AzureAllowed",
-      "reuseScope": "Global"
-    },
-    {
-      "id": "application.copy.a1d84bf6f456cccebe335199",
-      "source": "Meeting details",
-      "context": "visual interface copy",
-      "sourceRevision": "76b1f7412d101041",
       "placeholders": [
 
       ],
@@ -10563,6 +10706,17 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.8b93b6d9e9ecdbc9015cd19a",
+      "source": "Next step",
+      "context": "visual interface copy",
+      "sourceRevision": "298a9207a732a11d",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.762cda90fbdfcd2231c1e5b0",
       "source": "No Hacs yet",
       "context": "visual interface copy",
@@ -10717,6 +10871,17 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.668eac45e03b5e03f674437d",
+      "source": "No matching leads",
+      "context": "visual interface copy",
+      "sourceRevision": "974453a675bae88d",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.068454c1000c0349ad41be67",
       "source": "No matching music found",
       "context": "visual interface copy",
@@ -10864,17 +11029,6 @@
       "source": "No upcoming activity",
       "context": "visual interface copy",
       "sourceRevision": "1b82be4f5b94ebd9",
-      "placeholders": [
-
-      ],
-      "translationPolicy": "AzureAllowed",
-      "reuseScope": "Global"
-    },
-    {
-      "id": "application.copy.fda2274ee5f0ef03e2bc29d8",
-      "source": "No upcoming meetings",
-      "context": "visual interface copy",
-      "sourceRevision": "d885234d2bd985b1",
       "placeholders": [
 
       ],
@@ -11135,17 +11289,6 @@
       "reuseScope": "Global"
     },
     {
-      "id": "application.copy.5382e083bbaa7ce271fdc94a",
-      "source": "Only the server-authorized group owner can save host or meeting details.",
-      "context": "visual interface copy",
-      "sourceRevision": "3e6505ae9468c420",
-      "placeholders": [
-
-      ],
-      "translationPolicy": "AzureAllowed",
-      "reuseScope": "Global"
-    },
-    {
       "id": "application.copy.22f9a41a52daf76c0c41b9fa",
       "source": "Only this member-entered address is shown. Your account email remains private.",
       "context": "visual interface copy",
@@ -11201,6 +11344,17 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.2dfaf6eb732db88e8b8eeacd",
+      "source": "Open contact & message",
+      "context": "visual interface copy",
+      "sourceRevision": "9809088abdfa6def",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.6ab719a3ac3a4278a174bbaa",
       "source": "Open details",
       "context": "visual interface copy",
@@ -11249,17 +11403,6 @@
       "source": "Open reports requiring a recorded decision.",
       "context": "visual interface copy",
       "sourceRevision": "aebab76a2a731e53",
-      "placeholders": [
-
-      ],
-      "translationPolicy": "AzureAllowed",
-      "reuseScope": "Global"
-    },
-    {
-      "id": "application.copy.e204160a19c02d55d822f805",
-      "source": "Open reports requiring a recorded server-authorized decision.",
-      "context": "visual interface copy",
-      "sourceRevision": "16f2ec2d8bad967a",
       "placeholders": [
 
       ],
@@ -11436,6 +11579,28 @@
       "source": "Other accounts",
       "context": "visual interface copy",
       "sourceRevision": "d7e08b9ac8414af2",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.89cce13de4467d2de70d54c6",
+      "source": "Other phone",
+      "context": "visual interface copy",
+      "sourceRevision": "1fe77a0bae14f169",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.8938377a0277ea4024e56140",
+      "source": "Outcome",
+      "context": "visual interface copy",
+      "sourceRevision": "4e80abb5b14656d4",
       "placeholders": [
 
       ],
@@ -11784,6 +11949,17 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.ecd2fb201e593ae06fbba47d",
+      "source": "Pipeline stage",
+      "context": "visual interface copy",
+      "sourceRevision": "8e0c5db4d64f0dca",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.2a31ca732e968f9593823eca",
       "source": "Please try again.",
       "context": "visual interface copy",
@@ -11821,6 +11997,17 @@
       "source": "Post insights unavailable",
       "context": "visual interface copy",
       "sourceRevision": "67c6e3f6b1b0f091",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.56fbe30089582aa5d81c75bf",
+      "source": "Postal code",
+      "context": "visual interface copy",
+      "sourceRevision": "ae53cea8228bcfc3",
       "placeholders": [
 
       ],
@@ -12411,17 +12598,6 @@
       "reuseScope": "Global"
     },
     {
-      "id": "application.copy.b3fc50dab0f4b791c621745e",
-      "source": "Reach and engagement generated from protected LEGEND activity.",
-      "context": "visual interface copy",
-      "sourceRevision": "a1af2f92212d4419",
-      "placeholders": [
-
-      ],
-      "translationPolicy": "AzureAllowed",
-      "reuseScope": "Global"
-    },
-    {
       "id": "application.copy.c81dde51190c6de007251c7d",
       "source": "Reach and engagement generated from protected Legend activity.",
       "context": "visual interface copy",
@@ -12514,6 +12690,17 @@
       "source": "Recommended for you",
       "context": "visual interface copy",
       "sourceRevision": "da43a19a54c624bc",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.ca8c57d31a2ba781c5b1e652",
+      "source": "Record the outcome of your latest conversation.",
+      "context": "visual interface copy",
+      "sourceRevision": "57ee355fdaacd02f",
       "placeholders": [
 
       ],
@@ -13720,6 +13907,17 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.00a148a9f63fae833da5f467",
+      "source": "Schedule range",
+      "context": "visual interface copy",
+      "sourceRevision": "b8ce55932b08c5e9",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.8f8e399fff3f3917e931a6eb",
       "source": "Schedule scripture",
       "context": "visual interface copy",
@@ -14700,6 +14898,17 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.d0002e605e8209ca53607e16",
+      "source": "State",
+      "context": "visual interface copy",
+      "sourceRevision": "a3b50c476732c740",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.ba7c3cfe3976c40f242ff82a",
       "source": "State Tax Rate",
       "context": "visual interface copy",
@@ -14737,6 +14946,17 @@
       "source": "Story",
       "context": "visual interface copy",
       "sourceRevision": "e9e509dcd358f8eb",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.63d0689c30f0ec3cd31ea904",
+      "source": "Street address",
+      "context": "visual interface copy",
+      "sourceRevision": "8a386dd14cb9a70f",
       "placeholders": [
 
       ],
@@ -15217,6 +15437,17 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.a11ca675303eacfa221ef1ae",
+      "source": "The meeting will be cancelled and its time released for booking.",
+      "context": "visual interface copy",
+      "sourceRevision": "276799faa6748987",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.1a07b7691ee4fc5fee281ea5",
       "source": "The messaging store is no longer available.",
       "context": "visual interface copy",
@@ -15375,17 +15606,6 @@
       "source": "The server did not provide a valid participant identity.",
       "context": "visual interface copy",
       "sourceRevision": "0843bae522a14c39",
-      "placeholders": [
-
-      ],
-      "translationPolicy": "AzureAllowed",
-      "reuseScope": "Global"
-    },
-    {
-      "id": "application.copy.323d99615997b675f0cc3337",
-      "source": "The server resolves each LEGEND business day. Scheduled overrides apply only on their date.",
-      "context": "visual interface copy",
-      "sourceRevision": "719d6185e6172154",
       "placeholders": [
 
       ],
@@ -17144,17 +17364,6 @@
       "reuseScope": "Global"
     },
     {
-      "id": "application.copy.d2ddc438785123e154494c4d",
-      "source": "YOUR AGENDA",
-      "context": "visual interface copy",
-      "sourceRevision": "bcaffdabfefd4499",
-      "placeholders": [
-
-      ],
-      "translationPolicy": "AzureAllowed",
-      "reuseScope": "Global"
-    },
-    {
       "id": "application.copy.4d37e64c45d87573d6e8f2a5",
       "source": "Yearly",
       "context": "visual interface copy",
@@ -17258,17 +17467,6 @@
       "source": "Your Entra sign-in succeeded, but the server could not resolve an authorized mobile role.",
       "context": "visual interface copy",
       "sourceRevision": "0432e1cec2f11091",
-      "placeholders": [
-
-      ],
-      "translationPolicy": "AzureAllowed",
-      "reuseScope": "Global"
-    },
-    {
-      "id": "application.copy.9a4fcd808a2bed6a3c671441",
-      "source": "Your LEGEND impact",
-      "context": "visual interface copy",
-      "sourceRevision": "2d3016d4c45b31b3",
       "placeholders": [
 
       ],
@@ -17511,17 +17709,6 @@
       "source": "Your number stays private unless you turn this on.",
       "context": "visual interface copy",
       "sourceRevision": "5ee45c772bae40ca",
-      "placeholders": [
-
-      ],
-      "translationPolicy": "AzureAllowed",
-      "reuseScope": "Global"
-    },
-    {
-      "id": "application.copy.f189c4f1be5b5c432862b723",
-      "source": "Your private audience",
-      "context": "visual interface copy",
-      "sourceRevision": "abc83985703e5248",
       "placeholders": [
 
       ],
@@ -17915,28 +18102,6 @@
       "reuseScope": "Global"
     },
     {
-      "id": "application.copy.afc73b517d19dbe25f33b1ab",
-      "source": "{count} current opportunities",
-      "context": "visual interface copy",
-      "sourceRevision": "76267f811d6d3770",
-      "placeholders": [
-        "count"
-      ],
-      "translationPolicy": "AzureAllowed",
-      "reuseScope": "Global"
-    },
-    {
-      "id": "application.copy.7919fb33dfa3432be280a95d",
-      "source": "{count} live records",
-      "context": "visual interface copy",
-      "sourceRevision": "04f2e294605ff04c",
-      "placeholders": [
-        "count"
-      ],
-      "translationPolicy": "AzureAllowed",
-      "reuseScope": "Global"
-    },
-    {
       "id": "application.copy.39217b7b492e9e93f3688f9b",
       "source": "{count} member",
       "context": "visual interface copy",
@@ -17963,6 +18128,17 @@
       "source": "{count} members selected",
       "context": "visual interface copy",
       "sourceRevision": "b663f0ab148fd32f",
+      "placeholders": [
+        "count"
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.4904c3fb4d6d77f0742e122e",
+      "source": "{count} records",
+      "context": "visual interface copy",
+      "sourceRevision": "8ebc75d7ce30d754",
       "placeholders": [
         "count"
       ],
@@ -18139,17 +18315,6 @@
       "reuseScope": "Global"
     },
     {
-      "id": "application.copy.da0e64779e6292ed0a016518",
-      "source": "{value1} live records",
-      "context": "visual interface copy",
-      "sourceRevision": "48896032a72001e7",
-      "placeholders": [
-        "value1"
-      ],
-      "translationPolicy": "AzureAllowed",
-      "reuseScope": "Global"
-    },
-    {
       "id": "application.copy.6c5131d8a721238e3759b5d0",
       "source": "{value1} of {value2}",
       "context": "visual interface copy",
@@ -18190,6 +18355,17 @@
       "source": "{value1} recommendations",
       "context": "visual interface copy",
       "sourceRevision": "c3f41e1e955484a3",
+      "placeholders": [
+        "value1"
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.78b98cb57464b8095b4a17cc",
+      "source": "{value1} records",
+      "context": "visual interface copy",
+      "sourceRevision": "247374fc3d7250f2",
       "placeholders": [
         "value1"
       ],

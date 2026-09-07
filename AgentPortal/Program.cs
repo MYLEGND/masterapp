@@ -112,6 +112,8 @@ builder.Services.AddScoped<
 builder.Services.AddScoped<IMobileHomeService, MobileHomeService>();
 builder.Services.AddScoped<MobileAgentCrmService>();
 builder.Services.AddScoped<AgentPortal.Controllers.CalendarController>();
+builder.Services.AddScoped<AgentPortal.Controllers.ClientsController>();
+builder.Services.AddScoped<AgentPortal.Controllers.LeadsController>();
 builder.Services.AddMasterAppSocial(builder.Configuration);
 builder.Services.AddSingleton<IAuthorizationHandler, MobileApiScopeAuthorizationHandler>();
 builder.Services.AddScoped<AgentProfileImageLegacyBackfillService>();

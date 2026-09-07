@@ -73,6 +73,9 @@ class AgentWorkspaceRepository(private val client: LegendApiClient) {
         check(url.scheme == base.scheme && url.host == base.host && url.port == base.port && url.encodedPath == "/mobile/agent/booking")
         launch.copy(launchPath = url.toString())
     }
+    suspend fun contact(role: String, kind: String, id: String, input: MobileCrmContactInput) = request { client.api.agentCrmContact(role, kind, id, input).legendBody() }
+    suspend fun outcome(role: String, kind: String, id: String, code: String, note: String) = request { client.api.agentCrmOutcome(role, kind, id, MobileCrmOutcomeInput(code, note.ifBlank { null })).legendBody() }
+    suspend fun cancelAppointment(role: String, id: String) = request { client.api.cancelCrmAppointment(role, id).legendBody() }
     suspend fun schedule(role: String) = request { client.api.agentSchedule(role).legendBody() }
     suspend fun record(role: String, kind: String, id: String) = request {
         val record = client.api.agentCrmRecord(role, kind, id).legendBody()
