@@ -6572,20 +6572,18 @@ private fun FinancialScreen(
     back: () -> Unit,
 ) {
     val viewModel: FinancialViewModel = viewModel(
+        key = "financial:$participantType",
         factory = LegendViewModelFactory { FinancialViewModel(repository, participantType) },
     )
     val state by viewModel.state.collectAsStateWithLifecycle()
     var route by remember { mutableStateOf(FinancialRoute.CashFlowLanding) }
     var detailDestination by remember { mutableStateOf<FinancialDetailDestination?>(null) }
-    LaunchedEffect(Unit) {
-        var loadedDate = LocalDate.now()
-        viewModel.load()
-        while (true) {
-            delay(1.minutes)
-            val currentDate = LocalDate.now()
-            if (currentDate != loadedDate) {
-                loadedDate = currentDate
-                viewModel.load()
+    val financeLifecycle = LocalLifecycleOwner.current.lifecycle
+    LaunchedEffect(viewModel, financeLifecycle) {
+        financeLifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+            while (true) {
+                viewModel.load().join()
+                delay(30_000)
             }
         }
     }
@@ -6697,7 +6695,7 @@ private fun FinancialCashFlowLanding(
                     pressureStatus = operatingSystem.weekAtGlance.pressureStatus,
                     openingCashCents = operatingSystem.weekAtGlance.openingCashCents,
                     incomeCents = operatingSystem.weekAtGlance.incomeCents,
-                    billsCents = operatingSystem.weekAtGlance.debitExpenseCents + operatingSystem.weekAtGlance.creditExpenseCents,
+                    billsCents = snapshot.presentation?.prioritySections?.firstOrNull { it.key == "current-outlook" }?.secondaryMetric?.amountCents,
                     endingCashCents = operatingSystem.weekAtGlance.endingCashCents,
                     open = openWeek,
                 )
@@ -6712,7 +6710,7 @@ private fun FinancialCashFlowLanding(
                     pressureStatus = operatingSystem.monthAtGlance.pressureStatus,
                     openingCashCents = operatingSystem.monthAtGlance.openingCashCents,
                     incomeCents = operatingSystem.monthAtGlance.incomeCents,
-                    billsCents = operatingSystem.monthAtGlance.debitExpenseCents + operatingSystem.monthAtGlance.creditExpenseCents,
+                    billsCents = snapshot.presentation?.prioritySections?.firstOrNull { it.key == "monthly-outlook" }?.secondaryMetric?.amountCents,
                     endingCashCents = operatingSystem.monthAtGlance.endingCashCents,
                     open = openMonth,
                 )
@@ -6764,7 +6762,7 @@ private fun FinancialOutlookPreview(
     pressureStatus: String,
     openingCashCents: Long,
     incomeCents: Long,
-    billsCents: Long,
+    billsCents: Long?,
     endingCashCents: Long,
     open: () -> Unit,
 ) {
@@ -6790,7 +6788,7 @@ private fun FinancialOutlookPreview(
                 FinancialOutlookMetric("Income", financialCurrencyCents(incomeCents), Icons.Default.SouthWest, financialAmountTone(incomeCents, FinancialAmountKind.Income), Modifier.weight(1f))
             }
             Row(horizontalArrangement = Arrangement.spacedBy(LegendSpacing.Xs)) {
-                FinancialOutlookMetric("Bills", financialCurrencyCents(billsCents), Icons.Default.Description, financialAmountTone(billsCents, FinancialAmountKind.Bills), Modifier.weight(1f))
+                FinancialOutlookMetric("Outflow", billsCents?.let(::financialCurrencyCents) ?: "—", Icons.Default.Description, billsCents?.let { financialAmountTone(it, FinancialAmountKind.Bills) } ?: LegendColors.TextSecondary, Modifier.weight(1f))
                 FinancialOutlookMetric("Ending cash", financialCurrencyCents(endingCashCents), Icons.Default.Payments, financialAmountTone(endingCashCents, FinancialAmountKind.EndingCash), Modifier.weight(1f))
             }
         }

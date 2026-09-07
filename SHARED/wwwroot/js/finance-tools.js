@@ -8276,30 +8276,6 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
                 projectionSettings: cloneProjectionSettings(projectionSettingsState),
                 monthlyStartingBalanceOverrides: { ...monthBalanceOverrides },
                 occurrenceHistory: cloneOccurrenceHistory(occurrenceHistoryState),
-                mobileWeekProjection:
-                    !isBusinessExpenseLens &&
-                    expenseLensProjectionApi?.buildMobileWeekSnapshot
-                        ? expenseLensProjectionApi.buildMobileWeekSnapshot(
-                            latestExpenseLensProjection,
-                            new Date()
-                        )
-                        : undefined,
-                mobileMonthProjection:
-                    !isBusinessExpenseLens &&
-                    expenseLensProjectionApi?.buildMobileMonthSnapshot
-                        ? expenseLensProjectionApi.buildMobileMonthSnapshot(
-                            latestExpenseLensProjection,
-                            new Date()
-                        )
-                        : undefined,
-                mobilePeriodProjection:
-                    !isBusinessExpenseLens &&
-                    expenseLensProjectionApi?.buildMobilePeriodProjection
-                        ? expenseLensProjectionApi.buildMobilePeriodProjection(
-                            latestExpenseLensProjection,
-                            new Date()
-                        )
-                        : undefined,
                 ...extraState
             };
         };
@@ -8750,7 +8726,6 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
             const totals = new Map();
             (selectedWeek.events || []).forEach((eventItem) => {
                 if (eventItem?.kind !== 'expense') return;
-                if (String(eventItem?.debtCategory || '').trim() === 'tracked-unsecured-minimum') return;
                 if (
                     normalizedPaymentFilter
                     && normalizeBillPaymentMethod(eventItem?.paymentMethod) !== normalizedPaymentFilter
@@ -10053,43 +10028,11 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
                 .flatMap((week) => week.events)
                 .filter((eventItem) => eventItem.kind === 'expense');
 
-            const selectedMonthDebitBillsCents = selectedMonthExpenseEvents
-                .filter(
-                    (eventItem) =>
-                        eventItem.debtCategory !== 'tracked-unsecured-minimum'
-                        && normalizeBillPaymentMethod(eventItem.paymentMethod) !== 'credit'
-                )
-                .reduce(
-                    (sum, eventItem) =>
-                        sum
-                        + Math.abs(
-                            Math.round(
-                                eventItem.impactCashCents
-                                || eventItem.amountCents
-                                || 0
-                            )
-                        ),
-                    0
-                );
-
-            const selectedMonthCreditBillsCents = selectedMonthExpenseEvents
-                .filter(
-                    (eventItem) =>
-                        eventItem.debtCategory !== 'tracked-unsecured-minimum'
-                        && normalizeBillPaymentMethod(eventItem.paymentMethod) === 'credit'
-                )
-                .reduce(
-                    (sum, eventItem) =>
-                        sum
-                        + Math.abs(
-                            Math.round(
-                                eventItem.impactCashCents
-                                || eventItem.amountCents
-                                || 0
-                            )
-                        ),
-                    0
-                );
+            const monthSnapshot = expenseLensProjectionApi.buildMobileMonthSnapshot(
+                projection, expenseLensProjectionApi.parseMonthKey(selectedMonth.monthKey)
+            );
+            const selectedMonthDebitBillsCents = monthSnapshot.debitBillsCents;
+            const selectedMonthCreditBillsCents = monthSnapshot.creditBillsCents;
             const selectedMonthIndex = projection.months.findIndex((month) => month.monthKey === selectedMonth.monthKey);
             const previousMonth = selectedMonthIndex > 0 ? projection.months[selectedMonthIndex - 1] : null;
             const calculatedOpeningCashCents = previousMonth ? previousMonth.endingCashCents : selectedMonth.openingCashCents;

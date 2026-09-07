@@ -7,412 +7,76 @@ using Infrastructure.Data;
 using Infrastructure.Mobile;
 using Microsoft.EntityFrameworkCore;
 using Xunit;
+using Moq;
+using Infrastructure.Households;
 
 namespace AgentPortal.Tests;
 
 public sealed class MobileFinancialOperatingSystemProjectionServiceTests
 {
     [Fact]
-    public async Task ProjectAsync_MapsPersistedAuthoritativeWeekSnapshot()
+    public async Task ProjectAsync_CalculatesCurrentReportFromPersistedInputs()
     {
         await using var db = CreateDbContext();
-
-        var clientProfileId = Guid.NewGuid();
-        var updatedUtc = new DateTime(
-            2026,
-            7,
-            26,
-            18,
-            30,
-            0,
-            DateTimeKind.Utc);
-
-        db.FinanceToolStates.Add(new FinanceToolState
-        {
-            ClientProfileId = clientProfileId,
-            ToolId = "ExpenseLens",
-            UpdatedUtc = updatedUtc,
-            JsonState =
-                """
-                {
-                  "stateVersion": 7,
-                  "mobileWeekProjection": {
-                    "schemaVersion": 1,
-                    "generatedUtc": "2026-07-26T18:29:00.000Z",
-                    "sourceStateVersion": 7,
-                    "monthKey": "2026-07",
-                    "monthLabel": "July 2026",
-                    "weekId": "2026-07-24_2026-07-30",
-                    "weekLabel": "Jul 24 – Jul 30",
-                    "startDate": "2026-07-24",
-                    "endDate": "2026-07-30",
-                    "status": "current",
-                    "openingCashCents": 125000,
-                    "incomeCents": 126667,
-                    "debitBillsCents": 123867,
-                    "creditBillsCents": 25000,
-                    "requiredExpensesCents": 148867,
-                    "requiredDebtMinimumCents": 25000,
-                    "extraDebtPaymentCents": 20000,
-                    "closingCashCents": -70800,
-                    "openingDebtCents": 445000,
-                    "closingDebtCents": 400000,
-                    "events": [
-                      {
-                        "key": "expense:auto-insurance:2026-07-25",
-                        "kind": "expense",
-                        "label": "Auto Insurance",
-                        "dateKey": "2026-07-25",
-                        "status": "current",
-                        "amountCents": 19200,
-                        "impactCashCents": -19200,
-                        "cashAfterCents": 105800,
-                        "debtAfterCents": 445000,
-                        "paymentMethod": "Debit",
-                        "debtCategory": ""
-                      }
-                    ]
-                  }
-                }
-                """
-        });
-
+        var client = Guid.NewGuid();
+        var row = new FinanceToolState { ClientProfileId = client, HouseholdAccountId = client, ToolId = "ExpenseLens", JsonState = LiveInputs };
+        db.FinanceToolStates.Add(row);
         await db.SaveChangesAsync();
-
-        var service =
-            new MobileFinancialOperatingSystemProjectionService(db);
-
-        var snapshot =
-            await service.ProjectAsync(
-                clientProfileId,
-                new DateOnly(2026, 7, 26));
-
+        var snapshot = await CreateService(db).ProjectAsync(client, new DateOnly(2027, 9, 4));
         Assert.Equal("Available", snapshot.Projection.Status);
-        Assert.Null(snapshot.Projection.ReasonCode);
-        Assert.NotNull(snapshot.WeekAtGlance);
-        Assert.Null(snapshot.MonthAtGlance);
-
-        Assert.Equal(
-            updatedUtc,
-            snapshot.Freshness.FinanceStateUpdatedUtc);
-
-        var week = snapshot.WeekAtGlance!;
-
-        Assert.Equal(
-            "2026-07-24_2026-07-30",
-            week.WeekKey);
-
-        Assert.Equal(
-            new DateOnly(2026, 7, 24),
-            week.StartDate);
-
-        Assert.Equal(
-            new DateOnly(2026, 7, 30),
-            week.EndDate);
-
-        Assert.Equal(125000, week.OpeningCashCents);
-        Assert.Equal(126667, week.IncomeCents);
-        Assert.Equal(123867, week.DebitExpenseCents);
-        Assert.Equal(25000, week.CreditExpenseCents);
-        Assert.Equal(25000, week.RequiredDebtPaymentCents);
-        Assert.Equal(20000, week.ExtraDebtPaymentCents);
-        Assert.Equal(-70800, week.EndingCashCents);
-        Assert.Equal(445000, week.OpeningDebtCents);
-        Assert.Equal(400000, week.EndingDebtCents);
-        Assert.Equal("current", week.PressureStatus);
-        Assert.Equal("Jul 24 – Jul 30", week.PressureSummary);
-
-        var eventItem = Assert.Single(week.Events);
-
-        Assert.Equal(
-            "expense:auto-insurance:2026-07-25",
-            eventItem.EventKey);
-
-        Assert.Equal(
-            new DateOnly(2026, 7, 25),
-            eventItem.OccursOn);
-
-        Assert.Equal("expense", eventItem.Kind);
-        Assert.Equal("Auto Insurance", eventItem.Title);
-        Assert.Equal(19200, eventItem.AmountCents);
-        Assert.Equal("ExpenseLens", eventItem.SourceToolId);
-        Assert.Equal(eventItem.EventKey, eventItem.SourceItemId);
-        Assert.Equal("current", eventItem.Status);
-
-        var tool = Assert.Single(snapshot.Tools);
-
-        Assert.Equal("ExpenseLens", tool.ToolId);
-        Assert.Equal("Available", tool.AvailabilityStatus);
-        Assert.Equal(updatedUtc, tool.UpdatedUtc);
-        Assert.Empty(tool.Metrics);
+        Assert.Equal(500000, snapshot.MonthAtGlance!.IncomeCents);
+        Assert.Equal(150000, snapshot.MonthAtGlance.RequiredDebtPaymentCents);
+        Assert.Equal(30000, snapshot.MonthAtGlance.DebitExpenseCents);
+        Assert.Equal(180000, snapshot.MonthAtGlance.Weeks.Sum(w => w.OutflowCents));
+        Assert.Equal(row.UpdatedUtc, snapshot.Freshness.FinanceStateUpdatedUtc);
+        Assert.False(db.ChangeTracker.HasChanges());
     }
 
     [Fact]
-    public async Task ProjectAsync_SelectsTheActualCurrentPeriodFromTheWebTimeline()
+    public async Task ProjectAsync_RecalculatesAfterMonthRolloverWithoutAWebSave()
     {
         await using var db = CreateDbContext();
-        var clientProfileId = Guid.NewGuid();
-
-        db.FinanceToolStates.Add(new FinanceToolState
-        {
-            ClientProfileId = clientProfileId,
-            ToolId = "ExpenseLens",
-            JsonState =
-                """
-                {
-                  "mobileWeekProjection": {
-                    "schemaVersion": 1,
-                    "weekId": "stale-selected-week",
-                    "startDate": "2026-07-01",
-                    "endDate": "2026-07-07",
-                    "status": "current",
-                    "openingCashCents": 1,
-                    "incomeCents": 1,
-                    "debitBillsCents": 0,
-                    "creditBillsCents": 0,
-                    "requiredDebtMinimumCents": 0,
-                    "extraDebtPaymentCents": 0,
-                    "closingCashCents": 2,
-                    "openingDebtCents": 0,
-                    "closingDebtCents": 0,
-                    "events": []
-                  },
-                  "mobilePeriodProjection": {
-                    "schemaVersion": 1,
-                    "generatedUtc": "2026-07-01T12:00:00Z",
-                    "sourceStateVersion": 2,
-                    "projectionStartMonthKey": "2026-07",
-                    "projectionEndMonthKey": "2026-12",
-                    "periods": [
-                      {
-                        "monthKey": "2026-08",
-                        "monthSnapshot": {
-                          "schemaVersion": 1,
-                          "monthKey": "2026-08",
-                          "startDate": "2026-08-01",
-                          "endDate": "2026-08-31",
-                          "status": "future",
-                          "openingCashCents": 200000,
-                          "incomeCents": 425000,
-                          "debitBillsCents": 130000,
-                          "creditBillsCents": 25000,
-                          "requiredDebtMinimumCents": 20000,
-                          "extraDebtPaymentCents": 15000,
-                          "endingCashCents": 455000,
-                          "openingDebtCents": 500000,
-                          "endingDebtCents": 465000,
-                          "savingsContributionCents": null,
-                          "weeks": [
-                            {
-                              "weekId": "2026-08-week-2",
-                              "startDate": "2026-08-08",
-                              "endDate": "2026-08-14",
-                              "incomeCents": 225000,
-                              "outflowCents": 95000,
-                              "closingCashCents": 330000,
-                              "closingDebtCents": 480000,
-                              "status": "projected"
-                            }
-                          ]
-                        },
-                        "weekSnapshots": [
-                          {
-                            "schemaVersion": 1,
-                            "weekId": "2026-08-week-2",
-                            "weekLabel": "Week 2",
-                            "startDate": "2026-08-08",
-                            "endDate": "2026-08-14",
-                            "status": "projected",
-                            "openingCashCents": 200000,
-                            "incomeCents": 225000,
-                            "debitBillsCents": 80000,
-                            "creditBillsCents": 15000,
-                            "requiredDebtMinimumCents": 20000,
-                            "extraDebtPaymentCents": 0,
-                            "closingCashCents": 330000,
-                            "openingDebtCents": 500000,
-                            "closingDebtCents": 480000,
-                            "events": []
-                          }
-                        ]
-                      }
-                    ]
-                  }
-                }
-                """
-        });
+        var client = Guid.NewGuid();
+        var row = new FinanceToolState { ClientProfileId = client, HouseholdAccountId = client, ToolId = "ExpenseLens", JsonState = LiveInputs };
+        db.FinanceToolStates.Add(row);
         await db.SaveChangesAsync();
-
-        var snapshot = await new MobileFinancialOperatingSystemProjectionService(db)
-            .ProjectAsync(
-                clientProfileId,
-                new DateOnly(2026, 8, 10));
-
-        var week = Assert.IsType<MobileFinancialWeekAtGlance>(
-            snapshot.WeekAtGlance);
-        var month = Assert.IsType<MobileFinancialMonthAtGlance>(
-            snapshot.MonthAtGlance);
-
-        Assert.Equal("2026-08-week-2", week.WeekKey);
-        Assert.Equal(225_000, week.IncomeCents);
-        Assert.Equal("current", week.PressureStatus);
-        Assert.Equal("2026-08", month.MonthKey);
-        Assert.Equal(425_000, month.IncomeCents);
-        Assert.Equal("current", month.PressureStatus);
-        Assert.Equal(
-            "current",
-            Assert.Single(month.Weeks).PressureStatus);
-        Assert.DoesNotContain(
-            "selected",
-            snapshot.Projection.Summary!,
-            StringComparison.OrdinalIgnoreCase);
+        var service = CreateService(db);
+        var first = await service.ProjectAsync(client, new DateOnly(2027, 9, 4));
+        row.JsonState = LiveInputs.Replace("5000", "6000");
+        await db.SaveChangesAsync();
+        var next = await service.ProjectAsync(client, new DateOnly(2027, 10, 4));
+        Assert.Equal(500000, first.MonthAtGlance!.IncomeCents);
+        Assert.Equal("2027-10", next.MonthAtGlance!.MonthKey);
+        Assert.Equal(600000, next.MonthAtGlance.IncomeCents);
+        Assert.Equal(150000, next.MonthAtGlance.RequiredDebtPaymentCents);
+        Assert.False(db.ChangeTracker.HasChanges());
     }
 
     [Fact]
-    public async Task ProjectAsync_RejectsAStaleLegacySelectedWeek()
+    public async Task ProjectAsync_IgnoresStaleOrInvalidCachedSnapshots()
     {
         await using var db = CreateDbContext();
-        var clientProfileId = Guid.NewGuid();
-
-        db.FinanceToolStates.Add(new FinanceToolState
-        {
-            ClientProfileId = clientProfileId,
-            ToolId = "ExpenseLens",
-            JsonState =
-                """
-                {
-                  "mobileWeekProjection": {
-                    "schemaVersion": 1,
-                    "weekId": "selected-week",
-                    "startDate": "2026-07-01",
-                    "endDate": "2026-07-07",
-                    "status": "current",
-                    "openingCashCents": 1,
-                    "incomeCents": 1,
-                    "debitBillsCents": 0,
-                    "creditBillsCents": 0,
-                    "requiredDebtMinimumCents": 0,
-                    "extraDebtPaymentCents": 0,
-                    "closingCashCents": 2,
-                    "openingDebtCents": 0,
-                    "closingDebtCents": 0,
-                    "events": []
-                  }
-                }
-                """
-        });
+        var client = Guid.NewGuid();
+        db.FinanceToolStates.Add(new FinanceToolState { ClientProfileId = client, HouseholdAccountId = client, ToolId = "ExpenseLens", JsonState = LiveInputs });
         await db.SaveChangesAsync();
-
-        var snapshot = await new MobileFinancialOperatingSystemProjectionService(db)
-            .ProjectAsync(
-                clientProfileId,
-                new DateOnly(2026, 8, 10));
-
-        Assert.Equal("Unavailable", snapshot.Projection.Status);
-        Assert.Equal(
-            "MOBILE_CURRENT_PERIOD_NOT_FOUND",
-            snapshot.Projection.ReasonCode);
-        Assert.Null(snapshot.WeekAtGlance);
-        Assert.Null(snapshot.MonthAtGlance);
+        var snapshot = await CreateService(db).ProjectAsync(client, new DateOnly(2028, 11, 4));
+        Assert.Equal("Available", snapshot.Projection.Status);
+        Assert.Equal("2028-11", snapshot.MonthAtGlance!.MonthKey);
+        Assert.Equal(500000, snapshot.MonthAtGlance.IncomeCents);
     }
 
     [Fact]
     public async Task ProjectAgentAsync_MapsOnlyTheAuthenticatedAgentsExpenseLensState()
     {
         await using var db = CreateDbContext();
-
-        db.FinanceToolStates.Add(new FinanceToolState
-        {
-            ClientProfileId = Guid.NewGuid(),
-            ToolId = "ExpenseLens",
-            JsonState =
-                """
-                {
-                  "mobileWeekProjection": {
-                    "schemaVersion": 1,
-                    "weekId": "client-week",
-                    "weekLabel": "Client week",
-                    "startDate": "2026-07-20",
-                    "endDate": "2026-07-26",
-                    "status": "current",
-                    "openingCashCents": 1,
-                    "incomeCents": 1,
-                    "debitBillsCents": 0,
-                    "creditBillsCents": 0,
-                    "requiredDebtMinimumCents": 0,
-                    "extraDebtPaymentCents": 0,
-                    "closingCashCents": 2,
-                    "openingDebtCents": 0,
-                    "closingDebtCents": 0,
-                    "events": []
-                  }
-                }
-                """
-        });
-        db.AgentFinanceToolStates.Add(new AgentFinanceToolState
-        {
-            AgentUserId = "agent-finance-oid",
-            ToolId = "ExpenseLens",
-            UpdatedUtc = new DateTime(
-                2026,
-                7,
-                28,
-                12,
-                0,
-                0,
-                DateTimeKind.Utc),
-            JsonState =
-                """
-                {
-                  "incomeStreams": {
-                    "primary": [
-                      { "id": "production", "label": "Agent Production" }
-                    ]
-                  },
-                  "mobileWeekProjection": {
-                    "schemaVersion": 1,
-                    "weekId": "agent-week",
-                    "weekLabel": "Agent week",
-                    "startDate": "2026-07-27",
-                    "endDate": "2026-08-02",
-                    "status": "current",
-                    "openingCashCents": 125000,
-                    "incomeCents": 175000,
-                    "debitBillsCents": 25000,
-                    "creditBillsCents": 0,
-                    "requiredDebtMinimumCents": 0,
-                    "extraDebtPaymentCents": 0,
-                    "closingCashCents": 150000,
-                    "openingDebtCents": 0,
-                    "closingDebtCents": 0,
-                    "events": [
-                      {
-                        "key": "income:primary-production:2026-07-29",
-                        "kind": "income",
-                        "label": "Income",
-                        "dateKey": "2026-07-29",
-                        "status": "current",
-                        "amountCents": 175000
-                      }
-                    ]
-                  }
-                }
-                """
-        });
+        db.AgentFinanceToolStates.Add(new AgentFinanceToolState { AgentUserId = " AGENT-OID ", ToolId = "ExpenseLens", JsonState = LiveInputs });
+        db.AgentFinanceToolStates.Add(new AgentFinanceToolState { AgentUserId = "other", ToolId = "ExpenseLens", JsonState = LiveInputs.Replace("5000", "9000") });
         await db.SaveChangesAsync();
-
-        var snapshot = await new MobileFinancialOperatingSystemProjectionService(db)
-            .ProjectAgentAsync(
-                "AGENT-FINANCE-OID",
-                new DateOnly(2026, 7, 29));
-
-        var week = Assert.IsType<MobileFinancialWeekAtGlance>(
-            snapshot.WeekAtGlance);
-        Assert.Equal("agent-week", week.WeekKey);
-        Assert.Equal(150000, week.EndingCashCents);
-        Assert.Equal(
-            "Agent Production",
-            Assert.Single(week.Events).Title);
+        var service = CreateService(db);
+        var snapshot = await service.ProjectAgentAsync("agent-oid", new DateOnly(2027, 9, 4));
+        Assert.Equal(500000, snapshot.MonthAtGlance!.IncomeCents);
+        var missing = await service.ProjectAgentAsync("not-an-owner", new DateOnly(2027, 9, 4));
+        Assert.Equal("EXPENSE_LENS_STATE_NOT_FOUND", missing.Projection.ReasonCode);
     }
 
     [Fact]
@@ -421,7 +85,7 @@ public sealed class MobileFinancialOperatingSystemProjectionServiceTests
         await using var db = CreateDbContext();
 
         var service =
-            new MobileFinancialOperatingSystemProjectionService(db);
+            CreateService(db);
 
         var snapshot =
             await service.ProjectAsync(
@@ -459,6 +123,7 @@ public sealed class MobileFinancialOperatingSystemProjectionServiceTests
             new FinanceToolState
             {
                 ClientProfileId = clientProfileId,
+            HouseholdAccountId = clientProfileId,
                 ToolId = "ExpenseLens",
                 CreatedUtc = olderUtc,
                 UpdatedUtc = olderUtc,
@@ -467,37 +132,16 @@ public sealed class MobileFinancialOperatingSystemProjectionServiceTests
             new FinanceToolState
             {
                 ClientProfileId = clientProfileId,
+            HouseholdAccountId = clientProfileId,
                 ToolId = "ExpenseLens",
                 CreatedUtc = newestUtc,
                 UpdatedUtc = newestUtc,
-                JsonState =
-                    """
-                    {
-                      "mobileWeekProjection": {
-                        "schemaVersion": 1,
-                        "weekId": "newest-saved-state",
-                        "startDate": "2026-08-01",
-                        "endDate": "2026-08-07",
-                        "openingCashCents": 987654,
-                        "incomeCents": 0,
-                        "debitBillsCents": 0,
-                        "creditBillsCents": 0,
-                        "requiredDebtMinimumCents": 0,
-                        "extraDebtPaymentCents": 0,
-                        "closingCashCents": 987654,
-                        "openingDebtCents": 0,
-                        "closingDebtCents": 0,
-                        "status": "current",
-                        "weekLabel": "Aug 1 – Aug 7",
-                        "events": []
-                      }
-                    }
-                    """
+                JsonState = LiveInputs
             });
 
         await db.SaveChangesAsync();
 
-        var snapshot = await new MobileFinancialOperatingSystemProjectionService(db)
+        var snapshot = await CreateService(db)
             .ProjectAsync(
                 clientProfileId,
                 new DateOnly(2026, 8, 3));
@@ -505,13 +149,12 @@ public sealed class MobileFinancialOperatingSystemProjectionServiceTests
         var week = Assert.IsType<MobileFinancialWeekAtGlance>(
             snapshot.WeekAtGlance);
         Assert.Equal("Available", snapshot.Projection.Status);
-        Assert.Equal("newest-saved-state", week.WeekKey);
-        Assert.Equal(987654, week.OpeningCashCents);
+        Assert.Equal(500000, snapshot.MonthAtGlance!.IncomeCents);
         Assert.Equal(newestUtc, snapshot.Freshness.FinanceStateUpdatedUtc);
     }
 
     [Fact]
-    public async Task ProjectAsync_ReturnsUnavailableWhenMobileWeekProjectionIsMissing()
+    public async Task ProjectAsync_CalculatesWhenMobileWeekProjectionIsMissing()
     {
         await using var db = CreateDbContext();
 
@@ -520,6 +163,7 @@ public sealed class MobileFinancialOperatingSystemProjectionServiceTests
         db.FinanceToolStates.Add(new FinanceToolState
         {
             ClientProfileId = clientProfileId,
+            HouseholdAccountId = clientProfileId,
             ToolId = "ExpenseLens",
             JsonState =
                 """
@@ -533,19 +177,16 @@ public sealed class MobileFinancialOperatingSystemProjectionServiceTests
         await db.SaveChangesAsync();
 
         var service =
-            new MobileFinancialOperatingSystemProjectionService(db);
+            CreateService(db);
 
         var snapshot =
             await service.ProjectAsync(
                 clientProfileId,
                 new DateOnly(2026, 7, 26));
 
-        Assert.Equal("Unavailable", snapshot.Projection.Status);
-        Assert.Equal(
-            "MOBILE_WEEK_PROJECTION_NOT_FOUND",
-            snapshot.Projection.ReasonCode);
-
-        Assert.Null(snapshot.WeekAtGlance);
+        Assert.Equal("Available", snapshot.Projection.Status);
+        Assert.NotNull(snapshot.WeekAtGlance);
+        Assert.NotNull(snapshot.MonthAtGlance);
     }
 
     [Fact]
@@ -558,6 +199,7 @@ public sealed class MobileFinancialOperatingSystemProjectionServiceTests
         db.FinanceToolStates.Add(new FinanceToolState
         {
             ClientProfileId = clientProfileId,
+            HouseholdAccountId = clientProfileId,
             ToolId = "ExpenseLens",
             JsonState = "{invalid-json"
         });
@@ -565,7 +207,7 @@ public sealed class MobileFinancialOperatingSystemProjectionServiceTests
         await db.SaveChangesAsync();
 
         var service =
-            new MobileFinancialOperatingSystemProjectionService(db);
+            CreateService(db);
 
         var snapshot =
             await service.ProjectAsync(
@@ -581,7 +223,7 @@ public sealed class MobileFinancialOperatingSystemProjectionServiceTests
     }
 
     [Fact]
-    public async Task ProjectAsync_ReturnsUnavailableForUnsupportedSchema()
+    public async Task ProjectAsync_ReturnsUnavailableWhenOnlyCachedOutputExists()
     {
         await using var db = CreateDbContext();
 
@@ -590,6 +232,7 @@ public sealed class MobileFinancialOperatingSystemProjectionServiceTests
         db.FinanceToolStates.Add(new FinanceToolState
         {
             ClientProfileId = clientProfileId,
+            HouseholdAccountId = clientProfileId,
             ToolId = "ExpenseLens",
             JsonState =
                 """
@@ -604,7 +247,7 @@ public sealed class MobileFinancialOperatingSystemProjectionServiceTests
         await db.SaveChangesAsync();
 
         var service =
-            new MobileFinancialOperatingSystemProjectionService(db);
+            CreateService(db);
 
         var snapshot =
             await service.ProjectAsync(
@@ -613,7 +256,7 @@ public sealed class MobileFinancialOperatingSystemProjectionServiceTests
 
         Assert.Equal("Unavailable", snapshot.Projection.Status);
         Assert.Equal(
-            "MOBILE_WEEK_SCHEMA_UNSUPPORTED",
+            "EXPENSE_LENS_INPUTS_MISSING",
             snapshot.Projection.ReasonCode);
 
         Assert.Null(snapshot.WeekAtGlance);
@@ -643,17 +286,18 @@ public sealed class MobileFinancialOperatingSystemProjectionServiceTests
         db.FinanceToolStates.Add(new FinanceToolState
         {
             ClientProfileId = clientProfileId,
+            HouseholdAccountId = clientProfileId,
             ToolId = "ExpenseLens",
             JsonState =
                 """
                 {
                   "incomeStreams": {
                     "primary": [
-                      { "id": "consulting", "label": "Avery Consulting" }
+                      { "id": "consulting", "label": "Avery Consulting", "amount": "1000", "anchorDate": "2026-07-25" }
                     ],
                     "secondary": [
-                      { "id": "pay", "label": "" },
-                      { "id": "salary", "label": "Daphne's Salary" }
+                      { "id": "pay", "label": "", "amount": "1000", "anchorDate": "2026-07-26" },
+                      { "id": "salary", "label": "Daphne's Salary", "amount": "1000", "anchorDate": "2026-07-27" }
                     ]
                   },
                   "mobileWeekProjection": {
@@ -704,7 +348,7 @@ public sealed class MobileFinancialOperatingSystemProjectionServiceTests
         });
         await db.SaveChangesAsync();
 
-        var snapshot = await new MobileFinancialOperatingSystemProjectionService(db)
+        var snapshot = await CreateService(db)
             .ProjectAsync(
                 clientProfileId,
                 new DateOnly(2026, 7, 26));
@@ -734,10 +378,12 @@ public sealed class MobileFinancialOperatingSystemProjectionServiceTests
         db.FinanceToolStates.Add(new FinanceToolState
         {
             ClientProfileId = clientProfileId,
+            HouseholdAccountId = clientProfileId,
             ToolId = "ExpenseLens",
             JsonState =
                 """
                 {
+                  "incomeStreams": { "secondary": [{ "id": "pay", "amount": "1000", "anchorDate": "2026-07-26" }] },
                   "mobileWeekProjection": {
                     "schemaVersion": 1,
                     "weekId": "2026-07-24_2026-07-30",
@@ -770,7 +416,7 @@ public sealed class MobileFinancialOperatingSystemProjectionServiceTests
         });
         await db.SaveChangesAsync();
 
-        var snapshot = await new MobileFinancialOperatingSystemProjectionService(db)
+        var snapshot = await CreateService(db)
             .ProjectAsync(
                 clientProfileId,
                 new DateOnly(2026, 7, 26));
@@ -784,7 +430,7 @@ public sealed class MobileFinancialOperatingSystemProjectionServiceTests
         await using var db = CreateDbContext();
 
         var service =
-            new MobileFinancialOperatingSystemProjectionService(db);
+            CreateService(db);
 
         var exception = await Assert.ThrowsAsync<ArgumentException>(
             () => service.ProjectAsync(
@@ -800,7 +446,7 @@ public sealed class MobileFinancialOperatingSystemProjectionServiceTests
         await using var db = CreateDbContext();
 
         var service =
-            new MobileFinancialOperatingSystemProjectionService(db);
+            CreateService(db);
 
         using var cancellationSource =
             new CancellationTokenSource();
@@ -832,6 +478,27 @@ public sealed class MobileFinancialOperatingSystemProjectionServiceTests
         Assert.Equal(2, methods.Length);
         Assert.Contains("ProjectAsync", methods);
         Assert.Contains("ProjectAgentAsync", methods);
+    }
+
+    internal const string LiveInputs = """
+        {
+          "incomeStreams": { "primary": [{ "id": "salary", "label": "Salary", "amount": "5000", "frequency": "monthly", "anchorDate": "2026-01-02" }] },
+          "categories": [
+            { "id": "card", "name": "Credit card payment", "amount": "200", "due": "2026-01-03", "frequency": "monthly", "paymentMethod": "Debit" },
+            { "id": "mortgage", "name": "Mortgage", "amount": "1200", "due": "2026-01-04", "frequency": "monthly", "paymentMethod": "Debit" },
+            { "id": "student", "name": "Student loan", "amount": "100", "due": "2026-01-05", "frequency": "monthly", "paymentMethod": "Debit" },
+            { "id": "insurance", "name": "Insurance", "amount": "300", "due": "2026-01-06", "frequency": "monthly", "paymentMethod": "Debit" }
+          ],
+          "mobileWeekProjection": { "schemaVersion": 999, "incomeCents": 1 }
+        }
+        """;
+
+    private static MobileFinancialOperatingSystemProjectionService CreateService(MasterAppDbContext db)
+    {
+        var households = new Mock<IHouseholdMembershipService>();
+        households.Setup(h => h.ResolveActiveAccessAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((Guid id, CancellationToken _) => new HouseholdAccessResolution(true, id, id, null, null));
+        return new MobileFinancialOperatingSystemProjectionService(db, households.Object);
     }
 
     private static MasterAppDbContext CreateDbContext()

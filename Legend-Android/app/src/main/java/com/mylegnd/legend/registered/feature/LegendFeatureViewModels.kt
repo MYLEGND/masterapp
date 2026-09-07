@@ -222,7 +222,20 @@ class AgentWorkspaceViewModel(private val repository: AgentWorkspaceRepository, 
         _clientCreationPortal.value = LoadState.Idle
     }
 }
-class FinancialViewModel(private val repository: FinancialRepository, private val role: String) : ViewModel() { private val _state = MutableStateFlow<LoadState<FinancialSnapshot>>(LoadState.Idle); val state: StateFlow<LoadState<FinancialSnapshot>> = _state.asStateFlow(); fun load() = viewModelScope.launch { _state.value = LoadState.Loading; _state.value = repository.load(role) } }
+class FinancialViewModel(private val repository: FinancialRepository, private val role: String) : ViewModel() {
+    private val _state = MutableStateFlow<LoadState<FinancialSnapshot>>(LoadState.Idle)
+    val state: StateFlow<LoadState<FinancialSnapshot>> = _state.asStateFlow()
+    private var refreshJob: Job? = null
+
+    fun load(): Job {
+        refreshJob?.takeIf { it.isActive }?.let { return it }
+        return viewModelScope.launch {
+            if (_state.value !is LoadState.Data) _state.value = LoadState.Loading
+            _state.value = repository.load(role)
+        }.also { refreshJob = it }
+    }
+}
+
 class MessagingViewModel(private val repository: MessagingRepository, private val role: String) : ViewModel() {
     private val _conversations = MutableStateFlow<LoadState<List<ConversationSummary>>>(LoadState.Idle)
     val conversations: StateFlow<LoadState<List<ConversationSummary>>> = _conversations.asStateFlow()
