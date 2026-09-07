@@ -8128,7 +8128,6 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
                 monthlyMinimumPaymentsCents: 0,
                 projectedPayoffDate: null,
                 projectedInterestExcluded: true,
-                extraPaymentStrategy: 'remaining-cash',
                 paymentHistory: [],
                 adjustments: []
             };
@@ -9642,7 +9641,7 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
                         ? 'Finance page balance as of this date'
                     : eventItem.kind === 'debtAdjustment'
                         ? 'Manual debt balance adjustment'
-                        : 'Remaining-cash debt payoff';
+                        : 'Monthly extra debt payment';
 
             const signedImpactCents = eventItem.kind === 'income'
                 ? Math.abs(Math.round(eventItem.amountCents || eventItem.impactCashCents || 0))
@@ -10190,6 +10189,28 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
                         isOpen: projectionAdjustmentsExpanded,
                         content: `
                             <div class="el-projection-adjustments">
+                                <div class="el-projection-form-grid">
+                                    <label class="el-projection-field">
+                                        <span>Monthly extra debt payment</span>
+                                        <select class="form-control" data-field="extra-debt-mode">
+                                            <option value="remaining-cash" ${projectionSettingsState.extraDebtPaymentMode === 'remaining-cash' ? 'selected' : ''}>All remaining cash</option>
+                                            <option value="percentage" ${projectionSettingsState.extraDebtPaymentMode === 'percentage' ? 'selected' : ''}>Percentage of remaining monthly income</option>
+                                            <option value="fixed" ${projectionSettingsState.extraDebtPaymentMode === 'fixed' ? 'selected' : ''}>Fixed dollar amount per month</option>
+                                        </select>
+                                    </label>
+                                    <label class="el-projection-field">
+                                        <span>Percentage after bills (%)</span>
+                                        <input type="number" class="form-control" data-field="extra-debt-percent" required ${projectionSettingsState.extraDebtPaymentMode !== 'percentage' ? 'disabled' : ''} min="0" max="100" step="0.01" value="${expenseLensEscapeAttr(projectionSettingsState.extraDebtPaymentPercent ?? 100)}" />
+                                    </label>
+                                    <label class="el-projection-field">
+                                        <span>Monthly amount ($)</span>
+                                        <input type="number" class="form-control" data-field="extra-debt-amount" required ${projectionSettingsState.extraDebtPaymentMode !== 'fixed' ? 'disabled' : ''} min="0" step="0.01" value="${expenseLensEscapeAttr(((projectionSettingsState.extraDebtPaymentAmountCents || 0) / 100).toFixed(2))}" />
+                                    </label>
+                                    <div class="el-projection-form-actions">
+                                        <button type="button" class="btn el-toolbar-btn el-toolbar-btn--compact" data-action="save-extra-debt">Save Payment Plan</button>
+                                    </div>
+                                </div>
+                                <p class="el-projection-notice">Percentage uses this month's income after bills and required debt payments. Every extra payment is capped by available cash after your reserve and the outstanding debt. The rest stays in cash. Set 0 to pause extra payments. Your plan applies across projected months.</p>
                                 <div class="el-projection-adjustment-form">
                                     <label class="el-projection-field">
                                         <span>Date</span>
@@ -10304,13 +10325,15 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
 
                             ${!isBusinessExpenseLens
                                 ? buildProjectionMetricHtml({
-                                    label: 'Extra Debt Payoff · Remaining Cash',
+                                    label: 'Extra Debt Payoff · Payment Plan',
                                     value: expenseLensFormatCurrency(
                                         selectedMonth.extraDebtPaymentsCents
                                     ),
-                                    note: debtState.projectedInterestExcluded === false
-                                        ? 'Using configured debt assumptions.'
-                                        : 'Applied only after debit and credit bills.',
+                                    note: projectionSettingsState.extraDebtPaymentMode === 'percentage'
+                                        ? `${projectionSettingsState.extraDebtPaymentPercent}% of monthly income after bills and required payments.`
+                                        : projectionSettingsState.extraDebtPaymentMode === 'fixed'
+                                            ? `${expenseLensFormatCurrency(projectionSettingsState.extraDebtPaymentAmountCents)} per month, limited to available cash and debt.`
+                                            : 'All available cash after bills and required payments.',
                                     tone: selectedMonth.extraDebtPaymentsCents > 0
                                         ? 'debt'
                                         : 'neutral',
@@ -10409,6 +10432,22 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
                     elExpandedWeekId = elExpandedWeekId === weekId ? '' : weekId;
                     renderWeekPanel();
                 });
+            });
+
+            const extraDebtModeField = weekPanel.querySelector('[data-field="extra-debt-mode"]');
+            extraDebtModeField?.addEventListener('change', () => {
+                weekPanel.querySelector('[data-field="extra-debt-percent"]').disabled = extraDebtModeField.value !== 'percentage';
+                weekPanel.querySelector('[data-field="extra-debt-amount"]').disabled = extraDebtModeField.value !== 'fixed';
+            });
+            weekPanel.querySelector('[data-action="save-extra-debt"]')?.addEventListener('click', () => {
+                const mode = extraDebtModeField.value;
+                const field = weekPanel.querySelector(mode === 'percentage' ? '[data-field="extra-debt-percent"]' : '[data-field="extra-debt-amount"]');
+                if (mode !== 'remaining-cash' && !field.reportValidity()) return;
+                projectionSettingsState.extraDebtPaymentMode = mode;
+                if (mode === 'percentage') projectionSettingsState.extraDebtPaymentPercent = Number(field.value);
+                if (mode === 'fixed') projectionSettingsState.extraDebtPaymentAmountCents = Math.round(Number(field.value) * 100);
+                invalidateExpenseLensProjection();
+                refreshExpenseLensViews({ sortRows: false });
             });
 
             weekPanel.querySelector('[data-action="add-adjustment"]')?.addEventListener('click', () => {

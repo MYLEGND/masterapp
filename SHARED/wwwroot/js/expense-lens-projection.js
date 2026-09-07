@@ -342,7 +342,13 @@
             "creditPaymentDayOfMonth"
         );
 
+        const paymentMode = ["remaining-cash", "percentage", "fixed"].includes(source.extraDebtPaymentMode)
+            ? source.extraDebtPaymentMode : "remaining-cash";
+        const percentage = Number(source.extraDebtPaymentPercent ?? 100);
         return {
+            extraDebtPaymentMode: paymentMode,
+            extraDebtPaymentPercent: Number.isFinite(percentage) ? Math.min(100, Math.max(0, percentage)) : 100,
+            extraDebtPaymentAmountCents: clampCurrencyFloor(parseStoredCentsOrMoney(source.extraDebtPaymentAmountCents, source.extraDebtPaymentAmount ?? 0)),
             protectedCashReserveCents: clampCurrencyFloor(
                 parseStoredCentsOrMoney(
                     source?.protectedCashReserveCents,
@@ -504,7 +510,6 @@
             monthlyMinimumPaymentsCents,
             projectedPayoffDate: rawDebt?.projectedPayoffDate ? String(rawDebt.projectedPayoffDate) : null,
             projectedInterestExcluded: rawDebt?.projectedInterestExcluded !== false,
-            extraPaymentStrategy: String(rawDebt?.extraPaymentStrategy || "remaining-cash").trim() || "remaining-cash",
             paymentHistory: Array.isArray(rawDebt?.paymentHistory) ? rawDebt.paymentHistory : [],
             adjustments: normalizeDebtAdjustments(rawDebt?.adjustments)
         };
@@ -1413,7 +1418,14 @@
 
             if (runningDebtCents > 0 && weekRows.length > 0) {
                 const availableForExtraDebtCents = Math.max(0, runningCashCents - protectedCashReserveCents);
-                const monthEndExtraDebtPaymentCents = Math.min(availableForExtraDebtCents, runningDebtCents);
+                const monthlySurplusCents = Math.max(0, scheduledIncomeCents - requiredExpensesCents);
+                const settings = state.projectionSettings;
+                const requestedExtraDebtCents = settings.extraDebtPaymentMode === "percentage"
+                    ? Math.round(monthlySurplusCents * settings.extraDebtPaymentPercent / 100)
+                    : settings.extraDebtPaymentMode === "fixed"
+                        ? settings.extraDebtPaymentAmountCents
+                        : availableForExtraDebtCents;
+                const monthEndExtraDebtPaymentCents = Math.min(requestedExtraDebtCents, availableForExtraDebtCents, runningDebtCents);
                 if (monthEndExtraDebtPaymentCents > 0) {
                     runningCashCents -= monthEndExtraDebtPaymentCents;
                     runningDebtCents = clampCurrencyFloor(runningDebtCents - monthEndExtraDebtPaymentCents);
@@ -1454,7 +1466,7 @@
                         monthKey,
                         weekId: targetWeek.id,
                         status: extraDebtStatus,
-                        note: "Remaining cash strategy"
+                        note: `Extra debt payment: ${state.projectionSettings.extraDebtPaymentMode}`
                     });
 
                     if (!payoffDate && runningDebtCents === 0) {
