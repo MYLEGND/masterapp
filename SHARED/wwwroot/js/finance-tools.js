@@ -8513,7 +8513,9 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
             syncPersonalIncomeDisplay();
         };
 
+        let loadingExpenseLensState = false;
         const saveExpenseLensState = (extraState = {}) => {
+            if (loadingExpenseLensState) return null;
             try {
                 const normalizedState = applyNormalizedExpenseLensMemory(buildRawExpenseLensState(extraState));
                 savePersistedState(expenseLensToolStateId, normalizedState);
@@ -8523,6 +8525,7 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
         };
 
         const loadExpenseLensState = async () => {
+            loadingExpenseLensState = true;
             try {
                 const state = applyNormalizedExpenseLensMemory(await loadPersistedState(expenseLensToolStateId));
                 categoriesContainer.innerHTML = '';
@@ -8596,6 +8599,7 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
                 }
                 refreshExpenseLens({ sortRows: true });
             } catch (e) { console.error(e); }
+            finally { loadingExpenseLensState = false; }
         };
 
         const EL_WEEK_FILTER_ALL_VALUE = 'all';
@@ -9229,11 +9233,8 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
 
             if (expenseLensProjectionApi?.projectExpenseLensTimeline) {
                 latestExpenseLensProjection = getExpenseLensProjection({ force: true });
-                const projectedCurrentMonth = latestExpenseLensProjection?.months?.find?.((month) => month.monthKey === latestExpenseLensProjection.currentMonthKey) || null;
-                debtState.projectedPayoffDate = latestExpenseLensProjection?.summary?.debtPayoffDate || null;
-                if (projectedCurrentMonth && !isBusinessExpenseLens) {
-                    debtState.currentBalanceCents = Math.max(0, Math.round(projectedCurrentMonth.endingDebtCents || 0));
-                }
+                // Forecast balances are outputs of the shared calculator, never saved
+                // over the debt entered on the finance page.
             }
 
             saveExpenseLensState({ monthlyExpenseTotal: monthlyTotalSpent, monthlyRemaining });
@@ -9589,6 +9590,7 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
             if (
                 eventItem?.kind === 'extraDebt'
                 || eventItem?.kind === 'debtAdjustment'
+                || eventItem?.kind === 'debtBaseline'
             ) {
                 return 'debt';
             }
@@ -9618,6 +9620,7 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
                     return 'Credit Bill';
 
                 case 'debt':
+                    if (eventItem?.kind === 'debtBaseline') return 'Recorded Debt';
                     return eventItem?.kind === 'debtAdjustment'
                         ? 'Debt Adjustment'
                         : 'Debt Payment';
@@ -9635,6 +9638,8 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
                 ? `${elFrequencyLabel(eventItem.frequency)} pay hit`
                 : eventItem.kind === 'expense'
                     ? `${elFrequencyLabel(eventItem.frequency)} · ${elGetPaymentMethodMeta(eventItem.paymentMethod).label}`
+                    : eventItem.kind === 'debtBaseline'
+                        ? 'Finance page balance as of this date'
                     : eventItem.kind === 'debtAdjustment'
                         ? 'Manual debt balance adjustment'
                         : 'Remaining-cash debt payoff';
@@ -10137,7 +10142,8 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
                                                 <input type="text"
                                                        class="legend-money-field"
                                                        data-field="override-amount"
-                                                       value="${expenseLensEscapeAttr(expenseLensFormatInputValue(override?.amountCents ?? selectedMonth.openingCashCents, { allowZero: true }))}" />
+                                                       value="${override ? expenseLensEscapeAttr(expenseLensFormatInputValue(override.amountCents, { allowZero: true })) : ''}"
+                                                       placeholder="Calculated automatically" />
                                             </div>
                                         </label>
                                         <label class="el-projection-field">
@@ -10365,7 +10371,12 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
             weekPanel.querySelector('[data-action="save-override"]')?.addEventListener('click', () => {
                 const amountField = weekPanel.querySelector('[data-field="override-amount"]');
                 const noteField = weekPanel.querySelector('[data-field="override-note"]');
-                setStartingBalanceOverride(selectedMonth.monthKey, amountField?.value || '0', noteField?.value || '');
+                const amount = amountField?.value?.trim() || '';
+                if (!amount) {
+                    clearStartingBalanceOverride(selectedMonth.monthKey);
+                    return;
+                }
+                setStartingBalanceOverride(selectedMonth.monthKey, amount, noteField?.value || '');
             });
 
             weekPanel.querySelector('[data-action="clear-override"]')?.addEventListener('click', () => {
@@ -10537,6 +10548,9 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
             elDebtInput.addEventListener('input', () => {
                 const next = readDebtInputCents();
                 if (!next.valid) return;
+                if (next.cents !== debtState.openingBalanceCents) {
+                    debtState.asOfDate = expenseLensProjectionApi.formatDateKey(new Date());
+                }
                 debtState.openingBalanceCents = next.cents;
                 debtState.currentBalanceCents = next.cents;
                 debtState.projectedPayoffDate = null;
