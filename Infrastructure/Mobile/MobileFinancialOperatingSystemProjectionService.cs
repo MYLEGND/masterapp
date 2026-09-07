@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text.Json;
 using Infrastructure.Data;
+using Infrastructure.Households;
 using Microsoft.EntityFrameworkCore;
 
 namespace Infrastructure.Mobile;
@@ -8,8 +9,7 @@ namespace Infrastructure.Mobile;
 /// <summary>
 /// Produces a read-only mobile projection from the authenticated account's
 /// existing ClientApp or AgentPortal finance authority. This service reads
-/// persisted projection data only and never owns, edits, schedules, or
-/// recalculates financial state.
+/// the shared web calculator output and never owns, edits, schedules, or persists financial state.
 /// </summary>
 public interface IMobileFinancialOperatingSystemProjectionService
 {
@@ -26,11 +26,11 @@ public interface IMobileFinancialOperatingSystemProjectionService
 
 /// <summary>
 /// Selects the authenticated account's actual current calendar period from
-/// the authoritative web-authored Expense Lens timeline. Client and agent
+/// the authoritative Expense Lens inputs. Client and agent
 /// states remain separately owned and are never crossed or merged.
 ///
 /// Expense Lens remains the only calculator. This service performs a direct
-/// date selection and transport mapping from persisted JSON into immutable
+/// execution of the shared web calculator and transport mapping from JSON into immutable
 /// mobile contracts.
 /// </summary>
 public sealed class MobileFinancialOperatingSystemProjectionService
@@ -40,11 +40,13 @@ public sealed class MobileFinancialOperatingSystemProjectionService
     private const int SupportedSchemaVersion = 1;
 
     private readonly MasterAppDbContext _db;
+    private readonly IHouseholdMembershipService _households;
 
     public MobileFinancialOperatingSystemProjectionService(
-        MasterAppDbContext db)
+        MasterAppDbContext db, IHouseholdMembershipService households)
     {
         _db = db;
+        _households = households;
     }
 
     public async Task<MobileFinancialOperatingSystemSnapshot> ProjectAsync(
@@ -63,16 +65,17 @@ public sealed class MobileFinancialOperatingSystemProjectionService
 
         var generatedUtc = DateTime.UtcNow;
 
+        var scope = await _households.ResolveActiveAccessAsync(clientProfileId, cancellationToken);
+        if (!scope.HasActiveMembership || !scope.HouseholdAccountId.HasValue)
+            return BuildUnavailable(generatedUtc, null, "MOBILE_FINANCIAL_HOUSEHOLD_ACCESS_REQUIRED",
+                "Financial reporting requires an active household account.");
+
         var state = await _db.FinanceToolStates
             .AsNoTracking()
             .Where(row =>
-                row.ClientProfileId == clientProfileId &&
+                row.HouseholdAccountId == scope.HouseholdAccountId.Value &&
                 row.ToolId == ExpenseLensToolId)
-            // Historical profile-scoped Expense Lens rows can coexist from
-            // before household-scoped persistence was introduced. The saved
-            // state with the newest update is the authoritative projection;
-            // choosing it preserves the existing data and prevents a stale
-            // duplicate from making the read-only mobile bridge fail.
+            // Read only the same household authority used by both web finance pages.
             .OrderByDescending(row => row.UpdatedUtc)
             .ThenByDescending(row => row.CreatedUtc)
             .ThenByDescending(row => row.Id)
@@ -86,10 +89,10 @@ public sealed class MobileFinancialOperatingSystemProjectionService
             generatedUtc,
             currentDate,
             financeStateRoot => ResolveLabelContextAsync(
-                clientProfileId,
+                scope.SubscriptionOwnerClientProfileId ?? clientProfileId,
                 financeStateRoot,
                 cancellationToken),
-            ownerLabel: "client");
+            ownerLabel: "client", cancellationToken);
     }
 
     public async Task<MobileFinancialOperatingSystemSnapshot> ProjectAgentAsync(
@@ -111,12 +114,14 @@ public sealed class MobileFinancialOperatingSystemProjectionService
         var state = await _db.AgentFinanceToolStates
             .AsNoTracking()
             .Where(row =>
-                row.AgentUserId.ToLower() == normalizedAgentUserId &&
+                row.AgentUserId.Trim().ToLower() == normalizedAgentUserId &&
                 row.ToolId == ExpenseLensToolId)
+            .OrderByDescending(row => row.UpdatedUtc)
+            .ThenByDescending(row => row.Id)
             .Select(row => new MobilePersistedExpenseLensState(
                 row.JsonState,
                 row.UpdatedUtc))
-            .SingleOrDefaultAsync(cancellationToken);
+            .FirstOrDefaultAsync(cancellationToken);
 
         return await ProjectPersistedStateAsync(
             state,
@@ -127,7 +132,7 @@ public sealed class MobileFinancialOperatingSystemProjectionService
                     ClientFirstName: null,
                     HouseholdFirstName: null,
                     IncomeLabels: ReadSavedIncomeLabels(financeStateRoot))),
-            ownerLabel: "agent");
+            ownerLabel: "agent", cancellationToken);
     }
 
     private async Task<MobileFinancialOperatingSystemSnapshot>
@@ -137,7 +142,7 @@ public sealed class MobileFinancialOperatingSystemProjectionService
             DateOnly currentDate,
             Func<JsonElement, Task<MobileFinancialLabelContext>>
                 resolveLabelContext,
-            string ownerLabel)
+            string ownerLabel, CancellationToken cancellationToken)
     {
         if (state is null)
         {
@@ -171,9 +176,13 @@ public sealed class MobileFinancialOperatingSystemProjectionService
                     "The saved Expense Lens state is not a JSON object.");
             }
 
-            var period = ResolveCurrentPeriod(
-                document.RootElement,
-                currentDate);
+            if (!new[] { "categories", "expenses", "incomeStreams", "primaryIncome", "income", "debt" }
+                .Any(key => document.RootElement.TryGetProperty(key, out _)))
+                return BuildUnavailable(generatedUtc, state.UpdatedUtc, "EXPENSE_LENS_INPUTS_MISSING",
+                    "Financial reporting needs saved income, expenses, or debt inputs.");
+
+            using var liveProjection = ExpenseLensLiveProjection.Project(document.RootElement, currentDate, cancellationToken);
+            var period = ResolveCurrentPeriod(liveProjection.RootElement, currentDate);
             if (!period.Succeeded)
             {
                 return BuildUnavailable(
@@ -185,10 +194,7 @@ public sealed class MobileFinancialOperatingSystemProjectionService
 
             var labelContext = await resolveLabelContext(document.RootElement);
             var week = PersonalizeWeek(
-                MapWeek(period.WeekElement!.Value) with
-                {
-                    PressureStatus = "current"
-                },
+                MapWeek(period.WeekElement!.Value),
                 labelContext);
             MobileFinancialMonthAtGlance? month = null;
             if (period.MonthElement.HasValue)
@@ -197,18 +203,7 @@ public sealed class MobileFinancialOperatingSystemProjectionService
                     period.MonthElement.Value) ??
                     throw new MobileProjectionMappingException(
                         "The current mobile month projection is incomplete.");
-                month = mappedMonth with
-                {
-                    PressureStatus = "current",
-                    Weeks = mappedMonth.Weeks
-                        .Select(summary => summary with
-                        {
-                            PressureStatus = ResolveWeekStatus(
-                                summary,
-                                currentDate)
-                        })
-                        .ToArray()
-                };
+                month = mappedMonth;
             }
 
             return new MobileFinancialOperatingSystemSnapshot(
@@ -233,7 +228,7 @@ public sealed class MobileFinancialOperatingSystemProjectionService
                         AvailabilityStatus: "Available",
                         UpdatedUtc: state.UpdatedUtc,
                         Summary: month is null
-                            ? "The actual current week projection is available. Save Expense Lens to publish the synchronized month timeline."
+                            ? "The current week projection is available."
                             : "The actual current week and month projections are available.",
                         Metrics: Array.Empty<MobileFinancialMetric>())
                 });
@@ -257,184 +252,20 @@ public sealed class MobileFinancialOperatingSystemProjectionService
         }
     }
 
-    private static MobileCurrentPeriodResolution ResolveCurrentPeriod(
-        JsonElement financeStateRoot,
-        DateOnly currentDate)
+    private static MobileCurrentPeriodResolution ResolveCurrentPeriod(JsonElement projection, DateOnly currentDate)
     {
-        if (financeStateRoot.TryGetProperty(
-                "mobilePeriodProjection",
-                out var timelineElement) &&
-            timelineElement.ValueKind is not
-                JsonValueKind.Null and not
-                JsonValueKind.Undefined)
-        {
-            if (timelineElement.ValueKind != JsonValueKind.Object)
-            {
-                return MobileCurrentPeriodResolution.Failure(
-                    "MOBILE_PERIOD_PROJECTION_INVALID",
-                    "The saved Expense Lens period projection is invalid.");
-            }
+        if (!projection.TryGetProperty("mobileWeekProjection", out var week) || week.ValueKind != JsonValueKind.Object ||
+            !projection.TryGetProperty("mobileMonthProjection", out var month) || month.ValueKind != JsonValueKind.Object)
+            return MobileCurrentPeriodResolution.Failure("EXPENSE_LENS_PERIOD_UNAVAILABLE",
+                "The current period could not be calculated from the saved finance inputs.");
 
-            if (ReadRequiredInt32(timelineElement, "schemaVersion") !=
-                SupportedSchemaVersion)
-            {
-                return MobileCurrentPeriodResolution.Failure(
-                    "MOBILE_PERIOD_SCHEMA_UNSUPPORTED",
-                    "The saved Expense Lens period projection schema is not supported.");
-            }
-
-            if (!timelineElement.TryGetProperty(
-                    "periods",
-                    out var periodsElement) ||
-                periodsElement.ValueKind != JsonValueKind.Array)
-            {
-                return MobileCurrentPeriodResolution.Failure(
-                    "MOBILE_PERIOD_PROJECTION_INCOMPLETE",
-                    "The saved Expense Lens period projection does not contain calendar periods.");
-            }
-
-            var currentMonthKey = currentDate.ToString(
-                "yyyy-MM",
-                CultureInfo.InvariantCulture);
-            foreach (var periodElement in periodsElement.EnumerateArray())
-            {
-                if (periodElement.ValueKind != JsonValueKind.Object ||
-                    !periodElement.TryGetProperty("monthKey", out var monthKeyElement) ||
-                    monthKeyElement.ValueKind != JsonValueKind.String ||
-                    !string.Equals(
-                        monthKeyElement.GetString(),
-                        currentMonthKey,
-                        StringComparison.Ordinal))
-                {
-                    continue;
-                }
-
-                if (!periodElement.TryGetProperty(
-                        "monthSnapshot",
-                        out var monthElement) ||
-                    monthElement.ValueKind != JsonValueKind.Object ||
-                    !periodElement.TryGetProperty(
-                        "weekSnapshots",
-                        out var weeksElement) ||
-                    weeksElement.ValueKind != JsonValueKind.Array)
-                {
-                    return MobileCurrentPeriodResolution.Failure(
-                        "MOBILE_PERIOD_PROJECTION_INCOMPLETE",
-                        $"The authoritative Expense Lens period for {currentMonthKey} is incomplete.");
-                }
-
-                var snapshotMonthKey = ReadRequiredString(
-                    monthElement,
-                    "monthKey");
-                var monthStartDate = ReadRequiredDate(
-                    monthElement,
-                    "startDate");
-                var monthEndDate = ReadRequiredDate(
-                    monthElement,
-                    "endDate");
-                if (!string.Equals(
-                        snapshotMonthKey,
-                        currentMonthKey,
-                        StringComparison.Ordinal) ||
-                    currentDate < monthStartDate ||
-                    currentDate > monthEndDate)
-                {
-                    return MobileCurrentPeriodResolution.Failure(
-                        "MOBILE_PERIOD_PROJECTION_MISMATCH",
-                        $"The authoritative Expense Lens period for {currentMonthKey} does not match its month snapshot.");
-                }
-
-                foreach (var weekElement in weeksElement.EnumerateArray())
-                {
-                    if (weekElement.ValueKind != JsonValueKind.Object)
-                    {
-                        continue;
-                    }
-
-                    var startDate = ReadRequiredDate(weekElement, "startDate");
-                    var endDate = ReadRequiredDate(weekElement, "endDate");
-                    if (currentDate >= startDate && currentDate <= endDate)
-                    {
-                        ValidateSnapshotSchema(weekElement, "week");
-                        ValidateSnapshotSchema(monthElement, "month");
-                        return MobileCurrentPeriodResolution.Success(
-                            weekElement,
-                            monthElement);
-                    }
-                }
-
-                return MobileCurrentPeriodResolution.Failure(
-                    "MOBILE_CURRENT_WEEK_NOT_FOUND",
-                    $"The authoritative Expense Lens period does not contain the week for {currentDate:yyyy-MM-dd}.");
-            }
-
-            return MobileCurrentPeriodResolution.Failure(
-                "MOBILE_CURRENT_PERIOD_NOT_FOUND",
-                $"Expense Lens has no authoritative projection for the current month {currentMonthKey}. Open and save Expense Lens to extend the synchronized timeline.");
-        }
-
-        return ResolveLegacyCurrentPeriod(
-            financeStateRoot,
-            currentDate);
-    }
-
-    private static MobileCurrentPeriodResolution ResolveLegacyCurrentPeriod(
-        JsonElement financeStateRoot,
-        DateOnly currentDate)
-    {
-        if (!financeStateRoot.TryGetProperty(
-                "mobileWeekProjection",
-                out var weekElement) ||
-            weekElement.ValueKind is
-                JsonValueKind.Null or
-                JsonValueKind.Undefined)
-        {
-            return MobileCurrentPeriodResolution.Failure(
-                "MOBILE_WEEK_PROJECTION_NOT_FOUND",
-                "Open and save Expense Lens to publish the synchronized mobile period projection.");
-        }
-
-        if (weekElement.ValueKind != JsonValueKind.Object)
-        {
-            return MobileCurrentPeriodResolution.Failure(
-                "MOBILE_WEEK_PROJECTION_INVALID",
-                "The saved mobile week projection is not a JSON object.");
-        }
-
-        ValidateSnapshotSchema(weekElement, "week");
-        var startDate = ReadRequiredDate(weekElement, "startDate");
-        var endDate = ReadRequiredDate(weekElement, "endDate");
-        if (currentDate < startDate || currentDate > endDate)
-        {
-            return MobileCurrentPeriodResolution.Failure(
-                "MOBILE_CURRENT_PERIOD_NOT_FOUND",
-                $"The legacy Expense Lens snapshot covers {startDate:yyyy-MM-dd} through {endDate:yyyy-MM-dd}, not the current date {currentDate:yyyy-MM-dd}. Open and save Expense Lens to publish the synchronized timeline.");
-        }
-
-        JsonElement? monthSnapshot = null;
-        if (financeStateRoot.TryGetProperty(
-                "mobileMonthProjection",
-                out var monthElement) &&
-            monthElement.ValueKind == JsonValueKind.Object)
-        {
-            var currentMonthKey = currentDate.ToString(
-                "yyyy-MM",
-                CultureInfo.InvariantCulture);
-            if (monthElement.TryGetProperty("monthKey", out var monthKeyElement) &&
-                monthKeyElement.ValueKind == JsonValueKind.String &&
-                string.Equals(
-                    monthKeyElement.GetString(),
-                    currentMonthKey,
-                    StringComparison.Ordinal))
-            {
-                ValidateSnapshotSchema(monthElement, "month");
-                monthSnapshot = monthElement;
-            }
-        }
-
-        return MobileCurrentPeriodResolution.Success(
-            weekElement,
-            monthSnapshot);
+        ValidateSnapshotSchema(week, "week");
+        ValidateSnapshotSchema(month, "month");
+        if (currentDate < ReadRequiredDate(week, "startDate") || currentDate > ReadRequiredDate(week, "endDate") ||
+            ReadRequiredString(month, "monthKey") != currentDate.ToString("yyyy-MM", CultureInfo.InvariantCulture))
+            return MobileCurrentPeriodResolution.Failure("EXPENSE_LENS_PERIOD_MISMATCH",
+                "The finance calculator did not return the requested period.");
+        return MobileCurrentPeriodResolution.Success(week, month);
     }
 
     private static void ValidateSnapshotSchema(
@@ -448,29 +279,6 @@ public sealed class MobileFinancialOperatingSystemProjectionService
                 $"Mobile {snapshotName} projection schema {schemaVersion} is not supported.",
                 $"MOBILE_{snapshotName.ToUpperInvariant()}_SCHEMA_UNSUPPORTED");
         }
-    }
-
-    private static string ResolveWeekStatus(
-        MobileFinancialWeekSummary week,
-        DateOnly currentDate)
-    {
-        if (currentDate >= week.StartDate &&
-            currentDate <= week.EndDate)
-        {
-            return "current";
-        }
-
-        if (week.EndDate < currentDate)
-        {
-            return string.Equals(
-                week.PressureStatus,
-                "actual",
-                StringComparison.OrdinalIgnoreCase)
-                ? "actual"
-                : "historical-unreconciled";
-        }
-
-        return "projected";
     }
 
     private sealed record MobileCurrentPeriodResolution(

@@ -284,6 +284,8 @@
             normalizedName.includes("student loan") ||
             normalizedName.includes("mortgage") ||
             normalizedName.includes("auto payment") ||
+            normalizedName.includes("auto loan") ||
+            normalizedName.includes("car loan") ||
             normalizedName.includes("business loan")
         ) {
             return "external-debt-obligation";
@@ -1002,6 +1004,7 @@
                 outflowCents:
                     debitBillsCents +
                     creditBillsCents +
+                    Math.round(Number(week?.requiredDebtMinimumCents) || 0) +
                     extraDebtPaymentCents,
                 closingCashCents: Math.round(
                     Number(week?.closingCashCents) || 0
@@ -1285,15 +1288,21 @@
                             ? Math.max(0, Math.round(eventItem.history.actualAmountCents))
                             : eventItem.amountCents;
                         const tracksDebt = isTrackedDebtMinimumCategory(eventItem.debtCategory);
+                        const isDebtObligation = tracksDebt || eventItem.debtCategory === "external-debt-obligation";
                         const isCreditBill = !tracksDebt && isCreditPaymentMethod(eventItem.paymentMethod);
-                        const appliedCashCents = tracksDebt && runningDebtCents <= 0 && !eventItem.history?.status
+                        const appliedCashCents = tracksDebt && state.debt.openingBalanceCents > 0 && runningDebtCents <= 0 && !eventItem.history?.status
                             ? 0
                             : scheduledCents;
                         runningCashCents -= appliedCashCents;
                         requiredExpensesCents += appliedCashCents;
                         weekRequiredExpenseCents += appliedCashCents;
 
-                        if (!tracksDebt) {
+                        if (isDebtObligation) {
+                            requiredDebtMinimumCents += appliedCashCents;
+                            weekRequiredDebtMinimumCents += appliedCashCents;
+                        }
+
+                        if (!isDebtObligation) {
                             if (isCreditBill) {
                                 weekCreditBillsCents += appliedCashCents;
                             } else {
@@ -1305,8 +1314,6 @@
                         if (tracksDebt && appliedCashCents > 0 && runningDebtCents > 0) {
                             appliedDebtCents = Math.min(runningDebtCents, appliedCashCents);
                             runningDebtCents = clampCurrencyFloor(runningDebtCents - appliedDebtCents);
-                            requiredDebtMinimumCents += appliedDebtCents;
-                            weekRequiredDebtMinimumCents += appliedDebtCents;
                             debtPaymentEvents.push({
                                 key: buildOccurrenceKey("debtMinimum", eventItem.sourceId, eventItem.dateKey),
                                 kind: "debtMinimum",

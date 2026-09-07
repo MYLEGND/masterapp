@@ -227,7 +227,7 @@ public sealed class MobileHomeService : IMobileHomeService
         var persistedState = await _db.AgentFinanceToolStates
             .AsNoTracking()
             .Where(state =>
-                state.AgentUserId.ToLower() == normalizedAgentUserId &&
+                state.AgentUserId.Trim().ToLower() == normalizedAgentUserId &&
                 state.ToolId == LegendLivingBalanceSheetConstants.ToolId)
             .OrderByDescending(state => state.UpdatedUtc)
             .Select(state => new MobilePersistedFinanceState(

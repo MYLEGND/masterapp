@@ -47,6 +47,7 @@ public sealed class MobileHomeController : MobileApiControllerBase
     }
 
     [HttpGet("financial")]
+    [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
     public async Task<IActionResult> Financial(CancellationToken cancellationToken)
     {
         var resolved = await ResolveActorAsync(cancellationToken);

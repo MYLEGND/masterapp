@@ -73,6 +73,40 @@ if (functionName === "projectExpenseLensTimeline") {
 process.stdout.write(JSON.stringify(result));
 """;
 
+    [Theory]
+    [InlineData(2027, 9, 4)]
+    [InlineData(2027, 11, 7)]
+    [InlineData(2028, 2, 29)]
+    public async System.Threading.Tasks.Task MobileLiveReport_EqualsTheWebCalculator(int year, int month, int day)
+    {
+        var date = new DateOnly(year, month, day);
+        using var inputs = JsonDocument.Parse(MobileFinancialOperatingSystemProjectionServiceTests.LiveInputs);
+        using var web = InvokeProjectionApi("projectExpenseLensTimeline", new
+        {
+            state = inputs.RootElement,
+            asOfDate = date.ToString("yyyy-MM-dd"),
+            selectedMonthKey = date.ToString("yyyy-MM")
+        });
+        var expected = web.RootElement.GetProperty("selectedMonth");
+        await using var db = ControllerTestHelpers.BuildDb();
+        db.AgentFinanceToolStates.Add(new Domain.Entities.AgentFinanceToolState
+        {
+            AgentUserId = "agent", ToolId = "ExpenseLens", JsonState = inputs.RootElement.GetRawText()
+        });
+        await db.SaveChangesAsync();
+        var service = new Infrastructure.Mobile.MobileFinancialOperatingSystemProjectionService(
+            db, Moq.Mock.Of<Infrastructure.Households.IHouseholdMembershipService>());
+        var report = await service.ProjectAgentAsync("agent", date);
+        var actual = report.MonthAtGlance!;
+        Assert.Equal(expected.GetProperty("scheduledIncomeCents").GetInt64(), actual.IncomeCents);
+        Assert.Equal(expected.GetProperty("requiredExpensesCents").GetInt64(),
+            actual.DebitExpenseCents + actual.CreditExpenseCents + actual.RequiredDebtPaymentCents);
+        Assert.Equal(expected.GetProperty("endingCashCents").GetInt64(), actual.EndingCashCents);
+        Assert.Equal(expected.GetProperty("endingDebtCents").GetInt64(), actual.EndingDebtCents);
+        Assert.Equal(expected.GetProperty("requiredDebtMinimumCents").GetInt64(), actual.RequiredDebtPaymentCents);
+        Assert.Equal(expected.GetProperty("weeks").GetArrayLength(), actual.Weeks.Count);
+    }
+
     private static string RepoRoot => ResolveRepoRoot();
 
     private static readonly string SourceFilePath = GetSourceFilePath();

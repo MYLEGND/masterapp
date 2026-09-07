@@ -3272,6 +3272,7 @@ private struct LegendFinancialReportingGate<Content: View>: View {
 }
 
 private struct LegendFinancialProfilePanel: View {
+    @Environment(\.scenePhase) private var financeScenePhase
     @ObservedObject private var store: MobileFinancialStore
     @ObservedObject private var bootstrap: LegendApplicationBootstrapCoordinator
     let openFinancialIntelligence: () -> Void
@@ -3336,8 +3337,14 @@ private struct LegendFinancialProfilePanel: View {
             }
         }
         .legendNextPageBackground()
-        .task {
-            await bootstrap.loadFinancialIntelligenceIfNeeded()
+        .task(id: financeScenePhase) {
+            guard financeScenePhase == .active else { return }
+            await bootstrap.refreshFinancial()
+            while !Task.isCancelled {
+                do { try await Task.sleep(for: .seconds(30)) } catch { return }
+                guard !Task.isCancelled else { return }
+                await bootstrap.refreshFinancial()
+            }
         }
         .onReceive(
             NotificationCenter.default.publisher(
@@ -3397,7 +3404,7 @@ private struct LegendFinancialProfilePanel: View {
                             status: week.pressureStatus,
                             openingCashCents: week.openingCashCents,
                             incomeCents: week.incomeCents,
-                            expenseCents: week.debitExpenseCents + week.creditExpenseCents,
+                            expenseCents: financial.presentation?.prioritySections.first { $0.key == "current-outlook" }?.secondaryMetric?.amountCents,
                             endingCashCents: week.endingCashCents,
                             action: {
                                 openOutlook(.week(week))
@@ -3413,7 +3420,7 @@ private struct LegendFinancialProfilePanel: View {
                             status: month.pressureStatus,
                             openingCashCents: month.openingCashCents,
                             incomeCents: month.incomeCents,
-                            expenseCents: month.debitExpenseCents + month.creditExpenseCents,
+                            expenseCents: financial.presentation?.prioritySections.first { $0.key == "monthly-outlook" }?.secondaryMetric?.amountCents,
                             endingCashCents: month.endingCashCents,
                             action: {
                                 openOutlook(.month(month))
@@ -3450,7 +3457,7 @@ private struct LegendFinancialProfilePanel: View {
         status: String,
         openingCashCents: Int64,
         incomeCents: Int64,
-        expenseCents: Int64,
+        expenseCents: Int64?,
         endingCashCents: Int64,
         action: @escaping () -> Void
     ) -> some View {
@@ -3479,7 +3486,7 @@ private struct LegendFinancialProfilePanel: View {
         status: String,
         openingCashCents: Int64,
         incomeCents: Int64,
-        expenseCents: Int64,
+        expenseCents: Int64?,
         endingCashCents: Int64
     ) -> some View {
         LegendNextSurface(
@@ -3544,15 +3551,10 @@ private struct LegendFinancialProfilePanel: View {
                         )
                     )
                     outlookMetric(
-                        title: LegendLocalized("Bills"),
-                        value: MobileFinancialDisplay.currency(
-                            cents: expenseCents
-                        ),
+                        title: LegendLocalized("Outflow"),
+                        value: expenseCents.map { MobileFinancialDisplay.currency(cents: $0) } ?? "—",
                         systemImage: "doc.text.fill",
-                        tone: MobileFinancialAmountSemantic.tone(
-                            forCents: expenseCents,
-                            kind: .bills
-                        )
+                        tone: expenseCents.map { MobileFinancialAmountSemantic.tone(forCents: $0, kind: .bills) } ?? .neutral
                     )
                     outlookMetric(
                         title: LegendLocalized("Ending cash"),

@@ -20,6 +20,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <EmbeddedResource Include="..\SHARED\wwwroot\js\expense-lens-projection.js" LogicalName="Legend.ExpenseLensProjection.js" />
     <EmbeddedResource Include="..\Legend-Design\legend-application-copy.json"
                       Link="Localization\legend-application-copy.json"
                       LogicalName="Legend.ApplicationCopy.json" />
@@ -31,6 +32,7 @@
     <PackageReference Include="Azure.Extensions.AspNetCore.DataProtection.Blobs" Version="1.5.1" />
     <PackageReference Include="Azure.Extensions.AspNetCore.DataProtection.Keys" Version="1.6.1" />
     <PackageReference Include="Google.Apis.Auth" Version="1.75.0" />
+    <PackageReference Include="Jint" Version="4.16.1" />
     <PackageReference Include="Microsoft.EntityFrameworkCore" Version="10.0.2" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.2">
       <PrivateAssets>all</PrivateAssets>
