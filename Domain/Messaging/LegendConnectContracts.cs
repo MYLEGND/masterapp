@@ -1140,7 +1140,11 @@ public sealed record LegendConnectDiscourseTurnStateSnapshot(
     bool IsComposed,
     IReadOnlyList<LegendConnectUtteranceMeaningNode> Nodes,
     IReadOnlyList<LegendConnectUtteranceMeaningRelation> Relations,
-    IReadOnlyList<LegendConnectDiscourseReferenceBindingSnapshot> Bindings);
+    IReadOnlyList<LegendConnectDiscourseReferenceBindingSnapshot> Bindings)
+{
+    // The validated graph's diagnostic outcome; legacy snapshots may omit it.
+    public string? AnalysisReasonCode { get; init; }
+}
 
 public sealed record LegendConnectDiscourseReferenceBindingSnapshot(
     string ResolutionState,

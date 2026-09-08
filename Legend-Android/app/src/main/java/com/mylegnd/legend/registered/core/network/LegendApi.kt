@@ -25,6 +25,9 @@ class LegendApiException(val status: Int, val problem: MobileApiProblem?, cause:
 interface LegendApi {
     @GET("api/v1/mobile/agent/clients/{id}/booking-access") suspend fun bookingAccess(@Header("X-Legend-Participant-Type") role: String, @Path("id") id: String): Response<MobileBookingAccess>
     @POST("api/v1/mobile/agent/clients/{id}/booking-launch") suspend fun bookingLaunch(@Header("X-Legend-Participant-Type") role: String, @Path("id") id: String): Response<MobileClientCreationPortalLaunch>
+    @POST("api/v1/mobile/agent/crm/{kind}/{id}/contact") suspend fun agentCrmContact(@Header("X-Legend-Participant-Type") role: String, @Path("kind") kind: String, @Path("id") id: String, @Body input: MobileCrmContactInput): Response<MobileCrmMutationResponse>
+    @POST("api/v1/mobile/agent/crm/{kind}/{id}/outcome") suspend fun agentCrmOutcome(@Header("X-Legend-Participant-Type") role: String, @Path("kind") kind: String, @Path("id") id: String, @Body input: MobileCrmOutcomeInput): Response<MobileCrmMutationResponse>
+    @POST("api/v1/mobile/agent/crm/appointments/{id}/cancel") suspend fun cancelCrmAppointment(@Header("X-Legend-Participant-Type") role: String, @Path("id") id: String): Response<MobileCrmMutationResponse>
     @GET("api/v1/mobile/agent/crm/schedule") suspend fun agentSchedule(@Header("X-Legend-Participant-Type") role: String): Response<List<MobileCrmAppointment>>
     @GET("api/v1/mobile/agent/crm/{kind}/{id}") suspend fun agentCrmRecord(@Header("X-Legend-Participant-Type") role: String, @Path("kind") kind: String, @Path("id") id: String): Response<MobileCrmRecord>
     @POST("api/v1/mobile/review-session") suspend fun reviewSession(@Body request: MobileReviewSignInRequest): Response<MobileReviewTokenResponse>
@@ -39,8 +42,8 @@ interface LegendApi {
         @Header("X-Agent-TimeZone") timeZoneId: String,
         @Header("X-Agent-TzOffset") timeZoneOffsetMinutes: String,
     ): Response<FinancialSnapshot>
-    @GET("api/v1/mobile/agent/clients") suspend fun agentClients(@Header("X-Legend-Participant-Type") participantType: String): Response<List<MobileAgentClient>>
-    @GET("api/v1/mobile/agent/leads") suspend fun agentLeads(@Header("X-Legend-Participant-Type") participantType: String): Response<List<MobileAgentLead>>
+    @GET("api/v1/mobile/agent/clients?includeArchived=true") suspend fun agentClients(@Header("X-Legend-Participant-Type") participantType: String): Response<List<MobileAgentClient>>
+    @GET("api/v1/mobile/agent/leads?includeArchived=true") suspend fun agentLeads(@Header("X-Legend-Participant-Type") participantType: String): Response<List<MobileAgentLead>>
     @POST("api/v1/mobile/agent/clients/portal-launch") suspend fun clientCreationPortalLaunch(@Header("X-Legend-Participant-Type") participantType: String, @Body request: EmptyRequest = EmptyRequest()): Response<MobileClientCreationPortalLaunch>
     @GET("api/v1/mobile/account") suspend fun account(@Header("X-Legend-Participant-Type") participantType: String): Response<MobileAccountProfile>
     @PUT("api/v1/mobile/account") suspend fun updateAccount(@Header("X-Legend-Participant-Type") participantType: String, @Body request: AccountUpdateRequest): Response<MobileAccountProfile>

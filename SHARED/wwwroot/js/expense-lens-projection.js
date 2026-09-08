@@ -295,6 +295,7 @@
     };
 
     const getEventExecutionOrder = (eventItem) => {
+        if (eventItem?.kind === "debtBaseline") return -1;
         if (eventItem?.kind === "income") return 0;
 
         if (eventItem?.kind === "expense") {
@@ -341,7 +342,13 @@
             "creditPaymentDayOfMonth"
         );
 
+        const paymentMode = ["remaining-cash", "percentage", "fixed"].includes(source.extraDebtPaymentMode)
+            ? source.extraDebtPaymentMode : "remaining-cash";
+        const percentage = Number(source.extraDebtPaymentPercent ?? 100);
         return {
+            extraDebtPaymentMode: paymentMode,
+            extraDebtPaymentPercent: Number.isFinite(percentage) ? Math.min(100, Math.max(0, percentage)) : 100,
+            extraDebtPaymentAmountCents: clampCurrencyFloor(parseStoredCentsOrMoney(source.extraDebtPaymentAmountCents, source.extraDebtPaymentAmount ?? 0)),
             protectedCashReserveCents: clampCurrencyFloor(
                 parseStoredCentsOrMoney(
                     source?.protectedCashReserveCents,
@@ -503,7 +510,6 @@
             monthlyMinimumPaymentsCents,
             projectedPayoffDate: rawDebt?.projectedPayoffDate ? String(rawDebt.projectedPayoffDate) : null,
             projectedInterestExcluded: rawDebt?.projectedInterestExcluded !== false,
-            extraPaymentStrategy: String(rawDebt?.extraPaymentStrategy || "remaining-cash").trim() || "remaining-cash",
             paymentHistory: Array.isArray(rawDebt?.paymentHistory) ? rawDebt.paymentHistory : [],
             adjustments: normalizeDebtAdjustments(rawDebt?.adjustments)
         };
@@ -566,7 +572,7 @@
         };
 
         if (options.includeComputedDebtBalance !== false) {
-            normalizedState.debt.currentBalanceCents = clampCurrencyFloor(normalizedState.debt.currentBalanceCents || normalizedState.debt.openingBalanceCents);
+            normalizedState.debt.currentBalanceCents = clampCurrencyFloor(normalizedState.debt.currentBalanceCents);
         }
 
         return normalizedState;
@@ -863,7 +869,7 @@
     };
 
     const resolveEventStatus = (eventItem, today) => {
-        if (eventItem.kind === "debtAdjustment") return "actual";
+        if (eventItem.kind === "debtAdjustment" || eventItem.kind === "debtBaseline") return "actual";
         if (eventItem.history?.status === "completed") return "actual";
         if (eventItem.date < today) return "needs-review";
         if (formatMonthKey(eventItem.date) === formatMonthKey(today)) return "current";
@@ -1208,13 +1214,12 @@
         const maxProjectionMonths = Math.min(MAX_PROJECTION_MONTHS, Math.max(minimumProjectionMonths, input.horizonMonths || 36));
 
         let carryCashCents = 0;
-        let carryDebtCents = clampCurrencyFloor(state.debt.openingBalanceCents);
+        let carryDebtCents = 0;
         let payoffDate = null;
         let firstDebtFreeMonth = null;
         let firstPositiveMonthAfterPayoff = null;
         let maxDebtBalanceCents = carryDebtCents;
         let maxCashDeficitCents = 0;
-        let payoffGraceMonths = 0;
         const debtPaymentEvents = [];
 
         for (let monthIndex = 0; monthIndex < maxProjectionMonths; monthIndex += 1) {
@@ -1222,7 +1227,13 @@
             const monthContext = getMonthContext(monthKey);
             const override = state.monthlyStartingBalanceOverrides?.[monthKey] || null;
             const openingCashCents = override ? Math.round(override.amountCents || 0) : carryCashCents;
-            const openingDebtCents = carryDebtCents;
+            // The recorded balance is a snapshot as of its date, not debt to
+            // retroactively pay down in earlier months included for cash history.
+            const baselineAtMonthStart = monthKey === anchorMonthKey && state.debt.asOfDate.endsWith("-01");
+            const openingDebtCents = baselineAtMonthStart ? state.debt.openingBalanceCents : carryDebtCents;
+            if (baselineAtMonthStart && openingDebtCents > 0) {
+                payoffDate = firstDebtFreeMonth = firstPositiveMonthAfterPayoff = null;
+            }
 
             const generatedIncome = buildScheduledIncomeOccurrences(state, monthKey);
             const generatedExpenses = buildScheduledExpenseOccurrences(state, monthKey);
@@ -1230,6 +1241,14 @@
             const incomes = mergeHistoryOccurrences(generatedIncome, state.occurrenceHistory.incomes, monthKey, "income");
             const expenses = mergeHistoryOccurrences(generatedExpenses, state.occurrenceHistory.expenses, monthKey, "expense");
             const adjustments = generatedAdjustments;
+            if (monthKey === anchorMonthKey && !baselineAtMonthStart) {
+                adjustments.push({
+                    key: `debtBaseline:${state.debt.asOfDate}`,
+                    kind: "debtBaseline", label: "Recorded debt balance",
+                    date: parseDate(state.debt.asOfDate), dateKey: state.debt.asOfDate,
+                    amountCents: state.debt.openingBalanceCents
+                });
+            }
             const eventMapByWeek = new Map();
             const weeks = getCalendarWeeksForMonth(monthKey);
             weeks.forEach((week) => eventMapByWeek.set(week.id, []));
@@ -1241,6 +1260,7 @@
 
             let runningCashCents = openingCashCents;
             let runningDebtCents = openingDebtCents;
+            maxCashDeficitCents = Math.min(maxCashDeficitCents, openingCashCents);
             let scheduledIncomeCents = 0;
             let requiredExpensesCents = 0;
             let requiredDebtMinimumCents = 0;
@@ -1290,10 +1310,14 @@
                         const tracksDebt = isTrackedDebtMinimumCategory(eventItem.debtCategory);
                         const isDebtObligation = tracksDebt || eventItem.debtCategory === "external-debt-obligation";
                         const isCreditBill = !tracksDebt && isCreditPaymentMethod(eventItem.paymentMethod);
-                        const appliedCashCents = tracksDebt && state.debt.openingBalanceCents > 0 && runningDebtCents <= 0 && !eventItem.history?.status
-                            ? 0
+                        const hasRecordedDebt = state.debt.openingBalanceCents > 0 || state.debt.adjustments.length > 0;
+                        // Actual reconciled payments remain cash facts. Forecast payments
+                        // stop at the remaining balance; unrelated obligations still run.
+                        const appliedCashCents = tracksDebt && hasRecordedDebt && eventItem.history?.status !== "completed"
+                            ? Math.min(scheduledCents, runningDebtCents)
                             : scheduledCents;
                         runningCashCents -= appliedCashCents;
+                        maxCashDeficitCents = Math.min(maxCashDeficitCents, runningCashCents);
                         requiredExpensesCents += appliedCashCents;
                         weekRequiredExpenseCents += appliedCashCents;
 
@@ -1336,7 +1360,8 @@
                         renderedEvents.push({
                             ...eventItem,
                             status,
-                            amountCents: scheduledCents,
+                            scheduledAmountCents: scheduledCents,
+                            amountCents: appliedCashCents,
                             impactCashCents: -appliedCashCents,
                             appliedCashCents,
                             appliedDebtCents,
@@ -1346,8 +1371,16 @@
                         return;
                     }
 
-                    if (eventItem.kind === "debtAdjustment") {
-                        runningDebtCents = clampCurrencyFloor(runningDebtCents + eventItem.amountCents);
+                    if (eventItem.kind === "debtAdjustment" || eventItem.kind === "debtBaseline") {
+                        const previousDebtCents = runningDebtCents;
+                        runningDebtCents = eventItem.kind === "debtBaseline"
+                            ? eventItem.amountCents
+                            : clampCurrencyFloor(runningDebtCents + eventItem.amountCents);
+                        if (runningDebtCents > 0) {
+                            payoffDate = firstDebtFreeMonth = firstPositiveMonthAfterPayoff = null;
+                        } else if (previousDebtCents > 0) {
+                            payoffDate = eventItem.dateKey;
+                        }
                         renderedEvents.push({
                             ...eventItem,
                             status: "actual",
@@ -1385,7 +1418,14 @@
 
             if (runningDebtCents > 0 && weekRows.length > 0) {
                 const availableForExtraDebtCents = Math.max(0, runningCashCents - protectedCashReserveCents);
-                const monthEndExtraDebtPaymentCents = Math.min(availableForExtraDebtCents, runningDebtCents);
+                const monthlySurplusCents = Math.max(0, scheduledIncomeCents - requiredExpensesCents);
+                const settings = state.projectionSettings;
+                const requestedExtraDebtCents = settings.extraDebtPaymentMode === "percentage"
+                    ? Math.round(monthlySurplusCents * settings.extraDebtPaymentPercent / 100)
+                    : settings.extraDebtPaymentMode === "fixed"
+                        ? settings.extraDebtPaymentAmountCents
+                        : availableForExtraDebtCents;
+                const monthEndExtraDebtPaymentCents = Math.min(requestedExtraDebtCents, availableForExtraDebtCents, runningDebtCents);
                 if (monthEndExtraDebtPaymentCents > 0) {
                     runningCashCents -= monthEndExtraDebtPaymentCents;
                     runningDebtCents = clampCurrencyFloor(runningDebtCents - monthEndExtraDebtPaymentCents);
@@ -1426,7 +1466,7 @@
                         monthKey,
                         weekId: targetWeek.id,
                         status: extraDebtStatus,
-                        note: "Remaining cash strategy"
+                        note: `Extra debt payment: ${state.projectionSettings.extraDebtPaymentMode}`
                     });
 
                     if (!payoffDate && runningDebtCents === 0) {
@@ -1441,7 +1481,7 @@
                 return hasHistoricalGaps ? "historical-unreconciled" : "historical-reconciled";
             })();
 
-            if (!firstDebtFreeMonth && openingDebtCents > 0 && runningDebtCents === 0) {
+            if (!firstDebtFreeMonth && payoffDate && runningDebtCents === 0) {
                 firstDebtFreeMonth = monthKey;
             }
 
@@ -1478,7 +1518,7 @@
                 monthRecord.warnings.push("Historical month is not fully reconciled.");
             }
             if (monthRecord.temporalStatus === "historical" && compareMonthKeys(monthKey, anchorMonthKey) < 0) {
-                monthRecord.warnings.push("Projection before the debt as-of date uses the opening debt balance as the baseline.");
+                monthRecord.warnings.push("The recorded debt balance applies on its as-of date; earlier debt balances are not known.");
             }
 
             months.push(monthRecord);
@@ -1486,13 +1526,6 @@
             carryCashCents = runningCashCents;
             carryDebtCents = runningDebtCents;
 
-            if (runningDebtCents === 0 && payoffDate) {
-                payoffGraceMonths += 1;
-            }
-
-            if (compareMonthKeys(monthKey, selectedMonthKey) >= 0 && runningDebtCents === 0 && payoffGraceMonths >= 12) {
-                break;
-            }
         }
 
         const selectedMonth = monthMap.get(selectedMonthKey) || months.find((month) => month.monthKey === selectedMonthKey) || months[0] || null;

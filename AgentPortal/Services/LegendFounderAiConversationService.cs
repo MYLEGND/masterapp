@@ -274,17 +274,21 @@ public sealed class LegendFounderAiConversationService
             // Language identification can contact the existing governed
             // translation router. Preserve the Founder boundary before that
             // provider-backed read and before any meaning-graph analysis.
-            await TraceNativeStageAsync("founder_authorization", async () =>
+            await TraceNativeStageAsync("founder_authorization", "FounderLegendConnectService.EnsureFounderAuthorizedAsync", async () =>
             {
                 await _legend.EnsureFounderAuthorizedAsync(founder, effectiveToken);
                 return true;
             });
 
-            var sourceLanguage = await TraceNativeStageAsync("source_language", () => ResolveSourceLanguageAsync(
+            var sourceLanguage = await TraceNativeStageAsync("source_language", "LegendFounderAiConversationService.ResolveSourceLanguageAsync", () => ResolveSourceLanguageAsync(
                 request.SourceLanguageCode,
                 conversation[^1].Content ?? string.Empty,
                 effectiveToken,
                 providerPolicy));
+            _logger.LogInformation(
+                "LEGEND RuntimeDiagnostic Event={Event} AuthorityMethod={AuthorityMethod} Stage={Stage} Outcome={Outcome} ReasonCode={ReasonCode} ProviderPolicy={ProviderPolicy}",
+                "SourceLanguageResolved", "LegendFounderAiConversationService.ResolveSourceLanguageAsync", "source_language", sourceLanguage.Outcome.ToString(),
+                LegendConnectTelemetry.NormalizeDiagnosticReason(sourceLanguage.Reason), providerPolicy.ForbidsExternalProviders ? "native_only" : "provider_enabled");
             if (!sourceLanguage.Succeeded)
             {
                 if (providerPolicy.ForbidsExternalProviders ||
@@ -343,7 +347,7 @@ public sealed class LegendFounderAiConversationService
                         message.Role ?? string.Empty,
                         message.Content ?? string.Empty))
                     .ToArray();
-                nativeInference = await TraceNativeStageAsync("native_semantic_inference", () => _legend.TryInferConversationWithDiscourseAsync(
+                nativeInference = await TraceNativeStageAsync("native_semantic_inference", "FounderLegendConnectService.TryInferConversationWithDiscourseAsync", () => _legend.TryInferConversationWithDiscourseAsync(
                     founder,
                     conversation[^1].Content ?? string.Empty,
                     context,
@@ -353,7 +357,7 @@ public sealed class LegendFounderAiConversationService
                     providerPolicy));
                 if (nativeInference.ReadOnlyContentRequest is { } readRequest)
                 {
-                    var binding = await TraceNativeStageAsync("native_read_binding", () => _toolAuthority.BindReadOnlyResultAsync(
+                    var binding = await TraceNativeStageAsync("native_read_binding", "LegendFounderToolAuthority.BindReadOnlyResultAsync", () => _toolAuthority.BindReadOnlyResultAsync(
                         founder,
                         readRequest,
                         effectiveToken,
@@ -373,7 +377,7 @@ public sealed class LegendFounderAiConversationService
                     }
                     else
                     {
-                        nativeInference = await TraceNativeStageAsync("native_read_realization", () => _legend
+                        nativeInference = await TraceNativeStageAsync("native_read_realization", "FounderLegendConnectService.TryInferConversationWithReadOnlyContentAsync", () => _legend
                             .TryInferConversationWithReadOnlyContentAsync(
                                 founder,
                                 conversation[^1].Content ?? string.Empty,
@@ -402,18 +406,27 @@ public sealed class LegendFounderAiConversationService
                 // already returned by the native authority remains in force.
                 nativeFailureDetail = exception.ToString();
                 _logger.LogWarning(
-                    exception,
-                    "LEGEND native conversational inference was unavailable; preserving its governed escalation boundary.");
+                    "LEGEND RuntimeDiagnostic Event={Event} AuthorityMethod={AuthorityMethod} Stage={Stage} Outcome={Outcome} ExceptionType={ExceptionType}",
+                    "NativeInferenceException", "FounderLegendConnectService.TryInferConversationWithDiscourseAsync", "native_inference", "failed", exception.GetType().Name);
             }
             finally
             {
                 _logger.LogInformation(
-                    "LEGEND Founder AI stage completed. Mode={Mode} Stage=native_inference ElapsedMs={ElapsedMs}",
-                    mode,
-                    (long)Math.Ceiling(
-                        Stopwatch.GetElapsedTime(nativeStarted).TotalMilliseconds));
+                    "LEGEND RuntimeDiagnostic Event={Event} AuthorityMethod={AuthorityMethod} Stage={Stage} Outcome={Outcome} ReasonCode={ReasonCode} ElapsedMs={ElapsedMs} Supported={Supported} RequiresEscalation={RequiresEscalation} EvidenceCount={EvidenceCount}",
+                    "NativeInferenceCompleted", "FounderLegendConnectService.TryInferConversationWithDiscourseAsync", "native_inference",
+                    nativeInference is null ? "unavailable" : nativeInference.Supported ? "supported" : "unsupported",
+                    LegendConnectTelemetry.NormalizeDiagnosticReason(nativeInference?.ReasonCode),
+                    (long)Math.Ceiling(Stopwatch.GetElapsedTime(nativeStarted).TotalMilliseconds),
+                    nativeInference?.Supported ?? false, nativeInference?.RequiresEscalation ?? false, nativeInference?.EvidenceCount ?? 0);
             }
 
+            var observedResearchDecision = nativeInference?.ResearchDecision;
+            _logger.LogInformation(
+                "LEGEND RuntimeDiagnostic Event={Event} AuthorityMethod={AuthorityMethod} Stage={Stage} Outcome={Outcome} ReasonCode={ReasonCode} ResearchRequired={ResearchRequired} ProviderPolicy={ProviderPolicy}",
+                "ResearchDecision", "LegendConnectOperations.DecideResearchNeeded", "research_decision",
+                observedResearchDecision is null ? "unavailable" : !observedResearchDecision.ResearchRequired ? "not_required" : request.NativeOnly ? "blocked" : "allowed",
+                LegendConnectTelemetry.NormalizeDiagnosticReason(observedResearchDecision?.ReasonCode ?? "research_decision_unavailable"),
+                observedResearchDecision?.ResearchRequired ?? false, providerPolicy.ForbidsExternalProviders ? "native_only" : "provider_enabled");
             if (nativeInference?.ResearchDecision is
                 {
                     ResearchRequired: true
@@ -451,7 +464,7 @@ public sealed class LegendFounderAiConversationService
                 LegendConnectResearchOutcome researchOutcome;
                 try
                 {
-                    researchOutcome = await _toolAuthority.ResearchAsync(
+                    researchOutcome = await TraceNativeStageAsync("research", "LegendFounderToolAuthority.ResearchAsync", () => _toolAuthority.ResearchAsync(
                         founder,
                         conversation[^1].Content ?? string.Empty,
                         governedSourceLanguageCode!,
@@ -461,7 +474,7 @@ public sealed class LegendFounderAiConversationService
                                 Guid.NewGuid().ToString("N"))
                             : null,
                         researchBudget.Token,
-                        providerPolicy);
+                        providerPolicy));
                 }
                 catch (OperationCanceledException)
                     when (!effectiveToken.IsCancellationRequested)
@@ -473,6 +486,11 @@ public sealed class LegendFounderAiConversationService
                         "research",
                         "research_budget_exhausted");
                 }
+                _logger.LogInformation(
+                    "LEGEND RuntimeDiagnostic Event={Event} AuthorityMethod={AuthorityMethod} Stage={Stage} Outcome={Outcome} ReasonCode={ReasonCode}",
+                    "ResearchCompleted", "LegendFounderToolAuthority.ResearchAsync", "research", researchOutcome.State.ToString(),
+                    LegendConnectTelemetry.NormalizeDiagnosticReason(researchOutcome.Failure?.ReasonCode ?? researchOutcome.InsufficientEvidence?.ReasonCode ??
+                        researchOutcome.UnresolvedConflict?.ReasonCode ?? researchOutcome.Decision.ReasonCode));
                 return ResearchChatResponse(
                     mode,
                     researchOutcome,
@@ -504,6 +522,9 @@ public sealed class LegendFounderAiConversationService
                         $"ModelAssistanceReason={nativeInference.ModelAssistance?.ReasonCode ?? "model_assistance_receipt_unavailable"}."),
                     effectiveToken);
 
+                _logger.LogInformation(
+                    "LEGEND RuntimeDiagnostic Event={Event} AuthorityMethod={AuthorityMethod} Stage={Stage} Outcome={Outcome} ReasonCode={ReasonCode} EvidenceCount={EvidenceCount}",
+                    "NativeAnswer", "LegendFounderAiConversationService.ReplyAsync", "native_response", "supported", LegendConnectTelemetry.NormalizeDiagnosticReason(nativeInference.ReasonCode), nativeInference.EvidenceCount);
                 return new LegendFounderAiChatResponse(
                     true,
                     mode,
@@ -528,6 +549,9 @@ public sealed class LegendFounderAiConversationService
         // loading provider tools, or issuing any external request.
         if (request.NativeOnly)
         {
+            _logger.LogInformation(
+                "LEGEND RuntimeDiagnostic Event={Event} AuthorityMethod={AuthorityMethod} Stage={Stage} Outcome={Outcome} ReasonCode={ReasonCode} ProviderPolicy={ProviderPolicy}",
+                "ProviderEscalation", "LegendFounderAiConversationService.ReplyAsync", "provider_escalation", "blocked", "external_provider_forbidden_by_native_only_policy", "native_only");
             await ReportProgressAsync(
                 progress,
                 new LegendFounderAiProgressEvent(
@@ -577,6 +601,10 @@ public sealed class LegendFounderAiConversationService
                 RequiresEscalation: false
             })
         {
+            _logger.LogInformation(
+                "LEGEND RuntimeDiagnostic Event={Event} AuthorityMethod={AuthorityMethod} Stage={Stage} Outcome={Outcome} ReasonCode={ReasonCode} ProviderPolicy={ProviderPolicy}",
+                "ProviderEscalation", "LegendFounderAiConversationService.ReplyAsync", "provider_escalation", "blocked",
+                LegendConnectTelemetry.NormalizeDiagnosticReason(nativeInference.ReasonCode), "provider_enabled");
             return NativeInferenceUnavailableResponse(
                 mode,
                 nativeInference,
@@ -585,13 +613,20 @@ public sealed class LegendFounderAiConversationService
 
         var apiKey = OpenAiKeyResolver.Resolve(_configuration);
         if (string.IsNullOrWhiteSpace(apiKey))
+        {
+            _logger.LogInformation(
+                "LEGEND RuntimeDiagnostic Event={Event} AuthorityMethod={AuthorityMethod} Stage={Stage} Outcome={Outcome} ReasonCode={ReasonCode} ProviderPolicy={ProviderPolicy}",
+                "ProviderEscalation", "OpenAiKeyResolver.Resolve", "provider_escalation", "blocked", "provider_api_key_unavailable", "provider_enabled");
             return NativeInferenceUnavailableResponse(
                 mode,
                 nativeInference,
                 nativeFailureDetail,
                 "provider_api_key_unavailable",
                 "The external reasoning provider is not configured for this deployment.");
-
+        }
+        _logger.LogInformation(
+            "LEGEND RuntimeDiagnostic Event={Event} AuthorityMethod={AuthorityMethod} Stage={Stage} Outcome={Outcome} ReasonCode={ReasonCode} ProviderPolicy={ProviderPolicy}",
+            "ProviderEscalation", "LegendFounderAiConversationService.ReplyAsync", "provider_escalation", "allowed", "provider_enabled_escalation", "provider_enabled");
         var model = ResolveProviderModel();
 
         // One typed classification for both modes. Legend mode reuses the
@@ -871,7 +906,7 @@ public sealed class LegendFounderAiConversationService
 
                 var providerStarted = Stopwatch.GetTimestamp();
                 using var responseDocument =
-                    await SendResponseAsync(
+                    await TraceNativeStageAsync("external_response", "LegendFounderAiConversationService.SendResponseAsync", () => SendResponseAsync(
                         apiKey,
                         model,
                         instructions,
@@ -888,7 +923,7 @@ public sealed class LegendFounderAiConversationService
                             conversation,
                             requiresGovernedInspection,
                             _maxOutputTokens),
-                        effectiveToken);
+                        effectiveToken));
 
                 _logger.LogInformation(
                     "LEGEND Founder AI stage completed. Mode={Mode} Stage=provider_round Round={Round} AllowTools={AllowTools} BudgetMs={BudgetMs} ElapsedMs={ElapsedMs}",
@@ -1156,6 +1191,9 @@ public sealed class LegendFounderAiConversationService
                                 toolOutput,
                                 out var completedResearch))
                         {
+                            _logger.LogInformation(
+                                "LEGEND RuntimeDiagnostic Event={Event} AuthorityMethod={AuthorityMethod} Stage={Stage} Outcome={Outcome} ReasonCode={ReasonCode}",
+                                "ResearchOutcomeValidated", "LegendFounderAiConversationService.TryReadResearchOutcome", "research_tool", "rejected", "research_citation_validation_missing");
                             return LegendFounderAiChatResponse.ModeFailure(
                                 mode,
                                 "LEGEND rejected an incomplete or unvalidated governed research outcome.",
@@ -1163,6 +1201,11 @@ public sealed class LegendFounderAiConversationService
                                 "research_failure",
                                 "research_citation_validation_missing");
                         }
+                        _logger.LogInformation(
+                            "LEGEND RuntimeDiagnostic Event={Event} AuthorityMethod={AuthorityMethod} Stage={Stage} Outcome={Outcome} ReasonCode={ReasonCode}",
+                            "ResearchCompleted", "LegendFounderAiConversationService.TryReadResearchOutcome", "research_tool", completedResearch!.State.ToString(),
+                            LegendConnectTelemetry.NormalizeDiagnosticReason(completedResearch.Failure?.ReasonCode ?? completedResearch.InsufficientEvidence?.ReasonCode ??
+                                completedResearch.UnresolvedConflict?.ReasonCode ?? completedResearch.Decision.ReasonCode));
                         return ResearchChatResponse(
                             mode,
                             completedResearch!,
@@ -1263,10 +1306,8 @@ public sealed class LegendFounderAiConversationService
         catch (LegendFounderAiProviderException exception)
         {
             _logger.LogWarning(
-                "LEGEND Founder AI provider rejected the escalation. HTTP={StatusCode} ClientRequestId={ClientRequestId} ProviderRequestId={ProviderRequestId}",
-                exception.StatusCode,
-                exception.ClientRequestId,
-                exception.ProviderRequestId);
+                "LEGEND RuntimeDiagnostic Event={Event} AuthorityMethod={AuthorityMethod} Stage={Stage} Outcome={Outcome} ReasonCode={ReasonCode} StatusCode={StatusCode}",
+                "ProviderEscalationRejected", "LegendFounderAiConversationService.SendResponseAsync", "external_response", "failed", "provider_http_rejection", exception.StatusCode);
 
             return NativeInferenceUnavailableResponse(
                 mode,
@@ -1302,8 +1343,8 @@ public sealed class LegendFounderAiConversationService
         catch (HttpRequestException exception)
         {
             _logger.LogWarning(
-                exception,
-                "LEGEND Founder AI provider transport failed.");
+                "LEGEND RuntimeDiagnostic Event={Event} AuthorityMethod={AuthorityMethod} Stage={Stage} Outcome={Outcome} ReasonCode={ReasonCode} ExceptionType={ExceptionType}",
+                "ProviderTransportFailed", "LegendFounderAiConversationService.SendResponseAsync", "external_response", "failed", "provider_transport_failure", exception.GetType().Name);
 
             return NativeInferenceUnavailableResponse(
                 mode,
@@ -1315,8 +1356,8 @@ public sealed class LegendFounderAiConversationService
         catch (JsonException exception)
         {
             _logger.LogWarning(
-                exception,
-                "LEGEND Founder AI received invalid provider JSON.");
+                "LEGEND RuntimeDiagnostic Event={Event} AuthorityMethod={AuthorityMethod} Stage={Stage} Outcome={Outcome} ReasonCode={ReasonCode} ExceptionType={ExceptionType}",
+                "ProviderJsonInvalid", "LegendFounderAiConversationService.SendResponseAsync", "external_response", "failed", "provider_invalid_json", exception.GetType().Name);
 
             return NativeInferenceUnavailableResponse(
                 mode,
@@ -1328,9 +1369,8 @@ public sealed class LegendFounderAiConversationService
         catch (Exception exception)
         {
             _logger.LogWarning(
-                exception,
-                "LEGEND Founder AI execution failed outside a provider response boundary. Mode={Mode}",
-                mode);
+                "LEGEND RuntimeDiagnostic Event={Event} AuthorityMethod={AuthorityMethod} Stage={Stage} Outcome={Outcome} ReasonCode={ReasonCode} ExceptionType={ExceptionType}",
+                "GovernedExecutionFailed", "LegendFounderAiConversationService.ReplyAsync", "governed_execution", "failed", "unexpected_governed_failure", exception.GetType().Name);
 
             return LegendFounderAiChatResponse.ModeFailure(
                 mode,
@@ -1363,8 +1403,13 @@ public sealed class LegendFounderAiConversationService
             // The existing observational content-plan authority selects the
             // same governed result frame without generating a native answer.
             // Both intent and exact read scope come from that one selection.
-            var plan = await TraceNativeStageAsync("owned_record_classification", () => _legend.TryBindConversationContentAsync(
+            var plan = await TraceNativeStageAsync("owned_record_classification", "FounderLegendConnectService.TryBindConversationContentAsync", () => _legend.TryBindConversationContentAsync(
                 founder, latest, currentDiscourseState, sourceLanguageCode, cancellationToken));
+            _logger.LogInformation(
+                "LEGEND RuntimeDiagnostic Event={Event} AuthorityMethod={AuthorityMethod} Stage={Stage} Outcome={Outcome} ReasonCode={ReasonCode} RequiresGovernedReadReceipt={RequiresGovernedReadReceipt} ReadScopeEstablished={ReadScopeEstablished}",
+                "OwnedRecordClassified", "FounderLegendConnectService.TryBindConversationContentAsync", "owned_record_classification",
+                plan.OwnedRecordIntent?.Intent.ToString() ?? "unavailable", LegendConnectTelemetry.NormalizeDiagnosticReason(plan.ReasonCode),
+                plan.OwnedRecordIntent?.RequiresGovernedReadReceipt ?? false, plan.ReadOnlyContentRequest is not null);
             return new FounderAiOwnedRecordResolution(
                 plan.OwnedRecordIntent ?? LegendConnectOwnedRecordRequest.AnalysisUnavailable(
                     "governed_meaning_graph_analysis_unavailable"),
@@ -1381,8 +1426,9 @@ public sealed class LegendFounderAiConversationService
         catch (Exception exception)
         {
             _logger.LogWarning(
-                exception,
-                "LEGEND could not classify the request or select its governed read scope.");
+                "LEGEND RuntimeDiagnostic Event={Event} AuthorityMethod={AuthorityMethod} Stage={Stage} Outcome={Outcome} ReasonCode={ReasonCode} ExceptionType={ExceptionType}",
+                "OwnedRecordClassificationException", "FounderLegendConnectService.TryBindConversationContentAsync", "owned_record_classification",
+                "failed", "governed_meaning_graph_analysis_unavailable", exception.GetType().Name);
             return new FounderAiOwnedRecordResolution(
                 LegendConnectOwnedRecordRequest.AnalysisUnavailable(
                     "governed_meaning_graph_analysis_unavailable: " + exception.GetType().Name),
@@ -1413,12 +1459,12 @@ public sealed class LegendFounderAiConversationService
             TimeSpan.FromSeconds(MaximumDiscourseObservationSeconds));
         try
         {
-            var meaning = await TraceNativeStageAsync("discourse_meaning_analysis", () => _legend.AnalyzeReusableMeaningGraphAsync(
+            var meaning = await TraceNativeStageAsync("discourse_meaning_analysis", "FounderLegendConnectService.AnalyzeReusableMeaningGraphAsync", () => _legend.AnalyzeReusableMeaningGraphAsync(
                 founder,
                 surface,
                 sourceLanguageCode,
                 observationBudget.Token));
-            var currentTurnSequence = await TraceNativeStageAsync("discourse_persistence", () => _discourse.RecordCurrentObservationAsync(
+            var currentTurnSequence = await TraceNativeStageAsync("discourse_persistence", "LegendFounderAiDiscourseStateService.RecordCurrentObservationAsync", () => _discourse.RecordCurrentObservationAsync(
                 founder,
                 conversationId,
                 role,
@@ -1427,7 +1473,7 @@ public sealed class LegendFounderAiConversationService
                 sourceLanguageCode));
             if (role != "user" || currentTurnSequence is not int sequence)
                 return null;
-            var state = await TraceNativeStageAsync("discourse_reload", () => _discourse.GetStateAsync(
+            var state = await TraceNativeStageAsync("discourse_reload", "LegendFounderAiDiscourseStateService.GetStateAsync", () => _discourse.GetStateAsync(
                 founder, conversationId, observationBudget.Token, currentTurnSequence: sequence));
             return state is null ? null : state with
             {
@@ -1451,28 +1497,58 @@ public sealed class LegendFounderAiConversationService
             // Conversation state is durable observability, not a second
             // inference authority. A failed state write must not turn a
             // governed native reply into a provider fallback.
-            _logger.LogWarning(exception, "LEGEND discourse observation persistence failed.");
+            _logger.LogWarning(
+                "LEGEND RuntimeDiagnostic Event={Event} AuthorityMethod={AuthorityMethod} Stage={Stage} Outcome={Outcome} ExceptionType={ExceptionType}",
+                "DiscourseObservationException", "LegendFounderAiConversationService.ObserveDiscourseMeaningAsync", "discourse_observation", "failed", exception.GetType().Name);
         }
         return null;
     }
 
-    private async Task<T> TraceNativeStageAsync<T>(string stage, Func<Task<T>> action)
+    private async Task<T> TraceNativeStageAsync<T>(string stage, string authorityMethod, Func<Task<T>> action)
     {
         var started = Stopwatch.GetTimestamp();
         var outcome = "completed";
-        _logger.LogInformation("LEGEND Founder AI stage started. Stage={Stage}", stage);
+        var exceptionType = "none";
+        _logger.LogInformation(
+            "LEGEND RuntimeDiagnostic Event={Event} AuthorityMethod={AuthorityMethod} Stage={Stage} Outcome={Outcome}",
+            "StageStarted", authorityMethod, stage, "started");
         try
         {
-            return await action();
+            var result = await action();
+            if (result is LegendConnectUtteranceMeaningGraphSnapshot graph)
+            {
+                _logger.LogInformation(
+                    "LEGEND RuntimeDiagnostic Event={Event} AuthorityMethod={AuthorityMethod} Stage={Stage} Outcome={Outcome} ReasonCode={ReasonCode} GraphNodes={GraphNodes} GraphRelations={GraphRelations} UnknownComponents={UnknownComponents}",
+                    "MeaningGraphObserved", authorityMethod, stage, graph.IsComposed ? "composed" : "uncomposed",
+                    LegendConnectTelemetry.NormalizeDiagnosticReason(graph.ReasonCode), graph.Nodes.Count, graph.Relations.Count, graph.UnknownSurfaceComponents.Count);
+            }
+            if (result is LegendConnectDiscourseStateSnapshot discourse)
+            {
+                var nodes = discourse.Turns.SelectMany(turn => turn.Nodes).ToArray();
+                var bindings = discourse.Turns.SelectMany(turn => turn.Bindings).ToArray();
+                _logger.LogInformation(
+                    "LEGEND RuntimeDiagnostic Event={Event} AuthorityMethod={AuthorityMethod} Stage={Stage} Outcome={Outcome} DiscourseTurns={DiscourseTurns} GraphNodes={GraphNodes} GraphRelations={GraphRelations} FounderNodes={FounderNodes} MachineNodes={MachineNodes} CurrentTurnAssertionNodes={CurrentTurnAssertionNodes} SourceSlotBindingNodes={SourceSlotBindingNodes} BindingsBound={BindingsBound} BindingsUnresolved={BindingsUnresolved}",
+                    "DiscourseStateObserved", authorityMethod, stage, "observed", discourse.Turns.Count, nodes.Length,
+                    discourse.Turns.Sum(turn => turn.Relations.Count),
+                    nodes.Count(node => node.Provenance == "FounderApproved"),
+                    nodes.Count(node => node.Provenance == "SystemValidatedMachine"),
+                    nodes.Count(node => node.Provenance == "CurrentTurnAssertion"),
+                    nodes.Count(node => node.SourceSlotBinding is not null),
+                    bindings.Count(binding => binding.ResolutionState == "bound"),
+                    bindings.Count(binding => binding.ResolutionState != "bound"));
+            }
+            return result;
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException exception)
         {
             outcome = "cancelled";
+            exceptionType = exception.GetType().Name;
             throw;
         }
-        catch
+        catch (Exception exception)
         {
             outcome = "failed";
+            exceptionType = exception.GetType().Name;
             throw;
         }
         finally
@@ -1480,10 +1556,13 @@ public sealed class LegendFounderAiConversationService
             // Fixed stage names and bounded counts expose the blocking
             // authority without recording a prompt, graph, value or actor.
             _logger.LogInformation(
-                "LEGEND Founder AI stage ended. Stage={Stage} Outcome={Outcome} ElapsedMs={ElapsedMs}",
-                stage, outcome, (long)Math.Ceiling(Stopwatch.GetElapsedTime(started).TotalMilliseconds));
+                "LEGEND RuntimeDiagnostic Event={Event} AuthorityMethod={AuthorityMethod} Stage={Stage} Outcome={Outcome} ReasonCode={ReasonCode} ElapsedMs={ElapsedMs} ExceptionType={ExceptionType}",
+                "StageEnded", authorityMethod, stage, outcome,
+                outcome == "cancelled" ? "operation_cancelled" : outcome == "failed" ? "authority_exception" : "none",
+                (long)Math.Ceiling(Stopwatch.GetElapsedTime(started).TotalMilliseconds), exceptionType);
         }
     }
+
 
     private async Task<FounderAiSourceLanguageResolution> ResolveSourceLanguageAsync(
         string? declaredLanguageCode,
@@ -1506,9 +1585,8 @@ public sealed class LegendFounderAiConversationService
             // from the seeded governed registry and never provisions baseline
             // rows from a reply; initialization keeps its own authority.
             var enabledLanguage =
-                await _languages.NormalizeEnabledTranslationLanguageReadOnlyAsync(
-                    normalizedCode,
-                    cancellationToken);
+                await TraceNativeStageAsync("declared_language_registry", _languages.GetType().Name + "." + nameof(ILegendLanguageRegistry.NormalizeEnabledTranslationLanguageReadOnlyAsync),
+                    () => _languages.NormalizeEnabledTranslationLanguageReadOnlyAsync(normalizedCode, cancellationToken));
             return enabledLanguage is null
                 ? FounderAiSourceLanguageResolution.Failure(
                     FounderAiSourceLanguageOutcome.UnsupportedLanguage,
@@ -1520,10 +1598,8 @@ public sealed class LegendFounderAiConversationService
         TranslationDetectionResult detected;
         try
         {
-            detected = await _translation.DetectLanguageAsync(
-                sourceText,
-                cancellationToken,
-                providerPolicy);
+            detected = await TraceNativeStageAsync("source_language_detection", _translation.GetType().Name + "." + nameof(ITranslationService.DetectLanguageAsync),
+                () => _translation.DetectLanguageAsync(sourceText, cancellationToken, providerPolicy));
         }
         catch (OperationCanceledException)
             when (cancellationToken.IsCancellationRequested)
@@ -1533,8 +1609,9 @@ public sealed class LegendFounderAiConversationService
         catch (Exception exception)
         {
             _logger.LogWarning(
-                exception,
-                "LEGEND Founder AI source-language identification was unavailable.");
+                "LEGEND RuntimeDiagnostic Event={Event} AuthorityMethod={AuthorityMethod} Stage={Stage} Outcome={Outcome} ReasonCode={ReasonCode} ExceptionType={ExceptionType}",
+                "SourceLanguageException", _translation.GetType().Name + "." + nameof(ITranslationService.DetectLanguageAsync), "source_language", "failed",
+                "source_language_identification_unavailable", exception.GetType().Name);
             return FounderAiSourceLanguageResolution.Failure(
                 FounderAiSourceLanguageOutcome
                     .TransientIdentificationUnavailable,
@@ -1583,9 +1660,8 @@ public sealed class LegendFounderAiConversationService
         }
 
         var enabledDetectedLanguage =
-            await _languages.NormalizeEnabledTranslationLanguageReadOnlyAsync(
-                detectedCode,
-                cancellationToken);
+            await TraceNativeStageAsync("resolved_language_registry", _languages.GetType().Name + "." + nameof(ILegendLanguageRegistry.NormalizeEnabledTranslationLanguageReadOnlyAsync),
+                () => _languages.NormalizeEnabledTranslationLanguageReadOnlyAsync(detectedCode, cancellationToken));
         return enabledDetectedLanguage is null
             ? FounderAiSourceLanguageResolution.Failure(
                 FounderAiSourceLanguageOutcome.UnsupportedLanguage,
@@ -1769,14 +1845,9 @@ public sealed class LegendFounderAiConversationService
                     if (boundedDelay > TimeSpan.Zero)
                     {
                         _logger.LogWarning(
-                            "LEGEND Founder AI provider transient rejection. " +
-                            "HTTP={StatusCode} Attempt={Attempt} RetryDelayMs={RetryDelayMs} " +
-                            "RequestReset={RequestReset} TokenReset={TokenReset}",
-                            (int)response.StatusCode,
-                            attempt,
-                            (long)Math.Ceiling(boundedDelay.TotalMilliseconds),
-                            GetProviderHeader(response, "x-ratelimit-reset-requests") ?? "unavailable",
-                            GetProviderHeader(response, "x-ratelimit-reset-tokens") ?? "unavailable");
+                            "LEGEND RuntimeDiagnostic Event={Event} AuthorityMethod={AuthorityMethod} Stage={Stage} Outcome={Outcome} ReasonCode={ReasonCode} StatusCode={StatusCode} Attempt={Attempt} RetryDelayMs={RetryDelayMs}",
+                            "ProviderRetry", "LegendFounderAiConversationService.SendResponseAsync", "external_response", "retrying", "provider_transient_rejection",
+                            (int)response.StatusCode, attempt, (long)Math.Ceiling(boundedDelay.TotalMilliseconds));
 
                         await Task.Delay(
                             boundedDelay,
@@ -1793,13 +1864,9 @@ public sealed class LegendFounderAiConversationService
                     "x-request-id");
 
             _logger.LogError(
-                "LEGEND Founder AI provider rejected request. " +
-                "HTTP={StatusCode} ClientRequestId={ClientRequestId} " +
-                "ProviderRequestId={ProviderRequestId} Body={Body}",
-                (int)response.StatusCode,
-                clientRequestId,
-                providerRequestId ?? "unavailable",
-                errorBody);
+                "LEGEND RuntimeDiagnostic Event={Event} AuthorityMethod={AuthorityMethod} Stage={Stage} Outcome={Outcome} ReasonCode={ReasonCode} StatusCode={StatusCode} Attempt={Attempt}",
+                "ProviderRejected", "LegendFounderAiConversationService.SendResponseAsync", "external_response", "failed", "provider_http_rejection",
+                (int)response.StatusCode, attempt);
 
             throw new LegendFounderAiProviderException(
                 (int)response.StatusCode,
@@ -2247,7 +2314,7 @@ public sealed class LegendFounderAiConversationService
         {
             try
             {
-                var mutationOutput = await _toolAuthority.ExecuteAsync(
+                var mutationOutput = await TraceNativeStageAsync("governed_tool", "LegendFounderToolAuthority.ExecuteAsync", () => _toolAuthority.ExecuteAsync(
                     founder,
                     call with
                     {
@@ -2255,7 +2322,7 @@ public sealed class LegendFounderAiConversationService
                     },
                     mode,
                     cancellationToken,
-                    providerPolicy);
+                    providerPolicy));
                 return BoundSerializedOutput(mutationOutput, outputBudgetCharacters);
             }
             catch (OperationCanceledException)
@@ -2277,9 +2344,8 @@ public sealed class LegendFounderAiConversationService
             catch (Exception exception)
             {
                 _logger.LogWarning(
-                    exception,
-                    "LEGEND Founder AI governed mutation tool {Tool} failed before a response could be produced.",
-                    call.Name);
+                    "LEGEND RuntimeDiagnostic Event={Event} AuthorityMethod={AuthorityMethod} Stage={Stage} Outcome={Outcome} ReasonCode={ReasonCode} ExceptionType={ExceptionType}",
+                    "GovernedToolFailed", "LegendFounderToolAuthority.ExecuteAsync", "governed_tool", "failed", "tool_execution_failed", exception.GetType().Name);
 
                 throw new LegendFounderAiToolExecutionException(
                     call.Name,
@@ -2297,7 +2363,9 @@ public sealed class LegendFounderAiConversationService
 
         try
         {
-            var output = await _toolAuthority.ExecuteAsync(
+            var output = await TraceNativeStageAsync(
+                string.Equals(call.Name, "legend_research_internet", StringComparison.Ordinal) ? "research_tool" : "governed_tool",
+                "LegendFounderToolAuthority.ExecuteAsync", () => _toolAuthority.ExecuteAsync(
                 founder,
                 string.Equals(
                     call.Name,
@@ -2310,7 +2378,7 @@ public sealed class LegendFounderAiConversationService
                         : call,
                 mode,
                 toolBudget.Token,
-                providerPolicy);
+                providerPolicy));
             toolBudget.Token.ThrowIfCancellationRequested();
             return BoundSerializedOutput(output, outputBudgetCharacters);
         }
@@ -2318,9 +2386,8 @@ public sealed class LegendFounderAiConversationService
             when (!cancellationToken.IsCancellationRequested)
         {
             _logger.LogWarning(
-                "Legend Founder AI read-only tool {Tool} exceeded its {Seconds:F1}-second dynamic budget; returning a structured diagnostic.",
-                call.Name,
-                readOnlyBudget.TotalSeconds);
+                "LEGEND RuntimeDiagnostic Event={Event} AuthorityMethod={AuthorityMethod} Stage={Stage} Outcome={Outcome} ReasonCode={ReasonCode}",
+                "GovernedToolTimedOut", "LegendFounderToolAuthority.ExecuteAsync", "governed_tool", "cancelled", "tool_timeout");
 
             throw new LegendFounderAiToolExecutionException(
                 call.Name,
@@ -2351,9 +2418,8 @@ public sealed class LegendFounderAiConversationService
         catch (Exception exception)
         {
             _logger.LogWarning(
-                exception,
-                "LEGEND Founder AI read-only tool {Tool} failed; preserving the exact tool failure for OpenAI and continuing independent governed reads.",
-                call.Name);
+                "LEGEND RuntimeDiagnostic Event={Event} AuthorityMethod={AuthorityMethod} Stage={Stage} Outcome={Outcome} ReasonCode={ReasonCode} ExceptionType={ExceptionType}",
+                "GovernedToolFailed", "LegendFounderToolAuthority.ExecuteAsync", "governed_tool", "failed", "tool_execution_failed", exception.GetType().Name);
 
             return BuildReadOnlyToolFailureOutput(
                 call.Name,

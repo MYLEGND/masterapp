@@ -388,6 +388,7 @@ extension EnvironmentValues {
 struct LegendBookClientAppointmentButton: View {
     let profileID: String
     var knownAssigned = false
+    var title = "Book Appointment"
     @Environment(\.legendAgentWorkspace) private var workspace
     @State private var allowed = false
     @State private var failure: String?
@@ -398,7 +399,7 @@ struct LegendBookClientAppointmentButton: View {
             Group {
                 if knownAssigned || allowed {
                     Button { isPresented = true } label: {
-                        Label(LegendLocalized("Book Appointment"), systemImage: "calendar.badge.plus")
+                        Label(LegendLocalized(title), systemImage: "calendar.badge.plus")
                             .frame(maxWidth: .infinity)
                     }
                     .buttonStyle(LegendPortalBookingButtonStyle())

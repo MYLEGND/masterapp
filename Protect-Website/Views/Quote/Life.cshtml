@@ -902,6 +902,8 @@
         InstanceKey: $"life-contact-{normalizedOfferKey}-{pageVariant}-{pageMode}");
 }
 
+<partial name="_QuoteFinalReviewAssets" />
+
 <style>
 /* ================================================================
    Shared Life Wizard — Mobile-first, micro-step, premium styling
@@ -5157,8 +5159,7 @@ body.life-final-step-active .lq-hero-shell {
 }
 body.life-final-step-active .lq-hero-shell:has(#lifeEducationContactPanel.is-submitted),
 body.life-final-step-active .lq-hero-shell:has(#lifeEducationContactPanel.lq-final-panel-no-chrome),
-body.life-final-step-active .lq-hero-shell:has(#lifeEducationContactPanel.lq-final-review-flat-mode),
-body.life-final-step-active .lq-hero-shell:has(#lifePostSubmitSlot:not([hidden])) {
+body.life-final-step-active .lq-hero-shell:has(#lifeEducationContactPanel.lq-final-review-flat-mode){
     width: min(1480px, calc(100vw - 32px)) !important;
     max-width: min(1480px, calc(100vw - 32px)) !important;
     overflow: visible !important;
@@ -7182,37 +7183,8 @@ input:checked + .lq-answer-card {
     display: none !important;
 }
 
-#lifePostSubmitSlot {
-    width: 100% !important;
-    margin: 0 !important;
-    padding: 0 !important;
-    background: inherit !important;
-    border: 0 !important;
-    box-shadow: none !important;
-}
-
-#lifePostSubmitSlot {
-    width: 100% !important;
-    max-width: 100% !important;
-    min-width: 0 !important;
-    margin: 0 !important;
-    padding: 0 !important;
-    overflow: hidden !important;
-}
-
-#lifePostSubmitSlot .lq-final-review-unified-card {
-    display: contents !important;
-}
-
 @@media (min-width: 1024px) {
-    #lifePostSubmitSlot .lq-final-review-head,
-    #lifePostSubmitSlot .lq-final-review-proof-row,
-    #lifePostSubmitSlot .lq-final-review-impact-grid,
-    #lifePostSubmitSlot .lq-final-review-result-slot,
-    #lifePostSubmitSlot .lq-final-review-next-step,
-    #lifePostSubmitSlot .lq-final-review-booking-card,
-    #lifePostSubmitSlot .lq-final-review-loading,
-    #lifePostSubmitSlot .lq-final-review-unavailable,
+
     #lifePostSubmitSlot .lq-booking-frame-only,
     #lifePostSubmitSlot .lq-booking-embed-status {
         width: min(100%, 1040px) !important;
@@ -7221,233 +7193,9 @@ input:checked + .lq-answer-card {
         margin-right: auto !important;
         min-width: 0 !important;
     }
-
-    #lifePostSubmitSlot .lq-final-review-head {
-        text-align: left !important;
-    }
-
-    #lifePostSubmitSlot .lq-final-review-copy {
-        max-width: 86ch !important;
-    }
-
-    #lifePostSubmitSlot .lq-final-review-impact-grid,
-    #lifePostSubmitSlot .lq-contact-estimate-metrics {
-        grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
-    }
-
-    #lifePostSubmitSlot .lq-final-review-next-step,
-    #lifePostSubmitSlot .lq-final-review-booking-card {
-        padding-left: 18px !important;
-        padding-right: 18px !important;
-    }
 }
 
-#lifePostSubmitSlot .lq-final-review-head {
-    position: relative !important;
-    padding: 0 0 13px !important;
-    margin: 0 0 12px !important;
-    border-bottom: 1px solid rgba(243,214,136,.14) !important;
-}
 
-#lifePostSubmitSlot .lq-final-review-kicker {
-    display: inline-flex !important;
-    align-items: center !important;
-    gap: 8px !important;
-    color: #f3d688 !important;
-    font-size: .72rem !important;
-    font-weight: 950 !important;
-    letter-spacing: .11em !important;
-    text-transform: uppercase !important;
-    margin: 0 0 8px !important;
-}
-
-#lifePostSubmitSlot .lq-final-review-kicker::after {
-    content: "" !important;
-    width: 42px !important;
-    height: 1px !important;
-    background: linear-gradient(90deg, rgba(243,214,136,.9), rgba(243,214,136,0)) !important;
-    display: block !important;
-}
-
-#lifePostSubmitSlot .lq-final-review-title {
-    color: #fff8e7 !important;
-    font-size: clamp(1.72rem, 4vw, 2.28rem) !important;
-    line-height: 1.02 !important;
-    letter-spacing: -.04em !important;
-    font-weight: 960 !important;
-    margin: 0 0 9px !important;
-    text-wrap: balance !important;
-}
-
-#lifePostSubmitSlot .lq-final-review-copy {
-    color: rgba(248,250,252,.84) !important;
-    font-size: .96rem !important;
-    line-height: 1.42 !important;
-    font-weight: 720 !important;
-    max-width: 78ch !important;
-    margin: 0 !important;
-}
-
-#lifePostSubmitSlot .lq-final-review-proof-row {
-    display: flex !important;
-    flex-wrap: wrap !important;
-    gap: 7px !important;
-    margin: 0 0 13px !important;
-}
-
-#lifePostSubmitSlot .lq-final-review-proof-row span {
-    display: inline-flex !important;
-    align-items: center !important;
-    min-height: 28px !important;
-    padding: 6px 10px !important;
-    border-radius: 999px !important;
-    border: 1px solid rgba(243,214,136,.30) !important;
-    background: rgba(4,16,32,.42) !important;
-    color: rgba(255,246,216,.92) !important;
-    font-size: .72rem !important;
-    font-weight: 900 !important;
-}
-
-#lifePostSubmitSlot .lq-final-review-impact-grid {
-    display: grid !important;
-    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
-    gap: 10px !important;
-    margin: 0 0 14px !important;
-}
-
-#lifePostSubmitSlot .lq-final-review-impact-card {
-    padding: 13px 14px !important;
-    border-radius: 16px !important;
-    border: 1px solid rgba(199,153,49,.22) !important;
-    background:
-        radial-gradient(circle at 15% 0%, rgba(243,214,136,.08), transparent 36%),
-        linear-gradient(180deg, rgba(6,29,61,.78) 0%, rgba(7,26,54,.92) 100%) !important;
-}
-
-#lifePostSubmitSlot .lq-final-review-impact-card.is-urgent {
-    border-color: rgba(243,214,136,.38) !important;
-    background:
-        radial-gradient(circle at 15% 0%, rgba(243,214,136,.14), transparent 38%),
-        linear-gradient(180deg, rgba(8,37,77,.90) 0%, rgba(7,26,54,.96) 100%) !important;
-}
-
-#lifePostSubmitSlot .lq-final-review-impact-label,
-#lifePostSubmitSlot .lq-final-review-next-kicker,
-#lifePostSubmitSlot .lq-final-review-booking-kicker {
-    color: #f3d688 !important;
-    font-size: .70rem !important;
-    font-weight: 940 !important;
-    letter-spacing: .08em !important;
-    text-transform: uppercase !important;
-    margin: 0 0 5px !important;
-}
-
-#lifePostSubmitSlot .lq-final-review-impact-text {
-    color: rgba(248,250,252,.88) !important;
-    font-size: .87rem !important;
-    font-weight: 760 !important;
-    line-height: 1.34 !important;
-}
-
-#lifePostSubmitSlot .lq-final-review-result-slot,
-#lifePostSubmitSlot .lq-contact-estimate-wrap,
-#lifePostSubmitSlot .lq-contact-estimate-card,
-#lifePostSubmitSlot .lq-rec-card,
-#lifePostSubmitSlot .lq-estimate-card {
-    background: inherit !important;
-    border: 0 !important;
-    box-shadow: none !important;
-    padding: 0 !important;
-    margin: 0 0 14px !important;
-}
-
-#lifePostSubmitSlot .lq-contact-estimate-main {
-    margin: 0 0 14px !important;
-}
-
-#lifePostSubmitSlot .lq-contact-estimate-carrier-note {
-    margin: 0 0 14px !important;
-    padding: 12px 14px !important;
-    border-radius: 14px !important;
-    border: 1px solid rgba(199,153,49,.20) !important;
-    background: linear-gradient(180deg, rgba(6,29,61,.78) 0%, rgba(7,26,54,.86) 100%) !important;
-}
-
-#lifePostSubmitSlot .lq-final-review-next-step {
-    margin: 2px 0 14px !important;
-    padding: 15px 16px !important;
-    border-radius: 18px !important;
-    border: 1px solid rgba(243,214,136,.34) !important;
-    background:
-        radial-gradient(circle at 12% 0%, rgba(243,214,136,.13), transparent 34%),
-        linear-gradient(180deg, rgba(8,37,77,.92) 0%, rgba(5,22,48,.96) 100%) !important;
-    box-shadow:
-        inset 0 1px 0 rgba(255,255,255,.05),
-        0 14px 28px rgba(2,12,27,.14) !important;
-}
-
-#lifePostSubmitSlot .lq-final-review-next-title {
-    color: #fff7df !important;
-    font-size: 1.02rem !important;
-    font-weight: 930 !important;
-    line-height: 1.22 !important;
-    margin: 0 0 6px !important;
-}
-
-#lifePostSubmitSlot .lq-final-review-next-copy {
-    color: rgba(248,250,252,.80) !important;
-    font-size: .9rem !important;
-    font-weight: 720 !important;
-    line-height: 1.38 !important;
-    margin: 0 0 10px !important;
-}
-
-#lifePostSubmitSlot .lq-final-review-checklist {
-    display: grid !important;
-    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
-    gap: 7px !important;
-}
-
-#lifePostSubmitSlot .lq-final-review-checklist span {
-    padding: 8px 9px !important;
-    border-radius: 12px !important;
-    border: 1px solid rgba(243,214,136,.20) !important;
-    background: rgba(4,16,32,.35) !important;
-    color: rgba(248,250,252,.88) !important;
-    font-size: .76rem !important;
-    font-weight: 850 !important;
-    text-align: center !important;
-}
-
-#lifePostSubmitSlot .lq-final-review-booking-card {
-    margin: 12px 0 10px !important;
-    padding: 15px 16px !important;
-    border-radius: 18px !important;
-    border: 1px solid rgba(243,214,136,.38) !important;
-    background:
-        radial-gradient(circle at 18% 0%, rgba(243,214,136,.15), transparent 36%),
-        linear-gradient(180deg, rgba(9,41,85,.96) 0%, rgba(6,26,55,.98) 100%) !important;
-}
-
-#lifePostSubmitSlot .lq-final-review-booking-title {
-    color: #fff8e7 !important;
-    font-size: 1.16rem !important;
-    font-weight: 950 !important;
-    line-height: 1.13 !important;
-    margin: 0 0 5px !important;
-    text-wrap: balance !important;
-}
-
-#lifePostSubmitSlot .lq-final-review-booking-copy {
-    color: rgba(248,250,252,.84) !important;
-    font-size: .92rem !important;
-    font-weight: 740 !important;
-    line-height: 1.36 !important;
-    margin: 0 !important;
-}
-
-#lifePostSubmitSlot .lq-final-review-loading,
-#lifePostSubmitSlot .lq-final-review-unavailable,
 #lifePostSubmitSlot .lq-booking-embed-status {
     margin: 10px 0 !important;
     padding: 10px 12px !important;
@@ -7499,12 +7247,6 @@ input:checked + .lq-answer-card {
     text-decoration: none !important;
 }
 
-#lifePostSubmitSlot,
-#lifePostSubmitSlot * {
-    opacity: 1 !important;
-    box-sizing: border-box !important;
-}
-
 @@media (min-width: 1024px) {
     main.layout-content,
     .container.layout-content {
@@ -7525,8 +7267,7 @@ input:checked + .lq-answer-card {
 
     body.life-landing .lq-hero-shell:has(#lifeEducationContactPanel.is-submitted),
     body.life-landing .lq-hero-shell:has(#lifeEducationContactPanel.lq-final-panel-no-chrome),
-    body.life-landing .lq-hero-shell:has(#lifeEducationContactPanel.lq-final-review-flat-mode),
-    body.life-landing .lq-hero-shell:has(#lifePostSubmitSlot:not([hidden])) {
+    body.life-landing .lq-hero-shell:has(#lifeEducationContactPanel.lq-final-review-flat-mode){
         width: min(1180px, calc(100vw - 32px)) !important;
         max-width: min(1180px, calc(100vw - 32px)) !important;
         overflow: hidden !important;
@@ -7611,41 +7352,6 @@ input:checked + .lq-answer-card {
         grid-column: 1 / -1 !important;
     }
 
-    #lifePostSubmitSlot .lq-final-review-head,
-    #lifePostSubmitSlot .lq-final-review-proof-row,
-    #lifePostSubmitSlot .lq-final-review-impact-grid,
-    #lifePostSubmitSlot .lq-final-review-result-slot,
-    #lifePostSubmitSlot .lq-contact-estimate-main,
-    #lifePostSubmitSlot .lq-contact-estimate-carrier-note,
-    #lifePostSubmitSlot .lq-final-review-next-step,
-    #lifePostSubmitSlot .lq-final-review-booking-card {
-        grid-column: 1 / -1 !important;
-        min-width: 0 !important;
-        margin-left: 0 !important;
-        margin-right: 0 !important;
-    }
-
-    #lifePostSubmitSlot .lq-final-review-agent-row {
-        grid-column: 1 / -1 !important;
-        margin: 0 0 8px !important;
-        padding: 6px 6px 2px !important;
-    }
-
-    #lifePostSubmitSlot .lq-final-review-agent-row .dq-proof-card {
-        margin: 0 !important;
-        border-radius: 14px !important;
-        padding: 10px 12px !important;
-    }
-
-    #lifePostSubmitSlot .lq-final-review-title {
-        font-size: clamp(1.34rem, 2.05vw, 1.74rem) !important;
-        line-height: 1.12 !important;
-    }
-
-    #lifePostSubmitSlot .lq-final-review-checklist {
-        grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
-    }
-
     #lifePostSubmitSlot .lq-booking-frame-only {
         min-height: 980px !important;
         height: 980px !important;
@@ -7662,26 +7368,6 @@ input:checked + .lq-answer-card {
 }
 
 @@media (max-width: 720px) {
-    #lifePostSubmitSlot .lq-final-review-title {
-        font-size: 1.52rem !important;
-        line-height: 1.04 !important;
-    }
-
-    #lifePostSubmitSlot .lq-final-review-copy {
-        font-size: .91rem !important;
-        line-height: 1.4 !important;
-    }
-
-    #lifePostSubmitSlot .lq-final-review-impact-grid,
-    #lifePostSubmitSlot .lq-final-review-checklist {
-        grid-template-columns: 1fr !important;
-    }
-
-    #lifePostSubmitSlot .lq-final-review-next-step,
-    #lifePostSubmitSlot .lq-final-review-booking-card {
-        padding: 14px !important;
-        border-radius: 16px !important;
-    }
 
     #lifePostSubmitSlot .lq-booking-iframe {
         min-height: 620px !important;
@@ -7698,8 +7384,7 @@ input:checked + .lq-answer-card {
 #lifeEducationContactPanel.is-submit-loading #lifeStep1Panel,
 #lifeEducationContactPanel.is-submit-loading #lifeStep2Panel,
 #lifeEducationContactPanel.is-submit-loading #lifeStep2EstimateSummary ,
-#lifeEducationContactPanel.is-submit-loading #lifeContactCaptureWrap,
-#lifeEducationContactPanel.is-submit-loading #lifePostSubmitSlot {
+#lifeEducationContactPanel.is-submit-loading #lifeContactCaptureWrap{
     display: none !important;
 }
 
@@ -11291,7 +10976,7 @@ const contactFieldProgress = new Map();
     submittedPanel?.classList?.add('is-submitted', 'lq-final-review-flat-mode');
 
     const proofRow = document.querySelector('#lifeEducationContactPanel > .lq-contact-first-proof-row');
-    const proofHtml = proofRow ? proofRow.outerHTML : '';
+    const agentProofHtml = proofRow ? proofRow.outerHTML : '';
     if (proofRow) proofRow.remove();
 
     document.getElementById('lifeEducationContactPanel')?.classList?.add('lq-final-panel-no-chrome');
@@ -11302,80 +10987,35 @@ const contactFieldProgress = new Map();
       document.querySelector('.lq-contact-estimate-wrap:not(.is-teaser-only)') ||
       document.querySelector('.lq-contact-estimate-wrap');
 
-    const resultHtml = existingResult ? existingResult.outerHTML : '';
+    const reviewSnapshot = window.LegendQuoteReview.readEstimate(existingResult, postSubmitSlot);
     if (existingResult) existingResult.remove();
 
     const handoffCopy = getFinalHandoffCopy(quoteType);
     const agentNameRaw = asTrimmed(agentDirectContactName) || 'your licensed agent';
     const bookingCopy = mergeAgentNameIntoCopy(handoffCopy.bookingCopy, agentNameRaw);
 
-    postSubmitSlot.innerHTML = `
-      <section class="lq-final-review-unified-card" aria-labelledby="lifePostSubmitBookingTitle">
-        ${proofHtml ? `
-          <div class="lq-final-review-agent-row">
-            ${proofHtml}
-          </div>
-        ` : ''}
-
-        <div class="lq-final-review-head">
-          <div class="lq-final-review-kicker">${escapeHtml(handoffCopy.kicker)}</div>
-          <div class="lq-final-review-title" id="lifePostSubmitBookingTitle">${escapeHtml(handoffCopy.title)}</div>
-          <div class="lq-final-review-copy">${escapeHtml(handoffCopy.copy)}</div>
-        </div>
-
-        <div class="lq-final-review-proof-row" aria-label="Review value">
-          <span>Estimate saved</span>
-          <span>25+ carriers</span>
-          <span>No obligation</span>
-        </div>
-
-        <div class="lq-final-review-impact-grid" aria-label="Why this review matters">
-          <div class="lq-final-review-impact-card">
-            <div class="lq-final-review-impact-label">What surfaced</div>
-            <div class="lq-final-review-impact-text">${escapeHtml(handoffCopy.diagnosis)}</div>
-          </div>
-          <div class="lq-final-review-impact-card is-urgent">
-            <div class="lq-final-review-impact-label">Why timing matters</div>
-            <div class="lq-final-review-impact-text">${escapeHtml(handoffCopy.implication)}</div>
-          </div>
-        </div>
-
-        ${resultHtml ? `
-          <div class="lq-final-review-result-slot">
-            ${resultHtml}
-          </div>
-        ` : ''}
-
-        <div class="lq-final-review-next-step" aria-label="What happens during the review">
-          <div class="lq-final-review-next-kicker">What the review confirms</div>
-          <div class="lq-final-review-next-title">${escapeHtml(agentNameRaw)} helps turn this estimate into a clear decision.</div>
-          <div class="lq-final-review-next-copy">${escapeHtml(handoffCopy.nextStep)}</div>
-          <div class="lq-final-review-checklist" aria-label="Review checklist">
-            <span>Coverage amount</span>
-            <span>Monthly fit</span>
-            <span>Carrier direction</span>
-          </div>
-        </div>
-
-        <div class="lq-final-review-booking-card">
-          <div class="lq-final-review-booking-kicker">Finish the review</div>
-          <div class="lq-final-review-booking-title">${escapeHtml(handoffCopy.bookingTitle)}</div>
-          <div class="lq-final-review-booking-copy">${escapeHtml(bookingCopy)}</div>
-        </div>
-
-        ${normalized.loading ? `
-          <div class="lq-final-review-loading">${escapeHtml(publicBookingLoadingText)}</div>
-        ` : ''}
-
-        ${showInlineShell ? `
-          <div class="lq-booking-frame-only" id="lifeBookingInlineFrameSlot"></div>
-          <div class="lq-booking-embed-status" id="lifeBookingInlineStatus" hidden>${escapeHtml(publicBookingLoadingText)}</div>
-        ` : ''}
-
-        ${bookingUnavailableCopy ? `
-          <div class="lq-final-review-unavailable">${escapeHtml(bookingUnavailableCopy)}</div>
-        ` : ''}
-      </section>`;
+    window.LegendQuoteReview.render(postSubmitSlot, {
+      titleId: 'lifePostSubmitBookingTitle',
+      agentHtml: agentProofHtml,
+      nextTitle: agentNameRaw + ' helps turn this estimate into a clear decision.',
+      kicker: handoffCopy.kicker,
+      title: handoffCopy.title,
+      copy: handoffCopy.copy,
+      benefits: ['Estimate saved', '25+ carriers', 'No obligation'],
+      diagnosis: handoffCopy.diagnosis,
+      implication: handoffCopy.implication,
+      snapshot: reviewSnapshot,
+      nextStep: handoffCopy.nextStep,
+      checklist: ['Coverage amount', 'Monthly fit', 'Carrier direction'],
+      bookingTitle: handoffCopy.bookingTitle,
+      bookingCopy,
+      loading: normalized.loading,
+      loadingText: publicBookingLoadingText,
+      showCalendar: showInlineShell,
+      frameId: 'lifeBookingInlineFrameSlot',
+      statusId: 'lifeBookingInlineStatus',
+      unavailableText: bookingUnavailableCopy
+    });
 
     postSubmitSlot.hidden = false;
 
@@ -12382,9 +12022,7 @@ body.life-final-step-active .lq-hero-shell {
 #lifeWizardForm,
 #lifeWizardForm *,
 #lifeEducationContactPanel,
-#lifeEducationContactPanel *,
-#lifePostSubmitSlot,
-#lifePostSubmitSlot * {
+#lifeEducationContactPanel *{
     box-sizing: border-box !important;
 }
 
@@ -12408,9 +12046,7 @@ body.life-final-step-active .lq-hero-shell {
 }
 
 #lifeEducationContactPanel,
-#lifeContactCaptureWrap,
-#lifePostSubmitSlot,
-#lifePostSubmitSlot .lq-final-review-unified-card {
+#lifeContactCaptureWrap{
     width: 100% !important;
     max-width: none !important;
     margin: 0 !important;
@@ -12434,14 +12070,6 @@ body.life-final-step-active .lq-hero-shell {
 #lifeEducationContactPanel .lq-contact-first-proof-row,
 .lq-agent-handoff,
 #lifeStep2EstimateSummary,
-#lifePostSubmitSlot .lq-post-submit-card,
-#lifePostSubmitSlot .lq-final-review-next-step,
-#lifePostSubmitSlot .lq-final-review-booking-card,
-#lifePostSubmitSlot .lq-final-review-impact-card,
-#lifePostSubmitSlot .lq-contact-estimate-signal,
-#lifePostSubmitSlot .lq-contact-estimate-personal,
-#lifePostSubmitSlot .lq-contact-estimate-stat,
-#lifePostSubmitSlot .lq-contact-estimate-metric,
 #lifeContactCaptureWrap .lq-consent,
 #lifeContactCaptureWrap .lq-consent-box,
 #lifeContactCaptureWrap .lq-contact-consent {
@@ -12475,10 +12103,7 @@ body.life-final-step-active .lq-hero-shell {
 .lq-agent-name,
 .lq-step-title,
 .lq-step-question,
-.lq-contact-capture-title,
-#lifePostSubmitSlot .lq-final-review-title,
-#lifePostSubmitSlot .lq-final-review-booking-title,
-#lifePostSubmitSlot .lq-final-review-next-title {
+.lq-contact-capture-title{
     color: var(--lq-cream) !important;
 }
 
@@ -12491,11 +12116,7 @@ body.life-final-step-active .lq-hero-shell {
 #lifeStep2EstimateSummary .lq-contact-estimate-copy,
 #lifeStep2EstimateSummary .lq-contact-estimate-signal-copy,
 #lifeStep2EstimateSummary .lq-contact-estimate-personal-copy,
-#lifeStep2EstimateSummary .lq-contact-review-list li,
-#lifePostSubmitSlot .lq-final-review-copy,
-#lifePostSubmitSlot .lq-final-review-next-copy,
-#lifePostSubmitSlot .lq-final-review-booking-copy,
-#lifePostSubmitSlot .lq-final-review-impact-text {
+#lifeStep2EstimateSummary .lq-contact-review-list li{
     color: var(--lq-muted) !important;
 }
 
@@ -12595,10 +12216,7 @@ body.life-final-step-active .lq-hero-shell {
 }
 
 #lifeEducationContactPanel .lq-contact-capture-kicker,
-#lifeStep2EstimateSummary .lq-contact-estimate-kicker,
-#lifePostSubmitSlot .lq-final-review-kicker,
-#lifePostSubmitSlot .lq-final-review-next-kicker,
-#lifePostSubmitSlot .lq-final-review-booking-kicker {
+#lifeStep2EstimateSummary .lq-contact-estimate-kicker{
     color: var(--lq-gold) !important;
     font-size: .78rem !important;
     font-weight: 940 !important;
@@ -12785,11 +12403,6 @@ body.life-final-step-active .lq-hero-shell {
     font-weight: 940 !important;
 }
 
-#lifePostSubmitSlot .lq-post-submit-card {
-    max-width: none !important;
-    padding: 0 !important;
-}
-
 #lifePostSubmitSlot .lq-booking-frame-only,
 #lifePostSubmitSlot .lq-booking-embed-frame-wrap {
     margin-top: 10px !important;
@@ -12840,8 +12453,7 @@ body.life-final-step-active .lq-hero-shell {
     #lifeEducationContactPanel #lifeStep2Panel,
     #lifeEducationContactPanel .lq-step-panel,
     #lifeEducationContactPanel .lq-step-panel-pad,
-    #lifeContactCaptureWrap,
-    #lifePostSubmitSlot {
+    #lifeContactCaptureWrap{
         width: 100% !important;
         max-width: none !important;
         margin: 0 !important;
@@ -12879,11 +12491,7 @@ body.life-final-step-active .lq-hero-shell {
     #lifeWizardForm .lq-choice-grid.lq-grid-2,
     #lifeContactCaptureWrap .lq-contact-grid,
     #lifeContactCaptureWrap .lq-field-row.two,
-    #lifeStep2EstimateSummary .lq-contact-preview-mini-metrics,
-    #lifePostSubmitSlot .lq-final-review-impact-grid,
-    #lifePostSubmitSlot .lq-final-review-checklist,
-    #lifePostSubmitSlot .lq-contact-estimate-metrics,
-    #lifePostSubmitSlot .lq-contact-review-grid {
+    #lifeStep2EstimateSummary .lq-contact-preview-mini-metrics{
         grid-template-columns: 1fr !important;
         width: 100% !important;
         max-width: none !important;
@@ -13028,18 +12636,6 @@ body.life-final-step-active .lq-hero-shell {
     #lifeStep2EstimateSummary .lq-contact-preview-mini-metric strong {
         font-size: .9rem !important;
         line-height: 1.15 !important;
-    }
-
-    #lifePostSubmitSlot .lq-post-submit-card,
-    #lifePostSubmitSlot .lq-final-review-unified-card,
-    #lifePostSubmitSlot .lq-final-review-next-step,
-    #lifePostSubmitSlot .lq-final-review-booking-card {
-        width: 100% !important;
-        max-width: none !important;
-        padding: 0 !important;
-        border-radius: 0 !important;
-        background: transparent !important;
-        box-shadow: none !important;
     }
 
     #lifePostSubmitSlot .lq-booking-frame-only,

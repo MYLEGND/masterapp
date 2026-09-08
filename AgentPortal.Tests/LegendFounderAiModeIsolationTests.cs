@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Net;
@@ -12,10 +13,14 @@ using System.Threading.Tasks;
 using AgentPortal.Controllers;
 using AgentPortal.Security;
 using AgentPortal.Services;
+using AgentPortal.Services.Analytics;
 using Domain.Entities;
 using Domain.Messaging;
+using Infrastructure.Data;
 using Infrastructure.Messaging;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
@@ -1656,7 +1661,9 @@ public sealed class LegendFounderAiModeIsolationTests
     [Fact]
     public async Task ProviderAcceptanceCanary_LiveProviderAcceptsCompleteZeroWriteCatalog()
     {
-        if (!string.Equals(
+        var resourceMode = string.Equals(Environment.GetEnvironmentVariable("LEGEND_RESOURCE_DIAGNOSTICS_REQUIRED"),
+            "true", StringComparison.OrdinalIgnoreCase);
+        if (!resourceMode && !string.Equals(
                 Environment.GetEnvironmentVariable(
                     "LEGEND_FOUNDER_TOOL_CATALOG_PROVIDER_CANARY"),
                 "true",
@@ -1665,37 +1672,123 @@ public sealed class LegendFounderAiModeIsolationTests
             return;
         }
 
-        var configuration = new ConfigurationBuilder()
-            .AddEnvironmentVariables()
-            .Build();
-        Assert.False(string.IsNullOrWhiteSpace(configuration["OpenAI:ApiKey"]));
-
-        await using var db = ControllerTestHelpers.BuildDb();
+        var startedUtc = DateTime.UtcNow;
+        var clock = Stopwatch.StartNew();
+        var configuration = new ConfigurationBuilder().AddEnvironmentVariables().Build();
+        var credentialConfigured = !string.IsNullOrWhiteSpace(resourceMode
+            ? OpenAiKeyResolver.Resolve(configuration) : configuration["OpenAI:ApiKey"]);
+        var candidateSha = Environment.GetEnvironmentVariable("LEGEND_VALIDATION_CANDIDATE_SHA");
+        var runIdentity = Environment.GetEnvironmentVariable("LEGEND_VALIDATION_RUN_IDENTITY");
+        var status = "NOT_CONFIGURED";
+        var reason = "resource_configuration_missing";
+        var stage = "configuration";
+        var stageStarted = Stopwatch.GetTimestamp();
+        var stages = new List<object>();
+        string? failureType = null;
+        var responsePresent = false;
+        var writes = new LegendFounderAiComprehensiveDiagnosticContractTests.ResourceWriteGuard { Armed = resourceMode };
         var operations = new Mock<ILegendConnectOperations>(MockBehavior.Strict);
-        var profiles = new AgentProfileAccessResolver(db);
-        var legend = new FounderLegendConnectService(
-            operations.Object,
-            profiles);
         using var factory = new LiveOpenAiHttpClientFactory();
-        var service = new LegendFounderAiConversationService(
-            factory,
-            configuration,
-            legend,
-            NullLogger<LegendFounderAiConversationService>.Instance,
-            new LegendFounderAiDiscourseStateService(
-                db,
-                profiles,
-                operations.Object),
-            new LegendLanguageRegistry(db, configuration),
-            ControllerTestHelpers.BuildTranslationService());
-
-        var responseId =
-            await service.VerifyProviderToolCatalogAcceptanceAsync();
-
-        Assert.False(string.IsNullOrWhiteSpace(responseId));
-        Console.WriteLine($"ProviderAcceptanceResponseId={responseId}");
-        Assert.Empty(operations.Invocations);
+        try
+        {
+            Assert.True(credentialConfigured, "NOT_CONFIGURED: OpenAI API key absent.");
+            if (resourceMode)
+            {
+                reason = "candidate_identity_missing";
+                Assert.True(candidateSha is { Length: 40 } && candidateSha.All(Uri.IsHexDigit),
+                    "NOT_CONFIGURED: exact candidate SHA absent.");
+                reason = "run_identity_missing";
+                Assert.True(IsBoundedResourceRunIdentity(runIdentity), "NOT_CONFIGURED: bounded run identity absent.");
+                status = "FAILED";
+                reason = "resource_probe_failed";
+                stage = "candidate_assembly";
+                stageStarted = Stopwatch.GetTimestamp();
+                foreach (var assembly in new[] { typeof(LegendFounderAiModeIsolationTests).Assembly,
+                             typeof(LegendConnectOperations).Assembly, typeof(FounderLegendConnectService).Assembly })
+                    Assert.True(assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion
+                        ?.EndsWith("+" + candidateSha, StringComparison.Ordinal) == true,
+                        "Executed assembly is not bound to the requested candidate.");
+                stages.Add(new { Stage = stage, Outcome = "VERIFIED", Reason = "exact_candidate_assembly_identity",
+                    ElapsedMilliseconds = Stopwatch.GetElapsedTime(stageStarted).TotalMilliseconds });
+            }
+            stage = "provider_catalog_acceptance";
+            stageStarted = Stopwatch.GetTimestamp();
+            status = "FAILED";
+            reason = "resource_probe_failed";
+            await using var db = new MasterAppDbContext(new DbContextOptionsBuilder<MasterAppDbContext>()
+                .UseInMemoryDatabase(Guid.NewGuid().ToString("N"))
+                .ConfigureWarnings(warnings => warnings.Ignore(InMemoryEventId.TransactionIgnoredWarning))
+                .AddInterceptors(writes).Options);
+            var profiles = new AgentProfileAccessResolver(db);
+            var legend = new FounderLegendConnectService(operations.Object, profiles);
+            var service = new LegendFounderAiConversationService(factory, configuration, legend,
+                NullLogger<LegendFounderAiConversationService>.Instance,
+                new LegendFounderAiDiscourseStateService(db, profiles, operations.Object),
+                new LegendLanguageRegistry(db, configuration), ControllerTestHelpers.BuildTranslationService());
+            using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+            var responseId = await service.VerifyProviderToolCatalogAcceptanceAsync(deadline.Token);
+            responsePresent = !string.IsNullOrWhiteSpace(responseId);
+            Assert.True(responsePresent);
+            Assert.Empty(operations.Invocations);
+            Assert.Equal(0, writes.SaveChangesAttempts);
+            Assert.NotEmpty(factory.HttpCalls);
+            if (!resourceMode)
+                Console.WriteLine($"ProviderAcceptanceResponseId={responseId}");
+            status = "OBSERVED";
+            reason = "resource_boundary_observed_not_production_data_proof";
+            stages.Add(new { Stage = stage, Outcome = status, Reason = reason,
+                ElapsedMilliseconds = Stopwatch.GetElapsedTime(stageStarted).TotalMilliseconds });
+        }
+        catch (Exception exception)
+        {
+            failureType = exception.GetType().Name;
+            if (status != "NOT_CONFIGURED")
+                reason = exception switch
+                {
+                    OperationCanceledException => "resource_cancelled_or_deadline_exceeded",
+                    HttpRequestException => "resource_transport_failed",
+                    Xunit.Sdk.XunitException => "resource_contract_assertion_failed",
+                    _ => "resource_execution_failed"
+                };
+            stages.Add(new { Stage = stage, Outcome = status, Reason = reason, FailureType = failureType,
+                ElapsedMilliseconds = Stopwatch.GetElapsedTime(stageStarted).TotalMilliseconds });
+            if (!resourceMode) throw;
+        }
+        finally
+        {
+            if (resourceMode)
+            {
+                var report = JsonSerializer.Serialize(new
+                {
+                    CandidateSha = candidateSha is { Length: 40 } && candidateSha.All(Uri.IsHexDigit) ? candidateSha : null,
+                    RunIdentity = IsBoundedResourceRunIdentity(runIdentity) ? runIdentity : null,
+                    Authority = "NonAuthoritativeResourceBoundaryDiagnostic", Environment = "LocalInMemoryObservabilityWithLiveProvider",
+                    Resource = "openai", Status = status, Reason = reason, CredentialConfigured = credentialConfigured,
+                    EndpointConfigured = true, Stage = stage, Stages = stages, FailureType = failureType,
+                    HttpCallCount = factory.HttpCalls.Count, HttpCalls = factory.HttpCalls.Take(64).ToArray(),
+                    HttpCallsDropped = Math.Max(0, factory.HttpCalls.Count - 64),
+                    ProviderClientCount = factory.CreateClientCount, CanonicalWriteAttempts = writes.BlockedWrites,
+                    SaveChangesAttempts = writes.SaveChangesAttempts, OperationsInvocationCount = operations.Invocations.Count,
+                    LocalObservabilityWrites = 0,
+                    Outcome = new { Provider = "OpenAI", Policy = "ExplicitZeroWriteCatalogCanary",
+                        ResponsePresent = responsePresent, ToolExecution = "Disabled", ProviderStore = false,
+                        Provenance = "ProviderDerived", Serving = "NonServing", Canonical = "NonCanonical" },
+                    StartedUtc = startedUtc, CompletedUtc = DateTime.UtcNow, ElapsedMilliseconds = clock.Elapsed.TotalMilliseconds
+                }, new JsonSerializerOptions { WriteIndented = true });
+                var directory = new DirectoryInfo(Environment.GetEnvironmentVariable("GITHUB_WORKSPACE") ?? Directory.GetCurrentDirectory());
+                while (!File.Exists(Path.Combine(directory.FullName, "MASTERAPP.sln")))
+                    directory = directory.Parent ?? throw new DirectoryNotFoundException("Repository root not found for resource receipt.");
+                var destination = Path.Combine(directory.FullName, "diagnostics", "legend-shadow");
+                Directory.CreateDirectory(destination);
+                await File.WriteAllTextAsync(Path.Combine(destination, "resource-openai.json"), report);
+            }
+        }
+        Assert.True(status == "OBSERVED", status + ": " + reason + " at " + stage);
     }
+
+    private static bool IsBoundedResourceRunIdentity(string? value) =>
+        value is { Length: > 0 and <= 100 } && value.All(character =>
+            char.IsAsciiLetterOrDigit(character) || character is '-' or '_' or '.' or ':');
 
     [Theory]
     [InlineData("teacher")]
@@ -1738,25 +1831,36 @@ public sealed class LegendFounderAiModeIsolationTests
         Assert.Equal(0, handler.RequestCount);
     }
 
-    [Fact]
-    public async Task TeacherMode_UnclassifiedWordingKeepsOptionalToolsAvailableWithoutForcingARead()
+    [Theory]
+    [InlineData("en")]
+    [InlineData(null)]
+    public async Task TeacherMode_UnclassifiedWordingKeepsOptionalToolsAvailableWithoutForcingARead(
+        string? sourceLanguageCode)
     {
         using var founderEnvironment = new FounderEnvironmentScope();
         await using var db = ControllerTestHelpers.BuildDb();
         var founder = await AddFounderProfileAsync(db);
         var operations = new Mock<ILegendConnectOperations>(MockBehavior.Strict);
         SetupUnclassifiedContentPlan(operations);
+        var detector = new FounderAiLanguageDetector(
+            new TranslationDetectionResult(true, "en", Confidence: 0.9m));
         var handler = new FounderAiScenarioHandler(ProviderText("A conceptual response."));
-        var service = CreateService(db, operations.Object, handler);
+        var service = CreateService(db, operations.Object, handler, detector);
 
         var response = await service.ReplyAsync(founder,
-            Request("teacher", "Explain branches, canonical knowledge and production workflows."));
+            Request("teacher", "Explain branches, canonical knowledge and production workflows.",
+                sourceLanguageCode: sourceLanguageCode));
 
         Assert.True(response.Succeeded, Describe(response));
         using var body = JsonDocument.Parse(Assert.Single(handler.RequestBodies));
         Assert.Equal("auto", body.RootElement.GetProperty("tool_choice").GetString());
         Assert.NotEmpty(body.RootElement.GetProperty("tools").EnumerateArray());
         Assert.Equal(0, NativeInferenceCalls(operations));
+        Assert.Equal(sourceLanguageCode is null ? 1 : 0, detector.DetectionCount);
+        if (sourceLanguageCode is null)
+            Assert.Same(LegendConnectExternalProviderPolicy.ProviderEnabled, detector.ObservedPolicy);
+        Assert.Equal("OpenAITeacher", response.ResponseAuthority);
+        Assert.Equal(LegendConnectResearchEvidenceOrigin.UnresolvedEvidence, response.EvidenceOrigin);
     }
 
     [Fact]
@@ -1811,9 +1915,10 @@ public sealed class LegendFounderAiModeIsolationTests
     }
 
     [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public async Task TransientLanguageOutage_UsesAttributedProviderOnlyWhenPolicyAllows(bool nativeOnly)
+    [InlineData("legend", false)]
+    [InlineData("legend", true)]
+    [InlineData("teacher", false)]
+    public async Task TransientLanguageOutage_UsesAttributedProviderOnlyWhenPolicyAllows(string mode, bool nativeOnly)
     {
         using var founderEnvironment = new FounderEnvironmentScope();
         await using var db = ControllerTestHelpers.BuildDb();
@@ -1825,7 +1930,7 @@ public sealed class LegendFounderAiModeIsolationTests
         var service = CreateService(db, operations.Object, handler, detector);
 
         var response = await service.ReplyAsync(founder,
-            Request("legend", "Unidentified input", nativeOnly: nativeOnly, sourceLanguageCode: null));
+            Request(mode, "Unidentified input", nativeOnly: nativeOnly, sourceLanguageCode: null));
 
         Assert.Equal(!nativeOnly, response.Succeeded);
         Assert.Equal("source_language_identification_unavailable", response.Reason);
@@ -1975,10 +2080,12 @@ public sealed class LegendFounderAiModeIsolationTests
     }
 
     [Theory]
-    [InlineData("translation_language_ambiguous", "source_language_ambiguous")]
-    [InlineData("translation_language_unsupported", "source_language_unsupported")]
+    [InlineData("legend", "translation_language_ambiguous", "source_language_ambiguous")]
+    [InlineData("legend", "translation_language_unsupported", "source_language_unsupported")]
+    [InlineData("teacher", "translation_language_ambiguous", "source_language_ambiguous")]
+    [InlineData("teacher", "translation_language_unsupported", "source_language_unsupported")]
     public async Task SemanticLanguageFailure_DoesNotUseProviderEnabledEscalation(
-        string detectorError, string expectedReason)
+        string mode, string detectorError, string expectedReason)
     {
         using var founderEnvironment = new FounderEnvironmentScope();
         await using var db = ControllerTestHelpers.BuildDb();
@@ -1989,7 +2096,7 @@ public sealed class LegendFounderAiModeIsolationTests
         var service = CreateService(db, operations.Object, handler, detector);
 
         var response = await service.ReplyAsync(founder,
-            Request("legend", "Unresolved source", sourceLanguageCode: null));
+            Request(mode, "Unresolved source", sourceLanguageCode: null));
 
         Assert.False(response.Succeeded);
         Assert.Equal(expectedReason, response.Reason);
@@ -2591,18 +2698,46 @@ public sealed class LegendFounderAiModeIsolationTests
 
     private sealed class LiveOpenAiHttpClientFactory : IHttpClientFactory, IDisposable
     {
-        private readonly HttpClient _client = new()
+        public List<object> HttpCalls { get; } = [];
+        public int CreateClientCount { get; private set; }
+        private readonly HttpClient _client;
+
+        public LiveOpenAiHttpClientFactory()
         {
-            BaseAddress = new Uri("https://api.openai.com/")
-        };
+            _client = new HttpClient(new LiveOpenAiObservationHandler(HttpCalls))
+            {
+                BaseAddress = new Uri("https://api.openai.com/")
+            };
+        }
 
         public HttpClient CreateClient(string name)
         {
             Assert.Equal("OpenAI", name);
+            CreateClientCount++;
             return _client;
         }
 
         public void Dispose() => _client.Dispose();
+    }
+
+    private sealed class LiveOpenAiObservationHandler(List<object> calls) : DelegatingHandler(new HttpClientHandler())
+    {
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            var started = Stopwatch.GetTimestamp();
+            int? status = null;
+            try
+            {
+                var response = await base.SendAsync(request, cancellationToken);
+                status = (int)response.StatusCode;
+                return response;
+            }
+            finally
+            {
+                calls.Add(new { Client = "OpenAI", StatusCode = status,
+                    ElapsedMilliseconds = Stopwatch.GetElapsedTime(started).TotalMilliseconds });
+            }
+        }
     }
 
     private sealed class FounderEnvironmentScope : IDisposable

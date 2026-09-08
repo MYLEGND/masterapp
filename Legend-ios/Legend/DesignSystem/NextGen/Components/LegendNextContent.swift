@@ -113,23 +113,23 @@ struct LegendNextSectionHeader<Trailing: View>: View {
     }
 
     var body: some View {
-        HStack(alignment: .bottom, spacing: LegendNextSpacing.md) {
+        HStack(alignment: .center, spacing: LegendNextSpacing.md) {
             VStack(alignment: .leading, spacing: LegendNextSpacing.micro) {
-                if let eyebrow, !eyebrow.isEmpty {
+                if let eyebrow, !eyebrow.isEmpty, !title.localizedCaseInsensitiveContains(eyebrow) {
                     Text(eyebrow.uppercased())
                         .font(LegendNextTypography.eyebrow)
                         .tracking(0.9)
-                        .foregroundStyle(LegendNextColor.gold)
+                        .foregroundStyle(LegendNextColor.goldBright)
                 }
 
                 Text(title)
                     .font(LegendNextTypography.section)
-                    .foregroundStyle(LegendNextColor.textPrimary)
+                    .foregroundStyle(.white)
 
                 if let detail, !detail.isEmpty {
                     Text(detail)
                         .font(LegendNextTypography.supporting)
-                        .foregroundStyle(LegendNextColor.textSecondary)
+                        .foregroundStyle(.white.opacity(0.72))
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
@@ -137,6 +137,12 @@ struct LegendNextSectionHeader<Trailing: View>: View {
             Spacer(minLength: LegendNextSpacing.sm)
             trailing
         }
+        .padding(.horizontal, LegendNextSpacing.md)
+        .padding(.vertical, LegendNextSpacing.sm)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(LegendNextColor.contactNavy, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 24, style: .continuous).strokeBorder(LegendNextColor.gold.opacity(0.35), lineWidth: 1))
+        .tint(LegendNextColor.goldBright)
         .accessibilityElement(children: .contain)
     }
 }

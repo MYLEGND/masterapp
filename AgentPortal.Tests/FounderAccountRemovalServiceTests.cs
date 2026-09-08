@@ -62,8 +62,10 @@ public sealed class FounderAccountRemovalServiceTests
             !account.IsActive);
     }
 
-    [Fact]
-    public async Task Remove_StartsTheCanonicalLifecycleAndRunsTheClosureImmediately()
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task Remove_StartsTheCanonicalLifecycleAndRunsTheClosureImmediately(bool founderInitiated)
     {
         await using var db = ControllerTestHelpers.BuildDb();
         var profile = new ClientProfile
@@ -76,6 +78,9 @@ public sealed class FounderAccountRemovalServiceTests
             Email = "member@example.test"
         };
         db.ClientProfiles.Add(profile);
+        db.AgentClients.Add(new AgentClient { AgentUserId = "agent-oid", ClientUserId = profile.ClientUserId });
+        db.ClientSubscriptions.Add(new ClientSubscription { Id = Guid.NewGuid(), ClientProfileId = profile.Id,
+            OwnerAgentUserId = "agent-oid", Status = Domain.Billing.ClientSubscriptionStatus.Active });
         await db.SaveChangesAsync();
 
         var lifecycle = new AccountLifecycleService(
@@ -92,11 +97,11 @@ public sealed class FounderAccountRemovalServiceTests
             closure.Object,
             NullLogger<FounderAccountRemovalService>.Instance);
 
-        var result = await service.RemoveAsync(new FounderAccountRemovalCommand(
+        var result = founderInitiated ? await service.RemoveAsync(new FounderAccountRemovalCommand(
             profile.Id,
             MessagingParticipantTypes.Client,
             "founder-oid",
-            "founder-removal-test"));
+            "founder-removal-test")) : await service.RemoveAssignedClientAsync(profile.Id, "agent-oid", "agent-removal-test");
 
         Assert.True(result.Succeeded);
         Assert.True(result.Completed);
@@ -105,9 +110,21 @@ public sealed class FounderAccountRemovalServiceTests
         Assert.Equal(record.Id, executedRecordId);
         Assert.Contains(await db.AccountLifecycleAuditEntries.ToArrayAsync(), entry =>
             entry.AccountLifecycleRecordId == record.Id &&
-            entry.Action == "founder_removal_requested" &&
+            entry.Action == (founderInitiated ? "founder_removal_requested" : "agent_removal_requested") &&
             entry.ResultCode == "authorized");
         closure.Verify(service => service.ProcessAsync(record.Id, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task AgentRemoval_RejectsUnassignedClient()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var profile = new ClientProfile { Id = Guid.NewGuid(), ClientUserId = "other-client" };
+        db.ClientProfiles.Add(profile); await db.SaveChangesAsync();
+        var service = new FounderAccountRemovalService(db, Mock.Of<IAccountLifecycleService>(MockBehavior.Strict), Mock.Of<IAccountClosureService>(MockBehavior.Strict), NullLogger<FounderAccountRemovalService>.Instance);
+        var result = await service.RemoveAssignedClientAsync(profile.Id, "unassigned-agent");
+        Assert.False(result.Succeeded);
+        Assert.Empty(db.AccountLifecycleRecords);
     }
 
     [Fact]

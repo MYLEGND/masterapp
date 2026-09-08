@@ -71,7 +71,7 @@ public sealed class MobileHomeController : MobileApiControllerBase
     }
 
     [HttpGet("agent/clients")]
-    public async Task<IActionResult> AgentClients(CancellationToken cancellationToken)
+    public async Task<IActionResult> AgentClients(CancellationToken cancellationToken, [FromQuery] bool includeArchived = false)
     {
         var resolved = await ResolveActorAsync(cancellationToken);
         if (resolved.Error is not null)
@@ -81,7 +81,7 @@ public sealed class MobileHomeController : MobileApiControllerBase
 
         var result = await _home.GetAgentClientsAsync(resolved.Actor, cancellationToken);
         return result.Succeeded
-            ? Ok(await ToAgentClientDtosAsync(result.Clients, cancellationToken))
+            ? Ok(await ToAgentClientDtosAsync(result.Clients.Where(c => includeArchived || !c.Archived), cancellationToken))
             : Error(
                 StatusCodes.Status403Forbidden,
                 result.ErrorCode ?? "mobile_agent_clients_unavailable",
@@ -89,7 +89,7 @@ public sealed class MobileHomeController : MobileApiControllerBase
     }
 
     [HttpGet("agent/leads")]
-    public async Task<IActionResult> AgentLeads(CancellationToken cancellationToken)
+    public async Task<IActionResult> AgentLeads(CancellationToken cancellationToken, [FromQuery] bool includeArchived = false)
     {
         var resolved = await ResolveActorAsync(cancellationToken);
         if (resolved.Error is not null)
@@ -99,11 +99,11 @@ public sealed class MobileHomeController : MobileApiControllerBase
 
         var result = await _home.GetAgentLeadsAsync(resolved.Actor, cancellationToken);
         return result.Succeeded
-            ? Ok(result.Leads.Select(lead => new MobileAgentLeadDto(
+            ? Ok(result.Leads.Where(l => includeArchived || !l.Archived).Select(lead => new MobileAgentLeadDto(
                 lead.LeadId,
                 lead.DisplayName,
                 lead.CrmStage,
-                lead.UpdatedUtc)))
+                lead.UpdatedUtc, lead.Archived, lead.Email, lead.Phone)))
             : Error(
                 StatusCodes.Status403Forbidden,
                 result.ErrorCode ?? "mobile_agent_leads_unavailable",
@@ -139,12 +139,12 @@ public sealed class MobileHomeController : MobileApiControllerBase
                 client.DisplayName,
                 client.Email,
                 client.CrmStatus,
-                avatar));
+                avatar, client.Archived, client.Phone));
         }
 
         return result;
     }
 }
 
-public sealed record MobileAgentClientDto(Guid ProfileId, string DisplayName, string Email, string CrmStatus, MobileAvatarDto? Avatar);
-public sealed record MobileAgentLeadDto(string LeadId, string DisplayName, string CrmStage, DateTime UpdatedUtc);
+public sealed record MobileAgentClientDto(Guid ProfileId, string DisplayName, string Email, string CrmStatus, MobileAvatarDto? Avatar, bool Archived = false, string? Phone = null);
+public sealed record MobileAgentLeadDto(string LeadId, string DisplayName, string CrmStage, DateTime UpdatedUtc, bool Archived = false, string? Email = null, string? Phone = null);

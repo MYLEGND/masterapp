@@ -195,6 +195,9 @@ class AgentWorkspaceViewModel(private val repository: AgentWorkspaceRepository, 
     suspend fun bookingAccess(profileId: String) = repository.bookingAccess(role, profileId)
     suspend fun bookingLaunch(profileId: String) = repository.bookingLaunch(role, profileId)
     fun bookingClosed() { _bookingRevision.value++; load() }
+    suspend fun contact(kind: String, id: String, input: MobileCrmContactInput) = repository.contact(role, kind, id, input)
+    suspend fun outcome(kind: String, id: String, code: String, note: String) = repository.outcome(role, kind, id, code, note)
+    suspend fun cancelAppointment(id: String) = repository.cancelAppointment(role, id)
     suspend fun schedule() = repository.schedule(role)
     suspend fun record(kind: String, id: String) = repository.record(role, kind, id)
     private val _clients = MutableStateFlow<LoadState<List<MobileAgentClient>>>(LoadState.Idle)

@@ -19,7 +19,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Logging;
 using Xunit;
 
 namespace AgentPortal.Tests;
@@ -585,13 +585,17 @@ public sealed class LegendFounderAiHeldOutOperationMatrixTests
         var founder = await AddFounderProfileAsync(db);
         ControllerTestHelpers.SeedGovernedLanguageBaseline(db);
         var handler = new RecordingProviderHandler();
-        var service = CreateService(db, handler);
+        using var diagnosticCapture = new LegendFounderCurriculumSqlServerE2ETests.ExceptionCapturingLoggerProvider();
+        using var loggerFactory = LoggerFactory.Create(builder => builder
+            .SetMinimumLevel(LogLevel.Information).AddProvider(diagnosticCapture));
+        var service = CreateService(db, handler, loggerFactory);
         var conversationId = Guid.NewGuid().ToString("D");
 
         writeSentinel.Arm();
 
         async Task<MatrixRow> SendAsync(string label, string prompt)
         {
+            diagnosticCapture.ResetDiagnostics();
             var providerCallsBefore = handler.RequestCount;
             var providerClientsBefore = handler.ClientConstructions;
             var progress = new List<LegendFounderAiProgressEvent>();
@@ -627,7 +631,10 @@ public sealed class LegendFounderAiHeldOutOperationMatrixTests
                     entry.State != EntityState.Unchanged),
                 response.EvidenceOrigin,
                 handler.ClientConstructions - providerClientsBefore,
-                progress.ToArray());
+                progress.ToArray())
+            {
+                RuntimeDiagnostics = diagnosticCapture.SnapshotDiagnostics()
+            };
         }
 
         var first = await SendAsync(
@@ -637,7 +644,7 @@ public sealed class LegendFounderAiHeldOutOperationMatrixTests
         // Force the follow-up to reload canonical persisted discourse state.
         // No assistant answer or expected value is injected into the request.
         db.ChangeTracker.Clear();
-        service = CreateService(db, handler);
+        service = CreateService(db, handler, loggerFactory);
 
         var followUp = await SendAsync(
             "native_capability:same_conversation_memory_turn_two",
@@ -871,12 +878,16 @@ public sealed class LegendFounderAiHeldOutOperationMatrixTests
         var responses = providerResponses
             ?? (providerText is null ? [] : new[] { ProviderText(providerText) });
         var handler = new RecordingProviderHandler(responses);
-        var service = CreateService(db, handler);
+        using var diagnosticCapture = new LegendFounderCurriculumSqlServerE2ETests.ExceptionCapturingLoggerProvider();
+        using var loggerFactory = LoggerFactory.Create(builder => builder
+            .SetMinimumLevel(LogLevel.Information).AddProvider(diagnosticCapture));
+        var service = CreateService(db, handler, loggerFactory);
 
         var messages = new List<LegendFounderAiChatMessage>(
             priorTurns ?? []) { new("user", prompt) };
 
         var progress = new List<LegendFounderAiProgressEvent>();
+        diagnosticCapture.ResetDiagnostics();
         var response = await service.ReplyAsync(
             founder,
             new LegendFounderAiChatRequest
@@ -914,7 +925,10 @@ public sealed class LegendFounderAiHeldOutOperationMatrixTests
                 entry.State != EntityState.Unchanged),
             response.EvidenceOrigin,
             handler.ClientConstructions,
-            progress.ToArray());
+            progress.ToArray())
+        {
+            RuntimeDiagnostics = diagnosticCapture.SnapshotDiagnostics()
+        };
     }
 
     private static IReadOnlyList<string> CompletedTools(IEnumerable<LegendFounderAiProgressEvent> progress) =>
@@ -975,7 +989,10 @@ public sealed class LegendFounderAiHeldOutOperationMatrixTests
         int PendingTrackedChanges,
         LegendConnectResearchEvidenceOrigin EvidenceOrigin,
         int ProviderClientConstructions,
-        IReadOnlyList<LegendFounderAiProgressEvent> Progress);
+        IReadOnlyList<LegendFounderAiProgressEvent> Progress)
+    {
+        public LegendFounderCurriculumSqlServerE2ETests.RuntimeDiagnosticSnapshot? RuntimeDiagnostics { get; init; }
+    }
 
 
     private static async Task SeedOperationalRecordsAsync(MasterAppDbContext db)
@@ -1014,7 +1031,8 @@ public sealed class LegendFounderAiHeldOutOperationMatrixTests
 
     private static LegendFounderAiConversationService CreateService(
         MasterAppDbContext db,
-        RecordingProviderHandler handler)
+        RecordingProviderHandler handler,
+        ILoggerFactory loggerFactory)
     {
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?>
@@ -1033,9 +1051,10 @@ public sealed class LegendFounderAiHeldOutOperationMatrixTests
         var corpus = new LegendConnectCorpusService(
             db,
             registry,
-            NullLogger<LegendConnectCorpusService>.Instance,
+            loggerFactory.CreateLogger<LegendConnectCorpusService>(),
             intelligence: intelligence);
-        var curriculum = new LegendConnectCurriculumService(db, registry, corpus);
+        var curriculum = new LegendConnectCurriculumService(db, registry, corpus,
+            logger: loggerFactory.CreateLogger<LegendConnectCurriculumService>());
         var operations = new LegendConnectOperations(
             db,
             registry,
@@ -1055,15 +1074,15 @@ public sealed class LegendFounderAiHeldOutOperationMatrixTests
                 })
                 .Build(),
             new FounderLegendConnectService(operations, accessResolver),
-            NullLogger<LegendFounderAiConversationService>.Instance,
+            loggerFactory.CreateLogger<LegendFounderAiConversationService>(),
             new LegendFounderAiDiscourseStateService(db, accessResolver, operations),
             registry,
             ControllerTestHelpers.BuildTranslationService(),
             softwareRemediation: null,
             agencyCommand: new AgencyCommandService(
                 db,
-                new ProductionService(db, NullLogger<ProductionService>.Instance),
-                NullLogger<AgencyCommandService>.Instance));
+                new ProductionService(db, loggerFactory.CreateLogger<ProductionService>()),
+                loggerFactory.CreateLogger<AgencyCommandService>()));
     }
 
     private static async Task<ClaimsPrincipal> AddFounderProfileAsync(

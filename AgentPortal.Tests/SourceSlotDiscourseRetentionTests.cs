@@ -27,6 +27,85 @@ namespace AgentPortal.Tests;
 public sealed class SourceSlotDiscourseRetentionTests
 {
     [Fact]
+    public async Task MixedNumericSlotsAndReferenceSelector_CanPlanAfterDurableReload()
+    {
+        var options = DatabaseOptions();
+        var actor = Guid.NewGuid().ToString("D");
+        var conversation = Guid.NewGuid();
+        const string request = "Compute 147 against 26 for that.";
+        await using (var fixture = new Fixture(options))
+        {
+            ControllerTestHelpers.SeedGovernedLanguageBaseline(fixture.Db);
+            fixture.Db.AgentProfiles.Add(new AgentProfile
+            {
+                Id = Guid.NewGuid(), AgentUserId = actor, AgentUpn = "mixed-slots@legend.test",
+                NormalizedEmail = "mixed-slots@legend.test", IsActive = true
+            });
+            await fixture.Db.SaveChangesAsync();
+            foreach (var (family, left, right, result) in new[]
+            {
+                ("amber", "83", "29", "54"),
+                ("copper", "72", "35", "37"),
+                ("silver", "91", "14", "77")
+            })
+            {
+                var taught = await fixture.Curriculum.SubmitFounderBatchAsync(new(
+                    "source-slot.mixed-reference." + family, "Numeric roles with a governed context reference",
+                    [new("Compute " + left + " against " + right + " for that.",
+                         Values(("left_quantity", left), ("right_quantity", right), ("owner_reference", "recent")),
+                         new([new("left", "left_quantity", left, left), new("right", "right_quantity", right, right),
+                              new("selector", "owner_reference", "recent", "that")],
+                             [new("left", "paired-with", "right"), new("left", "references", "selector")],
+                             [new("selector", "context_owner", "recent", null, ["user"])]), "mixed-source-" + family),
+                     new("Computed quantity " + result + ".", Values(("total", result)),
+                         new([new("total", "total", result, result)], []), "mixed-result-" + family),
+                     new("The result is " + result + ".", Values(("total", result), ("conversation_function", "numeric_answer")),
+                         new([new("total", "total", result, result),
+                              new("function", "conversation_function", "numeric_answer", "The result is")], [])),
+                     new("In the " + family + " context the owner is Ibis.", Values(("context_owner", "ibis")),
+                         new([new("owner", "context_owner", "ibis", "Ibis")], []))],
+                    [new(new(Values(("left_quantity", "$numeric_left"), ("right_quantity", "$numeric_right"),
+                                    ("owner_reference", "recent"))), new(Values(("total", "$numeric_result")))),
+                     new(new(Values(("total", "$value"))),
+                         new(Values(("total", "$value"), ("conversation_function", "numeric_answer"))))]));
+                Assert.True(taught.Succeeded, taught.Message);
+                await fixture.Curriculum.PersistFounderCrossExampleSemanticRelationAsync(
+                    new("mixed-source-" + family, "reasoning.arithmetic.subtract.mixed-reference", "mixed-result-" + family),
+                    LegendConnectLanguageIntelligenceEvaluatorVersion.Current);
+            }
+            var corpus = await fixture.Db.LegendLanguageTextUnits.Select(unit => unit.Text).ToArrayAsync();
+            Assert.DoesNotContain(request, corpus);
+            Assert.DoesNotContain(corpus, text => text.Contains("147", StringComparison.Ordinal) ||
+                text.Contains("26", StringComparison.Ordinal) || text.Contains("121", StringComparison.Ordinal));
+            await ObserveAsync(fixture, actor, conversation, "Ibis");
+            var graph = await fixture.Operations.AnalyzeReusableMeaningGraphAsync(request);
+            Assert.True(graph.IsComposed, graph.ReasonCode);
+            Assert.Equal(2, graph.Nodes.Count(node => node.SourceSlotBinding is not null));
+            Assert.Contains(graph.Nodes, node => node.SemanticDimension == "owner_reference" && node.SourceSlotBinding is null);
+            await fixture.Discourse.RecordObservationAsync(ControllerTestHelpers.BuildUser(actor),
+                conversation.ToString("D"), "user", graph);
+        }
+
+        await using var reloaded = new Fixture(options);
+        var state = Assert.IsType<LegendConnectDiscourseStateSnapshot>(await reloaded.Discourse.GetStateAsync(
+            ControllerTestHelpers.BuildUser(actor), conversation.ToString("D")));
+        var current = state.Turns.Last();
+        var binding = Assert.Single(current.Bindings);
+        Assert.Equal("bound", binding.ResolutionState);
+        Assert.Equal("ibis", binding.EntitySemanticValue);
+        var fresh = await reloaded.Operations.AnalyzeReusableMeaningGraphAsync(request);
+        Assert.False(fresh.Nodes.SequenceEqual(current.Nodes));
+        Assert.Equal(JsonSerializer.Serialize(fresh.Nodes), JsonSerializer.Serialize(current.Nodes));
+        var planned = await reloaded.Operations.TryPlanConversationAsync(request, state);
+        Assert.True(planned.Supported, planned.ReasonCode);
+        Assert.Equal("121", planned.Plan!.ResultDimensions["total"]);
+        Assert.NotEmpty(planned.Plan.ReasoningTransitionPath ?? []);
+    }
+
+    private static Dictionary<string, string> Values(params (string Dimension, string Value)[] values) =>
+        values.ToDictionary(item => item.Dimension, item => item.Value, StringComparer.Ordinal);
+
+    [Fact]
     public async Task UnsupportedOperations_PreserveLegacyNodesAndRejectEveryNewReceiptShape()
     {
         var operations = new Mock<ILegendConnectOperations> { CallBase = true }.Object;
@@ -85,6 +164,7 @@ public sealed class SourceSlotDiscourseRetentionTests
         var withheld = Assert.IsType<LegendConnectDiscourseStateSnapshot>(await stale.Discourse.GetStateAsync(
             ControllerTestHelpers.BuildUser(actor), conversation.ToString("D")));
         Assert.False(Assert.Single(withheld.Turns).IsComposed);
+        Assert.Equal("source_slot_evidence_unavailable", withheld.Turns[0].AnalysisReasonCode);
         Assert.Empty(withheld.Turns[0].Nodes);
         Assert.Equal(persisted, (await stale.Db.LegendFounderAiDiscourseTurns.SingleAsync()).MeaningGraphJson);
     }
@@ -122,6 +202,7 @@ public sealed class SourceSlotDiscourseRetentionTests
     [Theory]
     [InlineData("same_meaning")]
     [InlineData("changed_roles")]
+    [InlineData("changed_relations")]
     [InlineData("original_withdrawn")]
     public async Task LaterExactFounderKnowledge_PreservesOnlyCompatibleOriginalObservationReceipts(string growth)
     {
@@ -142,8 +223,8 @@ public sealed class SourceSlotDiscourseRetentionTests
             // result or replacement source-slot template is supplied.
             var addition = await fixture.Curriculum.SubmitFounderBatchAsync(new(
                 "discourse.source-slot.later-founder", "Later exact source meanings",
-                [ExactFounderSource("147", "26", growth == "changed_roles"),
-                 ExactFounderSource("152", "31", growth == "changed_roles")]));
+                [ExactFounderSource("147", "26", growth == "changed_roles", growth == "changed_relations"),
+                 ExactFounderSource("152", "31", growth == "changed_roles", growth == "changed_relations")]));
             Assert.True(addition.Succeeded, addition.Message);
             var exact = await fixture.Operations.AnalyzeReusableMeaningGraphAsync("Compute 147 against 26.");
             Assert.True(exact.IsComposed, exact.ReasonCode);
@@ -151,6 +232,8 @@ public sealed class SourceSlotDiscourseRetentionTests
             Assert.All(exact.Nodes, node => Assert.Equal("FounderApproved", node.Provenance));
             Assert.Equal(growth == "changed_roles" ? "26" : "147",
                 exact.Nodes.Single(node => node.SemanticDimension == "z_measure").SemanticValue);
+            if (growth == "changed_relations")
+                Assert.Equal("distinct-from", Assert.Single(exact.Relations).RelationKind);
             if (growth == "original_withdrawn")
             {
                 var original = await fixture.Db.LegendSemanticTransitionEvidence.SingleAsync(
@@ -181,6 +264,7 @@ public sealed class SourceSlotDiscourseRetentionTests
         {
             Assert.False(retained.IsComposed);
             Assert.Empty(retained.Nodes);
+            Assert.Equal("source_slot_evidence_unavailable", retained.AnalysisReasonCode);
         }
         Assert.Equal(persisted, (await reloaded.Db.LegendFounderAiDiscourseTurns.SingleAsync()).MeaningGraphJson);
     }
@@ -292,14 +376,15 @@ public sealed class SourceSlotDiscourseRetentionTests
         }
     }
 
-    private static LegendConnectCurriculumExampleSubmission ExactFounderSource(string left, string right, bool changedRoles)
+    private static LegendConnectCurriculumExampleSubmission ExactFounderSource(
+        string left, string right, bool changedRoles, bool changedRelations = false)
     {
         var leftDimension = changedRoles ? "a_measure" : "z_measure";
         var rightDimension = changedRoles ? "z_measure" : "a_measure";
         return new("Compute " + left + " against " + right + ".",
             new Dictionary<string, string> { [leftDimension] = left, [rightDimension] = right },
             new([new("left", leftDimension, left, left), new("right", rightDimension, right, right)],
-                [new("left", "paired-with", "right")]));
+                [new("left", changedRelations ? "distinct-from" : "paired-with", "right")]));
     }
 
     private static DbContextOptions<MasterAppDbContext> DatabaseOptions() =>

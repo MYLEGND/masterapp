@@ -5,6 +5,9 @@ using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Query;
 using Microsoft.EntityFrameworkCore.Storage;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
+using System.Diagnostics;
 using System.Data;
 using System.Data.SqlTypes;
 using System.Globalization;
@@ -23,6 +26,16 @@ namespace Infrastructure.Messaging;
 /// </summary>
 internal interface ILegendConnectStructuralCompositionGate
 {
+    // This is a conservative exclusion read, never a language match or a
+    // meaning graph. Authorities that cannot complete it retain every input
+    // language so the normal graph analysis remains responsible for proof.
+    Task<LegendConnectMeaningLanguageCandidates> GetReusableMeaningLanguageCandidatesAsync(
+        IReadOnlyList<string> sourceLanguageCodes,
+        string input,
+        CancellationToken cancellationToken = default) =>
+        Task.FromResult(new LegendConnectMeaningLanguageCandidates(
+            false, sourceLanguageCodes, "meaning_graph_language_prefilter_unavailable"));
+
     Task<LegendContextualTranslationSuggestion?> TryComposeAsync(
         string sourceLanguageCode,
         string targetLanguageCode,
@@ -45,6 +58,11 @@ internal interface ILegendConnectStructuralCompositionGate
         LegendShadowCompositionRequest request,
         CancellationToken cancellationToken = default);
 }
+
+internal sealed record LegendConnectMeaningLanguageCandidates(
+    bool IsComplete,
+    IReadOnlyList<string> CandidateLanguageCodes,
+    string ReasonCode);
 
 /// <summary>
 /// An explicitly described component of a bounded shadow-composition request.
@@ -377,17 +395,67 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
     private readonly ILegendLanguageRegistry _languages;
     private readonly LegendConnectCorpusService _corpus;
     private readonly ILegendConnectOperationalEventWriter? _operations;
+    private readonly ILogger<LegendConnectCurriculumService> _logger;
 
     public LegendConnectCurriculumService(
         MasterAppDbContext db,
         ILegendLanguageRegistry languages,
         LegendConnectCorpusService corpus,
-        ILegendConnectOperationalEventWriter? operations = null)
+        ILegendConnectOperationalEventWriter? operations = null,
+        ILogger<LegendConnectCurriculumService>? logger = null)
     {
         _db = db;
         _languages = languages;
         _corpus = corpus;
         _operations = operations;
+        _logger = logger ?? NullLogger<LegendConnectCurriculumService>.Instance;
+    }
+
+    private void LogRuntimeDiagnostic(string method, string stage, string outcome, string reasonCode,
+        long started, int? tokenCount = null, int? candidateCount = null, int? nodeCount = null,
+        int? relationCount = null, int? unknownCount = null, int? declarationCount = null,
+        int? templateCount = null, int? matchCount = null, int? bound = null)
+    {
+        _logger.LogInformation(
+            "LEGEND RuntimeDiagnostic Event={Event} AuthorityMethod={AuthorityMethod} Stage={Stage} Outcome={Outcome} ReasonCode={ReasonCode} ElapsedMs={ElapsedMs} TokenCount={TokenCount} CandidateCount={CandidateCount} NodeCount={NodeCount} RelationCount={RelationCount} UnknownCount={UnknownCount} DeclarationCount={DeclarationCount} TemplateCount={TemplateCount} MatchCount={MatchCount} Bound={Bound}",
+            "stage_completed", "LegendConnectCurriculumService." + method, stage, outcome, reasonCode,
+            Stopwatch.GetElapsedTime(started).TotalMilliseconds, tokenCount, candidateCount, nodeCount,
+            relationCount, unknownCount, declarationCount, templateCount, matchCount, bound);
+    }
+
+    // Observe an existing authority call without changing its result or
+    // exception. Exception messages and source/evidence identifiers are never logged.
+    private async Task<T> ObserveRuntimeStageAsync<T>(Func<Task<T>> action, string method, string stage)
+    {
+        var started = Stopwatch.GetTimestamp();
+        try
+        {
+            return await action();
+        }
+        catch (OperationCanceledException)
+        {
+            LogRuntimeDiagnostic(method, stage, "cancelled", "operation_cancelled", started);
+            throw;
+        }
+        catch (Exception)
+        {
+            LogRuntimeDiagnostic(method, stage, "failed", "authority_call_failed", started);
+            throw;
+        }
+    }
+
+    private void ObserveMeaningGraphCancellation(CancellationToken cancellationToken, long started)
+    {
+        try
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+        }
+        catch (OperationCanceledException)
+        {
+            LogRuntimeDiagnostic(nameof(AnalyzeReusableMeaningGraphAsync), "meaning_graph",
+                "cancelled", "operation_cancelled", started);
+            throw;
+        }
     }
 
     /// <summary>
@@ -5117,6 +5185,67 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
             ["complete_founder_backed_source_semantic_coverage"]);
     }
 
+    public async Task<LegendConnectMeaningLanguageCandidates> GetReusableMeaningLanguageCandidatesAsync(
+        IReadOnlyList<string> sourceLanguageCodes,
+        string input,
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        // This read proves only that an existing graph lookup cannot start.
+        // It never establishes a positive language or meaning interpretation.
+        // Out-of-contract inputs retain the complete caller-supplied set.
+        if (sourceLanguageCodes.Count > MaximumSemanticRequestComponents ||
+            sourceLanguageCodes.Any(code => !LegendLanguageIdentity.TryNormalize(code, out var normalized) ||
+                !string.Equals(code, normalized, StringComparison.Ordinal)) ||
+            string.IsNullOrWhiteSpace(input) || input.Length > 8192)
+            return new(false, sourceLanguageCodes, "meaning_graph_language_prefilter_input_unproven");
+        var codes = sourceLanguageCodes.Distinct(StringComparer.Ordinal).ToArray();
+        if (codes.Length == 0)
+            return new(true, [], "meaning_graph_language_prefilter_complete");
+        var normalizedInput = LegendLanguageIdentity.NormalizeText(input);
+        var tokens = SurfaceComponents(normalizedInput);
+        if (tokens.Count is < 1 or > MaximumSemanticRequestComponents)
+            return new(false, sourceLanguageCodes, "meaning_graph_language_prefilter_input_unproven");
+        var inputHash = LegendLanguageIdentity.TextHash(normalizedInput);
+        var lexemeHashes = tokens.Select(item => item.NormalizedHash).Distinct().ToArray();
+        var exactEndpoints =
+            from unit in _db.Set<LegendLanguageTextUnit>().AsNoTracking()
+            join anchor in _db.Set<LegendLanguageCompositionalAnchor>().AsNoTracking()
+                on unit.Id equals anchor.TextUnitId
+            where unit.NormalizedHash == inputHash && unit.IsTrainingEligible &&
+                unit.Provenance == LegendConnectKnowledgeProvenance.FounderApproved &&
+                anchor.LanguageCode == unit.LanguageCode && anchor.SupersededUtc == null &&
+                anchor.Provenance == LegendConnectKnowledgeProvenance.FounderApproved
+            select unit.LanguageCode;
+        // The lexical branch intentionally includes machine and source-slot
+        // evidence. Eligibility remains with the full analyzer; an active
+        // occurrence alone is sufficient to prevent this prefilter excluding it.
+        var lexicalCandidates =
+            from lexeme in _db.Set<LegendLanguageLexeme>().AsNoTracking()
+            join occurrence in _db.Set<LegendLanguageLexicalOccurrence>().AsNoTracking()
+                on lexeme.Id equals occurrence.LexemeId
+            where lexemeHashes.Contains(lexeme.NormalizedHash) && occurrence.SupersededUtc == null
+            select lexeme.LanguageCode;
+        var rows = await _db.Set<LegendLanguageDefinition>().AsNoTracking()
+            .Where(language => codes.Contains(language.LanguageCode) &&
+                language.IsEnabled && language.IsTranslationEnabled)
+            .Select(language => new
+            {
+                language.LanguageCode,
+                HasCandidate = exactEndpoints.Any(code => code == language.LanguageCode) ||
+                    lexicalCandidates.Any(code => code == language.LanguageCode)
+            })
+            .Take(codes.Length + 1).ToArrayAsync(cancellationToken);
+        // Unknown codes may resolve through the registry's base-language or
+        // display-name rules. Only exact enabled registry codes can be excluded.
+        if (rows.Length != codes.Length ||
+            !rows.Select(item => item.LanguageCode).ToHashSet(StringComparer.Ordinal).SetEquals(codes))
+            return new(false, sourceLanguageCodes, "meaning_graph_language_prefilter_registry_unproven");
+        var candidates = rows.Where(item => item.HasCandidate).Select(item => item.LanguageCode)
+            .ToHashSet(StringComparer.Ordinal);
+        return new(true, codes.Where(candidates.Contains).ToArray(), "meaning_graph_language_prefilter_complete");
+    }
+
     /// <summary>
     /// Evaluates a controlled source frame, selects exactly one sufficiently
     /// supported result frame, and realizes it only from active canonical
@@ -5136,19 +5265,32 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
             string input,
             CancellationToken cancellationToken = default)
     {
-        var languageCode = await _languages.NormalizeEnabledTranslationLanguageReadOnlyAsync(
-            sourceLanguageCode,
-            cancellationToken);
+        var started = Stopwatch.GetTimestamp();
+        int? candidateCount = null;
+        LegendConnectUtteranceMeaningGraphSnapshot Observe(LegendConnectUtteranceMeaningGraphSnapshot result, int tokenCount, int? bound = null)
+        {
+            LogRuntimeDiagnostic(nameof(AnalyzeReusableMeaningGraphAsync), "meaning_graph",
+                result.IsComposed ? "completed" : "rejected", result.ReasonCode, started,
+                tokenCount: tokenCount, candidateCount: candidateCount, nodeCount: result.Nodes.Count,
+                relationCount: result.Relations.Count, unknownCount: result.UnknownSurfaceComponents.Count,
+                bound: bound);
+            return result;
+        }
+        var languageCode = await ObserveRuntimeStageAsync(
+            () => _languages.NormalizeEnabledTranslationLanguageReadOnlyAsync(sourceLanguageCode, cancellationToken),
+            nameof(AnalyzeReusableMeaningGraphAsync), "meaning_graph");
         var normalizedInput = LegendLanguageIdentity.NormalizeText(input);
         var tokens = SurfaceComponents(normalizedInput);
         if (languageCode is null || tokens.Count == 0)
-            return new(false, [], [], tokens.Select(item => item.NormalizedText).ToArray(), "meaning_graph_input_invalid");
+            return Observe(new(false, [], [], tokens.Select(item => item.NormalizedText).ToArray(), "meaning_graph_input_invalid"), tokens.Count);
 
-        var candidateRetrieval = await ReadReusableMeaningCandidatesAsync(
-            languageCode, normalizedInput, tokens, cancellationToken);
+        var candidateRetrieval = await ObserveRuntimeStageAsync(
+            () => ReadReusableMeaningCandidatesAsync(languageCode, normalizedInput, tokens, cancellationToken),
+            nameof(ReadReusableMeaningCandidatesAsync), "meaning_candidates");
         if (candidateRetrieval.ReasonCode is not null)
-            return new(false, [], [], tokens.Select(item => item.NormalizedText).ToArray(), candidateRetrieval.ReasonCode);
+            return Observe(new(false, [], [], tokens.Select(item => item.NormalizedText).ToArray(), candidateRetrieval.ReasonCode), tokens.Count);
         var candidates = candidateRetrieval.Candidates.ToList();
+        candidateCount = candidates.Count;
 
         // When the current surface is itself an active Founder endpoint, its
         // explicit graph is the strongest source-grounding authority. A dense
@@ -5167,11 +5309,13 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
             candidates = exactSourceCandidates;
         else
         {
-            var sourceSlots = await AnalyzeDeclaredSourceSlotsAsync(languageCode, normalizedInput, candidates, cancellationToken);
+            var sourceSlots = await ObserveRuntimeStageAsync(
+                () => AnalyzeDeclaredSourceSlotsAsync(languageCode, normalizedInput, candidates, cancellationToken),
+                nameof(AnalyzeDeclaredSourceSlotsAsync), "source_slots");
             if (sourceSlots.Graph is not null)
-                return sourceSlots.Graph;
+                return Observe(sourceSlots.Graph, tokens.Count);
             if (sourceSlots.ReasonCode is not null)
-                return new(false, [], [], tokens.Select(item => item.NormalizedText).ToArray(), sourceSlots.ReasonCode);
+                return Observe(new(false, [], [], tokens.Select(item => item.NormalizedText).ToArray(), sourceSlots.ReasonCode), tokens.Count);
         }
 
         var inputTokenValues = tokens.Select(item => item.NormalizedText).ToArray();
@@ -5182,7 +5326,7 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
         var projectionWork = 0;
         foreach (var candidate in candidates)
         {
-            cancellationToken.ThrowIfCancellationRequested();
+            ObserveMeaningGraphCancellation(cancellationToken, started);
             if (candidate.StartTokenIndex is not int start || candidate.TokenLength is not int length || length <= 0)
                 continue;
             var sourceTokens = SurfaceComponents(candidate.Text);
@@ -5202,12 +5346,12 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
                     candidate.Provenance == LegendConnectKnowledgeProvenance.SystemValidatedMachine
                         ? candidate.NodeId : null);
                 if ((++projectionWork & 127) == 0)
-                    cancellationToken.ThrowIfCancellationRequested();
+                    ObserveMeaningGraphCancellation(cancellationToken, started);
                 var occurrenceKey = (node.SemanticSignature, node.StartTokenIndex, node.TokenLength);
                 if (!occurrenceIndexes.TryGetValue(occurrenceKey, out var existingNodeIndex))
                 {
                     if (nodes.Count >= MaximumIndexedSemanticAnchors)
-                        return new(false, [], [], inputTokenValues, "meaning_graph_projection_bound_exceeded");
+                        return Observe(new(false, [], [], inputTokenValues, "meaning_graph_projection_bound_exceeded"), tokens.Count, MaximumIndexedSemanticAnchors);
                     occurrenceIndexes.Add(occurrenceKey, nodes.Count);
                     nodes.Add(node);
                     nodeFamilyIds.Add([candidate.CurriculumFamilyId]);
@@ -5264,12 +5408,13 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
         if (nodes.Count > 1)
         {
             var signatures = nodes.Select(item => item.SemanticSignature).Distinct(StringComparer.Ordinal).ToArray();
+            var candidateFamilyIds = nodeFamilyIds.SelectMany(item => item).Distinct().ToArray();
             // A global relation aggregate establishes the reusable semantic
             // identity and evidence standard; it does not authorize surfaces
             // observed in unrelated families to be joined. Retain the exact
             // Founder graph evidence family so controlled variants can share
             // one primitive/relation while cross-family collisions fail closed.
-            var learnedRelations = await (
+            var learnedRelations = await ObserveRuntimeStageAsync(() => (
                 from evidence in _db.Set<LegendLanguageMeaningRelationEvidence>().AsNoTracking()
                 join relation in _db.Set<LegendLanguageMeaningRelation>().AsNoTracking()
                     on evidence.MeaningRelationId equals relation.Id
@@ -5278,6 +5423,7 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
                 join target in _db.Set<LegendLanguageMeaningNodeEvidence>().AsNoTracking()
                     on evidence.TargetMeaningNodeId equals target.Id
                 where evidence.SupersededUtc == null &&
+                    candidateFamilyIds.Contains(evidence.CurriculumFamilyId) &&
                     evidence.ContributionState == "Supported" &&
                     evidence.IsHumanVerifiedSupport &&
                     evidence.Provenance == LegendConnectKnowledgeProvenance.FounderApproved &&
@@ -5306,9 +5452,10 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
                     relation.HumanVerifiedSupportCount,
                     relation.MaturityState,
                     evidence.CurriculumFamilyId)
-            ).Distinct().Take(MaximumSemanticTransitionObservations + 1).ToListAsync(cancellationToken);
+            ).Distinct().Take(MaximumSemanticTransitionObservations + 1).ToListAsync(cancellationToken),
+                nameof(AnalyzeReusableMeaningGraphAsync), "meaning_graph");
             if (learnedRelations.Count > MaximumSemanticTransitionObservations)
-                return new(false, [], [], inputTokenValues, "meaning_graph_relation_bound_exceeded");
+                return Observe(new(false, [], [], inputTokenValues, "meaning_graph_relation_bound_exceeded"), tokens.Count, MaximumSemanticTransitionObservations);
             learnedRelations = learnedRelations
                 .GroupBy(item => new
                 {
@@ -5352,19 +5499,23 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
             var projectedRelations = new HashSet<LegendConnectUtteranceMeaningRelation>();
             foreach (var relation in governedRelations)
             {
-                cancellationToken.ThrowIfCancellationRequested();
+                ObserveMeaningGraphCancellation(cancellationToken, started);
                 foreach (var sourceIndex in indexesBySignature.GetValueOrDefault(relation.SourceSemanticSignature, []))
                 foreach (var targetIndex in indexesBySignature.GetValueOrDefault(relation.TargetSemanticSignature, []))
                 {
                     if ((++projectionWork & 127) == 0)
-                        cancellationToken.ThrowIfCancellationRequested();
+                        ObserveMeaningGraphCancellation(cancellationToken, started);
                     if (projectionWork > MaximumSemanticTransitionObservations * 16)
-                        return new(false, [], [], inputTokenValues, "meaning_graph_projection_bound_exceeded");
+                        return Observe(new(false, [], [], inputTokenValues, "meaning_graph_projection_bound_exceeded"), tokens.Count, MaximumSemanticTransitionObservations * 16);
+                    // The same family must authorize both observed surfaces
+                    // and the relation; separate overlap with an aggregate's
+                    // family union can join two unrelated authorizations.
                     if (sourceIndex == targetIndex ||
                         nodes[sourceIndex].SemanticSignature != relation.SourceSemanticSignature ||
                         nodes[targetIndex].SemanticSignature != relation.TargetSemanticSignature ||
-                        !nodeFamilyIds[sourceIndex].Overlaps(relation.CurriculumFamilyIds) ||
-                        !nodeFamilyIds[targetIndex].Overlaps(relation.CurriculumFamilyIds))
+                        !nodeFamilyIds[sourceIndex].Any(familyId =>
+                            nodeFamilyIds[targetIndex].Contains(familyId) &&
+                            relation.CurriculumFamilyIds.Contains(familyId)))
                     {
                         continue;
                     }
@@ -5377,7 +5528,7 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
                     if (projectedRelations.Add(composedRelation))
                     {
                         if (relations.Count >= MaximumSemanticTransitionObservations)
-                            return new(false, [], [], inputTokenValues, "meaning_graph_relation_bound_exceeded");
+                            return Observe(new(false, [], [], inputTokenValues, "meaning_graph_relation_bound_exceeded"), tokens.Count, MaximumSemanticTransitionObservations);
                         relations.Add(composedRelation);
                     }
                 }
@@ -5485,18 +5636,28 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
                         ? "meaning_graph_relation_unproven"
                         : "meaning_graph_observational_composed";
 
-        return new(
+        return Observe(new(
             isComposed,
             orderedNodes,
             orderedRelations,
             unknown,
-            reasonCode);
+            reasonCode), tokens.Count);
     }
 
     private async Task<ReusableMeaningCandidateRetrieval> ReadReusableMeaningCandidatesAsync(
         string languageCode, string normalizedInput, IReadOnlyList<SurfaceComponent> tokens,
         CancellationToken cancellationToken)
     {
+        var started = Stopwatch.GetTimestamp();
+        int? anchorCount = null;
+        ReusableMeaningCandidateRetrieval Observe(ReusableMeaningCandidateRetrieval result, int? bound = null)
+        {
+            LogRuntimeDiagnostic(nameof(ReadReusableMeaningCandidatesAsync), "meaning_candidates",
+                result.ReasonCode is null ? "completed" : "rejected", result.ReasonCode ?? "none", started,
+                tokenCount: tokens.Count, candidateCount: anchorCount, nodeCount: result.Candidates.Count,
+                bound: bound);
+            return result;
+        }
         // Lexical anchors always retain the canonical lexeme at the first
         // token of their controlled span. Start from the exact lexemes present
         // in this request so inference never materializes every supported
@@ -5515,7 +5676,7 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
         {
             if (tokens.Count > MaximumSemanticRequestComponents)
             {
-                return new([], "meaning_graph_processing_bound_exceeded");
+                return Observe(new([], "meaning_graph_processing_bound_exceeded"), MaximumSemanticRequestComponents);
             }
             var inputLexemeHashes = tokens
                 .Select(item => item.NormalizedHash)
@@ -5527,11 +5688,12 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
                 requireReusableMeaningEvidence: true);
             if (indexedAnchors.BoundExceeded)
             {
-                return new([], "meaning_graph_retrieval_bound_exceeded");
+                return Observe(new([], "meaning_graph_retrieval_bound_exceeded"), MaximumIndexedSemanticTextUnits);
             }
         }
+        anchorCount = indexedAnchors.AnchorIds.Count;
         if (indexedAnchors.AnchorIds.Count == 0)
-            return new([], null);
+            return Observe(new([], null));
         var candidateAnchorIds = indexedAnchors.AnchorIds.ToArray();
 
         var candidates = await (
@@ -5580,7 +5742,7 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
 
         if (candidates.Count > MaximumIndexedSemanticAnchors)
         {
-            return new([], "meaning_graph_retrieval_bound_exceeded");
+            return Observe(new([], "meaning_graph_retrieval_bound_exceeded"), MaximumIndexedSemanticAnchors);
         }
 
         var machineNodeIds = candidates
@@ -5591,7 +5753,7 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
             item.Provenance == LegendConnectKnowledgeProvenance.FounderApproved ||
             admittedMachineNodes.Contains(item.NodeId)).ToList();
 
-        return new(candidates, null);
+        return Observe(new(candidates, null));
     }
 
     private sealed record ReusableMeaningCandidateRetrieval(
@@ -5609,6 +5771,23 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
         string language, string input, IReadOnlyList<ReusableMeaningAnchorCandidate> candidates,
         CancellationToken cancellationToken)
     {
+        var started = Stopwatch.GetTimestamp();
+        var tokenCount = 0;
+        int? declarationCount = null;
+        int? templateCount = null;
+        int? matchCount = null;
+        int? nodeCount = null;
+        int? relationCount = null;
+        SourceSlotAnalysis Observe(SourceSlotAnalysis result, int? bound = null)
+        {
+            LogRuntimeDiagnostic(nameof(AnalyzeDeclaredSourceSlotsAsync), "source_slots",
+                result.ReasonCode is null ? "completed" : "rejected",
+                result.ReasonCode ?? result.Graph?.ReasonCode ?? "none", started,
+                tokenCount: tokenCount, candidateCount: candidates.Count, nodeCount: nodeCount,
+                relationCount: relationCount, declarationCount: declarationCount,
+                templateCount: templateCount, matchCount: matchCount, bound: bound);
+            return result;
+        }
         var candidateNodeIds = candidates
             .Where(item => item.Provenance == LegendConnectKnowledgeProvenance.FounderApproved)
             .Select(item => item.NodeId).Distinct().ToArray();
@@ -5617,8 +5796,9 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
                 .Where(item => candidateNodeIds.Contains(item.Id))
                 .Select(item => item.CurriculumExampleId).Distinct().ToArrayAsync(cancellationToken);
         var inputTokens = SurfaceComponents(input);
+        tokenCount = inputTokens.Count;
         if (input.Length > 8192 || inputTokens.Count is < 1 or > MaximumSemanticRequestComponents)
-            return SourceSlotAnalysis.Failed("meaning_graph_source_slot_input_bound_exceeded");
+            return Observe(SourceSlotAnalysis.Failed("meaning_graph_source_slot_input_bound_exceeded"), input.Length > 8192 ? 8192 : MaximumSemanticRequestComponents);
         var lexemeHashes = inputTokens.Select(item => item.NormalizedHash).Distinct().ToArray();
         var indexedTextUnitIds =
             from lexeme in _db.Set<LegendLanguageLexeme>().AsNoTracking()
@@ -5655,12 +5835,13 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
             select new SourceSlotDeclaration(transition.Id, example.Id, example.CurriculumFamilyId,
                 unit.Text, transition.SourceSemanticFrame, transition.ContributionState)
         ).Take(MaximumSourceSlotTemplates + 1).ToArrayAsync(cancellationToken);
+        declarationCount = declarations.Length;
         if (declarations.Length > MaximumSourceSlotTemplates)
-            return SourceSlotAnalysis.Failed("meaning_graph_source_slot_retrieval_bound_exceeded");
+            return Observe(SourceSlotAnalysis.Failed("meaning_graph_source_slot_retrieval_bound_exceeded"), MaximumSourceSlotTemplates);
         declarations = declarations.Where(item => TryReadSemanticFrame(item.SourceFrame, out var frame) &&
             frame.Dimensions.Values.Any(IsSemanticVariable)).ToArray();
         if (declarations.Length == 0)
-            return SourceSlotAnalysis.NoMatch;
+            return Observe(SourceSlotAnalysis.NoMatch);
         var sourceIds = declarations.Select(item => item.ExampleId).Distinct().ToArray();
         var nodes = await (
             from node in _db.Set<LegendLanguageMeaningNodeEvidence>().AsNoTracking()
@@ -5684,8 +5865,9 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
                 node.SemanticDimension, node.SemanticValue, node.SemanticSignature, node.ClauseKey,
                 anchor.ComponentStartTokenIndex!.Value, anchor.ComponentLength!.Value)
         ).Take(MaximumIndexedSemanticAnchors + 1).ToArrayAsync(cancellationToken);
+        nodeCount = nodes.Length;
         if (nodes.Length > MaximumIndexedSemanticAnchors)
-            return SourceSlotAnalysis.Failed("meaning_graph_source_slot_retrieval_bound_exceeded");
+            return Observe(SourceSlotAnalysis.Failed("meaning_graph_source_slot_retrieval_bound_exceeded"), MaximumIndexedSemanticAnchors);
         var nodeIds = nodes.Select(item => item.Id).ToArray();
         var relations = await (
             from evidence in _db.Set<LegendLanguageMeaningRelationEvidence>().AsNoTracking()
@@ -5713,8 +5895,9 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
             select new FounderGraphRelation(evidence.CurriculumExampleId,
                 evidence.SourceMeaningNodeId, evidence.TargetMeaningNodeId, relation.RelationKind, relation.ClauseKey)
         ).Take(MaximumSemanticTransitionObservations + 1).ToArrayAsync(cancellationToken);
+        relationCount = relations.Length;
         if (relations.Length > MaximumSemanticTransitionObservations)
-            return SourceSlotAnalysis.Failed("meaning_graph_source_slot_retrieval_bound_exceeded");
+            return Observe(SourceSlotAnalysis.Failed("meaning_graph_source_slot_retrieval_bound_exceeded"), MaximumSemanticTransitionObservations);
         var templates = new List<SourceSlotTemplate>();
         foreach (var declaration in declarations)
         {
@@ -5725,6 +5908,7 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
             if (template is not null)
                 templates.Add(template);
         }
+        templateCount = templates.Count;
         var matches = new List<(SourceSlotTemplate Template, IReadOnlyList<LegendConnectSourceSlotCapture> Captures)>();
         var recognizedContext = false;
         var contextAttempts = 0;
@@ -5736,28 +5920,29 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
                 recognizedContext |= ContainsCompleteSourceSlotConstruction(template, input, candidates,
                     ref contextAttempts, cancellationToken, out var contextBoundExceeded);
                 if (contextBoundExceeded)
-                    return SourceSlotAnalysis.Failed("meaning_graph_source_slot_context_bound_exceeded");
+                    return Observe(SourceSlotAnalysis.Failed("meaning_graph_source_slot_context_bound_exceeded"), 1024);
                 continue;
             }
             matches.Add((template, captures));
         }
+        matchCount = matches.Count;
         if (matches.Count == 0)
-            return recognizedContext
+            return Observe(recognizedContext
                 ? SourceSlotAnalysis.Failed("meaning_graph_source_slot_context_unproven")
-                : SourceSlotAnalysis.NoMatch;
+                : SourceSlotAnalysis.NoMatch);
         if (matches.Any(item => item.Template.Declaration.ContributionState != "Supported"))
-            return SourceSlotAnalysis.Failed("meaning_graph_source_slot_contradicted");
+            return Observe(SourceSlotAnalysis.Failed("meaning_graph_source_slot_contradicted"));
         var matchedGroups = matches.GroupBy(item => item.Template.Signature, StringComparer.Ordinal).ToArray();
         if (matchedGroups.Length != 1)
-            return SourceSlotAnalysis.Failed("meaning_graph_source_slot_roles_ambiguous");
+            return Observe(SourceSlotAnalysis.Failed("meaning_graph_source_slot_roles_ambiguous"));
         var matched = matchedGroups[0].OrderBy(item => item.Template.Declaration.Id).ToArray();
         var first = matched[0];
         if (matched.Select(item => item.Template.Declaration.FamilyId).Distinct().Count() < 2 ||
             first.Template.Slots.Where((_, index) => matched.Select(item => item.Template.Slots[index].Node.Value)
                 .Distinct(StringComparer.Ordinal).Count() < 2).Any())
-            return SourceSlotAnalysis.Failed("meaning_graph_source_slot_variation_unproven");
+            return Observe(SourceSlotAnalysis.Failed("meaning_graph_source_slot_variation_unproven"));
         if (matched.Any(item => !item.Captures.SequenceEqual(first.Captures)))
-            return SourceSlotAnalysis.Failed("meaning_graph_source_slot_value_ambiguous");
+            return Observe(SourceSlotAnalysis.Failed("meaning_graph_source_slot_value_ambiguous"));
         var slotEvidence = matched.Select(item => new LegendConnectSourceSlotEvidence(
             item.Template.Declaration.Id, item.Template.Declaration.ExampleId,
             item.Template.Declaration.FamilyId,
@@ -5765,9 +5950,9 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
         var receipt = new LegendConnectSourceSlotBinding(language,
             LegendLanguageIdentity.TextHash(input), first.Template.Signature, first.Captures, slotEvidence);
         var projected = ProjectSourceSlotGraph(first.Template, receipt, input);
-        return projected is null
+        return Observe(projected is null
             ? SourceSlotAnalysis.Failed("meaning_graph_source_slot_projection_unproven")
-            : new(projected, null);
+            : new(projected, null));
     }
 
     private static SourceSlotTemplate? BuildSourceSlotTemplate(SourceSlotDeclaration declaration,
@@ -7133,7 +7318,7 @@ internal sealed class LegendConnectCurriculumService : ILegendConnectStructuralC
                 graph,
                 "discourse_reference_state_unavailable");
         }
-        if (!graph.Nodes.SequenceEqual(currentTurn.Nodes) ||
+        if (!SameObservedMeaningNodes(graph.Nodes, currentTurn.Nodes) ||
             !graph.Relations.SequenceEqual(currentTurn.Relations))
         {
             return DiscourseMeaningGraphCompletion.Failure(

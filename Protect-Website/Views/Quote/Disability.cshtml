@@ -102,6 +102,8 @@
     form.PageMode = pageMode;
 }
 
+<partial name="_QuoteFinalReviewAssets" />
+
 <style>
 body.disability-quote main.layout-content {
     padding-top: 1.3rem;
@@ -1118,231 +1120,7 @@ body.disability-landing.page-mode-paid-landing header .navbar-brand img {
     color: #fff0c0;
 }
 
-#disabilityPostSubmitSlot,
-#disabilityPostSubmitSlot * {
-    opacity: 1 !important;
-    box-sizing: border-box !important;
-}
 
-#disabilityPostSubmitSlot {
-    width: 100% !important;
-    margin: 0 !important;
-    padding: 0 !important;
-    background: transparent !important;
-    border: 0 !important;
-    box-shadow: none !important;
-}
-
-#disabilityPostSubmitSlot .lq-final-review-unified-card {
-    width: min(1240px, 100%) !important;
-    max-width: 1240px !important;
-    margin: 0 auto !important;
-    padding: 26px 30px 30px !important;
-    border-radius: 24px !important;
-    border: 1px solid rgba(199,153,49,.38) !important;
-    background:
-        radial-gradient(circle at 18% 0%, rgba(243,214,136,.12), transparent 36%),
-        linear-gradient(180deg, #09244a 0%, #071d3d 52%, #061832 100%) !important;
-    color: #f8fafc !important;
-    box-shadow:
-        0 22px 46px rgba(2,12,27,.26),
-        inset 0 1px 0 rgba(255,255,255,.055) !important;
-    overflow: hidden !important;
-}
-
-#disabilityPostSubmitSlot .lq-final-review-head {
-    position: relative !important;
-    padding: 0 0 13px !important;
-    margin: 0 0 12px !important;
-    border-bottom: 1px solid rgba(243,214,136,.14) !important;
-}
-
-#disabilityPostSubmitSlot .lq-final-review-kicker {
-    display: inline-flex !important;
-    align-items: center !important;
-    gap: 8px !important;
-    color: #f3d688 !important;
-    font-size: .72rem !important;
-    font-weight: 950 !important;
-    letter-spacing: .11em !important;
-    text-transform: uppercase !important;
-    margin: 0 0 8px !important;
-}
-
-#disabilityPostSubmitSlot .lq-final-review-kicker::after {
-    content: "" !important;
-    width: 42px !important;
-    height: 1px !important;
-    background: linear-gradient(90deg, rgba(243,214,136,.9), rgba(243,214,136,0)) !important;
-    display: block !important;
-}
-
-#disabilityPostSubmitSlot .lq-final-review-title {
-    color: #fff8e7 !important;
-    font-size: clamp(1.72rem, 4vw, 2.28rem) !important;
-    line-height: 1.02 !important;
-    letter-spacing: -.04em !important;
-    font-weight: 960 !important;
-    margin: 0 0 9px !important;
-    text-wrap: balance !important;
-}
-
-#disabilityPostSubmitSlot .lq-final-review-copy {
-    color: rgba(248,250,252,.84) !important;
-    font-size: .96rem !important;
-    line-height: 1.42 !important;
-    font-weight: 720 !important;
-    max-width: 78ch !important;
-    margin: 0 !important;
-}
-
-#disabilityPostSubmitSlot .lq-final-review-proof-row {
-    display: flex !important;
-    flex-wrap: wrap !important;
-    gap: 7px !important;
-    margin: 0 0 13px !important;
-}
-
-#disabilityPostSubmitSlot .lq-final-review-proof-row span {
-    display: inline-flex !important;
-    align-items: center !important;
-    min-height: 28px !important;
-    padding: 6px 10px !important;
-    border-radius: 999px !important;
-    border: 1px solid rgba(243,214,136,.30) !important;
-    background: rgba(4,16,32,.42) !important;
-    color: rgba(255,246,216,.92) !important;
-    font-size: .72rem !important;
-    font-weight: 900 !important;
-}
-
-#disabilityPostSubmitSlot .lq-final-review-impact-grid,
-#disabilityPostSubmitSlot .dq-final-review-stats {
-    display: grid !important;
-    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
-    gap: 10px !important;
-}
-
-#disabilityPostSubmitSlot .lq-final-review-impact-grid {
-    margin: 0 0 14px !important;
-}
-
-#disabilityPostSubmitSlot .lq-final-review-impact-card,
-#disabilityPostSubmitSlot .dq-final-review-stat {
-    padding: 13px 14px !important;
-    border-radius: 16px !important;
-    border: 1px solid rgba(199,153,49,.22) !important;
-    background:
-        radial-gradient(circle at 15% 0%, rgba(243,214,136,.08), transparent 36%),
-        linear-gradient(180deg, rgba(6,29,61,.78) 0%, rgba(7,26,54,.92) 100%) !important;
-}
-
-#disabilityPostSubmitSlot .lq-final-review-impact-card.is-urgent {
-    border-color: rgba(243,214,136,.38) !important;
-    background:
-        radial-gradient(circle at 15% 0%, rgba(243,214,136,.14), transparent 38%),
-        linear-gradient(180deg, rgba(8,37,77,.90) 0%, rgba(7,26,54,.96) 100%) !important;
-}
-
-#disabilityPostSubmitSlot .lq-final-review-impact-label,
-#disabilityPostSubmitSlot .lq-final-review-next-kicker,
-#disabilityPostSubmitSlot .lq-final-review-booking-kicker,
-#disabilityPostSubmitSlot .dq-final-review-stat-label {
-    color: #f3d688 !important;
-    font-size: .70rem !important;
-    font-weight: 940 !important;
-    letter-spacing: .08em !important;
-    text-transform: uppercase !important;
-    margin: 0 0 5px !important;
-}
-
-#disabilityPostSubmitSlot .lq-final-review-impact-text,
-#disabilityPostSubmitSlot .lq-final-review-next-copy,
-#disabilityPostSubmitSlot .lq-final-review-booking-copy {
-    color: rgba(248,250,252,.88) !important;
-    font-size: .87rem !important;
-    font-weight: 760 !important;
-    line-height: 1.34 !important;
-}
-
-#disabilityPostSubmitSlot .lq-final-review-result-slot {
-    background: transparent !important;
-    border: 0 !important;
-    box-shadow: none !important;
-    padding: 0 !important;
-    margin: 0 0 14px !important;
-}
-
-#disabilityPostSubmitSlot .dq-final-review-stats {
-    margin: 0 !important;
-}
-
-#disabilityPostSubmitSlot .dq-final-review-stat-value {
-    color: #fff8e7 !important;
-    font-size: 1.05rem !important;
-    font-weight: 900 !important;
-    line-height: 1.3 !important;
-}
-
-#disabilityPostSubmitSlot .lq-final-review-next-step {
-    margin: 2px 0 14px !important;
-    padding: 15px 16px !important;
-    border-radius: 18px !important;
-    border: 1px solid rgba(243,214,136,.34) !important;
-    background:
-        radial-gradient(circle at 12% 0%, rgba(243,214,136,.13), transparent 34%),
-        linear-gradient(180deg, rgba(8,37,77,.92) 0%, rgba(5,22,48,.96) 100%) !important;
-    box-shadow:
-        inset 0 1px 0 rgba(255,255,255,.05),
-        0 14px 28px rgba(2,12,27,.14) !important;
-}
-
-#disabilityPostSubmitSlot .lq-final-review-next-title {
-    color: #fff7df !important;
-    font-size: 1.02rem !important;
-    font-weight: 930 !important;
-    line-height: 1.22 !important;
-    margin: 0 0 6px !important;
-}
-
-#disabilityPostSubmitSlot .lq-final-review-checklist {
-    display: grid !important;
-    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
-    gap: 7px !important;
-}
-
-#disabilityPostSubmitSlot .lq-final-review-checklist span {
-    padding: 8px 9px !important;
-    border-radius: 12px !important;
-    border: 1px solid rgba(243,214,136,.20) !important;
-    background: rgba(4,16,32,.35) !important;
-    color: rgba(248,250,252,.88) !important;
-    font-size: .76rem !important;
-    font-weight: 850 !important;
-    text-align: center !important;
-}
-
-#disabilityPostSubmitSlot .lq-final-review-booking-card {
-    margin: 12px 0 10px !important;
-    padding: 15px 16px !important;
-    border-radius: 18px !important;
-    border: 1px solid rgba(243,214,136,.38) !important;
-    background:
-        radial-gradient(circle at 18% 0%, rgba(243,214,136,.15), transparent 36%),
-        linear-gradient(180deg, rgba(9,41,85,.96) 0%, rgba(6,26,55,.98) 100%) !important;
-}
-
-#disabilityPostSubmitSlot .lq-final-review-booking-title {
-    color: #fff8e7 !important;
-    font-size: 1.16rem !important;
-    font-weight: 950 !important;
-    line-height: 1.13 !important;
-    margin: 0 0 5px !important;
-    text-wrap: balance !important;
-}
-
-#disabilityPostSubmitSlot .lq-final-review-loading,
-#disabilityPostSubmitSlot .lq-final-review-unavailable,
 #disabilityPostSubmitSlot .lq-booking-embed-status {
     margin: 10px 0 !important;
     padding: 10px 12px !important;
@@ -1506,17 +1284,12 @@ body.disability-landing.page-mode-paid-landing header .navbar-brand img {
 
 #disabilityEducationContactPanel.is-submit-loading #dqStep1Panel,
 #disabilityEducationContactPanel.is-submit-loading #dqContactPanel,
-#disabilityEducationContactPanel.is-submit-loading #disabilityContactCaptureWrap,
-#disabilityEducationContactPanel.is-submit-loading #disabilityPostSubmitSlot {
+#disabilityEducationContactPanel.is-submit-loading #disabilityContactCaptureWrap{
     display: none !important;
 }
 
 #disabilityEducationContactPanel.is-submit-loading #dqProcessingPanel {
     display: block !important;
-}
-
-#disabilityPostSubmitSlot .lq-final-review-agent-row .dq-proof-card {
-    margin: 0 0 8px !important;
 }
 
 #disabilityPostSubmitSlot .lq-booking-secondary-link {
@@ -1660,46 +1433,6 @@ body.disability-landing.page-mode-paid-landing header .navbar-brand img {
         margin: 0 !important;
     }
 
-    #disabilityPostSubmitSlot .lq-final-review-unified-card {
-        display: grid !important;
-        grid-template-columns: minmax(0, 1fr) !important;
-        gap: 14px !important;
-        padding: 28px 32px 32px !important;
-    }
-
-    #disabilityPostSubmitSlot .lq-final-review-head,
-    #disabilityPostSubmitSlot .lq-final-review-proof-row,
-    #disabilityPostSubmitSlot .lq-final-review-impact-grid,
-    #disabilityPostSubmitSlot .lq-final-review-result-slot,
-    #disabilityPostSubmitSlot .lq-final-review-next-step,
-    #disabilityPostSubmitSlot .lq-final-review-booking-card {
-        grid-column: 1 / -1 !important;
-        min-width: 0 !important;
-        margin-left: 0 !important;
-        margin-right: 0 !important;
-    }
-
-    #disabilityPostSubmitSlot .lq-final-review-agent-row {
-        grid-column: 1 / -1 !important;
-        margin: 0 0 8px !important;
-        padding: 6px 6px 2px !important;
-    }
-
-    #disabilityPostSubmitSlot .lq-final-review-agent-row .dq-proof-card {
-        margin: 0 !important;
-        border-radius: 14px !important;
-        padding: 10px 12px !important;
-    }
-
-    #disabilityPostSubmitSlot .lq-final-review-title {
-        font-size: clamp(1.34rem, 2.05vw, 1.74rem) !important;
-        line-height: 1.12 !important;
-    }
-
-    #disabilityPostSubmitSlot .lq-final-review-checklist {
-        grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
-    }
-
     #disabilityPostSubmitSlot .lq-booking-iframe {
         height: clamp(780px, 92vh, 1100px) !important;
         min-height: clamp(780px, 92vh, 1100px) !important;
@@ -1707,32 +1440,10 @@ body.disability-landing.page-mode-paid-landing header .navbar-brand img {
 }
 
 @@media (max-width: 720px) {
-    #disabilityPostSubmitSlot .lq-final-review-unified-card {
-        padding: 17px !important;
-        border-radius: 22px !important;
-    }
 
-    #disabilityPostSubmitSlot .lq-final-review-title {
-        font-size: 1.52rem !important;
-        line-height: 1.04 !important;
-    }
 
-    #disabilityPostSubmitSlot .lq-final-review-copy {
-        font-size: .91rem !important;
-        line-height: 1.4 !important;
-    }
-
-    #disabilityPostSubmitSlot .lq-final-review-impact-grid,
-    #disabilityPostSubmitSlot .dq-final-review-stats,
-    #disabilityPostSubmitSlot .lq-final-review-checklist,
     .dq-contact-capture-wrap .lq-field-row {
         grid-template-columns: 1fr !important;
-    }
-
-    #disabilityPostSubmitSlot .lq-final-review-next-step,
-    #disabilityPostSubmitSlot .lq-final-review-booking-card {
-        padding: 14px !important;
-        border-radius: 16px !important;
     }
 
     #disabilityPostSubmitSlot .lq-booking-iframe {
@@ -1958,60 +1669,7 @@ body.disability-final-step-active .dq-form-panel {
         box-shadow: none !important;
     }
 
-    #disabilityPostSubmitSlot {
-        margin: 0 !important;
-        padding: 0 !important;
-    }
 
-    #disabilityPostSubmitSlot .lq-final-review-unified-card {
-        width: 100% !important;
-        padding: 14px 13px 16px !important;
-        border-radius: 18px !important;
-        box-shadow:
-            0 14px 28px rgba(2, 12, 27, 0.2),
-            inset 0 1px 0 rgba(255,255,255,.045) !important;
-    }
-
-    #disabilityPostSubmitSlot .lq-final-review-head {
-        padding-bottom: 10px !important;
-        margin-bottom: 10px !important;
-    }
-
-    #disabilityPostSubmitSlot .lq-final-review-title {
-        font-size: 1.28rem !important;
-        line-height: 1.08 !important;
-    }
-
-    #disabilityPostSubmitSlot .lq-final-review-copy {
-        font-size: .88rem !important;
-        line-height: 1.38 !important;
-    }
-
-    #disabilityPostSubmitSlot .lq-final-review-proof-row {
-        gap: 6px !important;
-        margin: 0 0 10px !important;
-    }
-
-    #disabilityPostSubmitSlot .lq-final-review-proof-row span {
-        min-height: 26px !important;
-        padding: 5px 8px !important;
-        font-size: .68rem !important;
-    }
-
-    #disabilityPostSubmitSlot .lq-final-review-impact-card,
-    #disabilityPostSubmitSlot .dq-final-review-stat,
-    #disabilityPostSubmitSlot .lq-final-review-next-step,
-    #disabilityPostSubmitSlot .lq-final-review-booking-card {
-        padding: 12px !important;
-        border-radius: 14px !important;
-    }
-
-    #disabilityPostSubmitSlot .lq-final-review-booking-card {
-        margin: 8px 0 !important;
-    }
-
-    #disabilityPostSubmitSlot .lq-final-review-loading,
-    #disabilityPostSubmitSlot .lq-final-review-unavailable,
     #disabilityPostSubmitSlot .lq-booking-embed-status {
         margin: 8px 0 !important;
         padding: 9px 10px !important;
@@ -2578,7 +2236,6 @@ body.disability-final-step-active .dq-form-panel {
         var continueButton = document.getElementById('dqContinueToContactBtn');
         var backToQuestionsButton = document.getElementById('dqBackToQuestionsBtn');
         var submitButton = document.getElementById('dqSubmitBtn');
-        var proofCard = contactFirstPanel ? contactFirstPanel.querySelector('.dq-proof-card') : null;
         var errorBanner = document.getElementById('disabilityError');
         var successBanner = document.getElementById('disabilitySuccess');
         var reviewSummary = document.getElementById('disabilityReviewSummary');
@@ -3113,19 +2770,12 @@ body.disability-final-step-active .dq-form-panel {
 
             var responseBody = latestSubmitResponse || {};
             var agentName = asTrimmed(responseBody.agentFirstName) || 'our licensed team';
-            var proofHtml = proofCard ? '<div class="lq-final-review-agent-row">' + proofCard.outerHTML + '</div>' : '';
             var ageRange = readSelectedValue('AgeRange') || 'Age range';
             var employmentType = readSelectedValue('EmploymentType') || 'Work type';
             var incomeRange = readSelectedValue('IncomeRange') || 'Income focus';
             var currentCoverage = readSelectedValue('CurrentCoverage') || 'Current coverage';
             var priority = readSelectedValue('IncomeProtectionImportance') || 'Priority';
-            var resultHtml = ''
-                + '<div class="dq-final-review-stats" aria-label="Saved review snapshot">'
-                +   '<div class="dq-final-review-stat"><div class="dq-final-review-stat-label">Age range</div><div class="dq-final-review-stat-value">' + escapeHtml(ageRange) + '</div></div>'
-                +   '<div class="dq-final-review-stat"><div class="dq-final-review-stat-label">Work type</div><div class="dq-final-review-stat-value">' + escapeHtml(employmentType) + '</div></div>'
-                +   '<div class="dq-final-review-stat"><div class="dq-final-review-stat-label">Income focus</div><div class="dq-final-review-stat-value">' + escapeHtml(incomeRange) + '</div></div>'
-                +   '<div class="dq-final-review-stat"><div class="dq-final-review-stat-label">Current protection</div><div class="dq-final-review-stat-value">' + escapeHtml(currentCoverage) + '</div></div>'
-                + '</div>';
+            var reviewSnapshot = { metrics: [{ label: 'Age range', value: ageRange }, { label: 'Work type', value: employmentType }, { label: 'Income focus', value: incomeRange }, { label: 'Current protection', value: currentCoverage }] };
             var showInlineShell = !normalized.loading && normalized.enabled && normalized.canEmbed && normalized.embedUrl;
             var showFallbackLink = false;
             var bookingUnavailableCopy = !normalized.loading && !showInlineShell && !showFallbackLink
@@ -3134,58 +2784,27 @@ body.disability-final-step-active .dq-form-panel {
                     : publicBookingDisabledText)
                 : '';
 
-            postSubmitSlot.innerHTML = ''
-                + '<section class="lq-final-review-unified-card" aria-labelledby="disabilityPostSubmitTitle">'
-                + proofHtml
-                +   '<div class="lq-final-review-head">'
-                +     '<div class="lq-final-review-kicker">Review saved</div>'
-                +     '<div class="lq-final-review-title" id="disabilityPostSubmitTitle">Your disability review is ready for the next step.</div>'
-                +     '<div class="lq-final-review-copy">We saved your answers so the conversation can start with your income risk, current benefits, and paycheck protection gaps instead of starting cold.</div>'
-                +   '</div>'
-                +   '<div class="lq-final-review-proof-row" aria-label="Review value">'
-                +     '<span>Review saved</span>'
-                +     '<span>Income protection</span>'
-                +     '<span>No obligation</span>'
-                +   '</div>'
-                +   '<div class="lq-final-review-impact-grid" aria-label="Why this review matters">'
-                +     '<div class="lq-final-review-impact-card">'
-                +       '<div class="lq-final-review-impact-label">What surfaced</div>'
-                +       '<div class="lq-final-review-impact-text">Your answers suggest this review should focus on ' + escapeHtml(priority.toLowerCase()) + ', how much income needs protecting, and whether your current coverage really closes the gap.</div>'
-                +     '</div>'
-                +     '<div class="lq-final-review-impact-card is-urgent">'
-                +       '<div class="lq-final-review-impact-label">Why timing matters</div>'
-                +       '<div class="lq-final-review-impact-text">Income protection usually feels far more urgent once sickness, injury, or a missed paycheck puts real pressure on monthly obligations.</div>'
-                +     '</div>'
-                +   '</div>'
-                +   '<div class="lq-final-review-result-slot">'
-                +     resultHtml
-                +   '</div>'
-                +   '<div class="lq-final-review-next-step" aria-label="What happens during the review">'
-                +     '<div class="lq-final-review-next-kicker">What the review confirms</div>'
-                +     '<div class="lq-final-review-next-title">' + escapeHtml(agentName) + ' helps turn this review into a clear income protection decision.</div>'
-                +     '<div class="lq-final-review-next-copy">The review can now confirm the gap, benefit fit, elimination period expectations, and whether workplace or personal coverage is enough before any recommendation moves forward.</div>'
-                +     '<div class="lq-final-review-checklist" aria-label="Review checklist">'
-                +       '<span>Benefit fit</span>'
-                +       '<span>Gap review</span>'
-                +       '<span>Coverage direction</span>'
-                +     '</div>'
-                +   '</div>'
-                +   '<div class="lq-final-review-booking-card">'
-                +     '<div class="lq-final-review-booking-kicker">Finish the review</div>'
-                +     '<div class="lq-final-review-booking-title">Choose a time to keep the review moving.</div>'
-                +     '<div class="lq-final-review-booking-copy">Schedule while this is fresh so ' + escapeHtml(agentName) + ' can confirm your income gap, benefit fit, waiting period expectations, and what path fits best.</div>'
-                +   '</div>'
-                +   (normalized.loading
-                    ? '<div class="lq-final-review-loading">' + escapeHtml(publicBookingLoadingText) + '</div>'
-                    : '')
-                +   (showInlineShell
-                    ? '<div class="lq-booking-frame-only" id="disabilityBookingInlineFrameSlot"></div>'
-                    + '<div class="lq-booking-embed-status" id="disabilityBookingInlineStatus" hidden>' + escapeHtml(publicBookingLoadingText) + '</div>'
-                    : '')
-                +   (bookingUnavailableCopy
-                    ? '<div class="lq-final-review-unavailable">' + escapeHtml(bookingUnavailableCopy) + '</div>'
-                    : '')
-                + '</section>';
+            window.LegendQuoteReview.render(postSubmitSlot, {
+                titleId: 'disabilityPostSubmitTitle',
+                title: 'Your disability review is ready for the next step.',
+                copy: 'We saved your answers so the conversation can start with your income risk, current benefits, and paycheck protection gaps instead of starting cold.',
+                diagnosis: 'Your answers suggest this review should focus on ' + priority.toLowerCase() + ', how much income needs protecting, and whether your current coverage really closes the gap.',
+                implication: 'Income protection usually feels far more urgent once sickness, injury, or a missed paycheck puts real pressure on monthly obligations.',
+                snapshot: reviewSnapshot,
+                agentHtml: proofCard ? proofCard.outerHTML : '',
+                benefits: ['Review saved', 'Income protection', 'No obligation'],
+                nextTitle: agentName + ' helps turn this review into a clear income protection decision.',
+                nextStep: 'The review can now confirm the gap, benefit fit, elimination period expectations, and whether workplace or personal coverage is enough before any recommendation moves forward.',
+                checklist: ['Benefit fit', 'Gap review', 'Coverage direction'],
+                bookingTitle: 'Choose a time to keep the review moving.',
+                bookingCopy: 'Schedule while this is fresh so ' + agentName + ' can confirm your income gap, benefit fit, waiting period expectations, and what path fits best.',
+                loading: normalized.loading,
+                loadingText: publicBookingLoadingText,
+                showCalendar: showInlineShell,
+                frameId: 'disabilityBookingInlineFrameSlot',
+                statusId: 'disabilityBookingInlineStatus',
+                unavailableText: bookingUnavailableCopy
+            });
 
             postSubmitSlot.hidden = false;
 

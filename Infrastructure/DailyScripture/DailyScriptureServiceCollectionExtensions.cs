@@ -1,5 +1,7 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+using Infrastructure.Messaging;
 
 namespace Infrastructure.DailyScripture;
 
@@ -13,6 +15,7 @@ public static class DailyScriptureServiceCollectionExtensions
 
         services.AddSingleton(DailyScriptureOptions.FromConfiguration(configuration));
         services.AddScoped<IDailyScriptureService, DailyScriptureService>();
+        services.TryAddScoped<IControlledResourceAccessService, ControlledResourceAccessService>();
         services.AddScoped<IDailyScriptureManagementService, DailyScriptureManagementService>();
         return services;
     }

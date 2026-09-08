@@ -26,6 +26,61 @@ namespace AgentPortal.Tests;
 [Collection("LegendConnectFounderEnvironment")]
 public sealed class LegendConnectMeaningGraphTests
 {
+    [Theory]
+    [InlineData("ledger inspect", true)]
+    [InlineData("register review", true)]
+    [InlineData("register inspect", false)]
+    [InlineData("ledger review", false)]
+    public async Task ReusableRelation_RequiresOneFamilyThatAuthorizesBothObservedSurfaces(
+        string request, bool supported)
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var curriculum = CreateCurriculum(db);
+        // Independently taught contexts establish the same semantic relation.
+        // Its aggregate must not merge disjoint surface authorizations.
+        foreach (var (context, action, target) in new[]
+        {
+            ("arrival", "inspect", "ledger"),
+            ("handover", "inspect", "ledger"),
+            ("closure", "inspect", "ledger"),
+            ("intake", "review", "register"),
+            ("renewal", "review", "register"),
+            ("audit", "review", "register")
+        })
+        {
+            var submitted = await curriculum.SubmitFounderBatchAsync(new(
+                "meaning.shared-family." + context, "Family-scoped surface authorization",
+                [new("During " + context + " " + action + " the " + target + ".",
+                    new Dictionary<string, string> { ["action"] = "inspect", ["target"] = "records" },
+                    new([new("action", "action", "inspect", action),
+                         new("target", "target", "records", target)],
+                        [new("action", "request-target", "target")])),
+                 new("The " + target + " awaits " + context + "; " + action + " it.",
+                    new Dictionary<string, string> { ["action"] = "inspect", ["target"] = "records" },
+                    new([new("target", "target", "records", target),
+                         new("action", "action", "inspect", action)],
+                        [new("action", "request-target", "target")]))]));
+            Assert.True(submitted.Succeeded, submitted.Message);
+        }
+        Assert.DoesNotContain(await db.LegendLanguageTextUnits.Select(unit => unit.Text).ToArrayAsync(),
+            text => LegendLanguageIdentity.NormalizeText(text) == LegendLanguageIdentity.NormalizeText(request));
+        var graph = await curriculum.AnalyzeReusableMeaningGraphAsync("en", request);
+        Assert.Equal(2, graph.Nodes.Count);
+        Assert.Empty(graph.UnknownSurfaceComponents);
+        Assert.Equal(supported, graph.IsComposed);
+        if (supported)
+        {
+            var relation = Assert.Single(graph.Relations);
+            Assert.Equal("action", graph.Nodes[relation.SourceNodeIndex].SemanticDimension);
+            Assert.Equal("target", graph.Nodes[relation.TargetNodeIndex].SemanticDimension);
+        }
+        else
+        {
+            Assert.Empty(graph.Relations);
+            Assert.Equal("meaning_graph_relation_unproven", graph.ReasonCode);
+        }
+    }
+
     [Fact]
     public async Task ExplicitFounderMeaningGraphs_PreserveCanonicalNodesRelationsAndIndependentSupport()
     {

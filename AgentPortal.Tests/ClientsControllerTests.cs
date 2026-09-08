@@ -1,3 +1,6 @@
+using Microsoft.Extensions.DependencyInjection;
+using Infrastructure.Identity;
+using System.Threading;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -464,7 +467,7 @@ public class ClientsControllerTests
     }
 
     [Fact]
-    public async Task Delete_WhenSoleClientRecord_IsBlockedFromDeletingTheAccount()
+    public async Task Delete_WhenSoleClientRecord_UsesAccountClosure()
     {
         using var db = ControllerTestHelpers.BuildDb();
         const string agentId = "agent-1";
@@ -499,7 +502,13 @@ public class ClientsControllerTests
             Mock.Of<ICommitmentService>(),
             ControllerTestHelpers.BuildUser(agentId));
 
+        var removal = new Mock<IFounderAccountRemovalService>();
+        removal.Setup(service => service.RemoveAssignedClientAsync(It.IsAny<Guid>(), agentId, It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new FounderAccountRemovalResult(true, true, null, "Account archived.", "Closed"));
+        controller.HttpContext.RequestServices = new ServiceCollection().AddSingleton(removal.Object).BuildServiceProvider();
+        controller.Url = Mock.Of<IUrlHelper>();
         var result = await controller.Delete(clientUserId);
+        removal.Verify(service => service.RemoveAssignedClientAsync(It.IsAny<Guid>(), agentId, It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Once);
 
         var redirect = Assert.IsType<RedirectToActionResult>(result);
         Assert.Equal(nameof(ClientsController.Index), redirect.ActionName);
@@ -510,7 +519,7 @@ public class ClientsControllerTests
     }
 
     [Fact]
-    public async Task Delete_WhenClientOwnsHousehold_ReturnsConflictInsteadOfServerError()
+    public async Task Delete_WhenClientOwnsHousehold_UsesAccountClosure()
     {
         using var db = ControllerTestHelpers.BuildDb();
         const string agentId = "agent-1";
@@ -543,15 +552,21 @@ public class ClientsControllerTests
             ControllerTestHelpers.BuildUser(agentId));
         controller.HttpContext.Request.Headers["X-Requested-With"] = "fetch";
 
+        var removal = new Mock<IFounderAccountRemovalService>();
+        removal.Setup(service => service.RemoveAssignedClientAsync(It.IsAny<Guid>(), agentId, It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new FounderAccountRemovalResult(true, true, null, "Account archived.", "Closed"));
+        controller.HttpContext.RequestServices = new ServiceCollection().AddSingleton(removal.Object).BuildServiceProvider();
+        controller.Url = Mock.Of<IUrlHelper>();
         var result = await controller.Delete(clientUserId);
+        removal.Verify(service => service.RemoveAssignedClientAsync(It.IsAny<Guid>(), agentId, It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Once);
 
-        Assert.IsType<ConflictObjectResult>(result);
+        Assert.IsType<JsonResult>(result);
         Assert.Single(await db.ClientProfiles.ToListAsync());
         Assert.Single(await db.HouseholdAccounts.ToListAsync());
     }
 
     [Fact]
-    public async Task Delete_WhenSharedClient_RemovesOnlyCurrentAgentLink()
+    public async Task Delete_WhenSharedClient_UsesAccountClosureForTheWholeAccount()
     {
         using var db = ControllerTestHelpers.BuildDb();
         const string agentId = "agent-1";
@@ -580,14 +595,18 @@ public class ClientsControllerTests
             Mock.Of<ICommitmentService>(),
             ControllerTestHelpers.BuildUser(agentId));
 
+        var removal = new Mock<IFounderAccountRemovalService>();
+        removal.Setup(service => service.RemoveAssignedClientAsync(It.IsAny<Guid>(), agentId, It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new FounderAccountRemovalResult(true, true, null, "Account archived.", "Closed"));
+        controller.HttpContext.RequestServices = new ServiceCollection().AddSingleton(removal.Object).BuildServiceProvider();
+        controller.Url = Mock.Of<IUrlHelper>();
         var result = await controller.Delete(clientUserId);
+        removal.Verify(service => service.RemoveAssignedClientAsync(It.IsAny<Guid>(), agentId, It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Once);
 
         var redirect = Assert.IsType<RedirectToActionResult>(result);
         Assert.Equal(nameof(ClientsController.Index), redirect.ActionName);
         Assert.Single(await db.ClientProfiles.ToListAsync());
-        var remainingLink = Assert.Single(await db.AgentClients.ToListAsync());
-        Assert.Equal(otherAgentId, remainingLink.AgentUserId);
-        Assert.Equal(clientUserId, remainingLink.ClientUserId);
+        Assert.Equal(2, await db.AgentClients.CountAsync()); // central closure owns retained assignment history
     }
 
     [Fact]

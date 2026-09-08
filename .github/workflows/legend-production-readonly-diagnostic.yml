@@ -14,13 +14,14 @@ on:
         required: true
         type: string
       validation_scope:
-        description: Original eleven-category matrix or bounded direct-native observation
+        description: Native SQL matrix, direct observation, or explicit live provider resources
         required: true
         default: canonical_matrix
         type: choice
         options:
           - canonical_matrix
           - observation
+          - provider_resources
 
 concurrency:
   group: legend-production-readonly-diagnostic
@@ -40,8 +41,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     environment:
-      # This existing isolated environment must contain only its selected
-      # read-only SQL credential. Missing configuration fails the observation.
+      # Each diagnostic step receives only its selected credentials. Missing
+      # configuration fails that scope; no fallback secret discovery is used.
       name: LEGEND-Production-ReadOnly-Validation
 
     steps:
@@ -90,7 +91,7 @@ jobs:
         id: diagnostic
         # A failed regression still permits bounded observation of a valid
         # build. The final gate below continues to fail the job for regression.
-        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.build.outcome == 'success' && env.LEGEND_VALIDATION_SCOPE != 'provider_resources' }}
         timeout-minutes: 14
         shell: bash
         continue-on-error: true
@@ -108,6 +109,27 @@ jobs:
           # isolated local discourse persistence; all production SQL is guarded.
           bash scripts/run-legend-production-shadow.sh
 
+      - name: Observe explicitly selected live provider resources
+        id: resources
+        if: ${{ !cancelled() && steps.build.outcome == 'success' && env.LEGEND_VALIDATION_SCOPE == 'provider_resources' }}
+        timeout-minutes: 5
+        shell: bash
+        continue-on-error: true
+        env:
+          LEGEND_RESOURCE_DIAGNOSTICS_REQUIRED: 'true'
+          # These references do not establish that a secret is configured.
+          # Tests emit NOT_CONFIGURED receipts for missing selected resources.
+          OpenAI__ApiKey: ${{ secrets.OPENAI_API_KEY }}
+          AzureTranslator__Endpoint: ${{ secrets.AZURE_TRANSLATOR_ENDPOINT }}
+          AzureTranslator__Key: ${{ secrets.AZURE_TRANSLATOR_KEY }}
+          AzureTranslator__Region: ${{ secrets.AZURE_TRANSLATOR_REGION }}
+        run: |
+          set -Eeuo pipefail
+          export LEGEND_VALIDATION_NONCE="$(python3 -c 'import uuid; print(uuid.uuid4())')"
+          # Exactly Azure, governed research, and the existing OpenAI catalog
+          # acceptance canary. No production SQL credential enters this step.
+          bash scripts/run-legend-production-shadow.sh
+
       - name: Assemble sanitized diagnostic transcript
         if: always()
         shell: bash
@@ -116,6 +138,7 @@ jobs:
           BUILD_OUTCOME: ${{ steps.build.outcome }}
           REGRESSION_OUTCOME: ${{ steps.regression.outcome }}
           DIAGNOSTIC_OUTCOME: ${{ steps.diagnostic.outcome }}
+          RESOURCE_OUTCOME: ${{ steps.resources.outcome }}
         run: |
           mkdir -p diagnostics/legend-shadow
           python3 - <<'PY'
@@ -128,6 +151,8 @@ jobs:
               'WorkflowSha': os.environ['LEGEND_VALIDATION_WORKFLOW_SHA'],
               'Restore': os.environ['RESTORE_OUTCOME'], 'Build': os.environ['BUILD_OUTCOME'],
               'Regression': os.environ['REGRESSION_OUTCOME'], 'Observation': os.environ['DIAGNOSTIC_OUTCOME'],
+              'ProviderResources': os.environ['RESOURCE_OUTCOME'],
+              'ValidationScope': os.environ['LEGEND_VALIDATION_SCOPE'],
               'ReleaseProof': False,
           }
           (root / 'transcript.json').write_text(json.dumps(transcript, indent=2), encoding='utf-8')
@@ -144,6 +169,9 @@ jobs:
             diagnostics/legend-shadow/transcript.json
             diagnostics/legend-shadow/summary.json
             diagnostics/legend-shadow/observation.json
+            diagnostics/legend-shadow/resource-azure.json
+            diagnostics/legend-shadow/resource-research.json
+            diagnostics/legend-shadow/resource-openai.json
           if-no-files-found: error
           retention-days: 14
 
@@ -155,9 +183,14 @@ jobs:
           BUILD_OUTCOME: ${{ steps.build.outcome }}
           REGRESSION_OUTCOME: ${{ steps.regression.outcome }}
           DIAGNOSTIC_OUTCOME: ${{ steps.diagnostic.outcome }}
+          RESOURCE_OUTCOME: ${{ steps.resources.outcome }}
         run: |
           set -Eeuo pipefail
-          for outcome in "$RESTORE_OUTCOME" "$BUILD_OUTCOME" "$REGRESSION_OUTCOME" "$DIAGNOSTIC_OUTCOME"; do
+          selected_outcome="$DIAGNOSTIC_OUTCOME"
+          if [[ "$LEGEND_VALIDATION_SCOPE" == 'provider_resources' ]]; then
+            selected_outcome="$RESOURCE_OUTCOME"
+          fi
+          for outcome in "$RESTORE_OUTCOME" "$BUILD_OUTCOME" "$REGRESSION_OUTCOME" "$selected_outcome"; do
             if [[ "$outcome" != 'success' ]]; then
               echo 'Production read-only diagnostic was not completed successfully.'
               exit 1
@@ -171,4 +204,7 @@ jobs:
           assert result['CandidateSha'] == os.environ['LEGEND_VALIDATION_CANDIDATE_SHA']
           assert result['ReleaseProof'] is False
           assert result['ValidationScope'] == os.environ['LEGEND_VALIDATION_SCOPE']
+          if result['ValidationScope'] == 'provider_resources':
+              assert result['ProductionSqlExecutionVerified'] is False
+              assert result['ResourceReceipts'] == {'azure': 'OBSERVED', 'research': 'OBSERVED', 'openai': 'OBSERVED'}
           PY

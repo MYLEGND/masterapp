@@ -2439,6 +2439,8 @@ private struct LegendAgentClientsView: View {
         self.openMessages = openMessages
     }
 
+    @State private var showArchive = false
+    @State private var search = ""
     var body: some View {
         Group {
             switch store.clientsState {
@@ -2466,8 +2468,7 @@ private struct LegendAgentClientsView: View {
             })
         }
         .background(LegendNextCanvas())
-        .navigationTitle(LegendLocalized("Clients"))
-        .navigationBarTitleDisplayMode(.inline)
+        .toolbar(.hidden, for: .navigationBar)
         .refreshable { await bootstrap.refreshClients() }
         .sheet(isPresented: $isLeadsPresented) {
             NavigationStack {
@@ -2503,27 +2504,36 @@ private struct LegendAgentClientsView: View {
             LazyVStack(alignment: .leading, spacing: LegendNextSpacing.sm) {
                 LegendNextSectionHeader(
                     eyebrow: LegendLocalized("CRM"),
-                    title: LegendLocalized("Client CRM"),
-                    detail: LegendLocalized("{value1} live records", arguments: ["value1": String(describing: (clients.count))])
+                    title: LegendLocalized(showArchive ? "Archived clients" : "Client CRM"),
+                    detail: LegendLocalized("{value1} records", arguments: ["value1": String(describing: clients.filter { ($0.archived ?? false) == showArchive && legendCrmMatchesSearch(search, values: [$0.displayName, $0.email, $0.phone]) }.count)])
                 )
 
-                Button { isSchedulePresented = true } label: {
-                    Label(LegendLocalized("Schedule"), systemImage: "calendar")
+                HStack(spacing: LegendNextSpacing.sm) {
+                    LegendCrmSearchField(title: "Search clients", text: $search)
+                        .frame(maxWidth: .infinity)
+                    Button { isSchedulePresented = true } label: {
+                        Label(LegendLocalized("Schedule"), systemImage: "calendar")
+                    }
+                    .buttonStyle(LegendNextButtonStyle(kind: .secondary, isFullWidth: false, controlHeight: 44))
+                    .fixedSize(horizontal: true, vertical: false)
                 }
-                .buttonStyle(LegendNextButtonStyle(kind: .secondary))
                 agentCRMCommands
 
-                if clients.isEmpty {
+                Picker(LegendLocalized("CRM records"), selection: $showArchive) {
+                    Text(LegendLocalized("Active")).tag(false)
+                    Text(LegendLocalized("Archive / Deleted")).tag(true)
+                }.pickerStyle(.segmented)
+                if clients.filter({ ($0.archived ?? false) == showArchive && legendCrmMatchesSearch(search, values: [$0.displayName, $0.email, $0.phone]) }).isEmpty {
                     LegendNextEmptyState(
-                        title: LegendLocalized("No active client members"),
-                        message: LegendLocalized("Client and Business Client records with active shared-app access will appear here."),
+                        title: LegendLocalized(!search.isEmpty ? "No matching clients" : showArchive ? "Archive is empty" : "No active client members"),
+                        message: LegendLocalized(showArchive ? "Deleted and archived records will appear here." : "Client and Business Client records with active shared-app access will appear here."),
                         systemImage: "person.2")
                 } else {
-                    ForEach(clients) { client in
+                    ForEach(clients.filter { ($0.archived ?? false) == showArchive && legendCrmMatchesSearch(search, values: [$0.displayName, $0.email, $0.phone]) }) { client in
                         LegendContactCard(
                             displayName: client.displayName,
                             subtitle: client.email,
-                            detail: client.crmStatus,
+                            detail: client.archived == true ? LegendLocalized("Archived / Deleted") : client.crmStatus,
                             onOpen: { selectedRecord = LegendCrmDestination(kind: "clients", recordId: client.profileID.uuidString) },
                             avatar: {
                                 LegendProfileAvatar(
@@ -2532,6 +2542,7 @@ private struct LegendAgentClientsView: View {
                                     size: 46)
                             },
                             action: {
+                                if client.archived != true {
                                 Button {
                                     messages.startConversation(forClientProfileID: client.profileID) { conversationID in
                                         openMessages(conversationID)
@@ -2545,6 +2556,7 @@ private struct LegendAgentClientsView: View {
                                     controlHeight: 30
                                 ))
                                 .disabled(messages.isStartingConversation)
+                                }
                             }
                         )
                     }
@@ -2552,7 +2564,7 @@ private struct LegendAgentClientsView: View {
             }
         }
         .padding(.horizontal, LegendNextSpacing.sm)
-        .padding(.vertical, LegendNextSpacing.md)
+        .padding(.top, LegendNextSpacing.sm)
         .scrollIndicators(.hidden)
     }
 
@@ -2595,6 +2607,10 @@ private struct LegendAgentLeadsView: View {
     let messages: MessagingStore
     let openMessages: (UUID) -> Void
     @State private var selectedRecord: LegendCrmDestination?
+    @State private var stageFilter = ""
+    @State private var showArchive = false
+    @State private var search = ""
+    @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         Group {
@@ -2619,6 +2635,7 @@ private struct LegendAgentLeadsView: View {
         .background(LegendNextCanvas())
         .navigationTitle(LegendLocalized("Leads"))
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar { ToolbarItem(placement: .confirmationAction) { Button(LegendLocalized("Done")) { dismiss() } } }
         .refreshable { await bootstrap.refreshLeads() }
     }
 
@@ -2634,16 +2651,30 @@ private struct LegendAgentLeadsView: View {
                 LazyVStack(alignment: .leading, spacing: LegendNextSpacing.sm) {
                     LegendNextSectionHeader(
                         eyebrow: LegendLocalized("Pipeline"),
-                        title: LegendLocalized("Active leads"),
+                        title: LegendLocalized(showArchive ? "Archived leads" : "Lead pipeline"),
                         detail: LegendLocalized(
-                            "{count} current opportunities",
-                            arguments: ["count": leads.count])
+                            "{count} records",
+                            arguments: ["count": leads.filter { ($0.archived ?? false) == showArchive && legendCrmMatchesSearch(search, values: [$0.displayName, $0.email, $0.phone]) }.count])
                     )
 
-                    ForEach(leads) { lead in
+                    LegendCrmSearchField(title: "Search leads", text: $search)
+                    Picker(LegendLocalized("CRM records"), selection: $showArchive) {
+                        Text(LegendLocalized("Active")).tag(false)
+                        Text(LegendLocalized("Archive / Deleted")).tag(true)
+                    }.pickerStyle(.segmented)
+                    Picker(LegendLocalized("Pipeline stage"), selection: $stageFilter) {
+                        Text(LegendLocalized("All stages")).tag("")
+                        ForEach(Array(Set(leads.map(\.crmStage))).sorted(), id: \.self) { stage in
+                            Text(legendCrmLabel(stage)).tag(stage)
+                        }
+                    }.pickerStyle(.menu)
+                    if !leads.contains(where: { ($0.archived ?? false) == showArchive && legendCrmMatchesSearch(search, values: [$0.displayName, $0.email, $0.phone]) && (stageFilter.isEmpty || $0.crmStage == stageFilter) }) {
+                        Text(LegendLocalized("No matching leads")).foregroundStyle(LegendNextColor.textSecondary)
+                    }
+                    ForEach(leads.filter { ($0.archived ?? false) == showArchive && legendCrmMatchesSearch(search, values: [$0.displayName, $0.email, $0.phone]) && (stageFilter.isEmpty || $0.crmStage == stageFilter) }) { lead in
                         LegendContactCard(
                             displayName: lead.displayName,
-                            subtitle: lead.crmStage,
+                            subtitle: legendCrmLabel(lead.crmStage),
                             detail: LegendLocalized(
                                 "Updated {date}",
                                 arguments: [
@@ -2819,6 +2850,7 @@ struct LegendJourneyProfileEditor: View {
             .background(LegendNextColor.canvas.ignoresSafeArea())
             .navigationTitle(LegendLocalized("Journey Circles"))
             .navigationBarTitleDisplayMode(.inline)
+        .toolbar { ToolbarItem(placement: .confirmationAction) { Button(LegendLocalized("Done")) { dismiss() } } }
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button(LegendLocalized("Close")) { dismiss() }
@@ -11768,15 +11800,20 @@ private struct LegendAgentScheduleView: View {
     @State private var failure: String?
     @State private var loading = true
     @State private var updatedAt: Date?
-    @State private var selectedRecord: LegendCrmDestination?
+    @State private var selectedAppointment: MobileCrmAppointment?
+    @State private var showWeek = false
 
     var body: some View {
         NavigationStack {
             LegendScrollView {
                 VStack(alignment: .leading, spacing: LegendNextSpacing.md) {
                     LegendNextSectionHeader(eyebrow: LegendLocalized("Your agenda"),
-                        title: LegendLocalized("Upcoming meetings"),
+                        title: LegendLocalized(showWeek ? "This week" : "Today’s appointments"),
                         detail: TimeZone.current.localizedName(for: .standard, locale: LegendActiveLocale()))
+                    Picker(LegendLocalized("Schedule range"), selection: $showWeek) {
+                        Text(LegendLocalized("Today")).tag(false)
+                        Text(LegendLocalized("This week")).tag(true)
+                    }.pickerStyle(.segmented)
                     if loading { ProgressView().tint(LegendNextColor.goldBright) }
                     if let failure {
                         LegendNextErrorState(title: LegendLocalized("Schedule unavailable"), message: failure,
@@ -11810,29 +11847,28 @@ private struct LegendAgentScheduleView: View {
                     do { try await Task.sleep(for: .seconds(30)) } catch { return }
                 }
             }
-            .sheet(item: $selectedRecord) { destination in
-                LegendAgentCrmRecordView(store: store, destination: destination, messages: messages,
-                    openMessages: { conversationID in selectedRecord = nil; openMessages(conversationID) })
+            .sheet(item: $selectedAppointment) { appointment in
+                LegendAgentAppointmentView(store: store, appointment: appointment, messages: messages, openMessages: openMessages)
             }
         }
         .tint(LegendNextColor.goldBright)
     }
 
     private func meetingSection(_ kind: String, title: String) -> some View {
-        let meetings = appointments.filter { $0.kind == kind }
+        var calendar = Calendar(identifier: .iso8601)
+        calendar.timeZone = .current
+        let interval = calendar.dateInterval(of: showWeek ? .weekOfYear : .day, for: Date())!
+        let meetings = appointments.filter { $0.kind == kind && $0.startUtc >= interval.start && $0.startUtc < interval.end }
         return VStack(alignment: .leading, spacing: LegendNextSpacing.sm) {
-            Text(LegendLocalized(title)).font(LegendNextTypography.bodyEmphasis)
-                .foregroundStyle(LegendNextColor.goldBright)
+            LegendNextSectionHeader(title: LegendLocalized(title), detail: "\(meetings.count)")
             if meetings.isEmpty {
-                Text(LegendLocalized("No upcoming meetings"))
+                Text(LegendLocalized(showWeek ? "No meetings this week" : "No meetings today"))
                     .font(LegendNextTypography.supporting).foregroundStyle(LegendNextColor.textSecondary)
             }
             ForEach(meetings) { meeting in
                 VStack(alignment: .leading, spacing: LegendNextSpacing.sm) {
                     Button {
-                        if let id = meeting.recordId {
-                            selectedRecord = LegendCrmDestination(kind: kind == "Client" ? "clients" : "leads", recordId: id)
-                        }
+                        selectedAppointment = meeting
                     } label: {
                         VStack(alignment: .leading, spacing: 6) {
                             HStack {
@@ -11848,7 +11884,7 @@ private struct LegendAgentScheduleView: View {
                             }
                             Text(LegendLocalized(meeting.status)).font(LegendNextTypography.caption)
                         }.frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
-                    }.buttonStyle(.plain).disabled(meeting.recordId == nil)
+                    }.buttonStyle(.plain)
                     if let path = meeting.meetingUrl, let url = URL(string: path), url.scheme == "https" {
                         Link(destination: url) { Label(LegendLocalized("Join meeting"), systemImage: "video") }
                             .buttonStyle(LegendNextButtonStyle(kind: .secondary))
@@ -11883,6 +11919,11 @@ private struct LegendAgentCrmRecordView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var record: MobileCrmRecord?
     @State private var failure: String?
+    @State private var outcome = ""
+    @State private var note = ""
+    @State private var saving = false
+    @State private var actionFailure: String?
+    @State private var editing = false
 
     var body: some View {
         NavigationStack {
@@ -11890,13 +11931,45 @@ private struct LegendAgentCrmRecordView: View {
                 VStack(alignment: .leading, spacing: LegendNextSpacing.md) {
                     if let record {
                         LegendNextSectionHeader(eyebrow: LegendLocalized(record.kind == "Client" ? "Client account" : "Lead record"),
-                            title: record.displayName, detail: LegendLocalized(record.stage))
-                        if let profileID = record.profileId {
+                            title: record.displayName, detail: legendCrmLabel(record.stage))
+                        if record.archived == true {
+                            Text(LegendLocalized("Archived / Deleted · Read only"))
+                        } else {
+                            Button { editing = true } label: { Label(LegendLocalized("Edit contact information"), systemImage: "pencil") }
+                                .buttonStyle(LegendNextButtonStyle(kind: .secondary))
+                        }
+                        if record.archived != true, let profileID = record.profileId {
                             LegendBookClientAppointmentButton(profileID: profileID, knownAssigned: true)
                         }
-                        if let email = record.email, !email.isEmpty { Text(email).textSelection(.enabled) }
-                        if let phone = record.phone, !phone.isEmpty { Text(phone).textSelection(.enabled) }
-                        if record.kind == "Client", let id = record.profileId.flatMap(UUID.init(uuidString:)) {
+                        VStack(alignment: .leading, spacing: LegendNextSpacing.sm) {
+                            if let email = record.email, let url = URL(string: "mailto:" + email) {
+                                Link(destination: url) { Label(email, systemImage: "envelope") }
+                            }
+                            if let phone = record.phone, let url = URL(string: "tel:" + phone.filter { $0.isNumber || $0 == "+" }) {
+                                Link(destination: url) { Label(phone, systemImage: "phone") }
+                            }
+                        }.font(LegendNextTypography.supporting).tint(LegendNextColor.textPrimary)
+                        if record.archived != true, let outcomes = record.availableOutcomes, !outcomes.isEmpty {
+                            LegendNextSectionHeader(title: LegendLocalized("Next step"), detail: LegendLocalized("Record the outcome of your latest conversation."))
+                            Picker(LegendLocalized("Outcome"), selection: $outcome) {
+                                Text(LegendLocalized("Choose outcome")).tag("")
+                                ForEach(outcomes, id: \.self) { code in Text(legendCrmLabel(code)).tag(code) }
+                            }.pickerStyle(.menu)
+                            TextField(LegendLocalized("Conversation note (optional)"), text: $note, axis: .vertical)
+                                .lineLimit(3...6).textFieldStyle(.roundedBorder)
+                            Button(LegendLocalized(saving ? "Saving…" : "Save outcome")) {
+                                saving = true; actionFailure = nil
+                                Task { @MainActor in
+                                    do {
+                                        try await store.outcome(kind: destination.kind, id: destination.recordId, code: outcome, note: note)
+                                        outcome = ""; note = ""; await refresh()
+                                    } catch { actionFailure = error.localizedDescription }
+                                    saving = false
+                                }
+                            }.buttonStyle(LegendNextButtonStyle(kind: .primary)).disabled(saving || outcome.isEmpty || note.count > 4000)
+                            if let actionFailure { Text(actionFailure).foregroundStyle(LegendNextColor.textSecondary) }
+                        }
+                        if record.archived != true, record.kind == "Client", let id = record.profileId.flatMap(UUID.init(uuidString:)) {
                             Button {
                                 messages.startConversation(forClientProfileID: id) { conversationID in openMessages(conversationID) }
                             } label: { Label(LegendLocalized("Message"), systemImage: "message.fill") }
@@ -11904,11 +11977,11 @@ private struct LegendAgentCrmRecordView: View {
                             .disabled(messages.isStartingConversation)
                         }
                         if let error = messages.sendFailure { Text(error.message).foregroundStyle(LegendNextColor.textSecondary) }
-                        if let path = record.accountPath, let url = URL(string: path) {
+                        if record.archived != true, let path = record.accountPath, let url = URL(string: path) {
                             Link(destination: url) { Label(LegendLocalized("Open full account"), systemImage: "person.crop.circle") }
                                 .buttonStyle(LegendNextButtonStyle(kind: .secondary))
                         }
-                        if let url = URL(string: record.managementPath) {
+                        if record.archived != true, let url = URL(string: record.managementPath) {
                             Link(destination: url) { Label(LegendLocalized("Manage in AgentPortal"), systemImage: "calendar") }
                                 .buttonStyle(LegendNextButtonStyle(kind: .secondary))
                         }
@@ -11924,6 +11997,9 @@ private struct LegendAgentCrmRecordView: View {
             .navigationTitle(LegendLocalized("CRM"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button(LegendLocalized("Done")) { dismiss() } } }
+            .sheet(isPresented: $editing, onDismiss: { Task { await refresh() } }) {
+                if let record { LegendCrmContactEditor(store: store, destination: destination, record: record) }
+            }
             .task { await refresh() }
             .refreshable { await refresh() }
         }.tint(LegendNextColor.goldBright)
@@ -11932,5 +12008,139 @@ private struct LegendAgentCrmRecordView: View {
     @MainActor private func refresh() async {
         do { record = try await store.record(kind: destination.kind, id: destination.recordId); failure = nil }
         catch { record = nil; failure = error.localizedDescription }
+    }
+}
+
+private func legendCrmLabel(_ value: String) -> String {
+    LegendLocalized(value.replacingOccurrences(of: "([a-z])([A-Z])", with: "$1 $2", options: .regularExpression))
+}
+
+private struct LegendAgentAppointmentView: View {
+    let store: MobileAgentWorkspaceStore
+    let appointment: MobileCrmAppointment
+    let messages: MessagingStore
+    let openMessages: (UUID) -> Void
+    @Environment(\.dismiss) private var dismiss
+    @State private var record: MobileCrmRecord?
+    @State private var selectedRecord: LegendCrmDestination?
+    @State private var confirmCancel = false
+    @State private var saving = false
+    @State private var failure: String?
+    var body: some View {
+        NavigationStack {
+            LegendScrollView {
+                VStack(alignment: .leading, spacing: LegendNextSpacing.md) {
+                    LegendNextSectionHeader(eyebrow: LegendLocalized(appointment.kind == "Client" ? "Client meeting" : "Lead meeting"), title: appointment.displayName,
+                        detail: appointment.startUtc.formatted(date: .complete, time: .shortened))
+                    Label(legendCrmLabel(appointment.status), systemImage: "calendar.badge.checkmark")
+                    if let end = appointment.endUtc { Text(LegendLocalized("Ends") + " " + end.formatted(date: .omitted, time: .shortened)) }
+                    if let path = appointment.meetingUrl, let url = URL(string: path), url.scheme == "https" {
+                        Link(destination: url) { Label(LegendLocalized("Join meeting"), systemImage: "video.fill") }
+                            .buttonStyle(LegendNextButtonStyle(kind: .primary))
+                    }
+                    if let record {
+                        if let profileID = record.profileId { LegendBookClientAppointmentButton(profileID: profileID, knownAssigned: true, title: "Manage / reschedule") }
+                        if record.profileId == nil, record.archived != true, let url = URL(string: record.managementPath) {
+                            Link(destination: url) { Label(LegendLocalized("Manage / reschedule"), systemImage: "calendar") }
+                                .buttonStyle(LegendNextButtonStyle(kind: .secondary))
+                        }
+                    }
+                    if let id = appointment.recordId {
+                        Button(LegendLocalized("Open contact & message")) {
+                            selectedRecord = LegendCrmDestination(kind: appointment.kind == "Client" ? "clients" : "leads", recordId: id)
+                        }.buttonStyle(LegendNextButtonStyle(kind: .secondary))
+                    }
+                    Button(LegendLocalized(saving ? "Cancelling…" : "Cancel appointment"), role: .destructive) { confirmCancel = true }
+                        .disabled(saving)
+                    if let failure { Text(failure).foregroundStyle(LegendNextColor.textSecondary) }
+                }.padding(LegendNextSpacing.md)
+            }.background(LegendNextCanvas())
+                .navigationTitle(LegendLocalized("Appointment"))
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar { ToolbarItem(placement: .confirmationAction) { Button(LegendLocalized("Done")) { dismiss() } } }
+                .task {
+                    guard let id = appointment.recordId else { return }
+                    do { record = try await store.record(kind: appointment.kind == "Client" ? "clients" : "leads", id: id) }
+                    catch { failure = error.localizedDescription }
+                }
+                .confirmationDialog(LegendLocalized("Cancel this appointment?"), isPresented: $confirmCancel, titleVisibility: .visible) {
+                    Button(LegendLocalized("Cancel appointment"), role: .destructive) {
+                        saving = true
+                        Task { @MainActor in
+                            do { try await store.cancelAppointment(id: appointment.id); dismiss() }
+                            catch { failure = error.localizedDescription; saving = false }
+                        }
+                    }
+                } message: { Text(LegendLocalized("The meeting will be cancelled and its time released for booking.")) }
+                .sheet(item: $selectedRecord) { destination in
+                    LegendAgentCrmRecordView(store: store, destination: destination, messages: messages, openMessages: openMessages)
+                }
+        }.tint(LegendNextColor.goldBright)
+    }
+}
+
+private struct LegendCrmContactEditor: View {
+    let store: MobileAgentWorkspaceStore
+    let destination: LegendCrmDestination
+    @State private var input: MobileCrmContactInput
+    @State private var saving = false
+    @State private var failure: String?
+    @Environment(\.dismiss) private var dismiss
+    init(store: MobileAgentWorkspaceStore, destination: LegendCrmDestination, record: MobileCrmRecord) {
+        self.store = store; self.destination = destination
+        _input = State(initialValue: MobileCrmContactInput(record))
+    }
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section { LegendNextSectionHeader(title: LegendLocalized("Contact information"), detail: LegendLocalized("Changes update this CRM account everywhere.")) }
+                Section(LegendLocalized("Contact")) {
+                    TextField(LegendLocalized("First name"), text: $input.firstName)
+                    TextField(LegendLocalized("Last name"), text: $input.lastName)
+                    TextField(LegendLocalized("Email"), text: $input.email).keyboardType(.emailAddress).textInputAutocapitalization(.never).autocorrectionDisabled()
+                    TextField(LegendLocalized("Phone"), text: $input.phone).keyboardType(.phonePad)
+                    TextField(LegendLocalized("Other phone"), text: $input.phone2).keyboardType(.phonePad)
+                }
+                Section(LegendLocalized("Address")) {
+                    TextField(LegendLocalized("Street address"), text: $input.addressLine)
+                    TextField(LegendLocalized("City"), text: $input.city)
+                    TextField(LegendLocalized("State"), text: $input.state)
+                    TextField(LegendLocalized("Postal code"), text: $input.zipCode)
+                }
+                if let failure { Section { Text(failure) } }
+            }.disabled(saving)
+                .navigationTitle(LegendLocalized("Edit contact"))
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) { Button(LegendLocalized("Cancel")) { dismiss() }.disabled(saving) }
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button(LegendLocalized(saving ? "Saving…" : "Save")) {
+                            saving = true; failure = nil
+                            Task { @MainActor in
+                                do { try await store.contact(kind: destination.kind, id: destination.recordId, input: input); dismiss() }
+                                catch { failure = error.localizedDescription; saving = false }
+                            }
+                        }.disabled(saving || input.firstName.trimmingCharacters(in: .whitespaces).isEmpty)
+                    }
+                }
+        }.tint(LegendNextColor.goldBright).interactiveDismissDisabled(saving)
+    }
+}
+
+private struct LegendCrmSearchField: View {
+    let title: String
+    @Binding var text: String
+    var body: some View {
+        HStack(spacing: LegendNextSpacing.sm) {
+            Image(systemName: "magnifyingglass").foregroundStyle(LegendNextColor.gold)
+            TextField(LegendLocalized(title), text: $text).textInputAutocapitalization(.never).autocorrectionDisabled()
+            if !text.isEmpty {
+                Button { text = "" } label: { Image(systemName: "xmark.circle.fill") }
+                    .accessibilityLabel(LegendLocalized("Clear search"))
+            }
+        }.padding(LegendNextSpacing.sm)
+            .background(.white, in: RoundedRectangle(cornerRadius: LegendNextRadius.control))
+            .overlay(RoundedRectangle(cornerRadius: LegendNextRadius.control).strokeBorder(LegendNextColor.gold.opacity(0.35), lineWidth: 1))
+            .tint(LegendNextColor.textPrimary)
     }
 }

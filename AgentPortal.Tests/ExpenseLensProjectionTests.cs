@@ -74,13 +74,20 @@ process.stdout.write(JSON.stringify(result));
 """;
 
     [Theory]
-    [InlineData(2027, 9, 4)]
-    [InlineData(2027, 11, 7)]
-    [InlineData(2028, 2, 29)]
-    public async System.Threading.Tasks.Task MobileLiveReport_EqualsTheWebCalculator(int year, int month, int day)
+    [InlineData(2027, 9, 4, "remaining-cash")]
+    [InlineData(2027, 11, 7, "remaining-cash")]
+    [InlineData(2028, 2, 29, "remaining-cash")]
+    [InlineData(2027, 9, 4, "percentage")]
+    [InlineData(2027, 9, 4, "fixed")]
+    public async System.Threading.Tasks.Task MobileLiveReport_EqualsTheWebCalculator(int year, int month, int day, string paymentMode)
     {
         var date = new DateOnly(year, month, day);
-        using var inputs = JsonDocument.Parse(MobileFinancialOperatingSystemProjectionServiceTests.LiveInputs);
+        var storedState = System.Text.Json.Nodes.JsonNode.Parse(MobileFinancialOperatingSystemProjectionServiceTests.LiveInputs)!;
+        storedState["projectionSettings"] ??= new System.Text.Json.Nodes.JsonObject();
+        storedState["projectionSettings"]!["extraDebtPaymentMode"] = paymentMode;
+        storedState["projectionSettings"]!["extraDebtPaymentPercent"] = 35;
+        storedState["projectionSettings"]!["extraDebtPaymentAmountCents"] = 35000;
+        using var inputs = JsonDocument.Parse(storedState.ToJsonString());
         using var web = InvokeProjectionApi("projectExpenseLensTimeline", new
         {
             state = inputs.RootElement,
@@ -187,6 +194,171 @@ process.stdout.write(JSON.stringify(result));
                 File.Delete(tempScriptPath);
             }
         }
+    }
+
+    [Theory]
+    [InlineData("percentage", 50, 0, 100000, 200000)]
+    [InlineData("percentage", 0, 0, 0, 300000)]
+    [InlineData("percentage", 100, 0, 200000, 100000)]
+    [InlineData("fixed", 100, 75000, 75000, 225000)]
+    [InlineData("fixed", 100, 900000, 300000, 0)]
+    [InlineData("fixed", 100, 0, 0, 300000)]
+    public void ExtraDebtPlanUsesMonthlySurplusAndPreservesUnallocatedCash(string mode, int percent, int amountCents, int expectedExtra, int expectedCash)
+    {
+        using var result = InvokeProjectionApi("projectExpenseLensTimeline", new
+        {
+            selectedMonthKey = "2026-09", asOfDate = "2026-09-01",
+            state = new
+            {
+                debt = new { openingBalance = 10000, asOfDate = "2026-09-01" },
+                incomeStreams = new { primary = new[] { new { amount = "3000", frequency = "monthly", anchorDate = "2026-09-01" } } },
+                categories = new[] { new { name = "Bills", amount = "1000", due = "2026-09-02", frequency = "monthly", paymentMethod = "debit" } },
+                monthlyStartingBalanceOverrides = new Dictionary<string, object> { ["2026-09"] = new { amount = 1000 } },
+                projectionSettings = new { extraDebtPaymentMode = mode, extraDebtPaymentPercent = percent, extraDebtPaymentAmountCents = amountCents }
+            }
+        });
+        var month = result.RootElement.GetProperty("selectedMonth");
+        Assert.Equal(expectedExtra, month.GetProperty("extraDebtPaymentsCents").GetInt32());
+        Assert.Equal(expectedCash, month.GetProperty("endingCashCents").GetInt32());
+        Assert.Equal(1000000 - expectedExtra, month.GetProperty("endingDebtCents").GetInt32());
+        var expectedPayoff = expectedExtra == 0 ? null
+            : mode == "percentage" && percent == 50 ? "2027-06-30"
+            : mode == "fixed" && amountCents == 75000 ? "2027-10-31"
+            : "2027-01-31";
+        Assert.Equal(expectedPayoff, result.RootElement.GetProperty("summary").GetProperty("debtPayoffDate").GetString());
+        var nextMonth = result.RootElement.GetProperty("months")[1];
+        Assert.Equal(expectedCash, nextMonth.GetProperty("openingCashCents").GetInt32());
+    }
+
+    [Theory]
+    [InlineData(50000, 0, 50000)]
+    [InlineData(500000, 150000, 50000)]
+    [InlineData(500000, 250000, 0)]
+    public void FixedDebtPlanRespectsDebtAndProtectedCash(int debtCents, int reserveCents, int expectedExtra)
+    {
+        using var result = InvokeProjectionApi("projectExpenseLensTimeline", new
+        {
+            selectedMonthKey = "2026-09", asOfDate = "2026-09-01",
+            state = new
+            {
+                debt = new { openingBalanceCents = debtCents, asOfDate = "2026-09-01" },
+                incomeStreams = new { primary = new[] { new { amount = "2000", frequency = "monthly", anchorDate = "2026-09-01" } } },
+                projectionSettings = new { extraDebtPaymentMode = "fixed", extraDebtPaymentAmountCents = 900000, protectedCashReserveCents = reserveCents }
+            }
+        });
+        Assert.Equal(expectedExtra, result.RootElement.GetProperty("selectedMonth").GetProperty("extraDebtPaymentsCents").GetInt32());
+    }
+
+    [Fact]
+    public void SeptemberExampleBalancesWithoutManuallyAddingTheDebtAgain()
+    {
+        using var result = InvokeProjectionApi("projectExpenseLensTimeline", new
+        {
+            selectedMonthKey = "2026-09", asOfDate = "2026-09-07",
+            state = new
+            {
+                debt = new { openingBalance = 17000, asOfDate = "2026-09-01" },
+                incomeStreams = new { primary = new[] { new { amount = "9100", frequency = "monthly", anchorDate = "2026-09-01" } } },
+                categories = new object[]
+                {
+                    new { name = "Debit bills", amount = "2266", due = "2026-09-02", frequency = "monthly", paymentMethod = "debit" },
+                    new { name = "Credit bills", amount = "2277.36", due = "2026-09-27", frequency = "monthly", paymentMethod = "credit" },
+                    new { name = "Credit Cards", amount = "227", due = "2026-09-30", frequency = "monthly", debtCategory = "tracked-unsecured-minimum" }
+                }
+            }
+        });
+        var month = result.RootElement.GetProperty("selectedMonth");
+        Assert.Equal(1700000, month.GetProperty("openingDebtCents").GetInt32());
+        Assert.Equal(22700, month.GetProperty("requiredDebtMinimumCents").GetInt32());
+        Assert.Equal(432964, month.GetProperty("extraDebtPaymentsCents").GetInt32());
+        Assert.Equal(1244336, month.GetProperty("endingDebtCents").GetInt32());
+        Assert.Equal(0, month.GetProperty("endingCashCents").GetInt32());
+        Assert.Equal("2026-12-31", result.RootElement.GetProperty("summary").GetProperty("debtPayoffDate").GetString());
+    }
+
+    [Theory]
+    [InlineData("2026-09-01")]
+    [InlineData("2026-09-15")]
+    public void RecordedDebtStartsOnItsAsOfDateWithoutTrackerAdjustments(string debtDate)
+    {
+        using var result = InvokeProjectionApi("projectExpenseLensTimeline", new
+        {
+            selectedMonthKey = "2026-09", asOfDate = "2026-09-07",
+            state = new
+            {
+                debt = new { openingBalance = 17000, asOfDate = debtDate },
+                incomeStreams = new { primary = new[] { new { amount = "1000", frequency = "monthly", anchorDate = "2026-08-01" } } },
+                monthlyStartingBalanceOverrides = new Dictionary<string, object> { ["2026-08"] = new { amount = 0 } }
+            }
+        });
+        var months = result.RootElement.GetProperty("months").EnumerateArray().ToArray();
+        Assert.Equal(0, months[0].GetProperty("endingDebtCents").GetInt32());
+        Assert.Equal(100000, months[0].GetProperty("endingCashCents").GetInt32());
+        Assert.Equal(1500000, result.RootElement.GetProperty("selectedMonth").GetProperty("endingDebtCents").GetInt32());
+        Assert.NotEqual("2026-08-31", result.RootElement.GetProperty("summary").GetProperty("debtPayoffDate").GetString());
+    }
+
+    [Theory]
+    [InlineData("2026-09-01")]
+    [InlineData("2028-01-01")]
+    public void LaterDebtInvalidatesEarlierPayoffAndIsNotSkipped(string adjustmentDate)
+    {
+        using var result = InvokeProjectionApi("projectExpenseLensTimeline", new
+        {
+            selectedMonthKey = "2026-09", asOfDate = "2026-09-07", horizonMonths = 36,
+            state = new
+            {
+                debt = new { openingBalance = 1000, asOfDate = "2026-08-01", adjustments = new[] { new { id = "new-debt", date = adjustmentDate, amount = 17000 } } },
+                incomeStreams = new { primary = new[] { new { amount = "1000", frequency = "monthly", anchorDate = "2026-08-01" } } }
+            }
+        });
+        var summary = result.RootElement.GetProperty("summary");
+        var payoff = summary.GetProperty("debtPayoffDate").GetString();
+        Assert.True(payoff == null || String.CompareOrdinal(payoff, adjustmentDate) >= 0);
+        Assert.NotEqual("2026-08", summary.GetProperty("debtFreeMonth").GetString());
+        Assert.Contains(result.RootElement.GetProperty("months").EnumerateArray(), month => month.GetProperty("monthKey").GetString() == adjustmentDate[..7]);
+    }
+
+    [Fact]
+    public void ForecastMinimumCannotExceedOutstandingDebt()
+    {
+        using var result = InvokeProjectionApi("projectExpenseLensTimeline", new
+        {
+            selectedMonthKey = "2026-09", asOfDate = "2026-09-07",
+            state = new
+            {
+                debt = new { openingBalance = 100, asOfDate = "2026-09-01" },
+                incomeStreams = new { primary = new[] { new { amount = "200", frequency = "monthly", anchorDate = "2026-09-01" } } },
+                categories = new[] { new { id = "minimum", name = "Credit Cards", amount = "227", due = "2026-09-01", frequency = "monthly", debtCategory = "tracked-unsecured-minimum" } }
+            }
+        });
+        var month = result.RootElement.GetProperty("selectedMonth");
+        Assert.Equal(10000, month.GetProperty("requiredDebtMinimumCents").GetInt32());
+        Assert.Equal(10000, month.GetProperty("endingCashCents").GetInt32());
+        Assert.Equal(0, month.GetProperty("endingDebtCents").GetInt32());
+    }
+
+    [Fact]
+    public void CashDeficitIncludesBillsBeforeIncomeWithinTheSameWeek()
+    {
+        using var result = InvokeProjectionApi("projectExpenseLensTimeline", new
+        {
+            selectedMonthKey = "2026-09", asOfDate = "2026-09-07",
+            state = new
+            {
+                debt = new { openingBalance = 0, asOfDate = "2026-09-01" },
+                incomeStreams = new { primary = new[] { new { amount = "1000", frequency = "monthly", anchorDate = "2026-09-05" } } },
+                categories = new[] { new { name = "Rent", amount = "500", due = "2026-09-02", frequency = "monthly", paymentMethod = "debit" } }
+            }
+        });
+        Assert.Equal(50000, result.RootElement.GetProperty("summary").GetProperty("maximumProjectedCashDeficitCents").GetInt32());
+    }
+
+    [Fact]
+    public void NormalizationPreservesAnExplicitZeroCurrentDebtBalance()
+    {
+        using var result = InvokeProjectionApi("normalizeState", new { debt = new { openingBalanceCents = 1700000, currentBalanceCents = 0, asOfDate = "2026-09-01" } });
+        Assert.Equal(0, result.RootElement.GetProperty("debt").GetProperty("currentBalanceCents").GetInt32());
     }
 
     [Fact]

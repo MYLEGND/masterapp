@@ -382,6 +382,7 @@ public sealed class MobileHomeService : IMobileHomeService
         }
 
         var agentUserId = actor.Actor.UserId.ToLowerInvariant();
+        var closed = await CrmArchiveScope.ClosedClientKeysAsync(_db, cancellationToken);
         var assignedClientUserIds = await _db.AgentClients
             .AsNoTracking()
             .Where(link => link.AgentUserId.ToLower() == agentUserId)
@@ -393,12 +394,16 @@ public sealed class MobileHomeService : IMobileHomeService
             .Where(profile => assignedClientUserIds.Contains(profile.ClientUserId.ToLower()))
             .ToListAsync(cancellationToken);
 
-        var clients = LegendMemberDirectory.Collapse(profiles)
+        var archivedProfiles = await _db.ClientProfiles.AsNoTracking()
+            .Where(p => assignedClientUserIds.Contains(p.ClientUserId.ToLower())).ToListAsync(cancellationToken);
+        bool Archived(ClientProfile p) => closed.Contains(p.Id.ToString()) || closed.Contains(p.ClientUserId) || CrmArchiveScope.ArchivedStatus(p.CrmStatus);
+        var clients = LegendMemberDirectory.Collapse(profiles).Where(p => !Archived(p))
+            .Concat(archivedProfiles.Where(p => Archived(p) && ClientRecordClassification.IsClientOrBusinessClient(p.ClientUserId, p.CrmNotes, p.CrmStatus)))
             .Select(profile => new MobileAgentClient(
                 profile.Id,
                 string.Join(" ", new[] { profile.FirstName, profile.LastName }.Where(value => !string.IsNullOrWhiteSpace(value))).Trim(),
                 profile.Email,
-                profile.CrmStatus ?? "Active"))
+                profile.CrmStatus ?? "Active", Archived(profile), profile.Phone))
             .OrderBy(profile => profile.DisplayName, StringComparer.OrdinalIgnoreCase)
             .ToArray();
 
@@ -417,6 +422,7 @@ public sealed class MobileHomeService : IMobileHomeService
         }
 
         var agentUserId = actor.Actor.UserId.ToLowerInvariant();
+        var closed = await CrmArchiveScope.ClosedClientKeysAsync(_db, cancellationToken);
         var workstationLeadRows = await _db.WorkstationLeadProfiles
             .AsNoTracking()
             .Where(lead =>
@@ -428,7 +434,7 @@ public sealed class MobileHomeService : IMobileHomeService
                 lead.FirstName,
                 lead.LastName,
                 lead.CrmStage ?? "New",
-                lead.UpdatedUtc))
+                lead.UpdatedUtc, lead.CrmStatus, lead.Email, lead.Phone))
             .ToListAsync(cancellationToken);
 
         // The shared mobile intake writes CRM-only leads to ClientProfiles so
@@ -448,7 +454,7 @@ public sealed class MobileHomeService : IMobileHomeService
                 profile.LastName,
                 profile.CrmNotes,
                 profile.CrmStatus,
-                profile.UpdatedUtc))
+                profile.UpdatedUtc, profile.Email, profile.Phone))
             .ToListAsync(cancellationToken);
 
         var clientCrmLeads = clientCrmLeadRows
@@ -462,14 +468,14 @@ public sealed class MobileHomeService : IMobileHomeService
                 lead.ClientUserId,
                 string.Join(" ", new[] { lead.FirstName, lead.LastName }.Where(value => !string.IsNullOrWhiteSpace(value))).Trim(),
                 ClientRecordClassification.ResolvePipelineStage(lead.ClientUserId, lead.CrmNotes),
-                lead.UpdatedUtc));
+                lead.UpdatedUtc, closed.Contains(lead.ProfileId.ToString()) || closed.Contains(lead.ClientUserId) || CrmArchiveScope.ArchivedStatus(lead.CrmStatus), lead.Email, lead.Phone));
 
         var leads = workstationLeadRows
             .Select(lead => new MobileAgentLead(
                 lead.LeadId,
                 string.Join(" ", new[] { lead.FirstName, lead.LastName }.Where(value => !string.IsNullOrWhiteSpace(value))).Trim(),
                 lead.CrmStage,
-                lead.UpdatedUtc))
+                lead.UpdatedUtc, closed.Contains(lead.LeadId) || CrmArchiveScope.ArchivedStatus(lead.CrmStatus) || CrmArchiveScope.ArchivedStatus(lead.CrmStage), lead.Email, lead.Phone))
             .Concat(clientCrmLeads)
             .GroupBy(lead => lead.LeadId, StringComparer.OrdinalIgnoreCase)
             .Select(group => group
@@ -478,7 +484,6 @@ public sealed class MobileHomeService : IMobileHomeService
                 .First())
             .OrderByDescending(lead => lead.UpdatedUtc)
             .ThenBy(lead => lead.DisplayName, StringComparer.OrdinalIgnoreCase)
-            .Take(50)
             .ToArray();
 
         return MobileAgentLeadsResult.Success(leads);
@@ -610,7 +615,7 @@ public sealed class MobileHomeService : IMobileHomeService
         string FirstName,
         string LastName,
         string CrmStage,
-        DateTime UpdatedUtc);
+        DateTime UpdatedUtc, string? CrmStatus, string? Email, string? Phone);
 
     private sealed record MobileAgentClientCrmLeadRow(
         Guid ProfileId,
@@ -619,7 +624,7 @@ public sealed class MobileHomeService : IMobileHomeService
         string LastName,
         string? CrmNotes,
         string? CrmStatus,
-        DateTime UpdatedUtc);
+        DateTime UpdatedUtc, string? Email, string? Phone);
 }
 
 public sealed record MobileHomeResult(bool Succeeded, string? ErrorCode, string? ErrorMessage, MobileHome? Home)
@@ -687,5 +692,5 @@ public sealed record MobileFinancialPosition(int HealthScore, decimal AssetsTota
 public sealed record MobileFinancialIntelligenceSummary(string Status, decimal DataCompletenessScore, string CurrentRiskSummary, string CurrentOpportunitySummary, string CurrentLeakageSummary, DateTime? LastEvaluatedUtc, IReadOnlyList<MobileFinancialFinding> Findings);
 public sealed record MobileFinancialFinding(Guid Id, string Category, string Title, string Explanation, decimal? EstimatedImpact, string? ImpactUnit, string Urgency, string Status, DateTime LastDetectedUtc);
 public sealed record MobileUpcomingBill(Guid Id, string DisplayName, long AverageAmountCents, string Cadence, DateTime NextExpectedDateUtc, string Status);
-public sealed record MobileAgentClient(Guid ProfileId, string DisplayName, string Email, string CrmStatus);
-public sealed record MobileAgentLead(string LeadId, string DisplayName, string CrmStage, DateTime UpdatedUtc);
+public sealed record MobileAgentClient(Guid ProfileId, string DisplayName, string Email, string CrmStatus, bool Archived = false, string? Phone = null);
+public sealed record MobileAgentLead(string LeadId, string DisplayName, string CrmStage, DateTime UpdatedUtc, bool Archived = false, string? Email = null, string? Phone = null);

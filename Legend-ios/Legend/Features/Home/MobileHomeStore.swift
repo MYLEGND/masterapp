@@ -64,6 +64,9 @@ extension MobileJourneyCirclesAPI {
 protocol MobileAgentWorkspaceAPI: Sendable {
     func bookingAccess(profileID: UUID, accessToken: String) async throws -> MobileBookingAccess
     func bookingLaunch(profileID: UUID, accessToken: String) async throws -> URL
+    func contact(kind: String, id: String, input: MobileCrmContactInput, accessToken: String) async throws
+    func outcome(kind: String, id: String, code: String, note: String, accessToken: String) async throws
+    func cancelAppointment(id: UUID, accessToken: String) async throws
     func schedule(accessToken: String) async throws -> [MobileCrmAppointment]
     func record(kind: String, id: String, accessToken: String) async throws -> MobileCrmRecord
     func clients(accessToken: String) async throws -> [MobileAgentClientSummary]
@@ -74,6 +77,9 @@ protocol MobileAgentWorkspaceAPI: Sendable {
 extension MobileAgentWorkspaceAPI {
     func bookingAccess(profileID: UUID, accessToken: String) async throws -> MobileBookingAccess { throw MobileAPIError.invalidServerResponse }
     func bookingLaunch(profileID: UUID, accessToken: String) async throws -> URL { throw MobileAPIError.invalidServerResponse }
+    func contact(kind: String, id: String, input: MobileCrmContactInput, accessToken: String) async throws { throw MobileAPIError.invalidServerResponse }
+    func outcome(kind: String, id: String, code: String, note: String, accessToken: String) async throws { throw MobileAPIError.invalidServerResponse }
+    func cancelAppointment(id: UUID, accessToken: String) async throws { throw MobileAPIError.invalidServerResponse }
     func schedule(accessToken: String) async throws -> [MobileCrmAppointment] {
         throw MobileAPIError.invalidServerResponse
     }
@@ -265,6 +271,22 @@ struct URLSessionMobileAgentWorkspaceAPI: MobileAgentWorkspaceAPI {
         return url
     }
 
+    func contact(kind: String, id: String, input: MobileCrmContactInput, accessToken: String) async throws {
+        guard ["clients", "leads"].contains(kind), let encoded = id.addingPercentEncoding(withAllowedCharacters: .alphanumerics) else { throw MobileAPIError.invalidServerResponse }
+        let _: MobileCrmMutationResponse = try await client.post("/api/v1/mobile/agent/crm/\(kind)/\(encoded)/contact",
+            body: input, accessToken: accessToken, idempotencyKey: UUID(), headers: participantHeader, response: MobileCrmMutationResponse.self)
+    }
+    func outcome(kind: String, id: String, code: String, note: String, accessToken: String) async throws {
+        guard let encoded = id.addingPercentEncoding(withAllowedCharacters: .alphanumerics), ["clients", "leads"].contains(kind) else { throw MobileAPIError.invalidServerResponse }
+        let _: MobileCrmMutationResponse = try await client.post("/api/v1/mobile/agent/crm/\(kind)/\(encoded)/outcome",
+            body: MobileCrmOutcomeInput(outcomeCode: code, note: note.isEmpty ? nil : note), accessToken: accessToken,
+            idempotencyKey: UUID(), headers: participantHeader, response: MobileCrmMutationResponse.self)
+    }
+    func cancelAppointment(id: UUID, accessToken: String) async throws {
+        let _: MobileCrmMutationResponse = try await client.post("/api/v1/mobile/agent/crm/appointments/\(id.uuidString)/cancel",
+            body: MobileEmptyRequest(), accessToken: accessToken, idempotencyKey: UUID(), headers: participantHeader, response: MobileCrmMutationResponse.self)
+    }
+
     func schedule(accessToken: String) async throws -> [MobileCrmAppointment] {
         try await client.get("/api/v1/mobile/agent/crm/schedule", accessToken: accessToken,
                              headers: participantHeader, response: [MobileCrmAppointment].self)
@@ -288,7 +310,7 @@ struct URLSessionMobileAgentWorkspaceAPI: MobileAgentWorkspaceAPI {
 
     func clients(accessToken: String) async throws -> [MobileAgentClientSummary] {
         try await client.get(
-            "/api/v1/mobile/agent/clients",
+            "/api/v1/mobile/agent/clients?includeArchived=true",
             accessToken: accessToken,
             headers: participantHeader,
             response: [MobileAgentClientSummary].self)
@@ -296,7 +318,7 @@ struct URLSessionMobileAgentWorkspaceAPI: MobileAgentWorkspaceAPI {
 
     func leads(accessToken: String) async throws -> [MobileAgentLeadSummary] {
         try await client.get(
-            "/api/v1/mobile/agent/leads",
+            "/api/v1/mobile/agent/leads?includeArchived=true",
             accessToken: accessToken,
             headers: participantHeader,
             response: [MobileAgentLeadSummary].self)
@@ -867,6 +889,19 @@ final class MobileAgentWorkspaceStore: ObservableObject {
     func bookingClosed() {
         bookingRevision += 1
         Task { _ = await refreshClients(); _ = await refreshLeads() }
+    }
+
+    func contact(kind: String, id: String, input: MobileCrmContactInput) async throws {
+        try await api.contact(kind: kind, id: id, input: input, accessToken: accessTokenProvider())
+        _ = await refreshClients(); _ = await refreshLeads()
+    }
+    func outcome(kind: String, id: String, code: String, note: String) async throws {
+        try await api.outcome(kind: kind, id: id, code: code, note: note, accessToken: accessTokenProvider())
+        _ = await refreshLeads()
+    }
+    func cancelAppointment(id: UUID) async throws {
+        try await api.cancelAppointment(id: id, accessToken: accessTokenProvider())
+        bookingRevision += 1
     }
 
     func schedule() async throws -> [MobileCrmAppointment] {
