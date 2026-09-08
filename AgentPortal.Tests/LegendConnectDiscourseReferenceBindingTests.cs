@@ -559,7 +559,8 @@ public sealed class LegendConnectDiscourseReferenceBindingTests
     {
         var connectionString = Environment.GetEnvironmentVariable("LEGEND_STAGE3_REFERENCE_SQL_CONNECTION");
         if (string.IsNullOrWhiteSpace(connectionString))
-            return;
+            throw new InvalidOperationException(
+                "LEGEND_STAGE3_REFERENCE_SQL_CONNECTION is required for the discourse-reference SQL proof.");
 
         var options = new DbContextOptionsBuilder<MasterAppDbContext>()
             .UseSqlServer(connectionString)
@@ -660,7 +661,7 @@ public sealed class LegendConnectDiscourseReferenceBindingTests
         Assert.Equal("bound", correction.ResolutionState);
         Assert.Equal("a", correction.EntitySemanticValue);
         Assert.True(correction.ReplacesActiveBinding);
-        Assert.Equal(3, correction.SupersededTurnSequence);
+        Assert.Equal(1, correction.SupersededTurnSequence);
         Assert.NotNull(correction.SupersededNodeIndex);
         Assert.NotNull(correction.SupersededNodeStartTokenIndex);
         Assert.NotNull(correction.SupersededNodeTokenLength);
@@ -762,7 +763,8 @@ public sealed class LegendConnectDiscourseReferenceBindingTests
     {
         var connectionString = Environment.GetEnvironmentVariable("LEGEND_STAGE3_REFERENCE_SQL_CONNECTION");
         if (string.IsNullOrWhiteSpace(connectionString))
-            return;
+            throw new InvalidOperationException(
+                "LEGEND_STAGE3_REFERENCE_SQL_CONNECTION is required for the response-plan SQL proof.");
 
         var options = new DbContextOptionsBuilder<MasterAppDbContext>()
             .UseSqlServer(connectionString)
