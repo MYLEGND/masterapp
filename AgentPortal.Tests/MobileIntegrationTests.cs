@@ -9,6 +9,7 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Reflection;
+using System.Xml.Linq;
 using AgentPortal.Mobile;
 using AgentPortal.Services;
 using AgentPortal.Services.Tracking;
@@ -37,10 +38,32 @@ namespace AgentPortal.Tests;
 public sealed class MobileIntegrationTests
 {
     [Fact]
-    public void MobileSocialMediaEndpoint_AdmitsTheConfiguredSecureVideoPayload()
+    public void IisIngress_AdmitsTheSamePayloadAsMobileMediaEndpoints()
+    {
+        var root = Path.GetDirectoryName(GetSourcePath())!;
+        var config = XDocument.Load(
+            Path.Combine(root, "..", "AgentPortal", "web.config"));
+        var mediaLocation = Assert.Single(config.Root!.Elements("location")
+            .Where(element => (string?)element.Attribute("path") == "api/v1/mobile/social/posts/media"));
+        var limit = mediaLocation.Element("system.webServer")!
+            .Element("security")!.Element("requestFiltering")!
+            .Element("requestLimits")!.Attribute("maxAllowedContentLength");
+        Assert.Equal(SocialMediaUploadLimits.MaximumMultipartRequestBytes, (long)limit!);
+        Assert.Empty(config.Root.Elements("location")
+            .Where(element => (string?)element.Attribute("path") == ".")
+            .Descendants("requestLimits"));
+    }
+
+    private static string GetSourcePath(
+        [System.Runtime.CompilerServices.CallerFilePath] string path = "") => path;
+
+    [Theory]
+    [InlineData(nameof(MobileSocialController.CreateMediaPost))]
+    [InlineData(nameof(MobileSocialController.StageMediaPost))]
+    public void MobileSocialMediaEndpoint_AdmitsTheConfiguredSecureVideoPayload(string actionName)
     {
         var action = typeof(MobileSocialController).GetMethod(
-            nameof(MobileSocialController.CreateMediaPost));
+            actionName);
         Assert.NotNull(action);
 
         var requestLimit = action!.GetCustomAttribute<RequestSizeLimitAttribute>();
