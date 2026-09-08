@@ -10976,6 +10976,7 @@ const contactFieldProgress = new Map();
     submittedPanel?.classList?.add('is-submitted', 'lq-final-review-flat-mode');
 
     const proofRow = document.querySelector('#lifeEducationContactPanel > .lq-contact-first-proof-row');
+    const agentProofHtml = proofRow ? proofRow.outerHTML : '';
     if (proofRow) proofRow.remove();
 
     document.getElementById('lifeEducationContactPanel')?.classList?.add('lq-final-panel-no-chrome');
@@ -10995,6 +10996,8 @@ const contactFieldProgress = new Map();
 
     window.LegendQuoteReview.render(postSubmitSlot, {
       titleId: 'lifePostSubmitBookingTitle',
+      agentHtml: agentProofHtml,
+      nextTitle: agentNameRaw + ' helps turn this estimate into a clear decision.',
       kicker: handoffCopy.kicker,
       title: handoffCopy.title,
       copy: handoffCopy.copy,

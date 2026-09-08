@@ -4,17 +4,17 @@
     --review-gold: #f3d688;
     --review-text: #f8fafc;
     --review-muted: #bbc9dc;
-    width: 100%; max-width: 1060px; min-width: 0; margin: 0 auto;
-    padding: clamp(20px, 4vw, 44px); box-sizing: border-box;
+    width: 100%; min-width: 0; margin: 0;
+    box-sizing: border-box;
     color: var(--review-text); text-align: left;
-    background: radial-gradient(ellipse at 100% 0, #17365a 0, transparent 55%), #091e38;
-    border: 1px solid #b38c4159; border-radius: 28px;
-    box-shadow: 0 24px 64px #04102029;
+    background: linear-gradient(180deg, #0b2347 0%, #081a36 52%, #071427 100%);
     font-size: 1rem; line-height: 1.6;
 }
+.quote-review-content { padding: clamp(18px, 3vw, 32px); }
+.quote-review-copy { margin: 0; max-width: 85ch; color: var(--review-muted); font-size: 1rem; line-height: 1.65; }
 .quote-review-header { display: grid; justify-items: start; gap: 18px; margin-bottom: 28px; }
 .quote-review-status { display: inline-flex; align-items: center; gap: 9px; padding: 7px 13px; border-radius: 999px; border: 1px solid #f3d68850; background: #f3d6880d; color: var(--review-gold); font-size: .72rem; font-weight: 750; letter-spacing: .09em; text-transform: uppercase; }
-.quote-review-title { margin: 0; max-width: 27ch; color: var(--review-text); font-size: clamp(1.65rem, 3.2vw, 2.4rem); line-height: 1.18; font-weight: 800; letter-spacing: -.035em; text-wrap: balance; }
+.quote-review-title { margin: 0; max-width: 40ch; color: var(--review-text); font-size: clamp(1.5rem, 2.4vw, 2rem); line-height: 1.18; font-weight: 800; letter-spacing: -.035em; text-wrap: balance; }
 .quote-review-assurances { display: flex; flex-wrap: wrap; gap: 8px 22px; margin: 0; padding: 0; list-style: none; color: var(--review-muted); font-size: .8rem; }
 .quote-review-assurances li { display: flex; align-items: center; gap: 8px; }
 .quote-review-assurances li::before { content: ''; width: 4px; height: 4px; border-radius: 50%; background: var(--review-gold); }
@@ -30,9 +30,8 @@
 .quote-review-insight h3 { margin: 0 0 8px; color: var(--review-gold); font-size: .73rem; line-height: 1.4; text-transform: uppercase; letter-spacing: .08em; font-weight: 750; }
 .quote-review-insight p { margin: 0; color: var(--review-muted); font-size: .9rem; font-weight: 400; line-height: 1.65; }
 .quote-review-details { margin: 0; padding: 18px 0; border-top: 1px solid #dce6f224; border-bottom: 1px solid #dce6f224; }
-.quote-review-details summary { cursor: pointer; color: var(--review-text); font-size: .95rem; font-weight: 650; }
-.quote-review-details summary::marker { color: var(--review-gold); }
-.quote-review-details summary:focus-visible { outline: 2px solid var(--review-gold); outline-offset: 6px; border-radius: 3px; }
+.quote-review-details h3 { margin: 0; color: var(--review-gold); font-size: .8rem; text-transform: uppercase; letter-spacing: .07em; }
+.quote-review-details h4 { margin: 0; color: var(--review-text); font-size: 1.05rem; }
 .quote-review-details-body { display: grid; gap: 14px; padding-top: 18px; max-width: 78ch; color: var(--review-muted); font-size: .88rem; }
 .quote-review-details-body p { margin: 0; line-height: 1.65; }
 .quote-review-checklist { display: flex; flex-wrap: wrap; gap: 12px 22px; margin: 0; padding: 0; list-style: none; color: var(--review-text); }
@@ -44,7 +43,6 @@
 .quote-review-booking p { max-width: 72ch; margin: 0; color: var(--review-muted); font-size: .9rem; line-height: 1.6; }
 .quote-review-message { margin: 12px 0; padding: 16px; border: 1px solid #f3d68840; border-radius: 12px; color: var(--review-muted); font-size: .9rem; }
 @media (max-width: 600px) {
-    .quote-review { border-radius: 20px; }
     .quote-review-header { gap: 14px; margin-bottom: 22px; }
     .quote-review-metrics, .quote-review-insights { grid-template-columns: minmax(0, 1fr); }
     .quote-review-metric { padding: 16px 18px; }
