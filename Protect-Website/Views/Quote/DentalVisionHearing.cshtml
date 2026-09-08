@@ -102,6 +102,8 @@
     form.PageMode = pageMode;
 }
 
+<partial name="_QuoteFinalReviewAssets" />
+
 <style>
 body.dvh-quote main.layout-content {
     padding-top: 1.3rem;
@@ -1253,231 +1255,7 @@ body.dvh-landing.page-mode-paid-landing header .navbar-brand img {
     display: block !important;
 }
 
-#dvhPostSubmitSlot,
-#dvhPostSubmitSlot * {
-    opacity: 1 !important;
-    box-sizing: border-box !important;
-}
 
-#dvhPostSubmitSlot {
-    width: 100% !important;
-    margin: 0 !important;
-    padding: 0 !important;
-    background: transparent !important;
-    border: 0 !important;
-    box-shadow: none !important;
-}
-
-#dvhPostSubmitSlot .lq-final-review-unified-card {
-    width: min(1240px, 100%) !important;
-    max-width: 1240px !important;
-    margin: 0 auto !important;
-    padding: 26px 30px 30px !important;
-    border-radius: 24px !important;
-    border: 1px solid rgba(199,153,49,.38) !important;
-    background:
-        radial-gradient(circle at 18% 0%, rgba(243,214,136,.12), transparent 36%),
-        linear-gradient(180deg, #09244a 0%, #071d3d 52%, #061832 100%) !important;
-    color: #f8fafc !important;
-    box-shadow:
-        0 22px 46px rgba(2,12,27,.26),
-        inset 0 1px 0 rgba(255,255,255,.055) !important;
-    overflow: hidden !important;
-}
-
-#dvhPostSubmitSlot .lq-final-review-head {
-    position: relative !important;
-    padding: 0 0 13px !important;
-    margin: 0 0 12px !important;
-    border-bottom: 1px solid rgba(243,214,136,.14) !important;
-}
-
-#dvhPostSubmitSlot .lq-final-review-kicker {
-    display: inline-flex !important;
-    align-items: center !important;
-    gap: 8px !important;
-    color: #f3d688 !important;
-    font-size: .72rem !important;
-    font-weight: 950 !important;
-    letter-spacing: .11em !important;
-    text-transform: uppercase !important;
-    margin: 0 0 8px !important;
-}
-
-#dvhPostSubmitSlot .lq-final-review-kicker::after {
-    content: "" !important;
-    width: 42px !important;
-    height: 1px !important;
-    background: linear-gradient(90deg, rgba(243,214,136,.9), rgba(243,214,136,0)) !important;
-    display: block !important;
-}
-
-#dvhPostSubmitSlot .lq-final-review-title {
-    color: #fff8e7 !important;
-    font-size: clamp(1.72rem, 4vw, 2.28rem) !important;
-    line-height: 1.02 !important;
-    letter-spacing: -.04em !important;
-    font-weight: 960 !important;
-    margin: 0 0 9px !important;
-    text-wrap: balance !important;
-}
-
-#dvhPostSubmitSlot .lq-final-review-copy {
-    color: rgba(248,250,252,.84) !important;
-    font-size: .96rem !important;
-    line-height: 1.42 !important;
-    font-weight: 720 !important;
-    max-width: 78ch !important;
-    margin: 0 !important;
-}
-
-#dvhPostSubmitSlot .lq-final-review-proof-row {
-    display: flex !important;
-    flex-wrap: wrap !important;
-    gap: 7px !important;
-    margin: 0 0 13px !important;
-}
-
-#dvhPostSubmitSlot .lq-final-review-proof-row span {
-    display: inline-flex !important;
-    align-items: center !important;
-    min-height: 28px !important;
-    padding: 6px 10px !important;
-    border-radius: 999px !important;
-    border: 1px solid rgba(243,214,136,.30) !important;
-    background: rgba(4,16,32,.42) !important;
-    color: rgba(255,246,216,.92) !important;
-    font-size: .72rem !important;
-    font-weight: 900 !important;
-}
-
-#dvhPostSubmitSlot .lq-final-review-impact-grid,
-#dvhPostSubmitSlot .dq-final-review-stats {
-    display: grid !important;
-    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
-    gap: 10px !important;
-}
-
-#dvhPostSubmitSlot .lq-final-review-impact-grid {
-    margin: 0 0 14px !important;
-}
-
-#dvhPostSubmitSlot .lq-final-review-impact-card,
-#dvhPostSubmitSlot .dq-final-review-stat {
-    padding: 13px 14px !important;
-    border-radius: 16px !important;
-    border: 1px solid rgba(199,153,49,.22) !important;
-    background:
-        radial-gradient(circle at 15% 0%, rgba(243,214,136,.08), transparent 36%),
-        linear-gradient(180deg, rgba(6,29,61,.78) 0%, rgba(7,26,54,.92) 100%) !important;
-}
-
-#dvhPostSubmitSlot .lq-final-review-impact-card.is-urgent {
-    border-color: rgba(243,214,136,.38) !important;
-    background:
-        radial-gradient(circle at 15% 0%, rgba(243,214,136,.14), transparent 38%),
-        linear-gradient(180deg, rgba(8,37,77,.90) 0%, rgba(7,26,54,.96) 100%) !important;
-}
-
-#dvhPostSubmitSlot .lq-final-review-impact-label,
-#dvhPostSubmitSlot .lq-final-review-next-kicker,
-#dvhPostSubmitSlot .lq-final-review-booking-kicker,
-#dvhPostSubmitSlot .dq-final-review-stat-label {
-    color: #f3d688 !important;
-    font-size: .70rem !important;
-    font-weight: 940 !important;
-    letter-spacing: .08em !important;
-    text-transform: uppercase !important;
-    margin: 0 0 5px !important;
-}
-
-#dvhPostSubmitSlot .lq-final-review-impact-text,
-#dvhPostSubmitSlot .lq-final-review-next-copy,
-#dvhPostSubmitSlot .lq-final-review-booking-copy {
-    color: rgba(248,250,252,.88) !important;
-    font-size: .87rem !important;
-    font-weight: 760 !important;
-    line-height: 1.34 !important;
-}
-
-#dvhPostSubmitSlot .lq-final-review-result-slot {
-    background: transparent !important;
-    border: 0 !important;
-    box-shadow: none !important;
-    padding: 0 !important;
-    margin: 0 0 14px !important;
-}
-
-#dvhPostSubmitSlot .dq-final-review-stats {
-    margin: 0 !important;
-}
-
-#dvhPostSubmitSlot .dq-final-review-stat-value {
-    color: #fff8e7 !important;
-    font-size: 1.05rem !important;
-    font-weight: 900 !important;
-    line-height: 1.3 !important;
-}
-
-#dvhPostSubmitSlot .lq-final-review-next-step {
-    margin: 2px 0 14px !important;
-    padding: 15px 16px !important;
-    border-radius: 18px !important;
-    border: 1px solid rgba(243,214,136,.34) !important;
-    background:
-        radial-gradient(circle at 12% 0%, rgba(243,214,136,.13), transparent 34%),
-        linear-gradient(180deg, rgba(8,37,77,.92) 0%, rgba(5,22,48,.96) 100%) !important;
-    box-shadow:
-        inset 0 1px 0 rgba(255,255,255,.05),
-        0 14px 28px rgba(2,12,27,.14) !important;
-}
-
-#dvhPostSubmitSlot .lq-final-review-next-title {
-    color: #fff7df !important;
-    font-size: 1.02rem !important;
-    font-weight: 930 !important;
-    line-height: 1.22 !important;
-    margin: 0 0 6px !important;
-}
-
-#dvhPostSubmitSlot .lq-final-review-checklist {
-    display: grid !important;
-    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
-    gap: 7px !important;
-}
-
-#dvhPostSubmitSlot .lq-final-review-checklist span {
-    padding: 8px 9px !important;
-    border-radius: 12px !important;
-    border: 1px solid rgba(243,214,136,.20) !important;
-    background: rgba(4,16,32,.35) !important;
-    color: rgba(248,250,252,.88) !important;
-    font-size: .76rem !important;
-    font-weight: 850 !important;
-    text-align: center !important;
-}
-
-#dvhPostSubmitSlot .lq-final-review-booking-card {
-    margin: 12px 0 10px !important;
-    padding: 15px 16px !important;
-    border-radius: 18px !important;
-    border: 1px solid rgba(243,214,136,.38) !important;
-    background:
-        radial-gradient(circle at 18% 0%, rgba(243,214,136,.15), transparent 36%),
-        linear-gradient(180deg, rgba(9,41,85,.96) 0%, rgba(6,26,55,.98) 100%) !important;
-}
-
-#dvhPostSubmitSlot .lq-final-review-booking-title {
-    color: #fff8e7 !important;
-    font-size: 1.16rem !important;
-    font-weight: 950 !important;
-    line-height: 1.13 !important;
-    margin: 0 0 5px !important;
-    text-wrap: balance !important;
-}
-
-#dvhPostSubmitSlot .lq-final-review-loading,
-#dvhPostSubmitSlot .lq-final-review-unavailable,
 #dvhPostSubmitSlot .lq-booking-embed-status {
     margin: 10px 0 !important;
     padding: 10px 12px !important;
@@ -1641,17 +1419,12 @@ body.dvh-landing.page-mode-paid-landing header .navbar-brand img {
 
 #dvhEducationContactPanel.is-submit-loading #dqStep1Panel,
 #dvhEducationContactPanel.is-submit-loading #dqContactPanel,
-#dvhEducationContactPanel.is-submit-loading #dvhContactCaptureWrap,
-#dvhEducationContactPanel.is-submit-loading #dvhPostSubmitSlot {
+#dvhEducationContactPanel.is-submit-loading #dvhContactCaptureWrap{
     display: none !important;
 }
 
 #dvhEducationContactPanel.is-submit-loading #dqProcessingPanel {
     display: block !important;
-}
-
-#dvhPostSubmitSlot .lq-final-review-agent-row .dq-proof-card {
-    margin: 0 0 8px !important;
 }
 
 #dvhPostSubmitSlot .lq-booking-secondary-link {
@@ -1795,46 +1568,6 @@ body.dvh-landing.page-mode-paid-landing header .navbar-brand img {
         margin: 0 !important;
     }
 
-    #dvhPostSubmitSlot .lq-final-review-unified-card {
-        display: grid !important;
-        grid-template-columns: minmax(0, 1fr) !important;
-        gap: 14px !important;
-        padding: 28px 32px 32px !important;
-    }
-
-    #dvhPostSubmitSlot .lq-final-review-head,
-    #dvhPostSubmitSlot .lq-final-review-proof-row,
-    #dvhPostSubmitSlot .lq-final-review-impact-grid,
-    #dvhPostSubmitSlot .lq-final-review-result-slot,
-    #dvhPostSubmitSlot .lq-final-review-next-step,
-    #dvhPostSubmitSlot .lq-final-review-booking-card {
-        grid-column: 1 / -1 !important;
-        min-width: 0 !important;
-        margin-left: 0 !important;
-        margin-right: 0 !important;
-    }
-
-    #dvhPostSubmitSlot .lq-final-review-agent-row {
-        grid-column: 1 / -1 !important;
-        margin: 0 0 8px !important;
-        padding: 6px 6px 2px !important;
-    }
-
-    #dvhPostSubmitSlot .lq-final-review-agent-row .dq-proof-card {
-        margin: 0 !important;
-        border-radius: 14px !important;
-        padding: 10px 12px !important;
-    }
-
-    #dvhPostSubmitSlot .lq-final-review-title {
-        font-size: clamp(1.34rem, 2.05vw, 1.74rem) !important;
-        line-height: 1.12 !important;
-    }
-
-    #dvhPostSubmitSlot .lq-final-review-checklist {
-        grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
-    }
-
     #dvhPostSubmitSlot .lq-booking-iframe {
         height: clamp(780px, 92vh, 1100px) !important;
         min-height: clamp(780px, 92vh, 1100px) !important;
@@ -1846,32 +1579,9 @@ body.dvh-landing.page-mode-paid-landing header .navbar-brand img {
         padding: 16px !important;
     }
 
-    #dvhPostSubmitSlot .lq-final-review-unified-card {
-        padding: 17px !important;
-        border-radius: 22px !important;
-    }
 
-    #dvhPostSubmitSlot .lq-final-review-title {
-        font-size: 1.52rem !important;
-        line-height: 1.04 !important;
-    }
-
-    #dvhPostSubmitSlot .lq-final-review-copy {
-        font-size: .91rem !important;
-        line-height: 1.4 !important;
-    }
-
-    #dvhPostSubmitSlot .lq-final-review-impact-grid,
-    #dvhPostSubmitSlot .dq-final-review-stats,
-    #dvhPostSubmitSlot .lq-final-review-checklist,
     .dq-contact-capture-wrap .lq-field-row {
         grid-template-columns: 1fr !important;
-    }
-
-    #dvhPostSubmitSlot .lq-final-review-next-step,
-    #dvhPostSubmitSlot .lq-final-review-booking-card {
-        padding: 14px !important;
-        border-radius: 16px !important;
     }
 
     #dvhPostSubmitSlot .lq-booking-iframe {
@@ -2097,60 +1807,7 @@ body.dvh-final-step-active .dq-form-panel {
         box-shadow: none !important;
     }
 
-    #dvhPostSubmitSlot {
-        margin: 0 !important;
-        padding: 0 !important;
-    }
 
-    #dvhPostSubmitSlot .lq-final-review-unified-card {
-        width: 100% !important;
-        padding: 14px 13px 16px !important;
-        border-radius: 18px !important;
-        box-shadow:
-            0 14px 28px rgba(2, 12, 27, 0.2),
-            inset 0 1px 0 rgba(255,255,255,.045) !important;
-    }
-
-    #dvhPostSubmitSlot .lq-final-review-head {
-        padding-bottom: 10px !important;
-        margin-bottom: 10px !important;
-    }
-
-    #dvhPostSubmitSlot .lq-final-review-title {
-        font-size: 1.28rem !important;
-        line-height: 1.08 !important;
-    }
-
-    #dvhPostSubmitSlot .lq-final-review-copy {
-        font-size: .88rem !important;
-        line-height: 1.38 !important;
-    }
-
-    #dvhPostSubmitSlot .lq-final-review-proof-row {
-        gap: 6px !important;
-        margin: 0 0 10px !important;
-    }
-
-    #dvhPostSubmitSlot .lq-final-review-proof-row span {
-        min-height: 26px !important;
-        padding: 5px 8px !important;
-        font-size: .68rem !important;
-    }
-
-    #dvhPostSubmitSlot .lq-final-review-impact-card,
-    #dvhPostSubmitSlot .dq-final-review-stat,
-    #dvhPostSubmitSlot .lq-final-review-next-step,
-    #dvhPostSubmitSlot .lq-final-review-booking-card {
-        padding: 12px !important;
-        border-radius: 14px !important;
-    }
-
-    #dvhPostSubmitSlot .lq-final-review-booking-card {
-        margin: 8px 0 !important;
-    }
-
-    #dvhPostSubmitSlot .lq-final-review-loading,
-    #dvhPostSubmitSlot .lq-final-review-unavailable,
     #dvhPostSubmitSlot .lq-booking-embed-status {
         margin: 8px 0 !important;
         padding: 9px 10px !important;
@@ -2695,7 +2352,6 @@ body.dvh-final-step-active .dq-form-panel {
         var continueButton = document.getElementById('dqContinueToContactBtn');
         var backToQuestionsButton = document.getElementById('dqBackToQuestionsBtn');
         var submitButton = document.getElementById('dqSubmitBtn');
-        var proofCard = contactFirstPanel ? contactFirstPanel.querySelector('.dq-proof-card') : null;
         var errorBanner = document.getElementById('dvhError');
         var successBanner = document.getElementById('dvhSuccess');
         var reviewSummary = document.getElementById('dvhReviewSummary');
@@ -3232,19 +2888,12 @@ body.dvh-final-step-active .dq-form-panel {
 
             var responseBody = latestSubmitResponse || {};
             var agentName = asTrimmed(responseBody.agentFirstName) || 'our licensed team';
-            var proofHtml = proofCard ? '<div class="lq-final-review-agent-row">' + proofCard.outerHTML + '</div>' : '';
             var ageRange = readSelectedValue('AgeRange') || 'Age range';
             var householdSize = readSelectedValue('HouseholdSize') || 'Household';
             var currentCoverage = readSelectedValue('CurrentCoverage') || 'Current coverage';
             var coverageType = readSelectedValue('CoverageType') || 'Coverage goal';
             var primaryConcern = readSelectedValue('PrimaryConcern') || 'Priority';
-            var resultHtml = ''
-                + '<div class="dq-final-review-stats" aria-label="Saved review snapshot">'
-                +   '<div class="dq-final-review-stat"><div class="dq-final-review-stat-label">Age range</div><div class="dq-final-review-stat-value">' + escapeHtml(ageRange) + '</div></div>'
-                +   '<div class="dq-final-review-stat"><div class="dq-final-review-stat-label">Household</div><div class="dq-final-review-stat-value">' + escapeHtml(householdSize) + '</div></div>'
-                +   '<div class="dq-final-review-stat"><div class="dq-final-review-stat-label">Current coverage</div><div class="dq-final-review-stat-value">' + escapeHtml(currentCoverage) + '</div></div>'
-                +   '<div class="dq-final-review-stat"><div class="dq-final-review-stat-label">Review focus</div><div class="dq-final-review-stat-value">' + escapeHtml(coverageType) + '</div></div>'
-                + '</div>';
+            var reviewSnapshot = { metrics: [{ label: 'Age range', value: ageRange }, { label: 'Household', value: householdSize }, { label: 'Current coverage', value: currentCoverage }, { label: 'Review focus', value: coverageType }] };
             var showInlineShell = !normalized.loading && normalized.enabled && normalized.canEmbed && normalized.embedUrl;
             var showFallbackLink = false;
             var bookingUnavailableCopy = !normalized.loading && !showInlineShell && !showFallbackLink
@@ -3253,58 +2902,24 @@ body.dvh-final-step-active .dq-form-panel {
                     : publicBookingDisabledText)
                 : '';
 
-            postSubmitSlot.innerHTML = ''
-                + '<section class="lq-final-review-unified-card" aria-labelledby="dvhPostSubmitTitle">'
-                + proofHtml
-                +   '<div class="lq-final-review-head">'
-                +     '<div class="lq-final-review-kicker">Review saved</div>'
-                +     '<div class="lq-final-review-title" id="dvhPostSubmitTitle">Your dental, vision, and hearing review is ready for the next step.</div>'
-                +     '<div class="lq-final-review-copy">We saved your answers so the conversation can start with your household needs, current coverage, and the plan tradeoffs that matter most.</div>'
-                +   '</div>'
-                +   '<div class="lq-final-review-proof-row" aria-label="Review value">'
-                +     '<span>Review saved</span>'
-                +     '<span>Licensed guidance</span>'
-                +     '<span>No obligation</span>'
-                +   '</div>'
-                +   '<div class="lq-final-review-impact-grid" aria-label="Why this review matters">'
-                +     '<div class="lq-final-review-impact-card">'
-                +       '<div class="lq-final-review-impact-label">What surfaced</div>'
-                +       '<div class="lq-final-review-impact-text">Your answers suggest this review should focus on ' + escapeHtml(primaryConcern.toLowerCase()) + ', current coverage fit, and what your household actually needs from the next plan conversation.</div>'
-                +     '</div>'
-                +     '<div class="lq-final-review-impact-card is-urgent">'
-                +       '<div class="lq-final-review-impact-label">Why timing matters</div>'
-                +       '<div class="lq-final-review-impact-text">Monthly cost, deductibles, network fit, and care access usually feel more urgent once appointments or prescriptions are already in motion.</div>'
-                +     '</div>'
-                +   '</div>'
-                +   '<div class="lq-final-review-result-slot">'
-                +     resultHtml
-                +   '</div>'
-                +   '<div class="lq-final-review-next-step" aria-label="What happens during the review">'
-                +     '<div class="lq-final-review-next-kicker">What the review confirms</div>'
-                +     '<div class="lq-final-review-next-title">' + escapeHtml(agentName) + ' helps turn this review into a clear coverage decision.</div>'
-                +     '<div class="lq-final-review-next-copy">The review can now confirm affordability, deductible comfort, provider access, and whether your current path still makes sense before any recommendation moves forward.</div>'
-                +     '<div class="lq-final-review-checklist" aria-label="Review checklist">'
-                +       '<span>Premium fit</span>'
-                +       '<span>Doctor access</span>'
-                +       '<span>Plan direction</span>'
-                +     '</div>'
-                +   '</div>'
-                +   '<div class="lq-final-review-booking-card">'
-                +     '<div class="lq-final-review-booking-kicker">Finish the review</div>'
-                +     '<div class="lq-final-review-booking-title">Choose a time to keep the review moving.</div>'
-                +     '<div class="lq-final-review-booking-copy">Schedule while this is fresh so ' + escapeHtml(agentName) + ' can confirm affordability, provider access, deductible comfort, and what path fits best.</div>'
-                +   '</div>'
-                +   (normalized.loading
-                    ? '<div class="lq-final-review-loading">' + escapeHtml(publicBookingLoadingText) + '</div>'
-                    : '')
-                +   (showInlineShell
-                    ? '<div class="lq-booking-frame-only" id="dvhBookingInlineFrameSlot"></div>'
-                    + '<div class="lq-booking-embed-status" id="dvhBookingInlineStatus" hidden>' + escapeHtml(publicBookingLoadingText) + '</div>'
-                    : '')
-                +   (bookingUnavailableCopy
-                    ? '<div class="lq-final-review-unavailable">' + escapeHtml(bookingUnavailableCopy) + '</div>'
-                    : '')
-                + '</section>';
+            window.LegendQuoteReview.render(postSubmitSlot, {
+                titleId: 'dvhPostSubmitTitle',
+                title: 'Your dental, vision, and hearing review is ready.',
+                copy: 'We saved your answers so the conversation can start with your household needs, current coverage, and the plan tradeoffs that matter most.',
+                diagnosis: 'Your review will focus on ' + primaryConcern.toLowerCase() + ', current coverage fit, and what your household needs from its next plan.',
+                implication: 'Compare monthly cost, deductibles, provider access, and the care you expect to use.',
+                snapshot: reviewSnapshot,
+                nextStep: 'Confirm affordability, deductible comfort, provider access, and whether your current path still makes sense before any recommendation moves forward.',
+                checklist: ['Premium fit', 'Provider access', 'Plan direction'],
+                bookingTitle: 'Choose a time for your review',
+                bookingCopy: 'Review affordability, provider access, and coverage options with ' + agentName + '.',
+                loading: normalized.loading,
+                loadingText: publicBookingLoadingText,
+                showCalendar: showInlineShell,
+                frameId: 'dvhBookingInlineFrameSlot',
+                statusId: 'dvhBookingInlineStatus',
+                unavailableText: bookingUnavailableCopy
+            });
 
             postSubmitSlot.hidden = false;
 

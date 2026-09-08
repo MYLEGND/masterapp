@@ -9,5 +9,4 @@ LEGEND_ENTRA_SCOPE=
 # Optional: a registered redirect for a nonstandard debug signing certificate.
 # When omitted, Gradle derives this URI from the current Android debug keystore.
 LEGEND_MSAL_DEBUG_REDIRECT_URI=
-# Production must remain the registered Google Play App Signing redirect URI.
-LEGEND_MSAL_REDIRECT_URI=
+# Release redirects are derived from app/signing/play-app-signing.pem.

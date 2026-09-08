@@ -1,7 +1,6 @@
 name: Deploy Legend Android to Internal Testing
 
-# Production release authority for the existing versionCode 3 candidate.
-# Release 3 publication trigger synchronized.
+# Production release authority for Google Play internal testing.
 
 on:
   push:
@@ -16,7 +15,7 @@ on:
         required: true
         type: string
       confirmation:
-        description: Type DEPLOY_INTERNAL to authorize this internal-test release
+        description: Type BUILD_SIGNED for a downloadable bundle or DEPLOY_INTERNAL to publish
         required: true
         type: string
 
@@ -30,13 +29,13 @@ permissions:
 
 jobs:
   deploy-internal:
-    if: github.ref == 'refs/heads/production' && (github.event_name == 'push' || inputs.confirmation == 'DEPLOY_INTERNAL')
+    if: (github.ref == 'refs/heads/production' && (github.event_name == 'push' || inputs.confirmation == 'DEPLOY_INTERNAL')) || (github.event_name == 'workflow_dispatch' && inputs.confirmation == 'BUILD_SIGNED')
     runs-on: ubuntu-latest
     timeout-minutes: 35
     environment: google-play-internal
 
     steps:
-      - name: Checkout exact production candidate
+      - name: Checkout exact release candidate
         uses: actions/checkout@v7.0.1
         with:
           fetch-depth: 0
@@ -58,34 +57,28 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Validate protected deployment configuration
+      - name: Validate protected build configuration
         shell: bash
         env:
           LEGEND_UPLOAD_KEYSTORE: ${{ secrets.LEGEND_ANDROID_UPLOAD_KEYSTORE_BASE64 }}
           LEGEND_KEYSTORE_PASSWORD: ${{ secrets.LEGEND_ANDROID_KEYSTORE_PASSWORD }}
           LEGEND_KEY_ALIAS: ${{ secrets.LEGEND_ANDROID_KEY_ALIAS }}
           LEGEND_KEY_PASSWORD: ${{ secrets.LEGEND_ANDROID_KEY_PASSWORD }}
-          LEGEND_GCP_PROVIDER: ${{ vars.LEGEND_GCP_WORKLOAD_IDENTITY_PROVIDER }}
-          LEGEND_GCP_SERVICE_ACCOUNT: ${{ vars.LEGEND_GCP_PLAY_SERVICE_ACCOUNT }}
           LEGEND_API_BASE_URL: ${{ vars.LEGEND_API_BASE_URL }}
           LEGEND_ENTRA_TENANT_ID: ${{ vars.LEGEND_ENTRA_TENANT_ID }}
           LEGEND_ENTRA_CLIENT_ID: ${{ vars.LEGEND_ENTRA_CLIENT_ID }}
           LEGEND_ENTRA_AUTHORITY: ${{ vars.LEGEND_ENTRA_AUTHORITY }}
           LEGEND_ENTRA_SCOPE: ${{ vars.LEGEND_ENTRA_SCOPE }}
-          LEGEND_MSAL_REDIRECT_URI: ${{ vars.LEGEND_MSAL_REDIRECT_URI }}
         run: |
           test -n "$LEGEND_UPLOAD_KEYSTORE"
           test -n "$LEGEND_KEYSTORE_PASSWORD"
           test -n "$LEGEND_KEY_ALIAS"
           test -n "$LEGEND_KEY_PASSWORD"
-          test -n "$LEGEND_GCP_PROVIDER"
-          test -n "$LEGEND_GCP_SERVICE_ACCOUNT"
           test -n "$LEGEND_API_BASE_URL"
           test -n "$LEGEND_ENTRA_TENANT_ID"
           test -n "$LEGEND_ENTRA_CLIENT_ID"
           test -n "$LEGEND_ENTRA_AUTHORITY"
           test -n "$LEGEND_ENTRA_SCOPE"
-          test -n "$LEGEND_MSAL_REDIRECT_URI"
 
       - name: Restore protected Android upload key
         shell: bash
@@ -95,6 +88,22 @@ jobs:
           printf '%s' "$LEGEND_UPLOAD_KEYSTORE" | base64 --decode > "$RUNNER_TEMP/legend-upload.jks"
           chmod 600 "$RUNNER_TEMP/legend-upload.jks"
 
+      - name: Validate upload keystore before building
+        shell: bash
+        env:
+          LEGEND_KEYSTORE_PASSWORD: ${{ secrets.LEGEND_ANDROID_KEYSTORE_PASSWORD }}
+          LEGEND_KEY_ALIAS: ${{ secrets.LEGEND_ANDROID_KEY_ALIAS }}
+        run: |
+          set -euo pipefail
+          keytool -exportcert -keystore "$RUNNER_TEMP/legend-upload.jks" -storepass:env LEGEND_KEYSTORE_PASSWORD -alias "$LEGEND_KEY_ALIAS" -file "$RUNNER_TEMP/legend-upload-cert.der"
+          # This is the upload certificate, distinct from the Play app-signing certificate.
+          expected="$(tr -d ':[:space:]' < Legend-Android/app/signing/play-upload-sha1.txt | tr '[:upper:]' '[:lower:]')"
+          actual="$(sha1sum "$RUNNER_TEMP/legend-upload-cert.der" | cut -d ' ' -f 1)"
+          if [[ "$actual" != "$expected" ]]; then
+            echo "::error::GitHub upload keystore is outdated. Replace its signing secrets with the key Google Play requires."
+            exit 1
+          fi
+
       - name: Create production runtime configuration
         shell: bash
         env:
@@ -103,7 +112,6 @@ jobs:
           LEGEND_ENTRA_CLIENT_ID: ${{ vars.LEGEND_ENTRA_CLIENT_ID }}
           LEGEND_ENTRA_AUTHORITY: ${{ vars.LEGEND_ENTRA_AUTHORITY }}
           LEGEND_ENTRA_SCOPE: ${{ vars.LEGEND_ENTRA_SCOPE }}
-          LEGEND_MSAL_REDIRECT_URI: ${{ vars.LEGEND_MSAL_REDIRECT_URI }}
         run: |
           set -euo pipefail
           umask 077
@@ -113,7 +121,6 @@ jobs:
             printf 'LEGEND_ENTRA_CLIENT_ID=%s\n' "$LEGEND_ENTRA_CLIENT_ID"
             printf 'LEGEND_ENTRA_AUTHORITY=%s\n' "$LEGEND_ENTRA_AUTHORITY"
             printf 'LEGEND_ENTRA_SCOPE=%s\n' "$LEGEND_ENTRA_SCOPE"
-            printf 'LEGEND_MSAL_REDIRECT_URI=%s\n' "$LEGEND_MSAL_REDIRECT_URI"
           } > Legend-Android/legend.properties
 
       - name: Compile, test, lint, and build release bundle
@@ -130,10 +137,21 @@ jobs:
         run: |
           set -euo pipefail
           bundle_path="Legend-Android/app/build/outputs/bundle/release/app-release.aab"
-          jarsigner -keystore "$RUNNER_TEMP/legend-upload.jks"             -storepass "$LEGEND_KEYSTORE_PASSWORD"             -keypass "$LEGEND_KEY_PASSWORD"             "$bundle_path" "$LEGEND_KEY_ALIAS"
-          jarsigner -verify -strict "$bundle_path"
+          jarsigner -keystore "$RUNNER_TEMP/legend-upload.jks" -storepass:env LEGEND_KEYSTORE_PASSWORD -keypass:env LEGEND_KEY_PASSWORD "$bundle_path" "$LEGEND_KEY_ALIAS"
+          jarsigner -verify -strict -keystore "$RUNNER_TEMP/legend-upload.jks" -storepass:env LEGEND_KEYSTORE_PASSWORD "$bundle_path" "$LEGEND_KEY_ALIAS"
+
+      - name: Save signed release bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: legend-android-signed-${{ github.run_id }}
+          path: |
+            Legend-Android/app/build/outputs/bundle/release/app-release.aab
+            ${{ runner.temp }}/legend-upload-cert.der
+          if-no-files-found: error
+          retention-days: 14
 
       - name: Authenticate to Google Play without a downloaded JSON key
+        if: inputs.confirmation == 'DEPLOY_INTERNAL' || (github.event_name == 'push' && vars.LEGEND_GCP_WORKLOAD_IDENTITY_PROVIDER != '' && vars.LEGEND_GCP_PLAY_SERVICE_ACCOUNT != '')
         id: google-auth
         uses: google-github-actions/auth@v3
         with:
@@ -142,10 +160,11 @@ jobs:
           service_account: ${{ vars.LEGEND_GCP_PLAY_SERVICE_ACCOUNT }}
 
       - name: Upload and publish only to Internal testing
+        if: inputs.confirmation == 'DEPLOY_INTERNAL' || (github.event_name == 'push' && vars.LEGEND_GCP_WORKLOAD_IDENTITY_PROVIDER != '' && vars.LEGEND_GCP_PLAY_SERVICE_ACCOUNT != '')
         shell: bash
         env:
           ACCESS_TOKEN: ${{ steps.google-auth.outputs.access_token }}
-          RELEASE_NOTES: ${{ inputs.release_notes || 'Release 3 - updated LEGEND Android internal testing build.' }}
+          RELEASE_NOTES: ${{ inputs.release_notes || 'Updated LEGEND Android internal testing build.' }}
           PACKAGE_NAME: com.mylegnd.legend.registered
         run: |
           set -euo pipefail
