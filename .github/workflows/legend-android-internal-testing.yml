@@ -97,7 +97,12 @@ jobs:
           set -euo pipefail
           keytool -exportcert -keystore "$RUNNER_TEMP/legend-upload.jks" -storepass:env LEGEND_KEYSTORE_PASSWORD -alias "$LEGEND_KEY_ALIAS" -file "$RUNNER_TEMP/legend-upload-cert.der"
           # This is the upload certificate, distinct from the Play app-signing certificate.
-          sha256sum "$RUNNER_TEMP/legend-upload-cert.der"
+          expected="$(tr -d ':[:space:]' < Legend-Android/app/signing/play-upload-sha1.txt | tr '[:upper:]' '[:lower:]')"
+          actual="$(sha1sum "$RUNNER_TEMP/legend-upload-cert.der" | cut -d ' ' -f 1)"
+          if [[ "$actual" != "$expected" ]]; then
+            echo "::error::GitHub upload keystore is outdated. Replace its signing secrets with the key Google Play requires."
+            exit 1
+          fi
 
       - name: Create production runtime configuration
         shell: bash
@@ -146,7 +151,7 @@ jobs:
           retention-days: 14
 
       - name: Authenticate to Google Play without a downloaded JSON key
-        if: inputs.confirmation != 'BUILD_SIGNED'
+        if: inputs.confirmation == 'DEPLOY_INTERNAL' || (github.event_name == 'push' && vars.LEGEND_GCP_WORKLOAD_IDENTITY_PROVIDER != '' && vars.LEGEND_GCP_PLAY_SERVICE_ACCOUNT != '')
         id: google-auth
         uses: google-github-actions/auth@v3
         with:
@@ -155,7 +160,7 @@ jobs:
           service_account: ${{ vars.LEGEND_GCP_PLAY_SERVICE_ACCOUNT }}
 
       - name: Upload and publish only to Internal testing
-        if: inputs.confirmation != 'BUILD_SIGNED'
+        if: inputs.confirmation == 'DEPLOY_INTERNAL' || (github.event_name == 'push' && vars.LEGEND_GCP_WORKLOAD_IDENTITY_PROVIDER != '' && vars.LEGEND_GCP_PLAY_SERVICE_ACCOUNT != '')
         shell: bash
         env:
           ACCESS_TOKEN: ${{ steps.google-auth.outputs.access_token }}
