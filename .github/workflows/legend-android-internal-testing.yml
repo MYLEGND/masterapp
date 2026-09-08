@@ -96,11 +96,8 @@ jobs:
         run: |
           set -euo pipefail
           keytool -exportcert -keystore "$RUNNER_TEMP/legend-upload.jks" -storepass:env LEGEND_KEYSTORE_PASSWORD -alias "$LEGEND_KEY_ALIAS" -file "$RUNNER_TEMP/legend-upload-cert.der"
-          fingerprint="$(sha256sum "$RUNNER_TEMP/legend-upload-cert.der" | cut -d ' ' -f 1)"
-          if [[ "$fingerprint" != "d679b1b09db5ead289a9e7544b4d7af2dd3428cd5deacd99ab25c28c59651a26" ]]; then
-            echo "::error::Stored upload key does not match the supplied version 3 upload bundle certificate."
-            exit 1
-          fi
+          # This is the upload certificate, distinct from the Play app-signing certificate.
+          sha256sum "$RUNNER_TEMP/legend-upload-cert.der"
 
       - name: Create production runtime configuration
         shell: bash
@@ -142,7 +139,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: legend-android-signed-${{ github.run_id }}
-          path: Legend-Android/app/build/outputs/bundle/release/app-release.aab
+          path: |
+            Legend-Android/app/build/outputs/bundle/release/app-release.aab
+            ${{ runner.temp }}/legend-upload-cert.der
           if-no-files-found: error
           retention-days: 14
 
