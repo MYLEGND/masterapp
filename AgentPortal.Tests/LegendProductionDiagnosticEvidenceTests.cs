@@ -245,6 +245,23 @@ public sealed class LegendProductionDiagnosticEvidenceTests
         Assert.DoesNotContain("private", JsonSerializer.Serialize(snapshot), StringComparison.OrdinalIgnoreCase);
     }
 
+    [Theory]
+    [InlineData("declared_language_registry")]
+    [InlineData("resolved_language_registry")]
+    public void LanguageRegistryDiagnostic_PreservesTheActualObservedStage(string stage)
+    {
+        using var evidence = new RuntimeEvidence();
+        var fields = RuntimeFields("completed");
+        fields["Stage"] = stage;
+        fields["AuthorityMethod"] = "LegendLanguageRegistry.NormalizeEnabledTranslationLanguageReadOnlyAsync";
+        evidence.CreateLogger("AgentPortal.Services.LegendFounderAiConversationService")
+            .Log(LogLevel.Information, new EventId(0), fields, null, (_, _) => "unused");
+        var record = Assert.Single(evidence.SnapshotDiagnostics().Records);
+        Assert.Equal(stage, record.Stage);
+        Assert.Equal("LegendLanguageRegistry.NormalizeEnabledTranslationLanguageReadOnlyAsync", record.AuthorityMethod);
+        Assert.Equal("Infrastructure/Messaging/LegendConnectLanguageRegistry.cs", record.SourcePath);
+    }
+
     [Fact]
     public void RuntimeSnapshot_RecordListAndCountsCannotBeMutatedByItsConsumer()
     {

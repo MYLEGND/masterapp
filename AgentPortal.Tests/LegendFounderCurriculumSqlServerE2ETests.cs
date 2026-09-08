@@ -5246,7 +5246,7 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
                 "native_inference" or "case_assertions" or "provider_escalation" or "research" or "language_graph" or
                 "source_language_identification" or "source_language_normalization" or "language_candidate_prefilter" or "provider_detection" or
                 "external_response" or "owned_record_classification" or "discourse_observation" or "source_language_detection" or
-                "external_language_detection" or "detected_language_registry" or "language_identification" or "native_response" or "governed_execution" or "founder_section" or "section_prerequisite" or
+                "external_language_detection" or "detected_language_registry" or "declared_language_registry" or "resolved_language_registry" or "language_identification" or "native_response" or "governed_execution" or "founder_section" or "section_prerequisite" or
                 "translation_language_registry" or "translation_pair" or "translation_memory" or "translation_structural" or
                 "translation_context" or "translation_runtime_policy" or "translation_promoted_model" or "translation_provider_observation" or
                 "translation_quota" or "translation_capacity" or "translation_provider" or "translation_capacity_finalization" or
