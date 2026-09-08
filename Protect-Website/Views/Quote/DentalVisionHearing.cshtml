@@ -2634,7 +2634,7 @@ body.dvh-final-step-active .dq-form-panel {
             var coverageType = readSelectedValue('CoverageType') || 'Coverage goal';
             var primaryConcern = readSelectedValue('PrimaryConcern') || 'Priority';
 
-            var signal = 'Your review will focus on benefit fit first, then narrow dental, vision, hearing, and monthly cost tradeoffs.';
+            var signal = 'Your answers suggest this review should focus on benefit fit first, then narrow dental, vision, hearing, and monthly cost tradeoffs.';
             if (currentCoverage === 'No current DVH coverage') {
                 signal = 'No current DVH coverage means the review should start with affordable options and how quickly you want benefits in place.';
             } else if (currentCoverage === 'Employer plan') {
@@ -2904,15 +2904,18 @@ body.dvh-final-step-active .dq-form-panel {
 
             window.LegendQuoteReview.render(postSubmitSlot, {
                 titleId: 'dvhPostSubmitTitle',
-                title: 'Your dental, vision, and hearing review is ready.',
+                title: 'Your dental, vision, and hearing review is ready for the next step.',
                 copy: 'We saved your answers so the conversation can start with your household needs, current coverage, and the plan tradeoffs that matter most.',
-                diagnosis: 'Your review will focus on ' + primaryConcern.toLowerCase() + ', current coverage fit, and what your household needs from its next plan.',
-                implication: 'Compare monthly cost, deductibles, provider access, and the care you expect to use.',
+                diagnosis: 'Your answers suggest this review should focus on ' + primaryConcern.toLowerCase() + ', current coverage fit, and what your household actually needs from the next plan conversation.',
+                implication: 'Monthly cost, deductibles, network fit, and care access usually feel more urgent once appointments or prescriptions are already in motion.',
                 snapshot: reviewSnapshot,
-                nextStep: 'Confirm affordability, deductible comfort, provider access, and whether your current path still makes sense before any recommendation moves forward.',
-                checklist: ['Premium fit', 'Provider access', 'Plan direction'],
-                bookingTitle: 'Choose a time for your review',
-                bookingCopy: 'Review affordability, provider access, and coverage options with ' + agentName + '.',
+                agentHtml: proofCard ? proofCard.outerHTML : '',
+                benefits: ['Review saved', 'Licensed guidance', 'No obligation'],
+                nextTitle: agentName + ' helps turn this review into a clear coverage decision.',
+                nextStep: 'The review can now confirm affordability, deductible comfort, provider access, and whether your current path still makes sense before any recommendation moves forward.',
+                checklist: ['Premium fit', 'Doctor access', 'Plan direction'],
+                bookingTitle: 'Choose a time to keep the review moving.',
+                bookingCopy: 'Schedule while this is fresh so ' + agentName + ' can confirm affordability, provider access, deductible comfort, and what path fits best.',
                 loading: normalized.loading,
                 loadingText: publicBookingLoadingText,
                 showCalendar: showInlineShell,
