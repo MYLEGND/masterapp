@@ -238,6 +238,7 @@ jobs:
         with:
           ref: ${{ github.sha }}
           fetch-depth: 0
+          lfs: true
 
       - name: Capture validated tree identity
         id: tree
@@ -268,6 +269,16 @@ jobs:
           $ffprobe = Join-Path '${{ env.PUBLISH_DIR }}' 'tools/ffmpeg/ffprobe.exe'
           if (-not (Test-Path $ffmpeg)) { throw 'Missing packaged ffmpeg.exe' }
           if (-not (Test-Path $ffprobe)) { throw 'Missing packaged ffprobe.exe' }
+          foreach ($executable in @($ffmpeg, $ffprobe)) {
+            $stream = [System.IO.File]::OpenRead($executable)
+            try {
+              if ($stream.ReadByte() -ne 0x4D -or $stream.ReadByte() -ne 0x5A) {
+                throw "Packaged video runtime is not a Windows executable (possibly an unresolved Git LFS pointer): $executable"
+              }
+            } finally { $stream.Dispose() }
+            & $executable -version
+            if ($LASTEXITCODE -ne 0) { throw "Packaged video runtime cannot run: $executable" }
+          }
 
       - name: Upload exact validated deployment artifact
         uses: actions/upload-artifact@v4
