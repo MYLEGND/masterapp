@@ -5,6 +5,7 @@ import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
 import java.security.KeyStore
 import java.security.MessageDigest
+import java.security.cert.CertificateFactory
 import java.util.Base64
 import java.util.Properties
 
@@ -49,7 +50,18 @@ val sharedLegendAppIcon = rootProject.file(
 )
 val legendBrandAssets = layout.buildDirectory.dir("generated/legend-brand/assets")
 val legendBrandRes = layout.buildDirectory.dir("generated/legend-brand/res")
-val productionMsalRedirectUri = legendValue("LEGEND_MSAL_REDIRECT_URI")
+// Google Play signs installed APKs with this public certificate, not the upload key.
+// Derive the MSAL configuration and manifest from that certificate in every release build.
+val playSigningCertificate = file("signing/play-app-signing.pem")
+val playSigningHash = playSigningCertificate.inputStream().use {
+    Base64.getEncoder().encodeToString(
+        MessageDigest.getInstance("SHA-1").digest(
+            CertificateFactory.getInstance("X.509").generateCertificate(it).encoded,
+        ),
+    )
+}
+val productionMsalRedirectUri =
+    "msauth://$legendApplicationId/${URLEncoder.encode(playSigningHash, StandardCharsets.UTF_8)}"
 
 fun signingCertificateHash(keyStoreFile: File): String? = runCatching {
     val keyStore = KeyStore.getInstance("JKS")
@@ -101,6 +113,7 @@ val generateLegendDebugRuntimeConfiguration by tasks.registering(Sync::class) {
 }
 
 val generateLegendReleaseRuntimeConfiguration by tasks.registering(Sync::class) {
+    inputs.file(playSigningCertificate)
     inputs.file(rootProject.file("legend.properties")).optional()
     from("src/main/legend-template")
     into(legendReleaseRuntimeRoot)
@@ -150,7 +163,7 @@ android {
         applicationId = legendApplicationId
         minSdk = 26
         targetSdk = 37
-        versionCode = 3
+        versionCode = 4
         versionName = "1.0.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"

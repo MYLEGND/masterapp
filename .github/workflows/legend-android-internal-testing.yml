@@ -1,7 +1,6 @@
 name: Deploy Legend Android to Internal Testing
 
-# Production release authority for the existing versionCode 3 candidate.
-# Release 3 publication trigger synchronized.
+# Production release authority for Google Play internal testing.
 
 on:
   push:
@@ -72,7 +71,6 @@ jobs:
           LEGEND_ENTRA_CLIENT_ID: ${{ vars.LEGEND_ENTRA_CLIENT_ID }}
           LEGEND_ENTRA_AUTHORITY: ${{ vars.LEGEND_ENTRA_AUTHORITY }}
           LEGEND_ENTRA_SCOPE: ${{ vars.LEGEND_ENTRA_SCOPE }}
-          LEGEND_MSAL_REDIRECT_URI: ${{ vars.LEGEND_MSAL_REDIRECT_URI }}
         run: |
           test -n "$LEGEND_UPLOAD_KEYSTORE"
           test -n "$LEGEND_KEYSTORE_PASSWORD"
@@ -85,7 +83,6 @@ jobs:
           test -n "$LEGEND_ENTRA_CLIENT_ID"
           test -n "$LEGEND_ENTRA_AUTHORITY"
           test -n "$LEGEND_ENTRA_SCOPE"
-          test -n "$LEGEND_MSAL_REDIRECT_URI"
 
       - name: Restore protected Android upload key
         shell: bash
@@ -103,7 +100,6 @@ jobs:
           LEGEND_ENTRA_CLIENT_ID: ${{ vars.LEGEND_ENTRA_CLIENT_ID }}
           LEGEND_ENTRA_AUTHORITY: ${{ vars.LEGEND_ENTRA_AUTHORITY }}
           LEGEND_ENTRA_SCOPE: ${{ vars.LEGEND_ENTRA_SCOPE }}
-          LEGEND_MSAL_REDIRECT_URI: ${{ vars.LEGEND_MSAL_REDIRECT_URI }}
         run: |
           set -euo pipefail
           umask 077
@@ -113,7 +109,6 @@ jobs:
             printf 'LEGEND_ENTRA_CLIENT_ID=%s\n' "$LEGEND_ENTRA_CLIENT_ID"
             printf 'LEGEND_ENTRA_AUTHORITY=%s\n' "$LEGEND_ENTRA_AUTHORITY"
             printf 'LEGEND_ENTRA_SCOPE=%s\n' "$LEGEND_ENTRA_SCOPE"
-            printf 'LEGEND_MSAL_REDIRECT_URI=%s\n' "$LEGEND_MSAL_REDIRECT_URI"
           } > Legend-Android/legend.properties
 
       - name: Compile, test, lint, and build release bundle
