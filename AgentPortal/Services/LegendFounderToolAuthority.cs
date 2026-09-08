@@ -421,6 +421,20 @@ internal sealed class LegendFounderToolAuthority
 
             case "legend_operational_diagnostics":
             {
+                if (!TryReadOperationalDiagnosticArguments(call.Arguments, out var section, out var language))
+                    return """{"ok":false,"error":"operational_diagnostic_arguments_invalid","stage":"configuration"}""";
+                if (section is not null)
+                {
+                    var selected = await _legend.GetOperationalDiagnosticSectionAsync(
+                        founder, section, language!, cancellationToken);
+                    return SerializeUnbounded(new
+                    {
+                        ok = selected.Stage.State == "available",
+                        error = selected.Stage.State == "available" ? null : selected.Stage.ReasonCode,
+                        selectedSectionPage = selected.Value,
+                        stages = new[] { selected.Stage }
+                    });
+                }
                 // Preserve the governing readiness and capacity authorities
                 // without rebuilding the unrelated all-language dashboard.
                 // The previous broad projection routinely exhausted the
@@ -1240,6 +1254,43 @@ internal sealed class LegendFounderToolAuthority
         return false;
     }
 
+    // The provider's strict schema requires nullable fields. Existing governed
+    // requests with {} retain their aggregate meaning and their receipt identity.
+    private static JsonElement NormalizeOperationalDiagnosticArguments(JsonElement root)
+    {
+        if (root.ValueKind != JsonValueKind.Object || HasDuplicateProperties(root))
+            return root;
+        var values = root.EnumerateObject().ToDictionary(property => property.Name, property => property.Value.Clone());
+        using var nullValue = JsonDocument.Parse("null");
+        values.TryAdd("section", nullValue.RootElement.Clone());
+        values.TryAdd("language", nullValue.RootElement.Clone());
+        return JsonSerializer.SerializeToElement(values);
+    }
+
+    private static bool TryReadOperationalDiagnosticArguments(
+        string arguments, out string? section, out string? language)
+    {
+        section = null;
+        language = null;
+        if (string.IsNullOrWhiteSpace(arguments) || arguments.Length > MaximumNativeReadArgumentsCharacters)
+            return false;
+        try
+        {
+            using var document = JsonDocument.Parse(arguments);
+            var root = NormalizeOperationalDiagnosticArguments(document.RootElement);
+            if (!TryResolveFounderFunctionParameters("legend_operational_diagnostics", out var schema) ||
+                !IsStrictSchemaInstance(schema, root))
+                return false;
+            section = ReadOptionalString(root, "section");
+            language = ReadOptionalString(root, "language");
+            return section is null ? language is null : IsBoundedLanguage(language);
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
+    }
+
     private static bool TryValidateNativeReadArguments(
         LegendConnectReadOnlyContentBindingRequest request,
         JsonElement parameterSchema,
@@ -1256,7 +1307,9 @@ internal sealed class LegendFounderToolAuthority
         try
         {
             using var arguments = JsonDocument.Parse(request.ArgumentsJson);
-            var root = arguments.RootElement;
+            var root = request.ToolName == "legend_operational_diagnostics"
+                ? NormalizeOperationalDiagnosticArguments(arguments.RootElement)
+                : arguments.RootElement;
             if (!IsStrictSchemaInstance(parameterSchema, root))
             {
                 reasonCode = "read_only_content_binding_arguments_invalid";
@@ -1268,6 +1321,8 @@ internal sealed class LegendFounderToolAuthority
             // broader for Founder/provider inspection.
             var valid = request.ToolName switch
             {
+                "legend_operational_diagnostics" =>
+                    TryReadOperationalDiagnosticArguments(request.ArgumentsJson, out _, out _),
                 "legend_language_knowledge" =>
                     IsBoundedLanguage(ReadRequiredString(root, "language")),
                 "legend_search_retained_knowledge" =>
@@ -1483,6 +1538,32 @@ internal sealed class LegendFounderToolAuthority
                         : reasonCode;
                 return false;
             }
+            if (string.Equals(request.ToolName, "legend_operational_diagnostics", StringComparison.Ordinal))
+            {
+                // Stage names are the snake-case form of their serialized
+                // root property. Preserve that existing diagnostic contract:
+                // a fallback value is not evidence, while another available
+                // stage in the same partial response can still supply a fact.
+                var selectedStageName = JsonNamingPolicy.SnakeCaseLower.ConvertName(
+                    request.ValuePath.Split('.')[0]);
+                var selectedStages = root.TryGetProperty("stages", out var stages) &&
+                    stages.ValueKind == JsonValueKind.Array
+                        ? stages.EnumerateArray().Where(stage =>
+                            stage.ValueKind == JsonValueKind.Object &&
+                            !HasDuplicateProperties(stage) &&
+                            stage.TryGetProperty("name", out var name) &&
+                            name.ValueKind == JsonValueKind.String &&
+                            string.Equals(name.GetString(), selectedStageName, StringComparison.Ordinal)).ToArray()
+                        : [];
+                if (selectedStages.Length != 1 ||
+                    !selectedStages[0].TryGetProperty("state", out var state) ||
+                    state.ValueKind != JsonValueKind.String ||
+                    !string.Equals(state.GetString(), "available", StringComparison.Ordinal))
+                {
+                    reasonCode = "read_only_content_binding_source_unavailable";
+                    return false;
+                }
+            }
             if (!TrySelectPropertyPath(root, request.ValuePath, out var value) ||
                 !TryReadBoundedScalar(value, out var scalar))
             {
@@ -1689,12 +1770,25 @@ internal sealed class LegendFounderToolAuthority
                 type = "function",
                 name = "legend_operational_diagnostics",
                 description =
-                    "Read the existing runtime-policy readiness gates, aggregate operational status, provider capacity, and acquisition contract together. Use this before diagnosing a candidate backlog. A nonzero candidate backlog with zero downstream learning events is not by itself a broken handoff: approved candidates are the durable acquisition queue, and BLOCKED/DEGRADED readiness intentionally prevents claims. This is read-only and cannot reset rows, bypass gates, edit code, or deploy.",
+                    "Read the existing runtime-policy readiness gates, aggregate operational status, provider capacity, and acquisition contract together. With null section and language, read aggregate readiness. To inspect existing machine-learning lifecycle rows, select machine-learning-lifecycle and an explicit language; that bounded read skips aggregate readiness. Selected failures are failed observations, not successful aggregate evidence. This does not retrieve historical language-identification traces. Use aggregate readiness before diagnosing a candidate backlog. A nonzero candidate backlog with zero downstream learning events is not by itself a broken handoff: approved candidates are the durable acquisition queue, and BLOCKED/DEGRADED readiness intentionally prevents claims. This is read-only and cannot reset rows, bypass gates, edit code, or deploy.",
                 parameters = new
                 {
                     type = "object",
-                    properties = new { },
-                    required = Array.Empty<string>(),
+                    properties = new
+                    {
+                        section = new
+                        {
+                            type = new[] { "string", "null" },
+                            @enum = new string?[] { "machine-learning-lifecycle", null }
+                        },
+                        language = new
+                        {
+                            type = new[] { "string", "null" },
+                            minLength = 2,
+                            maxLength = 40
+                        }
+                    },
+                    required = new[] { "section", "language" },
                     additionalProperties = false
                 },
                 strict = true
