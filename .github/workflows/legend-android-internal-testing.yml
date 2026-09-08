@@ -64,11 +64,11 @@ jobs:
           LEGEND_KEYSTORE_PASSWORD: ${{ secrets.LEGEND_ANDROID_KEYSTORE_PASSWORD }}
           LEGEND_KEY_ALIAS: ${{ secrets.LEGEND_ANDROID_KEY_ALIAS }}
           LEGEND_KEY_PASSWORD: ${{ secrets.LEGEND_ANDROID_KEY_PASSWORD }}
-          LEGEND_API_BASE_URL: ${{ secrets.LEGEND_API_BASE_URL }}
-          LEGEND_ENTRA_TENANT_ID: ${{ secrets.LEGEND_ENTRA_TENANT_ID }}
-          LEGEND_ENTRA_CLIENT_ID: ${{ secrets.LEGEND_ENTRA_CLIENT_ID }}
-          LEGEND_ENTRA_AUTHORITY: ${{ secrets.LEGEND_ENTRA_AUTHORITY }}
-          LEGEND_ENTRA_SCOPE: ${{ secrets.LEGEND_ENTRA_SCOPE }}
+          LEGEND_API_BASE_URL: ${{ vars.LEGEND_API_BASE_URL }}
+          LEGEND_ENTRA_TENANT_ID: ${{ vars.LEGEND_ENTRA_TENANT_ID }}
+          LEGEND_ENTRA_CLIENT_ID: ${{ vars.LEGEND_ENTRA_CLIENT_ID }}
+          LEGEND_ENTRA_AUTHORITY: ${{ vars.LEGEND_ENTRA_AUTHORITY }}
+          LEGEND_ENTRA_SCOPE: ${{ vars.LEGEND_ENTRA_SCOPE }}
         run: |
           test -n "$LEGEND_UPLOAD_KEYSTORE"
           test -n "$LEGEND_KEYSTORE_PASSWORD"
@@ -88,14 +88,28 @@ jobs:
           printf '%s' "$LEGEND_UPLOAD_KEYSTORE" | base64 --decode > "$RUNNER_TEMP/legend-upload.jks"
           chmod 600 "$RUNNER_TEMP/legend-upload.jks"
 
+      - name: Validate upload keystore before building
+        shell: bash
+        env:
+          LEGEND_KEYSTORE_PASSWORD: ${{ secrets.LEGEND_ANDROID_KEYSTORE_PASSWORD }}
+          LEGEND_KEY_ALIAS: ${{ secrets.LEGEND_ANDROID_KEY_ALIAS }}
+        run: |
+          set -euo pipefail
+          keytool -exportcert -keystore "$RUNNER_TEMP/legend-upload.jks" -storepass:env LEGEND_KEYSTORE_PASSWORD -alias "$LEGEND_KEY_ALIAS" -file "$RUNNER_TEMP/legend-upload-cert.der"
+          fingerprint="$(sha256sum "$RUNNER_TEMP/legend-upload-cert.der" | cut -d ' ' -f 1)"
+          if [[ "$fingerprint" != "d679b1b09db5ead289a9e7544b4d7af2dd3428cd5deacd99ab25c28c59651a26" ]]; then
+            echo "::error::Stored upload key does not match the supplied version 3 upload bundle certificate."
+            exit 1
+          fi
+
       - name: Create production runtime configuration
         shell: bash
         env:
-          LEGEND_API_BASE_URL: ${{ secrets.LEGEND_API_BASE_URL }}
-          LEGEND_ENTRA_TENANT_ID: ${{ secrets.LEGEND_ENTRA_TENANT_ID }}
-          LEGEND_ENTRA_CLIENT_ID: ${{ secrets.LEGEND_ENTRA_CLIENT_ID }}
-          LEGEND_ENTRA_AUTHORITY: ${{ secrets.LEGEND_ENTRA_AUTHORITY }}
-          LEGEND_ENTRA_SCOPE: ${{ secrets.LEGEND_ENTRA_SCOPE }}
+          LEGEND_API_BASE_URL: ${{ vars.LEGEND_API_BASE_URL }}
+          LEGEND_ENTRA_TENANT_ID: ${{ vars.LEGEND_ENTRA_TENANT_ID }}
+          LEGEND_ENTRA_CLIENT_ID: ${{ vars.LEGEND_ENTRA_CLIENT_ID }}
+          LEGEND_ENTRA_AUTHORITY: ${{ vars.LEGEND_ENTRA_AUTHORITY }}
+          LEGEND_ENTRA_SCOPE: ${{ vars.LEGEND_ENTRA_SCOPE }}
         run: |
           set -euo pipefail
           umask 077
