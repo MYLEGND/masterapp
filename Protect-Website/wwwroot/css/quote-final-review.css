@@ -2,8 +2,8 @@
 .quote-review-host { width: 100%; min-width: 0; }
 .quote-review {
     --review-gold: #f3d688;
-    --review-text: #f8fafc;
-    --review-muted: #bbc9dc;
+    --review-text: #fff8e7;
+    --review-muted: rgba(248,250,252,.84);
     width: 100%; min-width: 0; margin: 0;
     box-sizing: border-box;
     color: var(--review-text); text-align: left;
