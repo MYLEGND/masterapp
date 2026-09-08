@@ -1690,6 +1690,11 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
                     "Hello.",
                     declaredSourceLanguageCode: null,
                     expectedEvidenceStandard: "HigherStandard"),
+                ProductionNativeProofCase.Positive(
+                    "automatic-language-native-arithmetic",
+                    "language_routing",
+                    "What is 147 minus 26?",
+                    declaredSourceLanguageCode: null),
                 NativeOnlyProductionIsolationCase()
             };
             foreach (var heldOutCase in heldOutCases)
@@ -2145,6 +2150,14 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
                     Assert.Equal("LegendAi", reply.ResponseAuthority);
                     Assert.Equal("native_response", reply.Stage);
                     Assert.Equal(native.Answer, reply.Message);
+                    if (proofCase.Reference == "automatic-language-native-arithmetic")
+                    {
+                        // Reproduce the live request without teaching its answer.
+                        // This assertion certifies the numeric result only in the
+                        // bare or existing computed-response rendering contract;
+                        // other wording remains unverified, never substring-matched.
+                        Assert.Contains(reply.Message, new[] { "121", "The result is 121." });
+                    }
                     if (proofCase.ExpectedEvidenceStandard is not null)
                     {
                         Assert.Equal(

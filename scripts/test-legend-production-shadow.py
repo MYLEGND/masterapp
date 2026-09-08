@@ -51,7 +51,8 @@ if scope=='canonical_matrix':
  categories=['exact_endpoint','held_out_paraphrase','discourse','cross_family_negative','deduction','uncertainty','diagnosis','planning','audience_constraints','language_routing','native_only_isolation']
  cases=[{'Reference':'case-'+str(i),'Category':cat,'Phase':'execution','Status':'passed','ExpectedNative':i!=10,'NativeSupported':i!=10,'EvidenceCount':1 if i!=10 else 0,'ResponseAuthority':'LegendAi' if i!=10 else 'SystemDiagnostic','Stage':'native_response' if i!=10 else 'native_only_blocked','ProviderClientCount':0,'ElapsedMilliseconds':1} for i,cat in enumerate(categories)]
  cases.append(dict(cases[9], Reference='automatic-language-governed-greeting'))
- record.update(MatrixVersion='lai-027-029-v1',IsolatedReadOnlyMode=True,Categories=categories,CaseResults=cases,ExecutedCases=12,TotalCases=12,FailedCases=0,NativePasses=11,NegativePasses=1,ProductionWriteCommandCount=0,ProductionSaveChangesAttempts=0,ObservationTimeoutSeconds=600)
+ cases.append(dict(cases[9], Reference='automatic-language-native-arithmetic'))
+ record.update(MatrixVersion='lai-027-029-v1',IsolatedReadOnlyMode=True,Categories=categories,CaseResults=cases,ExecutedCases=13,TotalCases=13,FailedCases=0,NativePasses=12,NegativePasses=1,ProductionWriteCommandCount=0,ProductionSaveChangesAttempts=0,ObservationTimeoutSeconds=600)
 elif scope=='observation':
  categories=['learning','machine-learning-lifecycle','governed_cohort','held-out-competing-hypotheses','held-out-discriminating-check','native-only-provider-isolation']
  cases=[{'Category':cat,'Status':'passed','ElapsedMilliseconds':1} for cat in categories]
@@ -103,7 +104,7 @@ else:
 if scope!='provider_resources':
  record.update(DiagnosticsVersion='legend-runtime-diagnostic-v1',ExercisedBoundaries={'InProcessNativeSql':True,'LiveProvider':False,'AuthenticatedHttp':False},SqlFailureCount=0,NotExecutedCases=0,DiagnosticsTruncated=False)
  for item in cases:
-  item['UsesAutomaticLanguageIdentification']=item.get('Reference')=='automatic-language-governed-greeting'
+  item['UsesAutomaticLanguageIdentification']=item.get('Reference') in ('automatic-language-governed-greeting','automatic-language-native-arithmetic')
   item['DiagnosticEvidence']={'SqlSnapshotReference':item.get('Reference',item['Category'])+'/sql','EvidencePrerequisites':{'ActiveExamples':2},
    'StageEvents':{'ObservedEvents':1,'RecordsDropped':0,'Truncated':False,'ExceptionEvents':0,'SqlFailureEvents':0,'Records':[{'Ordinal':1,'SqlErrorNumber':None}]},
    'SqlCommands':{'EventsObserved':1,'SucceededEvents':1,'FailedEvents':0,'CanceledEvents':0,'BlockedEvents':0,'RecordsDropped':0,'Truncated':False,'Records':[{'Ordinal':1,'QueryFingerprint':'a'*64,'Outcome':'succeeded','ElapsedMilliseconds':1,'ExceptionType':None,'HResult':None,'SqlErrorNumber':None}]}}
@@ -116,7 +117,10 @@ if case=='stale_json':record['StartedUtc']=(now-datetime.timedelta(days=1)).isof
 if case=='future_json':record['CompletedUtc']=(now+datetime.timedelta(days=1)).isoformat()
 if case=='provider_call':record['ProviderClientCount']=1
 if case=='external_translation_attempt':record['ExternalTranslationProviderCallAttempts']=1
-if case=='missing_automatic_language_case':record['CaseResults'][-1]['Reference']='different-positive-case'
+if case=='missing_automatic_language_case':record['CaseResults'][-2]['Reference']='different-positive-case'
+if case=='missing_automatic_arithmetic_case':record['CaseResults'][-1]['Reference']='different-arithmetic-case'
+if case=='automatic_arithmetic_mislabeled':record['CaseResults'][-1]['UsesAutomaticLanguageIdentification']=False
+if case=='automatic_arithmetic_not_native':record['CaseResults'][-1]['ExpectedNative']=False
 if case=='empty_lifecycle':record['CaseResults'][1]['Rows']=0
 if case=='wrong_lifecycle_language':record['CaseResults'][1]['LanguageCode']='fr'
 if case=='save_attempt':record['ProductionSaveChangesAttempts']=1
@@ -135,7 +139,7 @@ if case=='false_truncation':record['DiagnosticsTruncated']=True
 if case=='invalid_dropped_count':record['CaseResults'][0]['DiagnosticEvidence']['SqlCommands']['RecordsDropped']=1
 if case=='invalid_sql_fingerprint':record['CaseResults'][0]['DiagnosticEvidence']['SqlCommands']['Records'][0]['QueryFingerprint']='raw SQL'
 if case=='not_executed_case':record['NotExecutedCases']=1
-if case=='automatic_language_bypassed':record['CaseResults'][-1]['UsesAutomaticLanguageIdentification']=False
+if case=='automatic_language_bypassed':record['CaseResults'][-2]['UsesAutomaticLanguageIdentification']=False
 if case=='wrong_exercised_boundaries':record['ExercisedBoundaries']['LiveProvider']=True
 if case=='valid_truncated_diagnostics':
  record['CaseResults'][0]['DiagnosticEvidence']['SqlCommands'].update(EventsObserved=2,SucceededEvents=2,RecordsDropped=1,Truncated=True)
@@ -179,6 +183,7 @@ sha=subprocess.check_output(['git','rev-parse','HEAD'],cwd=repo,text=True).strip
 rows=[]
 cases=['valid_matrix','valid_observation','missing_sql','duplicate_discovery','missing_discovery','discovery_exit','missing_trx','duplicate_trx_results','wrong_trx_method','stale_trx_mtime','stale_trx_content','wrong_sha','wrong_identity','stale_json','future_json','malformed_json','provider_call','save_attempt','missing_category','duplicate_case_reference','matrix_failure','inconsistent_native_case','execution_exit','missing_trx_times','stale_unit_content','wrong_execution_identity','wrong_native_authority','wrong_native_stage','wrong_native_aggregate','preexisting_result','preexisting_trx']
 cases += ['external_translation_attempt','missing_automatic_language_case','empty_lifecycle','wrong_lifecycle_language','missing_founder']
+cases += ['missing_automatic_arithmetic_case','automatic_arithmetic_mislabeled','automatic_arithmetic_not_native']
 cases += ['missing_diagnostics_version','missing_case_diagnostics','swallowed_sql_failure','swallowed_logged_sql_failure','false_truncation','invalid_dropped_count','invalid_sql_fingerprint','not_executed_case','automatic_language_bypassed','wrong_exercised_boundaries','valid_truncated_diagnostics']
 cases += ['valid_resources','resource_wrong_sha','resource_wrong_identity','resource_wrong_authority','resource_wrong_tag','resource_stale_json','resource_future_json','resource_not_configured','resource_failed_boundary','resource_zero_http','resource_write_attempt','resource_false_truncation','resource_invalid_http_status','resource_missing_receipt','resource_missing_discovery','resource_extra_discovery','resource_skipped_test','resource_missing_trx_test','resource_duplicate_trx_test','resource_wrong_test','resource_execution_exit','resource_flag_missing','resource_preexisting_receipt']
 cases += ['resource_canonical_claim','resource_openai_catalog_executed','resource_research_no_receipt']

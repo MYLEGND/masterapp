@@ -655,8 +655,14 @@ public sealed class LegendConnectSemanticSpanGroundingTests
                 (_, unit) => unit.Text)
             .ToArrayAsync();
 
+        const string request = "Please acknowledge the status update.";
+        Assert.False(await db.LegendLanguageTextUnits.AnyAsync(unit => unit.Text == request));
+        var graph = await fixture.Operations.AnalyzeReusableMeaningGraphAsync(request);
+        Assert.True(graph.IsComposed, graph.ReasonCode);
+        Assert.Single(graph.Relations);
+
         var native = await fixture.Operations.TryInferConversationWithDiscourseAsync(
-            "Please acknowledge the status update.",
+            request,
             [],
             new LegendConnectDiscourseStateSnapshot([]));
 
@@ -2980,6 +2986,16 @@ public sealed class LegendConnectSemanticSpanGroundingTests
                 "Let me know you received the rollout notice.", "received", "rollout notice",
                 "The notice is expressly noted.", "The notice", "is", "expressly", "noted")
         };
+        // Each family independently authorizes its request construction with
+        // another subject surface. Recombination must have a shared governed
+        // family; unrelated families' surface authorizations cannot be unioned.
+        // These controls add no result sentence or held-out request endpoint.
+        var (alternateSourceText, alternateSubjectSurface) = family switch
+        {
+            1 => ("For the rollout notice, please confirm receipt after review.", "rollout notice"),
+            2 => ("For the status update, kindly acknowledge receipt after review.", "status update"),
+            _ => ("Indicate whether the project report was received after review.", "project report")
+        };
 
         return new LegendConnectCurriculumBatchSubmission(
             $"response.original-articulation.{family}",
@@ -2998,6 +3014,21 @@ public sealed class LegendConnectSemanticSpanGroundingTests
                             "function", "conversation_function", "receipt_confirmation_request", sourceFunctionSurface),
                         new LegendConnectMeaningNodeSubmission(
                             "subject", "subject", "status_message", sourceSubjectSurface)
+                    ],
+                    [new LegendConnectMeaningRelationSubmission("function", "applies-to", "subject")])),
+                new LegendConnectCurriculumExampleSubmission(
+                    alternateSourceText,
+                    new Dictionary<string, string>
+                    {
+                        ["conversation_function"] = "receipt_confirmation_request",
+                        ["subject"] = "status_message"
+                    },
+                    new LegendConnectMeaningGraphSubmission(
+                    [
+                        new LegendConnectMeaningNodeSubmission(
+                            "function", "conversation_function", "receipt_confirmation_request", sourceFunctionSurface),
+                        new LegendConnectMeaningNodeSubmission(
+                            "subject", "subject", "status_message", alternateSubjectSurface)
                     ],
                     [new LegendConnectMeaningRelationSubmission("function", "applies-to", "subject")])),
                 new LegendConnectCurriculumExampleSubmission(

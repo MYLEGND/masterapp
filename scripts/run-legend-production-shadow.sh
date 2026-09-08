@@ -411,9 +411,11 @@ if os.environ['LEGEND_VALIDATION_SCOPE'] == 'canonical_matrix':
     references = [case['Reference'] for case in cases]
     assert all(isinstance(reference, str) and reference for reference in references)
     assert len(set(references)) == len(references), 'Canonical matrix case references are duplicated'
-    automatic = [case for case in cases if case['Reference'] == 'automatic-language-governed-greeting']
-    assert len(automatic) == 1 and automatic[0]['ExpectedNative'] is True, 'Automatic-language positive coverage is missing'
-    assert automatic[0]['UsesAutomaticLanguageIdentification'] is True
+    for reference in ('automatic-language-governed-greeting', 'automatic-language-native-arithmetic'):
+        automatic = [case for case in cases if case['Reference'] == reference]
+        assert len(automatic) == 1 and automatic[0]['ExpectedNative'] is True, 'Required automatic-language positive coverage is missing'
+        assert automatic[0]['UsesAutomaticLanguageIdentification'] is True
+        assert automatic[0]['Category'] == 'language_routing'
     assert all(type(case['UsesAutomaticLanguageIdentification']) is bool for case in cases)
     validate_native_diagnostics(result, cases)
     assert all(type(case['ExpectedNative']) is bool and type(case['NativeSupported']) is bool for case in cases)
