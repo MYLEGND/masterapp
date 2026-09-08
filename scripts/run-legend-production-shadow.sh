@@ -5,6 +5,13 @@
 # with local guarded storage; it never supplies production SQL proof.
 set -Eeuo pipefail
 
+# The same authority can check input delivery before a costly build.
+readonly mode="${1:-execute}"
+case "$mode" in execute|--check-configuration) ;; *) echo "Unknown runner mode."; exit 2 ;; esac
+export LEGEND_VALIDATION_CONFIGURATION_ONLY=false
+[[ "$mode" != --check-configuration ]] || export LEGEND_VALIDATION_CONFIGURATION_ONLY=true
+export LEGEND_VALIDATION_TEST_PROCESS_STARTED=false
+
 readonly root="${GITHUB_WORKSPACE:-$PWD}/diagnostics/legend-shadow"
 export LEGEND_VALIDATION_SCOPE="${LEGEND_VALIDATION_SCOPE:-canonical_matrix}"
 case "$LEGEND_VALIDATION_SCOPE" in
@@ -49,24 +56,38 @@ root = Path(os.environ['ROOT'])
 failure = os.environ['FAILURE']
 # Configuration observations are presence checks only. Never serialize a
 # credential, connection string, Founder identifier, or raw test exception.
+def input_present(name):
+    return bool(os.environ.get(name, '').strip())
 configuration = {
-    'SelectOnlyConnectionConfigured': bool(os.environ.get('LEGEND_PRODUCTION_READONLY_CONNECTION')),
-    'FounderIdentityConfigured': bool(os.environ.get('LEGEND_PRODUCTION_READONLY_FOUNDER_OID')),
-    'ExternalProviderCredentialPresent': bool(os.environ.get('OPENAI_API_KEY') or os.environ.get('OpenAI__ApiKey')),
-    'AzureCredentialConfigured': bool(os.environ.get('AzureTranslator__Key') or os.environ.get('AZURE_TRANSLATOR_KEY')),
-    'AzureEndpointConfigured': bool(os.environ.get('AzureTranslator__Endpoint')),
+    'ObservationScope': 'current_runner_process',
+    'ProductionConfigurationStatus': 'NOT_INSPECTED',
+    'CredentialStoreStatus': 'NOT_INSPECTED',
+    'EffectiveProviderConfigurationStatus': 'NOT_INSPECTED',
+    'InputPresence': {name: input_present(name) for name in (
+        'LEGEND_PRODUCTION_READONLY_CONNECTION', 'LEGEND_PRODUCTION_READONLY_FOUNDER_OID',
+        'OPENAI_API_KEY', 'OpenAI__ApiKey', 'AzureTranslator__Key',
+        'AZURE_TRANSLATOR_KEY', 'AzureTranslator__Endpoint')},
+    'SqlPrincipalStatus': 'NOT_VERIFIED_BY_INPUT_PRESENCE',
+    'ProductionProviderParity': 'NOT_VERIFIED',
 }
+configuration_only = os.environ['LEGEND_VALIDATION_CONFIGURATION_ONLY'] == 'true'
+process_started = os.environ['LEGEND_VALIDATION_TEST_PROCESS_STARTED'] == 'true'
+
 resource_scope = os.environ['LEGEND_VALIDATION_SCOPE'] == 'provider_resources'
 startup_diagnoses = {
+    'configuration_inputs_available': (
+        'INPUTS_AVAILABLE', 'configuration', 'scripts/run-legend-production-shadow.sh',
+        'Required inputs reached this process. Their validity and SQL permissions remain unverified.',
+        'Build the exact candidate and execute the existing guarded diagnostic.'),
     'not_configured_select_only_credential': (
         'NOT_CONFIGURED', 'configuration',
         '.github/workflows/legend-production-readonly-diagnostic.yml',
-        'Configure LEGEND_PRODUCTION_SELECT_ONLY_CONNECTION in the existing LEGEND-Production-ReadOnly-Validation environment with a principal that satisfies the existing SELECT-only guard.',
+        'Reconcile the existing authorized SELECT-only credential binding with LEGEND_PRODUCTION_SELECT_ONLY_CONNECTION in LEGEND-Production-ReadOnly-Validation. This process received no usable input; existence in Azure or another environment was not inspected. Preserve the SELECT-only principal guard.',
         'Rerun this exact candidate; require successful principal verification and executed SQL cases.'),
     'not_configured_founder_identity': (
         'NOT_CONFIGURED', 'configuration',
         '.github/workflows/legend-production-readonly-diagnostic.yml',
-        'Configure LEGEND_PRODUCTION_READONLY_FOUNDER_OID in the existing validation environment.',
+        'Reconcile the existing Founder identity binding with LEGEND_PRODUCTION_READONLY_FOUNDER_OID in the validation environment. Missing process input does not establish a missing production Founder configuration.',
         'Rerun this exact candidate and verify the configured Founder through the existing authorization authority.'),
     'candidate_source_mismatch': (
         'IDENTITY_MISMATCH', 'candidate_identity', 'scripts/run-legend-production-shadow.sh',
@@ -79,7 +100,7 @@ startup_diagnoses = {
     'exact_test_discovery_failed': (
         'TEST_DISCOVERY', 'test_discovery', 'AgentPortal.Tests/AgentPortal.Tests.csproj',
         'Inspect the private discovery log and restored test-runner configuration for the exact requested test.',
-        'Require exactly one discovered and executed diagnostic entrypoint.'),
+        'Require exactly the selected discovered and executed diagnostic entrypoints.'),
     'observation_process_deadline_exceeded': (
         'DEADLINE_EXCEEDED', 'diagnostic_execution', 'scripts/run-legend-production-shadow.sh',
         'Inspect the last recorded runtime stage and SQL duration before changing the responsible operation; a timeout alone does not identify its cause.',
@@ -102,8 +123,12 @@ try:
         evidence = candidate
 except (OSError, ValueError):
     pass
+if not process_started or configuration_only:
+    evidence = None
 resource_evidence = {}
-if resource_scope:
+resource_http_calls = {}
+resource_reasons = {}
+if resource_scope and process_started and not configuration_only:
     evidence = None
     for resource in ('azure', 'research', 'openai'):
         try:
@@ -111,14 +136,18 @@ if resource_scope:
             if (receipt.get('CandidateSha') == os.environ.get('LEGEND_VALIDATION_CANDIDATE_SHA')
                     and receipt.get('RunIdentity') == os.environ.get('LEGEND_VALIDATION_RUN_IDENTITY')
                     and receipt.get('Resource') == resource):
+                resource_reasons[resource] = receipt.get('Reason') if receipt.get('Reason') in (
+                    'resource_configuration_missing', 'candidate_identity_missing', 'run_identity_missing',
+                    'resource_probe_failed', 'resource_boundary_observed_not_production_data_proof') else 'unclassified'
+                resource_http_calls[resource] = receipt.get('HttpCallCount') if type(receipt.get('HttpCallCount')) is int and receipt['HttpCallCount'] >= 0 else None
                 resource_evidence[resource] = receipt.get('Status') if receipt.get('Status') in (
                     'OBSERVED', 'FAILED', 'NOT_CONFIGURED') else 'INVALID_EVIDENCE'
         except (OSError, ValueError, AttributeError):
             pass
     if any(value == 'NOT_CONFIGURED' for value in resource_evidence.values()):
-        classification, stage = 'NOT_CONFIGURED', 'configuration'
+        classification, stage = 'NOT_CONFIGURED', 'resource_prerequisite'
         target = '.github/workflows/legend-production-readonly-diagnostic.yml'
-        action = 'Configure only the explicitly selected missing provider settings in the existing validation environment; inspect each resource receipt.'
+        action = 'Inspect the resource prerequisite reason before choosing a repair. For resource_configuration_missing, reconcile selected input bindings with existing authorized settings; identity failures require matching candidate/run identity. Production settings were not inspected.'
         verification = 'Rerun all three existing resource probes on this exact candidate; require actual boundary calls and zero canonical writes.'
     elif failure != 'none' and resource_evidence:
         target = 'scripts/run-legend-production-shadow.sh'
@@ -134,7 +163,7 @@ summary = {
     'StartedUtc': os.environ['STARTED'],
     'CompletedUtc': datetime.datetime.now(datetime.timezone.utc).isoformat(),
     'ElapsedSeconds': int(time.time()) - int(os.environ['STARTED_SECONDS']),
-    'Coverage': (['azure', 'research', 'openai'] if resource_scope else
+    'RequestedCoverage': (['azure', 'research', 'openai'] if resource_scope else
                 ['exact_endpoint', 'held_out_paraphrase', 'discourse', 'cross_family_negative',
                   'deduction', 'uncertainty', 'diagnosis', 'planning', 'audience_constraints',
                   'language_routing', 'native_only_isolation']
@@ -144,28 +173,36 @@ summary = {
     'ReleaseProof': False,
     'ResourceReceipts': resource_evidence,
     'Configuration': configuration,
+    'ConfigurationOnly': configuration_only,
+    'TestProcessStarted': process_started,
+    'ResourceHttpCallCounts': resource_http_calls,
+    'ResourcePrerequisiteReasons': resource_reasons,
+    'EvidenceValidation': 'ACCEPTED' if os.environ['STATUS'] == 'passed' else 'NOT_ACCEPTED',
+    'ReceiptObservationsAreVerified': os.environ['STATUS'] == 'passed',
     'FailureDiagnosis': {
         'Classification': classification, 'ObservedStage': stage, 'ObservedReason': failure,
         'RepairTarget': target, 'RecommendedAction': action, 'NextVerification': verification,
-        'RootCauseStatus': 'confirmed_missing_configuration' if classification == 'NOT_CONFIGURED'
+        'RootCauseStatus': ('reported_resource_prerequisite_unavailable' if resource_scope else 'confirmed_missing_runner_input') if classification == 'NOT_CONFIGURED'
+            else 'input_presence_only' if configuration_only and failure == 'configuration_inputs_available'
             else 'no_failure_observed' if failure == 'none' else 'observed_failure_only',
         'ProposedCodeFixVerified': False,
     },
     'MatchingExecutionEvidenceAvailable': bool(resource_evidence) if resource_scope else evidence is not None,
     'DetailedEvidenceFile': 'observation.json' if evidence is not None else None,
     'DetailedEvidenceFiles': ['resource-' + resource + '.json' for resource in resource_evidence],
-    'ExecutedCases': (sum(status in ('OBSERVED', 'FAILED') for status in resource_evidence.values())
-        if resource_scope else evidence.get('ExecutedCases') if evidence is not None else 0),
+    'ExecutedCases': (None if resource_scope and process_started else
+        evidence.get('ExecutedCases') if evidence is not None else None if process_started else 0),
     'ProductionSqlExecutionVerified': bool(not resource_scope and os.environ['STATUS'] == 'passed' and evidence is not None
         and evidence.get('SqlPrincipalVerified') is True
         and isinstance(evidence.get('SelectCommandCount'), int)
         and evidence['SelectCommandCount'] > 0),
     'ResourceCoverage': {
         'ProductionSqlNative': 'NOT_EXECUTED_RESOURCE_SCOPE' if resource_scope else 'NOT_CONFIGURED' if classification == 'NOT_CONFIGURED'
-            else 'SEE_MATCHING_EXECUTION_EVIDENCE' if evidence is not None else 'NOT_EXECUTED',
-        'OpenAiEscalation': resource_evidence.get('openai', 'NOT_EXECUTED') if resource_scope else 'NOT_EXECUTED_NATIVE_ONLY_SCOPE',
-        'AzureTranslation': resource_evidence.get('azure', 'NOT_EXECUTED') if resource_scope else 'NOT_EXECUTED_NATIVE_ONLY_SCOPE',
-        'ExternalResearch': resource_evidence.get('research', 'NOT_EXECUTED') if resource_scope else 'NOT_EXECUTED_NATIVE_ONLY_SCOPE',
+            else 'SEE_MATCHING_EXECUTION_EVIDENCE' if evidence is not None else 'UNKNOWN_NO_MATCHING_EVIDENCE' if process_started else 'NOT_EXECUTED',
+        'OpenAiCatalogAcceptance': resource_evidence.get('openai', 'UNKNOWN_NO_MATCHING_EVIDENCE' if process_started else 'NOT_EXECUTED') if resource_scope else 'NOT_EXECUTED_NATIVE_ONLY_SCOPE',
+        'OpenAiEscalation': 'NOT_EXERCISED_BY_CATALOG_CANARY' if resource_scope else 'NOT_EXECUTED_NATIVE_ONLY_SCOPE',
+        'AzureTranslation': resource_evidence.get('azure', 'UNKNOWN_NO_MATCHING_EVIDENCE' if process_started else 'NOT_EXECUTED') if resource_scope else 'NOT_EXECUTED_NATIVE_ONLY_SCOPE',
+        'ExternalResearch': resource_evidence.get('research', 'UNKNOWN_NO_MATCHING_EVIDENCE' if process_started else 'NOT_EXECUTED') if resource_scope else 'NOT_EXECUTED_NATIVE_ONLY_SCOPE',
         'ProductionLearningWrites': 'NOT_EXECUTED_RESOURCE_SCOPE' if resource_scope else 'NOT_EXECUTED_SELECT_ONLY_SCOPE',
         'AuthenticatedHttp': 'NOT_EXECUTED_IN_PROCESS_SCOPE',
     },
@@ -185,13 +222,20 @@ if [[ "$LEGEND_VALIDATION_SCOPE" == 'provider_resources' ]]; then
   [[ "${LEGEND_RESOURCE_DIAGNOSTICS_REQUIRED:-}" == 'true' ]]
 else
 failure='not_configured_select_only_credential'
-[[ -n "${LEGEND_PRODUCTION_READONLY_CONNECTION:-}" ]]
+[[ "${LEGEND_PRODUCTION_READONLY_CONNECTION:-}" =~ [^[:space:]] ]]
 failure='not_configured_founder_identity'
-[[ -n "${LEGEND_PRODUCTION_READONLY_FOUNDER_OID:-}" ]]
+[[ "${LEGEND_PRODUCTION_READONLY_FOUNDER_OID:-}" =~ [^[:space:]] ]]
 failure='required_observation_not_enabled'
 [[ "${LEGEND_PRODUCTION_OBSERVATION_REQUIRED:-}" == 'true' ]]
 failure='provider_credential_present'
 [[ -z "${OPENAI_API_KEY:-}" && -z "${OpenAI__ApiKey:-}" ]]
+fi
+if [[ "$mode" == --check-configuration ]]; then
+  failure='configuration_check_requires_native_scope'
+  [[ "$LEGEND_VALIDATION_SCOPE" != provider_resources ]]
+  failure='configuration_inputs_available'
+  status='inputs_available'
+  exit 0
 fi
 failure='stale_observation_evidence'
 [[ ! -e "$root/private/observation.trx" ]]
@@ -219,6 +263,7 @@ assert sorted(discovered) == sorted(expected), 'Discovery selected unexpected te
 PY
 
 failure='observation_execution_failed'
+export LEGEND_VALIDATION_TEST_PROCESS_STARTED=true
 set +e
 timeout --kill-after=5s "${stage_budget}s" dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj \
   -c Release --no-build --nologo --filter "$test_filter" \

@@ -36,12 +36,52 @@ dotnet build AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-restore 
 bash scripts/run-legend-production-shadow.sh
 ```
 
-The existing validation environment supplies the selected credentials. Never
+The existing validation workflow references selected credentials in
+`LEGEND-Production-ReadOnly-Validation`. A reference does not prove that the
+secret exists or is accessible to the job. Never
 paste credential values into a report or replace the SELECT-only principal with
-the application's write-capable connection. A missing configuration result is
-`NOT_CONFIGURED`, not a successful production test. Source revision, executed
+the application's write-capable connection. A missing input result is
+`NOT_CONFIGURED` for the current diagnostic process. It does not establish that
+production configuration or a secret is absent. Source revision, executed
 assembly revision, run identity, receipt freshness, and actual test execution
 must agree.
+
+## Configuration provenance and early checks
+
+The existing runner accepts `--check-configuration` for native scopes. The
+workflow runs it before restore/build/regression. Missing SQL or Founder input
+fails immediately; available inputs produce `Status: inputs_available`, zero
+executed cases, and no SQL or release proof. Provider probes continue to own
+provider prerequisite resolution. Credentials remain confined to their selected
+steps. A failed preflight leaves required execution stages skipped and the final
+gate failed.
+
+| Consumer | Existing source reference | What is established |
+| --- | --- | --- |
+| Isolated SQL diagnostic | `LEGEND-Production-ReadOnly-Validation` / `LEGEND_PRODUCTION_SELECT_ONLY_CONNECTION` | Whether the selected runner received a nonblank value; SQL permissions require the actual principal guard. |
+| Isolated Founder identity | Same environment / `LEGEND_PRODUCTION_READONLY_FOUNDER_OID` | Whether the selected runner received a nonblank value; Founder authorization requires execution. |
+| Provider diagnostic | Same environment / `OPENAI_API_KEY`, `AZURE_TRANSLATOR_ENDPOINT`, `AZURE_TRANSLATOR_KEY`, `AZURE_TRANSLATOR_REGION` | Selected workflow references only; individual probe receipts establish effective prerequisite and boundary outcomes. |
+| Existing production verification | `Production` environment, Azure App Service settings including `MasterAppDb` | Separate configuration authority. A successful production check cannot establish access or SELECT-only privileges in the isolated diagnostic. |
+
+Commit `9fdb28a055efd68133f562afb3aa4eee639592de` changed the isolated diagnostic
+from the production Azure resolver to the dedicated environment and secret
+references while adding the contained-user SELECT-only guard. Do not infer that
+an existing production connection satisfies that guard or recreate credentials
+merely because the isolated runner received empty inputs.
+
+`Configuration.InputPresence` contains booleans only, scoped to the current
+process. `ProductionConfigurationStatus` and `CredentialStoreStatus` remain
+`NOT_INSPECTED`. Provider alias presence does not identify the effective setting
+selected by its resolver. Production provider configuration parity remains
+`NOT_VERIFIED`.
+
+The workflow places the existing sanitized transcript and runner summary in the
+Actions job summary. Use `RequestedCoverage` for the requested catalog,
+`TestProcessStarted` for process launch, and `EvidenceValidation` for acceptance
+by the existing strict validator. Failed-run receipts are reported observations,
+not accepted proof. Unknown execution counts are null; resource HTTP counts are
+separate from test or SQL case counts. OpenAI catalog acceptance is explicitly
+separate from end-to-end escalation.
 
 ## Read a failure
 
@@ -67,7 +107,7 @@ Use `FailureDiagnosis` together with `DiagnosticEvidence`:
 
 | Observed result | Required next action |
 | --- | --- |
-| Missing selected configuration | Configure that named input, then rerun the exact candidate. No inference was exercised. |
+| Missing selected input | Reconcile the named workflow binding with the existing authorized configuration and rerun. Production configuration was not inspected. No inference was exercised. |
 | SQL command or row-materialization failure | Use the captured error, query fingerprint, and owning stage to reproduce the failing query. Do not infer a missing column or timeout cause from an HTTP 503 alone. |
 | No matching anchors, no eligible nodes, or missing slot declarations | Inspect the recorded admission prerequisite and teach through the existing governed curriculum path. Do not insert a held-out answer. |
 | Unknown meaning components or unsupported graph relations | Repair the demonstrated grounding/relationship prerequisite; later calculation or planning has not yet been tested by that failure. |

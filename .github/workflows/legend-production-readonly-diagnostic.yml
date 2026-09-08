@@ -1,7 +1,7 @@
 name: LEGEND candidate read-only production observation
 
 # PR #31 remains the sole isolated candidate validation owner. This workflow
-# collects bounded SQL observation; production proof lives only in
+# collects bounded SQL and selected provider observations; production proof lives only in
 # agentportal-production-deploy.yml. It cannot merge, deploy or claim a live SHA.
 on:
   push:
@@ -62,13 +62,32 @@ jobs:
           git diff --quiet HEAD --
           mkdir -p diagnostics/legend-shadow
 
+      - name: Check native diagnostic input delivery before building
+        id: configuration
+        if: env.LEGEND_VALIDATION_SCOPE != 'provider_resources'
+        shell: bash
+        continue-on-error: true
+        env:
+          LEGEND_PRODUCTION_READONLY_CONNECTION: ${{ secrets.LEGEND_PRODUCTION_SELECT_ONLY_CONNECTION }}
+          LEGEND_PRODUCTION_READONLY_FOUNDER_OID: ${{ secrets.LEGEND_PRODUCTION_READONLY_FOUNDER_OID }}
+          LEGEND_PRODUCTION_OBSERVATION_REQUIRED: 'true'
+          OPENAI_API_KEY: ''
+          OpenAI__ApiKey: ''
+        run: |
+          set -Eeuo pipefail
+          export LEGEND_VALIDATION_NONCE="$(python3 -c 'import uuid; print(uuid.uuid4())')"
+          # Presence is scoped to this step, not the Production environment or Azure.
+          bash scripts/run-legend-production-shadow.sh --check-configuration
+
       - name: Set up .NET
+        if: steps.configuration.outcome == 'success' || env.LEGEND_VALIDATION_SCOPE == 'provider_resources'
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: ${{ env.DOTNET_VERSION }}
 
       - name: Restore test project
         id: restore
+        if: steps.configuration.outcome == 'success' || env.LEGEND_VALIDATION_SCOPE == 'provider_resources'
         shell: bash
         continue-on-error: true
         run: dotnet restore AgentPortal.Tests/AgentPortal.Tests.csproj --nologo
@@ -80,7 +99,7 @@ jobs:
         continue-on-error: true
         run: dotnet build AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-restore --nologo -p:SourceRevisionId="$LEGEND_VALIDATION_CANDIDATE_SHA"
 
-      - name: Run complete predeployment regression suite
+      - name: Run project regression suite (live resources require selected diagnostics)
         id: regression
         if: steps.build.outcome == 'success'
         shell: bash
@@ -134,6 +153,7 @@ jobs:
         if: always()
         shell: bash
         env:
+          CONFIGURATION_OUTCOME: ${{ steps.configuration.outcome }}
           RESTORE_OUTCOME: ${{ steps.restore.outcome }}
           BUILD_OUTCOME: ${{ steps.build.outcome }}
           REGRESSION_OUTCOME: ${{ steps.regression.outcome }}
@@ -149,6 +169,21 @@ jobs:
               'Authority': 'non-authoritative', 'DeployedSha': 'unavailable',
               'CandidateSha': os.environ['LEGEND_VALIDATION_CANDIDATE_SHA'],
               'WorkflowSha': os.environ['LEGEND_VALIDATION_WORKFLOW_SHA'],
+              'ConfigurationPreflight': os.environ['CONFIGURATION_OUTCOME'],
+              'ConfigurationSource': {
+                  'EnvironmentReference': 'LEGEND-Production-ReadOnly-Validation',
+                  'SourceKind': 'github_secret_expression',
+                  'SecretStoreInspected': False, 'AzureConfigurationInspected': False,
+                  'InputReferences': ({
+                      'LEGEND_PRODUCTION_READONLY_CONNECTION': 'LEGEND_PRODUCTION_SELECT_ONLY_CONNECTION',
+                      'LEGEND_PRODUCTION_READONLY_FOUNDER_OID': 'LEGEND_PRODUCTION_READONLY_FOUNDER_OID',
+                  } if os.environ['LEGEND_VALIDATION_SCOPE'] != 'provider_resources' else {
+                      'OpenAI__ApiKey': 'OPENAI_API_KEY',
+                      'AzureTranslator__Endpoint': 'AZURE_TRANSLATOR_ENDPOINT',
+                      'AzureTranslator__Key': 'AZURE_TRANSLATOR_KEY',
+                      'AzureTranslator__Region': 'AZURE_TRANSLATOR_REGION',
+                  }),
+              },
               'Restore': os.environ['RESTORE_OUTCOME'], 'Build': os.environ['BUILD_OUTCOME'],
               'Regression': os.environ['REGRESSION_OUTCOME'], 'Observation': os.environ['DIAGNOSTIC_OUTCOME'],
               'ProviderResources': os.environ['RESOURCE_OUTCOME'],
@@ -156,6 +191,17 @@ jobs:
               'ReleaseProof': False,
           }
           (root / 'transcript.json').write_text(json.dumps(transcript, indent=2), encoding='utf-8')
+          report = root / 'summary.json'
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a', encoding='utf-8') as output:
+              output.write('## LEGEND diagnostic evidence\n\n')
+              output.write('Candidate: `' + os.environ['LEGEND_VALIDATION_CANDIDATE_SHA'] + '`\n\n')
+              output.write('Configuration observations apply only to the selected diagnostic process. '
+                           'Production and credential-store configuration were not inspected.\n\n')
+              output.write('```json\n' + json.dumps(transcript, indent=2) + '\n```\n')
+              if report.exists():
+                  output.write('```json\n' + json.dumps(json.loads(report.read_text()), indent=2) + '\n```\n')
+              else:
+                  output.write('No runner summary exists: no production execution is established.\n')
           PY
 
       - name: Upload sanitized diagnostic transcript
@@ -179,6 +225,7 @@ jobs:
         if: always()
         shell: bash
         env:
+          CONFIGURATION_OUTCOME: ${{ steps.configuration.outcome }}
           RESTORE_OUTCOME: ${{ steps.restore.outcome }}
           BUILD_OUTCOME: ${{ steps.build.outcome }}
           REGRESSION_OUTCOME: ${{ steps.regression.outcome }}
@@ -189,6 +236,10 @@ jobs:
           selected_outcome="$DIAGNOSTIC_OUTCOME"
           if [[ "$LEGEND_VALIDATION_SCOPE" == 'provider_resources' ]]; then
             selected_outcome="$RESOURCE_OUTCOME"
+          fi
+          if [[ "$LEGEND_VALIDATION_SCOPE" != 'provider_resources' && "$CONFIGURATION_OUTCOME" != 'success' ]]; then
+            echo 'Diagnostic input delivery failed; production configuration was not inspected. See the diagnostic evidence summary.'
+            exit 1
           fi
           for outcome in "$RESTORE_OUTCOME" "$BUILD_OUTCOME" "$REGRESSION_OUTCOME" "$selected_outcome"; do
             if [[ "$outcome" != 'success' ]]; then

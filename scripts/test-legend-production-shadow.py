@@ -63,7 +63,7 @@ else:
  for resource in ('azure','research','openai'):
   receipt={'CandidateSha':record['CandidateSha'],'RunIdentity':record['RunIdentity'],
    'Authority':'NonAuthoritativeResourceBoundaryDiagnostic','Environment':'LocalInMemoryObservabilityWithLiveProvider',
-   'Resource':resource,'Status':'OBSERVED','StartedUtc':stamp,'CompletedUtc':stamp,'CredentialConfigured':True,'EndpointConfigured':True,
+   'Resource':resource,'Status':'OBSERVED','Reason':'resource_boundary_observed_not_production_data_proof','StartedUtc':stamp,'CompletedUtc':stamp,'CredentialConfigured':True,'EndpointConfigured':True,
    'CanonicalWriteAttempts':0,'LocalObservabilityWrites':0,'ElapsedMilliseconds':1,'HttpCallCount':1,'HttpCallsDropped':0,
    'HttpCalls':[{'Client':resource,'StatusCode':200,'ElapsedMilliseconds':1}]}
   outcome={'Serving':'NonServing','Canonical':'NonCanonical','Provenance':'ProviderDerived'}
@@ -96,6 +96,7 @@ else:
    if case=='resource_future_json':receipt['CompletedUtc']=(now+datetime.timedelta(days=1)).isoformat()
    if case=='resource_not_configured':receipt.update(Status='NOT_CONFIGURED',CredentialConfigured=False,HttpCallCount=0,HttpCalls=[])
    if case=='resource_failed_boundary':receipt['Status']='FAILED'
+   if case=='resource_pre_http_failure':receipt.update(Status='FAILED',HttpCallCount=0,HttpCalls=[])
    if case=='resource_zero_http':receipt.update(HttpCallCount=0,HttpCalls=[])
    if case=='resource_write_attempt':receipt['CanonicalWriteAttempts']=1
    if case=='resource_false_truncation':receipt['HttpCallsDropped']=1
@@ -188,6 +189,7 @@ cases += ['missing_diagnostics_version','missing_case_diagnostics','swallowed_sq
 cases += ['valid_resources','resource_wrong_sha','resource_wrong_identity','resource_wrong_authority','resource_wrong_tag','resource_stale_json','resource_future_json','resource_not_configured','resource_failed_boundary','resource_zero_http','resource_write_attempt','resource_false_truncation','resource_invalid_http_status','resource_missing_receipt','resource_missing_discovery','resource_extra_discovery','resource_skipped_test','resource_missing_trx_test','resource_duplicate_trx_test','resource_wrong_test','resource_execution_exit','resource_flag_missing','resource_preexisting_receipt']
 cases += ['resource_canonical_claim','resource_openai_catalog_executed','resource_research_no_receipt']
 cases += ['resource_unknown_research_state','resource_no_accepted_http','resource_missing_stages','observation_missing_diagnostics','observation_swallowed_sql_failure','observation_missing_preflight']
+cases += ['configuration_available', 'configuration_preexisting_matching_receipt', 'configuration_missing_sql', 'configuration_whitespace_sql', 'configuration_whitespace_founder', 'configuration_provider_forbidden', 'whitespace_sql', 'whitespace_founder', 'resource_alias_presence', 'resource_pre_http_failure']
 for case in cases:
  workspace=root/case;workspace.mkdir()
  if case in ('preexisting_result','preexisting_trx'):
@@ -203,10 +205,40 @@ for case in cases:
 'LEGEND_PRODUCTION_READONLY_FOUNDER_OID':'' if case=='missing_founder' or resource_scope else 'SIMULATED-NOT-A-FOUNDER','LEGEND_PRODUCTION_OBSERVATION_REQUIRED':'true',
 'LEGEND_RESOURCE_DIAGNOSTICS_REQUIRED':'' if case=='resource_flag_missing' else 'true',
 'OPENAI_API_KEY':'SIMULATED-KEY' if resource_scope else '', 'OpenAI__ApiKey':'','SIMULATED_CASE':case,'LEGEND_VALIDATION_SCOPE':'provider_resources' if resource_scope else 'observation' if case.startswith('observation_') or case in ('valid_observation','empty_lifecycle','wrong_lifecycle_language') else 'canonical_matrix'}
- result=subprocess.run(['bash',str(repo/'scripts/run-legend-production-shadow.sh')],cwd=repo,env=env,capture_output=True,text=True,timeout=8)
+ if case in ('configuration_missing_sql','configuration_whitespace_sql','whitespace_sql'):
+  env['LEGEND_PRODUCTION_READONLY_CONNECTION']='' if case=='configuration_missing_sql' else ' \t\n'
+ if case in ('configuration_whitespace_founder','whitespace_founder'):
+  env['LEGEND_PRODUCTION_READONLY_FOUNDER_OID']=' \t\n'
+ if case=='configuration_provider_forbidden':env['OPENAI_API_KEY']='SIMULATED-FORBIDDEN'
+ if case=='resource_alias_presence':
+  env.update(OpenAI__ApiKey='   ', AzureTranslator__Key='   ', AZURE_TRANSLATOR_KEY='SIMULATED-AZURE-ALIAS')
+ if case=='configuration_preexisting_matching_receipt':
+  old=workspace/'diagnostics/legend-shadow/observation.json';old.parent.mkdir(parents=True)
+  old.write_text(json.dumps({'CandidateSha':sha,'RunIdentity':'local:0:'+env['LEGEND_VALIDATION_NONCE'],'ExecutedCases':13}))
+ command=['bash',str(repo/'scripts/run-legend-production-shadow.sh')]
+ if case.startswith('configuration_'):command.append('--check-configuration')
+ result=subprocess.run(command,cwd=repo,env=env,capture_output=True,text=True,timeout=8)
  summary_path=workspace/'diagnostics/legend-shadow/summary.json'
  summary=json.loads(summary_path.read_text()) if summary_path.exists() else {}
- if case in ('missing_sql','missing_founder'):
+ assert summary['Configuration']['ObservationScope']=='current_runner_process'
+ assert summary['Configuration']['ProductionConfigurationStatus']=='NOT_INSPECTED'
+ assert summary['Configuration']['CredentialStoreStatus']=='NOT_INSPECTED'
+ assert summary['Configuration']['EffectiveProviderConfigurationStatus']=='NOT_INSPECTED'
+ assert summary['Configuration']['SqlPrincipalStatus']=='NOT_VERIFIED_BY_INPUT_PRESENCE'
+ assert 'Coverage' not in summary and summary['RequestedCoverage']
+ assert not any(value in json.dumps(summary) for value in ('SIMULATED-NOT-A-SQL-CONNECTION','SIMULATED-NOT-A-FOUNDER','SIMULATED-KEY','SIMULATED-FORBIDDEN','SIMULATED-AZURE-ALIAS'))
+ if case.startswith('configuration_'):
+  assert summary['ConfigurationOnly'] is True and summary['TestProcessStarted'] is False
+  assert summary['ExecutedCases']==0 and summary['ProductionSqlExecutionVerified'] is False
+  assert summary['MatchingExecutionEvidenceAvailable'] is False
+  assert summary['ResourceCoverage']['ProductionSqlNative']!='SEE_MATCHING_EXECUTION_EVIDENCE'
+  assert summary['EvidenceValidation']=='NOT_ACCEPTED' and summary['Status']!='passed'
+  assert not (workspace/'diagnostics/legend-shadow/private/executed.marker').exists()
+ if case=='configuration_available':assert summary['Status']=='inputs_available'
+ if case in ('whitespace_sql','configuration_whitespace_sql'):
+  assert summary['Configuration']['InputPresence']['LEGEND_PRODUCTION_READONLY_CONNECTION'] is False
+ if case in ('missing_sql','missing_founder','whitespace_sql','whitespace_founder','configuration_missing_sql','configuration_whitespace_sql','configuration_whitespace_founder'):
+  assert summary['FailureDiagnosis']['RootCauseStatus']=='confirmed_missing_runner_input'
   assert summary['FailureDiagnosis']['Classification']=='NOT_CONFIGURED'
   assert summary['ExecutedCases']==0 and summary['ProductionSqlExecutionVerified'] is False
   assert summary['FailureDiagnosis']['ProposedCodeFixVerified'] is False
@@ -214,11 +246,21 @@ for case in cases:
  if resource_scope:
   assert summary['ProductionSqlExecutionVerified'] is False and summary['ReleaseProof'] is False
   assert summary['ResourceCoverage']['ProductionSqlNative']=='NOT_EXECUTED_RESOURCE_SCOPE'
-  if case=='valid_resources':assert summary['ResourceReceipts']=={'azure':'OBSERVED','research':'OBSERVED','openai':'OBSERVED'}
+  if case=='valid_resources':
+   assert summary['ResourceReceipts']=={'azure':'OBSERVED','research':'OBSERVED','openai':'OBSERVED'}
+   assert set(summary['ResourcePrerequisiteReasons'].values())=={'resource_boundary_observed_not_production_data_proof'}
   if case=='resource_not_configured':
    assert summary['ResourceReceipts']['azure']=='NOT_CONFIGURED'
    assert (workspace/'diagnostics/legend-shadow/private/executed.marker').exists()
- expected=0 if case.startswith('valid_') else 1
+ if case=='resource_alias_presence':
+  assert summary['Configuration']['InputPresence']['AzureTranslator__Key'] is False
+  assert summary['Configuration']['InputPresence']['AZURE_TRANSLATOR_KEY'] is True
+ if case in ('resource_failed_boundary','resource_pre_http_failure','resource_zero_http','resource_not_configured'):
+  assert summary['ExecutedCases'] is None and summary['EvidenceValidation']=='NOT_ACCEPTED'
+ if case=='resource_missing_receipt':assert summary['ResourceCoverage']['AzureTranslation']=='UNKNOWN_NO_MATCHING_EVIDENCE'
+ if case=='malformed_json':assert summary['ResourceCoverage']['ProductionSqlNative']=='UNKNOWN_NO_MATCHING_EVIDENCE'
+ if case=='resource_pre_http_failure':assert summary['ResourceHttpCallCounts']['azure']==0
+ expected=0 if case.startswith('valid_') or case in ('configuration_available','configuration_preexisting_matching_receipt','resource_alias_presence') else 1
  rows.append({'Case':case,'Expected':'pass' if expected==0 else 'fail','Exit':result.returncode,'Status':summary.get('Status'),'FailureCode':summary.get('FailureCode'),'MatchesExpectation':(result.returncode==0)==(expected==0),'SimulatedTestProcessInvoked':(workspace/'diagnostics/legend-shadow/private/executed.marker').exists()})
  print(json.dumps(rows[-1]))
 (root/'simulation-report.json').write_text(json.dumps({'SimulationOnly':True,'SourceSha':sha,'Cases':rows},indent=2))
