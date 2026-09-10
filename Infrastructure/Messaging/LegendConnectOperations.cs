@@ -396,8 +396,32 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
             string input,
             string sourceLanguageCode,
             LegendConnectNativeInferenceSnapshot? internalInference,
-            CancellationToken cancellationToken = default)
+            CancellationToken cancellationToken = default,
+            LegendConnectExternalProviderPolicy? providerPolicy = null)
     {
+        // Internet research is an external boundary. A native-only request may
+        // not be routed to it, so the decision is refused here rather than
+        // being refused later by an unavailable transport.
+        if (LegendConnectExternalProviderPolicy.Resolve(providerPolicy)
+            .ForbidsExternalProviders)
+        {
+            return new LegendConnectResearchNeededDecision(
+                ResearchRequired: false,
+                LegendConnectResearchNeed.NotResearchable,
+                "native_only_external_research_forbidden",
+                LegendConnectResearchAccessClass.PublicReadOnly,
+                sourceLanguageCode,
+                InternalKnowledgeAvailable: internalInference is
+                {
+                    Supported: true,
+                    Answer: not null
+                },
+                InternalEvidenceStale: false,
+                InternalEvidenceConflicted: false,
+                NamedSource: null,
+                DateTime.UtcNow);
+        }
+
         var governedLanguage =
             await _registry.NormalizeEnabledTranslationLanguageAsync(
                 sourceLanguageCode,
@@ -480,6 +504,23 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
                 "named_external_source_requires_research");
         }
 
+        // A supported answer that was composed from a validated, claim-bound,
+        // read-only zero-write receipt is already current internal governed
+        // knowledge. The authenticated service returned that value during this
+        // exchange, so nothing public can be more authoritative or more recent
+        // and no surface wording ("current", "right now", "today") may
+        // reclassify the satisfied claim as internet research. This is not a
+        // general bypass for supported answers: the claim must actually carry
+        // complete, canonical, unexpired receipt provenance.
+        if (internalAvailable &&
+            IsAnsweredByAttestedGovernedRead(internalInference, decidedUtc))
+        {
+            return Decision(
+                false,
+                LegendConnectResearchNeed.ExistingGovernedKnowledge,
+                "governed_read_only_content_binding_answers_request");
+        }
+
         // Current internal LEGEND state must stay with existing governed
         // operational tools. Internet research is never a substitute for the
         // database, runtime, model, training, capacity, or readiness authority.
@@ -493,6 +534,20 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
                 internalAvailable
                     ? "existing_governed_knowledge_answers_request"
                     : "internal_legend_state_requires_governed_tools");
+        }
+
+        // Records this deployment owns are authenticated governed resources and
+        // the public internet holds no authority over them. The typed intent
+        // was established by the meaning-graph analysis that produced this
+        // inference; absent an admitted relation it is Unknown and the request
+        // is not diverted here.
+        if (internalInference?.OwnedRecordIntent?.Intent ==
+            LegendConnectOwnedRecordIntent.OwnedRecordStateInspection)
+        {
+            return Decision(
+                false,
+                LegendConnectResearchNeed.NotResearchable,
+                "internal_operational_data_requires_governed_tools");
         }
 
         if (conflicted)
@@ -591,9 +646,12 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
 
     public async Task<LegendConnectResearchOutcome> ExecuteResearchAsync(
         LegendConnectResearchRequest request,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        LegendConnectExternalProviderPolicy? providerPolicy = null)
     {
         ArgumentNullException.ThrowIfNull(request);
+        var externalResearchPolicy =
+            LegendConnectExternalProviderPolicy.Resolve(providerPolicy);
         var startedUtc = DateTime.UtcNow;
         var sessionId = Guid.NewGuid();
 
@@ -670,6 +728,16 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
                     retryable,
                     text),
                 provenance);
+        }
+
+        // The research search and page transports are external boundaries. A
+        // native-only request fails closed here, before either transport is
+        // consulted, so no external client is constructed or invoked.
+        if (externalResearchPolicy.ForbidsExternalProviders)
+        {
+            return Failure(
+                "native_only_external_research_forbidden",
+                "LEGEND did not start internet research because this request forbids every external provider.");
         }
 
         if (!TryValidateResearchRequest(request, out var requestFailure))
@@ -1325,14 +1393,16 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
             IReadOnlyList<LegendConnectConversationContextItem> context,
             LegendConnectDiscourseStateSnapshot? discourseState,
             CancellationToken cancellationToken = default,
-            string sourceLanguageCode = "en") =>
+            string sourceLanguageCode = "en",
+            LegendConnectExternalProviderPolicy? providerPolicy = null) =>
         TryInferConversationCoreAsync(
             input,
             context,
             discourseState,
             readOnlyContentReceipt: null,
             cancellationToken: cancellationToken,
-            sourceLanguageCode: sourceLanguageCode);
+            sourceLanguageCode: sourceLanguageCode,
+            providerPolicy: providerPolicy);
 
     public Task<LegendConnectNativeInferenceSnapshot>
         TryInferConversationWithReadOnlyContentAsync(
@@ -1342,13 +1412,32 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
             LegendConnectReadOnlyContentBindingReceipt receipt,
             CancellationToken cancellationToken = default,
             string sourceLanguageCode = "en") =>
+        TryInferConversationWithReadOnlyContentAsync(
+            input,
+            context,
+            discourseState,
+            receipt,
+            cancellationToken,
+            sourceLanguageCode,
+            null);
+
+    public Task<LegendConnectNativeInferenceSnapshot>
+        TryInferConversationWithReadOnlyContentAsync(
+            string input,
+            IReadOnlyList<LegendConnectConversationContextItem> context,
+            LegendConnectDiscourseStateSnapshot? discourseState,
+            LegendConnectReadOnlyContentBindingReceipt receipt,
+            CancellationToken cancellationToken,
+            string sourceLanguageCode,
+            LegendConnectExternalProviderPolicy? providerPolicy) =>
         TryInferConversationCoreAsync(
             input,
             context,
             discourseState,
             receipt,
             cancellationToken,
-            sourceLanguageCode);
+            sourceLanguageCode,
+            providerPolicy);
 
     private async Task<LegendConnectNativeInferenceSnapshot>
         TryInferConversationCoreAsync(
@@ -1357,15 +1446,28 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
             LegendConnectDiscourseStateSnapshot? discourseState,
             LegendConnectReadOnlyContentBindingReceipt? readOnlyContentReceipt,
             CancellationToken cancellationToken,
-            string sourceLanguageCode)
+            string sourceLanguageCode,
+            LegendConnectExternalProviderPolicy? providerPolicy = null)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        var externalProviderPolicy =
+            LegendConnectExternalProviderPolicy.Resolve(providerPolicy);
+
+        // The typed operational intent is produced by the single meaning-graph
+        // analysis below and carried on every finished result, so research
+        // classification and Founder tool routing consume one classification
+        // instead of re-analyzing or matching text.
+        LegendConnectOwnedRecordClassification? ownedRecordIntent = null;
+
         LegendConnectNativeInferenceSnapshot Finish(
             LegendConnectNativeInferenceSnapshot inference) =>
             WithResearchDecision(
                 input ?? string.Empty,
                 sourceLanguageCode,
-                inference,
+                inference with
+                {
+                    OwnedRecordIntent = inference.OwnedRecordIntent ?? ownedRecordIntent
+                },
                 discourseState);
         if (string.IsNullOrWhiteSpace(LegendLanguageIdentity.NormalizeText(input ?? string.Empty)))
             return Finish(NativeInferenceUnsupported("invalid_input"));
@@ -1377,6 +1479,7 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
             discourseState,
             cancellationToken,
             readOnlyContentReceipt);
+        ownedRecordIntent = composed.OwnedRecordIntent;
         if (string.Equals(
                 composed.State,
                 LegendSemanticTransitionInference.ReadOnlyContentRequired,
@@ -1426,12 +1529,14 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
                 articulationMode,
                 null,
                 composed.ContentBindingProvenance,
-                PresentationConstraints: composed.PresentationConstraints);
+                PresentationConstraints: composed.PresentationConstraints,
+                ReadOnlyContentAttestation: composed.ReadOnlyContentAttestation);
 
             var served = await TryApplyPromotedReasoningModelAsync(
                 input ?? string.Empty,
                 sourceLanguageCode,
                 symbolic,
+                externalProviderPolicy,
                 cancellationToken);
             return Finish(served);
         }
@@ -1443,7 +1548,15 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
         if (composed.State is LegendSemanticTransitionInference.Ambiguous or
             LegendSemanticTransitionInference.Contradicted)
         {
-            return Finish(NativeInferenceUnsupported(composed.Reasons.FirstOrDefault() ?? "semantic_transition_not_governed"));
+            // A contradiction is always a governed boundary. Ambiguity is only
+            // a governed boundary once governed evidence was actually
+            // selected: with zero selected evidence the authority never
+            // established a governed answer, so the request is an unavailable
+            // source meaning and remains eligible for the single existing
+            // escalation path owned by the conversation service.
+            return Finish(NativeInferenceUnsupported(
+                composed.Reasons.FirstOrDefault() ?? "semantic_transition_not_governed",
+                CanEscalateFromUnprovenSourceAmbiguity(composed)));
         }
         // V20.3: native Founder conversation inference is governed by the
         // reusable meaning-graph authority only.
@@ -1480,8 +1593,22 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
             string founderInput,
             string sourceLanguageCode,
             LegendConnectNativeInferenceSnapshot symbolic,
+            LegendConnectExternalProviderPolicy providerPolicy,
             CancellationToken cancellationToken)
     {
+        // The promoted reasoning model is transported by an external provider.
+        // A native-only request therefore never reaches it: the model
+        // authority is left dormant with its own precise reason and the
+        // governed symbolic answer is served unchanged and unrelabelled.
+        if (providerPolicy.ForbidsExternalProviders)
+        {
+            return symbolic with
+            {
+                ModelAssistance = DormantModelAssistance(
+                    "native_only_external_model_inference_forbidden")
+            };
+        }
+
         if (!symbolic.Supported ||
             string.IsNullOrWhiteSpace(symbolic.Answer))
         {
@@ -1646,6 +1773,21 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
             null,
             null);
 
+    /// <summary>
+    /// A composed ambiguity is only a governed boundary once governed evidence
+    /// was actually selected. With zero selected evidence the authority never
+    /// established a governed answer, so the request is unavailable source
+    /// meaning and stays eligible for the single existing escalation path.
+    /// A contradiction is never escalatable.
+    /// </summary>
+    private static bool CanEscalateFromUnprovenSourceAmbiguity(
+        LegendSemanticTransitionInference inference) =>
+        string.Equals(
+            inference.State,
+            LegendSemanticTransitionInference.Ambiguous,
+            StringComparison.Ordinal) &&
+        inference.EvidenceCount <= 0;
+
     private static bool CanEscalateFromUnavailableComposedSource(
         LegendSemanticTransitionInference inference) =>
         inference.Reasons.FirstOrDefault() is
@@ -1654,7 +1796,12 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
             "meaning_graph_processing_bound_exceeded" or
             "meaning_graph_relation_unproven" or
             "semantic_transition_evidence_unknown" or
-            "semantic_transition_not_supported";
+            "semantic_transition_not_supported" or
+            // The discourse authority returned no conversation state at all.
+            // Nothing governed was resolved, refused, or contradicted, so this
+            // is an unavailable input rather than a governed boundary. An
+            // unresolved, mismatched, or invalid binding stays fail-closed.
+            "discourse_reference_state_unavailable";
 
     private static LegendConnectNativeInferenceSnapshot WithResearchDecision(
         string input,
@@ -1670,6 +1817,35 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
                 DateTime.UtcNow,
                 discourseState: discourseState)
         };
+
+    /// <summary>
+    /// True only when the canonical curriculum receipt-validation and content
+    /// composition authority issued an attestation for this exact finished
+    /// claim, and every receipt carried on the claim is the one that
+    /// attestation was issued for.
+    ///
+    /// No receipt field is revalidated here and no validity is inferred from a
+    /// string: validity is owned solely by
+    /// <c>LegendConnectCurriculumService.TryValidateReadOnlyContentBindingReceipt</c>.
+    /// This only binds the attested identity to the claim being decided, so a
+    /// receipt belonging to another request, transition, result frame, tool,
+    /// argument set, value path, semantic variable, result dimension, or
+    /// output cannot suppress the research decision.
+    /// </summary>
+    private static bool IsAnsweredByAttestedGovernedRead(
+        LegendConnectNativeInferenceSnapshot? inference,
+        DateTime decidedUtc)
+    {
+        if (inference?.ReadOnlyContentAttestation is not
+            LegendConnectReadOnlyContentBindingAttestation attestation)
+        {
+            return false;
+        }
+
+        var provenance = inference.ContentBindingProvenance;
+        return provenance is { Count: 1 } &&
+            attestation.Attests(provenance[0], inference.Answer, decidedUtc);
+    }
 
     private static bool HasCurrentTurnDiscourseAuthority(
         LegendConnectDiscourseStateSnapshot? discourseState)

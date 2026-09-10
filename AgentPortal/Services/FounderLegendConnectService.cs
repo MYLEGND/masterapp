@@ -240,25 +240,29 @@ public sealed class FounderLegendConnectService
             string input,
             string sourceLanguageCode,
             LegendConnectNativeInferenceSnapshot? internalInference,
-            CancellationToken cancellationToken = default)
+            CancellationToken cancellationToken = default,
+            LegendConnectExternalProviderPolicy? providerPolicy = null)
     {
         _ = await ResolveFounderActorAsync(user, cancellationToken);
         return await _operations.DecideResearchNeededAsync(
             input,
             sourceLanguageCode,
             internalInference,
-            cancellationToken);
+            cancellationToken,
+            providerPolicy);
     }
 
     internal async Task<LegendConnectResearchOutcome> ExecuteResearchAsync(
         ClaimsPrincipal user,
         LegendConnectResearchRequest request,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        LegendConnectExternalProviderPolicy? providerPolicy = null)
     {
         _ = await ResolveFounderActorAsync(user, cancellationToken);
         var outcome = await _operations.ExecuteResearchAsync(
             request,
-            cancellationToken);
+            cancellationToken,
+            providerPolicy);
         var lineage = LegendConnectResearchRetentionContracts
             .CreateExternalObservation(outcome);
         outcome = outcome with
@@ -302,7 +306,8 @@ public sealed class FounderLegendConnectService
             IReadOnlyList<LegendConnectConversationContextItem> context,
             LegendConnectDiscourseStateSnapshot? discourseState,
             string sourceLanguageCode,
-            CancellationToken cancellationToken = default)
+            CancellationToken cancellationToken = default,
+            LegendConnectExternalProviderPolicy? providerPolicy = null)
     {
         _ = await ResolveFounderActorAsync(user, cancellationToken);
         return await _operations.TryInferConversationWithDiscourseAsync(
@@ -310,7 +315,8 @@ public sealed class FounderLegendConnectService
             context,
             discourseState,
             cancellationToken,
-            sourceLanguageCode);
+            sourceLanguageCode,
+            providerPolicy);
     }
 
     /// <summary>
@@ -326,16 +332,31 @@ public sealed class FounderLegendConnectService
             LegendConnectDiscourseStateSnapshot? discourseState,
             string sourceLanguageCode,
             LegendConnectReadOnlyContentBindingReceipt receipt,
-            CancellationToken cancellationToken = default)
+            CancellationToken cancellationToken = default,
+            LegendConnectExternalProviderPolicy? providerPolicy = null)
     {
         _ = await ResolveFounderActorAsync(user, cancellationToken);
-        return await _operations.TryInferConversationWithReadOnlyContentAsync(
-            input,
-            context,
-            discourseState,
-            receipt,
-            cancellationToken,
-            sourceLanguageCode);
+
+        // An undeclared policy is the existing provider-enabled default, so
+        // the request keeps using the operations authority's established
+        // entry point. Only a request that actually declares a policy needs
+        // the policy-carrying entry point.
+        return providerPolicy is null
+            ? await _operations.TryInferConversationWithReadOnlyContentAsync(
+                input,
+                context,
+                discourseState,
+                receipt,
+                cancellationToken,
+                sourceLanguageCode)
+            : await _operations.TryInferConversationWithReadOnlyContentAsync(
+                input,
+                context,
+                discourseState,
+                receipt,
+                cancellationToken,
+                sourceLanguageCode,
+                providerPolicy);
     }
 
     /// <summary>
