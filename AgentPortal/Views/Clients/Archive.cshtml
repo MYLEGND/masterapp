@@ -1,0 +1,38 @@
+@using Domain.Entities
+@using AgentPortal.Services
+@model List<ClientProfile>
+@{
+    ViewData["Title"] = "Client Archive";
+    var restorable = ViewData["RestorableClientIds"] as HashSet<Guid> ?? new HashSet<Guid>();
+}
+<link rel="stylesheet" href="~/css/clients-index.css" asp-append-version="true" />
+<div class="wrap density-comfort clients-crm">
+    <a class="btn btn-gold" asp-action="Index">Back to clients</a>
+    <h1>Archive / Deleted</h1>
+    <p>Restore a saved client account to your CRM. Cancelled subscriptions remain cancelled.</p>
+    @if (TempData["Created"] is string message) { <div class="flash" role="status">@message</div> }
+    @if (Model.Count == 0) { <p>No archived client accounts.</p> }
+    @foreach (var client in Model)
+    {
+        var contact = ClientCrmMetaSerializer.Deserialize(client.CrmNotes);
+        <section class="card navy-shell-clients">
+            <h2>@client.FirstName @client.LastName</h2>
+            <dl>
+                <dt>Email</dt><dd><a href="mailto:@client.Email">@client.Email</a></dd>
+                <dt>Phone</dt><dd><a href="tel:@client.Phone">@client.Phone</a></dd>
+                <dt>Additional phone</dt><dd>@contact?.Phone2</dd>
+                <dt>Address</dt><dd>@contact?.AddressLine @contact?.City @contact?.State @contact?.ZipCode</dd>
+                <dt>Birth date</dt><dd>@client.DOB?.ToString("MMM d, yyyy")</dd>
+                <dt>Agent notes</dt><dd>@client.AgentNotes</dd>
+            </dl>
+            @if (restorable.Contains(client.Id))
+            {
+                <form asp-action="Restore" method="post">
+                    <input type="hidden" name="profileId" value="@client.Id" />
+                    <button type="submit" class="btn btn-gold">Restore client account</button>
+                </form>
+            }
+            else { <p>Restoration is unavailable while closure is pending or after information has been permanently erased.</p> }
+        </section>
+    }
+</div>

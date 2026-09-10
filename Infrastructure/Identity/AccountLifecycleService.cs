@@ -18,6 +18,7 @@ public interface IAccountLifecycleService
     Task<AccountLifecycleSnapshot> GetAsync(AccountLifecycleSubject subject, CancellationToken cancellationToken = default);
     Task<AccountLifecycleOperationResult> PauseAsync(AccountLifecycleSubject subject, string? correlationId = null, CancellationToken cancellationToken = default);
     Task<AccountLifecycleOperationResult> ResumeAsync(AccountLifecycleSubject subject, string? correlationId = null, CancellationToken cancellationToken = default);
+    Task<AccountLifecycleOperationResult> RequestArchiveAsync(AccountLifecycleSubject subject, string? correlationId = null, CancellationToken cancellationToken = default);
     Task<AccountLifecycleOperationResult> RequestDeletionAsync(AccountLifecycleSubject subject, string? correlationId = null, CancellationToken cancellationToken = default);
 }
 
@@ -104,10 +105,13 @@ public sealed class AccountLifecycleService : IAccountLifecycleService
         return AccountLifecycleOperationResult.Success("Your Legend account is active again.", ToSnapshot(record));
     }
 
-    public async Task<AccountLifecycleOperationResult> RequestDeletionAsync(
-        AccountLifecycleSubject subject,
-        string? correlationId = null,
-        CancellationToken cancellationToken = default)
+    public Task<AccountLifecycleOperationResult> RequestDeletionAsync(AccountLifecycleSubject subject, string? correlationId = null, CancellationToken cancellationToken = default) =>
+        RequestClosureAsync(subject, false, cancellationToken);
+
+    public Task<AccountLifecycleOperationResult> RequestArchiveAsync(AccountLifecycleSubject subject, string? correlationId = null, CancellationToken cancellationToken = default) =>
+        RequestClosureAsync(subject, IsClient(subject), cancellationToken);
+
+    private async Task<AccountLifecycleOperationResult> RequestClosureAsync(AccountLifecycleSubject subject, bool retainContact, CancellationToken cancellationToken)
     {
         var record = await GetOrCreateAsync(subject, cancellationToken);
         if (record.State == AccountLifecycleStates.Closed)
@@ -115,6 +119,7 @@ public sealed class AccountLifecycleService : IAccountLifecycleService
 
         if (record.State != AccountLifecycleStates.DeletionRequested)
         {
+            record.RetainClientContact = retainContact;
             record.State = AccountLifecycleStates.DeletionRequested;
             record.DeletionRequestedUtc = DateTime.UtcNow;
             record.UpdatedUtc = DateTime.UtcNow;

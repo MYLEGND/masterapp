@@ -713,6 +713,19 @@ final class MessagingStore: ObservableObject {
         }
     }
 
+    func restoreFounderClient(_ account: FounderManagedAccount) async -> Bool {
+        guard isFounder, !isRemovingFounderAccount else { return false }
+        isRemovingFounderAccount = true; sendFailure = nil
+        defer { isRemovingFounderAccount = false }
+        do {
+            _ = try await api.restoreFounderClient(account: account, accessToken: accessTokenProvider())
+            return true
+        } catch {
+            sendFailure = failure(for: error, title: LegendLocalized("Account restoration not completed"))
+            return false
+        }
+    }
+
     @discardableResult
     func removeFounderAccount(
         _ account: FounderManagedAccount,

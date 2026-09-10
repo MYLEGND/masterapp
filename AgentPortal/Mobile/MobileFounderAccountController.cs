@@ -55,6 +55,19 @@ public sealed class MobileFounderAccountController : MobileApiControllerBase
         return Ok(accounts.Select(ToDto));
     }
 
+    [HttpPost("restore")]
+    [IgnoreAntiforgeryToken]
+    public async Task<IActionResult> Restore([FromBody] FounderAccountTarget input, CancellationToken ct)
+    {
+        if (!FounderGuard.IsFounder(User)) return Forbid();
+        var founder = await ResolveActorAsync(ct);
+        if (founder.Error is not null || founder.Actor is null) return founder.Error!;
+        var actor = founder.Actor.Actor.UserId;
+        var result = await HttpContext.RequestServices.GetRequiredService<IFounderAccountRemovalService>()
+            .RestoreAsync(new FounderAccountRemovalCommand(input.ProfileId, input.ParticipantType, actor), ct);
+        return result.Succeeded ? Ok(result) : Conflict(result);
+    }
+
     [HttpPost("remove")]
     public async Task<IActionResult> Remove(
         [FromBody] MobileFounderAccountRemovalRequest? request,
@@ -187,7 +200,7 @@ public sealed class MobileFounderAccountController : MobileApiControllerBase
             account.Email,
             account.LifecycleState,
             account.HasCancelableSubscription,
-            account.IsActive);
+            account.IsActive, account.CanRestore);
 }
 
 public sealed record MobileFounderAccountRemovalRequest(
@@ -211,7 +224,7 @@ public sealed record MobileFounderManagedAccountDto(
     string? Email,
     string LifecycleState,
     bool HasCancelableSubscription,
-    bool IsActive);
+    bool IsActive, bool CanRestore);
 
 public sealed record MobileFounderAccountRemovalResponse(
     bool Completed,

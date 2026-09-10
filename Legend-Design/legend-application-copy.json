@@ -1,5 +1,5 @@
 {
-  "catalogVersion": "application-copy-v1-2f51d94d732b10fd",
+  "catalogVersion": "application-copy-v1-bb83d063373b50ff",
   "sourceLanguageCode": "en",
   "entries": [
     {
@@ -3059,6 +3059,17 @@
       "source": "Account removal not completed",
       "context": "visual interface copy",
       "sourceRevision": "a3d03ba9f2ff0489",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.3eb67b59330b9734d2010f20",
+      "source": "Account restoration not completed",
+      "context": "visual interface copy",
+      "sourceRevision": "61910ae98b8a3b93",
       "placeholders": [
 
       ],
@@ -12147,6 +12158,17 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.eba2929f9a5f237e11de6ecb",
+      "source": "Photo could not be decoded",
+      "context": "visual interface copy",
+      "sourceRevision": "88c2e7e82903cd16",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.3f3f5d9cf6ab505f1d5afa63",
       "source": "Pin conversation",
       "context": "visual interface copy",
@@ -13592,6 +13614,28 @@
       "source": "Responder",
       "context": "visual interface copy",
       "sourceRevision": "8630a0dc25e2395a",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.69d08892013a7e9323403472",
+      "source": "Restore",
+      "context": "visual interface copy",
+      "sourceRevision": "a76e13b9839270eb",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.a6d04d6db2d33669d201a137",
+      "source": "Restore client account",
+      "context": "visual interface copy",
+      "sourceRevision": "03c4f295f6719619",
       "placeholders": [
 
       ],
@@ -15067,6 +15111,17 @@
       "source": "Sign in to continue",
       "context": "visual interface copy",
       "sourceRevision": "607a80121c655651",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.43e0b868d23f9c1e68f72239",
+      "source": "Sign in to view this profile.",
+      "context": "visual interface copy",
+      "sourceRevision": "7b7d3262ae54af1e",
       "placeholders": [
 
       ],
@@ -17015,6 +17070,17 @@
       "source": "Unsupported LEGEND typography weight.",
       "context": "visual interface copy",
       "sourceRevision": "dabccea2c427aa34",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.4073f28bccaa17ea977d9513",
+      "source": "Unsupported photo",
+      "context": "visual interface copy",
+      "sourceRevision": "a40bfafb652d7326",
       "placeholders": [
 
       ],

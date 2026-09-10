@@ -15,6 +15,8 @@ public sealed class AccountLifecycleRecord
     public string State { get; set; } = Domain.Accounts.AccountLifecycleStates.Active;
     public DateTime? PausedUtc { get; set; }
     public DateTime? DeletionRequestedUtc { get; set; }
+    // Administrative archives retain the original profile; self-service deletion does not.
+    public bool RetainClientContact { get; set; }
     public DateTime? ClosedUtc { get; set; }
     // A short-lived lease is the durable concurrency boundary for the one
     // closure executor. A recycled worker can resume after it expires.

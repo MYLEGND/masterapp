@@ -69,12 +69,14 @@ protocol MobileAgentWorkspaceAPI: Sendable {
     func cancelAppointment(id: UUID, accessToken: String) async throws
     func schedule(accessToken: String) async throws -> [MobileCrmAppointment]
     func record(kind: String, id: String, accessToken: String) async throws -> MobileCrmRecord
+    func restoreClient(id: String, accessToken: String) async throws -> MobileCrmRecord
     func clients(accessToken: String) async throws -> [MobileAgentClientSummary]
     func leads(accessToken: String) async throws -> [MobileAgentLeadSummary]
     func clientCreationPortalLaunch(accessToken: String) async throws -> MobileClientCreationPortalLaunch
 }
 
 extension MobileAgentWorkspaceAPI {
+    func restoreClient(id: String, accessToken: String) async throws -> MobileCrmRecord { throw MobileAPIError.invalidServerResponse }
     func bookingAccess(profileID: UUID, accessToken: String) async throws -> MobileBookingAccess { throw MobileAPIError.invalidServerResponse }
     func bookingLaunch(profileID: UUID, accessToken: String) async throws -> URL { throw MobileAPIError.invalidServerResponse }
     func contact(kind: String, id: String, input: MobileCrmContactInput, accessToken: String) async throws { throw MobileAPIError.invalidServerResponse }
@@ -290,6 +292,12 @@ struct URLSessionMobileAgentWorkspaceAPI: MobileAgentWorkspaceAPI {
     func schedule(accessToken: String) async throws -> [MobileCrmAppointment] {
         try await client.get("/api/v1/mobile/agent/crm/schedule", accessToken: accessToken,
                              headers: participantHeader, response: [MobileCrmAppointment].self)
+    }
+
+    func restoreClient(id: String, accessToken: String) async throws -> MobileCrmRecord {
+        guard let profileID = UUID(uuidString: id) else { throw MobileAPIError.invalidServerResponse }
+        return try await client.post("/api/v1/mobile/agent/crm/clients/\(profileID.uuidString)/restore",
+            body: MobileEmptyRequest(), accessToken: accessToken, idempotencyKey: UUID(), headers: participantHeader, response: MobileCrmRecord.self)
     }
 
     func record(kind: String, id: String, accessToken: String) async throws -> MobileCrmRecord {
@@ -905,6 +913,12 @@ final class MobileAgentWorkspaceStore: ObservableObject {
 
     func schedule() async throws -> [MobileCrmAppointment] {
         try await api.schedule(accessToken: accessTokenProvider())
+    }
+
+    func restoreClient(id: String) async throws -> MobileCrmRecord {
+        let restored = try await api.restoreClient(id: id, accessToken: accessTokenProvider())
+        _ = await refreshClients(); _ = await refreshLeads()
+        return restored
     }
 
     func record(kind: String, id: String) async throws -> MobileCrmRecord {

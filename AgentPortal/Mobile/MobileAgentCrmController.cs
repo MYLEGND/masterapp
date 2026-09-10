@@ -20,6 +20,19 @@ public sealed class MobileAgentCrmController(IMobileActorResolver actors, Mobile
 {
     public sealed record OutcomeInput(string OutcomeCode, string? Note);
 
+    [HttpPost("clients/{id:guid}/restore")]
+    [IgnoreAntiforgeryToken]
+    public async Task<IActionResult> Restore(Guid id, CancellationToken ct)
+    {
+        var resolved = await ResolveActorAsync(ct);
+        if (resolved.Error is not null) return resolved.Error;
+        if (resolved.Actor!.Actor.ParticipantType != MessagingParticipantTypes.Agent) return StatusCode(403);
+        var service = HttpContext.RequestServices.GetRequiredService<Infrastructure.Identity.IFounderAccountRemovalService>();
+        var result = await service.RestoreAssignedClientAsync(id, resolved.Actor.Actor.UserId, ct);
+        return result.Succeeded ? Ok(await crm.RecordAsync(resolved.Actor, "clients", id.ToString(), ct))
+            : Conflict(new { error = result.ErrorCode, message = result.Message });
+    }
+
     [HttpPost("{kind}/{id}/outcome")]
     [IgnoreAntiforgeryToken]
     public async Task<IActionResult> Outcome(string kind, string id, [FromBody] OutcomeInput input, CancellationToken ct)

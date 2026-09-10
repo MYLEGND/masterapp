@@ -71,6 +71,7 @@ class FounderAiRepository(private val client: LegendApiClient) {
     }.flowOn(Dispatchers.IO)
 }
 class AgentWorkspaceRepository(private val client: LegendApiClient) {
+    suspend fun restoreClient(role: String, id: String) = request { client.api.restoreCrmClient(role, id).legendBody() }
     suspend fun bookingAccess(role: String, profileId: String) = request { client.api.bookingAccess(role, profileId).legendBody() }
     suspend fun bookingLaunch(role: String, profileId: String) = request {
         val launch = client.api.bookingLaunch(role, profileId).legendBody()
@@ -131,6 +132,7 @@ class AccountRepository(private val client: LegendApiClient) { suspend fun profi
 class ApplicationLocalizationRepository(private val client: LegendApiClient) { suspend fun catalog(role: String) = request { client.api.localizationCatalog(role).legendBody() } }
 class DailyScriptureManagementRepository(private val client: LegendApiClient) { suspend fun management(role: String) = request { client.api.dailyScriptureManagement(role).legendBody() }; suspend fun create(role: String, draft: DailyScriptureOverrideRequest) = request { client.api.createDailyScriptureOverride(role, draft).legendBody() }; suspend fun update(role: String, id: String, draft: DailyScriptureOverrideRequest) = request { client.api.updateDailyScriptureOverride(role, id, draft).legendBody() }; suspend fun remove(role: String, id: String) = request { client.api.deleteDailyScriptureOverride(role, id).legendBody() } }
 class FounderAccountRepository(private val client: LegendApiClient) {
+    suspend fun restore(role: String, account: FounderManagedAccount) = request { client.api.restoreFounderClient(role, FounderAccountTargetRequest(account.profileId, account.participantType)).legendBody() }
     suspend fun accounts(role: String, search: String? = null, scope: String? = null) = request { client.api.founderAccounts(role, search, scope = scope).legendBody() }
     suspend fun remove(role: String, account: FounderManagedAccount, confirmation: String) = request { client.api.removeFounderAccount(role, FounderAccountRemovalRequest(account.profileId, account.participantType, confirmation)).legendBody() }
     suspend fun removeBatch(role: String, accounts: List<FounderManagedAccount>, confirmation: String) = request { client.api.removeFounderAccounts(role, FounderAccountBatchRequest(accounts.map { FounderAccountTargetRequest(it.profileId, it.participantType) }, confirmation)).legendBody() }

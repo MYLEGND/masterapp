@@ -656,6 +656,7 @@ struct FounderManagedAccount: Codable, Equatable, Identifiable, Sendable {
     let lifecycleState: String
     let hasCancelableSubscription: Bool
     let isActive: Bool
+    var canRestore: Bool? = nil
 
     var id: UUID { profileID }
 
@@ -663,7 +664,7 @@ struct FounderManagedAccount: Codable, Equatable, Identifiable, Sendable {
         case userID = "userId"
         case profileID = "profileId"
         case participantType, displayName, email, lifecycleState
-        case hasCancelableSubscription, isActive
+        case hasCancelableSubscription, isActive, canRestore
     }
 }
 
@@ -763,6 +764,7 @@ protocol MessagingAPI: Sendable {
         scope: FounderAccountDirectoryScope,
         accessToken: String
     ) async throws -> [FounderManagedAccount]
+    func restoreFounderClient(account: FounderManagedAccount, accessToken: String) async throws -> FounderAccountRemovalOutcome
     func removeFounderAccount(
         account: FounderManagedAccount,
         confirmation: String,
@@ -939,6 +941,8 @@ extension MessagingAPI {
     ) async throws -> [FounderManagedAccount] {
         try await founderAccounts(search: search, accessToken: accessToken)
     }
+
+    func restoreFounderClient(account: FounderManagedAccount, accessToken: String) async throws -> FounderAccountRemovalOutcome { throw MobileAPIError.invalidServerResponse }
 
     func removeFounderAccount(
         account: FounderManagedAccount,
@@ -1348,6 +1352,12 @@ struct URLSessionMessagingAPI: MessagingAPI {
             queryItems: queryItems,
             headers: participantHeader,
             response: [FounderManagedAccount].self)
+    }
+
+    func restoreFounderClient(account: FounderManagedAccount, accessToken: String) async throws -> FounderAccountRemovalOutcome {
+        try await client.post("/api/v1/mobile/founder/accounts/restore",
+            body: FounderAccountRemovalRequest(profileID: account.profileID, participantType: account.participantType, confirmation: "RESTORE"),
+            accessToken: accessToken, idempotencyKey: UUID(), headers: participantHeader, response: FounderAccountRemovalOutcome.self)
     }
 
     func removeFounderAccount(

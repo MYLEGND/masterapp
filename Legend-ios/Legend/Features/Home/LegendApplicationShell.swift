@@ -8526,6 +8526,7 @@ private struct LegendFounderAccountRemovalManager: View {
                         }
 
                     content
+                    if let failure = messages.sendFailure { Text(failure.message).foregroundStyle(LegendNextColor.textSecondary) }
 
                     if !selectedAccounts.isEmpty {
                         Button(role: .destructive) {
@@ -8599,6 +8600,11 @@ private struct LegendFounderAccountRemovalManager: View {
                             accountRow(account, isSelected: isSelected(account))
                         }
                         .buttonStyle(.plain)
+                        if scope == .archive, account.canRestore == true {
+                            Button(LegendLocalized("Restore client account")) {
+                                Task { if await messages.restoreFounderClient(account) { await reload() } }
+                            }.buttonStyle(LegendNextButtonStyle(kind: .secondary)).disabled(messages.isRemovingFounderAccount)
+                        }
                     }
                 }
             }
@@ -11921,6 +11927,17 @@ private struct LegendAgentCrmRecordView: View {
                             title: record.displayName, detail: legendCrmLabel(record.stage))
                         if record.archived == true {
                             Text(LegendLocalized("Archived / Deleted · Read only"))
+                            if record.canRestore == true, let profileID = record.profileId {
+                                Button {
+                                    saving = true; actionFailure = nil
+                                    Task {
+                                        defer { saving = false }
+                                        do { self.record = try await store.restoreClient(id: profileID) }
+                                        catch { actionFailure = error.localizedDescription }
+                                    }
+                                } label: { Label(LegendLocalized("Restore client account"), systemImage: "arrow.uturn.backward") }
+                                    .buttonStyle(LegendNextButtonStyle(kind: .primary)).disabled(saving)
+                            }
                         } else {
                             HStack(alignment: .top, spacing: LegendNextSpacing.sm) {
                                 Button { editing = true } label: { Label(LegendLocalized("Edit contact information"), systemImage: "pencil") }
@@ -11964,8 +11981,8 @@ private struct LegendAgentCrmRecordView: View {
                                     saving = false
                                 }
                             }.buttonStyle(LegendNextButtonStyle(kind: .primary)).disabled(saving || outcome.isEmpty || note.count > 4000)
-                            if let actionFailure { Text(actionFailure).foregroundStyle(LegendNextColor.textSecondary) }
                         }
+                        if let actionFailure { Text(actionFailure).foregroundStyle(LegendNextColor.textSecondary) }
                     } else if let failure {
                         LegendNextErrorState(title: LegendLocalized("Record unavailable"), message: failure,
                             retryTitle: LegendLocalized("Retry"), retry: { Task { await refresh() } })

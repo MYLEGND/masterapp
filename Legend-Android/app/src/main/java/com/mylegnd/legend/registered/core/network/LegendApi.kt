@@ -30,6 +30,8 @@ interface LegendApi {
     @POST("api/v1/mobile/agent/crm/{kind}/{id}/outcome") suspend fun agentCrmOutcome(@Header("X-Legend-Participant-Type") role: String, @Path("kind") kind: String, @Path("id") id: String, @Body input: MobileCrmOutcomeInput): Response<MobileCrmMutationResponse>
     @POST("api/v1/mobile/agent/crm/appointments/{id}/cancel") suspend fun cancelCrmAppointment(@Header("X-Legend-Participant-Type") role: String, @Path("id") id: String): Response<MobileCrmMutationResponse>
     @GET("api/v1/mobile/agent/crm/schedule") suspend fun agentSchedule(@Header("X-Legend-Participant-Type") role: String): Response<List<MobileCrmAppointment>>
+    @POST("api/v1/mobile/agent/crm/clients/{id}/restore") suspend fun restoreCrmClient(@Header("X-Legend-Participant-Type") role: String, @Path("id") id: String): Response<MobileCrmRecord>
+    @POST("api/v1/mobile/founder/accounts/restore") suspend fun restoreFounderClient(@Header("X-Legend-Participant-Type") role: String, @Body request: FounderAccountTargetRequest): Response<FounderAccountRemovalResponse>
     @GET("api/v1/mobile/agent/crm/{kind}/{id}") suspend fun agentCrmRecord(@Header("X-Legend-Participant-Type") role: String, @Path("kind") kind: String, @Path("id") id: String): Response<MobileCrmRecord>
     @POST("api/v1/mobile/review-session") suspend fun reviewSession(@Body request: MobileReviewSignInRequest): Response<MobileReviewTokenResponse>
     @GET("api/v1/mobile/session") suspend fun session(@Header("X-Legend-Participant-Type") participantType: String? = null): Response<MobileSessionResponse>

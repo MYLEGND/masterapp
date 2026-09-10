@@ -1125,6 +1125,7 @@ struct MobileCrmRecord: Decodable, Identifiable, Sendable {
     var zipCode: String? = nil
     var updatedUtc: String? = nil
     var archived: Bool? = nil
+    var canRestore: Bool? = nil
 }
 
 struct LegendCrmDestination: Identifiable {

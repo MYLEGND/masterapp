@@ -200,6 +200,7 @@ class AgentWorkspaceViewModel(private val repository: AgentWorkspaceRepository, 
     suspend fun outcome(kind: String, id: String, code: String, note: String) = repository.outcome(role, kind, id, code, note)
     suspend fun cancelAppointment(id: String) = repository.cancelAppointment(role, id)
     suspend fun schedule() = repository.schedule(role)
+    suspend fun restoreClient(id: String) = repository.restoreClient(role, id).also { if (it is LoadState.Data) load() }
     suspend fun record(kind: String, id: String) = repository.record(role, kind, id)
     private val _clients = MutableStateFlow<LoadState<List<MobileAgentClient>>>(LoadState.Idle)
     val clients: StateFlow<LoadState<List<MobileAgentClient>>> = _clients.asStateFlow()
@@ -800,6 +801,15 @@ class FounderAccountsViewModel(private val repository: FounderAccountRepository,
     private val _action = MutableStateFlow<LoadState<FounderAccountBatchResponse>>(LoadState.Idle); val action: StateFlow<LoadState<FounderAccountBatchResponse>> = _action.asStateFlow()
     fun load(search: String? = null, scope: String? = null) = viewModelScope.launch { _accounts.value = LoadState.Loading; _accounts.value = repository.accounts(role, search, scope) }
     fun remove(accounts: List<FounderManagedAccount>, confirmation: String, scope: String? = null) = viewModelScope.launch { _action.value = LoadState.Loading; _action.value = repository.removeBatch(role, accounts, confirmation); load(scope = scope) }
+    fun restore(account: FounderManagedAccount) = viewModelScope.launch {
+        _action.value = LoadState.Loading
+        _action.value = when (val result = repository.restore(role, account)) {
+            is LoadState.Data -> LoadState.Data(FounderAccountBatchResponse(1, 0, listOf(FounderAccountBatchItemResponse(true, true, message = result.value.message, lifecycleState = result.value.lifecycleState))))
+            is LoadState.Error -> result
+            else -> LoadState.Idle
+        }
+        load(scope = "archive")
+    }
     fun purge(accounts: List<FounderManagedAccount>, confirmation: String) = viewModelScope.launch { _action.value = LoadState.Loading; _action.value = repository.purge(role, accounts, confirmation); load(scope = "archive") }
 }
 class ControlledResourceViewModel(private val repository: MessagingRepository, private val role: String) : ViewModel() {

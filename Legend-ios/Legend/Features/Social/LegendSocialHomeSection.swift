@@ -23,13 +23,44 @@ struct LegendMemberProfileLink<Content: View>: View {
     var body: some View {
         Button { presented = true } label: { content() }
             .fullScreenCover(isPresented: $presented) {
-                if let social, case .authenticated(let current) = session.state {
-                    NavigationStack {
+                LegendMemberProfilePresentation(onClose: { presented = false }) {
+                    if let social, case .authenticated(let current) = session.state {
                         LegendPublicProfileView(profile: profile, currentIdentity: current.actor.identity,
                             social: social, isFollowing: false)
+                    } else {
+                        Text(LegendLocalized("Sign in to view this profile."))
+                            .foregroundStyle(LegendNextColor.textPrimary)
                     }
                 }
             }
+    }
+}
+
+/// The presentation owns its exit, independently of profile data and nested navigation.
+struct LegendMemberProfilePresentation<Content: View>: View {
+    let onClose: () -> Void
+    @ViewBuilder let content: () -> Content
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack {
+                Text(LegendLocalized("Profile")).font(.headline)
+                Spacer()
+                Button(action: onClose) {
+                    Label(LegendLocalized("Close"), systemImage: "xmark")
+                        .font(.subheadline.weight(.semibold))
+                        .frame(minHeight: 44)
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("legend.profile.close")
+            }
+            .padding(.horizontal, LegendNextSpacing.md)
+            .foregroundStyle(LegendNextColor.goldBright)
+            .background(LegendNextColor.navy)
+            NavigationStack { content() }
+        }
+        .background(LegendNextCanvas())
+        .accessibilityAction(.escape, onClose)
     }
 }
 

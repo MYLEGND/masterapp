@@ -5008,8 +5008,13 @@ private fun LegendSocialProfileSheet(
     var commentingPost by remember { mutableStateOf<SocialPost?>(null) }
     LaunchedEffect(author.identity.userId, author.identity.participantType) { viewModel.loadPublicProfile(author) }
     ModalBottomSheet(onDismissRequest = dismiss, containerColor = LegendColors.Canvas) {
+        Column(Modifier.fillMaxWidth().fillMaxHeight(0.92f)) {
+            Row(Modifier.fillMaxWidth().padding(horizontal = LegendSpacing.PageHorizontal), verticalAlignment = Alignment.CenterVertically) {
+                Text(legendLocalized("Profile"), style = LegendTypography.Label, modifier = Modifier.weight(1f))
+                TextButton(onClick = dismiss) { Text(legendLocalized("Close"), color = LegendColors.Gold) }
+            }
         LazyColumn(
-            modifier = Modifier.fillMaxHeight(0.92f),
+            modifier = Modifier.weight(1f),
             contentPadding = PaddingValues(horizontal = LegendSpacing.PageHorizontal, vertical = LegendSpacing.Md),
             verticalArrangement = Arrangement.spacedBy(LegendSpacing.Sm),
         ) {
@@ -5025,7 +5030,6 @@ private fun LegendSocialProfileSheet(
                         author.username?.let { Text("@$it", style = LegendTypography.Label, color = LegendColors.TextSecondary) }
                         author.roleLabel?.let { Text(it, style = LegendTypography.Label, color = LegendColors.Gold) }
                     }
-                    TextButton(onClick = dismiss) { Text(legendLocalized("Done"), color = LegendColors.Gold) }
                 }
             }
             if (author.identity.participantType.equals("Client", ignoreCase = true)) {
@@ -5068,6 +5072,7 @@ private fun LegendSocialProfileSheet(
             }
         }
     }
+        }
     commentingPost?.let { post ->
         LegendCommentsSheet(post, mediaRepository, participantType, { commentingPost = null }) { body, parentCommentId -> viewModel.comment(post.id, body, parentCommentId) }
     }
@@ -6221,6 +6226,7 @@ private fun LegendFounderAccountsSheet(
                             val id = "${account.profileId}:${account.participantType}"
                             Surface(color = LegendColors.Surface, shape = LegendShapes.Control, modifier = Modifier.fillMaxWidth().clickable { selectedIds = if (id in selectedIds) selectedIds - id else selectedIds + id }) {
                                 Row(Modifier.padding(LegendSpacing.Sm), verticalAlignment = Alignment.CenterVertically) {
+                                    if (archive && account.canRestore) TextButton(onClick = { viewModel.restore(account) }, enabled = action !is LoadState.Loading) { Text(legendLocalized("Restore")) }
                                     Checkbox(checked = id in selectedIds, onCheckedChange = { selectedIds = if (it) selectedIds + id else selectedIds - id }, colors = CheckboxDefaults.colors(checkedColor = LegendColors.Gold, checkmarkColor = LegendColors.Midnight))
                                     Spacer(Modifier.width(LegendSpacing.Xs))
                                     Column(Modifier.weight(1f)) {
@@ -7885,7 +7891,20 @@ private fun LegendAgentCrmRecord(
                                 }
                             }
                         } }
-                    } else item { Text(legendLocalized("Archived / Deleted · Read only")) }
+                    } else item {
+                        Text(legendLocalized("Archived / Deleted · Read only"))
+                        if (record.canRestore && record.profileId != null) Button(enabled = !saving, onClick = {
+                            saving = true; actionFailure = null
+                            scope.launch {
+                                when (val result = workspace.restoreClient(record.profileId)) {
+                                    is LoadState.Data -> { state = result }
+                                    is LoadState.Error -> actionFailure = result.message
+                                    else -> Unit
+                                }
+                                saving = false
+                            }
+                        }) { Text(legendLocalized("Restore client account")) }
+                    }
                     item { LegendCrmContactCard(record) }
                     if (!record.archived && record.availableOutcomes.isNotEmpty()) {
                         item { LegendSectionPill("Next step", "Record the outcome of your latest conversation.") }
@@ -7904,8 +7923,8 @@ private fun LegendAgentCrmRecord(
                                 saving = false
                             }
                         }, modifier = Modifier.fillMaxWidth(), shape = LegendShapes.Control) { Text(legendLocalized(if (saving) "Saving…" else "Save outcome")) } }
-                        actionFailure?.let { item { Text(it, color = LegendColors.Error) } }
                     }
+                    actionFailure?.let { item { Text(it, color = LegendColors.Error) } }
                     (recipients as? LoadState.Error)?.let { item { Text(legendLocalized(it.message), color = LegendColors.Error) } }
                 }
                 is LoadState.Error -> item { LegendInlineRetry(current.message) { revision++ } }

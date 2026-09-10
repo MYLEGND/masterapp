@@ -20,8 +20,10 @@ namespace AgentPortal.Tests;
 
 public sealed class AccountLifecycleServiceTests
 {
-    [Fact]
-    public async Task ClosureExecutor_ClosesClientOnlyAfterAuthoritativeOperationsComplete()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ClosureExecutor_ClosesClientOnlyAfterAuthoritativeOperationsComplete(bool retainContact)
     {
         await using var db = ControllerTestHelpers.BuildDb();
         var profile = new ClientProfile
@@ -42,6 +44,7 @@ public sealed class AccountLifecycleServiceTests
             UserId = "client-entra-id",
             ParticipantType = MessagingParticipantTypes.Client,
             ProfileId = profile.Id,
+            RetainClientContact = retainContact,
             State = AccountLifecycleStates.DeletionRequested,
             DeletionRequestedUtc = DateTime.UtcNow
         };
@@ -82,6 +85,7 @@ public sealed class AccountLifecycleServiceTests
         var entra = new Mock<IClientEntraLifecycleService>();
         entra.Setup(service => service.DeleteClientIdentityAsync(profile.Id, It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);
+        entra.Setup(service => service.RevokeClientApplicationAccessAsync(profile.Id, It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
         var social = new Mock<ISocialFeedService>();
         social.Setup(service => service.RemoveAccountContentForClosureAsync(
                 It.IsAny<SocialFeedActor>(),
@@ -108,13 +112,29 @@ public sealed class AccountLifecycleServiceTests
             Assert.False(device.IsActive);
             Assert.NotNull(device.InvalidatedUtc);
         });
-        Assert.Empty(await db.MobileProfileSettings.ToArrayAsync());
-        var redacted = await db.ClientProfiles.SingleAsync();
-        Assert.Equal("Closed", redacted.FirstName);
-        Assert.Equal("Account", redacted.LastName);
-        Assert.Empty(redacted.Phone);
-        Assert.Null(redacted.DOB);
-        Assert.Empty(redacted.AgentNotes);
+        var saved = await db.ClientProfiles.SingleAsync();
+        if (retainContact)
+        {
+            Assert.Single(await db.MobileProfileSettings.ToArrayAsync());
+            Assert.Equal("Closing", saved.FirstName);
+            Assert.Equal("Client", saved.LastName);
+            Assert.Equal("closing@example.test", saved.Email);
+            Assert.Equal("555-0100", saved.Phone);
+            Assert.Equal(new DateTime(1990, 1, 1), saved.DOB);
+            Assert.Equal("Remove with account presentation data.", saved.AgentNotes);
+            Assert.Equal("client-entra-id", saved.ExternalIdentityObjectId);
+            entra.Verify(x => x.DeleteClientIdentityAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
+            entra.Verify(x => x.RevokeClientApplicationAccessAsync(profile.Id, It.IsAny<CancellationToken>()), Times.Once);
+        }
+        else
+        {
+            Assert.Empty(await db.MobileProfileSettings.ToArrayAsync());
+            Assert.Equal("Closed", saved.FirstName);
+            Assert.Equal("Account", saved.LastName);
+            Assert.Empty(saved.Phone);
+            Assert.Null(saved.DOB);
+            Assert.Empty(saved.AgentNotes);
+        }
         Assert.Contains(await db.AccountLifecycleAuditEntries.ToArrayAsync(), entry =>
             entry.Action == "closure_completed" && entry.ResultCode == "closed");
         billing.Verify(service => service.CancelClientSubscriptionAsync(
@@ -123,7 +143,7 @@ public sealed class AccountLifecycleServiceTests
                 !command.CancelAtPeriodEnd &&
                 command.ActorType == BillingActorType.System),
             It.IsAny<CancellationToken>()), Times.Once);
-        entra.Verify(service => service.DeleteClientIdentityAsync(profile.Id, It.IsAny<CancellationToken>()), Times.Once);
+        entra.Verify(service => service.DeleteClientIdentityAsync(profile.Id, It.IsAny<CancellationToken>()), retainContact ? Times.Never() : Times.Once());
         social.Verify(service => service.RemoveAccountContentForClosureAsync(
             It.Is<SocialFeedActor>(actor =>
                 actor.Identity.UserId == lifecycle.UserId &&

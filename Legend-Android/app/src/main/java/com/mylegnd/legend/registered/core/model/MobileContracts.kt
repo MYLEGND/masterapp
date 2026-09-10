@@ -438,7 +438,7 @@ data class SocialVideoEdit(val startSeconds: Double = 0.0, val endSeconds: Doubl
 @Serializable data class DailyScriptureOverrideRequest(@SerialName("displayDate") val displayDate: String, val reference: String, val translation: String, @SerialName("passageText") val passageText: String)
 @Serializable data class CommunitySafetyReport(val id: String, @SerialName("targetKind") val targetKind: String, @SerialName("targetEntityId") val targetEntityId: String? = null, val category: String, val detail: String? = null, val status: String, @SerialName("createdUtc") val createdUtc: String, @SerialName("reporterParticipantType") val reporterParticipantType: String, @SerialName("reportedParticipantType") val reportedParticipantType: String, @SerialName("resolvedUtc") val resolvedUtc: String? = null, val resolution: String? = null)
 @Serializable data class CommunitySafetyReportResolutionRequest(val resolution: String)
-@Serializable data class FounderManagedAccount(@SerialName("profileId") val profileId: String, @SerialName("userId") val userId: String, @SerialName("participantType") val participantType: String, @SerialName("displayName") val displayName: String, val email: String? = null, @SerialName("lifecycleState") val lifecycleState: String, @SerialName("hasCancelableSubscription") val hasCancelableSubscription: Boolean, @SerialName("isActive") val isActive: Boolean)
+@Serializable data class FounderManagedAccount(@SerialName("profileId") val profileId: String, @SerialName("userId") val userId: String, @SerialName("participantType") val participantType: String, @SerialName("displayName") val displayName: String, val email: String? = null, @SerialName("lifecycleState") val lifecycleState: String, @SerialName("hasCancelableSubscription") val hasCancelableSubscription: Boolean, @SerialName("isActive") val isActive: Boolean, val canRestore: Boolean = false)
 @Serializable data class FounderAccountTargetRequest(@SerialName("profileId") val profileId: String, @SerialName("participantType") val participantType: String)
 @Serializable data class FounderAccountRemovalRequest(@SerialName("profileId") val profileId: String, @SerialName("participantType") val participantType: String, val confirmation: String)
 @Serializable data class FounderAccountBatchRequest(val accounts: List<FounderAccountTargetRequest>, val confirmation: String)
@@ -460,7 +460,7 @@ data class SocialVideoEdit(val startSeconds: Double = 0.0, val endSeconds: Doubl
     val availableOutcomes: List<String> = emptyList(), val meetingUrl: String? = null,
     val firstName: String? = null, val lastName: String? = null, val phone2: String? = null,
     val addressLine: String? = null, val city: String? = null, val state: String? = null, val zipCode: String? = null,
-    val updatedUtc: String? = null, val archived: Boolean = false, val userId: String? = null
+    val updatedUtc: String? = null, val archived: Boolean = false, val userId: String? = null, val canRestore: Boolean = false
 )
 
 @Serializable data class MobileBookingAccess(val allowed: Boolean)
