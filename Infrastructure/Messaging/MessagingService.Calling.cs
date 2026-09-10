@@ -254,5 +254,9 @@ internal sealed partial class MessagingService : ILegendCallingAuthority
     internal static LegendCallSnapshot CallSnapshot(LegendCallSession call) => new(
         call.Id, call.ConversationId, call.CallerUserId, call.CallerType, call.CalleeUserId, call.CalleeType,
         call.CallerDeviceId, call.CalleeDeviceId, call.CallerName, call.CalleeName,
-        call.Video, call.Status, call.CreatedUtc, call.ExpiresUtc, call.Epoch, ReceivedUtc: call.ReceivedUtc);
+        // SQL datetime2 preserves the UTC clock value but not DateTime.Kind.
+        // Restore that contract once for status, signaling and push payloads.
+        call.Video, call.Status, DateTime.SpecifyKind(call.CreatedUtc, DateTimeKind.Utc),
+        DateTime.SpecifyKind(call.ExpiresUtc, DateTimeKind.Utc), call.Epoch,
+        ReceivedUtc: call.ReceivedUtc is { } received ? DateTime.SpecifyKind(received, DateTimeKind.Utc) : null);
 }

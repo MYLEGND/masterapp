@@ -1,6 +1,7 @@
 using Domain.Entities;
 using System;
 using System.Linq;
+using System.Text.Json;
 using Microsoft.Data.Sqlite;
 using Infrastructure.Data;
 using System.Threading.Tasks;
@@ -13,6 +14,46 @@ namespace AgentPortal.Tests;
 
 public sealed partial class MessagingServiceTests
 {
+    [Fact]
+    public async Task DirectCalls_ReloadedTimestampsRemainUtcInStatusAndPushSnapshots()
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        var options = new DbContextOptionsBuilder<MasterAppDbContext>().UseSqlite(connection).Options;
+        await using var db = new MasterAppDbContext(options);
+        await db.Database.EnsureCreatedAsync();
+        await SeedAgentAndClientAsync(db, true, false);
+        var service = CreateService(db);
+        var conversation = (await service.StartConversationAsync(new StartMessagingConversationCommand(
+            new("agent-1", "Agent"), "client-1", "Client", InitialMessageBody: "Call"))).Conversation!;
+        var caller = Guid.NewGuid();
+        var id = Guid.NewGuid();
+        var invite = await service.ExecuteAsync("agent-1", "Agent", new("invite", caller, id, conversation.Id), default);
+        Assert.True(invite.Succeeded, invite.Error);
+        db.ChangeTracker.Clear();
+        var persisted = await db.LegendCallSessions.SingleAsync(call => call.Id == id);
+        Assert.Equal(DateTimeKind.Unspecified, persisted.ExpiresUtc.Kind);
+        var current = await service.ExecuteAsync("agent-1", "Agent", new("get", caller, id), default);
+        Assert.True(current.Succeeded, current.Error);
+        Assert.Equal(invite.Call!.ExpiresUtc.Ticks, current.Call!.ExpiresUtc.Ticks);
+        AssertUtc(current.Call);
+        AssertUtc(Infrastructure.Messaging.MessagingService.CallSnapshot(persisted));
+        Assert.True((await service.ExecuteAsync("client-1", "Client", new("received", Guid.NewGuid(), id), default)).Succeeded);
+        db.ChangeTracker.Clear();
+        var received = await service.ExecuteAsync("agent-1", "Agent", new("get", caller, id), default);
+        Assert.NotNull(received.Call!.ReceivedUtc);
+        AssertUtc(received.Call);
+
+        static void AssertUtc(LegendCallSnapshot snapshot)
+        {
+            var wire = JsonSerializer.SerializeToElement(snapshot, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+            Assert.EndsWith("Z", wire.GetProperty("createdUtc").GetString());
+            Assert.EndsWith("Z", wire.GetProperty("expiresUtc").GetString());
+            if (snapshot.ReceivedUtc != null)
+                Assert.EndsWith("Z", wire.GetProperty("receivedUtc").GetString());
+        }
+    }
+
     [Theory]
     [InlineData(true)]
     [InlineData(false)]
