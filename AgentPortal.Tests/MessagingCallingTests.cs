@@ -13,6 +13,29 @@ namespace AgentPortal.Tests;
 
 public sealed partial class MessagingServiceTests
 {
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task DirectCalls_CancellationCannotBeOvertakenByALateInvite(bool cancelFirst)
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        await SeedAgentAndClientAsync(db, true, false);
+        var service = CreateService(db);
+        var conversation = (await service.StartConversationAsync(new StartMessagingConversationCommand(new("agent-1", "Agent"), "client-1", "Client", InitialMessageBody: "Call"))).Conversation!;
+        var device = Guid.NewGuid(); var id = Guid.NewGuid();
+        Task<LegendCallResult> Run(string action) => service.ExecuteAsync("agent-1", "Agent", new(action, device, id, conversation.Id), default);
+        if (!cancelFirst) Assert.True((await Run("invite")).Succeeded);
+        Assert.True((await Run("cancel")).Succeeded);
+        var retry = await Run("invite");
+        Assert.True(retry.Succeeded, retry.Error);
+        Assert.Equal("ended", retry.Call!.Status);
+        Assert.True((await Run("cancel")).Succeeded);
+        Assert.Single(await db.LegendCallSessions.ToArrayAsync());
+        Assert.Empty((await service.ExecuteAsync("client-1", "Client", new("sync", Guid.NewGuid()), default)).ActiveCalls!);
+        Assert.False((await service.ExecuteAsync("client-1", "Client", new("cancel", Guid.NewGuid(), id, conversation.Id), default)).Succeeded);
+        Assert.False((await service.ExecuteAsync("agent-1", "Agent", new("cancel", Guid.NewGuid(), id, conversation.Id), default)).Succeeded);
+    }
+
     [Fact]
     public async Task DirectCalls_OnlyRecipientCanConfirmDelivery_WithoutClaimingAnswerOrExtendingLease()
     {

@@ -110,7 +110,7 @@ class LegendCallViewModel(private val app: Application, val transport: MobileMes
         try {
             val result = command(LegendCallCommand("invite", deviceId, request.first, request.second, request.third))
             if (pending?.first != request.first || stopped) {
-                runCatching { transport.call(LegendCallCommand("end", deviceId, request.first), existingConnectionOnly = true) }
+                runCatching { transport.call(LegendCallCommand("cancel", deviceId, request.first, request.second), existingConnectionOnly = true) }
                 return@launch
             }
             val call = result.call ?: error("The call could not start. Please try again.")
@@ -134,10 +134,11 @@ class LegendCallViewModel(private val app: Application, val transport: MobileMes
         app.startActivity(Intent(app, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP))
     }
     fun end() = viewModelScope.launch {
-        val id = state.value.call?.id ?: pending?.first
+        val outgoing = pending
+        val id = state.value.call?.id ?: outgoing?.first
         val decline = state.value.incoming
         clear()
-        if (id != null) runCatching { command(LegendCallCommand(if (decline) "decline" else "end", deviceId, id)) }
+        if (id != null) runCatching { command(LegendCallCommand(if (outgoing != null) "cancel" else if (decline) "decline" else "end", deviceId, id, outgoing?.second)) }
     }
     fun background(value: Boolean) { peer?.background(value) }
     fun dismissFailure() { update { it.copy(failure = null) } }
@@ -348,7 +349,8 @@ class LegendCallViewModel(private val app: Application, val transport: MobileMes
         if (stopped) return
         stopped = true
         transport.retireAccountConnection()
-        val id = state.value.call?.id ?: pending?.first
+        val outgoing = pending
+        val id = state.value.call?.id ?: outgoing?.first
         val decline = state.value.incoming
         clear()
         if (LegendCallPlatform.store === this) LegendCallPlatform.store = null
@@ -357,7 +359,7 @@ class LegendCallViewModel(private val app: Application, val transport: MobileMes
         // outlive ViewModel cancellation but cannot reconnect as the next account.
         CoroutineScope(Dispatchers.Main.immediate).launch {
             try {
-                if (id != null) runCatching { transport.call(LegendCallCommand(if (decline) "decline" else "end", deviceId, id), existingConnectionOnly = true) }
+                if (id != null) runCatching { transport.call(LegendCallCommand(if (outgoing != null) "cancel" else if (decline) "decline" else "end", deviceId, id, outgoing?.second), existingConnectionOnly = true) }
             } finally { transport.close(); cancel() }
         }
     }

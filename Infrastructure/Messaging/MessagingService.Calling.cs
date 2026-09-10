@@ -33,7 +33,7 @@ internal sealed partial class MessagingService : ILegendCallingAuthority
         }
         try
         {
-            if (command.Action == "invite")
+            if (command.Action is "invite" or "cancel")
             {
                 return await _db.Database.CreateExecutionStrategy().ExecuteAsync(async () =>
                 {
@@ -42,7 +42,7 @@ internal sealed partial class MessagingService : ILegendCallingAuthority
                     var result = await InviteCallAsync(actor, command, cancellationToken);
                     if (transaction != null) await transaction.CommitAsync(cancellationToken);
                     // Notify only after commit: the other device can immediately fetch the saved call.
-                    if (result.Succeeded && result.Call != null)
+                    if (result.Succeeded && result.Call?.Status == "ringing")
                     {
                         LegendCallPushWakeup.Notify();
                     }
@@ -67,10 +67,18 @@ internal sealed partial class MessagingService : ILegendCallingAuthority
     {
         if (command.CallId == null || command.CallId == Guid.Empty || command.ConversationId == null)
             return new(false, "A call and conversation are required.");
-        var prior = await _db.LegendCallSessions.AsNoTracking().SingleOrDefaultAsync(c => c.Id == command.CallId, ct);
+        var prior = await _db.LegendCallSessions.SingleOrDefaultAsync(c => c.Id == command.CallId, ct);
         if (prior != null)
-            return IsSameParticipant(prior.CallerUserId, prior.CallerType, actor.UserId, actor.ParticipantType) && prior.CallerDeviceId == command.DeviceId
-                ? new(true, null, await SnapshotAsync(prior, ct), Policy: DirectCallPolicy) : new(false, "Call unavailable.");
+        {
+            if (!IsSameParticipant(prior.CallerUserId, prior.CallerType, actor.UserId, actor.ParticipantType) || prior.CallerDeviceId != command.DeviceId)
+                return new(false, "Call unavailable.");
+            if (command.Action == "cancel" && prior.Status is "ringing" or "connecting" or "active")
+            {
+                prior.Status = "ended";
+                await SaveCallAsync(prior, ct);
+            }
+            return new(true, null, await SnapshotAsync(prior, ct), Policy: DirectCallPolicy);
+        }
         var conversation = await (await AuthorizedConversationsQueryAsync(actor, ct)).AsNoTracking()
             .FirstOrDefaultAsync(c => c.Id == command.ConversationId && !c.IsClosed, ct);
         if (conversation == null || conversation.ConversationType == MessagingConversationTypes.Group)
@@ -95,7 +103,7 @@ internal sealed partial class MessagingService : ILegendCallingAuthority
              (actorIds.Contains(c.CalleeUserId.ToLower()) && c.CalleeType == actor.ParticipantType) ||
              (otherIds.Contains(c.CallerUserId.ToLower()) && c.CallerType == other.ParticipantType) ||
              (otherIds.Contains(c.CalleeUserId.ToLower()) && c.CalleeType == other.ParticipantType)), ct);
-        if (busy) return new(false, "One of you is already in a call.");
+        if (busy && command.Action != "cancel") return new(false, "One of you is already in a call.");
         // Bound repeated ringing without introducing a separate identity/rate-limit store.
         if (await _db.LegendCallSessions.CountAsync(c => c.CallerUserId == actor.UserId && c.CallerType == actor.ParticipantType && c.CreatedUtc > now.AddMinutes(-1), ct) >= 5)
             return new(false, "Please wait before calling again.");
@@ -105,7 +113,11 @@ internal sealed partial class MessagingService : ILegendCallingAuthority
             CallerUserId = actor.UserId, CallerType = actor.ParticipantType,
             CalleeUserId = other.UserId, CalleeType = other.ParticipantType,
             CallerDeviceId = command.DeviceId, CallerName = caller.DisplayName, CalleeName = callee.DisplayName,
-            Video = command.Video, CreatedUtc = now, ExpiresUtc = now.AddSeconds(DirectCallPolicy.RingSeconds)
+            // An early cancellation creates a terminal record under the same
+            // serializable transaction as invite. A later invite cannot resurrect it.
+            Status = command.Action == "cancel" ? "ended" : "ringing",
+            Video = command.Video, CreatedUtc = now,
+            ExpiresUtc = command.Action == "cancel" ? now : now.AddSeconds(DirectCallPolicy.RingSeconds)
         };
         _db.LegendCallSessions.Add(call);
         await _db.SaveChangesAsync(ct);
