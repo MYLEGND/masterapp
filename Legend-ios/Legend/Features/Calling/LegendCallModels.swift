@@ -29,6 +29,8 @@ struct LegendCallSnapshot: Decodable, Identifiable {
     let epoch: Int
     var callerUserIds: [String]? = nil
     var calleeUserIds: [String]? = nil
+    var receivedUtc: Date? = nil
+    var failureMessage: String? = nil
     var terminal: Bool { ["ended", "declined", "missed"].contains(status) }
 }
 struct LegendCallEvent: Decodable {

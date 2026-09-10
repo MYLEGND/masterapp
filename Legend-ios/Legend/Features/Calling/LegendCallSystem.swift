@@ -14,9 +14,11 @@ final class LegendCallSystem: NSObject, PKPushRegistryDelegate, CXProviderDelega
     private weak var owner: LegendCallStore?
     private var pending: [UUID: LegendCallSnapshot] = [:]
     private var reported = Set<UUID>()
+    private var reportCompletions: [UUID: [(Error?) -> Void]] = [:]
     private override init() {
         let configuration = CXProviderConfiguration()
         configuration.supportsVideo = true
+        configuration.ringtoneSound = "legend_incoming.wav"
         configuration.maximumCallsPerCallGroup = 1
         configuration.maximumCallGroups = 1
         configuration.supportedHandleTypes = [.generic]
@@ -42,10 +44,34 @@ final class LegendCallSystem: NSObject, PKPushRegistryDelegate, CXProviderDelega
     }
     func detach(_ store: LegendCallStore) { if owner === store { owner = nil } }
     func report(_ call: LegendCallSnapshot) async throws {
-        if !reported.insert(call.id).inserted { return }
-        let update = Self.update(call)
-        do { try await provider.reportNewIncomingCall(with: call.id, update: update) }
-        catch { reported.remove(call.id); throw error }
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            reportIncoming(call) { error in
+                if let error { continuation.resume(throwing: error) }
+                else { continuation.resume() }
+            }
+        }
+    }
+    private func reportIncoming(_ call: LegendCallSnapshot, completion: @escaping (Error?) -> Void) {
+        if reported.contains(call.id) { completion(nil); return }
+        if reportCompletions[call.id] != nil { reportCompletions[call.id]?.append(completion); return }
+        reportCompletions[call.id] = [completion]
+        // Called synchronously from PushKit, before authentication or network I/O.
+        provider.reportNewIncomingCall(with: call.id, update: Self.update(call)) { error in
+            Task { @MainActor in
+                guard let callbacks = self.reportCompletions.removeValue(forKey: call.id) else {
+                    if error == nil { self.provider.reportCall(with: call.id, endedAt: Date(), reason: .failed) }
+                    return
+                }
+                if error == nil { self.reported.insert(call.id) }
+                callbacks.forEach { $0(error) }
+            }
+        }
+        Task { [weak self] in
+            try? await Task.sleep(for: .seconds(5))
+            guard let self, let callbacks = self.reportCompletions.removeValue(forKey: call.id) else { return }
+            self.provider.reportCall(with: call.id, endedAt: Date(), reason: .failed)
+            callbacks.forEach { $0(LegendCallingError.unavailable("Incoming call presentation timed out.")) }
+        }
     }
     func finished(_ id: UUID) { pending.removeValue(forKey: id) }
     private static func update(_ call: LegendCallSnapshot) -> CXCallUpdate {
@@ -75,13 +101,8 @@ final class LegendCallSystem: NSObject, PKPushRegistryDelegate, CXProviderDelega
                 }
                 return
             }
-            if reported.contains(call.id) {
-                provider.reportNewIncomingCall(with: call.id, update: Self.update(call)) { _ in completion() }
-                return
-            }
-            reported.insert(call.id)
             pending[call.id] = call
-            provider.reportNewIncomingCall(with: call.id, update: Self.update(call)) { error in
+            reportIncoming(call) { error in
                 completion()
                 Task { @MainActor in
                     if error != nil || call.expiresUtc <= Date() {
@@ -129,9 +150,11 @@ final class LegendCallSystem: NSObject, PKPushRegistryDelegate, CXProviderDelega
     nonisolated func provider(_ provider: CXProvider, didActivate audioSession: AVAudioSession) {
         RTCAudioSession.sharedInstance().audioSessionDidActivate(audioSession)
         RTCAudioSession.sharedInstance().isAudioEnabled = true
+        Task { @MainActor in self.owner?.audioActivated(true) }
     }
     nonisolated func provider(_ provider: CXProvider, didDeactivate audioSession: AVAudioSession) {
         RTCAudioSession.sharedInstance().isAudioEnabled = false
+        Task { @MainActor in self.owner?.audioActivated(false) }
         RTCAudioSession.sharedInstance().audioSessionDidDeactivate(audioSession)
     }
 }

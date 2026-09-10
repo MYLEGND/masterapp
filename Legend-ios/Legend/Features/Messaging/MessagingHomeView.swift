@@ -758,11 +758,11 @@ private struct LegendConversationCallSheet: View {
                 Text(fallbackName).font(.title3.bold())
                 LegendCallActionButton(title: LegendLocalized("Legend voice call"), subtitle: LegendLocalized("Private in-app audio"), symbol: "phone.fill") {
                     dismiss()
-                    store.calling?.start(conversationId: conversationID, video: false)
+                    store.calling?.start(conversationId: conversationID, video: false, recipientName: fallbackName)
                 }
                 LegendCallActionButton(title: LegendLocalized("Legend video call"), subtitle: LegendLocalized("Connect face to face"), symbol: "video.fill") {
                     dismiss()
-                    store.calling?.start(conversationId: conversationID, video: true)
+                    store.calling?.start(conversationId: conversationID, video: true, recipientName: fallbackName)
                 }
                 Button(LegendLocalized("Cancel")) { dismiss() }
             }.padding(LegendNextSpacing.pageHorizontal)

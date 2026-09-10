@@ -7,6 +7,15 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class LegendDirectCallingTest {
+    @Test fun sharedRingingSoundsArePackagedAndDecodable() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        for (resource in listOf(R.raw.legend_incoming, R.raw.legend_ringback)) {
+            val player = android.media.MediaPlayer.create(context, resource)
+            assertNotNull(player)
+            try { assertTrue(player.duration > 2000) } finally { player.release() }
+        }
+    }
+
     @Test fun accountSwitchingNeverReusesARetiredCallStore() = runBlocking {
         withContext(Dispatchers.Main) {
             val app = InstrumentationRegistry.getInstrumentation().targetContext.applicationContext as LegendApplication

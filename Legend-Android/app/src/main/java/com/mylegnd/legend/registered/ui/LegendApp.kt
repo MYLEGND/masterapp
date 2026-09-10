@@ -3116,7 +3116,7 @@ private fun LegendConversationCallSheet(
     val calling = LocalLegendCalling.current
     var video by remember { mutableStateOf(false) }
     val permissions = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { grants ->
-        if (grants.values.all { it }) { dismiss(); calling?.start(conversationId, video) }
+        if (grants.values.all { it }) { dismiss(); calling?.start(conversationId, video, fallbackName) }
     }
     ModalBottomSheet(onDismissRequest = dismiss, containerColor = LegendColors.Canvas) {
         Column(Modifier.fillMaxWidth().padding(LegendSpacing.PageHorizontal), verticalArrangement = Arrangement.spacedBy(LegendSpacing.Md), horizontalAlignment = Alignment.CenterHorizontally) {

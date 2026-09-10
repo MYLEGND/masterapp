@@ -24,7 +24,7 @@ settings:
     TARGETED_DEVICE_FAMILY: "1,2"
     CODE_SIGN_STYLE: Automatic
     DEVELOPMENT_TEAM: Z8XL9RU485
-    CURRENT_PROJECT_VERSION: "1"
+    CURRENT_PROJECT_VERSION: "25"
     EXTRACT_APP_INTENTS_METADATA: NO
     MARKETING_VERSION: "1.0"
     ENABLE_USER_SCRIPT_SANDBOXING: YES
@@ -71,6 +71,10 @@ targets:
         excludes:
           - Resources/Info.plist
 
+      - path: ../SHARED/Calling/Resources/raw/legend_ringback.wav
+        buildPhase: resources
+      - path: ../SHARED/Calling/Resources/raw/legend_incoming.wav
+        buildPhase: resources
       - path: ../Legend-Design/legend-design.tokens.json
         buildPhase: resources
       - path: ../Legend-Design/legend-application-copy.json

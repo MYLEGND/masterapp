@@ -53,7 +53,7 @@ internal sealed partial class MessagingService : ILegendCallingAuthority
         }
         catch (DbUpdateConcurrencyException)
         {
-            if (command.Action is "heartbeat" or "connected")
+            if (command.Action is "heartbeat" or "connected" or "received")
             {
                 _db.ChangeTracker.Clear();
                 try { return await HandleCallAsync(actor, command, cancellationToken); }
@@ -146,12 +146,24 @@ internal sealed partial class MessagingService : ILegendCallingAuthority
         if (command.Action == "get") return new(true, null, await SnapshotAsync(call, ct), Policy: DirectCallPolicy);
         if (call.Status is "ended" or "declined" or "missed")
             return command.Action == "end" ? new(true, null, await SnapshotAsync(call, ct)) : new(false, "This call has ended.", await SnapshotAsync(call, ct));
-        if (command.Action == "accept")
+        if (command.Action == "received")
+        {
+            // Only an authenticated receiving account may confirm presentation.
+            // Receipt never claims the answering-device slot or extends the lease.
+            if (caller) return new(false, "Only the recipient can confirm call delivery.");
+            if (call.Status == "ringing" && call.ReceivedUtc == null)
+            {
+                call.ReceivedUtc = DateTime.UtcNow;
+                await SaveCallAsync(call, ct);
+            }
+        }
+        else if (command.Action == "accept")
         {
             if (caller || (call.CalleeDeviceId != null && call.CalleeDeviceId != command.DeviceId))
                 return new(false, "This call was answered on another device.", await SnapshotAsync(call, ct));
             if (call.Status == "ringing")
             {
+                call.ReceivedUtc ??= DateTime.UtcNow;
                 call.CalleeDeviceId = command.DeviceId;
                 call.Status = "connecting";
                 call.ExpiresUtc = DateTime.UtcNow.AddSeconds(60);
@@ -230,5 +242,5 @@ internal sealed partial class MessagingService : ILegendCallingAuthority
     internal static LegendCallSnapshot CallSnapshot(LegendCallSession call) => new(
         call.Id, call.ConversationId, call.CallerUserId, call.CallerType, call.CalleeUserId, call.CalleeType,
         call.CallerDeviceId, call.CalleeDeviceId, call.CallerName, call.CalleeName,
-        call.Video, call.Status, call.CreatedUtc, call.ExpiresUtc, call.Epoch);
+        call.Video, call.Status, call.CreatedUtc, call.ExpiresUtc, call.Epoch, ReceivedUtc: call.ReceivedUtc);
 }

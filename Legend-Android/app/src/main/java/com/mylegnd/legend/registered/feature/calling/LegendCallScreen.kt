@@ -45,7 +45,7 @@ fun LegendCallOverlay(store: LegendCallViewModel) {
     }
     fun answer() { answerPermissions.launch(if (state.call?.video == true) arrayOf(Manifest.permission.RECORD_AUDIO, Manifest.permission.CAMERA) else arrayOf(Manifest.permission.RECORD_AUDIO)) }
     LaunchedEffect(state.systemAnswerRequested) { if (state.systemAnswerRequested) answer() }
-    if (state.call == null && state.failure == null) return
+    if (state.call == null && !state.starting && state.failure == null) return
     Dialog(onDismissRequest = {}, properties = DialogProperties(usePlatformDefaultWidth = false, dismissOnBackPress = false, dismissOnClickOutside = false)) {
         Box(Modifier.fillMaxSize().background(Brush.linearGradient(listOf(LegendColors.Navy, LegendColors.Midnight)))) {
             state.remoteVideo?.let { video -> store.peer?.let { engine -> LegendVideoSurface(video, engine, Modifier.fillMaxSize(), snapshotRequest) { bitmap ->
@@ -77,7 +77,12 @@ fun LegendCallOverlay(store: LegendCallViewModel) {
                 } else {
                     Text(state.name, style = LegendTypography.Section, color = Color.White)
                     Text(callStatusLabel(state.status), color = LegendColors.Gold)
-                    if (state.incoming) {
+                    if (state.status == "Calling") Text(legendLocalized("Waiting for the recipient’s device to confirm receipt"), color = Color.White)
+                    if (state.status == "Ringing") Text(legendLocalized("The recipient’s device received your call"), color = Color.White)
+                    if (state.starting) {
+                        CircularProgressIndicator(color = LegendColors.Gold)
+                        Button(onClick = { store.end() }) { Text(legendLocalized("Cancel")) }
+                    } else if (state.incoming) {
                         Row(horizontalArrangement = Arrangement.spacedBy(30.dp)) {
                         Button(onClick = { store.end() }, colors = ButtonDefaults.buttonColors(containerColor = LegendColors.Error)) { Text(legendLocalized("Decline")) }
                             Button(onClick = { answer() }, colors = ButtonDefaults.buttonColors(containerColor = LegendColors.Gold, contentColor = LegendColors.Midnight)) { Text(legendLocalized("Answer")) }

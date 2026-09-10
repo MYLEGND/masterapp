@@ -225,6 +225,7 @@ android {
     }
 
     sourceSets.getByName("main") {
+        res.directories.add(rootProject.file("../SHARED/Calling/Resources").absolutePath)
         assets.directories.add(legendDesignAssets.get().asFile.absolutePath)
         assets.directories.add(legendBrandAssets.get().asFile.absolutePath)
         res.directories.add(legendBrandRes.get().asFile.absolutePath)

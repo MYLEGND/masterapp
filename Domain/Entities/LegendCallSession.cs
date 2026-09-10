@@ -19,6 +19,7 @@ public sealed class LegendCallSession
     public DateTime CreatedUtc { get; set; }
     public DateTime ExpiresUtc { get; set; }
     public int Epoch { get; set; }
+    public DateTime? ReceivedUtc { get; set; }
     public DateTime? InvitationDispatchedUtc { get; set; }
     public DateTime? NextPushUtc { get; set; }
     public int PushAttempts { get; set; }

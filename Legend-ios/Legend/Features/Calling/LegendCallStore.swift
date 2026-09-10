@@ -2,6 +2,7 @@ import AVFoundation
 import CallKit
 import Combine
 import UIKit
+import os
 @preconcurrency import WebRTC
 
 @MainActor
@@ -24,19 +25,25 @@ final class LegendCallStore: NSObject, ObservableObject, CXProviderDelegate {
     private let controller = CXCallController()
     private var policy: LegendCallPolicy?
     private var peer: LegendRTCPeer?
+    private var ringback: AVAudioPlayer?
+    private var audioActive = false
+    private let callLog = Logger(subsystem: "com.mylegnd.legend.registered", category: "calling")
+    private var reconciliation: Task<Void, Never>?
+    private var startupDeadline: Task<Void, Never>?
     private var heartbeat: Task<Void, Never>?
     private var deadline: Task<Void, Never>?
-    private var pendingOutgoing: (UUID, UUID, Bool)?
+    @Published private var pendingOutgoing: (UUID, UUID, Bool)?
+    private var outgoingName = ""
+    var isStarting: Bool { pendingOutgoing != nil && current == nil }
     private var reportedCalls = Set<UUID>()
     private var finishedCalls = Set<UUID>()
-    private var starting = false
     private var requestingScreenShare = false
     private var stopped = false
     private var shutdownTask: Task<Void, Never>?
     private var audioObservers: [NSObjectProtocol] = []
     var isCaller: Bool { current.map { isCallerAccount($0) && $0.callerDeviceId == deviceId } ?? false }
     var incoming: Bool { current?.status == "ringing" && !isCaller }
-    var name: String { isCaller ? current?.calleeName ?? "" : current?.callerName ?? "" }
+    var name: String { if isStarting { return outgoingName }; return isCaller ? current?.calleeName ?? "" : current?.callerName ?? "" }
 
     init(transport: MobileMessagingRealtimeClient, identity: LogicalParticipantIdentity) {
         self.transport = transport
@@ -64,22 +71,37 @@ final class LegendCallStore: NSObject, ObservableObject, CXProviderDelegate {
         })
     }
 
-    func start(conversationId: UUID, video: Bool) {
-        guard !stopped, !starting, current == nil, pendingOutgoing == nil else { return }
-        starting = true
+    func start(conversationId: UUID, video: Bool, recipientName: String = "") {
+        guard !stopped, current == nil, pendingOutgoing == nil else { return }
+        let id = UUID()
         failure = nil
+        minimized = false
+        outgoingName = recipientName
+        status = "Calling"
+        // Publish before any permission prompt, network request, or CallKit work.
+        pendingOutgoing = (id, conversationId, video)
         Task {
-            defer { starting = false }
             do {
+                guard pendingOutgoing?.0 == id, !stopped else { return }
                 try await permissions(video: video)
-                let synced = try await send(LegendCallCommand(action: "sync", deviceId: deviceId))
-                policy = synced.policy
-                let id = UUID()
-                pendingOutgoing = (id, conversationId, video)
-                let action = CXStartCallAction(call: id, handle: CXHandle(type: .generic, value: "Legend"))
+                guard pendingOutgoing?.0 == id, !stopped else { return }
+                try AVAudioSession.sharedInstance().setCategory(.playAndRecord, mode: video ? .videoChat : .voiceChat,
+                    options: video ? [.allowBluetoothHFP, .defaultToSpeaker] : [.allowBluetoothHFP])
+                startupDeadline = Task { [weak self] in
+                    try? await Task.sleep(for: .seconds(25))
+                    guard !Task.isCancelled, let self, self.pendingOutgoing?.0 == id else { return }
+                    self.failure = "The call could not start in time. Please try again."
+                    self.provider.reportCall(with: id, endedAt: Date(), reason: .failed)
+                    self.clear()
+                }
+                let action = CXStartCallAction(call: id, handle: CXHandle(type: .generic, value: recipientName.isEmpty ? "Legend" : recipientName))
                 action.isVideo = video
                 try await controller.request(CXTransaction(action: action))
-            } catch { pendingOutgoing = nil; failure = error.localizedDescription }
+            } catch {
+                guard pendingOutgoing?.0 == id else { return }
+                failure = error.localizedDescription
+                clear()
+            }
         }
     }
     func answer() {
@@ -87,12 +109,18 @@ final class LegendCallStore: NSObject, ObservableObject, CXProviderDelegate {
         Task { do { try await controller.request(CXTransaction(action: CXAnswerCallAction(call: current.id))) } catch { failure = error.localizedDescription } }
     }
     func end() {
+        if let pending = pendingOutgoing {
+            provider.reportCall(with: pending.0, endedAt: Date(), reason: .remoteEnded)
+            clear()
+            Task { _ = try? await transport.call(LegendCallCommand(action: "end", deviceId: deviceId, callId: pending.0), existingConnectionOnly: true) }
+            return
+        }
         guard let current else { clear(); return }
         Task { do { try await controller.request(CXTransaction(action: CXEndCallAction(call: current.id))) } catch { await finish(current.id) } }
     }
     func systemTimedOut(_ id: UUID) {
         if current?.id == id { fail("The call could not start in time. Please try again.") }
-        else if pendingOutgoing?.0 == id { pendingOutgoing = nil; failure = "The call could not start in time. Please try again." }
+        else if pendingOutgoing?.0 == id { failure = "The call could not start in time. Please try again."; clear() }
     }
     func dismissFailure() { failure = nil }
     func setMuted() {
@@ -132,7 +160,9 @@ final class LegendCallStore: NSObject, ObservableObject, CXProviderDelegate {
     }
     private func send(_ command: LegendCallCommand) async throws -> LegendCallResult {
         guard !stopped else { throw CancellationError() }
+        callLog.info("Call command: \(command.action, privacy: .public)")
         let result = try await transport.call(command)
+        callLog.info("Call result: \(command.action, privacy: .public), success=\(result.succeeded)")
         guard !stopped else { throw CancellationError() }
         guard result.succeeded else { throw LegendCallingError.unavailable(result.error ?? "Call unavailable.") }
         if let policy = result.policy { self.policy = policy }
@@ -167,6 +197,7 @@ final class LegendCallStore: NSObject, ObservableObject, CXProviderDelegate {
     func receive(_ event: LegendCallEvent) async {
         let call = event.call
         guard !stopped, owns(call), !finishedCalls.contains(call.id) else { return }
+        if let pendingOutgoing, pendingOutgoing.0 != call.id { return }
         if current == nil && call.status != "ringing" && pendingOutgoing?.0 != call.id { return }
         if current?.id == call.id && current?.status != "ringing" && call.status == "ringing" { return }
         guard event.toDeviceId == nil || event.toDeviceId == deviceId else { return }
@@ -178,23 +209,37 @@ final class LegendCallStore: NSObject, ObservableObject, CXProviderDelegate {
             return
         }
         if call.terminal {
-            if current?.id == call.id {
+            if current?.id == call.id || pendingOutgoing?.0 == call.id {
+                if callerAccount { failure = call.failureMessage }
                 provider.reportCall(with: call.id, endedAt: Date(), reason: call.status == "declined" ? .declinedElsewhere : .remoteEnded)
                 clear()
             }
             return
         }
+        if current?.id == call.id && current?.receivedUtc != nil && call.receivedUtc == nil && call.status == "ringing" { return }
         current = call
+        callLog.info("Call event: \(call.status, privacy: .public), received=\(call.receivedUtc != nil)")
+        startReconciliation(call.id)
         if call.status == "ringing" {
-            status = callerAccount ? "Calling" : "Incoming call"
+            status = callerAccount ? (call.receivedUtc == nil ? "Calling" : "Ringing") : "Incoming call"
+            updateRingback()
             if !callerAccount && !reportedCalls.contains(call.id) {
                 reportedCalls.insert(call.id)
-                do { try await LegendCallSystem.shared.report(call) }
-                catch { await finish(call.id) }
+                do {
+                    try await LegendCallSystem.shared.report(call)
+                    guard current?.id == call.id, current?.status == "ringing" else { return }
+                    _ = try await send(LegendCallCommand(action: "received", deviceId: deviceId, callId: call.id))
+                } catch {
+                    callLog.error("Incoming presentation/receipt failed: \(String(describing: error), privacy: .private)")
+                    failure = "The incoming call could not be presented or confirmed. Please try again."
+                    provider.reportCall(with: call.id, endedAt: Date(), reason: .failed)
+                    clear() // A failure on this device must not decline another receiving device.
+                }
             }
             armDeadline(call.id, until: call.expiresUtc)
             return
         }
+        updateRingback()
         if let kind = event.signalKind, let data = event.signalData {
             do { try await ensurePeer(); try await peer?.receive(kind: kind, data: data, epoch: call.epoch) }
             catch { fail("The direct connection could not be established.") }
@@ -208,6 +253,7 @@ final class LegendCallStore: NSObject, ObservableObject, CXProviderDelegate {
         guard peer == nil, let call = current else { return }
         if policy == nil { _ = try await send(LegendCallCommand(action: "get", deviceId: deviceId, callId: call.id)) }
         guard let policy, current?.id == call.id else { throw CancellationError() }
+        ringback?.stop(); ringback = nil
         status = "Connecting"
         speaker = call.video
         let audioSession = AVAudioSession.sharedInstance()
@@ -235,6 +281,42 @@ final class LegendCallStore: NSObject, ObservableObject, CXProviderDelegate {
         updateProximity()
         armDeadline(call.id, until: Date().addingTimeInterval(Double(policy.connectSeconds)))
     }
+    func audioActivated(_ active: Bool) {
+        audioActive = active
+        updateRingback()
+    }
+    private func updateRingback() {
+        guard audioActive, isCaller, current?.status == "ringing", current?.receivedUtc != nil else {
+            ringback?.stop(); ringback = nil; return
+        }
+        guard ringback == nil else { return }
+        do {
+            guard let url = Bundle.main.url(forResource: "legend_ringback", withExtension: "wav") else {
+                throw LegendCallingError.unavailable("The calling sound is unavailable.")
+            }
+            let player = try AVAudioPlayer(contentsOf: url)
+            player.numberOfLoops = -1
+            guard player.play() else { throw LegendCallingError.unavailable("The calling sound could not play.") }
+            ringback = player
+        } catch { controlError = "The recipient received the call, but the ringing sound could not play." }
+    }
+    private func startReconciliation(_ id: UUID) {
+        guard reconciliation == nil else { return }
+        reconciliation = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(3))
+                guard !Task.isCancelled, let self, self.current?.id == id else { return }
+                do {
+                    let result = try await self.send(LegendCallCommand(action: "get", deviceId: self.deviceId, callId: id))
+                    guard !Task.isCancelled, self.current?.id == id, let call = result.call else { return }
+                    await self.receive(LegendCallEvent(call: call, signalKind: nil, signalData: nil, fromDeviceId: nil, toDeviceId: nil))
+                } catch {
+                    guard !Task.isCancelled, self.current?.id == id else { return }
+                    self.fail("The call status could not be confirmed. Please try again.")
+                }
+            }
+        }
+    }
     private func startHeartbeat(_ id: UUID) {
         guard heartbeat == nil else { return }
         heartbeat = Task { [weak self] in
@@ -252,7 +334,7 @@ final class LegendCallStore: NSObject, ObservableObject, CXProviderDelegate {
         deadline = Task { [weak self] in
             try? await Task.sleep(for: .seconds(max(1, date.timeIntervalSinceNow)))
             guard !Task.isCancelled, let self, self.current?.id == id else { return }
-            self.fail(self.current?.status == "ringing" ? "The call was not answered." : "This network could not establish a direct call. Try another Wi-Fi or mobile connection.")
+            self.fail(self.current?.status == "ringing" ? (self.current?.receivedUtc == nil && self.isCaller ? "The recipient could not be reached. Their device did not confirm receiving the call." : "The call was not answered.") : "This network could not establish a direct call. Try another Wi-Fi or mobile connection.")
         }
     }
     private func updateProximity() {
@@ -270,7 +352,11 @@ final class LegendCallStore: NSObject, ObservableObject, CXProviderDelegate {
         _ = try? await send(LegendCallCommand(action: decline ? "decline" : "end", deviceId: deviceId, callId: id))
     }
     private func clear() {
+        if let pendingOutgoing { finishedCalls.insert(pendingOutgoing.0); LegendCallSystem.shared.finished(pendingOutgoing.0) }
         if let current { finishedCalls.insert(current.id); LegendCallSystem.shared.finished(current.id) }
+        ringback?.stop(); ringback = nil
+        reconciliation?.cancel(); reconciliation = nil
+        startupDeadline?.cancel(); startupDeadline = nil
         peer?.close(); peer = nil
         heartbeat?.cancel(); heartbeat = nil; deadline?.cancel(); deadline = nil
         localVideo = nil; remoteVideo = nil; current = nil; pendingOutgoing = nil
@@ -311,24 +397,31 @@ final class LegendCallStore: NSObject, ObservableObject, CXProviderDelegate {
     nonisolated func provider(_ provider: CXProvider, perform action: CXStartCallAction) {
         Task { @MainActor in
             guard let pending = self.pendingOutgoing, pending.0 == action.callUUID else { action.fail(); return }
+            // CallKit's start action confirms local readiness, not a remote network round trip.
+            action.fulfill()
+            provider.reportOutgoingCall(with: pending.0, startedConnectingAt: Date())
             do {
                 let result = try await self.send(LegendCallCommand(action: "invite", deviceId: self.deviceId, callId: pending.0, conversationId: pending.1, video: pending.2))
                 guard self.pendingOutgoing?.0 == pending.0, !self.stopped else {
                     _ = try? await self.transport.call(LegendCallCommand(action: "end", deviceId: self.deviceId, callId: pending.0), existingConnectionOnly: true)
-                    action.fail(); return
+                    return
                 }
+                guard let call = result.call else { throw LegendCallingError.unavailable("The call could not start. Please try again.") }
                 self.pendingOutgoing = nil
-                guard let call = result.call else { action.fail(); return }
-                self.current = call; self.status = "Calling"; self.reportedCalls.insert(call.id)
+                self.startupDeadline?.cancel(); self.startupDeadline = nil
+                self.reportedCalls.insert(call.id)
+                await self.receive(LegendCallEvent(call: call, signalKind: nil, signalData: nil, fromDeviceId: nil, toDeviceId: nil))
                 let update = CXCallUpdate()
                 update.localizedCallerName = call.calleeName
                 update.remoteHandle = CXHandle(type: .generic, value: call.calleeName)
                 update.hasVideo = call.video
                 provider.reportCall(with: call.id, updated: update)
-                provider.reportOutgoingCall(with: call.id, startedConnectingAt: Date())
-                self.armDeadline(call.id, until: call.expiresUtc)
-                action.fulfill()
-            } catch { action.fail(); self.failure = error.localizedDescription; self.clear() }
+
+            } catch {
+                guard self.pendingOutgoing?.0 == pending.0 else { return }
+                provider.reportCall(with: pending.0, endedAt: Date(), reason: .failed)
+                self.failure = error.localizedDescription; self.clear()
+            }
         }
     }
     nonisolated func provider(_ provider: CXProvider, perform action: CXAnswerCallAction) {
@@ -344,7 +437,11 @@ final class LegendCallStore: NSObject, ObservableObject, CXProviderDelegate {
         }
     }
     nonisolated func provider(_ provider: CXProvider, perform action: CXEndCallAction) {
-        Task { @MainActor in action.fulfill(); await self.finish(action.callUUID) }
+        Task { @MainActor in
+            action.fulfill()
+            guard self.current?.id == action.callUUID || self.pendingOutgoing?.0 == action.callUUID else { return }
+            await self.finish(action.callUUID)
+        }
     }
     nonisolated func provider(_ provider: CXProvider, perform action: CXSetMutedCallAction) {
         Task { @MainActor in self.muted = action.isMuted; self.peer?.setMuted(action.isMuted); action.fulfill() }

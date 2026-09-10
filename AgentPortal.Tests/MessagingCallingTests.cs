@@ -14,6 +14,54 @@ namespace AgentPortal.Tests;
 public sealed partial class MessagingServiceTests
 {
     [Fact]
+    public async Task DirectCalls_OnlyRecipientCanConfirmDelivery_WithoutClaimingAnswerOrExtendingLease()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        await SeedAgentAndClientAsync(db, true, false);
+        var service = CreateService(db);
+        var conversation = (await service.StartConversationAsync(new StartMessagingConversationCommand(new("agent-1", "Agent"), "client-1", "Client", InitialMessageBody: "Call"))).Conversation!;
+        var caller = Guid.NewGuid(); var receiver = Guid.NewGuid(); var id = Guid.NewGuid();
+        var invite = await service.ExecuteAsync("agent-1", "Agent", new("invite", caller, id, conversation.Id), default);
+        Assert.True(invite.Succeeded);
+        Assert.Null(invite.Call!.ReceivedUtc);
+        Assert.False((await service.ExecuteAsync("agent-1", "Agent", new("received", caller, id), default)).Succeeded);
+        Assert.False((await service.ExecuteAsync("stranger", "Client", new("received", receiver, id), default)).Succeeded);
+        var receipt = await service.ExecuteAsync("client-1", "Client", new("received", receiver, id), default);
+        Assert.True(receipt.Succeeded, receipt.Error);
+        Assert.NotNull(receipt.Call!.ReceivedUtc);
+        Assert.Null(receipt.Call.CalleeDeviceId);
+        Assert.Equal(invite.Call.ExpiresUtc, receipt.Call.ExpiresUtc);
+        var count = await db.LegendCallSignals.CountAsync();
+        var repeat = await service.ExecuteAsync("client-1", "Client", new("received", Guid.NewGuid(), id), default);
+        Assert.Equal(receipt.Call.ReceivedUtc, repeat.Call!.ReceivedUtc);
+        Assert.Equal(count, await db.LegendCallSignals.CountAsync());
+        Assert.Contains(await db.LegendCallSignals.ToArrayAsync(), row => row.RecipientGroup == "messaging:agent:agent-1" && row.Payload.Contains("ReceivedUtc"));
+        // A different device on the receiving account may still answer exactly once.
+        Assert.True((await service.ExecuteAsync("client-1", "Client", new("accept", Guid.NewGuid(), id), default)).Succeeded);
+        Assert.False((await service.ExecuteAsync("client-1", "Client", new("accept", receiver, id), default)).Succeeded);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task DirectCalls_ExpiryDistinguishesUndeliveredFromUnanswered(bool delivered)
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        await SeedAgentAndClientAsync(db, true, false);
+        var service = CreateService(db);
+        var conversation = (await service.StartConversationAsync(new StartMessagingConversationCommand(new("agent-1", "Agent"), "client-1", "Client", InitialMessageBody: "Call"))).Conversation!;
+        var caller = Guid.NewGuid(); var id = Guid.NewGuid();
+        await service.ExecuteAsync("agent-1", "Agent", new("invite", caller, id, conversation.Id), default);
+        if (delivered) await service.ExecuteAsync("client-1", "Client", new("received", Guid.NewGuid(), id), default);
+        var row = await db.LegendCallSessions.SingleAsync();
+        row.ExpiresUtc = DateTime.UtcNow.AddSeconds(-1); await db.SaveChangesAsync();
+        var expired = await service.ExecuteAsync("agent-1", "Agent", new("get", caller, id), default);
+        Assert.Equal("missed", expired.Call!.Status);
+        Assert.Equal(delivered ? "The call was not answered." : "The recipient could not be reached. Their device did not confirm receiving the call.", expired.Call.FailureMessage);
+        Assert.False((await service.ExecuteAsync("client-1", "Client", new("received", Guid.NewGuid(), id), default)).Succeeded);
+    }
+
+    [Fact]
     public async Task DirectCalls_BindAnsweringDeviceAndRejectUnauthorizedOrStaleSignals()
     {
         await using var db = ControllerTestHelpers.BuildDb();

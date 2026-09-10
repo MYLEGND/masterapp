@@ -11,7 +11,7 @@ struct LegendCallPresentation: UIViewRepresentable {
     func updateUIView(_ view: UIView, context: Context) {
         DispatchQueue.main.async {
             guard let scene = view.window?.windowScene else { return }
-            if store.current != nil || store.failure != nil {
+            if store.current != nil || store.isStarting || store.failure != nil {
                 if context.coordinator.window == nil {
                     let window = UIWindow(windowScene: scene)
                     window.windowLevel = .normal + 2
@@ -75,7 +75,15 @@ private struct LegendCallScreen: View {
                 } else {
                     Text(store.name).font(.largeTitle.bold()).multilineTextAlignment(.center)
                     Text(statusLabel).font(.headline).foregroundStyle(LegendNextColor.gold)
-                    if store.incoming {
+                    if store.status == "Calling" {
+                        Text(LegendLocalized("Waiting for the recipient’s device to confirm receipt")).font(.subheadline).multilineTextAlignment(.center)
+                    } else if store.status == "Ringing" {
+                        Text(LegendLocalized("The recipient’s device received your call")).font(.subheadline).multilineTextAlignment(.center)
+                    }
+                    if store.isStarting {
+                        ProgressView().tint(LegendNextColor.gold)
+                        control(LegendLocalized("Cancel"), icon: "phone.down.fill", color: .red) { store.end() }
+                    } else if store.incoming {
                         HStack(spacing: 40) {
                             control(LegendLocalized("Decline"), icon: "phone.down.fill", color: .red) { store.end() }
                             control(LegendLocalized("Answer"), icon: "phone.fill", color: LegendNextColor.gold) { store.answer() }
