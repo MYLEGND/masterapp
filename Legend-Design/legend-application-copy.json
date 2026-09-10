@@ -1,5 +1,5 @@
 {
-  "catalogVersion": "application-copy-v1-be6065997f7ec92e",
+  "catalogVersion": "application-copy-v1-f23a5a4d392ad0f2",
   "sourceLanguageCode": "en",
   "entries": [
     {
@@ -73,6 +73,17 @@
       "source": "Accept connection",
       "context": "accessibility copy",
       "sourceRevision": "9fa736ec5ea51c77",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.e1abf00357bbd06b23d9583c",
+      "source": "Account options",
+      "context": "accessibility copy",
+      "sourceRevision": "fb156130b17c4be3",
       "placeholders": [
 
       ],
@@ -3785,17 +3796,6 @@
       "source": "$75 / month",
       "context": "visual interface copy",
       "sourceRevision": "46da70e342cf75c7",
-      "placeholders": [
-
-      ],
-      "translationPolicy": "AzureAllowed",
-      "reuseScope": "Global"
-    },
-    {
-      "id": "application.copy.d6201b1e2bb949494c4d3924",
-      "source": "${LegendCopy.value(",
-      "context": "visual interface copy",
-      "sourceRevision": "705de2f942546067",
       "placeholders": [
 
       ],
@@ -11184,6 +11184,17 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.70313f30171b267d4eedba58",
+      "source": "Biography",
+      "context": "visual interface copy",
+      "sourceRevision": "942dbeda91719a57",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.6b5bf8480526550016183e07",
       "source": "Birth date",
       "context": "visual interface copy",
@@ -13571,6 +13582,17 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.d6805947a76782d5ad45ca9c",
+      "source": "Choose someone in your LEGEND network to begin.",
+      "context": "visual interface copy",
+      "sourceRevision": "a8d0376f1ccc7437",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.15cb37e2b97cd86efa639231",
       "source": "Choose someone in your Legend network to begin.",
       "context": "visual interface copy",
@@ -13586,17 +13608,6 @@
       "source": "Choose the account you want to use. Legend will reopen it next time.",
       "context": "visual interface copy",
       "sourceRevision": "2f881b8dac85d01e",
-      "placeholders": [
-
-      ],
-      "translationPolicy": "AzureAllowed",
-      "reuseScope": "Global"
-    },
-    {
-      "id": "application.copy.c11bb2b45fd2c0b125a91f78",
-      "source": "Choose the language you want to read your messages in.",
-      "context": "visual interface copy",
-      "sourceRevision": "3fb3b20ca66fb50a",
       "placeholders": [
 
       ],
@@ -13697,6 +13708,17 @@
       "source": "Choose your language",
       "context": "visual interface copy",
       "sourceRevision": "8e2d0664dbbb529d",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.a9ef2eaffa9084df794cac42",
+      "source": "Choose your language for LEGEND screens and messages. Original messages remain available.",
+      "context": "visual interface copy",
+      "sourceRevision": "6e1863283bc92c95",
       "placeholders": [
 
       ],
@@ -18885,6 +18907,17 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.2d2ce6096f09df3d6e427f86",
+      "source": "Display date (YYYY-MM-DD)",
+      "context": "visual interface copy",
+      "sourceRevision": "5fcb27a1e28d5eec",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.895da0ab3e2e14fc250f5b62",
       "source": "Display name",
       "context": "visual interface copy",
@@ -23917,6 +23950,17 @@
       "source": "Grant or revoke access to LEGEND language translation.",
       "context": "visual interface copy",
       "sourceRevision": "0fd1124cb01a5719",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.a9c3e7ae6c60540d4a99ad26",
+      "source": "Grant or revoke founder-controlled LEGEND resources",
+      "context": "visual interface copy",
+      "sourceRevision": "2480eb0db30b3d51",
       "placeholders": [
 
       ],
@@ -29713,6 +29757,17 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.1055c3c0fa9b04f9c851b01e",
+      "source": "Local time (HH:mm)",
+      "context": "visual interface copy",
+      "sourceRevision": "f5631029f56c1e50",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.83268b3f701ecbe366c05f17",
       "source": "Location",
       "context": "visual interface copy",
@@ -30329,6 +30384,17 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.da64687a1c4b80884799403c",
+      "source": "Manage the server-owned scripture schedule",
+      "context": "visual interface copy",
+      "sourceRevision": "4c7bdcc91a862134",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.d05759a31306b8684ea8304c",
       "source": "Manage this server-authorized conversation. Removing it only removes it from your inbox; a new message will bring it back.",
       "context": "visual interface copy",
@@ -30725,6 +30791,28 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.3cc27950544e2711e676d456",
+      "source": "Meeting link (https://)",
+      "context": "visual interface copy",
+      "sourceRevision": "acbf630ea5abb8a7",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.20faaa8aef8bcba7920d1d3f",
+      "source": "Meeting link name",
+      "context": "visual interface copy",
+      "sourceRevision": "f2dcb7b3c2b97791",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.8c1cc43fd438e6a273455ec3",
       "source": "Meeting link name (for example, Wednesday Zoom)",
       "context": "visual interface copy",
@@ -30927,17 +31015,6 @@
       "source": "Messages",
       "context": "visual interface copy",
       "sourceRevision": "04d7b48339271ea6",
-      "placeholders": [
-
-      ],
-      "translationPolicy": "AzureAllowed",
-      "reuseScope": "Global"
-    },
-    {
-      "id": "application.copy.9ca4abaf2266e9a9eae7ede7",
-      "source": "Messages are translated only for your view. The sender’s original message is always available.",
-      "context": "visual interface copy",
-      "sourceRevision": "b89c246cbc7dcb0a",
       "placeholders": [
 
       ],
@@ -36611,6 +36688,17 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.8987989c8e4e5967919a2741",
+      "source": "Passage text",
+      "context": "visual interface copy",
+      "sourceRevision": "99bbd09107367c6e",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.dfc0e4c72f42ae5fd113fc6c",
       "source": "Password",
       "context": "visual interface copy",
@@ -38899,6 +38987,17 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.9067c5df58ac6378ecfcb588",
+      "source": "Public email",
+      "context": "visual interface copy",
+      "sourceRevision": "fd03713d09d04f10",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.2701b0743b9d595793daab0c",
       "source": "Public readings could not load. Please try again.",
       "context": "visual interface copy",
@@ -38938,6 +39037,17 @@
       "sourceRevision": "ff058d7df2e3b7f5",
       "placeholders": [
 
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.6742e13bfe7030d7c0d8dd6b",
+      "source": "Publish a {content} to start tracking its performance.",
+      "context": "visual interface copy",
+      "sourceRevision": "5c1cc2af5df69fc5",
+      "placeholders": [
+        "content"
       ],
       "translationPolicy": "AzureAllowed",
       "reuseScope": "Global"
@@ -40692,6 +40802,17 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.a8e57346d4a0c6f71b63dc85",
+      "source": "Remove this publication through LEGEND",
+      "context": "visual interface copy",
+      "sourceRevision": "8f3bc4259a0ba0ec",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.4b11a4372db8005db84ec51f",
       "source": "Remove this scheduled scripture?",
       "context": "visual interface copy",
@@ -41851,6 +41972,17 @@
       "source": "Review open member safety reports",
       "context": "visual interface copy",
       "sourceRevision": "8f6cc31ea8d75b57",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.d15203538992a2732a1db904",
+      "source": "Review open reports using your server-issued authority",
+      "context": "visual interface copy",
+      "sourceRevision": "1bd4130b961c4ee3",
       "placeholders": [
 
       ],
@@ -43860,6 +43992,17 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.f685181fa058ae872cb2709b",
+      "source": "Securely end this Android session",
+      "context": "visual interface copy",
+      "sourceRevision": "e573e2fc3452fe9e",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.6dc5aa99627d7e146b6b3079",
       "source": "Security",
       "context": "visual interface copy",
@@ -44509,6 +44652,17 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.547dec521319e366b9938d66",
+      "source": "Server-authorized account archive and removal controls",
+      "context": "visual interface copy",
+      "sourceRevision": "e93e3b24dd49c54d",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.67c3d2036d0bb697686dc0d3",
       "source": "Server-authorized group discovery visibility.",
       "context": "visual interface copy",
@@ -45038,6 +45192,17 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.12b82efbb34c793249318ada",
+      "source": "Short bio",
+      "context": "visual interface copy",
+      "sourceRevision": "81aa4ccb029d78ef",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.5beef7f5f1df616a1752e8c6",
       "source": "Short intro about how you help people review coverage options.",
       "context": "visual interface copy",
@@ -45104,6 +45269,17 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.de5a255e767d00d8f4980d62",
+      "source": "Show email",
+      "context": "visual interface copy",
+      "sourceRevision": "5128ad225396e9cc",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.d307122c9a260313dd1fbc2d",
       "source": "Show email on profile",
       "context": "visual interface copy",
@@ -45130,6 +45306,17 @@
       "source": "Show my profile in Discover",
       "context": "visual interface copy",
       "sourceRevision": "9791321ce96d3c33",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.c771c786b58ae55b92bf7e0d",
+      "source": "Show phone",
+      "context": "visual interface copy",
+      "sourceRevision": "c3bc12a366ee5308",
       "placeholders": [
 
       ],
@@ -46142,6 +46329,17 @@
       "source": "Start",
       "context": "visual interface copy",
       "sourceRevision": "e4bb9f1ece9af926",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.b502d60ae3e7d9742c64bac8",
+      "source": "Start (UTC ISO-8601)",
+      "context": "visual interface copy",
+      "sourceRevision": "3076c82c52f9b808",
       "placeholders": [
 
       ],
@@ -48767,10 +48965,10 @@
       "reuseScope": "Global"
     },
     {
-      "id": "application.copy.996be953fb9490daffbeaa2c",
-      "source": "The saved ${destination.key.replace('-', ' ')} detail is not available yet.",
+      "id": "application.copy.b12436a01e78782a3520a19c",
+      "source": "The saved section detail is not available yet.",
       "context": "visual interface copy",
-      "sourceRevision": "cc5883ee9fcd7f87",
+      "sourceRevision": "03123a168bbe352c",
       "placeholders": [
 
       ],
@@ -48778,12 +48976,12 @@
       "reuseScope": "Global"
     },
     {
-      "id": "application.copy.b12436a01e78782a3520a19c",
-      "source": "The saved section detail is not available yet.",
+      "id": "application.copy.0fcb5a269e2ba90c404f0f9b",
+      "source": "The saved {destination} detail is not available yet.",
       "context": "visual interface copy",
-      "sourceRevision": "03123a168bbe352c",
+      "sourceRevision": "e47fc271a5081586",
       "placeholders": [
-
+        "destination"
       ],
       "translationPolicy": "AzureAllowed",
       "reuseScope": "Global"
@@ -49625,6 +49823,17 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.1d46d14dca953c00cc4e77d5",
+      "source": "Time zone ID",
+      "context": "visual interface copy",
+      "sourceRevision": "210a7a2cb73531cf",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.951789bf98182784129da247",
       "source": "Timeline",
       "context": "visual interface copy",
@@ -49950,6 +50159,17 @@
       "sourceRevision": "bfa7ad49ce5a1ab5",
       "placeholders": [
 
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.5fd5ad5c52ced9a9d9b41244",
+      "source": "Top {content}",
+      "context": "visual interface copy",
+      "sourceRevision": "c31b8f1650b8af04",
+      "placeholders": [
+        "content"
       ],
       "translationPolicy": "AzureAllowed",
       "reuseScope": "Global"
@@ -50488,17 +50708,6 @@
       "source": "Translation capability only; excludes Founder chat reasoning",
       "context": "visual interface copy",
       "sourceRevision": "d8a861cb09236516",
-      "placeholders": [
-
-      ],
-      "translationPolicy": "AzureAllowed",
-      "reuseScope": "Global"
-    },
-    {
-      "id": "application.copy.b2efac53a8d5d7fd589ca9b9",
-      "source": "Translation is server-only.",
-      "context": "visual interface copy",
-      "sourceRevision": "9dc7b69c2ebcd9fa",
       "placeholders": [
 
       ],
@@ -51397,10 +51606,32 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.ff30cca74ac49b2f814e6884",
+      "source": "Update the server-owned publication",
+      "context": "visual interface copy",
+      "sourceRevision": "805fb67791ece59f",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.8089900486d6712380ce1072",
       "source": "Update your LEGEND relationship",
       "context": "visual interface copy",
       "sourceRevision": "8b90ff13b28b408e",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.021918d635243e4a1a00827e",
+      "source": "Update your public profile, handle, and visibility",
+      "context": "visual interface copy",
+      "sourceRevision": "752a0cc9473a3d9b",
       "placeholders": [
 
       ],
@@ -54588,6 +54819,17 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.cd5df4003e7421eb0e26ae97",
+      "source": "Your language is used across LEGEND.",
+      "context": "visual interface copy",
+      "sourceRevision": "34e0c548bb11cd90",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.1188202bf112326455ba55e2",
       "source": "Your live LEGEND activity",
       "context": "visual interface copy",
@@ -55329,6 +55571,17 @@
       "source": "g.Documents.Count) document(s)",
       "context": "visual interface copy",
       "sourceRevision": "ced53aa9ebc72182",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.1b59f1f8c00e27021b7bef08",
+      "source": "group photo",
+      "context": "visual interface copy",
+      "sourceRevision": "35c6fcfd480ec231",
       "placeholders": [
 
       ],
