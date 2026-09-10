@@ -254,6 +254,7 @@ tasks.named("preBuild").configure {
 }
 
 dependencies {
+    implementation("io.github.webrtc-sdk:android:144.7559.09")
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.lifecycle.runtime.ktx)

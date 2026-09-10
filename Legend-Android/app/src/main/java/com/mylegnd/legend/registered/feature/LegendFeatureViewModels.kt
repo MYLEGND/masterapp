@@ -250,8 +250,6 @@ class MessagingViewModel(private val repository: MessagingRepository, private va
     val recipients: StateFlow<LoadState<List<MessagingRecipient>>> = _recipients.asStateFlow()
     private val _isSending = MutableStateFlow(false)
     val isSending: StateFlow<Boolean> = _isSending.asStateFlow()
-    private val _callOptions = MutableStateFlow<LoadState<ConversationCallOptions>>(LoadState.Idle)
-    val callOptions: StateFlow<LoadState<ConversationCallOptions>> = _callOptions.asStateFlow()
     private var selectedConversationId: String? = null
     private var presentationRevision = 0L
     private var inboxRequestRevision = 0L
@@ -261,11 +259,6 @@ class MessagingViewModel(private val repository: MessagingRepository, private va
         refreshInboxSilently()
     }
 
-    /** Uses the existing conversation-owned call contract shared with iOS. */
-    fun loadCallOptions(conversationId: String) = viewModelScope.launch {
-        _callOptions.value = LoadState.Loading
-        _callOptions.value = repository.callOptions(role, conversationId)
-    }
 
     fun loadMore() = viewModelScope.launch {
         val current = (_conversations.value as? LoadState.Data)?.value ?: return@launch

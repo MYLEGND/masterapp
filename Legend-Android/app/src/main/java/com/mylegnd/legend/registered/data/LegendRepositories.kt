@@ -182,7 +182,6 @@ class MessagingRepository(private val client: LegendApiClient) {
     suspend fun deleteMessage(role: String, conversationId: String, messageId: String) = request {
         client.api.deleteMessage(role, conversationId, messageId).legendBody()
     }
-    suspend fun callOptions(role: String, id: String) = request { client.api.conversationCallOptions(role, id).legendBody() }
     suspend fun requestVerification(role: String) = request { client.api.requestVerification(role).legendBody() }
     suspend fun resolveVerification(role: String, id: String, approve: Boolean, note: String? = null) = request { client.api.resolveVerification(role, id, VerificationResolutionRequest(approve, note)).legendBody() }
     suspend fun controlledRecipients(role: String, resourceType: String, search: String? = null) = request { client.api.controlledResourceRecipients(role, resourceType, search).legendBody() }

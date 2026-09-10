@@ -734,6 +734,10 @@ final class MobileSessionCoordinator: ObservableObject {
             return try await self.accessTokenForRequest()
         }
 
+        let realtime = MobileMessagingRealtimeClient(
+            apiBaseURL: apiBaseURL,
+            participantType: currentSession.actor.identity.participantType,
+            accessTokenProvider: accessTokenProvider)
         return MessagingStore(
             api: URLSessionMessagingAPI(
                 client: MobileHTTPClient(baseURL: apiBaseURL),
@@ -742,10 +746,8 @@ final class MobileSessionCoordinator: ObservableObject {
             diagnostics: diagnostics,
             actorParticipantType: currentSession.actor.identity.participantType,
             isFounder: currentSession.capabilities.contains("founder"),
-            realtime: MobileMessagingRealtimeClient(
-                apiBaseURL: apiBaseURL,
-                participantType: currentSession.actor.identity.participantType,
-                accessTokenProvider: accessTokenProvider)
+            realtime: realtime,
+            calling: realtime.map { LegendCallStore(transport: $0, identity: currentSession.actor.identity) }
         )
     }
 

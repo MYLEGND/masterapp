@@ -1,5 +1,5 @@
 {
-  "catalogVersion": "application-copy-v1-fda1eb3f41ff8e28",
+  "catalogVersion": "application-copy-v1-b0bf71103fd84a88",
   "sourceLanguageCode": "en",
   "entries": [
     {
@@ -3792,6 +3792,17 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.9174822de13d62f48357e6e5",
+      "source": "Answer",
+      "context": "visual interface copy",
+      "sourceRevision": "b2a3aa602762a782",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.ad9d21a3b83d4b462be5db43",
       "source": "Any active subscription is cancelled before this account is archived.",
       "context": "visual interface copy",
@@ -4049,6 +4060,17 @@
       "source": "Audio",
       "context": "visual interface copy",
       "sourceRevision": "bc1b88907d3b748a",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.da9d8cd345a42258069e125e",
+      "source": "Audio interrupted",
+      "context": "visual interface copy",
+      "sourceRevision": "8ce73176e4604e6f",
       "placeholders": [
 
       ],
@@ -4584,10 +4606,21 @@
       "reuseScope": "Global"
     },
     {
-      "id": "application.copy.fe9813ec4c3cce206b216eb3",
-      "source": "Calling unavailable",
+      "id": "application.copy.abb425831916d14d864f4590",
+      "source": "Call settings unavailable.",
       "context": "visual interface copy",
-      "sourceRevision": "9f11230d34ee5e3c",
+      "sourceRevision": "b0c62b3c37cfd5b0",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.7bba7bbd15435f5a66167a16",
+      "source": "Calling",
+      "context": "visual interface copy",
+      "sourceRevision": "74028104c2ae1cf9",
       "placeholders": [
 
       ],
@@ -4610,6 +4643,17 @@
       "source": "Calls open through your device’s secure Phone or FaceTime experience.",
       "context": "visual interface copy",
       "sourceRevision": "1c3b7d79513f7497",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.2b6497062afdd59c40022c2b",
+      "source": "Camera",
+      "context": "visual interface copy",
+      "sourceRevision": "03494b0d1f803522",
       "placeholders": [
 
       ],
@@ -5619,6 +5663,17 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.015e10dc484bf598030b2aea",
+      "source": "Connect face to face",
+      "context": "visual interface copy",
+      "sourceRevision": "6bf01a9bc7159238",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.7e84f121a87fce00d4a1ec72",
       "source": "Connect the calendar and reminders available on this phone. Apple, Google, Outlook, Exchange, and other device accounts stay local and are never sent to Legend.",
       "context": "visual interface copy",
@@ -5645,6 +5700,17 @@
       "source": "Connected",
       "context": "visual interface copy",
       "sourceRevision": "22965568d22a14ee",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.0e37caa905f0b4d06490f020",
+      "source": "Connecting",
+      "context": "visual interface copy",
+      "sourceRevision": "d403c686f6a10480",
       "placeholders": [
 
       ],
@@ -7324,6 +7390,17 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.f33f77bc9b016eb055c3eb4e",
+      "source": "End call",
+      "context": "visual interface copy",
+      "sourceRevision": "2fe13d93a1f4b267",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.21421ca577f799ec9f8a13fe",
       "source": "Ending cash",
       "context": "visual interface copy",
@@ -7677,28 +7754,6 @@
       "reuseScope": "Global"
     },
     {
-      "id": "application.copy.244e35e7717ba3985a0ea5fc",
-      "source": "FaceTime Audio",
-      "context": "visual interface copy",
-      "sourceRevision": "09b89359f25427aa",
-      "placeholders": [
-
-      ],
-      "translationPolicy": "AzureAllowed",
-      "reuseScope": "Global"
-    },
-    {
-      "id": "application.copy.3c83d97c52222557c6fa97b4",
-      "source": "FaceTime video",
-      "context": "visual interface copy",
-      "sourceRevision": "560b3281c89a19ef",
-      "placeholders": [
-
-      ],
-      "translationPolicy": "AzureAllowed",
-      "reuseScope": "Global"
-    },
-    {
       "id": "application.copy.145c592b11650b035d784398",
       "source": "Failed",
       "context": "visual interface copy",
@@ -7890,6 +7945,17 @@
       "source": "First name",
       "context": "visual interface copy",
       "sourceRevision": "702ef921ed1d89bf",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.24ccdb9a4b5dd37791d16ce5",
+      "source": "Flip",
+      "context": "visual interface copy",
+      "sourceRevision": "2449d137ea15fd2b",
       "placeholders": [
 
       ],
@@ -8706,6 +8772,17 @@
       "source": "Income",
       "context": "visual interface copy",
       "sourceRevision": "51595db919140d6d",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.7b758ba8455ce5c2b411e540",
+      "source": "Incoming call",
+      "context": "visual interface copy",
+      "sourceRevision": "a31650d8480673f5",
       "placeholders": [
 
       ],
@@ -9704,6 +9781,28 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.c6dbf2da7948f5a376ad3f11",
+      "source": "Legend video call",
+      "context": "visual interface copy",
+      "sourceRevision": "a287d174e6f8217b",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.779fe253f68f9949d63f9a6e",
+      "source": "Legend voice call",
+      "context": "visual interface copy",
+      "sourceRevision": "af0ab5e4d4eada73",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.a742380029a628546b3c3032",
       "source": "Legend will return to its daily collection for this date unless another override is scheduled.",
       "context": "visual interface copy",
@@ -10624,6 +10723,17 @@
       "placeholders": [
         "value1",
         "value2"
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.3167586b7e139aecafe6f583",
+      "source": "Mute",
+      "context": "visual interface copy",
+      "sourceRevision": "8dd6857baf026850",
+      "placeholders": [
+
       ],
       "translationPolicy": "AzureAllowed",
       "reuseScope": "Global"
@@ -12147,17 +12257,6 @@
       "reuseScope": "Global"
     },
     {
-      "id": "application.copy.c5de99e3f4cbaa8f9508e7f7",
-      "source": "Phone call",
-      "context": "visual interface copy",
-      "sourceRevision": "1f0a0e26945de77d",
-      "placeholders": [
-
-      ],
-      "translationPolicy": "AzureAllowed",
-      "reuseScope": "Global"
-    },
-    {
       "id": "application.copy.09d4387dedbbd304b99897be",
       "source": "Photo Library",
       "context": "visual interface copy",
@@ -12345,17 +12444,6 @@
       "reuseScope": "Global"
     },
     {
-      "id": "application.copy.1ece66985b61866c74ee4bad",
-      "source": "Preparing secure call options",
-      "context": "visual interface copy",
-      "sourceRevision": "eb1c037b085075e9",
-      "placeholders": [
-
-      ],
-      "translationPolicy": "AzureAllowed",
-      "reuseScope": "Global"
-    },
-    {
       "id": "application.copy.36c24fa390c7a7abc2148019",
       "source": "Preparing update",
       "context": "visual interface copy",
@@ -12525,6 +12613,17 @@
       "source": "Private connection",
       "context": "visual interface copy",
       "sourceRevision": "dc8ddb5b65efc4fa",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.2298b22a6f0c479862839dd3",
+      "source": "Private in-app audio",
+      "context": "visual interface copy",
+      "sourceRevision": "139de6f1b82e6faf",
       "placeholders": [
 
       ],
@@ -13031,6 +13130,17 @@
       "source": "Recommended for you",
       "context": "visual interface copy",
       "sourceRevision": "da43a19a54c624bc",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.cb950f80282ccd91d230f3ec",
+      "source": "Reconnecting",
+      "context": "visual interface copy",
+      "sourceRevision": "afb118fcb16c3727",
       "placeholders": [
 
       ],
@@ -15327,6 +15437,17 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.a252f0f991458e195e8d0c45",
+      "source": "Speaker",
+      "context": "visual interface copy",
+      "sourceRevision": "a9e0c70585121f5f",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.075208c19007e7cf8433ffcb",
       "source": "Start a private conversation",
       "context": "visual interface copy",
@@ -17165,6 +17286,17 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.22373e11b32f11b04819a8e4",
+      "source": "Unmute",
+      "context": "visual interface copy",
+      "sourceRevision": "ce4ee4efc5e324fc",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.25e7d25d4cb4b9888ef6c22e",
       "source": "Unmute Hac",
       "context": "visual interface copy",
@@ -18774,17 +18906,6 @@
       "reuseScope": "Global"
     },
     {
-      "id": "application.copy.128fdcdcf27d55151fe8c119",
-      "source": "{name} has not shared a call address for this private conversation.",
-      "context": "visual interface copy",
-      "sourceRevision": "b289502c9c7a2f1c",
-      "placeholders": [
-        "name"
-      ],
-      "translationPolicy": "AzureAllowed",
-      "reuseScope": "Global"
-    },
-    {
       "id": "application.copy.79d2e38778d009e4db9aafa1",
       "source": "{name} profile image",
       "context": "visual interface copy",
@@ -18880,17 +19001,6 @@
       "source": "{value1} engagement",
       "context": "visual interface copy",
       "sourceRevision": "b336988fff017ab6",
-      "placeholders": [
-        "value1"
-      ],
-      "translationPolicy": "AzureAllowed",
-      "reuseScope": "Global"
-    },
-    {
-      "id": "application.copy.9d51f39c47557c09e66c7ce4",
-      "source": "{value1} has not shared a call address for this private conversation.",
-      "context": "visual interface copy",
-      "sourceRevision": "9fdd07fe9f483fc6",
       "placeholders": [
         "value1"
       ],

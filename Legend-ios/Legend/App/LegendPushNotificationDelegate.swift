@@ -49,6 +49,7 @@ final class LegendPushNotificationDelegate: NSObject, UIApplicationDelegate, UNU
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
     ) -> Bool {
         UNUserNotificationCenter.current().delegate = self
+        LegendCallSystem.shared.start()
         signedEnvironment = Self.signedEnvironment()
         refreshNotificationAuthorizationStatus()
         return true

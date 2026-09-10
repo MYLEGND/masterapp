@@ -28,6 +28,15 @@ class LegendFirebaseMessagingService : FirebaseMessagingService() {
         (application as? LegendApplication)?.container?.fcmPushRegistration?.registerInstallation(installationId)
     }
     override fun onMessageReceived(message: RemoteMessage) {
+        message.data["legendCall"]?.let { payload ->
+            val call = runCatching {
+                kotlinx.serialization.json.Json { ignoreUnknownKeys = true }.decodeFromString<com.mylegnd.legend.registered.feature.calling.LegendCallSnapshot>(payload)
+            }.getOrNull() ?: return
+            val platform = com.mylegnd.legend.registered.feature.calling.LegendCallPlatform
+            if (platform.store != null) platform.store?.receivePush(call)
+            else platform.showPushIncoming(this, call)
+            return
+        }
         // FCM and SignalR intentionally converge on one small server-issued
         // event contract. Neither transport becomes a local message or badge
         // authority; the app reconciles against the existing API projections.

@@ -29,7 +29,8 @@ internal sealed record FirebasePushDeliveryRequest(
     string Body,
     Guid NotificationId,
     int BadgeCount,
-    Guid? ConversationId);
+    Guid? ConversationId,
+    Shared.Calling.LegendCallSnapshot? Call = null);
 
 internal sealed record FirebasePushDeliveryResult(
     FirebasePushDeliveryOutcome Outcome,
@@ -162,8 +163,11 @@ internal sealed class FirebasePushGateway : IFirebasePushGateway
                         token = request.DeviceToken,
                         // Both Android foreground handling and background system-tray delivery use
                         // this server-authoritative localized presentation.
-                        notification = new { title = request.Title, body = request.Body },
-                        data = new Dictionary<string, string>
+                        notification = request.Call == null ? new { title = request.Title, body = request.Body } : null,
+                        data = request.Call != null ? new Dictionary<string, string>
+                        {
+                            ["legendCall"] = JsonSerializer.Serialize(request.Call, new JsonSerializerOptions(JsonSerializerDefaults.Web))
+                        } : new Dictionary<string, string>
                         {
                             ["notificationId"] = request.NotificationId.ToString("D"),
                             ["conversationId"] = request.ConversationId?.ToString("D") ?? string.Empty,
@@ -172,12 +176,13 @@ internal sealed class FirebasePushGateway : IFirebasePushGateway
                         android = new
                         {
                             priority = "HIGH",
-                            notification = new
+                            ttl = request.Call == null ? "86400s" : "45s",
+                            notification = request.Call == null ? new
                             {
                                 channel_id = ChannelId,
                                 sound = "default",
                                 notification_priority = "PRIORITY_DEFAULT"
-                            }
+                            } : null
                         }
                     }
                 }, new JsonSerializerOptions(JsonSerializerDefaults.Web)),

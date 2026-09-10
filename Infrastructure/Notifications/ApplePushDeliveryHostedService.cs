@@ -31,7 +31,8 @@ internal sealed record ApplePushDeliveryRequest(
     string Body,
     Guid NotificationId,
     int BadgeCount,
-    Guid? ConversationId);
+    Guid? ConversationId,
+    Shared.Calling.LegendCallSnapshot? Call = null);
 
 internal sealed record ApplePushDeliveryResult(
     ApplePushDeliveryOutcome Outcome,
@@ -227,17 +228,21 @@ internal sealed class ApplePushGateway : IApplePushGateway
                 VersionPolicy = HttpVersionPolicy.RequestVersionExact
             };
             message.Headers.Authorization = new AuthenticationHeaderValue("bearer", providerToken);
-            message.Headers.TryAddWithoutValidation("apns-topic", configuration.BundleId);
-            message.Headers.TryAddWithoutValidation("apns-push-type", "alert");
+            message.Headers.TryAddWithoutValidation("apns-topic", configuration.BundleId + (request.Call == null ? "" : ".voip"));
+            message.Headers.TryAddWithoutValidation("apns-push-type", request.Call == null ? "alert" : "voip");
             message.Headers.TryAddWithoutValidation("apns-priority", "10");
             // APNs defaults this to immediate expiry. Keep an authenticated alert
             // available for a day when the phone is briefly offline, while still
             // using priority 10 for immediate delivery whenever it is reachable.
             message.Headers.TryAddWithoutValidation(
                 "apns-expiration",
-                DateTimeOffset.UtcNow.AddDays(1).ToUnixTimeSeconds().ToString());
+                request.Call == null ? DateTimeOffset.UtcNow.AddDays(1).ToUnixTimeSeconds().ToString() : "0");
             message.Content = new StringContent(
-                JsonSerializer.Serialize(new
+                JsonSerializer.Serialize(request.Call != null ? (object)new
+                {
+                    aps = new Dictionary<string, object?> { ["content-available"] = 1 },
+                    legendCall = request.Call
+                } : new
                 {
                     aps = new Dictionary<string, object?>
                     {
@@ -258,7 +263,7 @@ internal sealed class ApplePushGateway : IApplePushGateway
             if (response.IsSuccessStatusCode)
                 return new ApplePushDeliveryResult(ApplePushDeliveryOutcome.Sent);
 
-            var failure = await ReadFailureAsync(response, request, configuration.BundleId, cancellationToken);
+            var failure = await ReadFailureAsync(response, request, configuration.BundleId + (request.Call != null ? ".voip" : ""), cancellationToken);
             if (IsPermanentlyInvalidDevice(response.StatusCode, failure.Reason))
                 return new ApplePushDeliveryResult(ApplePushDeliveryOutcome.InvalidDevice, failure.Detail);
             if (string.Equals(failure.Reason, "ExpiredProviderToken", StringComparison.Ordinal))

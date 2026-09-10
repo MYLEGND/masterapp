@@ -330,7 +330,6 @@ internal object FinancialPresentationOrder {
 )
 @Serializable data class ConversationPinnedRequest(@SerialName("isPinned") val isPinned: Boolean)
 @Serializable data class ConversationMutedRequest(@SerialName("isMuted") val isMuted: Boolean)
-@Serializable data class ConversationCallOptions(@SerialName("conversationId") val conversationId: String, @SerialName("displayName") val displayName: String, @SerialName("phoneNumber") val phoneNumber: String? = null, @SerialName("faceTimeAddress") val faceTimeAddress: String? = null)
 
 @Serializable data class SocialSnapshot(
     val stories: List<SocialPost> = emptyList(),

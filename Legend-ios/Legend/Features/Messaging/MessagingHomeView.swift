@@ -749,77 +749,24 @@ private struct LegendConversationCallSheet: View {
     @ObservedObject var store: MessagingStore
     let conversationID: UUID
     let fallbackName: String
-
     @Environment(\.dismiss) private var dismiss
-    @State private var options: ConversationCallOptions?
-    @State private var isLoading = true
 
     var body: some View {
         ZStack {
             LegendNextCanvas()
-
             VStack(spacing: LegendNextSpacing.md) {
-                if isLoading {
-                    ProgressView()
-                        .tint(LegendNextColor.gold)
-                    Text(LegendLocalized("Preparing secure call options"))
-                        .font(.subheadline)
-                        .foregroundStyle(LegendNextColor.textSecondary)
-                } else if let options {
-                    Image(systemName: "phone.connection.fill")
-                        .font(.system(size: 30, weight: .semibold))
-                        .foregroundStyle(LegendNextColor.gold)
-                        .frame(width: 68, height: 68)
-                        .background(LegendNextColor.navy, in: Circle())
-
-                    Text(options.displayName)
-                        .font(.title3.weight(.bold))
-                        .foregroundStyle(LegendNextColor.textPrimary)
-
-                    if let phone = options.phoneNumber {
-                        LegendCallActionButton(
-                            title: LegendLocalized("Phone call"),
-                            subtitle: "Use your carrier",
-                            symbol: "phone.fill",
-                            action: { openSystemCall(scheme: "tel", address: phone) })
-                    }
-
-                    if let faceTime = options.faceTimeAddress {
-                        LegendCallActionButton(
-                            title: LegendLocalized("FaceTime video"),
-                            subtitle: "Open FaceTime",
-                            symbol: "video.fill",
-                            action: { openSystemCall(scheme: "facetime", address: faceTime) })
-
-                        LegendCallActionButton(
-                            title: LegendLocalized("FaceTime Audio"),
-                            subtitle: "Open FaceTime Audio",
-                            symbol: "phone.badge.waveform.fill",
-                            action: { openSystemCall(scheme: "facetime-audio", address: faceTime) })
-                    }
-                } else {
-                    LegendMessagingEmptyState(
-                        symbol: "phone.down.fill",
-                        title: LegendLocalized("Calling unavailable"),
-                        message: LegendLocalized("{value1} has not shared a call address for this private conversation.", arguments: ["value1": String(describing: (fallbackName))]),
-                        actionTitle: nil,
-                        action: nil)
+                Text(fallbackName).font(.title3.bold())
+                LegendCallActionButton(title: LegendLocalized("Legend voice call"), subtitle: LegendLocalized("Private in-app audio"), symbol: "phone.fill") {
+                    dismiss()
+                    store.calling?.start(conversationId: conversationID, video: false)
                 }
-            }
-            .padding(LegendNextSpacing.pageHorizontal)
+                LegendCallActionButton(title: LegendLocalized("Legend video call"), subtitle: LegendLocalized("Connect face to face"), symbol: "video.fill") {
+                    dismiss()
+                    store.calling?.start(conversationId: conversationID, video: true)
+                }
+                Button(LegendLocalized("Cancel")) { dismiss() }
+            }.padding(LegendNextSpacing.pageHorizontal)
         }
-        .task {
-            options = await store.callOptions(for: conversationID)
-            isLoading = false
-        }
-    }
-
-    private func openSystemCall(scheme: String, address: String) {
-        let allowed = CharacterSet.urlPathAllowed
-        guard let encoded = address.addingPercentEncoding(withAllowedCharacters: allowed),
-              let url = URL(string: "\(scheme)://\(encoded)") else { return }
-        UIApplication.shared.open(url)
-        dismiss()
     }
 }
 

@@ -643,20 +643,6 @@ struct ConversationMutedRequest: Encodable, Sendable {
     let isMuted: Bool
 }
 
-struct ConversationCallOptions: Codable, Equatable, Sendable {
-    let conversationID: UUID
-    let displayName: String
-    let phoneNumber: String?
-    let faceTimeAddress: String?
-
-    private enum CodingKeys: String, CodingKey {
-        case conversationID = "conversationId"
-        case displayName
-        case phoneNumber
-        case faceTimeAddress
-    }
-}
-
 struct ResolveVerificationRequest: Encodable, Sendable {
     let approve: Bool
     let note: String?
@@ -863,7 +849,6 @@ protocol MessagingAPI: Sendable {
     func setMuted(conversationID: UUID, isMuted: Bool, accessToken: String) async throws
     func removeConversation(conversationID: UUID, accessToken: String) async throws
     func deleteMessage(conversationID: UUID, messageID: UUID, accessToken: String) async throws
-    func callOptions(conversationID: UUID, accessToken: String) async throws -> ConversationCallOptions
 }
 
 extension MessagingAPI {
@@ -1083,9 +1068,6 @@ extension MessagingAPI {
         throw MobileMessagingContractError.unavailable
     }
 
-    func callOptions(conversationID: UUID, accessToken: String) async throws -> ConversationCallOptions {
-        throw MobileMessagingContractError.unavailable
-    }
 }
 
 struct MobileContractUnavailableMessagingAPI: MessagingAPI {
@@ -1166,9 +1148,6 @@ struct MobileContractUnavailableMessagingAPI: MessagingAPI {
         throw MobileMessagingContractError.unavailable
     }
 
-    func callOptions(conversationID: UUID, accessToken: String) async throws -> ConversationCallOptions {
-        throw MobileMessagingContractError.unavailable
-    }
 }
 
 enum MobileMessagingContractError: LocalizedError, Equatable {
@@ -1681,13 +1660,6 @@ struct URLSessionMessagingAPI: MessagingAPI {
             headers: participantHeader)
     }
 
-    func callOptions(conversationID: UUID, accessToken: String) async throws -> ConversationCallOptions {
-        try await client.get(
-            "/api/v1/mobile/messaging/conversations/\(conversationID.uuidString)/call-options",
-            accessToken: accessToken,
-            headers: participantHeader,
-            response: ConversationCallOptions.self)
-    }
 }
 
 private struct EmptyMobileRequest: Encodable {}

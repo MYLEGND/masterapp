@@ -1,6 +1,7 @@
 @file:OptIn(ExperimentalMaterial3Api::class)
 
 package com.mylegnd.legend.registered.ui
+import com.mylegnd.legend.registered.feature.calling.*
 
 import android.annotation.SuppressLint
 import android.app.Activity
@@ -139,6 +140,7 @@ import kotlin.time.Duration.Companion.minutes
 
 @Composable
 fun LegendRoot(sessionViewModel: SessionViewModel, container: LegendContainer) {
+    val callingOwner: LegendCallingCoordinator = viewModel()
     var browsingAsGuest by rememberSaveable { mutableStateOf(false) }
     val state by sessionViewModel.state.collectAsStateWithLifecycle()
     val localization by container.localization.state.collectAsStateWithLifecycle()
@@ -187,6 +189,12 @@ fun LegendRoot(sessionViewModel: SessionViewModel, container: LegendContainer) {
 
         is SessionState.Authenticated -> {
             val session = (state as SessionState.Authenticated).session
+            val calling = remember(session.actor.identity.userId, session.actor.identity.participantType) {
+                callingOwner.activate(context.applicationContext as android.app.Application, container, session.actor.identity)
+            }
+            DisposableEffect(calling) {
+                onDispose { if (activity?.isChangingConfigurations != true) callingOwner.deactivate(calling) }
+            }
             LaunchedEffect(
                 session.accountId,
                 session.actor.identity.participantType,
@@ -211,6 +219,7 @@ fun LegendRoot(sessionViewModel: SessionViewModel, container: LegendContainer) {
                 key(localization.revision) {
                     AuthenticatedShell(
                         session = session,
+                        calling = calling,
                         container = container,
                         signOut = sessionViewModel::signOut,
                         switchRole = sessionViewModel::selectRole,
@@ -808,6 +817,7 @@ private fun LegendAccountSwitcherSheet(
 @Composable
 private fun AuthenticatedShell(
     session: ActiveLegendSession,
+    calling: LegendCallViewModel,
     container: LegendContainer,
     signOut: () -> Unit,
     switchRole: (String) -> Unit,
@@ -867,13 +877,14 @@ private fun AuthenticatedShell(
         key = "founder-ai-$participantType",
         factory = LegendViewModelFactory { FounderAiViewModel(container.founderAiRepository, participantType) },
     )
-    val messagingRealtime = remember(participantType) { container.messagingRealtime(participantType) }
+    val messagingRealtime = calling.transport
+    LegendCallOverlay(calling)
     val messagingLifecycle = LocalLifecycleOwner.current.lifecycle
     DisposableEffect(messagingRealtime, messagingLifecycle) {
         val observer = LifecycleEventObserver { _, event ->
             when (event) {
-                Lifecycle.Event.ON_START -> messagingRealtime.start()
-                Lifecycle.Event.ON_STOP -> messagingRealtime.stop()
+                Lifecycle.Event.ON_START -> { calling.background(false); messagingRealtime.start() }
+                Lifecycle.Event.ON_STOP -> { calling.background(true); if (!calling.inCall) messagingRealtime.stop() }
                 else -> Unit
             }
         }
@@ -881,7 +892,6 @@ private fun AuthenticatedShell(
         if (messagingLifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) messagingRealtime.start()
         onDispose {
             messagingLifecycle.removeObserver(observer)
-            messagingRealtime.close()
         }
     }
     val homeState by home.state.collectAsStateWithLifecycle()
@@ -922,7 +932,7 @@ private fun AuthenticatedShell(
         container.notificationNavigation.markHandled(destination)
     }
 
-    CompositionLocalProvider(LocalLegendSocialShare provides { post -> sharingPost = post },
+    CompositionLocalProvider(LocalLegendCalling provides calling, LocalLegendSocialShare provides { post -> sharingPost = post },
         LocalLegendOpenProfile provides { author -> memberProfile = author },
         LocalLegendAgentWorkspace provides agentWorkspace.takeIf { participantType.equals("Agent", ignoreCase = true) }) {
     Scaffold(
@@ -2872,13 +2882,12 @@ private fun MessagesScreen(
             dismiss = { callDirectoryOpen = false },
             select = { conversation ->
                 callTarget = conversation
-                viewModel.loadCallOptions(conversation.id)
             },
         )
     }
     callTarget?.let { conversation ->
         LegendConversationCallSheet(
-            state = viewModel.callOptions.collectAsStateWithLifecycle().value,
+            conversationId = conversation.id,
             fallbackName = conversation.title,
             dismiss = { callTarget = null },
         )
@@ -3088,80 +3097,27 @@ private fun LegendMessagingCallDirectorySheet(
     }
 }
 
-/** Uses the existing server-issued call addresses and Android's safe dial intent. */
 @Composable
 private fun LegendConversationCallSheet(
-    state: LoadState<ConversationCallOptions>,
+    conversationId: String,
     fallbackName: String,
     dismiss: () -> Unit,
 ) {
-    val context = LocalContext.current
-    ModalBottomSheet(
-        onDismissRequest = dismiss,
-        containerColor = LegendColors.Canvas,
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(
-                    horizontal = LegendSpacing.PageHorizontal,
-                    vertical = LegendSpacing.Xl,
-                ),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(LegendSpacing.Md),
-        ) {
-            when (state) {
-                LoadState.Idle,
-                LoadState.Loading -> {
-                    CircularProgressIndicator(color = LegendColors.Gold)
-                    Text(legendLocalized("Preparing secure call options"), style = LegendTypography.Supporting, color = LegendColors.TextSecondary)
-                }
-                is LoadState.Error -> {
-                    Icon(Icons.Default.PhoneDisabled, null, tint = LegendColors.Warning, modifier = Modifier.size(30.dp))
-                    Text(legendLocalized("Calling unavailable"), style = LegendTypography.Section, color = LegendColors.TextPrimary)
-                    Text(legendLocalized(state.message), style = LegendTypography.Supporting, color = LegendColors.TextSecondary)
-                }
-                is LoadState.Data -> {
-                    val options = state.value
-                    Icon(
-                        Icons.Default.PhoneInTalk,
-                        null,
-                        tint = LegendColors.Midnight,
-                        modifier = Modifier
-                            .size(68.dp)
-                            .background(LegendGradients.Gold, CircleShape)
-                            .padding(LegendSpacing.Sm),
-                    )
-                    Text(options.displayName, style = LegendTypography.Section, color = LegendColors.TextPrimary)
-                    val phoneNumber = options.phoneNumber?.trim().orEmpty()
-                    if (phoneNumber.isNotEmpty()) {
-                        Button(
-                            onClick = {
-                                context.startActivity(
-                                    Intent(
-                                        Intent.ACTION_DIAL,
-                                        "tel:${Uri.encode(phoneNumber)}".toUri(),
-                                    ),
-                                )
-                                dismiss()
-                            },
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = LegendShapes.Control,
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = LegendColors.Navy,
-                                contentColor = LegendColors.OnNavy,
-                            ),
-                        ) {
-                            Icon(Icons.Default.Phone, null)
-                            Spacer(Modifier.width(LegendSpacing.Xs))
-                            Text(legendLocalized("Phone call"), style = LegendTypography.BodyEmphasis)
-                        }
-                    } else {
-                        Text(legendLocalized("{name} has not shared a call address for this private conversation.", mapOf("name" to fallbackName)), style = LegendTypography.Supporting, color = LegendColors.TextSecondary)
-                    }
-                }
+    val calling = LocalLegendCalling.current
+    var video by remember { mutableStateOf(false) }
+    val permissions = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { grants ->
+        if (grants.values.all { it }) { dismiss(); calling?.start(conversationId, video) }
+    }
+    ModalBottomSheet(onDismissRequest = dismiss, containerColor = LegendColors.Canvas) {
+        Column(Modifier.fillMaxWidth().padding(LegendSpacing.PageHorizontal), verticalArrangement = Arrangement.spacedBy(LegendSpacing.Md), horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(fallbackName, style = LegendTypography.Section)
+            Button(onClick = { video = false; permissions.launch(arrayOf(android.Manifest.permission.RECORD_AUDIO)) }, modifier = Modifier.fillMaxWidth()) {
+                Icon(Icons.Default.Phone, null); Spacer(Modifier.width(8.dp)); Text(legendLocalized("Legend voice call"))
             }
-            TextButton(onClick = dismiss) { Text(legendLocalized("Done"), color = LegendColors.Gold) }
+            Button(onClick = { video = true; permissions.launch(arrayOf(android.Manifest.permission.RECORD_AUDIO, android.Manifest.permission.CAMERA)) }, modifier = Modifier.fillMaxWidth()) {
+                Icon(Icons.Default.Videocam, null); Spacer(Modifier.width(8.dp)); Text(legendLocalized("Legend video call"))
+            }
+            TextButton(onClick = dismiss) { Text(legendLocalized("Cancel")) }
         }
     }
 }

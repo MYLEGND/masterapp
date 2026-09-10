@@ -94,6 +94,33 @@ protocol MessagingRealtimeTransport: AnyObject {
 @MainActor
 final class MobileMessagingRealtimeClient: MessagingRealtimeTransport {
     var onEvent: ((MobileMessagingRealtimeEvent) -> Void)?
+    var onCall: ((LegendCallEvent) -> Void)?
+    var onCallReconnect: (() -> Void)?
+    private var callRequests: [String: CheckedContinuation<LegendCallResult, Error>] = [:]
+    private var retiring = false
+    private var callReady = false
+
+    func call(_ command: LegendCallCommand, existingConnectionOnly: Bool = false) async throws -> LegendCallResult {
+        if existingConnectionOnly {
+            guard callReady else { throw CancellationError() }
+        } else { start() }
+        for _ in 0..<100 where !callReady {
+            try await Task.sleep(for: .milliseconds(100))
+        }
+        guard callReady, let socket else { throw LegendCallingError.unavailable("Calling could not connect. Please try again.") }
+        let id = UUID().uuidString
+        let argument = try JSONSerialization.jsonObject(with: JSONEncoder().encode(command))
+        let frame = try JSONSerialization.data(withJSONObject: ["type": 1, "invocationId": id, "target": "Call", "arguments": [argument]])
+        return try await withCheckedThrowingContinuation { continuation in
+            callRequests[id] = continuation
+            Task { [weak self] in
+                do { try await socket.send(.string(String(decoding: frame, as: UTF8.self) + Self.recordSeparator)) }
+                catch { self?.callRequests.removeValue(forKey: id)?.resume(throwing: error) }
+                try? await Task.sleep(for: .seconds(12))
+                self?.callRequests.removeValue(forKey: id)?.resume(throwing: LegendCallingError.unavailable("The call request timed out."))
+            }
+        }
+    }
 
     private static let recordSeparator = "\u{001E}"
     private static let reconnectDelays: [Duration] = [
@@ -127,14 +154,25 @@ final class MobileMessagingRealtimeClient: MessagingRealtimeTransport {
         reconnectTask?.cancel()
     }
 
+    func retireAccountConnection() {
+        retiring = true
+        onCall = nil; onCallReconnect = nil
+        reconnectTask?.cancel(); reconnectTask = nil
+        if !callReady { stop() }
+    }
+
     func start() {
-        guard !shouldRemainConnected else { return }
+        guard !retiring, !shouldRemainConnected else { return }
         shouldRemainConnected = true
         reconnectAttempt = 0
         startConnection()
     }
 
     func stop() {
+        callReady = false
+        let pending = callRequests.values
+        callRequests.removeAll()
+        pending.forEach { $0.resume(throwing: CancellationError()) }
         shouldRemainConnected = false
         generation += 1
         reconnectTask?.cancel()
@@ -146,7 +184,7 @@ final class MobileMessagingRealtimeClient: MessagingRealtimeTransport {
     }
 
     private func startConnection() {
-        guard shouldRemainConnected,
+        guard !retiring, shouldRemainConnected,
               connectionTask == nil,
               socket == nil else { return }
 
@@ -165,7 +203,7 @@ final class MobileMessagingRealtimeClient: MessagingRealtimeTransport {
 
         do {
             let token = try await accessTokenProvider()
-            guard shouldRemainConnected,
+            guard !retiring, shouldRemainConnected,
                   connectionGeneration == generation else { return }
 
             var request = URLRequest(url: hubURL)
@@ -186,6 +224,8 @@ final class MobileMessagingRealtimeClient: MessagingRealtimeTransport {
             }
 
             reconnectAttempt = 0
+            callReady = true
+            onCallReconnect?()
             let heartbeat = Task {
                 do {
                     while !Task.isCancelled {
@@ -211,6 +251,7 @@ final class MobileMessagingRealtimeClient: MessagingRealtimeTransport {
         }
 
         guard connectionGeneration == generation else { return }
+        callReady = false
         socket?.cancel(with: .goingAway, reason: nil)
         socket = nil
         if shouldRemainConnected {
@@ -266,6 +307,23 @@ final class MobileMessagingRealtimeClient: MessagingRealtimeTransport {
         return text
             .split(separator: Character(Self.recordSeparator))
             .compactMap { frame in
+                if let object = try? JSONSerialization.jsonObject(with: Data(frame.utf8)) as? [String: Any] {
+                    if object["type"] as? Int == 3, let id = object["invocationId"] as? String,
+                       let pending = callRequests.removeValue(forKey: id) {
+                        if let result = object["result"], let data = try? JSONSerialization.data(withJSONObject: result),
+                           let decoded = try? JSONDecoder.mobile.decode(LegendCallResult.self, from: data) {
+                            pending.resume(returning: decoded)
+                        } else { pending.resume(throwing: LegendCallingError.unavailable("The call request could not be completed.")) }
+                        return nil
+                    }
+                    if (object["target"] as? String)?.lowercased() == "callupdated",
+                       let argument = (object["arguments"] as? [Any])?.first,
+                       let data = try? JSONSerialization.data(withJSONObject: argument),
+                       let callEvent = try? JSONDecoder.mobile.decode(LegendCallEvent.self, from: data) {
+                        onCall?(callEvent)
+                        return nil
+                    }
+                }
                 guard let envelope = try? JSONDecoder.mobile.decode(
                     SignalRInvocation.self,
                     from: Data(frame.utf8)),
@@ -279,7 +337,7 @@ final class MobileMessagingRealtimeClient: MessagingRealtimeTransport {
     }
 
     private func scheduleReconnect(after connectionGeneration: Int) {
-        guard shouldRemainConnected,
+        guard !retiring, shouldRemainConnected,
               connectionGeneration == generation,
               reconnectTask == nil else { return }
 
@@ -334,6 +392,7 @@ private enum MobileMessagingRealtimeError: Error {
 
 @MainActor
 final class MessagingStore: ObservableObject {
+    let calling: LegendCallStore?
     @Published private(set) var state: MessagingLoadState = .idle
     @Published private(set) var detailState: ConversationDetailLoadState = .idle
     @Published private(set) var selectedConversationID: UUID?
@@ -388,9 +447,11 @@ final class MessagingStore: ObservableObject {
         diagnostics: LegendDiagnostics,
         actorParticipantType: ParticipantType,
         isFounder: Bool = false,
-        realtime: (any MessagingRealtimeTransport)? = nil
+        realtime: (any MessagingRealtimeTransport)? = nil,
+        calling: LegendCallStore? = nil
     ) {
         self.api = api
+        self.calling = calling
         self.accessTokenProvider = accessTokenProvider
         self.diagnostics = diagnostics
         self.actorParticipantType = actorParticipantType
@@ -407,7 +468,9 @@ final class MessagingStore: ObservableObject {
         // its teardown without retaining this store. This breaks any outstanding
         // receive loop as the account shell is released.
         let realtime = realtime
-        Task { @MainActor [realtime] in
+        let calling = calling
+        Task { @MainActor [realtime, calling] in
+            if let calling { calling.shutdown(); await calling.awaitShutdown() }
             realtime?.stop()
         }
     }
@@ -1250,17 +1313,6 @@ final class MessagingStore: ObservableObject {
             } catch {
                 sendFailure = failure(for: error, title: LegendLocalized("Message not unsent"))
             }
-        }
-    }
-
-    func callOptions(for conversationID: UUID) async -> ConversationCallOptions? {
-        do {
-            return try await api.callOptions(
-                conversationID: conversationID,
-                accessToken: try await accessTokenProvider())
-        } catch {
-            sendFailure = failure(for: error, title: LegendLocalized("Calling unavailable"))
-            return nil
         }
     }
 

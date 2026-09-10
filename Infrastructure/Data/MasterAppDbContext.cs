@@ -90,6 +90,8 @@ public class MasterAppDbContext : DbContext
     public DbSet<BillingAuditEntry> BillingAuditEntries => Set<BillingAuditEntry>();
 
     public DbSet<MessageConversation> MessageConversations => Set<MessageConversation>();
+    public DbSet<LegendCallSignal> LegendCallSignals => Set<LegendCallSignal>();
+    public DbSet<LegendCallSession> LegendCallSessions => Set<LegendCallSession>();
     public DbSet<MessageConversationParticipant> MessageConversationParticipants => Set<MessageConversationParticipant>();
     public DbSet<InternalMessage> InternalMessages => Set<InternalMessage>();
     public DbSet<MessageAttachment> MessageAttachments => Set<MessageAttachment>();
@@ -177,6 +179,29 @@ public class MasterAppDbContext : DbContext
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
+        modelBuilder.Entity<LegendCallSignal>(entity =>
+        {
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.RecipientGroup).HasMaxLength(500);
+            entity.Property(x => x.Payload).HasMaxLength(32000);
+            entity.HasIndex(x => new { x.RecipientGroup, x.ExpiresUtc });
+            entity.HasIndex(x => x.ExpiresUtc);
+            entity.HasIndex(x => new { x.CallId, x.CreatedUtc });
+        });
+        modelBuilder.Entity<LegendCallSession>(entity =>
+        {
+            entity.HasKey(call => call.Id);
+            entity.Property(call => call.Version).IsConcurrencyToken();
+            entity.Property(call => call.CallerUserId).HasMaxLength(450);
+            entity.Property(call => call.CalleeUserId).HasMaxLength(450);
+            entity.Property(call => call.CallerType).HasMaxLength(20);
+            entity.Property(call => call.CalleeType).HasMaxLength(20);
+            entity.Property(call => call.CallerName).HasMaxLength(300);
+            entity.Property(call => call.CalleeName).HasMaxLength(300);
+            entity.Property(call => call.Status).HasMaxLength(20);
+            entity.HasIndex(call => new { call.CallerUserId, call.CallerType, call.ExpiresUtc });
+            entity.HasIndex(call => new { call.CalleeUserId, call.CalleeType, call.ExpiresUtc });
+        });
 
         MessagingModelConfiguration.Configure(modelBuilder, Database.ProviderName);
         DailyScriptureModelConfiguration.Configure(modelBuilder, Database.ProviderName);

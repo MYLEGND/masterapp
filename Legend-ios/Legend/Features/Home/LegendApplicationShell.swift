@@ -139,6 +139,9 @@ struct LegendApplicationShell: View {
         // owns the Messages tab. This environment value is a reference only:
         // it creates no second store, recipient directory, inbox, or send path.
         .environment(\.legendMessagingStore, messages)
+        .background {
+            if let calling = messages.calling { LegendCallPresentation(store: calling) }
+        }
         .environment(\.legendSocialStore, social)
         .onReceive(NotificationCenter.default.publisher(for: .legendPreferredLanguageDidChange)) { _ in
             Task { await messages.refreshLanguagePresentation() }
