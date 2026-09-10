@@ -3,6 +3,13 @@ package com.mylegnd.legend.registered.core.model
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
+@Serializable data class MobileGuestSnapshot(val title: String, val subtitle: String, val introduction: String,
+    val readings: List<MobileGuestReading>, val guides: List<MobileGuestGuide>,
+    val accountTitle: String, val accountDescription: String, val links: List<MobileGuestLink>)
+@Serializable data class MobileGuestLink(val title: String, val url: String)
+@Serializable data class MobileGuestReading(val date: String, val reference: String, val translation: String, val text: String)
+@Serializable data class MobileGuestGuide(val id: String, val title: String, val subtitle: String, val text: String)
+
 /** Kotlin transport mirrors of AgentPortal/Mobile. ISO-8601 UTC values remain strings until display. */
 @Serializable data class MobileIdentity(
     @SerialName("userId") val userId: String,
@@ -351,7 +358,7 @@ internal object FinancialPresentationOrder {
 @Serializable data class SocialPost(val id: String, val author: SocialAuthor, @SerialName("contentType") val contentType: String, val body: String, val audience: String, val location: String? = null, @SerialName("commentsEnabled") val commentsEnabled: Boolean, @SerialName("postedUtc") val postedUtc: String, @SerialName("expiresUtc") val expiresUtc: String? = null, @SerialName("reactionCount") val reactionCount: Int, @SerialName("commentCount") val commentCount: Int, @SerialName("reactedByCurrentActor") val reactedByCurrentActor: Boolean, @SerialName("followedByCurrentActor") val followedByCurrentActor: Boolean, @SerialName("followRequestPending") val followRequestPending: Boolean = false, @SerialName("savedByCurrentActor") val savedByCurrentActor: Boolean, @SerialName("repostedByCurrentActor") val repostedByCurrentActor: Boolean, val metrics: SocialPostMetrics = SocialPostMetrics(), val music: SocialMusic? = null, val media: List<SocialMedia> = emptyList(), val comments: List<SocialComment> = emptyList())
 @Serializable data class SocialMedia(val id: String, @SerialName("displayOrder") val displayOrder: Int, @SerialName("mediaKind") val mediaKind: String, @SerialName("mimeType") val mimeType: String, @SerialName("fileSizeBytes") val fileSizeBytes: Long, val width: Int? = null, val height: Int? = null, @SerialName("aspectRatio") val aspectRatio: Double? = null, @SerialName("durationSeconds") val durationSeconds: Double? = null, @SerialName("processingState") val processingState: String, @SerialName("accessibilityText") val accessibilityText: String? = null, @SerialName("hasPreviewImage") val hasPreviewImage: Boolean)
 @Serializable data class SocialComment(val id: String, val author: SocialAuthor, @SerialName("parentCommentId") val parentCommentId: String? = null, val body: String, @SerialName("createdUtc") val createdUtc: String)
-@Serializable data class SocialActivity(val id: String, val kind: String, val actor: SocialAuthor, @SerialName("postId") val postId: String? = null, @SerialName("occurredUtc") val occurredUtc: String)
+@Serializable data class SocialActivity(val id: String, val kind: String, val summary: String = "", val actor: SocialAuthor, @SerialName("postId") val postId: String? = null, @SerialName("occurredUtc") val occurredUtc: String)
 @Serializable data class SocialPostMetrics(@SerialName("viewCount") val viewCount: Int = 0, @SerialName("uniqueViewerCount") val uniqueViewerCount: Int = 0, @SerialName("reactionCount") val reactionCount: Int = 0, @SerialName("commentCount") val commentCount: Int = 0, @SerialName("replyCount") val replyCount: Int = 0, @SerialName("repostCount") val repostCount: Int = 0, @SerialName("saveCount") val saveCount: Int = 0, @SerialName("shareCount") val shareCount: Int = 0, @SerialName("profileVisitCount") val profileVisitCount: Int = 0, @SerialName("followsGenerated") val followsGenerated: Int = 0, @SerialName("averageWatchDurationSeconds") val averageWatchDurationSeconds: Double? = null, @SerialName("averageWatchCompletionPercentage") val averageWatchCompletionPercentage: Double? = null, @SerialName("storyExitCount") val storyExitCount: Int = 0, @SerialName("storyTapForwardCount") val storyTapForwardCount: Int = 0, @SerialName("storyTapBackwardCount") val storyTapBackwardCount: Int = 0)
 @Serializable data class SocialMusic(@SerialName("providerId") val providerId: String, @SerialName("providerTrackId") val providerTrackId: String, @SerialName("trackTitle") val trackTitle: String, @SerialName("artistName") val artistName: String, @SerialName("trackDurationSeconds") val trackDurationSeconds: Double, @SerialName("audioUrl") val audioUrl: String? = null, @SerialName("trimStartSeconds") val trimStartSeconds: Double? = null, @SerialName("trimEndSeconds") val trimEndSeconds: Double? = null, @SerialName("musicVolume") val musicVolume: Double? = null, @SerialName("originalAudioVolume") val originalAudioVolume: Double? = null)
 @Serializable data class SocialProfileMetrics(val profile: SocialAuthor, @SerialName("postCount") val postCount: Int, @SerialName("videoCount") val videoCount: Int, @SerialName("storyCount") val storyCount: Int, @SerialName("followerCount") val followerCount: Int, @SerialName("followingCount") val followingCount: Int, @SerialName("totalReactionCount") val totalReactionCount: Int = 0, @SerialName("totalContentViewCount") val totalContentViewCount: Int = 0, @SerialName("totalReachCount") val totalReachCount: Int = 0, @SerialName("privateProfileVisitCount") val privateProfileVisitCount: Int? = null)
@@ -380,6 +387,8 @@ val SocialPost.legendContentType: LegendSocialContentType?
 
 @Serializable data class CreatorInsights(@SerialName("generatedUtc") val generatedUtc: String? = null, @SerialName("totalViews") val totalViews: Int, @SerialName("totalReach") val totalReach: Int, @SerialName("followerCount") val followerCount: Int, @SerialName("followingCount") val followingCount: Int = 0, @SerialName("followersGained") val followersGained: Int = 0, @SerialName("profileVisits") val profileVisits: Int = 0, @SerialName("totalReactions") val totalReactions: Int = 0, @SerialName("totalComments") val totalComments: Int = 0, @SerialName("totalReplies") val totalReplies: Int = 0, @SerialName("totalShares") val totalShares: Int = 0, @SerialName("totalReposts") val totalReposts: Int = 0, @SerialName("totalSaves") val totalSaves: Int = 0, @SerialName("engagementRatePercentage") val engagementRatePercentage: Double, @SerialName("topPosts") val topPosts: List<SocialPostInsight> = emptyList(), @SerialName("topVideos") val topVideos: List<SocialPostInsight> = emptyList(), @SerialName("topStories") val topStories: List<SocialPostInsight> = emptyList())
 @Serializable data class CreateSocialPostRequest(@SerialName("contentType") val contentType: String, val body: String, val audience: String? = null, val location: String? = null, @SerialName("commentsEnabled") val commentsEnabled: Boolean? = null)
+data class SocialVideoEdit(val startSeconds: Double = 0.0, val endSeconds: Double? = null, val muted: Boolean = false)
+
 @Serializable data class SocialMediaPublishOptions(
     @SerialName("contentType") val contentType: String,
     val body: String,
@@ -388,6 +397,7 @@ val SocialPost.legendContentType: LegendSocialContentType?
     @SerialName("commentsEnabled") val commentsEnabled: Boolean = true,
     @SerialName("accessibilityText") val accessibilityText: String? = null,
     val music: SocialMusic? = null,
+    @kotlinx.serialization.Transient val videoEdits: Map<String, SocialVideoEdit> = emptyMap(),
 )
 @Serializable data class UpdateSocialPostRequest(val body: String)
 @Serializable data class CreateSocialCommentRequest(val body: String, @SerialName("parentCommentId") val parentCommentId: String? = null)
@@ -446,11 +456,11 @@ val SocialPost.legendContentType: LegendSocialContentType?
 @Serializable data class MobileCrmRecord(
     val id: String, val kind: String, val profileId: String? = null,
     val displayName: String, val email: String? = null, val phone: String? = null,
-    val stage: String, val managementPath: String, val accountPath: String? = null,
+    val stage: String, val managementPath: String,
     val availableOutcomes: List<String> = emptyList(), val meetingUrl: String? = null,
     val firstName: String? = null, val lastName: String? = null, val phone2: String? = null,
     val addressLine: String? = null, val city: String? = null, val state: String? = null, val zipCode: String? = null,
-    val updatedUtc: String? = null, val archived: Boolean = false
+    val updatedUtc: String? = null, val archived: Boolean = false, val userId: String? = null
 )
 
 @Serializable data class MobileBookingAccess(val allowed: Boolean)

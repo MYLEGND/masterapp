@@ -6013,6 +6013,11 @@ namespace AgentPortal.Controllers;
     {
         string agentOid;
         try { agentOid = GetAgentOidOrThrow(); } catch { return Challenge(); }
+        return await SaveContactForAgentAsync(agentOid, clientUserId, request);
+    }
+
+    internal async Task<IActionResult> SaveContactForAgentAsync(string agentOid, string clientUserId, CrmContactUpdate request)
+    {
         if (!TryValidateModel(request)) return BadRequest(ModelState);
         var profile = await GetOwnedClientProfileAsync(agentOid, clientUserId);
         if (profile is null) return NotFound();

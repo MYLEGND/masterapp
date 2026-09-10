@@ -151,6 +151,25 @@ public sealed class MobileMessagingTranslationEndToEndTests
         Assert.NotNull(message.Translation);
         Assert.Equal("en", message.Translation!.OriginalLanguage);
         Assert.Equal("ht", message.Translation.TargetLanguage);
+
+        // Another device changes the saved preference. The same endpoint must
+        // immediately use that preference, even with a cached ht translation.
+        var settings = await db.MobileProfileSettings.SingleAsync();
+        settings.PreferredCommunicationLanguage = "en";
+        await db.SaveChangesAsync();
+        var changed = await controller.Messages(conversation.Conversation.Id, null, null, CancellationToken.None);
+        var original = Assert.Single(Assert.IsAssignableFrom<IReadOnlyList<MobileMessageDto>>(
+            Assert.IsType<OkObjectResult>(changed).Value));
+        Assert.Equal("Hello, how are you?", original.Body);
+        Assert.Null(original.Translation);
+
+        settings.PreferredCommunicationLanguage = "ht";
+        await db.SaveChangesAsync();
+        var restored = await controller.Messages(conversation.Conversation.Id, null, null, CancellationToken.None);
+        var localized = Assert.Single(Assert.IsAssignableFrom<IReadOnlyList<MobileMessageDto>>(
+            Assert.IsType<OkObjectResult>(restored).Value));
+        Assert.Equal("Bonjou, kijan ou ye?", localized.Body);
+        Assert.Equal("ht", localized.Translation!.TargetLanguage);
         translator.VerifyAll();
     }
 

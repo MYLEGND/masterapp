@@ -19,7 +19,13 @@ import kotlinx.serialization.json.Json
 import java.util.TimeZone
 
 sealed interface LoadState<out T> { data object Idle : LoadState<Nothing>; data object Loading : LoadState<Nothing>; data class Data<T>(val value: T) : LoadState<T>; data class Error(val message: String) : LoadState<Nothing> }
-private suspend fun <T> request(block: suspend () -> T): LoadState<T> = runCatching { LoadState.Data(block()) }.getOrElse { LoadState.Error((it as? LegendApiException)?.problem?.message ?: "Legend is unavailable right now.") }
+private suspend fun <T> request(block: suspend () -> T): LoadState<T> = try { LoadState.Data(block()) }
+catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+catch (error: Exception) { LoadState.Error(when (error) {
+    is LegendApiException -> error.problem?.message
+    is com.mylegnd.legend.registered.core.media.SocialMediaPreparationException -> error.message
+    else -> null
+} ?: "Legend is unavailable right now.") }
 class HomeRepository(private val client: LegendApiClient) { suspend fun load(role: String) = request { client.api.home(role).legendBody() } }
 class FounderAiRepository(private val client: LegendApiClient) {
     private val json = Json { ignoreUnknownKeys = true }
@@ -85,7 +91,7 @@ class AgentWorkspaceRepository(private val client: LegendApiClient) {
             check(url.scheme == base.scheme && url.host == base.host && url.port == base.port)
             return url.toString()
         }
-        record.copy(managementPath = absolute(record.managementPath), accountPath = record.accountPath?.let(::absolute))
+        record.copy(managementPath = absolute(record.managementPath))
     }
     suspend fun clients(role: String) = request { client.api.agentClients(role).legendBody() }
     suspend fun leads(role: String) = request { client.api.agentLeads(role).legendBody() }
@@ -179,13 +185,20 @@ class MessagingRepository(private val client: LegendApiClient) {
     suspend fun activity(role: String) = request { client.api.messagingActivity(role).legendBody() }
     suspend fun languages(role: String) = request { client.api.communicationLanguages(role).legendBody() }
 }
+class GuestRepository(private val client: LegendApiClient) {
+    suspend fun load() = request { client.api.guest().legendBody() }
+}
+
 class SocialRepository(private val client: LegendApiClient) {
     private val uploader = SocialMediaUploader(client)
     suspend fun feed(role: String) = request { client.api.socialFeed(role).legendBody() }
     suspend fun currentProfilePosts(role: String) = request { client.api.currentProfilePosts(role).legendBody() }
     suspend fun publicProfilePosts(role: String, author: SocialAuthor) = request { client.api.publicProfilePosts(role, author.identity.userId, author.identity.participantType, author.profileId).legendBody() }
     suspend fun profileMetrics(role: String, author: SocialAuthor? = null) = request { client.api.profileMetrics(role, author?.identity?.userId, author?.identity?.participantType, author?.profileId).legendBody() }
-    suspend fun follows(role: String, list: String) = request { client.api.profileFollows(role, list).legendBody() }
+    suspend fun follows(role: String, list: String, profile: SocialAuthor? = null) = request {
+        if (profile == null) client.api.profileFollows(role, list).legendBody()
+        else client.api.profileNetwork(role, list, profile.identity.userId, profile.identity.participantType, profile.profileId).legendBody()
+    }
     suspend fun followRequests(role: String) = request { client.api.incomingFollowRequests(role).legendBody() }
     suspend fun createPost(role: String, request: CreateSocialPostRequest) = request { client.api.createPost(role, request).legendBody() }
     suspend fun updatePost(role: String, id: String, body: String) = request { client.api.updatePost(role, id, UpdateSocialPostRequest(body)).legendBody() }
@@ -202,7 +215,7 @@ class SocialRepository(private val client: LegendApiClient) {
     suspend fun recordProfileVisit(role: String, author: SocialAuthor, sourcePostId: String? = null) = request { client.api.recordProfileVisit(role, SocialProfileVisitRequest(author.identity.userId, author.identity.participantType, sourcePostId)).legendBody() }
     suspend fun joinPromotedGroup(role: String, id: String) = request { client.api.joinPromotedGroup(role, id).legendBody() }
 }
-class NotificationRepository(private val client: LegendApiClient) { suspend fun snapshot(role: String) = request { client.api.notifications(role).legendBody() }; suspend fun markRead(role: String, id: String) = request { client.api.markNotificationRead(role, id).legendBody() }; suspend fun clearBadges(role: String) = request { client.api.clearNotificationBadges(role).legendBody() } }
+class NotificationRepository(private val client: LegendApiClient) { suspend fun activity(role: String) = request { client.api.messagingActivity(role).legendBody() }; suspend fun snapshot(role: String) = request { client.api.notifications(role).legendBody() }; suspend fun markRead(role: String, id: String) = request { client.api.markNotificationRead(role, id).legendBody() }; suspend fun clearBadges(role: String) = request { client.api.clearNotificationBadges(role).legendBody() } }
 class DiscoveryRepository(private val client: LegendApiClient) { suspend fun search(role: String, query: String? = null, offset: Int = 0, pageSize: Int = 24, sort: String? = null) = request { client.api.discovery(role, query, offset, pageSize, sort).legendBody() }; suspend fun profile(role: String, id: String) = request { client.api.discoveryProfile(role, id).legendBody() } }
 class JourneyRepository(private val client: LegendApiClient) {
     suspend fun dashboard(role: String) = request { client.api.journeyCircles(role).legendBody() }

@@ -139,6 +139,10 @@ struct LegendApplicationShell: View {
         // owns the Messages tab. This environment value is a reference only:
         // it creates no second store, recipient directory, inbox, or send path.
         .environment(\.legendMessagingStore, messages)
+        .environment(\.legendSocialStore, social)
+        .onReceive(NotificationCenter.default.publisher(for: .legendPreferredLanguageDidChange)) { _ in
+            Task { await messages.refreshLanguagePresentation() }
+        }
         .task {
             await account.loadLifecycle()
         }
@@ -1078,7 +1082,7 @@ private struct LegendAccountSwitcherSheet: View {
                                     .font(LegendNextTypography.bodyEmphasis)
                                     .foregroundStyle(.white)
                                     .lineLimit(1)
-                                Text(account.participantType.accountLabel)
+                                Text(account.requiresSignIn ? LegendLocalized("Sign in again") : account.participantType.accountLabel)
                                     .font(LegendNextTypography.supporting)
                                     .foregroundStyle(Color.white.opacity(0.64))
                             }
@@ -1734,7 +1738,7 @@ private struct LegendHomeView: View {
         LegendNextSurface(
             style: .navy,
             cornerRadius: LegendNextRadius.prominentCard,
-            padding: LegendNextSpacing.sm
+            padding: LegendNextSpacing.md
         ) {
             VStack(alignment: .leading, spacing: LegendNextSpacing.sm) {
                 HStack(
@@ -1763,6 +1767,10 @@ private struct LegendHomeView: View {
                 }
                 .minimumScaleFactor(0.76)
                 .allowsTightening(true)
+
+                Rectangle()
+                    .fill(.white.opacity(0.14))
+                    .frame(height: 1)
 
                 Button {
                     presentedScripture = home.dailyScripture
@@ -1798,37 +1806,6 @@ private struct LegendHomeView: View {
                 .accessibilityLabel(LegendLocalized("Verse of the day, {value1}. Double tap to read the full passage.", context: "accessibility copy", arguments: ["value1": String(describing: (home.dailyScripture.reference))]))
             }
         }
-        .overlay {
-            RoundedRectangle(
-                cornerRadius: LegendNextRadius.prominentCard,
-                style: .continuous
-            )
-            .stroke(
-                LinearGradient(
-                    colors: [
-                        LegendNextColor.goldBright.opacity(0.62),
-                        LegendNextColor.gold.opacity(0.18),
-                        Color.white.opacity(0.06)
-                    ],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                ),
-                lineWidth: 1
-            )
-            .allowsHitTesting(false)
-        }
-        .shadow(
-            color: LegendNextColor.midnight.opacity(0.22),
-            radius: 11,
-            x: 0,
-            y: 6
-        )
-        .shadow(
-            color: LegendNextColor.gold.opacity(0.09),
-            radius: 14,
-            x: 0,
-            y: 2
-        )
     }
 
     private func missionDashboard(
@@ -2509,7 +2486,7 @@ private struct LegendAgentClientsView: View {
                 )
 
                 HStack(spacing: LegendNextSpacing.sm) {
-                    LegendCrmSearchField(title: "Search clients", text: $search)
+                    LegendCrmSearchField(title: LegendLocalized("Search clients"), text: $search)
                         .frame(maxWidth: .infinity)
                     Button { isSchedulePresented = true } label: {
                         Label(LegendLocalized("Schedule"), systemImage: "calendar")
@@ -2657,7 +2634,7 @@ private struct LegendAgentLeadsView: View {
                             arguments: ["count": leads.filter { ($0.archived ?? false) == showArchive && legendCrmMatchesSearch(search, values: [$0.displayName, $0.email, $0.phone]) }.count])
                     )
 
-                    LegendCrmSearchField(title: "Search leads", text: $search)
+                    LegendCrmSearchField(title: LegendLocalized("Search leads"), text: $search)
                     Picker(LegendLocalized("CRM records"), selection: $showArchive) {
                         Text(LegendLocalized("Active")).tag(false)
                         Text(LegendLocalized("Archive / Deleted")).tag(true)
@@ -6116,7 +6093,7 @@ private struct LegendAccountView: View {
                             coordinator.switchToSignedInAccount(account.id)
                         } label: {
                             Label(
-                                account.displayName,
+                                account.requiresSignIn ? "\(account.displayName) · \(LegendLocalized("Sign in again"))" : account.displayName,
                                 systemImage: account.participantType.accountSystemImage
                             )
                         }
@@ -9004,6 +8981,7 @@ private struct LegendFounderAccountRemovalConfirmation: View {
 /// follow edge, while this shared elevated directory supplies the scrolling.
 private struct LegendFollowListView: View {
     let kind: MobileSocialFollowListKind
+    let profile: MobileSocialAuthor?
     let currentIdentity: LogicalParticipantIdentity
 
     @ObservedObject private var social: MobileSocialStore
@@ -9012,9 +8990,10 @@ private struct LegendFollowListView: View {
     init(
         kind: MobileSocialFollowListKind,
         currentIdentity: LogicalParticipantIdentity,
-        social: MobileSocialStore
+        social: MobileSocialStore, profile: MobileSocialAuthor? = nil
     ) {
         self.kind = kind
+        self.profile = profile
         self.currentIdentity = currentIdentity
         _social = ObservedObject(wrappedValue: social)
     }
@@ -9113,7 +9092,7 @@ private struct LegendFollowListView: View {
     private func refresh() async {
         state = .loading
         async let profileRefresh = social.refresh()
-        let list = await social.followList(kind: kind)
+        let list = await social.followList(kind: kind, profile: profile)
         _ = await profileRefresh
         state = list
     }
@@ -9522,8 +9501,12 @@ struct LegendPublicProfileView: View {
     private var metricRow: some View {
             HStack(spacing: LegendNextSpacing.md) {
                 metric(value: loadedMetrics?.videoCount, title: LegendLocalized("Hacs"))
-                metric(value: loadedMetrics?.followingCount, title: LegendLocalized("Following"))
-                metric(value: loadedMetrics?.followerCount, title: LegendLocalized("Followers"))
+                NavigationLink { LegendFollowListView(kind: .follows, currentIdentity: currentIdentity, social: social, profile: profile) }
+                    label: { metric(value: loadedMetrics?.followingCount, title: LegendLocalized("Following")) }
+                    .buttonStyle(.plain).disabled(loadedMetrics == nil)
+                NavigationLink { LegendFollowListView(kind: .followers, currentIdentity: currentIdentity, social: social, profile: profile) }
+                    label: { metric(value: loadedMetrics?.followerCount, title: LegendLocalized("Followers")) }
+                    .buttonStyle(.plain).disabled(loadedMetrics == nil)
             }
             .frame(maxWidth: .infinity)
     }
@@ -9654,8 +9637,12 @@ struct LegendPublicProfileView: View {
         postsState = .loading
         async let metrics = social.profileMetrics(for: profile)
         async let posts = social.publicProfilePosts(for: profile)
+        async let following = social.followList(kind: .follows)
         metricsState = await metrics
         postsState = await posts
+        if case .loaded(let entries) = await following {
+            isFollowing = entries.contains { $0.profile.identity == profile.identity }
+        }
     }
 
     private func toggleFollow() async {
@@ -11819,8 +11806,8 @@ private struct LegendAgentScheduleView: View {
                         LegendNextErrorState(title: LegendLocalized("Schedule unavailable"), message: failure,
                             retryTitle: LegendLocalized("Retry"), retry: { Task { await refresh() } })
                     } else if !loading {
-                        meetingSection("Client", title: "Client meetings")
-                        meetingSection("Lead", title: "Lead meetings")
+                        meetingSection("Client", title: LegendLocalized("Client meetings"))
+                        meetingSection("Lead", title: LegendLocalized("Lead meetings"))
                         if let updatedAt {
                             Text(LegendLocalized("Updated") + " " + updatedAt.formatted(date: .omitted, time: .shortened))
                                 .font(LegendNextTypography.caption).foregroundStyle(LegendNextColor.textSecondary)
@@ -11935,20 +11922,30 @@ private struct LegendAgentCrmRecordView: View {
                         if record.archived == true {
                             Text(LegendLocalized("Archived / Deleted · Read only"))
                         } else {
-                            Button { editing = true } label: { Label(LegendLocalized("Edit contact information"), systemImage: "pencil") }
-                                .buttonStyle(LegendNextButtonStyle(kind: .secondary))
-                        }
-                        if record.archived != true, let profileID = record.profileId {
-                            LegendBookClientAppointmentButton(profileID: profileID, knownAssigned: true)
-                        }
-                        VStack(alignment: .leading, spacing: LegendNextSpacing.sm) {
-                            if let email = record.email, let url = URL(string: "mailto:" + email) {
-                                Link(destination: url) { Label(email, systemImage: "envelope") }
+                            HStack(alignment: .top, spacing: LegendNextSpacing.sm) {
+                                Button { editing = true } label: { Label(LegendLocalized("Edit contact information"), systemImage: "pencil") }
+                                    .buttonStyle(LegendNextButtonStyle(kind: .secondary)).frame(maxWidth: .infinity)
+                                if let profileID = record.profileId {
+                                    LegendBookClientAppointmentButton(profileID: profileID, knownAssigned: true).frame(maxWidth: .infinity)
+                                }
                             }
-                            if let phone = record.phone, let url = URL(string: "tel:" + phone.filter { $0.isNumber || $0 == "+" }) {
-                                Link(destination: url) { Label(phone, systemImage: "phone") }
+                            HStack(spacing: LegendNextSpacing.sm) {
+                                if record.kind == "Client", let id = record.profileId.flatMap(UUID.init(uuidString:)) {
+                                    Button { messages.startConversation(forClientProfileID: id) { openMessages($0) } }
+                                        label: { Label(LegendLocalized("Message"), systemImage: "message.fill") }
+                                        .buttonStyle(LegendNextButtonStyle(kind: .primary)).disabled(messages.isStartingConversation)
+                                }
+                                if let profileID = record.profileId, let userID = record.userId,
+                                   let identity = try? LogicalParticipantIdentity(userID: userID, participantType: .client) {
+                                    LegendMemberProfileLink(profile: MobileSocialAuthor(identity: identity, profileID: profileID,
+                                        displayName: record.displayName, avatar: nil)) {
+                                        Label(LegendLocalized("Open full account"), systemImage: "person.crop.circle")
+                                    }.buttonStyle(LegendNextButtonStyle(kind: .secondary))
+                                }
                             }
-                        }.font(LegendNextTypography.supporting).tint(LegendNextColor.textPrimary)
+                        }
+                        LegendCrmContactCard(record: record)
+                        if let error = messages.sendFailure { Text(error.message).foregroundStyle(LegendNextColor.textSecondary) }
                         if record.archived != true, let outcomes = record.availableOutcomes, !outcomes.isEmpty {
                             LegendNextSectionHeader(title: LegendLocalized("Next step"), detail: LegendLocalized("Record the outcome of your latest conversation."))
                             Picker(LegendLocalized("Outcome"), selection: $outcome) {
@@ -11968,22 +11965,6 @@ private struct LegendAgentCrmRecordView: View {
                                 }
                             }.buttonStyle(LegendNextButtonStyle(kind: .primary)).disabled(saving || outcome.isEmpty || note.count > 4000)
                             if let actionFailure { Text(actionFailure).foregroundStyle(LegendNextColor.textSecondary) }
-                        }
-                        if record.archived != true, record.kind == "Client", let id = record.profileId.flatMap(UUID.init(uuidString:)) {
-                            Button {
-                                messages.startConversation(forClientProfileID: id) { conversationID in openMessages(conversationID) }
-                            } label: { Label(LegendLocalized("Message"), systemImage: "message.fill") }
-                            .buttonStyle(LegendNextButtonStyle(kind: .primary))
-                            .disabled(messages.isStartingConversation)
-                        }
-                        if let error = messages.sendFailure { Text(error.message).foregroundStyle(LegendNextColor.textSecondary) }
-                        if record.archived != true, let path = record.accountPath, let url = URL(string: path) {
-                            Link(destination: url) { Label(LegendLocalized("Open full account"), systemImage: "person.crop.circle") }
-                                .buttonStyle(LegendNextButtonStyle(kind: .secondary))
-                        }
-                        if record.archived != true, let url = URL(string: record.managementPath) {
-                            Link(destination: url) { Label(LegendLocalized("Manage in AgentPortal"), systemImage: "calendar") }
-                                .buttonStyle(LegendNextButtonStyle(kind: .secondary))
                         }
                     } else if let failure {
                         LegendNextErrorState(title: LegendLocalized("Record unavailable"), message: failure,
@@ -12039,7 +12020,7 @@ private struct LegendAgentAppointmentView: View {
                             .buttonStyle(LegendNextButtonStyle(kind: .primary))
                     }
                     if let record {
-                        if let profileID = record.profileId { LegendBookClientAppointmentButton(profileID: profileID, knownAssigned: true, title: "Manage / reschedule") }
+                        if let profileID = record.profileId { LegendBookClientAppointmentButton(profileID: profileID, knownAssigned: true, title: LegendLocalized("Manage / reschedule")) }
                         if record.profileId == nil, record.archived != true, let url = URL(string: record.managementPath) {
                             Link(destination: url) { Label(LegendLocalized("Manage / reschedule"), systemImage: "calendar") }
                                 .buttonStyle(LegendNextButtonStyle(kind: .secondary))
@@ -12079,6 +12060,44 @@ private struct LegendAgentAppointmentView: View {
     }
 }
 
+private struct LegendCrmContactCard: View {
+    let record: MobileCrmRecord
+    private var address: String {
+        [record.addressLine, record.city, record.state, record.zipCode]
+            .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }.joined(separator: ", ")
+    }
+    var body: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            Label(LegendLocalized("Contact details"), systemImage: "person.text.rectangle").font(.headline).foregroundStyle(LegendNextColor.goldBright)
+            Text(record.displayName).font(.title2.bold())
+            Divider().overlay(LegendNextColor.goldBright.opacity(0.3))
+            contact("Email", record.email, "envelope", "mailto:")
+            contact("Phone", record.phone, "phone", "tel:")
+            contact("Other phone", record.phone2, "phone.badge.waveform", "tel:")
+            VStack(alignment: .leading, spacing: 5) {
+                Text(LegendLocalized("Address")).font(.caption).foregroundStyle(LegendNextColor.goldBright)
+                if !address.isEmpty, let escaped = address.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
+                   let url = URL(string: "https://maps.apple.com/?q=" + escaped) {
+                    Link(destination: url) { Label(address, systemImage: "mappin.and.ellipse") }
+                } else { Text(LegendLocalized("Not provided")) }
+            }
+        }.frame(maxWidth: .infinity, alignment: .leading).padding(22)
+            .foregroundStyle(.white).tint(.white)
+            .background(LegendNextGradient.hero, in: RoundedRectangle(cornerRadius: 24))
+            .overlay(RoundedRectangle(cornerRadius: 24).stroke(LegendNextColor.goldBright.opacity(0.5), lineWidth: 1))
+    }
+    private func contact(_ title: String, _ value: String?, _ icon: String, _ scheme: String) -> some View {
+        VStack(alignment: .leading, spacing: 5) {
+            Text(LegendLocalized(title)).font(.caption).foregroundStyle(LegendNextColor.goldBright)
+            if let value = value?.trimmingCharacters(in: .whitespacesAndNewlines), !value.isEmpty,
+               let encoded = (scheme == "tel:" ? value.filter { $0.isNumber || $0 == "+" } : value).addingPercentEncoding(withAllowedCharacters: .urlPathAllowed),
+               let url = URL(string: scheme + encoded) {
+                Link(destination: url) { Label(value, systemImage: icon) }
+            } else { Text(LegendLocalized("Not provided")) }
+        }
+    }
+}
+
 private struct LegendCrmContactEditor: View {
     let store: MobileAgentWorkspaceStore
     let destination: LegendCrmDestination
@@ -12112,7 +12131,7 @@ private struct LegendCrmContactEditor: View {
                 .navigationTitle(LegendLocalized("Edit contact"))
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
-                    ToolbarItem(placement: .cancellationAction) { Button(LegendLocalized("Cancel")) { dismiss() }.disabled(saving) }
+                    ToolbarItem(placement: .cancellationAction) { Button(LegendLocalized(saving ? "Close" : "Cancel")) { dismiss() } }
                     ToolbarItem(placement: .confirmationAction) {
                         Button(LegendLocalized(saving ? "Saving…" : "Save")) {
                             saving = true; failure = nil
@@ -12123,7 +12142,7 @@ private struct LegendCrmContactEditor: View {
                         }.disabled(saving || input.firstName.trimmingCharacters(in: .whitespaces).isEmpty)
                     }
                 }
-        }.tint(LegendNextColor.goldBright).interactiveDismissDisabled(saving)
+        }.tint(LegendNextColor.goldBright)
     }
 }
 

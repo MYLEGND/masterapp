@@ -71,11 +71,11 @@ public sealed class MobileAgentCrmController(IMobileActorResolver actors, Mobile
         {
             var controller = HttpContext.RequestServices.GetRequiredService<ClientsController>();
             controller.ControllerContext = ControllerContext;
-            return await controller.SaveContact(record.UserId, input);
+            return await controller.SaveContactForAgentAsync(resolved.Actor.Actor.UserId, record.UserId, input);
         }
         var leads = HttpContext.RequestServices.GetRequiredService<LeadsController>();
         leads.ControllerContext = ControllerContext;
-        return await leads.SaveContact(record.UserId, input);
+        return await leads.SaveContactForAgentAsync(resolved.Actor.Actor.UserId, record.UserId, input);
     }
 
     [HttpPost("appointments/{id:guid}/cancel")]

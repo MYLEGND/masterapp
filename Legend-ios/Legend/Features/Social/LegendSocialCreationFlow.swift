@@ -81,13 +81,14 @@ private struct LegendSocialCreationModeMenu: View {
                             .accessibilityHint(candidate.creationPrompt)
                         }
                     }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.top, LegendNextSpacing.md)
                     .padding(.horizontal, LegendNextSpacing.lg)
                 }
             }
             .toolbar(.hidden, for: .navigationBar)
         }
-        .legendNextSheetChrome(detents: [.large], showsDragIndicator: false)
+        .legendNextSheetChrome(detents: [.height(380), .large], showsDragIndicator: true)
     }
 
     private func creationOption(_ type: MobileSocialContentType) -> some View {
@@ -2471,6 +2472,14 @@ private struct LegendSocialAdjustmentSlider: View {
 enum LegendSocialMediaRenderer {
     private static let imageContext = CIContext(options: nil)
 
+    static func fillScale(source: CGSize, canvas: CGSize, rotationDegrees: Double) -> CGFloat {
+        let angle = rotationDegrees * .pi / 180
+        let cosine = CGFloat(abs(cos(angle)))
+        let sine = CGFloat(abs(sin(angle)))
+        return max((canvas.width * cosine + canvas.height * sine) / max(source.width, 1),
+                   (canvas.width * sine + canvas.height * cosine) / max(source.height, 1))
+    }
+
     static func renderedImage(
         from data: Data,
         edit: LegendSocialMediaEditState,
@@ -2486,29 +2495,33 @@ enum LegendSocialMediaRenderer {
 
         let longestEdge = min(max(source.size.width, source.size.height), 2_048)
         let targetSize = CGSize(
-            width: max(1, longestEdge.rounded()),
-            height: max(1, (longestEdge / aspectRatio).rounded()))
+            width: max(1, (longestEdge * min(1, aspectRatio)).rounded()),
+            height: max(1, (longestEdge / max(1, aspectRatio)).rounded()))
         let format = UIGraphicsImageRendererFormat.default()
         format.scale = 1
         format.opaque = true
+        let sourceReduction = min(1, 2_048 / max(source.size.width, source.size.height))
+        let normalizedSize = CGSize(width: source.size.width * sourceReduction, height: source.size.height * sourceReduction)
+        let normalized = UIGraphicsImageRenderer(size: normalizedSize, format: format).image { _ in
+            source.draw(in: CGRect(origin: .zero, size: normalizedSize))
+        }
+        let appearance = applyingAppearance(to: normalized, edit: edit) ?? normalized
         let base = UIGraphicsImageRenderer(size: targetSize, format: format).image { context in
             UIColor.black.setFill()
             context.fill(CGRect(origin: .zero, size: targetSize))
 
-            let sourceScale = max(
-                targetSize.width / source.size.width,
-                targetSize.height / source.size.height)
-                * max(1, edit.cropZoom)
+            let sourceScale = fillScale(source: appearance.size, canvas: targetSize, rotationDegrees: edit.rotationDegrees)
+                * max(0.1, edit.cropZoom)
             let drawSize = CGSize(
-                width: source.size.width * sourceScale,
-                height: source.size.height * sourceScale)
+                width: appearance.size.width * sourceScale,
+                height: appearance.size.height * sourceScale)
 
             context.cgContext.saveGState()
             context.cgContext.translateBy(
-                x: targetSize.width / 2 + edit.cropOffset.width * targetSize.width * 0.28,
-                y: targetSize.height / 2 + edit.cropOffset.height * targetSize.height * 0.28)
+                x: targetSize.width / 2 + edit.cropOffset.width * targetSize.width,
+                y: targetSize.height / 2 + edit.cropOffset.height * targetSize.height)
             context.cgContext.rotate(by: edit.rotationDegrees * .pi / 180)
-            source.draw(in: CGRect(
+            appearance.draw(in: CGRect(
                 x: -drawSize.width / 2,
                 y: -drawSize.height / 2,
                 width: drawSize.width,
@@ -2516,9 +2529,8 @@ enum LegendSocialMediaRenderer {
             context.cgContext.restoreGState()
         }
 
-        let styled = applyingAppearance(to: base, edit: edit) ?? base
-        guard edit.storyOverlay.hasText else { return styled }
-        return renderingStoryOverlay(edit.storyOverlay, on: styled)
+        guard edit.storyOverlay.hasText else { return base }
+        return renderingStoryOverlay(edit.storyOverlay, on: base)
     }
 
     static func jpegData(
@@ -2641,21 +2653,23 @@ private struct LegendSocialEditableImageCanvas: View {
     let aspectRatio: CGFloat
     let allowsStoryOverlay: Bool
 
-    @State private var cropStart = CGSize.zero
-    @State private var zoomStart = 1.0
+    @State private var cropStart: CGSize?
+    @State private var zoomStart: Double?
     @State private var textStart = CGSize.zero
+
+    @State private var appearanceImage: UIImage?
 
     var body: some View {
         GeometryReader { geometry in
             ZStack {
-                if let data = media.imageData,
-                   let rendered = LegendSocialMediaRenderer.renderedImage(
-                    from: data,
-                    edit: canvasEdit,
-                    aspectRatio: aspectRatio) {
+                if let rendered = appearanceImage {
+                    let fill = LegendSocialMediaRenderer.fillScale(source: rendered.size, canvas: geometry.size, rotationDegrees: edit.rotationDegrees)
                     Image(uiImage: rendered)
                         .resizable()
-                        .scaledToFill()
+                        .frame(width: rendered.size.width * fill, height: rendered.size.height * fill)
+                        .scaleEffect(edit.cropZoom)
+                        .rotationEffect(.degrees(edit.rotationDegrees))
+                        .offset(x: edit.cropOffset.width * geometry.size.width, y: edit.cropOffset.height * geometry.size.height)
                         .frame(width: geometry.size.width, height: geometry.size.height)
                         .clipped()
                 } else {
@@ -2690,23 +2704,36 @@ private struct LegendSocialEditableImageCanvas: View {
             .gesture(
                 DragGesture()
                     .onChanged { value in
+                        if cropStart == nil { cropStart = edit.cropOffset }
                         edit.cropOffset = CGSize(
-                            width: cropStart.width + value.translation.width / max(geometry.size.width, 1),
-                            height: cropStart.height + value.translation.height / max(geometry.size.height, 1))
+                            width: (cropStart ?? edit.cropOffset).width + value.translation.width / max(geometry.size.width, 1),
+                            height: (cropStart ?? edit.cropOffset).height + value.translation.height / max(geometry.size.height, 1))
                     }
-                    .onEnded { _ in cropStart = edit.cropOffset })
+                    .onEnded { _ in cropStart = nil })
             .simultaneousGesture(
                 MagnificationGesture()
                     .onChanged { value in
-                        edit.cropZoom = min(max(1, zoomStart * value), 3)
+                        if zoomStart == nil { zoomStart = edit.cropZoom }
+                        edit.cropZoom = min(max(0.25, (zoomStart ?? edit.cropZoom) * value), 6)
                     }
-                    .onEnded { _ in zoomStart = edit.cropZoom })
+                    .onEnded { _ in zoomStart = nil })
+            .task(id: appearanceKey) {
+                guard let data = media.imageData, let source = UIImage(data: data) else { return }
+                var appearance = canvasEdit
+                appearance.resetTransform()
+                appearanceImage = LegendSocialMediaRenderer.renderedImage(from: data, edit: appearance,
+                    aspectRatio: source.size.width / max(source.size.height, 1))
+            }
             .onAppear {
-                cropStart = edit.cropOffset
-                zoomStart = edit.cropZoom
+                cropStart = nil
+                zoomStart = nil
                 textStart = edit.storyOverlay.position
             }
         }
+    }
+
+    private var appearanceKey: String {
+        "\(media.id)-\(edit.filter)-\(edit.filterIntensity)-\(edit.brightness)-\(edit.contrast)-\(edit.saturation)-\(edit.warmth)-\(edit.highlights)-\(edit.shadows)-\(edit.sharpness)"
     }
 
     private var canvasEdit: LegendSocialMediaEditState {

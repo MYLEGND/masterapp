@@ -3,6 +3,36 @@ import Combine
 import SwiftUI
 import UIKit
 
+struct LegendSocialStoreEnvironmentKey: EnvironmentKey {
+    static let defaultValue: MobileSocialStore? = nil
+}
+extension EnvironmentValues {
+    var legendSocialStore: MobileSocialStore? {
+        get { self[LegendSocialStoreEnvironmentKey.self] }
+        set { self[LegendSocialStoreEnvironmentKey.self] = newValue }
+    }
+}
+
+/// Reuses the authenticated native profile surface from any sheet or content row.
+struct LegendMemberProfileLink<Content: View>: View {
+    let profile: MobileSocialAuthor
+    @ViewBuilder let content: () -> Content
+    @Environment(\.legendSocialStore) private var social
+    @EnvironmentObject private var session: MobileSessionCoordinator
+    @State private var presented = false
+    var body: some View {
+        Button { presented = true } label: { content() }
+            .fullScreenCover(isPresented: $presented) {
+                if let social, case .authenticated(let current) = session.state {
+                    NavigationStack {
+                        LegendPublicProfileView(profile: profile, currentIdentity: current.actor.identity,
+                            social: social, isFollowing: false)
+                    }
+                }
+            }
+    }
+}
+
 // MARK: - Global Share Authority
 
 /// Supplies the already-existing account-scoped MessagingStore to every
@@ -803,6 +833,22 @@ private struct LegendStoryRail: View {
     }
 
     var body: some View {
+        Group {
+            if collections.isEmpty {
+                Button(action: createStory) {
+                    HStack(spacing: LegendNextSpacing.sm) {
+                        LegendProfileAvatar(avatar: currentActor.avatar, displayName: currentActor.displayName, size: 40)
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(LegendLocalized("Your story")).font(.subheadline.weight(.semibold))
+                            Text(LegendLocalized("Share a moment")).font(.caption).foregroundStyle(LegendNextColor.textSecondary)
+                        }
+                        Spacer()
+                        Image(systemName: "plus.circle.fill").font(.title2).foregroundStyle(LegendNextColor.gold)
+                    }
+                    .padding(LegendNextSpacing.sm)
+                    .background(LegendNextColor.surface, in: RoundedRectangle(cornerRadius: LegendNextRadius.card))
+                }.buttonStyle(.plain)
+            } else {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(alignment: .top, spacing: LegendNextSpacing.sm) {
                 currentStoryControl
@@ -816,6 +862,8 @@ private struct LegendStoryRail: View {
                 }
             }
             .padding(.horizontal, 2)
+        }
+            }
         }
         .accessibilityLabel(LegendLocalized("Legend stories", context: "accessibility copy"))
     }
@@ -2120,10 +2168,10 @@ private struct LegendSocialPostCard: View {
         if !post.comments.isEmpty {
             ForEach(post.comments.suffix(2)) { comment in
                 HStack(alignment: .firstTextBaseline, spacing: 4) {
-                    LegendVerifiedName(
-                        comment.author.displayName,
-                        isVerified: comment.author.isVerified == true,
-                        font: LegendNextTypography.supporting.weight(.bold))
+                    LegendMemberProfileLink(profile: comment.author) {
+                        LegendVerifiedName(comment.author.displayName, isVerified: comment.author.isVerified == true,
+                            font: LegendNextTypography.supporting.weight(.bold))
+                    }.buttonStyle(.plain)
                     Text(comment.body)
                         .font(LegendNextTypography.supporting)
                         .foregroundStyle(LegendNextColor.textSecondary)
@@ -4671,11 +4719,9 @@ private struct LegendCommentComposer: View {
             alignment: .top,
             spacing: LegendNextSpacing.xs
         ) {
-            LegendProfileAvatar(
-                avatar: comment.author.avatar,
-                displayName: comment.author.displayName,
-                size: isReply ? 27 : 33
-            )
+            LegendMemberProfileLink(profile: comment.author) {
+                LegendProfileAvatar(avatar: comment.author.avatar, displayName: comment.author.displayName, size: isReply ? 27 : 33)
+            }.buttonStyle(.plain)
 
             VStack(
                 alignment: .leading,
@@ -4685,11 +4731,10 @@ private struct LegendCommentComposer: View {
                     alignment: .firstTextBaseline,
                     spacing: LegendNextSpacing.xs
                 ) {
-                    LegendVerifiedName(
-                        comment.author.displayName,
-                        isVerified: comment.author.isVerified == true,
-                        font: .caption.weight(.bold)
-                    )
+                    LegendMemberProfileLink(profile: comment.author) {
+                        LegendVerifiedName(comment.author.displayName, isVerified: comment.author.isVerified == true,
+                            font: .caption.weight(.bold))
+                    }.buttonStyle(.plain)
 
                     Text(comment.createdUTC, style: .relative)
                         .font(.caption2)

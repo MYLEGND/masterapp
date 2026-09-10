@@ -78,6 +78,10 @@ struct MobileSignedInAccount: Codable, Equatable, Sendable, Identifiable {
     var displayName: String
     var participantType: ParticipantType
     var lastUsedAt: Date
+    var requiresSignIn: Bool = false
+    private enum CodingKeys: String, CodingKey {
+        case id, displayName, participantType, lastUsedAt
+    }
 
     init(
         id: String,
@@ -152,8 +156,11 @@ struct KeychainTokenStore: MultiAccountSecureTokenStoring {
 
     func signedInAccounts() throws -> [MobileSignedInAccount] {
         try readCatalog().accounts
-            .filter { !$0.tokens.requiresInteractiveSignIn }
-            .map(\.account)
+            .map { stored in
+                var account = stored.account
+                account.requiresSignIn = stored.tokens.requiresInteractiveSignIn
+                return account
+            }
             .sorted { $0.lastUsedAt > $1.lastUsedAt }
     }
 

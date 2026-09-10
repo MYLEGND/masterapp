@@ -2461,6 +2461,11 @@ public class LeadsController : Controller
     {
         string agentId;
         try { agentId = GetAgentIdOrChallenge(); } catch { return Challenge(); }
+        return await SaveContactForAgentAsync(agentId, clientUserId, request);
+    }
+
+    internal async Task<IActionResult> SaveContactForAgentAsync(string agentId, string clientUserId, CrmContactUpdate request)
+    {
         if (!TryValidateModel(request)) return BadRequest(ModelState);
         var lead = await LoadCanonicalLeadAsync(agentId, clientUserId, "SaveContact");
         if (lead is null) return NotFound();

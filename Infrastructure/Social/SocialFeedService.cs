@@ -1299,28 +1299,22 @@ public sealed class SocialFeedService : ISocialFeedService
         return SocialOperationResult<SocialFollowResult>.Success(new SocialFollowResult(false, false));
     }
 
-    public async Task<SocialOperationResult<IReadOnlyList<SocialFollowListEntry>>> GetCurrentProfileFollowListAsync(
-        SocialFeedActor actor,
-        string listKind,
-        CancellationToken cancellationToken = default)
-    {
-        if (!await IsValidActorAsync(actor, cancellationToken))
-        {
-            return SocialOperationResult<IReadOnlyList<SocialFollowListEntry>>.Failure(
-                "social_actor_invalid",
-                "Your mobile identity is not available for Legend updates.");
-        }
+    public Task<SocialOperationResult<IReadOnlyList<SocialFollowListEntry>>> GetCurrentProfileFollowListAsync(
+        SocialFeedActor actor, string listKind, CancellationToken cancellationToken = default) =>
+        GetProfileFollowListAsync(actor, ToAuthor(actor), listKind, cancellationToken);
 
+    public async Task<SocialOperationResult<IReadOnlyList<SocialFollowListEntry>>> GetProfileFollowListAsync(
+        SocialFeedActor actor, SocialAuthor profile, string listKind, CancellationToken cancellationToken = default)
+    {
+        var resolved = await ResolveNetworkProfileAsync(actor, profile, cancellationToken);
+        if (!resolved.Succeeded || resolved.Value is null)
+            return SocialOperationResult<IReadOnlyList<SocialFollowListEntry>>.Failure(
+                resolved.ErrorCode!, resolved.ErrorMessage!);
         var normalizedKind = SocialFollowListKinds.Normalize(listKind);
         if (normalizedKind is null)
-        {
             return SocialOperationResult<IReadOnlyList<SocialFollowListEntry>>.Failure(
-                "social_follow_list_invalid",
-                "Choose either the Follows or Followers list.");
-        }
-
-        var actorKey = AuthorKey.From(actor.Identity.UserId, actor.Identity.ParticipantType);
-        var entries = await GetFollowListAsync(actorKey, actorKey, normalizedKind, cancellationToken);
+                "social_follow_list_invalid", "Choose either the Follows or Followers list.");
+        var entries = await GetFollowListAsync(resolved.Value.TargetKey, resolved.Value.ActorKey, normalizedKind, cancellationToken);
         return SocialOperationResult<IReadOnlyList<SocialFollowListEntry>>.Success(entries);
     }
 
@@ -1668,6 +1662,15 @@ public sealed class SocialFeedService : ISocialFeedService
         }
 
         author = await ApplyMobileProfileDetailsAsync(author, cancellationToken);
+        // Network lists and profile content share the same private-profile boundary.
+        // Recheck accepted relationships rather than relying on a UI flag or cached count.
+        if (author.IsPrivate && targetKey != actorKey)
+        {
+            var audience = await BuildAudienceGraphAsync(actorKey, cancellationToken);
+            if (!audience.FollowedProfileIds.Contains(author.ProfileId))
+                return SocialOperationResult<NetworkProfileResolution>.Failure(
+                    "social_profile_forbidden", "Only approved followers can view this private profile's network.");
+        }
         return SocialOperationResult<NetworkProfileResolution>.Success(
             new NetworkProfileResolution(targetKey, actorKey, author));
     }

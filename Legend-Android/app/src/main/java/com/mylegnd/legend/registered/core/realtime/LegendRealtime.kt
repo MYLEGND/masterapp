@@ -4,6 +4,7 @@ import com.mylegnd.legend.registered.core.network.AccessTokenProvider
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlin.time.Duration.Companion.milliseconds
@@ -32,6 +33,7 @@ import java.util.concurrent.TimeUnit
  * server-issued notification projection, versioned by the server revision.
  */
 data class LegendMessagingRealtimeEvent(
+    val requiresResync: Boolean = false,
     val conversationId: String? = null,
     val messageId: String? = null,
     val notificationId: String? = null,
@@ -71,6 +73,7 @@ class MobileMessagingRealtimeClient(
     private var shouldRemainConnected = false
     private var reconnectAttempt = 0
     private var generation = 0L
+    private var heartbeat: Job? = null
 
     fun start() {
         if (shouldRemainConnected || hubUrl == null) return
@@ -82,6 +85,8 @@ class MobileMessagingRealtimeClient(
     fun stop() {
         shouldRemainConnected = false
         generation += 1
+        heartbeat?.cancel()
+        heartbeat = null
         socket?.close(1000, "legend-background")
         socket = null
     }
@@ -119,20 +124,42 @@ class MobileMessagingRealtimeClient(
             // ASP.NET Core SignalR JSON handshake. The record separator is part
             // of the established protocol and matches the iOS implementation.
             webSocket.send("{\"protocol\":\"json\",\"version\":1}\u001e")
-            reconnectAttempt = 0
         }
 
         override fun onMessage(webSocket: WebSocket, text: String) {
+            if (socket !== webSocket || connectionGeneration != generation) return
+            if (text.split(RECORD_SEPARATOR).any { it.trim() == "{}" }) {
+                reconnectAttempt = 0
+                heartbeat?.cancel()
+                heartbeat = scope.launch {
+                    while (shouldRemainConnected && socket === webSocket && connectionGeneration == generation) {
+                        delay(15_000)
+                        if (!webSocket.send("{\"type\":6}$RECORD_SEPARATOR")) {
+                            webSocket.cancel()
+                            return@launch
+                        }
+                    }
+                }
+                LegendRealtimeEvents.publish(LegendMessagingRealtimeEvent(requiresResync = true))
+            }
             text.split(RECORD_SEPARATOR).forEach(::reconcileFrame)
         }
 
         override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
-            if (socket === webSocket) socket = null
+            if (socket !== webSocket) return
+            heartbeat?.cancel()
+            socket = null
             scheduleReconnect(connectionGeneration)
         }
 
+        override fun onClosing(webSocket: WebSocket, code: Int, reason: String) {
+            webSocket.close(code, reason)
+        }
+
         override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
-            if (socket === webSocket) socket = null
+            if (socket !== webSocket) return
+            heartbeat?.cancel()
+            socket = null
             scheduleReconnect(connectionGeneration)
         }
     }

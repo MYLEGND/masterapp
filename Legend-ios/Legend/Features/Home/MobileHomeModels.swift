@@ -1105,6 +1105,7 @@ struct MobileCrmAppointment: Decodable, Identifiable, Sendable {
 }
 
 struct MobileCrmRecord: Decodable, Identifiable, Sendable {
+    var userId: String? = nil
     let id: String
     let kind: String
     let profileId: String?
@@ -1113,7 +1114,6 @@ struct MobileCrmRecord: Decodable, Identifiable, Sendable {
     let phone: String?
     let stage: String
     var managementPath: String
-    var accountPath: String?
     var availableOutcomes: [String]? = nil
     var meetingUrl: String? = nil
     var firstName: String? = nil

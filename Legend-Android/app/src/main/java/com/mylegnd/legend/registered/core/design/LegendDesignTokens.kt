@@ -26,9 +26,13 @@ object LegendDesignAuthority {
                 val source = context.assets.open("legend-design.tokens.json")
                     .bufferedReader()
                     .use { it.readText() }
-                specification = decoder.decodeFromString(LegendDesignSpecification.serializer(), source)
+                loadSpecification(source)
             }
         }
+    }
+
+    internal fun loadSpecification(source: String) {
+        specification = decoder.decodeFromString(LegendDesignSpecification.serializer(), source)
     }
 
     internal fun color(name: String): Color = required().colors.required(name).asColor()

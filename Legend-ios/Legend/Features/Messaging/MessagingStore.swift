@@ -34,6 +34,7 @@ enum MessagingControlledResourceRequestSubmission {
 /// contract. The event contains only the identifiers needed to reconcile the
 /// server-owned inbox and an already-open conversation.
 struct MobileMessagingRealtimeEvent: Decodable, Sendable {
+    let requiresResync: Bool
     let conversationID: UUID?
     let messageID: UUID?
     let notificationID: UUID?
@@ -52,11 +53,13 @@ struct MobileMessagingRealtimeEvent: Decodable, Sendable {
     init(
         conversationID: UUID?,
         messageID: UUID?,
+        requiresResync: Bool = false,
         notificationID: UUID? = nil,
         unreadCount: Int? = nil,
         revision: Int64? = nil,
         occurredUTC: Date
     ) {
+        self.requiresResync = requiresResync
         self.conversationID = conversationID
         self.messageID = messageID
         self.notificationID = notificationID
@@ -183,6 +186,23 @@ final class MobileMessagingRealtimeClient: MessagingRealtimeTransport {
             }
 
             reconnectAttempt = 0
+            let heartbeat = Task {
+                do {
+                    while !Task.isCancelled {
+                        try await Task.sleep(for: .seconds(15))
+                        try await newSocket.send(.string("{\"type\":6}\(Self.recordSeparator)"))
+                    }
+                } catch is CancellationError {
+                    // Connection teardown cancels its own heartbeat.
+                } catch {
+                    newSocket.cancel(with: .goingAway, reason: nil)
+                }
+            }
+            defer { heartbeat.cancel() }
+            onEvent?(MobileMessagingRealtimeEvent(
+                conversationID: nil, messageID: nil,
+                requiresResync: true, occurredUTC: Date()))
+            for event in events(in: handshake) { onEvent?(event) }
             try await receiveEvents(from: newSocket, generation: connectionGeneration)
         } catch is CancellationError {
             // Explicit stop and role teardown are expected lifecycle events.
@@ -340,6 +360,7 @@ final class MessagingStore: ObservableObject {
     private let realtime: (any MessagingRealtimeTransport)?
     let isFounder: Bool
     private var conversationListTask: Task<MobileStoreLoadResult, Never>?
+    private var presentationRevision = 0
     private var isRefreshingActivityNotifications = false
     private var conversationDetailTasks: [UUID: Task<ConversationDetail, Error>] = [:]
     /// Conversation details are a bounded, account-scoped presentation cache.
@@ -430,6 +451,22 @@ final class MessagingStore: ObservableObject {
         let result = await requestConversationList(preservingCachedValue: hasCachedConversations)
         await refreshActivityNotifications()
         return result
+    }
+
+    func refreshLanguagePresentation() async {
+        // Preferences may have changed on another device while disconnected.
+        // Discard localized projections, then ask the same recipient API again.
+        presentationRevision += 1
+        conversationListTask?.cancel()
+        conversationListTask = nil
+        for task in conversationDetailTasks.values { task.cancel() }
+        conversationDetailTasks.removeAll()
+        conversationDetailCache.removeAll()
+        conversationDetailCacheOrder.removeAll()
+        _ = await refresh()
+        if let selectedConversationID {
+            await refreshSelectedConversation(ifSelected: selectedConversationID)
+        }
     }
 
     func openConversation(_ conversationID: UUID) {
@@ -1205,6 +1242,7 @@ final class MessagingStore: ObservableObject {
         }
 
         isLoadingOlderMessages = true
+        let revision = presentationRevision
         Task {
             defer { isLoadingOlderMessages = false }
             do {
@@ -1212,7 +1250,8 @@ final class MessagingStore: ObservableObject {
                     id: conversation.id,
                     beforeUTC: oldestMessageUTC,
                     accessToken: try await accessTokenProvider())
-                guard selectedConversationID == conversation.id,
+                guard revision == presentationRevision,
+                      selectedConversationID == conversation.id,
                       case .loaded(let currentConversation) = detailState,
                       currentConversation.id == conversation.id else {
                     return
@@ -1229,6 +1268,7 @@ final class MessagingStore: ObservableObject {
                     messages: mergedMessages,
                     hasOlderMessages: olderPage.hasOlderMessages))
             } catch {
+                guard revision == presentationRevision else { return }
                 sendFailure = failure(for: error, title: LegendLocalized("Earlier messages unavailable"))
             }
         }
@@ -1321,8 +1361,10 @@ final class MessagingStore: ObservableObject {
         presentsResult: Bool,
         marksRead: Bool
     ) async {
+        let revision = presentationRevision
         do {
             let conversation = try await conversationDetail(for: conversationID)
+            guard revision == presentationRevision else { return }
             cacheConversationDetail(conversation)
 
             guard !presentsResult || selectedConversationID == conversationID else {
@@ -1349,7 +1391,7 @@ final class MessagingStore: ObservableObject {
                 }
             }
         } catch {
-            guard presentsResult, selectedConversationID == conversationID else {
+            guard revision == presentationRevision, presentsResult, selectedConversationID == conversationID else {
                 return
             }
             if cachedConversationDetail(for: conversationID) == nil {
@@ -1363,13 +1405,16 @@ final class MessagingStore: ObservableObject {
             return try await existingTask.value
         }
 
+        let revision = presentationRevision
         let task = Task { [api, accessTokenProvider] in
             try await api.conversation(
                 id: conversationID,
                 accessToken: try await accessTokenProvider())
         }
         conversationDetailTasks[conversationID] = task
-        defer { conversationDetailTasks[conversationID] = nil }
+        defer {
+            if revision == presentationRevision { conversationDetailTasks[conversationID] = nil }
+        }
         return try await task.value
     }
 
@@ -1437,6 +1482,7 @@ final class MessagingStore: ObservableObject {
             state = .loading
         }
 
+        let revision = presentationRevision
         let task = Task { [weak self] in
             guard let self else {
                 return MobileStoreLoadResult.failed(UserFacingFailure(
@@ -1449,20 +1495,23 @@ final class MessagingStore: ObservableObject {
         }
         conversationListTask = task
         let result = await task.value
-        conversationListTask = nil
+        if revision == presentationRevision { conversationListTask = nil }
         return result
     }
 
     private func executeConversationListRequest(
         preservingCachedValue: Bool
     ) async -> MobileStoreLoadResult {
-        defer { isRefreshing = false }
+        let revision = presentationRevision
+        defer { if revision == presentationRevision { isRefreshing = false } }
         do {
             let accessToken = try await accessTokenProvider()
             let conversations = try await api.conversations(
                 offset: 0,
                 limit: Self.inboxPageSize,
                 accessToken: accessToken)
+            try Task.checkCancellation()
+            guard revision == presentationRevision else { return .loaded }
             // The server-owned messaging service is the sole authority for
             // inbox visibility. Do not apply a second client-side persistence
             // rule here. The server intentionally hides empty direct drafts,
@@ -1474,6 +1523,7 @@ final class MessagingStore: ObservableObject {
             refreshFailure = nil
             return .loaded
         } catch {
+            guard revision == presentationRevision else { return .loaded }
             let presentation = failure(for: error, title: LegendLocalized("Messages unavailable"))
             if preservingCachedValue {
                 refreshFailure = presentation
@@ -1530,6 +1580,10 @@ final class MessagingStore: ObservableObject {
     }
 
     private func reconcileRealtimeEvent(_ event: MobileMessagingRealtimeEvent) {
+        if event.requiresResync {
+            Task { [weak self] in await self?.refreshLanguagePresentation() }
+            return
+        }
         if let unreadCount = event.unreadCount {
             notificationBadgeUpdateHandler?(unreadCount, event.revision ?? 0)
             return

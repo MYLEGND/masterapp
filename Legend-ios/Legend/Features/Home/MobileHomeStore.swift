@@ -304,7 +304,6 @@ struct URLSessionMobileAgentWorkspaceAPI: MobileAgentWorkspaceAPI {
             return url.absoluteString
         }
         record.managementPath = try absolute(record.managementPath)
-        record.accountPath = try record.accountPath.map(absolute)
         return record
     }
 

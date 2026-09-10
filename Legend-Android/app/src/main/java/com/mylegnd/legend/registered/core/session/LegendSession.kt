@@ -9,7 +9,7 @@ import com.mylegnd.legend.registered.core.auth.AuthenticationConnectivityExcepti
 import com.mylegnd.legend.registered.core.auth.LegendAuthClient
 import com.mylegnd.legend.registered.core.auth.LegendAuthenticatedAccount
 import com.mylegnd.legend.registered.core.auth.LegendBearerTokenAuthority
-import com.mylegnd.legend.registered.core.auth.SecureSessionStore
+import com.mylegnd.legend.registered.core.auth.LegendSessionStoring
 import com.mylegnd.legend.registered.core.config.LegendRuntimeConfiguration
 import com.mylegnd.legend.registered.core.design.LegendAccountSessionPolicy
 import com.mylegnd.legend.registered.core.model.*
@@ -26,6 +26,7 @@ data class SignedInLegendAccount(
     val accountId: String,
     val displayName: String,
     val participantType: String,
+    val requiresSignIn: Boolean = false,
 )
 
 data class ActiveLegendSession(
@@ -52,18 +53,18 @@ class SessionRepository(
     private val auth: LegendAuthClient,
     private val bearerTokenAuthority: LegendBearerTokenAuthority,
     private val apiClient: () -> LegendApiClient,
-    private val cache: SecureSessionStore,
+    private val cache: LegendSessionStoring,
     private val beforeSignOut: suspend () -> Unit = {},
 ) {
     private var activeCredential: LegendAuthenticatedAccount? = null
     private var activeInteractiveSignInUtc: String? = null
-    private var requiresFreshInteractiveSignIn = false
+    private var accountIsProvisional = false
+
 
     suspend fun restore(): SessionState {
         if (!configuration.isReady) return SessionState.ConfigurationRequired
         val cached = runCatching { cache.read() }.getOrNull() ?: return SessionState.SignedOut
         if (cached.requiresInteractiveSignIn(LegendAccountSessionPolicy.InteractiveSignInRetentionDays)) {
-            requiresFreshInteractiveSignIn = true
             return SessionState.SignedOut
         }
 
@@ -73,23 +74,38 @@ class SessionRepository(
         activeCredential = auth.signedInAccounts().firstOrNull { it.id == accountId }
             ?: LegendAuthenticatedAccount(accountId, cached.displayName)
         activeInteractiveSignInUtc = cached.interactiveSignInUtc
+        bearerTokenAuthority.activateAccount(cached)
         return establish(cached.participantType)
     }
 
-    suspend fun signIn(activity: Activity, preservingActiveSession: Boolean = false): SessionState {
+    suspend fun signIn(activity: Activity, preservingActiveSession: Boolean = false): SessionState =
+        authenticateAccount(preservingActiveSession) { auth.signIn(activity, forceReauthentication = true) }
+
+    internal suspend fun authenticateAccount(
+        preservingActiveSession: Boolean,
+        authenticate: suspend () -> LegendAuthenticatedAccount,
+    ): SessionState {
         val priorCredential = activeCredential
         val priorInteractiveSignInUtc = activeInteractiveSignInUtc
+        val priorCached = cache.read()
         return try {
-            val credential = auth.signIn(activity, forceReauthentication = requiresFreshInteractiveSignIn)
+            val credential = authenticate()
+            accountIsProvisional = true
             bearerTokenAuthority.clearReviewCredential()
-            requiresFreshInteractiveSignIn = false
             activeCredential = credential
             activeInteractiveSignInUtc = Instant.now().toString()
-            establish(null)
+            bearerTokenAuthority.activateAccount(CachedLegendSession(credential.id, "", credential.displayName,
+                Instant.now().toString(), credential.id, activeInteractiveSignInUtc))
+            val result = establish(null)
+            check(result is SessionState.Authenticated || result is SessionState.RoleSelection) { "Account could not be confirmed." }
+            result
         } catch (error: Throwable) {
             if (preservingActiveSession) {
                 activeCredential = priorCredential
+                accountIsProvisional = false
                 activeInteractiveSignInUtc = priorInteractiveSignInUtc
+                bearerTokenAuthority.activateAccount(priorCached)
+                priorCached?.accountId?.let { cache.selectAccount(it) }
             }
             throw error
         }
@@ -131,38 +147,62 @@ class SessionRepository(
         )
     }
 
+    suspend fun accountRequiresSignIn(accountId: String): Boolean = cache.accounts()
+        .firstOrNull { it.accountId == accountId }
+        ?.requiresInteractiveSignIn(LegendAccountSessionPolicy.InteractiveSignInRetentionDays) != false
+
+    fun requiresInteractiveSignIn(): Boolean = bearerTokenAuthority.requiresInteractiveSignIn()
+
     suspend fun switchSignedInAccount(accountId: String): SessionState {
-        val cached = cache.selectAccount(accountId)
-            ?: return SessionState.Failure("That signed-in Legend account is no longer available.")
-        if (cached.requiresInteractiveSignIn(LegendAccountSessionPolicy.InteractiveSignInRetentionDays)) {
-            return SessionState.Failure("This account needs a fresh secure sign-in before it can be reopened.")
+        val priorCredential = activeCredential
+        val priorDate = activeInteractiveSignInUtc
+        val priorCached = cache.read()
+        try {
+            val cached = cache.accounts().firstOrNull { it.accountId == accountId }
+                ?: error("That account is no longer available.")
+            check(!cached.requiresInteractiveSignIn(LegendAccountSessionPolicy.InteractiveSignInRetentionDays))
+            checkNotNull(auth.restoreAccessToken(accountId))
+            activeCredential = LegendAuthenticatedAccount(accountId, cached.displayName)
+            activeInteractiveSignInUtc = cached.interactiveSignInUtc
+            bearerTokenAuthority.clearReviewCredential()
+            bearerTokenAuthority.activateAccount(cached)
+            val result = establish(cached.participantType)
+            check(result is SessionState.Authenticated || result is SessionState.RoleSelection)
+            return result
+        } catch (error: Throwable) {
+            activeCredential = priorCredential
+            activeInteractiveSignInUtc = priorDate
+            bearerTokenAuthority.activateAccount(priorCached)
+            priorCached?.accountId?.let { cache.selectAccount(it) }
+            throw error
         }
-        auth.restoreAccessToken(accountId)
-            ?: return SessionState.Failure("That signed-in Legend account is no longer available.")
-        activeCredential = auth.signedInAccounts().firstOrNull { it.id == accountId }
-            ?: LegendAuthenticatedAccount(accountId, cached.displayName)
-        activeInteractiveSignInUtc = cached.interactiveSignInUtc
-        return establish(cached.participantType)
     }
 
     suspend fun signOut() {
-        val accountId = runCatching { cache.read()?.accountId }.getOrNull()
-        runCatching { beforeSignOut() }
+        val selectedId = runCatching { cache.read()?.accountId }.getOrNull()
+        val accountId = activeCredential?.id ?: selectedId
+        if (!accountIsProvisional && accountId == selectedId) runCatching { beforeSignOut() }
         bearerTokenAuthority.clearReviewCredential()
-        runCatching { auth.signOut(accountId) }
-        if (accountId != null) {
+        val retainsExistingAccount = accountIsProvisional && cache.accounts().any { it.accountId == accountId }
+        if (!retainsExistingAccount) runCatching { auth.signOut(accountId) }
+        if (accountId != null && !retainsExistingAccount) {
             runCatching { cache.removeAccount(accountId) }
-        } else {
+        } else if (accountId == null) {
             cache.clear()
         }
+        accountIsProvisional = false
         activeCredential = null
         activeInteractiveSignInUtc = null
+        bearerTokenAuthority.activateAccount(null)
     }
 
     private suspend fun establish(preferredRole: String?): SessionState {
         val response = apiClient().api.session(preferredRole).legendBody()
         if (!response.authenticated) return SessionState.SignedOut
-        if (response.requiresParticipantSelection) return SessionState.RoleSelection(response.permittedParticipantTypes)
+        if (response.requiresParticipantSelection) {
+            if (preferredRole != null && preferredRole in response.permittedParticipantTypes) return selectRole(preferredRole)
+            return SessionState.RoleSelection(response.permittedParticipantTypes)
+        }
         val actor = response.actor ?: return SessionState.Failure("Legend could not resolve this account.", response.correlationId)
         return authenticated(
             actor,
@@ -192,11 +232,12 @@ class SessionRepository(
                 preferredLanguageCode = preferredLanguageCode,
             )
         )
+        accountIsProvisional = false
         val signedInAccounts = cache.accounts()
-            .filter { !it.requiresInteractiveSignIn(LegendAccountSessionPolicy.InteractiveSignInRetentionDays) }
             .mapNotNull { saved ->
                 saved.accountId?.let {
-                    SignedInLegendAccount(it, saved.displayName, saved.participantType)
+                    SignedInLegendAccount(it, saved.displayName, saved.participantType,
+                        saved.requiresInteractiveSignIn(LegendAccountSessionPolicy.InteractiveSignInRetentionDays))
                 }
             }
         return SessionState.Authenticated(
@@ -235,6 +276,7 @@ class SessionViewModel(private val repository: SessionRepository) : ViewModel() 
 
     fun addAccount(activity: Activity) = viewModelScope.launch {
         val priorState = _state.value
+        if (priorState !is SessionState.Authenticated) return@launch
         _state.value = SessionState.Authenticating
         _state.value = runCatching { repository.signIn(activity, preservingActiveSession = true) }
             .getOrElse {
@@ -249,10 +291,22 @@ class SessionViewModel(private val repository: SessionRepository) : ViewModel() 
             .getOrElse { SessionState.Failure("That Legend account is not available.") }
     }
 
-    fun switchSignedInAccount(accountId: String) = viewModelScope.launch {
+    fun switchSignedInAccount(accountId: String, activity: Activity? = null) = viewModelScope.launch {
+        val priorState = _state.value
+        if (priorState !is SessionState.Authenticated) return@launch
+        if (repository.accountRequiresSignIn(accountId)) {
+            if (activity != null) addAccount(activity)
+            return@launch
+        }
         _state.value = SessionState.Authenticating
         _state.value = runCatching { repository.switchSignedInAccount(accountId) }
-            .getOrElse { SessionState.Failure("That signed-in Legend account is not available.") }
+            .getOrElse { priorState }
+    }
+
+    fun enforceAccountSignInLifetime() {
+        if (_state.value is SessionState.Authenticated && repository.requiresInteractiveSignIn()) {
+            _state.value = SessionState.SignedOut
+        }
     }
 
     fun cycleAccount() {
@@ -263,13 +317,15 @@ class SessionViewModel(private val repository: SessionRepository) : ViewModel() 
 
         val currentIndex = active.signedInAccounts.indexOfFirst { it.accountId == active.accountId }
         if (currentIndex < 0 || active.signedInAccounts.size < 2) return
-        val next = active.signedInAccounts[(currentIndex + 1) % active.signedInAccounts.size]
+        val next = (active.signedInAccounts.drop(currentIndex + 1) + active.signedInAccounts.take(currentIndex))
+            .firstOrNull { !it.requiresSignIn } ?: return
         switchSignedInAccount(next.accountId)
     }
 
     fun signOut() = viewModelScope.launch {
+        val wasSelectingRole = _state.value is SessionState.RoleSelection
         repository.signOut()
-        _state.value = SessionState.SignedOut
+        _state.value = if (wasSelectingRole) runCatching { repository.restore() }.getOrDefault(SessionState.SignedOut) else SessionState.SignedOut
     }
 
     private fun signInFailure(error: Throwable): SessionState = when (error) {

@@ -5,7 +5,12 @@ public sealed class CrmContactUpdate
 {
     [Required, StringLength(100)] public string FirstName { get; set; } = "";
     [StringLength(100)] public string LastName { get; set; } = "";
-    [EmailAddress, StringLength(254)] public string? Email { get; set; }
+    private string? email;
+    [EmailAddress, StringLength(254)] public string? Email
+    {
+        get => email;
+        set => email = string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+    }
     [StringLength(50)] public string? Phone { get; set; }
     [StringLength(50)] public string? Phone2 { get; set; }
     [StringLength(250)] public string? AddressLine { get; set; }

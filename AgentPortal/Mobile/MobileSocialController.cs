@@ -103,6 +103,21 @@ public sealed class MobileSocialController : MobileApiControllerBase
             : SocialFailure(result.ErrorCode, result.ErrorMessage);
     }
 
+    [HttpGet("profiles/follows")]
+    public async Task<IActionResult> ProfileFollows([FromQuery] string? userId, [FromQuery] string? participantType,
+        [FromQuery] Guid? profileId, [FromQuery] string? list, CancellationToken cancellationToken)
+    {
+        var resolved = await ResolveSocialActorAsync(cancellationToken);
+        if (resolved.Error is not null) return resolved.Error;
+        if (string.IsNullOrWhiteSpace(userId) || string.IsNullOrWhiteSpace(participantType))
+            return SocialFailure("social_profile_invalid", "Choose a Legend profile to open.");
+        var result = await _social.GetProfileFollowListAsync(resolved.Actor!,
+            new SocialAuthor(userId, participantType, profileId.GetValueOrDefault(), string.Empty), list ?? "", cancellationToken);
+        return result.Succeeded && result.Value is not null
+            ? Ok(await ToFollowListDtosAsync(result.Value, cancellationToken))
+            : SocialFailure(result.ErrorCode, result.ErrorMessage);
+    }
+
     [HttpGet("profile/follow-requests")]
     public async Task<IActionResult> IncomingFollowRequests(CancellationToken cancellationToken)
     {
