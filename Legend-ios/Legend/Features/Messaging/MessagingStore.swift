@@ -94,6 +94,33 @@ protocol MessagingRealtimeTransport: AnyObject {
 @MainActor
 final class MobileMessagingRealtimeClient: MessagingRealtimeTransport {
     var onEvent: ((MobileMessagingRealtimeEvent) -> Void)?
+    var onCall: ((LegendCallEvent) -> Void)?
+    var onCallReconnect: (() -> Void)?
+    private var callRequests: [String: CheckedContinuation<LegendCallResult, Error>] = [:]
+    private var retiring = false
+    private var callReady = false
+
+    func call(_ command: LegendCallCommand, existingConnectionOnly: Bool = false) async throws -> LegendCallResult {
+        if existingConnectionOnly {
+            guard callReady else { throw CancellationError() }
+        } else { start() }
+        for _ in 0..<100 where !callReady {
+            try await Task.sleep(for: .milliseconds(100))
+        }
+        guard callReady, let socket else { throw LegendCallingError.unavailable("Calling could not connect. Please try again.") }
+        let id = UUID().uuidString
+        let argument = try JSONSerialization.jsonObject(with: JSONEncoder().encode(command))
+        let frame = try JSONSerialization.data(withJSONObject: ["type": 1, "invocationId": id, "target": "Call", "arguments": [argument]])
+        return try await withCheckedThrowingContinuation { continuation in
+            callRequests[id] = continuation
+            Task { [weak self] in
+                do { try await socket.send(.string(String(decoding: frame, as: UTF8.self) + Self.recordSeparator)) }
+                catch { self?.callRequests.removeValue(forKey: id)?.resume(throwing: error) }
+                try? await Task.sleep(for: .seconds(12))
+                self?.callRequests.removeValue(forKey: id)?.resume(throwing: LegendCallingError.unavailable("The call request timed out."))
+            }
+        }
+    }
 
     private static let recordSeparator = "\u{001E}"
     private static let reconnectDelays: [Duration] = [
@@ -127,14 +154,25 @@ final class MobileMessagingRealtimeClient: MessagingRealtimeTransport {
         reconnectTask?.cancel()
     }
 
+    func retireAccountConnection() {
+        retiring = true
+        onCall = nil; onCallReconnect = nil
+        reconnectTask?.cancel(); reconnectTask = nil
+        if !callReady { stop() }
+    }
+
     func start() {
-        guard !shouldRemainConnected else { return }
+        guard !retiring, !shouldRemainConnected else { return }
         shouldRemainConnected = true
         reconnectAttempt = 0
         startConnection()
     }
 
     func stop() {
+        callReady = false
+        let pending = callRequests.values
+        callRequests.removeAll()
+        pending.forEach { $0.resume(throwing: CancellationError()) }
         shouldRemainConnected = false
         generation += 1
         reconnectTask?.cancel()
@@ -146,7 +184,7 @@ final class MobileMessagingRealtimeClient: MessagingRealtimeTransport {
     }
 
     private func startConnection() {
-        guard shouldRemainConnected,
+        guard !retiring, shouldRemainConnected,
               connectionTask == nil,
               socket == nil else { return }
 
@@ -165,7 +203,7 @@ final class MobileMessagingRealtimeClient: MessagingRealtimeTransport {
 
         do {
             let token = try await accessTokenProvider()
-            guard shouldRemainConnected,
+            guard !retiring, shouldRemainConnected,
                   connectionGeneration == generation else { return }
 
             var request = URLRequest(url: hubURL)
@@ -186,6 +224,8 @@ final class MobileMessagingRealtimeClient: MessagingRealtimeTransport {
             }
 
             reconnectAttempt = 0
+            callReady = true
+            onCallReconnect?()
             let heartbeat = Task {
                 do {
                     while !Task.isCancelled {
@@ -211,6 +251,7 @@ final class MobileMessagingRealtimeClient: MessagingRealtimeTransport {
         }
 
         guard connectionGeneration == generation else { return }
+        callReady = false
         socket?.cancel(with: .goingAway, reason: nil)
         socket = nil
         if shouldRemainConnected {
@@ -266,6 +307,23 @@ final class MobileMessagingRealtimeClient: MessagingRealtimeTransport {
         return text
             .split(separator: Character(Self.recordSeparator))
             .compactMap { frame in
+                if let object = try? JSONSerialization.jsonObject(with: Data(frame.utf8)) as? [String: Any] {
+                    if object["type"] as? Int == 3, let id = object["invocationId"] as? String,
+                       let pending = callRequests.removeValue(forKey: id) {
+                        if let result = object["result"], let data = try? JSONSerialization.data(withJSONObject: result),
+                           let decoded = try? JSONDecoder.mobile.decode(LegendCallResult.self, from: data) {
+                            pending.resume(returning: decoded)
+                        } else { pending.resume(throwing: LegendCallingError.unavailable("The call request could not be completed.")) }
+                        return nil
+                    }
+                    if (object["target"] as? String)?.lowercased() == "callupdated",
+                       let argument = (object["arguments"] as? [Any])?.first,
+                       let data = try? JSONSerialization.data(withJSONObject: argument),
+                       let callEvent = try? JSONDecoder.mobile.decode(LegendCallEvent.self, from: data) {
+                        onCall?(callEvent)
+                        return nil
+                    }
+                }
                 guard let envelope = try? JSONDecoder.mobile.decode(
                     SignalRInvocation.self,
                     from: Data(frame.utf8)),
@@ -279,7 +337,7 @@ final class MobileMessagingRealtimeClient: MessagingRealtimeTransport {
     }
 
     private func scheduleReconnect(after connectionGeneration: Int) {
-        guard shouldRemainConnected,
+        guard !retiring, shouldRemainConnected,
               connectionGeneration == generation,
               reconnectTask == nil else { return }
 
@@ -334,6 +392,7 @@ private enum MobileMessagingRealtimeError: Error {
 
 @MainActor
 final class MessagingStore: ObservableObject {
+    let calling: LegendCallStore?
     @Published private(set) var state: MessagingLoadState = .idle
     @Published private(set) var detailState: ConversationDetailLoadState = .idle
     @Published private(set) var selectedConversationID: UUID?
@@ -360,6 +419,7 @@ final class MessagingStore: ObservableObject {
     private let realtime: (any MessagingRealtimeTransport)?
     let isFounder: Bool
     private var conversationListTask: Task<MobileStoreLoadResult, Never>?
+    private var inboxActivityRevision = 0
     private var presentationRevision = 0
     private var isRefreshingActivityNotifications = false
     private var conversationDetailTasks: [UUID: Task<ConversationDetail, Error>] = [:]
@@ -387,9 +447,11 @@ final class MessagingStore: ObservableObject {
         diagnostics: LegendDiagnostics,
         actorParticipantType: ParticipantType,
         isFounder: Bool = false,
-        realtime: (any MessagingRealtimeTransport)? = nil
+        realtime: (any MessagingRealtimeTransport)? = nil,
+        calling: LegendCallStore? = nil
     ) {
         self.api = api
+        self.calling = calling
         self.accessTokenProvider = accessTokenProvider
         self.diagnostics = diagnostics
         self.actorParticipantType = actorParticipantType
@@ -406,7 +468,9 @@ final class MessagingStore: ObservableObject {
         // its teardown without retaining this store. This breaks any outstanding
         // receive loop as the account shell is released.
         let realtime = realtime
-        Task { @MainActor [realtime] in
+        let calling = calling
+        Task { @MainActor [realtime, calling] in
+            if let calling { calling.shutdown(); await calling.awaitShutdown() }
             realtime?.stop()
         }
     }
@@ -501,6 +565,8 @@ final class MessagingStore: ObservableObject {
 
         isLoadingMoreConversations = true
         refreshFailure = nil
+        let activityRevision = inboxActivityRevision
+        let languageRevision = presentationRevision
         Task(priority: .utility) { [weak self] in
             guard let self else { return }
             defer { self.isLoadingMoreConversations = false }
@@ -510,7 +576,9 @@ final class MessagingStore: ObservableObject {
                     offset: loadedConversations.count,
                     limit: Self.inboxPageSize,
                     accessToken: try await self.accessTokenProvider())
-                guard case .loaded(let currentConversations) = self.state else {
+                guard activityRevision == self.inboxActivityRevision,
+                      languageRevision == self.presentationRevision,
+                      case .loaded(let currentConversations) = self.state else {
                     return
                 }
 
@@ -1101,7 +1169,8 @@ final class MessagingStore: ObservableObject {
             Task { [weak self] in
                 guard let self else { return }
                 _ = await self.requestConversationList(
-                    preservingCachedValue: self.hasCachedConversations)
+                    preservingCachedValue: self.hasCachedConversations,
+                    afterActivity: true)
             }
             return message
         } catch {
@@ -1137,6 +1206,24 @@ final class MessagingStore: ObservableObject {
         }
     }
 
+    func markViewed(_ conversationID: UUID) {
+        Task {
+            do { try await api.markRead(conversationID: conversationID, accessToken: try await accessTokenProvider()) }
+            catch { diagnostics.record(category: .messaging, summary: "Read state could not be saved.") }
+        }
+    }
+
+    func setReadReceipts(conversationID: UUID, enabled: Bool, globally: Bool) {
+        Task {
+            do {
+                try await api.setReadReceipts(conversationID: conversationID, enabled: enabled,
+                    globally: globally, accessToken: try await accessTokenProvider())
+                conversationDetailCache.removeValue(forKey: conversationID)
+                await refreshConversation(conversationID, presentsResult: true, marksRead: false)
+            } catch { sendFailure = failure(for: error, title: LegendLocalized("Privacy settings not saved")) }
+        }
+    }
+
     func setPinned(conversationID: UUID, isPinned: Bool) {
         Task {
             do {
@@ -1159,6 +1246,7 @@ final class MessagingStore: ObservableObject {
                         isPinned: isPinned,
                         isMuted: conversation.isMuted)
                 }
+                _ = await requestConversationList(preservingCachedValue: hasCachedConversations, afterActivity: true)
             } catch {
                 sendFailure = failure(for: error, title: LegendLocalized("Conversation not updated"))
             }
@@ -1216,33 +1304,15 @@ final class MessagingStore: ObservableObject {
                     conversationID: message.conversationID,
                     messageID: message.id,
                     accessToken: try await accessTokenProvider())
-                replaceMessage(message.id) { original in
-                    ConversationMessage(
-                        id: original.id,
-                        conversationID: original.conversationID,
-                        sender: original.sender,
-                        body: "Message unsent",
-                        sentUTC: original.sentUTC,
-                        attachments: [],
-                        isMine: original.isMine,
-                        isDeleted: true,
-                        reply: original.reply,
-                        verificationReview: original.verificationReview)
+                if case .loaded(let conversation) = detailState, conversation.id == message.conversationID {
+                    presentConversation(copyConversation(conversation,
+                        messages: conversation.messages.filter { $0.id != message.id }))
                 }
+                await refreshConversation(message.conversationID, presentsResult: true, marksRead: false)
+                _ = await requestConversationList(preservingCachedValue: hasCachedConversations, afterActivity: true)
             } catch {
                 sendFailure = failure(for: error, title: LegendLocalized("Message not unsent"))
             }
-        }
-    }
-
-    func callOptions(for conversationID: UUID) async -> ConversationCallOptions? {
-        do {
-            return try await api.callOptions(
-                conversationID: conversationID,
-                accessToken: try await accessTokenProvider())
-        } catch {
-            sendFailure = failure(for: error, title: LegendLocalized("Calling unavailable"))
-            return nil
         }
     }
 
@@ -1361,7 +1431,7 @@ final class MessagingStore: ObservableObject {
             canManagePromotion: conversation.canManagePromotion,
             meeting: conversation.meeting,
             canManageMeeting: conversation.canManageMeeting,
-            hasOlderMessages: hasOlderMessages ?? conversation.hasOlderMessages)
+            hasOlderMessages: hasOlderMessages ?? conversation.hasOlderMessages, readReceipts: conversation.readReceipts)
     }
 
     private var hasCachedConversations: Bool {
@@ -1482,8 +1552,10 @@ final class MessagingStore: ObservableObject {
     }
 
     private func requestConversationList(
-        preservingCachedValue: Bool
+        preservingCachedValue: Bool,
+        afterActivity: Bool = false
     ) async -> MobileStoreLoadResult {
+        if afterActivity { inboxActivityRevision += 1 }
         if let conversationListTask {
             return await conversationListTask.value
         }
@@ -1503,8 +1575,17 @@ final class MessagingStore: ObservableObject {
                     message: LegendLocalized("The messaging store is no longer available."),
                     correlationID: nil))
             }
-            return await self.executeConversationListRequest(
-                preservingCachedValue: preservingCachedValue)
+            // A send/event may arrive after an existing HTTP snapshot was
+            // taken. Finish that request, then fetch the newer snapshot rather
+            // than letting coalescing silently lose the activity.
+            var result: MobileStoreLoadResult
+            var activityRevision: Int
+            repeat {
+                activityRevision = self.inboxActivityRevision
+                result = await self.executeConversationListRequest(
+                    preservingCachedValue: preservingCachedValue)
+            } while activityRevision != self.inboxActivityRevision && !Task.isCancelled
+            return result
         }
         conversationListTask = task
         let result = await task.value
@@ -1516,6 +1597,7 @@ final class MessagingStore: ObservableObject {
         preservingCachedValue: Bool
     ) async -> MobileStoreLoadResult {
         let revision = presentationRevision
+        let activityRevision = inboxActivityRevision
         defer { if revision == presentationRevision { isRefreshing = false } }
         do {
             let accessToken = try await accessTokenProvider()
@@ -1524,7 +1606,8 @@ final class MessagingStore: ObservableObject {
                 limit: Self.inboxPageSize,
                 accessToken: accessToken)
             try Task.checkCancellation()
-            guard revision == presentationRevision else { return .loaded }
+            guard revision == presentationRevision,
+                  activityRevision == inboxActivityRevision else { return .loaded }
             // The server-owned messaging service is the sole authority for
             // inbox visibility. Do not apply a second client-side persistence
             // rule here. The server intentionally hides empty direct drafts,
@@ -1567,22 +1650,17 @@ final class MessagingStore: ObservableObject {
         }))
     }
 
-    /// This local presentation order is intentionally the same as the server
-    /// order: the actor's pinned chats remain first (maximum six on the
-    /// server), then every section is ordered by its latest sent or received
-    /// message. It only guards against an out-of-order response; persistence
-    /// and pin eligibility remain server-owned.
+    /// Preserve the server's static pin positions while reconciling activity
+    /// in the unpinned list. Pin eligibility and the six-pin limit are server-owned.
     private func orderedInbox(
         _ conversations: [ConversationSummary]
     ) -> [ConversationSummary] {
-        let uniqueConversations = Dictionary(
-            conversations.map { ($0.id, $0) },
-            uniquingKeysWith: { latest, _ in latest })
-
-        return uniqueConversations.values.sorted { left, right in
-            if left.isPinned != right.isPinned {
-                return left.isPinned
-            }
+        var seen = Set<UUID>()
+        let uniqueConversations = conversations.filter { seen.insert($0.id).inserted }
+        let positions = Dictionary(uniqueKeysWithValues: uniqueConversations.enumerated().map { ($0.element.id, $0.offset) })
+        return uniqueConversations.sorted { left, right in
+            if left.isPinned != right.isPinned { return left.isPinned }
+            if left.isPinned { return positions[left.id, default: 0] < positions[right.id, default: 0] }
             let leftTimestamp = left.lastMessageUTC ?? .distantPast
             let rightTimestamp = right.lastMessageUTC ?? .distantPast
             if leftTimestamp != rightTimestamp {
@@ -1599,14 +1677,14 @@ final class MessagingStore: ObservableObject {
         }
         if let unreadCount = event.unreadCount {
             notificationBadgeUpdateHandler?(unreadCount, event.revision ?? 0)
-            return
         }
         guard let conversationID = event.conversationID else { return }
         Task { [weak self] in
             guard let self else { return }
 
             async let inbox = self.requestConversationList(
-                preservingCachedValue: self.hasCachedConversations)
+                preservingCachedValue: self.hasCachedConversations,
+                afterActivity: true)
             async let selectedConversation = self.refreshSelectedConversation(
                 ifSelected: conversationID)
             _ = await (inbox, selectedConversation)

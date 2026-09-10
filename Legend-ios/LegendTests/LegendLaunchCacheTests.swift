@@ -4,6 +4,15 @@ import XCTest
 
 @MainActor
 final class LegendLaunchCacheTests: XCTestCase {
+    func testUnchangedLocalizationDoesNotInvalidateAuthenticatedPresentation() {
+        let localization = LegendApplicationLocalization()
+        let revision = localization.revision
+        localization.clearPresentation()
+        localization.clearPresentation()
+        XCTAssertEqual(localization.revision, revision)
+        XCTAssertEqual(LegendLocalized("Settings"), "Settings")
+    }
+
     /// A returning user opens straight into their own shell with no network involved.
     func testCachedSessionOpensTheShellWithoutWaitingOnTheNetwork() async throws {
         let cache = InMemoryLaunchCache()

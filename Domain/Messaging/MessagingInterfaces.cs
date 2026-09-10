@@ -2,6 +2,8 @@ namespace Domain.Messaging;
 
 public interface IMessagingService
 {
+    Task<MessagingOperationResult> SetReadReceiptsAsync(MessagingActor actor, Guid conversationId,
+        bool enabled, bool globally, CancellationToken cancellationToken = default);
     Task<MessagingGroupImage?> GetConversationImageAsync(
         MessagingActor actor,
         Guid conversationId,

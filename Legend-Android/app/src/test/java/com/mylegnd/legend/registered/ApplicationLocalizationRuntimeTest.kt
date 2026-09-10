@@ -4,10 +4,24 @@ import com.mylegnd.legend.registered.core.design.LegendLocalizationKey
 import com.mylegnd.legend.registered.core.design.LegendLocalizationRuntime
 import com.mylegnd.legend.registered.core.design.legendLocalized
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.util.Locale
 
 class ApplicationLocalizationRuntimeTest {
+    @Test
+    fun `identical refresh preserves presentation but revised copy or locale updates it`() {
+        val key = LegendLocalizationKey("Settings", "visual interface copy")
+        val copy = mapOf(key to "Paramètres")
+        LegendLocalizationRuntime.install(copy, Locale.FRENCH)
+        assertFalse(LegendLocalizationRuntime.install(copy.toMap(), Locale.FRENCH))
+        assertTrue(LegendLocalizationRuntime.install(mapOf(key to "Réglages"), Locale.FRENCH))
+        assertEquals("Réglages", legendLocalized("Settings"))
+        assertTrue(LegendLocalizationRuntime.install(mapOf(key to "Réglages"), Locale.CANADA_FRENCH))
+        assertFalse(LegendLocalizationRuntime.install(mapOf(key to "Réglages"), Locale.CANADA_FRENCH))
+    }
+
     @Test
     fun `one installed catalog renders visual and accessibility copy in Haitian Creole`() {
         LegendLocalizationRuntime.install(

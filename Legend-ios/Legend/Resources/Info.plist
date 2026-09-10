@@ -60,15 +60,22 @@
 	<key>NSCalendarsFullAccessUsageDescription</key>
 	<string>LEGEND® reads and creates calendar events on this device only when you choose to use Calendar in Today’s Activity.</string>
 	<key>NSCameraUsageDescription</key>
-	<string>LEGEND® uses the camera only when you choose to capture media for a Legend update.</string>
+	<string>LEGEND® uses the camera when you choose a video call or capture media for an update.</string>
 	<key>NSFaceIDUsageDescription</key>
 	<string>LEGEND® uses Face ID only when you choose to protect access to your account on this device.</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>LEGEND® uses the microphone only when you choose to record audio with a Legend video update.</string>
+	<string>LEGEND® uses the microphone when you join a call or record audio for an update.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>Legend® saves a call snapshot only when you choose to save it.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>LEGEND® uses photo access only when you choose to manage media for a Legend update.</string>
 	<key>NSRemindersFullAccessUsageDescription</key>
 	<string>LEGEND® reads, creates, and completes reminders on this device only when you choose to use Reminders in Today’s Activity.</string>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>audio</string>
+		<string>voip</string>
+	</array>
 	<key>UILaunchStoryboardName</key>
 	<string>LaunchScreen</string>
 	<key>UISupportedInterfaceOrientations</key>

@@ -150,6 +150,11 @@ public interface INotificationEngine
         string deviceToken,
         CancellationToken cancellationToken = default);
 
+    Task RegisterVoipDeviceAsync(MessagingActor actor, string deviceToken, string environment,
+        CancellationToken cancellationToken = default) => throw new NotSupportedException();
+
+    Task DeactivateVoipDeviceAsync(MessagingActor actor, string deviceToken, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+
     Task DeactivateDeviceAsync(
         MessagingActor actor,
         string deviceToken,
@@ -472,6 +477,10 @@ internal sealed class NotificationEngine : INotificationEngine
             environment: null,
             cancellationToken);
 
+    public Task RegisterVoipDeviceAsync(MessagingActor actor, string deviceToken, string environment,
+        CancellationToken cancellationToken = default) => RegisterDeviceAsync(actor,
+            MobilePushProviders.ApnsVoip, deviceToken, environment, cancellationToken);
+
     private async Task RegisterDeviceAsync(
         MessagingActor actor,
         string provider,
@@ -482,7 +491,7 @@ internal sealed class NotificationEngine : INotificationEngine
         var recipient = Normalize(actor);
         var normalizedProvider = NormalizeProvider(provider);
         var token = NormalizeDeviceToken(normalizedProvider, deviceToken);
-        var normalizedEnvironment = normalizedProvider == MobilePushProviders.Apns
+        var normalizedEnvironment = normalizedProvider is MobilePushProviders.Apns or MobilePushProviders.ApnsVoip
             ? NormalizeEnvironment(environment)
             : "not-applicable";
         var hash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(token))).ToLowerInvariant();
@@ -522,6 +531,9 @@ internal sealed class NotificationEngine : INotificationEngine
 
         await _db.SaveChangesAsync(cancellationToken);
     }
+
+    public Task DeactivateVoipDeviceAsync(MessagingActor actor, string deviceToken, CancellationToken cancellationToken = default)
+        => DeactivateDeviceAsync(actor, MobilePushProviders.ApnsVoip, deviceToken, cancellationToken);
 
     public async Task DeactivateDeviceAsync(
         MessagingActor actor,
@@ -654,7 +666,9 @@ internal sealed class NotificationEngine : INotificationEngine
     }
 
     private static string NormalizeProvider(string? provider) =>
-        string.Equals(provider, MobilePushProviders.Apns, StringComparison.OrdinalIgnoreCase)
+        string.Equals(provider, MobilePushProviders.ApnsVoip, StringComparison.OrdinalIgnoreCase)
+            ? MobilePushProviders.ApnsVoip
+            : string.Equals(provider, MobilePushProviders.Apns, StringComparison.OrdinalIgnoreCase)
             ? MobilePushProviders.Apns
             : string.Equals(provider, MobilePushProviders.Fcm, StringComparison.OrdinalIgnoreCase)
                 ? MobilePushProviders.Fcm
@@ -668,7 +682,7 @@ internal sealed class NotificationEngine : INotificationEngine
             throw new ArgumentException("The mobile push device token is invalid.", nameof(deviceToken));
         }
 
-        if (provider == MobilePushProviders.Apns)
+        if (provider is MobilePushProviders.Apns or MobilePushProviders.ApnsVoip)
         {
             token = token.ToLowerInvariant();
             if (token.Any(character => !Uri.IsHexDigit(character)))

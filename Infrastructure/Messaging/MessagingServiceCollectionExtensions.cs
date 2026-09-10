@@ -21,7 +21,12 @@ public static class MessagingServiceCollectionExtensions
         ArgumentNullException.ThrowIfNull(configuration);
 
         services.TryAddSingleton<IConfiguration>(configuration);
-        services.AddScoped<IMessagingService, MessagingService>();
+        services.AddScoped<MessagingService>();
+        services.AddScoped<IMessagingService>(provider => provider.GetRequiredService<MessagingService>());
+        services.AddScoped<Shared.Calling.ILegendCallingAuthority>(provider =>
+            provider.GetRequiredService<MessagingService>());
+        services.AddHostedService<LegendCallPushDeliveryHostedService>();
+        services.AddHostedService<LegendCallSignalDeliveryHostedService>();
         services.AddScoped<IControlledResourceAccessService, ControlledResourceAccessService>();
         services.AddScoped<ILegendLanguageRegistry, LegendLanguageRegistry>();
         services.AddSingleton<IAzureTranslatorSubscriptionCapacitySource, AzureTranslatorSubscriptionCapacitySource>();

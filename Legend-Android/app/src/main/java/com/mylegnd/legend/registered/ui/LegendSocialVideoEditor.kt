@@ -2,6 +2,7 @@ package com.mylegnd.legend.registered.ui
 
 import android.media.MediaMetadataRetriever
 import android.net.Uri
+import androidx.compose.foundation.border
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
@@ -55,7 +56,7 @@ internal fun LegendSocialVideoEditor(uri: Uri, initial: SocialVideoEdit, back: (
             Text(legendLocalized("Edit video"), Modifier.weight(1f), style = LegendTypography.Title, color = LegendColors.OnNavy)
             TextButton(enabled = duration > 0 && range.endInclusive > range.start && range.endInclusive - range.start <= maximum, onClick = { done(SocialVideoEdit(range.start.toDouble(), range.endInclusive.toDouble(), muted)) }) { Text(legendLocalized("Next"), color = LegendColors.GoldBright) }
         }
-        AndroidView(factory = { PlayerView(it).apply { this.player = player; useController = true } }, modifier = Modifier.fillMaxWidth().weight(1f))
+        AndroidView(factory = { PlayerView(it).apply { this.player = player; useController = true } }, modifier = Modifier.fillMaxWidth().weight(1f).border(2.dp, androidx.compose.ui.graphics.Color.White))
         if (duration > 0) {
             Text(legendLocalized("Trim"), color = LegendColors.GoldBright)
             Text("${range.start.toInt()}s – ${range.endInclusive.toInt()}s · ${duration.toInt()}s", color = LegendColors.OnNavy)

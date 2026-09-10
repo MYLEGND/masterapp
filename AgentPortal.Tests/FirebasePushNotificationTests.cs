@@ -4,6 +4,7 @@ using System.Linq;
 using System.Net;
 using System.Net.Http;
 using System.Text;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using AgentPortal.Mobile;
@@ -20,6 +21,23 @@ namespace AgentPortal.Tests;
 
 public sealed class FirebasePushNotificationTests
 {
+    [Fact]
+    public async Task Fcm_call_is_high_priority_data_only_with_bounded_expiry()
+    {
+        using var handler = new RecordingHandler(_ => JsonResponse(HttpStatusCode.OK, "{}"));
+        using var client = new HttpClient(handler, disposeHandler: false);
+        var call = new Shared.Calling.LegendCallSnapshot(Guid.NewGuid(), Guid.NewGuid(), "a", "Agent", "c", "Client", Guid.NewGuid(), null, "Caller", "Callee", false, "ringing", DateTime.UtcNow, DateTime.UtcNow.AddSeconds(45), 0);
+        var result = await CreateGateway(client, new FirebaseAccessTokenResult("test", null)).SendAsync(new("token", "Caller", "Incoming call", call.Id, 0, call.ConversationId, call));
+        Assert.Equal(FirebasePushDeliveryOutcome.Sent, result.Outcome);
+        using var body = JsonDocument.Parse(handler.Body!);
+        var message = body.RootElement.GetProperty("message");
+        Assert.Equal(JsonValueKind.Null, message.GetProperty("notification").ValueKind);
+        Assert.Equal("45s", message.GetProperty("android").GetProperty("ttl").GetString());
+        Assert.Equal("HIGH", message.GetProperty("android").GetProperty("priority").GetString());
+        using var payload = JsonDocument.Parse(message.GetProperty("data").GetProperty("legendCall").GetString()!);
+        Assert.Equal(call.Id, payload.RootElement.GetProperty("id").GetGuid());
+    }
+
     [Fact]
     public async Task Fcm_registration_is_provider_scoped_and_does_not_change_apns_registration()
     {

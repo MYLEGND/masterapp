@@ -40,5 +40,6 @@ public sealed class MobilePushDevice
 public static class MobilePushProviders
 {
     public const string Apns = "apns";
+    public const string ApnsVoip = "apns-voip";
     public const string Fcm = "fcm";
 }

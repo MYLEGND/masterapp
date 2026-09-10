@@ -33,6 +33,7 @@ private val cachedSessionKey = stringPreferencesKey("encrypted_session")
     val interactiveSignInUtc: String? = null,
     val preferredLanguageCode: String? = null,
     val localizationCatalog: ApplicationLocalizationCatalog? = null,
+    val avatar: com.mylegnd.legend.registered.core.model.MobileAvatar? = null,
 ) {
     fun requiresInteractiveSignIn(retentionDays: Int, now: Instant = Instant.now()): Boolean {
         val authenticatedAt = interactiveSignInUtc?.let { value -> runCatching { Instant.parse(value) }.getOrNull() }

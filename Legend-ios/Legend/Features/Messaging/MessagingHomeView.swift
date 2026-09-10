@@ -749,77 +749,24 @@ private struct LegendConversationCallSheet: View {
     @ObservedObject var store: MessagingStore
     let conversationID: UUID
     let fallbackName: String
-
     @Environment(\.dismiss) private var dismiss
-    @State private var options: ConversationCallOptions?
-    @State private var isLoading = true
 
     var body: some View {
         ZStack {
             LegendNextCanvas()
-
             VStack(spacing: LegendNextSpacing.md) {
-                if isLoading {
-                    ProgressView()
-                        .tint(LegendNextColor.gold)
-                    Text(LegendLocalized("Preparing secure call options"))
-                        .font(.subheadline)
-                        .foregroundStyle(LegendNextColor.textSecondary)
-                } else if let options {
-                    Image(systemName: "phone.connection.fill")
-                        .font(.system(size: 30, weight: .semibold))
-                        .foregroundStyle(LegendNextColor.gold)
-                        .frame(width: 68, height: 68)
-                        .background(LegendNextColor.navy, in: Circle())
-
-                    Text(options.displayName)
-                        .font(.title3.weight(.bold))
-                        .foregroundStyle(LegendNextColor.textPrimary)
-
-                    if let phone = options.phoneNumber {
-                        LegendCallActionButton(
-                            title: LegendLocalized("Phone call"),
-                            subtitle: "Use your carrier",
-                            symbol: "phone.fill",
-                            action: { openSystemCall(scheme: "tel", address: phone) })
-                    }
-
-                    if let faceTime = options.faceTimeAddress {
-                        LegendCallActionButton(
-                            title: LegendLocalized("FaceTime video"),
-                            subtitle: "Open FaceTime",
-                            symbol: "video.fill",
-                            action: { openSystemCall(scheme: "facetime", address: faceTime) })
-
-                        LegendCallActionButton(
-                            title: LegendLocalized("FaceTime Audio"),
-                            subtitle: "Open FaceTime Audio",
-                            symbol: "phone.badge.waveform.fill",
-                            action: { openSystemCall(scheme: "facetime-audio", address: faceTime) })
-                    }
-                } else {
-                    LegendMessagingEmptyState(
-                        symbol: "phone.down.fill",
-                        title: LegendLocalized("Calling unavailable"),
-                        message: LegendLocalized("{value1} has not shared a call address for this private conversation.", arguments: ["value1": String(describing: (fallbackName))]),
-                        actionTitle: nil,
-                        action: nil)
+                Text(fallbackName).font(.title3.bold())
+                LegendCallActionButton(title: LegendLocalized("Legend voice call"), subtitle: LegendLocalized("Private in-app audio"), symbol: "phone.fill") {
+                    dismiss()
+                    store.calling?.start(conversationId: conversationID, video: false)
                 }
-            }
-            .padding(LegendNextSpacing.pageHorizontal)
+                LegendCallActionButton(title: LegendLocalized("Legend video call"), subtitle: LegendLocalized("Connect face to face"), symbol: "video.fill") {
+                    dismiss()
+                    store.calling?.start(conversationId: conversationID, video: true)
+                }
+                Button(LegendLocalized("Cancel")) { dismiss() }
+            }.padding(LegendNextSpacing.pageHorizontal)
         }
-        .task {
-            options = await store.callOptions(for: conversationID)
-            isLoading = false
-        }
-    }
-
-    private func openSystemCall(scheme: String, address: String) {
-        let allowed = CharacterSet.urlPathAllowed
-        guard let encoded = address.addingPercentEncoding(withAllowedCharacters: allowed),
-              let url = URL(string: "\(scheme)://\(encoded)") else { return }
-        UIApplication.shared.open(url)
-        dismiss()
     }
 }
 
@@ -2178,6 +2125,8 @@ struct ConversationThreadView: View {
 
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.dismiss) private var dismissThread
+    @Environment(\.scenePhase) private var scenePhase
+    @State private var isThreadVisible = false
     @FocusState private var composerIsFocused: Bool
     @State private var draft = ""
     @State private var stagedAttachments: [MessagingAttachmentDraft] = []
@@ -2190,6 +2139,7 @@ struct ConversationThreadView: View {
     @State private var isPresentingGroupCollaborators = false
     @State private var isConfirmingDeleteGroup = false
     @State private var isPresentingCallSheet = false
+    @State private var isPresentingReceiptPrivacy = false
     @State private var verificationProfile: LegendVerificationProfileRoute?
 
     var body: some View {
@@ -2199,6 +2149,8 @@ struct ConversationThreadView: View {
             threadContent
         }
         .toolbar(.hidden, for: .navigationBar)
+        .onAppear { isThreadVisible = true }
+        .onDisappear { isThreadVisible = false }
         .task {
             if store.selectedConversationID != conversationID {
                 store.openConversation(conversationID)
@@ -2252,6 +2204,19 @@ struct ConversationThreadView: View {
                 LegendLocalized("This permanently closes the group for every member. ")
                 + "Only the group owner can perform this action."
             )
+        }
+        .confirmationDialog(LegendLocalized("Read receipt privacy"), isPresented: $isPresentingReceiptPrivacy, titleVisibility: .visible) {
+            if case .loaded(let conversation) = store.detailState, let privacy = conversation.readReceipts {
+                Button(privacy.conversationEnabled ? LegendLocalized("Turn off for this chat") : LegendLocalized("Turn on for this chat")) {
+                    store.setReadReceipts(conversationID: conversation.id, enabled: !privacy.conversationEnabled, globally: false)
+                }
+                Button(privacy.globalEnabled ? LegendLocalized("Turn off for all chats") : LegendLocalized("Turn on for all chats")) {
+                    store.setReadReceipts(conversationID: conversation.id, enabled: !privacy.globalEnabled, globally: true)
+                }
+            }
+            Button(LegendLocalized("Cancel"), role: .cancel) {}
+        } message: {
+            Text(LegendLocalized("Your unread counts stay accurate. Turning receipts off for all chats takes precedence over individual chat settings."))
         }
         .sheet(isPresented: $isPresentingCallSheet) {
             if case .loaded(let conversation) = store.detailState {
@@ -2328,11 +2293,13 @@ struct ConversationThreadView: View {
                         isPromoted: isPromoted)
                 },
                 isFounder: store.isFounder,
-                startCall: { isPresentingCallSheet = true }
+                startCall: { isPresentingCallSheet = true },
+                receiptPrivacy: { isPresentingReceiptPrivacy = true }
             )
 
             LegendMessageTimeline(
-                messages: conversation.messages,
+                messages: conversation.messages.filter { !$0.isDeleted },
+                readReceipts: conversation.readReceipts,
                 participantAvatar: { identity in
                     conversation.participants.first(where: {
                         $0.identity == identity
@@ -2357,6 +2324,12 @@ struct ConversationThreadView: View {
             )
             .id(conversation.id)
         }
+        .onChange(of: conversation.messages.last?.id, initial: true) { _, _ in
+            if isThreadVisible && scenePhase == .active { store.markViewed(conversation.id) }
+        }
+        .onChange(of: scenePhase) { _, phase in
+            if isThreadVisible && phase == .active { store.markViewed(conversation.id) }
+        }
         .safeAreaInset(edge: .bottom, spacing: 0) {
             if conversation.isClosed {
                 closedConversationBanner
@@ -2371,7 +2344,7 @@ struct ConversationThreadView: View {
             if let sendFailure = store.sendFailure {
                 LegendMessagingStatusBanner(
                     symbol: "exclamationmark.circle.fill",
-                    title: LegendLocalized("Message not sent"),
+                    title: sendFailure.title,
                     message: sendFailure.message
                 )
                 .padding(.top, LegendNextSpacing.xs)
@@ -3015,6 +2988,7 @@ private struct LegendConversationHeader: View {
     let setGroupPromotion: (Bool) -> Void
     let isFounder: Bool
     let startCall: () -> Void
+    var receiptPrivacy: (() -> Void)? = nil
 
     @State private var showingMembers = false
     @Environment(\.dismiss) private var dismiss
@@ -3067,7 +3041,7 @@ private struct LegendConversationHeader: View {
                             .foregroundStyle(LegendNextColor.goldBright)
 
                         Text(conversation.isClosed
-                             ? LegendLocalized("CLOSED LEGEND CONVERSATION")
+                             ? LegendLocalized("CLOSED LEGEND® CONVERSATION")
                              : LegendLocalized("PRIVATE GROUP CHAT"))
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(.white.opacity(0.72))
@@ -3084,7 +3058,7 @@ private struct LegendConversationHeader: View {
                             .foregroundStyle(LegendNextColor.goldBright)
 
                         Text(conversation.isClosed
-                             ? LegendLocalized("Closed Legend conversation")
+                             ? LegendLocalized("Closed Legend® conversation")
                              : relationshipSubtitle)
                             .font(.caption)
                             .foregroundStyle(.white.opacity(0.72))
@@ -3095,86 +3069,78 @@ private struct LegendConversationHeader: View {
 
             Spacer()
 
-            if isGroup {
-                Button { showingMembers = true } label: {
-                    Image(systemName: "person.3.fill").foregroundStyle(LegendNextColor.goldBright).frame(width: 44, height: 44)
-                }.accessibilityLabel(LegendLocalized("View group members"))
-            }
-            if isGroup &&
-                (
-                    conversation.canManageMembers ||
-                    conversation.canManageCollaborators == true ||
-                    conversation.canDeleteGroup == true ||
-                    (isFounder && conversation.canManagePromotion == true)
-                ) {
-                Menu {
-                    if conversation.canManageMembers {
-                        Button(action: editGroup) {
-                            Label(LegendLocalized("Edit Group"), systemImage: "pencil")
-                        }
-
-                        Button(action: addMember) {
-                            Label(
-                                LegendLocalized("Add Members"),
-                                systemImage: "person.badge.plus")
-                        }
+            Menu {
+                if isGroup {
+                    Button { showingMembers = true } label: {
+                        Label(LegendLocalized("View group members"), systemImage: "person.3.fill")
                     }
-
-                    if conversation.canManageCollaborators == true {
-                        Divider()
-
-                        Button(action: manageCollaborators) {
-                            Label(
-                                LegendLocalized("Collaborators"),
-                                systemImage: "person.2.badge.gearshape")
-                        }
+                } else {
+                    Button(action: startCall) {
+                        Label(LegendLocalized("Voice or video call"), systemImage: "phone.fill")
                     }
-
-                    if conversation.canDeleteGroup == true {
-                        Divider()
-
-                        Button(role: .destructive, action: deleteGroup) {
-                            Label(
-                                LegendLocalized("Delete Group"),
-                                systemImage: "trash")
-                        }
-                    }
-
-                    if isFounder, conversation.canManagePromotion == true {
-                        Divider()
-
-                        Button {
-                            setGroupPromotion(!(conversation.isPromoted ?? false))
-                        } label: {
-                            Label(
-                                conversation.isPromoted == true
-                                    ? "Stop Promoting Group"
-                                    : "Promote Group",
-                                systemImage: conversation.isPromoted == true
-                                    ? "megaphone.fill"
-                                    : "megaphone")
-                        }
-                    }
-                } label: {
-                    Image(systemName: "ellipsis")
-                        .font(.body.weight(.bold))
-                        .foregroundStyle(LegendNextColor.midnight)
-                        .frame(width: 38, height: 38)
-                        .background(LegendNextGradient.gold, in: Circle())
                 }
-                .buttonStyle(LegendMessagingPressButtonStyle())
-                .accessibilityLabel(LegendLocalized("Group management", context: "accessibility copy"))
-            } else if !isGroup {
-                Button(action: startCall) {
-                    Image(systemName: "phone.fill")
-                        .font(.body.weight(.semibold))
-                        .foregroundStyle(LegendNextColor.midnight)
-                        .frame(width: 38, height: 38)
-                        .background(LegendNextGradient.gold, in: Circle())
+                if let receiptPrivacy {
+                    Button(action: receiptPrivacy) {
+                        Label(LegendLocalized("Read receipt privacy"), systemImage: "eye")
+                    }
                 }
-                .buttonStyle(LegendMessagingPressButtonStyle())
-                .accessibilityLabel(LegendLocalized("Call {value1}", context: "accessibility copy", arguments: ["value1": String(describing: (conversation.title))]))
+                if conversation.canManageMembers {
+                    Button(action: editGroup) {
+                        Label(LegendLocalized("Edit Group"), systemImage: "pencil")
+                    }
+
+                    Button(action: addMember) {
+                        Label(
+                            LegendLocalized("Add Members"),
+                            systemImage: "person.badge.plus")
+                    }
+                }
+
+                if conversation.canManageCollaborators == true {
+                    Divider()
+
+                    Button(action: manageCollaborators) {
+                        Label(
+                            LegendLocalized("Collaborators"),
+                            systemImage: "person.2.badge.gearshape")
+                    }
+                }
+
+                if conversation.canDeleteGroup == true {
+                    Divider()
+
+                    Button(role: .destructive, action: deleteGroup) {
+                        Label(
+                            LegendLocalized("Delete Group"),
+                            systemImage: "trash")
+                    }
+                }
+
+                if isFounder, conversation.canManagePromotion == true {
+                    Divider()
+
+                    Button {
+                        setGroupPromotion(!(conversation.isPromoted ?? false))
+                    } label: {
+                        Label(
+                            conversation.isPromoted == true
+                                ? "Stop Promoting Group"
+                                : "Promote Group",
+                            systemImage: conversation.isPromoted == true
+                                ? "megaphone.fill"
+                                : "megaphone")
+                    }
+                }
+            } label: {
+                Image(systemName: "ellipsis")
+                    .font(.body.weight(.bold))
+                    .foregroundStyle(LegendNextColor.midnight)
+                    .frame(width: 38, height: 38)
+                    .background(LegendNextGradient.gold, in: Circle())
             }
+            .buttonStyle(LegendMessagingPressButtonStyle())
+            .accessibilityLabel(LegendLocalized("Conversation options", context: "accessibility copy"))
+
         }
         .sheet(isPresented: $showingMembers) {
             NavigationStack {
@@ -3220,13 +3186,13 @@ private struct LegendConversationHeader: View {
 
     private var relationshipSubtitle: String {
         guard let counterparty else {
-            return LegendLocalized("Private Legend conversation")
+            return LegendLocalized("Private Legend® conversation")
         }
 
         switch counterparty.identity.participantType {
         case .agent:
             return publicAgentRoleLabel(roleLabel: counterparty.roleLabel)
-                ?? LegendLocalized("Private Legend conversation")
+                ?? LegendLocalized("Private Legend® conversation")
 
         case .client:
             return LegendLocalized("Private connection")
@@ -3411,6 +3377,7 @@ private struct LegendConversationFallbackHeader: View {
 
 private struct LegendMessageTimeline: View {
     let messages: [ConversationMessage]
+    var readReceipts: MessagingReadReceiptSettings? = nil
     let participantAvatar: (LogicalParticipantIdentity) -> ProfileAvatar?
     let hasOlderMessages: Bool
     let isLoadingOlderMessages: Bool
@@ -3479,6 +3446,14 @@ private struct LegendMessageTimeline: View {
                                     : { onOpenVerificationProfile(message) }
                             )
                             .id(message.id)
+                            if message.isMine {
+                                let read = readReceipts?.readers.contains(where: {
+                                    !($0.userId.caseInsensitiveCompare(message.sender.identity.userID) == .orderedSame && $0.participantType == message.sender.identity.participantType.rawValue) && $0.readThroughUtc >= message.sentUTC
+                                }) == true
+                                Text(read ? LegendLocalized("Read") : LegendLocalized("Sent"))
+                                .font(.caption2).foregroundStyle(LegendNextColor.textSecondary)
+                                .frame(maxWidth: .infinity, alignment: .trailing)
+                            }
                         }
                     }
 
@@ -3768,6 +3743,14 @@ private struct LegendMessageBubble: View {
                     )
                 }
 
+                ShareLink(item: message.body) {
+                    Label(LegendLocalized("Share message"), systemImage: "square.and.arrow.up")
+                }
+                if let original = message.originalBody, original != message.body {
+                    Button { UIPasteboard.general.string = original } label: {
+                        Label(LegendLocalized("Copy original text"), systemImage: "text.quote")
+                    }
+                }
                 if message.isMine {
                     Divider()
                     Button(role: .destructive, action: onDelete) {
@@ -3807,7 +3790,8 @@ private struct LegendMessageBubble: View {
                 alignment: message.isMine ? .trailing : .leading,
                 spacing: LegendNextSpacing.xs
             ) {
-                Text(message.isDeleted ? LegendLocalized("Message unsent") : displayedMessageBody)
+                Text(displayedMessageBody)
+                    .textSelection(.enabled)
                     .font(.system(size: 15, weight: .regular))
                     .italic(message.isDeleted)
                     .lineSpacing(0)

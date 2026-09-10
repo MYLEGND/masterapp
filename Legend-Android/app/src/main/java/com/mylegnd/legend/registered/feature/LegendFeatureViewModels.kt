@@ -250,29 +250,22 @@ class MessagingViewModel(private val repository: MessagingRepository, private va
     val recipients: StateFlow<LoadState<List<MessagingRecipient>>> = _recipients.asStateFlow()
     private val _isSending = MutableStateFlow(false)
     val isSending: StateFlow<Boolean> = _isSending.asStateFlow()
-    private val _callOptions = MutableStateFlow<LoadState<ConversationCallOptions>>(LoadState.Idle)
-    val callOptions: StateFlow<LoadState<ConversationCallOptions>> = _callOptions.asStateFlow()
     private var selectedConversationId: String? = null
     private var presentationRevision = 0L
+    private var inboxRequestRevision = 0L
 
     fun load() = viewModelScope.launch {
-        val revision = presentationRevision
-        _conversations.value = LoadState.Loading
-        val result = repository.conversations(role)
-        if (revision == presentationRevision) _conversations.value = result
+        if (_conversations.value !is LoadState.Data) _conversations.value = LoadState.Loading
+        refreshInboxSilently()
     }
 
-    /** Uses the existing conversation-owned call contract shared with iOS. */
-    fun loadCallOptions(conversationId: String) = viewModelScope.launch {
-        _callOptions.value = LoadState.Loading
-        _callOptions.value = repository.callOptions(role, conversationId)
-    }
 
     fun loadMore() = viewModelScope.launch {
         val current = (_conversations.value as? LoadState.Data)?.value ?: return@launch
+        val revision = inboxRequestRevision
         when (val next = repository.conversations(role, skip = current.size)) {
-            is LoadState.Data -> _conversations.value = LoadState.Data(current + next.value)
-            is LoadState.Error -> _conversations.value = LoadState.Error(next.message)
+            is LoadState.Data -> if (revision == inboxRequestRevision) _conversations.value = LoadState.Data((current + next.value).distinctBy { it.id })
+            is LoadState.Error -> Unit
             else -> Unit
         }
     }
@@ -523,6 +516,9 @@ class MessagingViewModel(private val repository: MessagingRepository, private va
                         repository.uploadAttachment(context, role, id, result.value.id, uri)
                     }
                     open(id)
+                    // Inbox activity must not wait for thread hydration or
+                    // mark-read. Both use the persisted server projection.
+                    launch { refreshInboxSilently() }
                     completed(true)
                 }
                 is LoadState.Error -> {
@@ -536,9 +532,20 @@ class MessagingViewModel(private val repository: MessagingRepository, private va
         }
     }
 
+    fun markViewed(id: String) = viewModelScope.launch { repository.markRead(role, id) }
+
+    fun setReadReceipts(id: String, enabled: Boolean, globally: Boolean) = viewModelScope.launch {
+        when (val result = repository.setReadReceipts(role, id, enabled, globally)) {
+            is LoadState.Data -> refreshOpenConversation(id)
+            is LoadState.Error -> _historyFailure.value = result.message
+            else -> Unit
+        }
+    }
+
     fun setPinned(conversation: ConversationSummary, isPinned: Boolean) = viewModelScope.launch {
         if (repository.setPinned(role, conversation.id, isPinned) is LoadState.Data) {
             updateInbox(conversation.id) { it.copy(isPinned = isPinned) }
+            refreshInboxSilently()
         }
     }
 
@@ -560,7 +567,19 @@ class MessagingViewModel(private val repository: MessagingRepository, private va
 
     fun deleteMessage(message: ConversationMessage) = viewModelScope.launch {
         if (!message.isMine || message.isDeleted) return@launch
-        if (repository.deleteMessage(role, message.conversationId, message.id) is LoadState.Data) open(message.conversationId)
+        if (repository.deleteMessage(role, message.conversationId, message.id) is LoadState.Data) {
+            refreshOpenConversation(message.conversationId)
+            refreshInboxSilently()
+        }
+    }
+
+    private suspend fun refreshOpenConversation(id: String) {
+        val revision = presentationRevision
+        when (val fresh = repository.conversation(role, id)) {
+            is LoadState.Data -> if (revision == presentationRevision && selectedConversationId == id) _detail.value = fresh
+            is LoadState.Error -> if (revision == presentationRevision && selectedConversationId == id) _historyFailure.value = fresh.message
+            else -> Unit
+        }
     }
 
     /**
@@ -597,9 +616,10 @@ class MessagingViewModel(private val repository: MessagingRepository, private va
     }
 
     private suspend fun refreshInboxSilently() {
-        val revision = presentationRevision
+        val revision = ++inboxRequestRevision
         when (val fresh = repository.conversations(role)) {
-            is LoadState.Data -> if (revision == presentationRevision) _conversations.value = fresh
+            is LoadState.Data -> if (revision == inboxRequestRevision) _conversations.value = fresh
+            is LoadState.Error -> if (revision == inboxRequestRevision && _conversations.value !is LoadState.Data) _conversations.value = fresh
             else -> Unit
         }
     }
@@ -608,7 +628,7 @@ class MessagingViewModel(private val repository: MessagingRepository, private va
         val current = (_conversations.value as? LoadState.Data)?.value ?: return
         _conversations.value = LoadState.Data(current.mapNotNull { row ->
             if (row.id == id) transform(row) else row
-        }.sortedWith(compareByDescending<ConversationSummary> { it.isPinned }.thenByDescending { it.lastMessageUtc }))
+        })
     }
 }
 class SocialViewModel(private val repository: SocialRepository, private val role: String) : ViewModel() {

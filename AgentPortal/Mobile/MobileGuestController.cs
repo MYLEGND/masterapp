@@ -24,12 +24,12 @@ public sealed class MobileGuestController(IDailyScriptureService scripture) : Co
             readings.Add(new(date.ToString("yyyy-MM-dd"), reading.Reference, reading.Translation, reading.Text));
         }
         return Ok(new MobileGuestSnapshot(
-            "Explore Legend",
+            "Explore Legend®",
             "A little inspiration. A clearer next step.",
-            "Read, reflect, and get to know Legend. No account is needed for this space.",
+            "Read, reflect, and get to know Legend®. No account is needed for this space.",
             readings,
             [
-                new("getting-started", "Getting started", "Your first steps with Legend",
+                new("getting-started", "Getting started", "Your first steps with Legend®",
                     "Explore the daily readings at your own pace. When you are ready to use your client account, choose Sign in securely and use the account connected to your agent. If your agent gave you access instructions, follow those instructions on the sign-in screen."),
                 new("your-connection", "Working with your agent", "Keep your conversations together",
                     "Your signed-in workspace connects you with your agent. It keeps account conversations and appointments tied to your account, so you can return to them on your supported devices. Contact your agent if you need help finding the right account."),
@@ -38,8 +38,7 @@ public sealed class MobileGuestController(IDailyScriptureService scripture) : Co
             ],
             "Your account, when you are ready",
             "Sign in to access the private features available to your client or agent account.",
-            [new("Privacy policy", "https://protect.mylegnd.com/Privacy"),
-             new("Terms of use", "https://protect.mylegnd.com/Terms")]));
+            [new("Privacy & Terms", "https://www.mylegnd.com/privacy-terms")]));
     }
 }
 

@@ -58,6 +58,7 @@
     scrollPositions: readSession('scroll-positions', {}),
     searchTimer: null,
     searchRequestId: 0,
+    inboxRequestId: 0,
     isSearchingContacts: false,
     searchResultNodes: new Map(),
     searchStatusNode: null,
@@ -909,7 +910,7 @@
       elements.closeConversation.textContent = isClosed ? 'Reopen' : 'Close';
 
       let previousDay = '';
-      (conversation.messages || []).forEach(message => {
+      (conversation.messages || []).filter(message => !message.isDeleted).forEach(message => {
         const label = dayLabel(message.sentUtc);
         if (label && label !== previousDay) {
           elements.messages.append(createTextElement('p', 'messaging-day-divider', label));
@@ -924,9 +925,16 @@
         meta.className = 'messaging-message-meta';
         meta.append(createTextElement('span', 'messaging-message-sender', isOwn ? 'You' : participantName(conversation, message.senderUserId, message.senderType)));
         meta.append(createTextElement('time', '', formatMessageTime(message.sentUtc)));
+        if (isOwn) {
+          const sent = parseUtcTimestamp(message.sentUtc)?.getTime();
+          const read = (conversation.readReceipts?.readers || []).some(reader =>
+            !isCurrentParticipant(reader.userId, reader.participantType) &&
+            sent != null && (parseUtcTimestamp(reader.readThroughUtc)?.getTime() || 0) >= sent);
+          meta.append(createTextElement('span', '', read ? 'Read' : 'Sent'));
+        }
         if (message.editedUtc) meta.append(createTextElement('span', 'messaging-message-edited', 'Edited'));
         card.append(meta);
-        card.append(createTextElement('p', 'messaging-message-body', message.isDeleted ? 'This message was deleted.' : message.body));
+        card.append(createTextElement('p', 'messaging-message-body', message.body));
 
         if (message.attachments?.length) {
           const attachments = document.createElement('div');
@@ -1133,7 +1141,9 @@
   }
 
   async function refreshList() {
+    const requestId = ++state.inboxRequestId;
     const result = await request('/Messaging/Conversations');
+    if (requestId !== state.inboxRequestId) return;
     state.conversations = result.conversations || [];
     setUnreadCount();
     renderConversations();
@@ -1326,18 +1336,19 @@
       .withAutomaticReconnect()
       .build();
     state.realtime = connection;
-    const refreshForEvent = async event => {
+    const refreshForEvent = async (event, incomingMessage = false) => {
       try {
         await refreshList();
         if (state.active && event?.conversationId === state.active.id) {
           const shouldScrollToBottom = isNearMessageBottom();
-          await loadConversation(state.active.id, false, shouldScrollToBottom);
+          const viewed = incomingMessage && state.isOpen && !document.hidden && shouldScrollToBottom;
+          await loadConversation(state.active.id, viewed, shouldScrollToBottom);
           if (!shouldScrollToBottom) elements.newMessages.hidden = false;
         }
       } catch (_) { }
     };
-    connection.on('messageReceived', refreshForEvent);
-    connection.on('conversationUpdated', refreshForEvent);
+    connection.on('messageReceived', event => refreshForEvent(event, true));
+    connection.on('conversationUpdated', event => refreshForEvent(event));
     connection.onreconnecting(startPolling);
     connection.onreconnected(stopPolling);
     connection.onclose(startPolling);

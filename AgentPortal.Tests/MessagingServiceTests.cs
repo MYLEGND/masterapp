@@ -25,9 +25,67 @@ using Xunit;
 namespace AgentPortal.Tests;
 
 [Collection("LegendConnectFounderEnvironment")]
-public sealed class MessagingServiceTests
+public sealed partial class MessagingServiceTests
 {
     private const string FounderTestObjectId = "b13065c4-2e0b-4dc7-8546-76f664ce1edf";
+
+    [Fact]
+    public async Task ReadReceipts_DefaultOnAndRespectGlobalAndConversationPrivacyWithoutChangingUnreadAccounting()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        await SeedAgentAndClientAsync(db, linkClientToAgent: true, grantClientToAgent: false);
+        var service = CreateService(db);
+        var agent = new MessagingActor("agent-1", MessagingParticipantTypes.Agent);
+        var client = new MessagingActor("client-1", MessagingParticipantTypes.Client);
+        var opened = await service.StartConversationAsync(new StartMessagingConversationCommand(
+            agent, client.UserId, client.ParticipantType, InitialMessageBody: "First message"));
+        var id = opened.Conversation!.Id;
+        Assert.True((await service.MarkConversationReadAsync(new MessagingConversationActionCommand(client, id))).Succeeded);
+        Assert.DoesNotContain((await service.GetConversationAsync(client, id)).Conversation!.ReadReceipts!.Readers,
+            reader => reader.UserId == client.UserId);
+        var visible = (await service.GetConversationAsync(agent, id)).Conversation!.ReadReceipts!;
+        var firstRead = Assert.Single(visible.Readers.Where(r => r.UserId == client.UserId)).ReadThroughUtc;
+        Assert.True((await service.SetReadReceiptsAsync(client, id, false, false)).Succeeded);
+        Assert.DoesNotContain((await service.GetConversationAsync(agent, id)).Conversation!.ReadReceipts!.Readers, r => r.UserId == client.UserId);
+        Assert.True((await service.SendMessageAsync(new SendMessagingMessageCommand(agent, id, "Second message"))).Succeeded);
+        Assert.True((await service.MarkConversationReadAsync(new MessagingConversationActionCommand(client, id))).Succeeded);
+        Assert.Equal(0, Assert.Single((await service.ListConversationsAsync(client, new MessagingConversationListQuery())).Conversations).UnreadCount);
+        Assert.True((await service.SetReadReceiptsAsync(client, id, false, true)).Succeeded);
+        Assert.True((await service.SetReadReceiptsAsync(client, id, true, false)).Succeeded);
+        Assert.False((await service.GetConversationAsync(client, id)).Conversation!.ReadReceipts!.GlobalEnabled);
+        Assert.DoesNotContain((await service.GetConversationAsync(agent, id)).Conversation!.ReadReceipts!.Readers, r => r.UserId == client.UserId);
+        Assert.True((await service.SetReadReceiptsAsync(client, id, true, true)).Succeeded);
+        Assert.Equal(firstRead, Assert.Single((await service.GetConversationAsync(agent, id)).Conversation!.ReadReceipts!.Readers.Where(r => r.UserId == client.UserId)).ReadThroughUtc);
+        Assert.False((await service.SetReadReceiptsAsync(new MessagingActor("stranger", MessagingParticipantTypes.Client), id, true, false)).Succeeded);
+    }
+
+    [Fact]
+    public async Task RecencyRepair_UsesPersistedMessagesAndLeavesEmptyDraftsAlone()
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        await using var setup = connection.CreateCommand();
+        setup.CommandText = """
+            CREATE TABLE MessageConversations (Id TEXT PRIMARY KEY, LastMessageUtc TEXT NULL);
+            CREATE TABLE InternalMessages (ConversationId TEXT NOT NULL, SentUtc TEXT NOT NULL);
+            INSERT INTO MessageConversations VALUES ('stale','2026-09-10T08:00:00Z'),('missing',NULL),('draft',NULL);
+            INSERT INTO InternalMessages VALUES
+                ('stale','2026-09-10T08:00:00Z'),('stale','2026-09-10T08:02:00Z'),
+                ('missing','2026-09-10T08:01:00Z');
+            """;
+        await setup.ExecuteNonQueryAsync();
+        var repair = new Infrastructure.Migrations.RepairMessageConversationRecency();
+        var sql = Assert.Single(repair.UpOperations.OfType<Microsoft.EntityFrameworkCore.Migrations.Operations.SqlOperation>());
+        await using var command = connection.CreateCommand();
+        command.CommandText = sql.Sql;
+        Assert.Equal(2, await command.ExecuteNonQueryAsync());
+        Assert.Equal(0, await command.ExecuteNonQueryAsync());
+        command.CommandText = "SELECT Id FROM MessageConversations ORDER BY LastMessageUtc DESC";
+        await using var rows = await command.ExecuteReaderAsync();
+        var ordered = new List<string>();
+        while (await rows.ReadAsync()) ordered.Add(rows.GetString(0));
+        Assert.Equal(new[] { "stale", "missing", "draft" }, ordered);
+    }
 
     [Fact]
     public async Task ParticipantModel_UsesTheFullLogicalIdentityInItsUniqueIndex()
@@ -153,7 +211,7 @@ public sealed class MessagingServiceTests
     }
 
     [Fact]
-    public async Task Inbox_KeepsPinsFirstAndOrdersEverySectionByMostRecentMessage()
+    public async Task Inbox_KeepsPinsStaticAndOrdersUnpinnedActivityByRecency()
     {
         await using var db = ControllerTestHelpers.BuildDb();
         await SeedAgentAndClientAsync(db, linkClientToAgent: true, grantClientToAgent: false);
@@ -207,22 +265,51 @@ public sealed class MessagingServiceTests
         Assert.True((await service.SetConversationPinnedAsync(
             new SetMessagingConversationPinnedCommand(agent, older.Id, true))).Succeeded);
 
-        var pinnedPage = await service.ListConversationsAsync(
+        var newestPage = await service.ListConversationsAsync(
             agent,
             new MessagingConversationListQuery(Take: 1));
-        var newestUnpinnedPage = await service.ListConversationsAsync(
+        var olderPage = await service.ListConversationsAsync(
             agent,
             new MessagingConversationListQuery(Take: 1, Skip: 1));
         var inbox = await service.ListConversationsAsync(
             agent,
             new MessagingConversationListQuery(Take: 10));
 
-        Assert.Equal(older.Id, Assert.Single(pinnedPage.Conversations).Id);
-        Assert.Equal(newer.Id, Assert.Single(newestUnpinnedPage.Conversations).Id);
+        Assert.Equal(older.Id, Assert.Single(newestPage.Conversations).Id);
+        Assert.Equal(newer.Id, Assert.Single(olderPage.Conversations).Id);
         Assert.Collection(
             inbox.Conversations,
             first => Assert.Equal(older.Id, first.Id),
             second => Assert.Equal(newer.Id, second.Id));
+        Assert.True((await service.SetConversationPinnedAsync(new SetMessagingConversationPinnedCommand(agent, newer.Id, true))).Succeeded);
+        var pinnedOrder = (await service.ListConversationsAsync(agent, new MessagingConversationListQuery())).Conversations.Select(c => c.Id).ToArray();
+        foreach (var id in new[] { older.Id, newer.Id })
+        {
+            Assert.True((await service.SendMessageAsync(new SendMessagingMessageCommand(agent, id, "Pinned activity"))).Succeeded);
+            Assert.Equal(pinnedOrder, (await service.ListConversationsAsync(agent, new MessagingConversationListQuery())).Conversations.Select(c => c.Id));
+        }
+        Assert.True((await service.SetConversationPinnedAsync(new SetMessagingConversationPinnedCommand(agent, newer.Id, false))).Succeeded);
+        Assert.True((await service.SetConversationPinnedAsync(new SetMessagingConversationPinnedCommand(agent, older.Id, false))).Succeeded);
+
+        // Incoming activity moves each conversation ahead of older unread
+        // activity, then the agent's reply takes first place even when read.
+        foreach (var (sender, conversationId) in new[]
+        {
+            (new MessagingActor("client-1", MessagingParticipantTypes.Client), older.Id),
+            (new MessagingActor("client-2", MessagingParticipantTypes.Client), newer.Id),
+            (agent, older.Id)
+        })
+        {
+            Assert.True((await service.SendMessageAsync(new SendMessagingMessageCommand(
+                sender, conversationId, "Latest activity"))).Succeeded);
+            if (sender == agent)
+                Assert.True((await service.MarkConversationReadAsync(
+                    new MessagingConversationActionCommand(agent, conversationId))).Succeeded);
+            var updated = await service.ListConversationsAsync(agent, new MessagingConversationListQuery());
+            Assert.True(conversationId == updated.Conversations.First().Id,
+                $"Sender={sender.UserId}; expected={conversationId}; actual={string.Join(";", updated.Conversations.Select(row => $"{row.Id}:{row.LastMessageUtc:O}"))}");
+            Assert.Equal("Latest activity", updated.Conversations.First().LastMessagePreview);
+        }
     }
 
     [Fact]
@@ -385,9 +472,31 @@ public sealed class MessagingServiceTests
             new DeleteMessagingMessageCommand(agent, conversation.Id, messageId))).Succeeded);
         var refreshed = Assert.IsType<MessagingConversationDetail>(
             (await service.GetConversationAsync(client, conversation.Id)).Conversation);
-        var message = Assert.Single(refreshed.Messages);
-        Assert.True(message.IsDeleted);
-        Assert.Equal("Message unsent", message.Body);
+        Assert.Empty(refreshed.Messages);
+        var deleted = await db.InternalMessages.AsNoTracking().SingleAsync(m => m.Id == messageId);
+        Assert.True(deleted.IsDeleted);
+        Assert.Equal(string.Empty, deleted.Body);
+    }
+
+    [Fact]
+    public async Task DeletedMessage_DoesNotLeaveReplyTextOrConsumeHistoryPageSlots()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        await SeedAgentAndClientAsync(db, linkClientToAgent: true, grantClientToAgent: false);
+        var service = CreateService(db);
+        var agent = new MessagingActor("agent-1", MessagingParticipantTypes.Agent);
+        var client = new MessagingActor("client-1", MessagingParticipantTypes.Client);
+        var conversation = (await service.StartConversationAsync(new StartMessagingConversationCommand(
+            agent, client.UserId, client.ParticipantType, InitialMessageBody: "Remove this text"))).Conversation!;
+        var original = Assert.Single(conversation.Messages);
+        Assert.True((await service.SendMessageAsync(new SendMessagingMessageCommand(
+            client, conversation.Id, "Reply remains", ReplyToMessageId: original.Id))).Succeeded);
+        Assert.True((await service.DeleteMessageAsync(new DeleteMessagingMessageCommand(agent, conversation.Id, original.Id))).Succeeded);
+        var detail = (await service.GetConversationAsync(client, conversation.Id)).Conversation!;
+        var reply = Assert.Single(detail.Messages);
+        Assert.Equal("Reply remains", reply.Body);
+        Assert.Null(reply.Reply);
+        Assert.False(detail.HasOlderMessages);
     }
 
     [Fact]

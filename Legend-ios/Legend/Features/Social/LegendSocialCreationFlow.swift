@@ -822,6 +822,7 @@ struct LegendSocialComposer: View {
                                 onMutedChanged: { isMuted in
                                     updateActiveEdit { $0.video.isOriginalAudioMuted = isMuted }
                                 })
+                            .overlay { Rectangle().strokeBorder(.white, lineWidth: 2).allowsHitTesting(false) }
                         } else {
                             LegendSocialEditableImageCanvas(
                                 media: primaryMedia,
@@ -2699,6 +2700,12 @@ private struct LegendSocialEditableImageCanvas: View {
                                 }
                                 .onEnded { _ in textStart = edit.storyOverlay.position })
                 }
+            }
+            .background(Color.black)
+            .clipped()
+            .overlay {
+                Rectangle().strokeBorder(.white, lineWidth: 2)
+                    .allowsHitTesting(false)
             }
             .contentShape(Rectangle())
             .gesture(

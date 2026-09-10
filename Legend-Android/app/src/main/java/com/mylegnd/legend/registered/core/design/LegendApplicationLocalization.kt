@@ -109,8 +109,9 @@ class LegendApplicationLocalization(
     }
 
     private fun apply(actorKey: String, catalog: ApplicationLocalizationCatalog) {
+        val byId = catalog.entries.associateBy { it.id }
         val translations = sourceCatalog.entries.associate { source ->
-            val translated = catalog.entries.firstOrNull { it.id == source.id }
+            val translated = byId[source.id]
             LegendLocalizationKey(source.source, source.context) to
                 (translated?.text?.takeIf(String::isNotBlank) ?: source.source)
         }
@@ -133,7 +134,11 @@ class LegendApplicationLocalization(
         actorKey: String? = null,
     ) {
         val locale = Locale.forLanguageTag(languageCode.ifBlank { "en" })
-        LegendLocalizationRuntime.install(translations, locale)
+        val presentationChanged = LegendLocalizationRuntime.install(translations, locale)
+        // Identical cache/server catalogs must not recreate the shell, close
+        // its realtime connection, or restart its loading effects.
+        if (!presentationChanged && _state.value.actorKey == actorKey &&
+            _state.value.languageCode == languageCode) return
         _state.value = LegendLocalizationState(
             actorKey = actorKey,
             languageCode = languageCode,
@@ -166,9 +171,12 @@ object LegendLocalizationRuntime {
     private val translations = AtomicReference<Map<LegendLocalizationKey, String>>(emptyMap())
     private val activeLocale = AtomicReference(Locale.ENGLISH)
 
-    fun install(values: Map<LegendLocalizationKey, String>, locale: Locale) {
+    @Synchronized
+    fun install(values: Map<LegendLocalizationKey, String>, locale: Locale): Boolean {
+        if (translations.get() == values && activeLocale.get() == locale) return false
         translations.set(values.toMap())
         activeLocale.set(locale)
+        return true
     }
 
     fun text(source: String, context: String = VisualContext): String =

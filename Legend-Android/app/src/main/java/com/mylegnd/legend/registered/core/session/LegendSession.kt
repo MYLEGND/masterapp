@@ -27,6 +27,7 @@ data class SignedInLegendAccount(
     val displayName: String,
     val participantType: String,
     val requiresSignIn: Boolean = false,
+    val avatar: MobileAvatar? = null,
 )
 
 data class ActiveLegendSession(
@@ -226,6 +227,7 @@ class SessionRepository(
                 actorId = actor.identity.userId,
                 participantType = actor.identity.participantType,
                 displayName = actor.displayName,
+                avatar = actor.avatar,
                 cachedUtc = Instant.now().toString(),
                 accountId = accountId,
                 interactiveSignInUtc = interactiveSignInUtc,
@@ -237,7 +239,7 @@ class SessionRepository(
             .mapNotNull { saved ->
                 saved.accountId?.let {
                     SignedInLegendAccount(it, saved.displayName, saved.participantType,
-                        saved.requiresInteractiveSignIn(LegendAccountSessionPolicy.InteractiveSignInRetentionDays))
+                        saved.requiresInteractiveSignIn(LegendAccountSessionPolicy.InteractiveSignInRetentionDays), saved.avatar)
                 }
             }
         return SessionState.Authenticated(

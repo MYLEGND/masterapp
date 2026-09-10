@@ -26,6 +26,23 @@ namespace AgentPortal.Tests;
 
 public sealed class ApplePushNotificationTests
 {
+    [Fact]
+    public async Task Voip_gateway_uses_voip_topic_immediate_expiry_and_shared_call_payload()
+    {
+        using var signingKey = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        using var handler = new RecordingHandler(_ => JsonResponse(HttpStatusCode.OK, "{}"));
+        using var client = new HttpClient(handler, disposeHandler: false);
+        var call = new Shared.Calling.LegendCallSnapshot(Guid.NewGuid(), Guid.NewGuid(), "a", "Agent", "c", "Client", Guid.NewGuid(), null, "Caller", "Callee", true, "ringing", DateTime.UtcNow, DateTime.UtcNow.AddSeconds(45), 0);
+        var result = await CreateGateway(client, PrivateKeyPem(signingKey)).SendAsync(Request("sandbox") with { Call = call });
+        Assert.Equal(ApplePushDeliveryOutcome.Sent, result.Outcome);
+        Assert.Equal("com.mylegnd.legend.registered.voip", handler.Headers["apns-topic"]);
+        Assert.Equal("voip", handler.Headers["apns-push-type"]);
+        Assert.Equal("0", handler.Headers["apns-expiration"]);
+        using var body = JsonDocument.Parse(handler.Body!);
+        Assert.Equal(call.Id, body.RootElement.GetProperty("legendCall").GetProperty("id").GetGuid());
+        Assert.False(body.RootElement.GetProperty("aps").TryGetProperty("alert", out _));
+    }
+
     [Theory]
     [InlineData("sandbox", "https://api.sandbox.push.apple.com/3/device/abcdef")]
     [InlineData("production", "https://api.push.apple.com/3/device/abcdef")]

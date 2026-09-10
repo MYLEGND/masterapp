@@ -7,6 +7,7 @@ import com.mylegnd.legend.registered.core.network.LegendApiClient
 import com.mylegnd.legend.registered.data.LoadState
 import com.mylegnd.legend.registered.data.MessagingRepository
 import com.mylegnd.legend.registered.feature.MessagingViewModel
+import com.mylegnd.legend.registered.core.realtime.LegendMessagingRealtimeEvent
 import java.lang.reflect.Proxy
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
@@ -19,6 +20,34 @@ import org.junit.Test
 import retrofit2.Response
 
 class LegendMessagingNavigationTest {
+    @Test fun olderInboxResponseCannotUndoNewIncomingOrSentActivityOrder() {
+        val pending = mutableListOf<Continuation<Any>>()
+        val api = Proxy.newProxyInstance(LegendApi::class.java.classLoader, arrayOf(LegendApi::class.java)) { _, method, args ->
+            check(method.name == "conversations")
+            @Suppress("UNCHECKED_CAST")
+            pending.add(args!!.last() as Continuation<Any>)
+            COROUTINE_SUSPENDED
+        } as LegendApi
+        val constructor = LegendApiClient::class.java.getDeclaredConstructor(LegendApi::class.java, OkHttpClient::class.java, String::class.java).apply { isAccessible = true }
+        val model = MessagingViewModel(MessagingRepository(constructor.newInstance(api, OkHttpClient(), "https://example.test/")), "Agent")
+        val participant = MobileParticipant(MobileIdentity("client", "Client"), "profile", "Client")
+        val older = ConversationSummary("older", "Direct", "Older", participant,
+            lastMessageUtc = "2026-09-10T08:00:00Z", unreadCount = 1, isClosed = false, isPinned = true)
+        val newer = older.copy(id = "newer", lastMessageUtc = "2026-09-10T08:01:00Z", isPinned = false)
+        val sent = older.copy(lastMessageUtc = "2026-09-10T08:02:00Z", unreadCount = 0)
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            model.load()
+            model.reconcileRealtime(LegendMessagingRealtimeEvent(conversationId = "newer"))
+            assertEquals(2, pending.size)
+            pending[1].resume(Response.success(listOf(newer, older)))
+            pending[0].resume(Response.success(listOf(older)))
+            assertEquals(listOf("newer", "older"), (model.conversations.value as LoadState.Data).value.map { it.id })
+            model.reconcileRealtime(LegendMessagingRealtimeEvent(conversationId = "older"))
+            pending[2].resume(Response.success(listOf(sent, newer)))
+            assertEquals(listOf("older", "newer"), (model.conversations.value as LoadState.Data).value.map { it.id })
+        }
+    }
+
     @Test fun openingChatDoesNotWaitForInboxAndRevalidationKeepsTheReturnedConversation() {
         val opened = CountDownLatch(1)
         val pending = mutableListOf<Continuation<Any>>()

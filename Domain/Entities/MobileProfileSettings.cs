@@ -44,6 +44,7 @@ public sealed class MobileProfileSettings
     // Public is the default. A private profile keeps its public identity
     // discoverable, but its social content is limited to approved followers.
     public bool IsPrivate { get; set; }
+    public bool SendReadReceipts { get; set; } = true;
 
     /// <summary>
     /// Explicit, member-controlled consent for future successful translated

@@ -1,5 +1,10 @@
 name: Legend
 
+packages:
+  WebRTC:
+    url: https://github.com/stasel/WebRTC.git
+    exactVersion: 152.0.0
+
 options:
   deploymentTarget:
     iOS: "17.0"
@@ -35,6 +40,7 @@ targets:
     platform: iOS
 
     dependencies:
+      - package: WebRTC
       - target: LegendNotificationService
         embed: true
 
@@ -42,6 +48,11 @@ targets:
       - path: Legend
         excludes:
           - Resources/Info.plist
+
+      - path: ../Legend-Design/legend-design.tokens.json
+        buildPhase: resources
+      - path: ../Legend-Design/legend-application-copy.json
+        buildPhase: resources
 
     resources:
       - path: Legend/Resources
@@ -70,12 +81,16 @@ targets:
           - facetime
           - facetime-audio
           - tel
-        NSCameraUsageDescription: "LEGEND® uses the camera only when you choose to capture media for a Legend update."
-        NSMicrophoneUsageDescription: "LEGEND® uses the microphone only when you choose to record audio with a Legend video update."
+        NSCameraUsageDescription: "LEGEND® uses the camera when you choose a video call or capture media for an update."
+        NSMicrophoneUsageDescription: "LEGEND® uses the microphone when you join a call or record audio for an update."
+        UIBackgroundModes:
+          - audio
+          - voip
+        NSPhotoLibraryAddUsageDescription: "Legend® saves a call snapshot only when you choose to save it."
         NSPhotoLibraryUsageDescription: "LEGEND® uses photo access only when you choose to manage media for a Legend update."
-        NSCalendarsFullAccessUsageDescription: "LEGEND® reads today’s events from the calendar accounts available on this device only when you choose to connect Calendar to Activity."
+        NSCalendarsFullAccessUsageDescription: "LEGEND® reads and creates calendar events on this device only when you choose to use Calendar in Today’s Activity."
         NSFaceIDUsageDescription: "LEGEND® uses Face ID only when you choose to protect access to your account on this device."
-        NSRemindersFullAccessUsageDescription: "LEGEND® reads and completes reminders available on this device only when you choose to connect Reminders to Activity."
+        NSRemindersFullAccessUsageDescription: "LEGEND® reads, creates, and completes reminders on this device only when you choose to use Reminders in Today’s Activity."
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
         UISupportedInterfaceOrientations~ipad:

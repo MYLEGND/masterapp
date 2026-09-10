@@ -4767,6 +4767,128 @@ namespace Infrastructure.Migrations
                     b.ToTable("LeadAppointments", (string)null);
                 });
 
+            modelBuilder.Entity("Domain.Entities.LegendCallSession", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("CalleeDeviceId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("CalleeName")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("nvarchar(300)");
+
+                    b.Property<string>("CalleeType")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<string>("CalleeUserId")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<Guid>("CallerDeviceId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("CallerName")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("nvarchar(300)");
+
+                    b.Property<string>("CallerType")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<string>("CallerUserId")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<Guid>("ConversationId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("Epoch")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("ExpiresUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("InvitationDispatchedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("NextPushUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("PushAttempts")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<Guid>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool>("Video")
+                        .HasColumnType("bit");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CalleeUserId", "CalleeType", "ExpiresUtc");
+
+                    b.HasIndex("CallerUserId", "CallerType", "ExpiresUtc");
+
+                    b.ToTable("LegendCallSessions");
+                });
+
+            modelBuilder.Entity("Domain.Entities.LegendCallSignal", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<Guid>("CallId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("ExpiresUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Payload")
+                        .IsRequired()
+                        .HasMaxLength(32000)
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("RecipientGroup")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ExpiresUtc");
+
+                    b.HasIndex("CallId", "CreatedUtc");
+
+                    b.HasIndex("RecipientGroup", "ExpiresUtc");
+
+                    b.ToTable("LegendCallSignals");
+                });
+
             modelBuilder.Entity("Domain.Entities.LegendConnectAutonomousLanguageFocus", b =>
                 {
                     b.Property<Guid>("Id")
@@ -9128,6 +9250,12 @@ namespace Infrastructure.Migrations
                     b.Property<DateTime?>("PinnedUtc")
                         .HasColumnType("datetime2");
 
+                    b.Property<DateTime?>("SharedReadThroughUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<bool>("SuppressReadReceipts")
+                        .HasColumnType("bit");
+
                     b.Property<string>("UserId")
                         .IsRequired()
                         .HasMaxLength(450)
@@ -9592,6 +9720,11 @@ namespace Infrastructure.Migrations
                     b.Property<string>("PublicEmail")
                         .HasMaxLength(320)
                         .HasColumnType("nvarchar(320)");
+
+                    b.Property<bool>("SendReadReceipts")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(true);
 
                     b.Property<DateTime>("UpdatedUtc")
                         .HasColumnType("datetime2");

@@ -139,6 +139,9 @@ class FounderAccountRepository(private val client: LegendApiClient) {
     suspend fun purge(role: String, accounts: List<FounderManagedAccount>, confirmation: String) = request { client.api.purgeFounderAccounts(role, FounderAccountBatchRequest(accounts.map { FounderAccountTargetRequest(it.profileId, it.participantType) }, confirmation)).legendBody() }
 }
 class MessagingRepository(private val client: LegendApiClient) {
+    suspend fun setReadReceipts(role: String, id: String, enabled: Boolean, globally: Boolean) = request {
+        client.api.setReadReceipts(role, id, MessagingReadReceiptRequest(enabled, globally)).legendBody()
+    }
     private val attachmentUploader = MessagingAttachmentUploader(client)
 
     suspend fun conversations(role: String, take: Int = 24, skip: Int = 0) = request {
@@ -179,7 +182,6 @@ class MessagingRepository(private val client: LegendApiClient) {
     suspend fun deleteMessage(role: String, conversationId: String, messageId: String) = request {
         client.api.deleteMessage(role, conversationId, messageId).legendBody()
     }
-    suspend fun callOptions(role: String, id: String) = request { client.api.conversationCallOptions(role, id).legendBody() }
     suspend fun requestVerification(role: String) = request { client.api.requestVerification(role).legendBody() }
     suspend fun resolveVerification(role: String, id: String, approve: Boolean, note: String? = null) = request { client.api.resolveVerification(role, id, VerificationResolutionRequest(approve, note)).legendBody() }
     suspend fun controlledRecipients(role: String, resourceType: String, search: String? = null) = request { client.api.controlledResourceRecipients(role, resourceType, search).legendBody() }
