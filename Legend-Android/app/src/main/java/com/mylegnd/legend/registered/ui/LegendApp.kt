@@ -216,7 +216,9 @@ fun LegendRoot(sessionViewModel: SessionViewModel, container: LegendContainer) {
             if (localization.actorKey != session.accountId || !localization.isReady) {
                 LegendLoadingState()
             } else {
-                Column(Modifier.fillMaxSize()) {
+                Column(Modifier.fillMaxSize().then(
+                    if (localization.status != null) Modifier.statusBarsPadding() else Modifier
+                )) {
                     localization.status?.let { status ->
                         Text(legendLocalized(status), style = LegendTypography.Caption, color = LegendColors.Gold,
                             modifier = Modifier.fillMaxWidth().background(LegendColors.Navy).padding(LegendSpacing.Xs))

@@ -266,7 +266,7 @@ Dir.glob(KOTLIN_ROOT.join("**/*.kt")).sort.each do |path|
   end
   %w[
     LegendJourneyToggle JourneyChoiceSection LegendMessagingEmptyCard
-    LegendCreatorInsightList
+    LegendCreatorInsightList AccountSettingsRow LegendSocialActionRow
   ].each do |function|
     source.scan(/#{function}\(\s*(#{LITERAL})\s*,\s*(#{LITERAL})/m) do |first, second|
       add.call(literal_value(first), VISUAL)

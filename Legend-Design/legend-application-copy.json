@@ -1,5 +1,5 @@
 {
-  "catalogVersion": "application-copy-v1-805d3ce53d80d3da",
+  "catalogVersion": "application-copy-v1-f23a5a4d392ad0f2",
   "sourceLanguageCode": "en",
   "entries": [
     {
@@ -23957,6 +23957,17 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.a9c3e7ae6c60540d4a99ad26",
+      "source": "Grant or revoke founder-controlled LEGEND resources",
+      "context": "visual interface copy",
+      "sourceRevision": "2480eb0db30b3d51",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.5b0acab8fba2fd0a1e2f51ec",
       "source": "Group",
       "context": "visual interface copy",
@@ -30366,6 +30377,17 @@
       "source": "Manage the details behind your public handoff, tracking, and scheduling.",
       "context": "visual interface copy",
       "sourceRevision": "b1d2f831a8aa5f80",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.da64687a1c4b80884799403c",
+      "source": "Manage the server-owned scripture schedule",
+      "context": "visual interface copy",
+      "sourceRevision": "4c7bdcc91a862134",
       "placeholders": [
 
       ],
@@ -41957,6 +41979,17 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.d15203538992a2732a1db904",
+      "source": "Review open reports using your server-issued authority",
+      "context": "visual interface copy",
+      "sourceRevision": "1bd4130b961c4ee3",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.42bbe47922af350b730d8ac2",
       "source": "Review pause and account-deletion options",
       "context": "visual interface copy",
@@ -43959,6 +43992,17 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.f685181fa058ae872cb2709b",
+      "source": "Securely end this Android session",
+      "context": "visual interface copy",
+      "sourceRevision": "e573e2fc3452fe9e",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.6dc5aa99627d7e146b6b3079",
       "source": "Security",
       "context": "visual interface copy",
@@ -44601,6 +44645,17 @@
       "source": "Server vs Browser Match",
       "context": "visual interface copy",
       "sourceRevision": "f292c2d7af5ad87a",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.547dec521319e366b9938d66",
+      "source": "Server-authorized account archive and removal controls",
+      "context": "visual interface copy",
+      "sourceRevision": "e93e3b24dd49c54d",
       "placeholders": [
 
       ],
@@ -51566,6 +51621,17 @@
       "source": "Update your LEGEND relationship",
       "context": "visual interface copy",
       "sourceRevision": "8b90ff13b28b408e",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.021918d635243e4a1a00827e",
+      "source": "Update your public profile, handle, and visibility",
+      "context": "visual interface copy",
+      "sourceRevision": "752a0cc9473a3d9b",
       "placeholders": [
 
       ],
