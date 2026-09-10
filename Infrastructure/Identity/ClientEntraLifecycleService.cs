@@ -46,6 +46,8 @@ public interface IClientEntraLifecycleService
     /// preserving the Entra identity. Household member removal uses this;
     /// full profile deletion uses <see cref="DeleteClientIdentityAsync"/>.
     /// </summary>
+    Task RestoreClientApplicationAccessAsync(Guid clientProfileId, CancellationToken cancellationToken = default);
+
     Task RevokeClientApplicationAccessAsync(
         Guid clientProfileId,
         CancellationToken cancellationToken = default);
@@ -385,6 +387,17 @@ public sealed class ClientEntraLifecycleService : IClientEntraLifecycleService
         profile.ExternalIdentityObjectId = null;
         profile.UpdatedUtc = DateTime.UtcNow;
         await _db.SaveChangesAsync(cancellationToken);
+    }
+
+    public async Task RestoreClientApplicationAccessAsync(Guid clientProfileId, CancellationToken cancellationToken = default)
+    {
+        var objectId = await _db.ClientProfiles.Where(p => p.Id == clientProfileId)
+            .Select(p => p.ExternalIdentityObjectId).SingleAsync(cancellationToken);
+        if (string.IsNullOrWhiteSpace(objectId)) return; // CRM-only records have no login identity.
+        // Restore the original assignment only. Never create or substitute another identity.
+        var user = await _graph.Users[objectId].GetAsync(cancellationToken: cancellationToken);
+        if (user is null) throw new InvalidOperationException("The original client identity is unavailable.");
+        await EnsureApplicationAssignmentAsync(objectId, cancellationToken);
     }
 
     public async Task RevokeClientApplicationAccessAsync(

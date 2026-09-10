@@ -23,12 +23,15 @@ interface AccessTokenProvider { suspend fun accessToken(): String? }
 class LegendApiException(val status: Int, val problem: MobileApiProblem?, cause: Throwable? = null) : IOException(problem?.message ?: "Legend request failed.", cause)
 
 interface LegendApi {
+    @GET("api/v1/mobile/guest") suspend fun guest(): Response<MobileGuestSnapshot>
     @GET("api/v1/mobile/agent/clients/{id}/booking-access") suspend fun bookingAccess(@Header("X-Legend-Participant-Type") role: String, @Path("id") id: String): Response<MobileBookingAccess>
     @POST("api/v1/mobile/agent/clients/{id}/booking-launch") suspend fun bookingLaunch(@Header("X-Legend-Participant-Type") role: String, @Path("id") id: String): Response<MobileClientCreationPortalLaunch>
     @POST("api/v1/mobile/agent/crm/{kind}/{id}/contact") suspend fun agentCrmContact(@Header("X-Legend-Participant-Type") role: String, @Path("kind") kind: String, @Path("id") id: String, @Body input: MobileCrmContactInput): Response<MobileCrmMutationResponse>
     @POST("api/v1/mobile/agent/crm/{kind}/{id}/outcome") suspend fun agentCrmOutcome(@Header("X-Legend-Participant-Type") role: String, @Path("kind") kind: String, @Path("id") id: String, @Body input: MobileCrmOutcomeInput): Response<MobileCrmMutationResponse>
     @POST("api/v1/mobile/agent/crm/appointments/{id}/cancel") suspend fun cancelCrmAppointment(@Header("X-Legend-Participant-Type") role: String, @Path("id") id: String): Response<MobileCrmMutationResponse>
     @GET("api/v1/mobile/agent/crm/schedule") suspend fun agentSchedule(@Header("X-Legend-Participant-Type") role: String): Response<List<MobileCrmAppointment>>
+    @POST("api/v1/mobile/agent/crm/clients/{id}/restore") suspend fun restoreCrmClient(@Header("X-Legend-Participant-Type") role: String, @Path("id") id: String): Response<MobileCrmRecord>
+    @POST("api/v1/mobile/founder/accounts/restore") suspend fun restoreFounderClient(@Header("X-Legend-Participant-Type") role: String, @Body request: FounderAccountTargetRequest): Response<FounderAccountRemovalResponse>
     @GET("api/v1/mobile/agent/crm/{kind}/{id}") suspend fun agentCrmRecord(@Header("X-Legend-Participant-Type") role: String, @Path("kind") kind: String, @Path("id") id: String): Response<MobileCrmRecord>
     @POST("api/v1/mobile/review-session") suspend fun reviewSession(@Body request: MobileReviewSignInRequest): Response<MobileReviewTokenResponse>
     @GET("api/v1/mobile/session") suspend fun session(@Header("X-Legend-Participant-Type") participantType: String? = null): Response<MobileSessionResponse>
@@ -96,6 +99,7 @@ interface LegendApi {
     @GET("api/v1/mobile/social/feed") suspend fun socialFeed(@Header("X-Legend-Participant-Type") participantType: String): Response<SocialSnapshot>
     @GET("api/v1/mobile/social/profile/posts") suspend fun currentProfilePosts(@Header("X-Legend-Participant-Type") participantType: String): Response<List<SocialPost>>
     @GET("api/v1/mobile/social/profiles/posts") suspend fun publicProfilePosts(@Header("X-Legend-Participant-Type") participantType: String, @Query("userId") userId: String, @Query("participantType") profileParticipantType: String, @Query("profileId") profileId: String? = null): Response<List<SocialPost>>
+    @GET("api/v1/mobile/social/profiles/follows") suspend fun profileNetwork(@Header("X-Legend-Participant-Type") participantType: String, @Query("list") list: String, @Query("userId") userId: String, @Query("participantType") targetType: String, @Query("profileId") profileId: String): Response<List<SocialFollowListEntry>>
     @GET("api/v1/mobile/social/profile/follows") suspend fun profileFollows(@Header("X-Legend-Participant-Type") participantType: String, @Query("list") list: String): Response<List<SocialFollowListEntry>>
     @GET("api/v1/mobile/social/profile/follow-requests") suspend fun incomingFollowRequests(@Header("X-Legend-Participant-Type") participantType: String): Response<List<SocialFollowRequestItem>>
     @POST("api/v1/mobile/social/posts") suspend fun createPost(@Header("X-Legend-Participant-Type") participantType: String, @Body request: CreateSocialPostRequest): Response<SocialPost>
@@ -188,7 +192,9 @@ class LegendApiClient private constructor(val api: LegendApi, val httpClient: Ok
                     .apply {
                     if (!token.isNullOrBlank()) header("Authorization", "Bearer $token")
                 }.build()
-                chain.proceed(request)
+                if (request.url.encodedPath == "/api/v1/mobile/social/posts/media") {
+                    chain.withReadTimeout(180, TimeUnit.SECONDS).withWriteTimeout(300, TimeUnit.SECONDS).proceed(request)
+                } else chain.proceed(request)
             }
             val logger = HttpLoggingInterceptor().apply { level = HttpLoggingInterceptor.Level.NONE }
             val client = OkHttpClient.Builder().addInterceptor(auth).addInterceptor(logger).connectTimeout(15, TimeUnit.SECONDS).readTimeout(30, TimeUnit.SECONDS).writeTimeout(60, TimeUnit.SECONDS).build()

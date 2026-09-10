@@ -34,6 +34,11 @@ data class LegendAuthenticatedAccount(val id: String, val displayName: String)
 class LegendBearerTokenAuthority(
     private val auth: LegendAuthClient,
 ) : AccessTokenProvider {
+    private var accountSession: CachedLegendSession? = null
+    fun activateAccount(session: CachedLegendSession?) { accountSession = session }
+    fun requiresInteractiveSignIn(): Boolean = accountSession?.requiresInteractiveSignIn(
+        com.mylegnd.legend.registered.core.design.LegendAccountSessionPolicy.InteractiveSignInRetentionDays) == true
+
     private data class ReviewCredential(val token: String, val expiresUtc: Instant)
     @Volatile private var reviewCredential: ReviewCredential? = null
     @Volatile private var reviewSessionActive = false
@@ -58,7 +63,8 @@ class LegendBearerTokenAuthority(
             reviewCredential = null
             return null
         }
-        return auth.restoreAccessToken()
+        if (requiresInteractiveSignIn()) throw AuthenticationReauthenticationRequiredException()
+        return auth.restoreAccessToken(accountSession?.accountId)
     }
 }
 
@@ -93,8 +99,9 @@ class MsalLegendAuthClient(private val context: Context, private val configurati
         val app = application()
         val requestedAccountId = accountId ?: activeAccountId
         val account = accounts(app).firstOrNull { requestedAccountId == null || it.id == requestedAccountId } ?: return null
+        val token = acquireSilent(app, account)
         activeAccountId = account.id
-        return acquireSilent(app, account)
+        return token
     }
 
     override suspend fun signIn(activity: Activity, forceReauthentication: Boolean): LegendAuthenticatedAccount {
@@ -183,3 +190,5 @@ private fun MsalException.asLegendAuthenticationError(): Throwable = when (error
     MsalClientException.DEVICE_NETWORK_NOT_AVAILABLE -> AuthenticationConnectivityException(this)
     else -> this
 }
+
+class AuthenticationReauthenticationRequiredException : Exception("This account requires a fresh secure sign-in.")

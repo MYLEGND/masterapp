@@ -1050,7 +1050,7 @@ struct LegendTodayActivitySummaryPill: View {
 
                 Text("\(activity.today.count)")
                     .font(.title3.weight(.bold))
-                    .foregroundStyle(LegendNextColor.danger)
+                    .foregroundStyle(LegendNextColor.goldBright)
                     .accessibilityHidden(true)
 
                 Image(systemName: "chevron.right")
@@ -1065,37 +1065,6 @@ struct LegendTodayActivitySummaryPill: View {
                     .strokeBorder(LegendNextGradient.premiumStroke, lineWidth: 1)
             }
         }
-        .overlay {
-            RoundedRectangle(
-                cornerRadius: LegendNextRadius.prominentCard,
-                style: .continuous
-            )
-            .stroke(
-                LinearGradient(
-                    colors: [
-                        LegendNextColor.goldBright.opacity(0.34),
-                        LegendNextColor.gold.opacity(0.10),
-                        Color.white.opacity(0.05)
-                    ],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                ),
-                lineWidth: 1
-            )
-            .allowsHitTesting(false)
-        }
-        .shadow(
-            color: LegendNextColor.midnight.opacity(0.18),
-            radius: 7,
-            x: 0,
-            y: 4
-        )
-        .contentShape(
-            RoundedRectangle(
-                cornerRadius: LegendNextRadius.prominentCard,
-                style: .continuous
-            )
-        )
         .buttonStyle(.plain)
         .accessibilityLabel(LegendLocalized("Open today's activity. {value1}", context: "accessibility copy", arguments: ["value1": String(describing: (summary))]))
     }

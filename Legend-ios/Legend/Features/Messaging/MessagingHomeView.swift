@@ -2313,6 +2313,7 @@ struct ConversationThreadView: View {
         VStack(spacing: 0) {
             LegendConversationHeader(
                 conversation: conversation,
+                currentIdentity: currentIdentity,
                 addMember: { isPresentingAddMember = true },
                 editGroup: { isPresentingGroupProfile = true },
                 manageCollaborators: {
@@ -3006,6 +3007,7 @@ private struct LegendRecipientRow: View {
 
 private struct LegendConversationHeader: View {
     let conversation: ConversationDetail
+    let currentIdentity: LogicalParticipantIdentity
     let addMember: () -> Void
     let editGroup: () -> Void
     let manageCollaborators: () -> Void
@@ -3014,6 +3016,7 @@ private struct LegendConversationHeader: View {
     let isFounder: Bool
     let startCall: () -> Void
 
+    @State private var showingMembers = false
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -3039,11 +3042,9 @@ private struct LegendConversationHeader: View {
                     avatar: conversation.groupAvatar,
                     size: 46)
             } else if let counterparty {
-                LegendMessagingAvatar(
-                    participant: counterparty,
-                    size: 46,
-                    showsGoldRing: true
-                )
+                LegendMemberProfileLink(profile: counterparty.legendProfile) {
+                    LegendMessagingAvatar(participant: counterparty, size: 46, showsGoldRing: true)
+                }.buttonStyle(.plain)
             } else {
                 Image(systemName: "person.2.fill")
                     .font(.system(size: 18, weight: .semibold))
@@ -3053,12 +3054,11 @@ private struct LegendConversationHeader: View {
             }
 
             VStack(alignment: .leading, spacing: 2) {
-                LegendVerifiedName(
-                    conversation.title,
-                    isVerified: !isGroup && counterparty?.isVerified == true,
-                    font: .system(.headline, design: .rounded).weight(.bold),
-                    textColor: .white,
-                    badgePlacement: .alongsideProfileImage)
+                if isGroup {
+                    Button { showingMembers = true } label: { titleLabel }.buttonStyle(.plain)
+                } else if let counterparty {
+                    LegendMemberProfileLink(profile: counterparty.legendProfile) { titleLabel }.buttonStyle(.plain)
+                } else { titleLabel }
 
                 if isGroup {
                     HStack(spacing: 5) {
@@ -3095,6 +3095,11 @@ private struct LegendConversationHeader: View {
 
             Spacer()
 
+            if isGroup {
+                Button { showingMembers = true } label: {
+                    Image(systemName: "person.3.fill").foregroundStyle(LegendNextColor.goldBright).frame(width: 44, height: 44)
+                }.accessibilityLabel(LegendLocalized("View group members"))
+            }
             if isGroup &&
                 (
                     conversation.canManageMembers ||
@@ -3171,6 +3176,22 @@ private struct LegendConversationHeader: View {
                 .accessibilityLabel(LegendLocalized("Call {value1}", context: "accessibility copy", arguments: ["value1": String(describing: (conversation.title))]))
             }
         }
+        .sheet(isPresented: $showingMembers) {
+            NavigationStack {
+                List(conversation.participants) { member in
+                    LegendMemberProfileLink(profile: member.legendProfile) {
+                        HStack {
+                            LegendMessagingAvatar(participant: member, size: 42, showsGoldRing: true)
+                            Text(member.displayName).font(.headline)
+                            Spacer()
+                            Image(systemName: "chevron.right")
+                        }
+                    }.buttonStyle(.plain)
+                }
+                .navigationTitle(LegendLocalized("Group members"))
+                .toolbar { ToolbarItem(placement: .confirmationAction) { Button(LegendLocalized("Done")) { showingMembers = false } } }
+            }
+        }
         .padding(.horizontal, LegendNextSpacing.pageHorizontal)
         .padding(.top, LegendNextSpacing.xs)
         .padding(.bottom, LegendNextSpacing.md)
@@ -3186,8 +3207,15 @@ private struct LegendConversationHeader: View {
         }
     }
 
+    private var titleLabel: some View {
+        LegendVerifiedName(conversation.title,
+            isVerified: !isGroup && counterparty?.isVerified == true,
+            font: .system(.headline, design: .rounded).weight(.bold),
+            textColor: .white, badgePlacement: .alongsideProfileImage)
+    }
+
     private var counterparty: MessagingParticipant? {
-        conversation.participants.first
+        conversation.participants.first { $0.identity != currentIdentity }
     }
 
     private var relationshipSubtitle: String {
@@ -3621,11 +3649,10 @@ private struct LegendMessageContextPreview: View {
             alignment: message.isMine ? .trailing : .leading,
             spacing: LegendNextSpacing.xs
         ) {
-            LegendVerifiedName(
-                message.sender.displayName,
-                isVerified: message.sender.isVerified == true,
-                font: .caption.weight(.semibold),
-                textColor: LegendNextColor.textSecondary)
+            LegendMemberProfileLink(profile: message.sender.legendProfile) {
+                LegendVerifiedName(message.sender.displayName, isVerified: message.sender.isVerified == true,
+                    font: .caption.weight(.semibold), textColor: LegendNextColor.textSecondary)
+            }.buttonStyle(.plain)
 
             Text(message.body)
                 .font(.body)
@@ -3898,6 +3925,7 @@ private struct LegendMessageBubble: View {
     @ViewBuilder
     private var incomingAvatar: some View {
         if showsSender {
+            LegendMemberProfileLink(profile: message.sender.legendProfile) {
             LegendAvatarImageContent(
                 avatar: senderAvatar
             ) {
@@ -3917,7 +3945,7 @@ private struct LegendMessageBubble: View {
             )
             .clipShape(Circle())
             .padding(.bottom, 13)
-            .accessibilityHidden(true)
+            }.buttonStyle(.plain).accessibilityLabel(message.sender.displayName)
         } else {
             Color.clear
                 .frame(
@@ -4353,5 +4381,11 @@ private enum LegendMessagingDateFormatter {
                 .day()
                 .locale(LegendActiveLocale())
         )
+    }
+}
+
+extension MessagingParticipant {
+    var legendProfile: MobileSocialAuthor {
+        MobileSocialAuthor(identity: identity, profileID: profileID, displayName: displayName, avatar: avatar)
     }
 }

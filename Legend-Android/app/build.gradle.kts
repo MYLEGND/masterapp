@@ -163,7 +163,7 @@ android {
         applicationId = legendApplicationId
         minSdk = 26
         targetSdk = 37
-        versionCode = 4
+        versionCode = 5
         versionName = "1.0.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
@@ -279,6 +279,7 @@ dependencies {
     implementation(libs.coil.network.okhttp)
     implementation(libs.media3.exoplayer)
     implementation(libs.media3.ui)
+    implementation(libs.media3.transformer)
     implementation(libs.msal)
     implementation(platform(libs.firebase.bom))
     implementation(libs.firebase.installations)

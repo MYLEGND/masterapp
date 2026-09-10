@@ -9,6 +9,8 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.mylegnd.legend.registered.core.model.ApplicationLocalizationCatalog
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import java.security.KeyStore
@@ -45,18 +47,28 @@ private val cachedSessionKey = stringPreferencesKey("encrypted_session")
 )
 
 /** Encrypted local presentation cache only. OAuth tokens stay inside MSAL/Android credential storage. */
-class SecureSessionStore(private val context: Context) {
+interface LegendSessionStoring {
+    suspend fun read(): CachedLegendSession?
+    suspend fun accounts(): List<CachedLegendSession>
+    suspend fun write(value: CachedLegendSession)
+    suspend fun selectAccount(accountId: String): CachedLegendSession?
+    suspend fun removeAccount(accountId: String)
+    suspend fun clear()
+}
+
+class SecureSessionStore(private val context: Context) : LegendSessionStoring {
+    private val mutationMutex = Mutex()
     private val json = Json
-    suspend fun read(): CachedLegendSession? {
+    override suspend fun read(): CachedLegendSession? {
         val catalog = readCatalog()
         return catalog.selectedAccountId?.let { selected -> catalog.accounts.firstOrNull { it.accountId == selected } }
             ?: catalog.accounts.maxByOrNull { it.cachedUtc }
     }
 
-    suspend fun accounts(): List<CachedLegendSession> = readCatalog().accounts
+    override suspend fun accounts(): List<CachedLegendSession> = readCatalog().accounts
         .sortedByDescending { it.cachedUtc }
 
-    suspend fun write(value: CachedLegendSession) {
+    override suspend fun write(value: CachedLegendSession) = mutationMutex.withLock {
         val accountId = value.accountId ?: value.actorId
         val catalog = readCatalog()
         val previous = catalog.accounts.firstOrNull { it.accountId == accountId }
@@ -72,9 +84,9 @@ class SecureSessionStore(private val context: Context) {
     suspend fun localizationCatalog(accountId: String): ApplicationLocalizationCatalog? =
         readCatalog().accounts.firstOrNull { it.accountId == accountId }?.localizationCatalog
 
-    suspend fun writeLocalizationCatalog(accountId: String, value: ApplicationLocalizationCatalog) {
+    suspend fun writeLocalizationCatalog(accountId: String, value: ApplicationLocalizationCatalog) = mutationMutex.withLock {
         val catalog = readCatalog()
-        val existing = catalog.accounts.firstOrNull { it.accountId == accountId } ?: return
+        val existing = catalog.accounts.firstOrNull { it.accountId == accountId } ?: return@withLock
         val accounts = catalog.accounts.filterNot { it.accountId == accountId } + existing.copy(
             preferredLanguageCode = value.languageCode,
             localizationCatalog = value,
@@ -82,14 +94,14 @@ class SecureSessionStore(private val context: Context) {
         writeCatalog(catalog.copy(accounts = accounts))
     }
 
-    suspend fun selectAccount(accountId: String): CachedLegendSession? {
+    override suspend fun selectAccount(accountId: String): CachedLegendSession? = mutationMutex.withLock {
         val catalog = readCatalog()
-        val selected = catalog.accounts.firstOrNull { it.accountId == accountId } ?: return null
+        val selected = catalog.accounts.firstOrNull { it.accountId == accountId } ?: return@withLock null
         writeCatalog(catalog.copy(selectedAccountId = accountId))
-        return selected
+        selected
     }
 
-    suspend fun removeAccount(accountId: String) {
+    override suspend fun removeAccount(accountId: String) = mutationMutex.withLock {
         val catalog = readCatalog()
         val remaining = catalog.accounts.filterNot { it.accountId == accountId }
         writeCatalog(
@@ -101,7 +113,7 @@ class SecureSessionStore(private val context: Context) {
         )
     }
 
-    suspend fun clear() { context.legendSecureDataStore.edit { it.remove(cachedSessionKey) } }
+    override suspend fun clear() { mutationMutex.withLock { context.legendSecureDataStore.edit { it.remove(cachedSessionKey) } } }
 
     private suspend fun readCatalog(): CachedLegendSessionCatalog {
         val decrypted = context.legendSecureDataStore.data.first()[cachedSessionKey]?.let(::decrypt)

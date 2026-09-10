@@ -25,6 +25,12 @@ class LegendContainer(application: Application) {
     val notificationNavigation = LegendNotificationNavigation()
     private val sessionStore = SecureSessionStore(application)
     private val apiClient by lazy { require(configuration.isReady) { "Legend mobile configuration is incomplete." }; LegendApiClient.create(configuration.apiBaseUrl, bearerTokenAuthority) }
+    val guestRepository by lazy {
+        GuestRepository(LegendApiClient.create(configuration.apiBaseUrl,
+            object : com.mylegnd.legend.registered.core.network.AccessTokenProvider {
+                override suspend fun accessToken(): String? = null
+            }))
+    }
     private val notificationDeviceRepository by lazy { NotificationDeviceRepository(apiClient) }
     private val localizationRepository by lazy { ApplicationLocalizationRepository(apiClient) }
     val localization by lazy { LegendApplicationLocalization(application, localizationRepository, sessionStore) }

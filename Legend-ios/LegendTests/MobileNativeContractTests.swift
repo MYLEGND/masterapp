@@ -1,9 +1,49 @@
 import Foundation
 import XCTest
+import UIKit
 @testable import Legend
 
 @MainActor
 final class MobileNativeContractTests: XCTestCase {
+    func testSocialPhotoExportSupportsZoomingOutAndBoundsPortraitResolution() throws {
+        let image = UIGraphicsImageRenderer(size: CGSize(width: 300, height: 600)).image { context in
+            UIColor.red.setFill()
+            context.fill(CGRect(x: 0, y: 0, width: 300, height: 600))
+        }
+        let data = try XCTUnwrap(image.pngData())
+        var edit = LegendSocialMediaEditState.initial
+        edit.cropZoom = 0.5
+        let output = try XCTUnwrap(LegendSocialMediaRenderer.renderedImage(from: data, edit: edit, aspectRatio: 0.5))
+        XCTAssertLessThanOrEqual(max(output.size.width, output.size.height), 2048)
+        XCTAssertEqual(output.size.width / output.size.height, 0.5, accuracy: 0.01)
+        let cgImage = try XCTUnwrap(output.cgImage)
+        var pixel = [UInt8](repeating: 0, count: 4)
+        let context = try XCTUnwrap(CGContext(data: &pixel, width: 1, height: 1, bitsPerComponent: 8, bytesPerRow: 4,
+            space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+        context.draw(cgImage, in: CGRect(x: 0, y: 0, width: cgImage.width, height: cgImage.height))
+        XCTAssertEqual(pixel[0], 0, "Zooming out must reveal the canvas instead of being clamped back to fill.")
+    }
+
+    func testOtherProfileNetworkUsesCanonicalTargetAndAuthenticatedRole() async throws {
+        StubURLProtocol.responseStatus = 200
+        StubURLProtocol.responseBody = Data("[]".utf8)
+        defer { StubURLProtocol.responseBody = nil }
+        let client = MobileHTTPClient(baseURL: URL(string: "https://api.example.test")!, session: stubSession())
+        let api = URLSessionMobileSocialAPI(client: client, participantType: .agent)
+        let profile = MobileSocialAuthor(identity: try LogicalParticipantIdentity(userID: "client-1", participantType: .client),
+            profileID: "profile-1", displayName: "Client", avatar: nil)
+        _ = try await api.currentProfileFollowList(kind: .followers, profile: profile, accessToken: "test-token")
+        let request = try XCTUnwrap(StubURLProtocol.lastRequest)
+        XCTAssertEqual(request.url?.path, "/api/v1/mobile/social/profiles/follows")
+        XCTAssertEqual(request.value(forHTTPHeaderField: "X-Legend-Participant-Type"), "Agent")
+        let items = try XCTUnwrap(URLComponents(url: XCTUnwrap(request.url), resolvingAgainstBaseURL: false)?.queryItems)
+        let query = Dictionary(uniqueKeysWithValues: items.map { ($0.name, $0.value ?? "") })
+        XCTAssertEqual(query["userId"], "client-1")
+        XCTAssertEqual(query["participantType"], "Client")
+        XCTAssertEqual(query["profileId"], "profile-1")
+        XCTAssertEqual(query["list"], "followers")
+    }
+
     func testCrmSearchMatchesNameEmailAndFormattedPhone() {
         let values: [String?] = ["Ana García", "ana@example.com", "(602) 555-0123"]
         XCTAssertTrue(legendCrmMatchesSearch("ana garcia", values: values))
@@ -71,6 +111,7 @@ final class MobileNativeContractTests: XCTestCase {
         XCTAssertEqual(query.first(where: { $0.name == "code_challenge_method" })?.value, "S256")
         XCTAssertEqual(query.first(where: { $0.name == "state" })?.value, "expected-state")
         XCTAssertNil(query.first(where: { $0.name == "audience" }))
+        XCTAssertEqual(query.first(where: { $0.name == "prompt" })?.value, "login")
     }
 
     func testCallbackValidationRequiresExactSchemePathAndState() throws {
@@ -408,6 +449,20 @@ final class MobileNativeContractTests: XCTestCase {
         }
     }
 
+    func testGuestRequestDoesNotSendAccountCredentials() async throws {
+        StubURLProtocol.responseStatus = 200
+        StubURLProtocol.responseBody = Data(#"{"title":"Explore Legend","subtitle":"Welcome","introduction":"Public reading","readings":[],"guides":[],"accountTitle":"Your account","accountDescription":"Sign in","links":[]}"#.utf8)
+        defer { StubURLProtocol.responseBody = nil }
+        let client = MobileHTTPClient(baseURL: URL(string: "https://api.example.test")!, session: stubSession())
+        let content = try await client.getPublic("/api/v1/mobile/guest", response: MobileGuestSnapshot.self)
+        XCTAssertEqual(content.title, "Explore Legend")
+        let request = try XCTUnwrap(StubURLProtocol.lastRequest)
+        XCTAssertEqual(request.url?.path, "/api/v1/mobile/guest")
+        XCTAssertNil(request.value(forHTTPHeaderField: "Authorization"))
+        XCTAssertNil(request.value(forHTTPHeaderField: "X-Legend-Participant-Type"))
+        XCTAssertFalse(request.httpShouldHandleCookies)
+    }
+
     func testMobileHTTPClientBoundsProtectedMediaDownloads() async throws {
         StubURLProtocol.responseStatus = 200
         StubURLProtocol.lastRequestTimeout = nil
@@ -726,6 +781,41 @@ final class MobileNativeContractTests: XCTestCase {
     }
 
 
+    func testMessagingReconnectReloadsMessagesMissedWithoutAConversationEvent() async throws {
+        let conversationID = UUID()
+        let api = InboxReconciliationMessagingAPI(conversationID: conversationID)
+        let realtime = RecordingMessagingRealtimeTransport()
+        let store = MessagingStore(
+            api: api, accessTokenProvider: { "token" },
+            diagnostics: LegendDiagnostics(), actorParticipantType: .client,
+            realtime: realtime)
+        _ = await store.refresh()
+        api.makeConversationVisible()
+        realtime.publish(MobileMessagingRealtimeEvent(
+            conversationID: nil, messageID: nil,
+            requiresResync: true, occurredUTC: .now))
+        try await Task.sleep(for: .milliseconds(100))
+        guard case .loaded(let conversations) = store.state else {
+            return XCTFail("Expected reconciled inbox after reconnect")
+        }
+        XCTAssertEqual(conversations.map(\.id), [conversationID])
+    }
+
+    func testLanguageRefreshReplacesTheOpenConversationWithServerPresentation() async throws {
+        let id = UUID()
+        let api = InboxReconciliationMessagingAPI(conversationID: id)
+        let store = MessagingStore(api: api, accessTokenProvider: { "token" }, diagnostics: LegendDiagnostics(), actorParticipantType: .client)
+        _ = try await api.send(conversationID: id, body: "Bonjou", replyToMessageID: nil, accessToken: "token")
+        store.openConversation(id)
+        try await Task.sleep(for: .milliseconds(80))
+        _ = try await api.send(conversationID: id, body: "Hello", replyToMessageID: nil, accessToken: "token")
+        await store.refreshLanguagePresentation()
+        guard case .loaded(let conversation) = store.detailState else {
+            return XCTFail("Expected refreshed conversation")
+        }
+        XCTAssertEqual(conversation.messages.map(\.body), ["Hello"])
+    }
+
     func testMessagingStoreShowsOfflineStateForNetworkFailure() async {
         let store = MessagingStore(
             api: OfflineMessagingAPI(),
@@ -999,6 +1089,55 @@ final class MobileNativeContractTests: XCTestCase {
         )
     }
 
+    func testAddingAccountKeepsPriorCredentialThroughRoleSelectionAndSwitchBack() async throws {
+        let store = AccountTestTokenStore()
+        defer { try? store.removeAccount(id: "member-a"); try? store.removeAccount(id: "member-b") }
+        let initialDate = Date().addingTimeInterval(-30 * 86400)
+        let original = OAuthTokenSet(accessToken: "account-a", refreshToken: "refresh-a", expiresAt: .distantFuture, interactiveSignInAt: initialDate)
+        _ = try store.upsert(original, for: MobileSignedInAccount(id: "member-a", displayName: "A", participantType: .client))
+        let coordinator = MobileSessionCoordinator(configuration: completeConfiguration(), tokenStore: store,
+            authorizer: AccountAddingAuthorizer(), tokenExchanger: AccountAddingExchanger(),
+            sessionService: AccountAddingService(), launchCache: LegendEphemeralLaunchCache(),
+            biometricSecurity: AcceptingBiometricSecurity())
+        coordinator.restore()
+        try await waitForState(coordinator) { if case .authenticated = $0 { return true }; return false }
+        coordinator.addAccount()
+        try await waitForState(coordinator) { if case .roleSelection = $0 { return true }; return false }
+        XCTAssertEqual(try store.read(), original, "Pending second identity must not overwrite the selected credential")
+        coordinator.selectRole(.client)
+        try await waitForState(coordinator) { if case .authenticated(let session) = $0 { return session.actor.identity.userID == "member-b" }; return false }
+        XCTAssertEqual(Set(try store.signedInAccounts().map(\.id)), ["member-a", "member-b"])
+        coordinator.switchToSignedInAccount("member-a")
+        try await waitForState(coordinator) { if case .authenticated(let session) = $0 { return session.actor.identity.userID == "member-a" }; return false }
+        XCTAssertEqual(try store.read()?.accessToken, "account-a")
+        XCTAssertEqual(try store.read()?.interactiveSignInAt, initialDate)
+        coordinator.addAccount()
+        try await waitForState(coordinator) { if case .roleSelection = $0 { return true }; return false }
+        coordinator.signOut()
+        try await waitForState(coordinator) { if case .authenticated(let session) = $0 { return session.actor.identity.userID == "member-a" }; return false }
+        XCTAssertEqual(try store.read()?.accessToken, "account-a", "Cancelling pending role selection must not sign out the original account")
+        XCTAssertEqual(try store.signedInAccounts().count, 2)
+    }
+
+    func testExpiredAccountsRemainListedAndRefreshDoesNotRestartRetention() throws {
+        let store = AccountTestTokenStore()
+        defer { try? store.removeAccount(id: "expired"); try? store.removeAccount(id: "current") }
+        let expired = OAuthTokenSet(accessToken: "old", refreshToken: "old-refresh", expiresAt: .distantFuture,
+            interactiveSignInAt: Date().addingTimeInterval(-91 * 86400))
+        let refreshed = expired.refreshed(accessToken: "renewed", refreshToken: "renewed-refresh", expiresAt: .distantFuture)
+        XCTAssertTrue(refreshed.requiresInteractiveSignIn)
+        XCTAssertEqual(refreshed.interactiveSignInAt, expired.interactiveSignInAt)
+        _ = try store.upsert(refreshed, for: MobileSignedInAccount(id: "expired", displayName: "Expired", participantType: .client))
+        _ = try store.upsert(OAuthTokenSet(accessToken: "current", refreshToken: nil, expiresAt: .distantFuture),
+            for: MobileSignedInAccount(id: "current", displayName: "Current", participantType: .agent))
+        let accounts = try store.signedInAccounts()
+        XCTAssertEqual(accounts.count, 2)
+        XCTAssertEqual(accounts.first { $0.id == "expired" }?.requiresSignIn, true)
+        XCTAssertEqual(accounts.first { $0.id == "current" }?.requiresSignIn, false)
+        let legacyAccount = Data(#"{"id":"legacy","displayName":"Legacy","participantType":"Client","lastUsedAt":0}"#.utf8)
+        XCTAssertNoThrow(try JSONDecoder().decode(MobileSignedInAccount.self, from: legacyAccount))
+    }
+
     private func completeConfiguration() -> MobileConfiguration {
         MobileConfiguration(
             bundleIdentifier: "com.mylegnd.legend.registered",
@@ -1059,6 +1198,8 @@ private struct StubMobileFinancialAPI: MobileFinancialAPI {
 
 private final class StubURLProtocol: URLProtocol {
     static var responseStatus = 200
+    static var responseBody: Data?
+    static var lastRequest: URLRequest?
     static var lastRequestTimeout: TimeInterval?
     static var lastRequestURL: URL?
 
@@ -1066,6 +1207,7 @@ private final class StubURLProtocol: URLProtocol {
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
 
     override func startLoading() {
+        Self.lastRequest = request
         Self.lastRequestTimeout = request.timeoutInterval
         Self.lastRequestURL = request.url
         let response = HTTPURLResponse(
@@ -1081,7 +1223,7 @@ private final class StubURLProtocol: URLProtocol {
         case 403:
             body = Data(#"{"code":"mobile_access_forbidden","correlationId":"test-correlation"}"#.utf8)
         default:
-            body = Data()
+            body = Self.responseBody ?? Data()
         }
         client?.urlProtocol(self, didLoad: body)
         client?.urlProtocolDidFinishLoading(self)
@@ -1471,4 +1613,58 @@ private final class TypedClientRecipientMessagingAPI: MessagingAPI, @unchecked S
     func send(conversationID: UUID, body: String, replyToMessageID: UUID?, accessToken: String) async throws -> ConversationMessage { throw MobileMessagingContractError.unavailable }
     func upload(conversationID: UUID, messageID: UUID, attachment: MessagingAttachmentDraft, accessToken: String) async throws -> MessagingAttachment { throw MobileMessagingContractError.unavailable }
     func markRead(conversationID: UUID, accessToken: String) async throws {}
+}
+
+private final class AccountAddingAuthorizer: OAuthAuthorizing {
+    func authorize(_ request: OAuthAuthorizationRequest) async throws -> URL {
+        URL(string: "\(request.redirectScheme)://oauth/callback?code=second&state=\(request.state)")!
+    }
+}
+
+private struct AccountAddingExchanger: OAuthTokenExchanging {
+    func exchange(code: String, pkceVerifier: String, configuration: MobileConfiguration) async throws -> OAuthTokenSet {
+        OAuthTokenSet(accessToken: "account-b", refreshToken: "refresh-b", expiresAt: .distantFuture)
+    }
+    func refresh(refreshToken: String, configuration: MobileConfiguration) async throws -> OAuthTokenSet {
+        throw MobileAPIError.networkUnavailable
+    }
+}
+
+private struct AccountAddingService: MobileSessionServicing {
+    private func actor(_ userID: String) throws -> MobileActor {
+        try MobileActor(identity: LogicalParticipantIdentity(userID: userID, participantType: .client),
+            profileID: "00000000-0000-0000-0000-000000000001", displayName: userID, avatar: nil)
+    }
+    func bootstrap(accessToken: String) async throws -> MobileBootstrapResponse {
+        MobileBootstrapResponse(authenticated: true, actor: accessToken == "account-a" ? try actor("member-a") : nil,
+            permittedParticipantTypes: [.client], requiresParticipantSelection: accessToken != "account-a",
+            capabilities: MobileCapabilities(messaging: true), correlationID: "account-test")
+    }
+    func selectRole(_ participantType: ParticipantType, accessToken: String) async throws -> MobileRoleSelectionResponse {
+        guard accessToken == "account-b" else { throw MobileAPIError.forbidden(correlationID: "account-test") }
+        return MobileRoleSelectionResponse(actor: try actor("member-b"), permittedParticipantTypes: [.client], correlationID: "account-test")
+    }
+}
+
+private final class AccountTestTokenStore: MultiAccountSecureTokenStoring, @unchecked Sendable {
+    private var entries: [String: (MobileSignedInAccount, OAuthTokenSet)] = [:]
+    private var selected: String?
+    func read() throws -> OAuthTokenSet? { selected.flatMap { entries[$0]?.1 } }
+    func save(_ tokens: OAuthTokenSet) throws {
+        if let selected, let account = entries[selected]?.0 { entries[selected] = (account, tokens) }
+    }
+    func clear() throws { if let selected { entries.removeValue(forKey: selected) }; selected = nil }
+    func signedInAccounts() throws -> [MobileSignedInAccount] {
+        entries.values.map { entry in
+            var account = entry.0
+            account.requiresSignIn = entry.1.requiresInteractiveSignIn
+            return account
+        }
+    }
+    func selectedAccountID() throws -> String? { selected }
+    func selectAccount(id: String) throws -> OAuthTokenSet? { selected = id; return entries[id]?.1 }
+    func upsert(_ tokens: OAuthTokenSet, for account: MobileSignedInAccount) throws -> MobileSignedInAccount {
+        entries[account.id] = (account, tokens); selected = account.id; return account
+    }
+    func removeAccount(id: String) throws { entries.removeValue(forKey: id); if selected == id { selected = nil } }
 }

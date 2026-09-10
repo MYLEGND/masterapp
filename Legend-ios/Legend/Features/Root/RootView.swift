@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct RootView: View {
+    @State private var browsingAsGuest = false
     @EnvironmentObject private var session: MobileSessionCoordinator
     @EnvironmentObject private var diagnostics: LegendDiagnostics
     @EnvironmentObject private var localization: LegendApplicationLocalization
@@ -13,7 +14,13 @@ struct RootView: View {
             case .contractUnavailable(let validation):
                 ConfigurationStateView(validation: validation)
             case .signedOut:
-                SignInView()
+                if browsingAsGuest {
+                    LegendGuestView(onExit: { browsingAsGuest = false }, onSignIn: {
+                        browsingAsGuest = false
+                    })
+                } else {
+                    SignInView(onContinueAsGuest: { browsingAsGuest = true })
+                }
             case .authenticating:
                 LegendSessionProgressView()
             case .roleSelection(let selection):
@@ -328,6 +335,7 @@ private struct ConfigurationStateView: View {
 }
 
 private struct SignInView: View {
+    let onContinueAsGuest: () -> Void
     @EnvironmentObject private var session: MobileSessionCoordinator
     @State private var username = ""
     @State private var password = ""
@@ -460,6 +468,10 @@ private struct SignInView: View {
                         .foregroundStyle(LegendNextColor.textSecondary)
                         .multilineTextAlignment(.center)
                         .padding(.horizontal, LegendNextSpacing.xl)
+
+                    Button(LegendLocalized("Continue as guest"), action: onContinueAsGuest)
+                        .buttonStyle(LegendNextButtonStyle(kind: .secondary))
+                        .accessibilityHint(LegendLocalized("Explore public readings and learn about Legend without an account.", context: "accessibility copy"))
                 }
                 .frame(maxWidth: 520)
                 .padding(.horizontal, LegendNextSpacing.pageHorizontal)
@@ -575,7 +587,12 @@ private struct AuthenticatedHomeView: View {
         .task(id: scenePhase) {
             await bootstrap.bootstrapIfNeeded()
             guard scenePhase == .active else { return }
+            coordinator.enforceAccountSignInLifetime()
             await synchronizeNotifications()
+            while !Task.isCancelled {
+                do { try await Task.sleep(for: .seconds(60)) } catch { return }
+                coordinator.enforceAccountSignInLifetime()
+            }
         }
         .onChange(of: pushNotifications.deviceToken) { _, _ in
             Task { await registerPushDeviceIfAvailable() }
@@ -620,5 +637,170 @@ private struct AuthenticatedHomeView: View {
         await bootstrap.stores.notifications.deactivateAPNSDevice(
             token: pushNotifications.deviceToken)
         coordinator.signOut()
+    }
+}
+
+struct MobileGuestSnapshot: Decodable {
+    let title: String
+    let subtitle: String
+    let introduction: String
+    let readings: [MobileGuestReading]
+    let guides: [MobileGuestGuide]
+    let accountTitle: String
+    let accountDescription: String
+    let links: [MobileGuestLink]
+}
+
+struct MobileGuestLink: Decodable {
+    let title: String
+    let url: URL
+}
+
+struct MobileGuestReading: Decodable, Identifiable {
+    let date: String
+    let reference: String
+    let translation: String
+    let text: String
+    var id: String { date }
+}
+
+struct MobileGuestGuide: Decodable, Identifiable {
+    let id: String
+    let title: String
+    let subtitle: String
+    let text: String
+}
+
+private struct LegendGuestView: View {
+    let onExit: () -> Void
+    let onSignIn: () -> Void
+    @State private var content: MobileGuestSnapshot?
+    @State private var failed = false
+    @State private var reading: MobileGuestReading?
+    @State private var guide: MobileGuestGuide?
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: LegendNextSpacing.md) {
+                    HStack {
+                        Text(LegendLocalized("LEGEND®")).font(.title2.bold())
+                        Spacer()
+                        Text(LegendLocalized("GUEST")).font(.caption.bold()).padding(.horizontal, 14).padding(.vertical, 8)
+                            .background(LegendNextColor.goldBright.opacity(0.15), in: Capsule())
+                    }
+                    .foregroundStyle(LegendNextColor.navy)
+                    if let content {
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text(content.title).font(.title.bold())
+                            Text(content.subtitle).font(.headline).foregroundStyle(LegendNextColor.goldBright)
+                            Text(content.introduction).font(.body)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(24)
+                        .foregroundStyle(LegendNextColor.contactTitle)
+                        .background(LegendNextGradient.hero, in: RoundedRectangle(cornerRadius: 24))
+                        Text(LegendLocalized("Daily inspiration")).font(.title3.bold())
+                        ForEach(Array(content.readings.enumerated()), id: \.element.id) { index, item in
+                            Button { reading = item } label: {
+                                guestRow(title: item.reference, subtitle: index == 0 ? "Today · \(item.translation)" : "\(item.date) · \(item.translation)", icon: "book")
+                            }.buttonStyle(.plain)
+                        }
+                        Text(LegendLocalized("Discover Legend")).font(.title3.bold()).padding(.top, 8)
+                        ForEach(content.guides) { item in
+                            Button { guide = item } label: {
+                                guestRow(title: item.title, subtitle: item.subtitle, icon: "sparkles")
+                            }.buttonStyle(.plain)
+                        }
+                        LegendNextSurface(style: .elevated) {
+                            VStack(alignment: .leading, spacing: 10) {
+                                Label(content.accountTitle, systemImage: "lock.shield").font(.headline)
+                                Text(content.accountDescription).font(.subheadline)
+                            }
+                        }
+                        HStack {
+                            ForEach(content.links, id: \.title) { link in
+                                if link.url.scheme == "https" {
+                                    Link(link.title, destination: link.url).font(.footnote)
+                                }
+                            }
+                        }
+                    } else if failed {
+                        Text(LegendLocalized("Public readings could not load. Please try again."))
+                        Button(LegendLocalized("Retry")) { Task { await load() } }
+                            .buttonStyle(LegendNextButtonStyle(kind: .secondary))
+                    } else {
+                        ProgressView(LegendLocalized("Loading public readings…")).frame(maxWidth: .infinity).padding(40)
+                    }
+                }
+                .foregroundStyle(LegendNextColor.textPrimary)
+                .padding(LegendNextSpacing.pageHorizontal)
+                .frame(maxWidth: 640)
+                .frame(maxWidth: .infinity)
+            }
+            .background(LegendNextCanvas())
+            .navigationTitle(LegendLocalized("Explore"))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .topBarLeading) { Button(LegendLocalized("Back"), action: onExit) } }
+            .safeAreaInset(edge: .bottom) {
+                Button(LegendLocalized("Sign in securely"), action: onSignIn)
+                    .buttonStyle(LegendNextButtonStyle(kind: .primary))
+                    .padding(.horizontal, LegendNextSpacing.pageHorizontal).padding(.vertical, 12)
+                    .background(LegendNextColor.surface)
+            }
+            .task { await load() }
+            .refreshable { await load() }
+            .sheet(item: $reading) { item in
+                LegendGuestArticle(title: item.reference, subtitle: "\(item.date) · \(item.translation)", text: item.text)
+            }
+            .sheet(item: $guide) { item in
+                LegendGuestArticle(title: item.title, subtitle: item.subtitle, text: item.text)
+            }
+        }
+    }
+
+    private func guestRow(title: String, subtitle: String, icon: String) -> some View {
+        LegendNextSurface(style: .elevated) {
+            HStack(spacing: 14) {
+                Image(systemName: icon).foregroundStyle(LegendNextColor.goldBright).font(.title2)
+                VStack(alignment: .leading, spacing: 5) {
+                    Text(title).font(.headline)
+                    Text(subtitle).font(.subheadline).foregroundStyle(LegendNextColor.textSecondary)
+                }
+                Spacer(minLength: 4)
+                Image(systemName: "chevron.right").foregroundStyle(LegendNextColor.textSecondary)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    @MainActor private func load() async {
+        failed = false
+        guard let baseURL = MobileConfiguration.current.apiBaseURL else { failed = true; return }
+        do {
+            content = try await MobileHTTPClient(baseURL: baseURL).getPublic(
+                "/api/v1/mobile/guest", response: MobileGuestSnapshot.self)
+        } catch is CancellationError {
+        } catch { failed = true }
+    }
+}
+
+private struct LegendGuestArticle: View {
+    let title: String
+    let subtitle: String
+    let text: String
+    @Environment(\.dismiss) private var dismiss
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 20) {
+                    Text(subtitle).font(.subheadline).foregroundStyle(LegendNextColor.textSecondary)
+                    Text(title).font(.largeTitle.bold()).foregroundStyle(LegendNextColor.navy)
+                    Text(text).font(.body).lineSpacing(8).textSelection(.enabled)
+                }.frame(maxWidth: .infinity, alignment: .leading).padding(24)
+            }
+            .background(LegendNextCanvas())
+            .toolbar { ToolbarItem(placement: .topBarTrailing) { Button(LegendLocalized("Done")) { dismiss() } } }
+        }
     }
 }

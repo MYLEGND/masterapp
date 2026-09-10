@@ -207,6 +207,17 @@ struct MobileHTTPClient: Sendable {
     /// Used only for endpoints that are deliberately anonymous at the
     /// server boundary, such as the dedicated App Review credential exchange.
     /// Protected application APIs continue to require the bearer overloads.
+    func getPublic<Response: Decodable>(
+        _ path: String,
+        response: Response.Type
+    ) async throws -> Response {
+        var request = URLRequest(url: try endpointURL(path, queryItems: []))
+        request.httpMethod = "GET"
+        request.httpShouldHandleCookies = false
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        return try await perform(request, response: response)
+    }
+
     func postPublic<Body: Encodable, Response: Decodable>(
         _ path: String,
         body: Body,
@@ -275,6 +286,7 @@ struct MobileHTTPClient: Sendable {
 
         var request = URLRequest(url: try endpointURL(path, queryItems: []))
         request.httpMethod = "POST"
+        request.timeoutInterval = 180
         request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         request.setValue(

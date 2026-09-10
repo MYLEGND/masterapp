@@ -49,6 +49,9 @@ public sealed class MobileAgentCrmService(MasterAppDbContext db)
     private async Task<List<MobileCrmRecord>> RecordsAsync(string owner, CancellationToken ct)
     {
         var closed = await CrmArchiveScope.ClosedClientKeysAsync(db, ct);
+        var restorable = await db.AccountLifecycleRecords.AsNoTracking()
+            .Where(r => r.ParticipantType == MessagingParticipantTypes.Client && r.State == Domain.Accounts.AccountLifecycleStates.Closed && r.RetainClientContact)
+            .Select(r => r.ProfileId).ToListAsync(ct);
         var profiles = await db.ClientProfiles.AsNoTracking()
             .Where(p => db.AgentClients.Any(link => link.AgentUserId.ToLower() == owner &&
                 link.ClientUserId.ToLower() == p.ClientUserId.ToLower())).ToListAsync(ct);
@@ -62,7 +65,7 @@ public sealed class MobileAgentCrmService(MasterAppDbContext db)
                 isLead ? ClientRecordClassification.ResolvePipelineStage(p.ClientUserId, p.CrmNotes) : p.CrmStatus ?? "Active",
                 "/Clients?clientUserId=" + Uri.EscapeDataString(p.ClientUserId),
                 isLead ? null : "/Clients/Edit?clientUserId=" + Uri.EscapeDataString(p.ClientUserId), SafeMeetingUrl(meta?.ZoomJoinUrl),
-                isLead ? AgentPortal.Controllers.LeadsController.CanonicalOutcomeCodes.Where(code => code != "Booked" && AgentPortal.Controllers.ClientsController.SupportsOutcome(code)).ToArray() : []) { FirstName = p.FirstName, LastName = p.LastName, Phone2 = meta?.Phone2, AddressLine = meta?.AddressLine, City = meta?.City, State = meta?.State, ZipCode = meta?.ZipCode, UpdatedUtc = DateTime.SpecifyKind(p.UpdatedUtc, DateTimeKind.Utc), Archived = closed.Contains(p.Id.ToString()) || closed.Contains(p.ClientUserId) || CrmArchiveScope.ArchivedStatus(p.CrmStatus) };
+                isLead ? AgentPortal.Controllers.LeadsController.CanonicalOutcomeCodes.Where(code => code != "Booked" && AgentPortal.Controllers.ClientsController.SupportsOutcome(code)).ToArray() : []) { FirstName = p.FirstName, LastName = p.LastName, Phone2 = meta?.Phone2, AddressLine = meta?.AddressLine, City = meta?.City, State = meta?.State, ZipCode = meta?.ZipCode, UpdatedUtc = DateTime.SpecifyKind(p.UpdatedUtc, DateTimeKind.Utc), CanRestore = restorable.Contains(p.Id), Archived = closed.Contains(p.Id.ToString()) || closed.Contains(p.ClientUserId) || CrmArchiveScope.ArchivedStatus(p.CrmStatus) };
         }).ToList();
         var leads = await db.WorkstationLeadProfiles.AsNoTracking()
             .Where(l => l.AgentUserId.ToLower() == owner).ToListAsync(ct);
@@ -98,6 +101,7 @@ public sealed record MobileCrmRecord(string Id, string Kind, string? ProfileId, 
     public string? ZipCode { get; init; }
     public DateTime UpdatedUtc { get; init; }
     public bool Archived { get; init; }
+    public bool CanRestore { get; init; }
 }
 public sealed record MobileCrmAppointment(Guid Id, DateTime StartUtc, DateTime? EndUtc, string Status,
     string Kind, string? RecordId, string DisplayName, string? MeetingUrl, DateTime UpdatedUtc);

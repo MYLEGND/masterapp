@@ -130,7 +130,7 @@ final class LegendLaunchCacheTests: XCTestCase {
         XCTAssertEqual(coordinator.state, .loading)
     }
 
-    func testNinetyDayCheckpointClearsTheStoredSessionAndRequiresInteractiveSignIn() throws {
+    func testNinetyDayCheckpointRetainsAccountButClearsLaunchAccessAndRequiresInteractiveSignIn() throws {
         let store = MutableTokenStore(tokens: OAuthTokenSet(
             accessToken: "access",
             refreshToken: "refresh",
@@ -154,7 +154,7 @@ final class LegendLaunchCacheTests: XCTestCase {
         coordinator.restore()
 
         XCTAssertEqual(coordinator.state, .signedOut)
-        XCTAssertNil(try store.read())
+        XCTAssertEqual(try store.read()?.requiresInteractiveSignIn, true)
         XCTAssertNil(cache.readSession())
     }
 

@@ -1884,6 +1884,39 @@ public sealed class SocialFeedServiceTests
         Assert.Empty(db.SocialPostComments);
     }
 
+    [Fact]
+    public async Task ProfileNetwork_UsesApprovedFollowersAndRevokesPrivateAccessImmediately()
+    {
+        using var db = ControllerTestHelpers.BuildDb();
+        var owner = Client("network-owner", "Owner", "Member");
+        var viewer = Client("network-viewer", "Viewer", "Member");
+        db.ClientProfiles.AddRange(owner, viewer);
+        var privacy = new MobileProfileSettings { ProfileId = owner.Id, ParticipantType = MessagingParticipantTypes.Client, IsPrivate = false };
+        db.MobileProfileSettings.Add(privacy);
+        await db.SaveChangesAsync();
+        var service = CreateService(db);
+        var actor = ClientActor(viewer);
+        var target = new SocialAuthor(owner.ClientUserId, MessagingParticipantTypes.Client, owner.Id, "Owner");
+        Assert.True((await service.GetProfileFollowListAsync(actor, target, SocialFollowListKinds.Followers)).Succeeded);
+        privacy.IsPrivate = true;
+        var follow = new SocialFollow { Id = Guid.NewGuid(), FollowerUserId = viewer.ClientUserId,
+            FollowerParticipantType = MessagingParticipantTypes.Client, FollowedUserId = owner.ClientUserId,
+            FollowedParticipantType = MessagingParticipantTypes.Client, Status = SocialFollowStatuses.Pending, CreatedUtc = DateTime.UtcNow };
+        db.SocialFollows.Add(follow);
+        await db.SaveChangesAsync();
+        foreach (var kind in new[] { SocialFollowListKinds.Followers, SocialFollowListKinds.Follows })
+            Assert.Equal("social_profile_forbidden", (await service.GetProfileFollowListAsync(actor, target, kind)).ErrorCode);
+        follow.Status = SocialFollowStatuses.Accepted;
+        await db.SaveChangesAsync();
+        Assert.True((await service.GetProfileFollowListAsync(actor, target, SocialFollowListKinds.Followers)).Succeeded);
+        Assert.True((await service.GetProfileMetricsAsync(actor, target)).Succeeded);
+        db.SocialFollows.Remove(follow);
+        await db.SaveChangesAsync();
+        Assert.Equal("social_profile_forbidden", (await service.GetProfileFollowListAsync(actor, target, SocialFollowListKinds.Follows)).ErrorCode);
+        Assert.Equal("social_profile_forbidden", (await service.GetProfileMetricsAsync(actor, target)).ErrorCode);
+        Assert.True((await service.GetCurrentProfileFollowListAsync(ClientActor(owner), SocialFollowListKinds.Followers)).Succeeded);
+    }
+
     private static SocialFeedService CreateService(
         Infrastructure.Data.MasterAppDbContext db,
         ISocialMediaStorage? mediaStorage = null,

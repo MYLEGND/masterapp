@@ -1,5 +1,6 @@
 using System;
 using System.Threading.Tasks;
+using Microsoft.Extensions.DependencyInjection;
 using AgentPortal.Controllers;
 using AgentPortal.Models;
 using AgentPortal.Services;
@@ -16,6 +17,55 @@ namespace AgentPortal.Tests;
 
 public sealed class MobileCrmManagementTests
 {
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    [InlineData(null)]
+    public void ContactValidation_AllowsMissingOptionalEmail(string? email)
+    {
+        var input = new CrmContactUpdate { FirstName = "Contact", Email = email, UpdatedUtc = DateTime.UtcNow };
+        Assert.Null(input.Email);
+        Assert.True(System.ComponentModel.DataAnnotations.Validator.TryValidateObject(input,
+            new System.ComponentModel.DataAnnotations.ValidationContext(input),
+            new System.Collections.Generic.List<System.ComponentModel.DataAnnotations.ValidationResult>(), true));
+    }
+
+    [Fact]
+    public async Task MobileContactSave_UsesResolvedAgentAndRoundTripsTheFullCanonicalContact()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        db.AgentProfiles.Add(new AgentProfile { Id = Guid.NewGuid(), AgentUserId = "agent-a", IsActive = true });
+        var profile = new ClientProfile { Id = Guid.NewGuid(), ClientUserId = "crm-lead-contact", FirstName = "Before",
+            Email = "before@example.com", NormalizedEmail = "before@example.com", UpdatedUtc = DateTime.UtcNow };
+        db.ClientProfiles.Add(profile);
+        db.AgentClients.Add(new AgentClient { AgentUserId = "agent-a", ClientUserId = profile.ClientUserId });
+        await db.SaveChangesAsync();
+        var writer = ControllerTestHelpers.BuildClientsController(db, Mock.Of<IExecutionEngine>(), Mock.Of<ICommitmentService>(), ControllerTestHelpers.BuildUser("different-web-context"));
+        writer.ObjectValidator = Mock.Of<IObjectModelValidator>();
+        using var services = new ServiceCollection().AddSingleton(writer).BuildServiceProvider();
+        var http = new Microsoft.AspNetCore.Http.DefaultHttpContext { User = ControllerTestHelpers.BuildUser("agent-a"), RequestServices = services };
+        http.Request.Headers[AgentPortal.Mobile.MobileApiAuthorization.ParticipantTypeHeader] = "Agent";
+        var service = new MobileAgentCrmService(db);
+        var controller = new AgentPortal.Mobile.MobileAgentCrmController(new MobileActorResolver(db,
+            Microsoft.Extensions.Logging.Abstractions.NullLogger<MobileActorResolver>.Instance), service) {
+            ControllerContext = new ControllerContext { HttpContext = http }
+        };
+        var input = new CrmContactUpdate { FirstName = "Saved", LastName = "Contact", Email = "saved@example.com",
+            Phone = "6025550101", Phone2 = "6025550102", AddressLine = "123 Main Street", City = "Phoenix", State = "AZ", ZipCode = "85001", UpdatedUtc = profile.UpdatedUtc };
+        Assert.IsType<JsonResult>(await controller.Contact("clients", profile.Id.ToString(), input, default));
+        db.ChangeTracker.Clear();
+        var record = await service.RecordAsync(new MobileResolvedActor(new MessagingActor("agent-a", MessagingParticipantTypes.Agent), Guid.NewGuid(), "Agent"), "clients", profile.Id.ToString(), default);
+        Assert.Equal("Saved Contact", record!.DisplayName);
+        Assert.Equal("saved@example.com", record.Email);
+        Assert.Equal("6025550101", record.Phone);
+        Assert.Equal("6025550102", record.Phone2);
+        Assert.Equal("123 Main Street", record.AddressLine);
+        Assert.Equal("Phoenix", record.City);
+        Assert.Equal("AZ", record.State);
+        Assert.Equal("85001", record.ZipCode);
+        Assert.IsType<ConflictObjectResult>(await controller.Contact("clients", profile.Id.ToString(), input, default));
+    }
+
     [Fact]
     public async Task ContactEdits_UpdateCanonicalProfile_PreserveWorkflow_AndRejectStaleOrUnownedWrites()
     {

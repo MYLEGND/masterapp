@@ -17,6 +17,47 @@ namespace AgentPortal.Tests;
 
 public sealed class FounderAccountRemovalServiceTests
 {
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task Restore_PreservesOriginalClientAndRequiresAssignedAgentOrFounder(bool founder)
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var profile = new ClientProfile { Id = Guid.NewGuid(), ClientUserId = "saved-client", FirstName = "Original", LastName = "Contact", Email = "saved@example.test", Phone = "555-0101" };
+        var lifecycle = new AccountLifecycleRecord { ProfileId = profile.Id, UserId = profile.ClientUserId, ParticipantType = MessagingParticipantTypes.Client, State = AccountLifecycleStates.Closed, RetainClientContact = true, ClosedUtc = DateTime.UtcNow };
+        db.AddRange(profile, lifecycle, new AgentClient { AgentUserId = "owner", ClientUserId = profile.ClientUserId });
+        await db.SaveChangesAsync();
+        var entra = new Mock<IClientEntraLifecycleService>(MockBehavior.Strict);
+        entra.Setup(x => x.RestoreClientApplicationAccessAsync(profile.Id, It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
+        var service = new FounderAccountRemovalService(db, Mock.Of<IAccountLifecycleService>(MockBehavior.Strict), Mock.Of<IAccountClosureService>(MockBehavior.Strict), NullLogger<FounderAccountRemovalService>.Instance, entra.Object);
+        var forbidden = await service.RestoreAssignedClientAsync(profile.Id, "another-agent");
+        Assert.False(forbidden.Succeeded);
+        Assert.Equal(AccountLifecycleStates.Closed, lifecycle.State);
+        var result = founder ? await service.RestoreAsync(new FounderAccountRemovalCommand(profile.Id, MessagingParticipantTypes.Client, "founder")) : await service.RestoreAssignedClientAsync(profile.Id, "OWNER");
+        Assert.True(result.Succeeded);
+        Assert.Equal(AccountLifecycleStates.Active, lifecycle.State);
+        Assert.Null(lifecycle.ClosureLeaseId);
+        Assert.Equal("Original", profile.FirstName);
+        Assert.Equal("saved@example.test", profile.Email);
+        Assert.Single(await db.ClientProfiles.ToListAsync());
+        Assert.Single(await db.AgentClients.ToListAsync());
+        entra.VerifyAll();
+    }
+
+    [Theory]
+    [InlineData(false, "Closed", false)]
+    [InlineData(true, "DeletionRequested", false)]
+    [InlineData(true, "Closed", true)]
+    public async Task Restore_RejectsErasedPendingAndBusyAccounts(bool retained, string state, bool busy)
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var id = Guid.NewGuid();
+        db.AccountLifecycleRecords.Add(new AccountLifecycleRecord { ProfileId = id, UserId = "client", ParticipantType = MessagingParticipantTypes.Client, State = state, RetainClientContact = retained, ClosureLeaseExpiresUtc = busy ? DateTime.UtcNow.AddMinutes(5) : null });
+        await db.SaveChangesAsync();
+        var service = new FounderAccountRemovalService(db, Mock.Of<IAccountLifecycleService>(MockBehavior.Strict), Mock.Of<IAccountClosureService>(MockBehavior.Strict), NullLogger<FounderAccountRemovalService>.Instance, Mock.Of<IClientEntraLifecycleService>(MockBehavior.Strict));
+        Assert.False((await service.RestoreAsync(new FounderAccountRemovalCommand(id, MessagingParticipantTypes.Client, "founder"))).Succeeded);
+    }
+
     [Fact]
     public async Task Directory_IncludesUnsubscribedClientsAndInactiveAgentsWithoutChangingPublicEligibility()
     {
@@ -107,6 +148,7 @@ public sealed class FounderAccountRemovalServiceTests
         Assert.True(result.Completed);
         var record = await db.AccountLifecycleRecords.SingleAsync();
         Assert.Equal(AccountLifecycleStates.DeletionRequested, record.State);
+        Assert.True(record.RetainClientContact);
         Assert.Equal(record.Id, executedRecordId);
         Assert.Contains(await db.AccountLifecycleAuditEntries.ToArrayAsync(), entry =>
             entry.AccountLifecycleRecordId == record.Id &&
@@ -409,10 +451,10 @@ public sealed class FounderAccountRemovalServiceTests
         await db.Database.ExecuteSqlInterpolatedAsync($"""
             INSERT INTO "AccountLifecycleRecords" (
                 "Id", "UserId", "ParticipantType", "ProfileId", "State",
-                "ClosedUtc", "ClosureAttemptCount", "CreatedUtc", "UpdatedUtc", "RowVersion")
+                "ClosedUtc", "ClosureAttemptCount", "CreatedUtc", "UpdatedUtc", "RowVersion", "RetainClientContact")
             VALUES (
                 {lifecycleId}, {profile.ExternalIdentityObjectId!}, {MessagingParticipantTypes.Client}, {profile.Id}, {AccountLifecycleStates.Closed},
-                {now}, {0}, {now}, {now}, X'01')
+                {now}, {0}, {now}, {now}, X'01', {false})
             """);
         db.ChangeTracker.Clear();
 

@@ -43,9 +43,9 @@ struct OAuthAuthorizationRequest: Sendable {
             URLQueryItem(name: "scope", value: scope),
             URLQueryItem(name: "state", value: state),
 
-            // Microsoft must explicitly display its account chooser. Without this,
-            // an existing browser session may silently lock Legend to the last account.
-            URLQueryItem(name: "prompt", value: "select_account"),
+            // An interactive login starts a new retention period. Browser SSO
+            // alone must not reset that security checkpoint.
+            URLQueryItem(name: "prompt", value: "login"),
 
             URLQueryItem(name: "code_challenge", value: pkce.challenge),
             URLQueryItem(name: "code_challenge_method", value: "S256")

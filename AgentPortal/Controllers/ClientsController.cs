@@ -6013,6 +6013,11 @@ namespace AgentPortal.Controllers;
     {
         string agentOid;
         try { agentOid = GetAgentOidOrThrow(); } catch { return Challenge(); }
+        return await SaveContactForAgentAsync(agentOid, clientUserId, request);
+    }
+
+    internal async Task<IActionResult> SaveContactForAgentAsync(string agentOid, string clientUserId, CrmContactUpdate request)
+    {
         if (!TryValidateModel(request)) return BadRequest(ModelState);
         var profile = await GetOwnedClientProfileAsync(agentOid, clientUserId);
         if (profile is null) return NotFound();
@@ -6371,6 +6376,38 @@ namespace AgentPortal.Controllers;
             ok = true,
             updatedCount = profiles.Count
         });
+    }
+
+    [HttpGet]
+    public async Task<IActionResult> Archive(CancellationToken ct)
+    {
+        string owner;
+        try { owner = NormLower(GetAgentOidOrThrow()); } catch { return Challenge(); }
+        var founder = FounderGuard.IsFounder(User);
+        var profiles = await _db.ClientProfiles.AsNoTracking().Where(p =>
+            (founder || _db.AgentClients.Any(a => a.AgentUserId.ToLower() == owner && a.ClientUserId.ToLower() == p.ClientUserId.ToLower())) &&
+            _db.AccountLifecycleRecords.Any(r => r.ProfileId == p.Id && r.ParticipantType == MessagingParticipantTypes.Client &&
+                (r.State == Domain.Accounts.AccountLifecycleStates.Closed || r.State == Domain.Accounts.AccountLifecycleStates.DeletionRequested)))
+            .OrderBy(p => p.LastName).ThenBy(p => p.FirstName).ToListAsync(ct);
+        ViewData["RestorableClientIds"] = (await _db.AccountLifecycleRecords.AsNoTracking()
+            .Where(r => r.RetainClientContact && r.State == Domain.Accounts.AccountLifecycleStates.Closed && r.ParticipantType == MessagingParticipantTypes.Client)
+            .Select(r => r.ProfileId).ToListAsync(ct)).ToHashSet();
+        return View(profiles);
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> Restore(Guid profileId, CancellationToken ct)
+    {
+        string owner;
+        try { owner = GetAgentOidOrThrow(); } catch { return Challenge(); }
+        var service = HttpContext.RequestServices.GetRequiredService<IFounderAccountRemovalService>();
+        var result = FounderGuard.IsFounder(User)
+            ? await service.RestoreAsync(new FounderAccountRemovalCommand(profileId, MessagingParticipantTypes.Client,
+                User.FindFirstValue("oid") ?? owner, HttpContext.TraceIdentifier), ct)
+            : await service.RestoreAssignedClientAsync(profileId, owner, ct);
+        TempData["Created"] = result.Message;
+        return RedirectToAction(nameof(Archive));
     }
 
     // =====================================================================
