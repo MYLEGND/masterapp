@@ -12,6 +12,12 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Verified
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.getValue
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.ui.composed
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
@@ -56,14 +62,7 @@ fun LegendContactCard(
     avatar: @Composable () -> Unit,
     action: @Composable () -> Unit,
 ) {
-    val interactionModifier = when {
-        onClick != null && onLongClick != null -> modifier.combinedClickable(
-            onClick = onClick,
-            onLongClick = onLongClick,
-        )
-        onClick != null -> modifier.clickable(onClick = onClick)
-        else -> modifier
-    }
+    val interactionModifier = if (onClick != null) modifier.legendPressClickable(onClick, onLongClick) else modifier
     Surface(
         color = LegendColors.ContactNavy,
         shape = LegendShapes.Control,
@@ -154,4 +153,15 @@ fun LegendSectionPill(title: String, detail: String? = null, eyebrow: String? = 
             if (!detail.isNullOrBlank()) Text(legendLocalized(detail), style = LegendTypography.Supporting, color = LegendColors.OnNavy.copy(alpha = 0.72f))
         }
     }
+}
+
+/** Press feedback reads the same token resource as SwiftUI. */
+fun Modifier.legendPressClickable(onClick: () -> Unit, onLongClick: (() -> Unit)? = null): Modifier = composed {
+    val interactions = remember { MutableInteractionSource() }
+    val pressed by interactions.collectIsPressedAsState()
+    graphicsLayer {
+        scaleX = if (pressed) LegendDesignAuthority.opacity("pressedControlScale") else 1f
+        scaleY = scaleX
+        alpha = if (pressed) LegendDesignAuthority.opacity("pressedSurface") else 1f
+    }.combinedClickable(interactionSource = interactions, indication = null, onClick = onClick, onLongClick = onLongClick)
 }

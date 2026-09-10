@@ -34,7 +34,34 @@ class LegendFirebaseMessagingService : FirebaseMessagingService() {
             }.getOrNull() ?: return
             val platform = com.mylegnd.legend.registered.feature.calling.LegendCallPlatform
             if (platform.store != null) platform.store?.receivePush(call)
-            else platform.showPushIncoming(this, call)
+            else {
+                // Authenticate through the existing account authority before acknowledging
+                // a cold-start notification. FCM delivery alone is never a receipt.
+                kotlinx.coroutines.runBlocking {
+                    var transport: com.mylegnd.legend.registered.core.realtime.MobileMessagingRealtimeClient? = null
+                    try {
+                        kotlinx.coroutines.withTimeout(8_000) {
+                            val container = (application as? LegendApplication)?.container ?: return@withTimeout
+                            val session = container.sessionRepository.restore() as? com.mylegnd.legend.registered.core.session.SessionState.Authenticated ?: return@withTimeout
+                            transport = container.messagingRealtime(session.session.actor.identity.participantType)
+                            val device = getSharedPreferences("legend_calls", Context.MODE_PRIVATE).let { prefs ->
+                                prefs.getString("device", null) ?: java.util.UUID.randomUUID().toString().also { prefs.edit().putString("device", it).apply() }
+                            }
+                            val verified = transport?.call(com.mylegnd.legend.registered.feature.calling.LegendCallCommand("get", device, call.id))
+                            val snapshot = verified?.call ?: return@withTimeout
+                            val identity = session.session.actor.identity
+                            if (verified.succeeded && snapshot.status == "ringing" && snapshot.calleeType.equals(identity.participantType, true) &&
+                                (snapshot.calleeUserIds ?: listOf(snapshot.calleeUserId)).any { it.equals(identity.userId, true) } &&
+                                java.time.Instant.parse(snapshot.expiresUtc).isAfter(java.time.Instant.now())) {
+                                platform.showPushIncoming(this@LegendFirebaseMessagingService, snapshot)
+                                transport?.call(com.mylegnd.legend.registered.feature.calling.LegendCallCommand("received", device, snapshot.id))
+                            }
+                        }
+                    } catch (_: Exception) {
+                        // No confirmed receipt is sent if authentication or presentation fails.
+                    } finally { transport?.close() }
+                }
+            }
             return
         }
         // FCM and SignalR intentionally converge on one small server-issued

@@ -4,6 +4,7 @@ import android.app.*
 import android.content.*
 import android.content.pm.ServiceInfo
 import android.media.AudioManager
+import android.media.AudioAttributes
 import android.net.Uri
 import android.os.*
 import android.telecom.*
@@ -29,7 +30,9 @@ object LegendCallPlatform {
     fun register(context: Context) {
         val telecom = context.getSystemService(TelecomManager::class.java)
         telecom.registerPhoneAccount(PhoneAccount.builder(handle(context), "LEGEND®").setCapabilities(PhoneAccount.CAPABILITY_SELF_MANAGED).build())
-        context.getSystemService(NotificationManager::class.java).createNotificationChannel(NotificationChannel(CHANNEL, "Legend calls", NotificationManager.IMPORTANCE_HIGH).apply { description = "Incoming and ongoing Legend calls" })
+        context.getSystemService(NotificationManager::class.java).createNotificationChannel(NotificationChannel(CHANNEL, "Legend calls", NotificationManager.IMPORTANCE_HIGH).apply { description = "Incoming and ongoing Legend calls"
+            setSound(Uri.parse("android.resource://${context.packageName}/${R.raw.legend_incoming}"), AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_NOTIFICATION_RINGTONE).build())
+            enableVibration(true) })
     }
     fun incoming(context: Context, call: LegendCallSnapshot) {
         context.getSystemService(TelecomManager::class.java).addNewIncomingCall(handle(context), Bundle().apply { putString("legend_call_id", call.id) })
@@ -45,17 +48,23 @@ object LegendCallPlatform {
     fun showIncoming(context: Context) {
         val call = store?.state?.value?.call ?: return
         showPushIncoming(context, call)
+        store?.confirmIncomingPresentation(call.id)
     }
     fun showPushIncoming(context: Context, call: LegendCallSnapshot) {
         if (java.time.Instant.parse(call.expiresUtc).isBefore(java.time.Instant.now())) return
         register(context)
         val launch = PendingIntent.getActivity(context, 7043, Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
         val decline = PendingIntent.getBroadcast(context, 7044, Intent(context, LegendCallActionReceiver::class.java).setAction("end").putExtra("callId", call.id), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+        val manager = context.getSystemService(NotificationManager::class.java)
+        check(manager.areNotificationsEnabled() && manager.getNotificationChannel(CHANNEL)?.importance != NotificationManager.IMPORTANCE_NONE) {
+            "Enable Legend call notifications to receive incoming calls."
+        }
         val notification = NotificationCompat.Builder(context, CHANNEL).setSmallIcon(R.drawable.ic_legend_notification)
             .setContentTitle(call.callerName).setContentText("Incoming Legend® call").setCategory(NotificationCompat.CATEGORY_CALL)
             .setPriority(NotificationCompat.PRIORITY_MAX).setContentIntent(launch).setFullScreenIntent(launch, true)
-            .setOngoing(true).setTimeoutAfter(45_000).addAction(0, "Decline", decline).addAction(0, "Open call", launch).build()
-        context.getSystemService(NotificationManager::class.java).notify(NOTIFICATION, notification)
+            .setOngoing(true).setOnlyAlertOnce(true).setTimeoutAfter((java.time.Instant.parse(call.expiresUtc).toEpochMilli() - System.currentTimeMillis()).coerceAtLeast(1)).addAction(0, "Decline", decline).addAction(0, "Open call", launch).build()
+        notification.flags = notification.flags or Notification.FLAG_INSISTENT
+        manager.notify(NOTIFICATION, notification)
     }
     fun foreground(context: Context, video: Boolean) {
         context.startForegroundService(Intent(context, LegendCallForegroundService::class.java).putExtra("video", video))
@@ -89,7 +98,7 @@ class LegendConnectionService : ConnectionService() {
             setAddress(Uri.parse("legend:call"), TelecomManager.PRESENTATION_ALLOWED)
             setCallerDisplayName(store.state.value.name, TelecomManager.PRESENTATION_ALLOWED)
         }
-        override fun onShowIncomingCallUi() { LegendCallPlatform.showIncoming(this@LegendConnectionService) }
+        override fun onShowIncomingCallUi() { runCatching { LegendCallPlatform.showIncoming(this@LegendConnectionService) }.onFailure { store.platformFailed() } }
         override fun onAnswer() { store.requestSystemAnswer() }
         override fun onAnswer(videoState: Int) { store.requestSystemAnswer() }
         override fun onReject() { store.end() }

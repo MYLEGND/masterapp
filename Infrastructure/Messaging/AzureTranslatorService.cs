@@ -1,6 +1,8 @@
 using System.Net.Http.Json;
 using System.Net;
 using System.Text.Json;
+using System.Text;
+using System.Text.RegularExpressions;
 using Domain.Messaging;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
@@ -33,6 +35,11 @@ internal sealed class AzureTranslatorService : ITranslationProvider
 
     public string ProviderName => ProviderIdentifier;
     public string ProviderVersion => "text-api-v3.0";
+    public int RequestCharacterCount(string text)
+    {
+        var prepared = AzureProtectedText.Create(text);
+        return prepared.Literals.Count == 0 ? text.Length : prepared.Text.Length;
+    }
 
     public async Task<TranslationDetectionResult> DetectLanguageAsync(
         string text,
@@ -121,13 +128,15 @@ internal sealed class AzureTranslatorService : ITranslationProvider
         if (!TryGetConfiguration(out var endpoint, out var key, out var region))
             return new TranslationProviderResult(false, null, null, ProviderIdentifier, "translation_provider_unavailable");
 
+        var protectedText = AzureProtectedText.Create(text);
+        var useHtml = protectedText.Literals.Count > 0;
         var source = CommunicationLanguages.NormalizeOrNull(sourceLanguage);
-        var path = $"/translate?api-version=3.0&to={Uri.EscapeDataString(normalizedTarget)}" +
+        var path = $"/translate?api-version=3.0&textType={(useHtml ? "html" : "plain")}&to={Uri.EscapeDataString(normalizedTarget)}" +
                    (source is null ? string.Empty : $"&from={Uri.EscapeDataString(source)}");
         try
         {
             using var response = await SendWithBoundedRetryAsync(
-                () => CreateRequest(endpoint, path, key, region, text),
+                () => CreateRequest(endpoint, path, key, region, useHtml ? protectedText.Text : text),
                 cancellationToken);
             if (!response.IsSuccessStatusCode)
             {
@@ -151,7 +160,7 @@ internal sealed class AzureTranslatorService : ITranslationProvider
                 detected = CommunicationLanguages.NormalizeOrNull(detectedValue.GetString());
             }
 
-            var translated = translatedText.GetString()?.Trim();
+            var translated = useHtml ? protectedText.Restore(translatedText.GetString()) : translatedText.GetString();
             return string.IsNullOrWhiteSpace(translated)
                 ? new TranslationProviderResult(false, null, detected, ProviderIdentifier, "translation_provider_failed")
                 : new TranslationProviderResult(true, translated, detected, ProviderIdentifier);
@@ -180,27 +189,42 @@ internal sealed class AzureTranslatorService : ITranslationProvider
     {
         if (texts.Count == 0)
             return Array.Empty<TranslationProviderResult>();
-        if (texts.Count > 100 || texts.Sum(text => text?.Length ?? 0) > 50_000)
+        if (texts.Count > 100 || texts.Sum(RequestCharacterCount) > 50_000)
+            return BatchFailure(texts.Count, "translation_batch_invalid");
+
+        // HTML protection is needed only for literals. Keep plain labels in plain
+        // mode, preserving the existing ordinary-text transport contract.
+        // Each source is sent exactly once under the caller's aggregate reservation.
+        var results = new TranslationProviderResult[texts.Count];
+        foreach (var group in texts.Select((text, index) => (text, index))
+                     .GroupBy(item => AzureProtectedText.Create(item.text).Literals.Count > 0))
         {
-            return texts.Select(_ => new TranslationProviderResult(
-                false,
-                null,
-                null,
-                ProviderIdentifier,
-                "translation_batch_invalid")).ToArray();
+            var items = group.ToArray();
+            var translated = await TranslateBatchCoreAsync(items.Select(item => item.text).ToArray(),
+                targetLanguage, sourceLanguage, group.Key, cancellationToken);
+            for (var index = 0; index < items.Length; index++)
+                results[items[index].index] = translated[index];
         }
+        return results;
+    }
+
+    private async Task<IReadOnlyList<TranslationProviderResult>> TranslateBatchCoreAsync(
+        IReadOnlyList<string> texts, string targetLanguage, string? sourceLanguage,
+        bool useHtml, CancellationToken cancellationToken)
+    {
+        var protectedTexts = texts.Select(AzureProtectedText.Create).ToArray();
         if (!CommunicationLanguages.TryNormalize(targetLanguage, out var normalizedTarget))
             return BatchFailure(texts.Count, "translation_language_unsupported");
         if (!TryGetConfiguration(out var endpoint, out var key, out var region))
             return BatchFailure(texts.Count, "translation_provider_unavailable");
 
         var source = CommunicationLanguages.NormalizeOrNull(sourceLanguage);
-        var path = $"/translate?api-version=3.0&to={Uri.EscapeDataString(normalizedTarget)}" +
+        var path = $"/translate?api-version=3.0&textType={(useHtml ? "html" : "plain")}&to={Uri.EscapeDataString(normalizedTarget)}" +
                    (source is null ? string.Empty : $"&from={Uri.EscapeDataString(source)}");
         try
         {
             using var response = await SendWithBoundedRetryAsync(
-                () => CreateRequest(endpoint, path, key, region, texts),
+                () => CreateRequest(endpoint, path, key, region, useHtml ? protectedTexts.Select(text => text.Text).ToArray() : texts),
                 cancellationToken);
             if (!response.IsSuccessStatusCode)
             {
@@ -241,11 +265,13 @@ internal sealed class AzureTranslatorService : ITranslationProvider
                     continue;
                 }
 
+                var restored = useHtml ? protectedTexts[results.Count].Restore(translatedText.GetString()) : translatedText.GetString();
                 results.Add(new TranslationProviderResult(
-                    true,
-                    translatedText.GetString()!.Trim(),
+                    restored is not null,
+                    restored,
                     detected,
-                    ProviderIdentifier));
+                    ProviderIdentifier,
+                    restored is null ? "translation_output_invalid" : null));
             }
             return results;
         }
@@ -388,4 +414,41 @@ internal sealed class AzureTranslatorService : ITranslationProvider
         .ToArray();
 
     private sealed record AzureTextInput(string Text);
+}
+
+/// Azure's HTML notranslate contract protects executable template literals.
+/// The adapter restores the original plain-text contract before validation/storage.
+internal sealed record AzureProtectedText(string Text, IReadOnlyDictionary<string, string> Literals)
+{
+    private static readonly Regex Literal = new(@"\{[A-Za-z][A-Za-z0-9_]*\}|https://[^\s<>{}]+|</?[A-Za-z][^>]*>|\r?\n", RegexOptions.CultureInvariant);
+    private static readonly Regex Wrapper = new(@"</?(?:span|div)(?:\s+[^>]*)?>", RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
+    internal static AzureProtectedText Create(string source)
+    {
+        var literals = new Dictionary<string, string>(StringComparer.Ordinal);
+        var html = new StringBuilder("<div>");
+        var offset = 0;
+        foreach (Match match in Literal.Matches(source))
+        {
+            html.Append(WebUtility.HtmlEncode(source[offset..match.Index]));
+            var index = literals.Count;
+            string key;
+            do { key = $"__legend_literal_{index++}__"; } while (source.Contains(key, StringComparison.Ordinal) || literals.ContainsKey(key));
+            literals[key] = match.Value;
+            html.Append("<span class=\"notranslate\">").Append(key).Append("</span>");
+            offset = match.Index + match.Length;
+        }
+        html.Append(WebUtility.HtmlEncode(source[offset..])).Append("</div>");
+        return new(html.ToString(), literals);
+    }
+    internal string? Restore(string? translated)
+    {
+        if (string.IsNullOrWhiteSpace(translated)) return null;
+        var restored = WebUtility.HtmlDecode(Wrapper.Replace(translated, string.Empty));
+        foreach (var (key, value) in Literals)
+        {
+            if (restored.Split(key, StringSplitOptions.None).Length != 2) return null;
+            restored = restored.Replace(key, value, StringComparison.Ordinal);
+        }
+        return restored;
+    }
 }

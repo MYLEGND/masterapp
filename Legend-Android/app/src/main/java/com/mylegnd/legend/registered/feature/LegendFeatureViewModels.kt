@@ -308,12 +308,22 @@ class MessagingViewModel(private val repository: MessagingRepository, private va
         }
     }
 
-    fun loadRecipients(search: String? = null, scope: String? = null) = viewModelScope.launch {
+    private var recipientSearchJob: Job? = null
+    private var recipientSearchGeneration = 0L
+    fun loadRecipients(search: String? = null, scope: String? = null) {
+        recipientSearchJob?.cancel()
+        val generation = ++recipientSearchGeneration
         _recipients.value = LoadState.Loading
-        _recipients.value = repository.recipients(role, search, scope)
+        recipientSearchJob = viewModelScope.launch {
+            if (!search.isNullOrBlank()) kotlinx.coroutines.delay(250)
+            val result = repository.recipients(role, search, scope)
+            ensureActive()
+            if (generation == recipientSearchGeneration) _recipients.value = result
+        }
     }
 
     fun startConversation(recipient: MessagingRecipient, opened: (String) -> Unit) = viewModelScope.launch {
+        if (_isSending.value) return@launch
         _isSending.value = true
         val openedConversationId: String?
         try {

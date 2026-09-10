@@ -66,6 +66,7 @@
     "disabledControl": 0.48,
     "pressedControl": 0.88,
     "pressedSurface": 0.86,
+    "callControlSurface": 0.16,
     "pressedControlScale": 0.975,
     "pressedIconScale": 0.94
   },
@@ -99,6 +100,7 @@
   },
   "sizes": {
     "minimumTapTarget": 44,
+    "callControl": 54,
     "compactControlHeight": 36,
     "controlHeight": 46,
     "prominentControlHeight": 50,
@@ -217,6 +219,12 @@
     "accountDeletion": "Request account deletion"
   },
   "copy": {
+    "localization.updating": "Updating your language…",
+    "localization.unavailable": "Some text could not be translated. Your language preference is saved.",
+    "search.messaging": "Search people and conversations",
+    "search.people": "Search people",
+    "search.connections": "Search connections",
+    "search.groupMembers": "Search group members",
     "tab.home": "Home",
     "tab.clients": "Clients",
     "tab.discover": "Discover",

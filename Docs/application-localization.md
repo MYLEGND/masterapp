@@ -1,0 +1,15 @@
+# Application localization
+
+The account's canonical `MobileProfileSettings.PreferredCommunicationLanguage` and enabled `LegendLanguageDefinitions` are the language authorities. Native and authenticated web catalogs use `IApplicationLocalizationService`; callers cannot supply a different actor or target language through catalog query parameters.
+
+`Legend-Design/legend-application-copy.json` is generated from native, server-marked, and static authenticated Razor copy. Stable source IDs, source revisions, context, placeholder contracts and global scope flow through `IRetainedTranslationService` and the existing `LegendConnectTranslationRouter`. Azure output is validated and retained in the existing translation alignment/text-unit store. Different users and platforms reuse those same entries. No additional provider, preference store, translation table, or language-specific dictionary was introduced.
+
+Azure Translator's resource ID must be configured alongside its endpoint, key and region. The production deployment resolves the existing resource ID from Azure. The app identity already has Reader access to that resource; the SKU, rolling capacity and monthly allowance remain authoritative. Capacity failures cannot be overridden by native clients.
+
+Placeholders, markup, URLs and line breaks are protected using [Azure's documented HTML notranslate mechanism](https://learn.microsoft.com/en-us/azure/ai-services/translator/text-translation/how-to/prevent-translation). The provider adapter restores the original plain-text template before validation and storage. Ordinary labels use plain-text transport; protected templates use HTML transport. Mixed batches partition those two formats without translating any source twice, and request capacity includes the total encoded payload. Missing or duplicated protected literals are rejected.
+
+Catalog requests fill at most one missing provider batch while reusing all available retained entries. Clients continue pending work, show progress, and retain per-entry source fallback if a provider or capacity failure occurs. An app/catalog version difference does not discard compatible entries: source, revision, context and placeholders must still match. Observable native presentation updates labels without recreating navigation or calls. Web uses the same catalog for existing and dynamically inserted interface copy; form values, marked user content and message bodies are excluded.
+
+The existing ApprovedOnly policy remains in force. Five entries in the current manifest require approved translations and retain source copy until that approval exists. This is separate from ordinary Azure-translatable interface copy.
+
+Validation includes every enabled registry language, durable reuse across actors, provider literal preservation, stale/source-mismatch rejection, web actor authorization, native tests, and DOM checks of language switching, dynamic text, accessibility, input preservation and excluded message bodies. Live Azure and device acceptance results are recorded separately from these automated checks.

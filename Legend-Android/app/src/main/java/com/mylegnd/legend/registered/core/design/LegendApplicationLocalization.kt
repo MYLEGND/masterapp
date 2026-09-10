@@ -3,6 +3,7 @@ package com.mylegnd.legend.registered.core.design
 import android.content.Context
 import com.mylegnd.legend.registered.core.auth.SecureSessionStore
 import com.mylegnd.legend.registered.core.model.ApplicationLocalizationCatalog
+import com.mylegnd.legend.registered.core.model.ApplicationLocalizedCopy
 import com.mylegnd.legend.registered.data.ApplicationLocalizationRepository
 import com.mylegnd.legend.registered.data.LoadState
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -11,7 +12,9 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import java.util.Locale
-import java.util.concurrent.atomic.AtomicReference
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.snapshots.Snapshot
+import kotlinx.coroutines.delay
 
 data class LegendLocalizationState(
     val actorKey: String? = null,
@@ -19,6 +22,7 @@ data class LegendLocalizationState(
     val locale: Locale = Locale.ENGLISH,
     val revision: Long = 0,
     val isReady: Boolean = false,
+    val status: String? = null,
 )
 
 /**
@@ -36,6 +40,7 @@ class LegendApplicationLocalization(
     private val sourceCatalog = context.assets.open("legend-application-copy.json")
         .bufferedReader()
         .use { json.decodeFromString(BundledApplicationCopyManifest.serializer(), it.readText()) }
+    private var requestGeneration = 0L
     private val _state = MutableStateFlow(LegendLocalizationState())
     val state: StateFlow<LegendLocalizationState> = _state.asStateFlow()
 
@@ -53,6 +58,7 @@ class LegendApplicationLocalization(
         participantType: String,
         preferredLanguageCode: String?,
     ) {
+        val generation = ++requestGeneration
         val cached = cache.localizationCatalog(actorKey)
         if (cached != null && cached.isPresentable() &&
             (preferredLanguageCode.isNullOrBlank() ||
@@ -61,50 +67,58 @@ class LegendApplicationLocalization(
         }
 
         // Never block the authenticated shell on network/provider latency.
-        // A complete source catalog is installed atomically until the complete
-        // preferred-language catalog is available for a single state swap.
+        // A complete source catalog is installed atomically until validated
+        // preferred-language entries are available for a single state swap.
         if (_state.value.actorKey != actorKey) {
             installSource(actorKey)
         }
 
-        when (val result = repository.catalog(participantType)) {
-            is LoadState.Data -> {
-                val catalog = result.value
-                if (
-                    catalog.isPresentable() &&
-                    (preferredLanguageCode.isNullOrBlank() ||
-                        catalog.languageCode.equals(preferredLanguageCode, ignoreCase = true))
-                ) {
-                    apply(actorKey, catalog)
-                    cache.writeLocalizationCatalog(actorKey, catalog)
-                    return
-                }
-            }
-            else -> Unit
-        }
-
-        // Cached or packaged source copy already provides the fail-safe.
+        fetchCatalog(actorKey, participantType, generation)
     }
 
     suspend fun refresh(actorKey: String, participantType: String) {
-        when (val result = repository.catalog(participantType)) {
-            is LoadState.Data -> {
-                if (!result.value.isPresentable()) return
-                apply(actorKey, result.value)
-                cache.writeLocalizationCatalog(actorKey, result.value)
+        fetchCatalog(actorKey, participantType, ++requestGeneration)
+    }
+
+    private suspend fun fetchCatalog(actorKey: String, participantType: String, generation: Long) {
+        repeat(60) { attempt ->
+            if (generation != requestGeneration) return
+            when (val result = repository.catalog(participantType)) {
+                is LoadState.Data -> {
+                    if (generation != requestGeneration) return
+                    if (!result.value.isPresentable()) {
+                        _state.value = _state.value.copy(status = LegendDesignAuthority.copy("localization.unavailable"))
+                        return
+                    }
+                    apply(actorKey, result.value)
+                    cache.writeLocalizationCatalog(actorKey, result.value)
+                    val blocked = result.value.entries.any { it.failureCode != null && it.failureCode !in setOf("translation_pending", "approved_translation_unavailable", "translation_output_invalid", "translation_provider_failed") }
+                    if (!blocked && result.value.entries.any { it.failureCode == "translation_pending" }) {
+                        _state.value = _state.value.copy(status = LegendDesignAuthority.copy("localization.updating"))
+                        delay(1_000)
+                    } else {
+                        _state.value = _state.value.copy(status = if (result.value.entries.any { it.failureCode != null && it.failureCode != "approved_translation_unavailable" }) LegendDesignAuthority.copy("localization.unavailable") else null)
+                        return
+                    }
+                }
+                else -> {
+                    if (generation != requestGeneration) return
+                    if (attempt < 2) delay(2_000) else {
+                        _state.value = _state.value.copy(status = LegendDesignAuthority.copy("localization.unavailable"))
+                        return
+                    }
+                }
             }
-            else -> Unit
         }
+        if (generation == requestGeneration) _state.value = _state.value.copy(status = LegendDesignAuthority.copy("localization.unavailable"))
     }
 
     private fun ApplicationLocalizationCatalog.isPresentable(): Boolean =
-        catalogVersion == sourceCatalog.catalogVersion &&
-            entries.map { it.id }.toSet() == sourceCatalog.entries.map { it.id }.toSet() &&
-            entries.none { entry ->
-                entry.failureCode != null && entry.failureCode != "approved_translation_unavailable"
-            }
+        sourceLanguageCode == sourceCatalog.sourceLanguageCode && languageCode.isNotBlank() &&
+            entries.isNotEmpty() && entries.map { it.id }.toSet().size == entries.size
 
     fun clearPresentation() {
+        requestGeneration++
         installSource(actorKey = null)
     }
 
@@ -113,7 +127,7 @@ class LegendApplicationLocalization(
         val translations = sourceCatalog.entries.associate { source ->
             val translated = byId[source.id]
             LegendLocalizationKey(source.source, source.context) to
-                (translated?.text?.takeIf(String::isNotBlank) ?: source.source)
+                (translated?.validatedText(source.source, source.context, source.sourceRevision, source.placeholders) ?: source.source)
         }
         install(translations, catalog.locale, actorKey)
     }
@@ -160,6 +174,8 @@ class LegendApplicationLocalization(
         val id: String,
         val source: String,
         val context: String,
+        val sourceRevision: String,
+        val placeholders: List<String>,
     )
 }
 
@@ -168,21 +184,23 @@ data class LegendLocalizationKey(val source: String, val context: String)
 object LegendLocalizationRuntime {
     const val VisualContext = "visual interface copy"
     const val AccessibilityContext = "accessibility copy"
-    private val translations = AtomicReference<Map<LegendLocalizationKey, String>>(emptyMap())
-    private val activeLocale = AtomicReference(Locale.ENGLISH)
+    private val translations = mutableStateOf<Map<LegendLocalizationKey, String>>(emptyMap())
+    private val activeLocale = mutableStateOf(Locale.ENGLISH)
 
     @Synchronized
     fun install(values: Map<LegendLocalizationKey, String>, locale: Locale): Boolean {
-        if (translations.get() == values && activeLocale.get() == locale) return false
-        translations.set(values.toMap())
-        activeLocale.set(locale)
+        if (translations.value == values && activeLocale.value == locale) return false
+        Snapshot.withMutableSnapshot {
+            translations.value = values.toMap()
+            activeLocale.value = locale
+        }
         return true
     }
 
     fun text(source: String, context: String = VisualContext): String =
-        translations.get()[LegendLocalizationKey(source, context)] ?: source
+        translations.value[LegendLocalizationKey(source, context)] ?: source
 
-    fun locale(): Locale = activeLocale.get()
+    fun locale(): Locale = activeLocale.value
 }
 
 fun legendLocalized(
@@ -203,3 +221,8 @@ fun legendLocalized(
     context: String,
     arguments: Map<String, Any>,
 ): String = legendLocalized(source, arguments, context)
+
+/** A release may add copy without invalidating unchanged retained translations. */
+fun ApplicationLocalizedCopy.validatedText(source: String, context: String, revision: String, placeholders: List<String>): String? =
+    text.takeIf { failureCode == null && this.source == source && this.context == context &&
+        sourceRevision == revision && this.placeholders.sorted() == placeholders.sorted() && it.isNotBlank() }

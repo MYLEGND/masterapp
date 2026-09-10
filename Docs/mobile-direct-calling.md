@@ -13,6 +13,10 @@ Release status: backend release authorized; native distribution requires new sig
 
 ## Native behavior
 
+- Inbox search filters existing conversations and opens the same server-authorized profile directory used by message and call pickers. Calling a searched profile resolves or creates the canonical direct conversation; there is no separate call directory or client-side identity authority.
+- Recipient, group-member and host selection expose search near the top. Android cancels superseded searches and rejects stale results; repeated conversation starts are guarded.
+- Native search controls and call controls consume `Legend-Design/legend-design.tokens.json`, including pressed feedback, selected colors, and call-control size. Android maps Material theme containers and selection colors to this shared palette.
+
 - iOS uses CallKit, PushKit and the system audio session. Android uses a self-managed Telecom connection, foreground call service and incoming-call notifications.
 - Microphone and camera access require user permission. Camera capture pauses in the background; an accepted audio call can continue under the native call lifecycle.
 - Voice/video controls include mute, speaker, camera, camera switch, an explicit one-frame snapshot/share action, and end/decline. Ending or switching accounts immediately releases media; teardown uses only the old authenticated connection.
@@ -38,3 +42,21 @@ Release status: backend release authorized; native distribution requires new sig
 Automated coverage includes backend authorization, legacy identity aliases, relational answer concurrency, call expiration, bounded signaling, push payloads, native WebRTC peer connection/renegotiation, and the existing mobile/backend regression suites. Simulator peer tests do not establish physical-device cross-platform or carrier-network reliability.
 
 The legacy backend contact-address endpoint remains available for already-published clients. New mobile builds no longer use it for calling. Web messaging continues using the shared messaging authority; this change adds native calling UI, not a browser calling interface.
+
+## iOS archive symbols
+
+The WebRTC 152.0.0 Swift package omits debug symbols. Its publisher distributes them separately as `WebRTC-M152-dSYM.zip`. The shared Legend scheme prepares that checksum-pinned download in the local Library cache before archiving. An archive-only build phase verifies the embedded framework and publisher dSYM have identical UUIDs, then includes the dSYM in the archive. Build-script sandboxing stays enabled; no signing settings change.
+
+The first archive needs network access for the approximately 389 MiB download; subsequent archives use the cached symbols. A package upgrade must update the publisher symbol version/checksum and cache path together. Missing or mismatched symbols fail the archive rather than silently producing another incomplete upload. Generate the project from `Legend-ios/project.yml` to retain the shared archive action.
+
+## Confirmed delivery and ringing
+
+`ReceivedUtc` in the existing `LegendCallSessions` row is the single delivery acknowledgement for all clients. Only the authorized recipient may send `received`, after native incoming-call presentation succeeds. Push dispatch and SignalR sends do not count as receipt. Repeated receipts are idempotent, do not extend expiry, and do not claim the answering device. The shared snapshot supplies terminal failure text distinguishing an unconfirmed delivery from an unanswered or declined call.
+
+Both platforms display the outgoing screen immediately. Before receipt it says Calling and explains that it is waiting for the recipient’s device. After receipt it says Ringing and plays the shared ringback asset. iOS CallKit and Android’s call notification channel use the shared incoming sound; system volume, silent mode, notification permission, and Do Not Disturb remain respected. No app can guarantee that a person heard a sound. Sound sources live once in `SHARED/Calling/Resources/raw` and are packaged by both platform builds.
+
+Both active clients reconcile against the existing authorized `get` action every three seconds, so a missed lifecycle event cannot leave an indefinite stale screen. Network/status failures are visible. Local cancellation retires the call ID, stops sounds and media, and rejects late responses. iOS fulfills the local CallKit start action before waiting for the invite network round trip. Incoming presentation failure on one device does not decline other devices on the receiving account.
+
+Verification for this correction includes backend authorization/idempotency/expiry/concurrency tests, iOS native-peer and packaged-audio tests, and Android build/unit/lint and instrumented native-peer/audio checks. These checks do not prove that two physical devices can ring and exchange audible media. Only THE C.E.O is available; the user has no second physical phone. That end-to-end acceptance remains unverified. Existing direct-only network limitations above still apply.
+
+Cancellation uses the same call record and serializable invite transaction. An authenticated caller can create an ended record before an in-flight invite is committed; replaying that invite returns the terminal record and cannot ring the recipient. Cancellation does not use a second queue or state authority. Regression coverage includes cancellation arriving both before and after invitation, replay, and unauthorized device/account attempts.

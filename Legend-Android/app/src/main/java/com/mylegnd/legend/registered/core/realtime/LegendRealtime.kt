@@ -6,6 +6,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.delay
 import kotlin.time.Duration.Companion.milliseconds
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -91,6 +92,7 @@ class MobileMessagingRealtimeClient(
     suspend fun call(command: LegendCallCommand, existingConnectionOnly: Boolean = false): LegendCallResult = withTimeout(12_000) {
         if (existingConnectionOnly) check(callReady) { "Calling is disconnected." } else start()
         while (!callReady) delay(100)
+        ensureActive()
         val id = java.util.UUID.randomUUID().toString()
         val pending = CompletableDeferred<LegendCallResult>()
         callRequests[id] = pending

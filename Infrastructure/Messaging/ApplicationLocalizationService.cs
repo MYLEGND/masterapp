@@ -139,6 +139,13 @@ internal sealed class ApplicationLocalizationService : IApplicationLocalizationS
             preferred,
             cancellationToken) ?? source;
 
+        var approvedLookups = manifest.Entries
+            .Where(entry => entry.TranslationPolicy == ApplicationTranslationPolicies.ApprovedOnly && source != target)
+            .Select(entry => new LegendTrustedTranslationLookup(entry.Id, source, target, entry.Source,
+                entry.Id, entry.SourceRevision, entry.Context,
+                TranslationIdentityHash(string.Join(',', entry.Placeholders)), TranslationReuseScopes.Global, string.Empty))
+            .ToArray();
+        var approvedMatches = await _intelligence.TryGetTrustedScopedMemoriesAsync(approvedLookups, cancellationToken);
         var results = new Dictionary<string, ApplicationLocalizedCopy>(StringComparer.Ordinal);
         var providerEntries = new List<ApplicationCopyManifestEntry>();
         foreach (var entry in manifest.Entries)
@@ -152,17 +159,7 @@ internal sealed class ApplicationLocalizationService : IApplicationLocalizationS
 
             if (entry.TranslationPolicy == ApplicationTranslationPolicies.ApprovedOnly)
             {
-                var approved = await _intelligence.TryGetTrustedScopedMemoryAsync(
-                    source,
-                    target,
-                    entry.Source,
-                    entry.Id,
-                    entry.SourceRevision,
-                    entry.Context,
-                    TranslationIdentityHash(string.Join(',', entry.Placeholders)),
-                    TranslationReuseScopes.Global,
-                    string.Empty,
-                    cancellationToken);
+                approvedMatches.TryGetValue(entry.Id, out var approved);
                 results[entry.Id] = approved is not null && TranslationOutputValidator.IsValid(
                         entry.Source,
                         approved.Text,
@@ -196,7 +193,8 @@ internal sealed class ApplicationLocalizationService : IApplicationLocalizationS
                 entry.Context,
                 string.Join(',', entry.Placeholders.Order(StringComparer.Ordinal)),
                 TranslationReuseScopes.Global)).ToArray(),
-            cancellationToken);
+            cancellationToken,
+            maximumProviderBatches: 1);
         for (var index = 0; index < providerEntries.Count; index++)
         {
             var entry = providerEntries[index];

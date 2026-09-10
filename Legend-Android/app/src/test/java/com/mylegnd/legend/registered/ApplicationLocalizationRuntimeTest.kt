@@ -3,6 +3,9 @@ package com.mylegnd.legend.registered
 import com.mylegnd.legend.registered.core.design.LegendLocalizationKey
 import com.mylegnd.legend.registered.core.design.LegendLocalizationRuntime
 import com.mylegnd.legend.registered.core.design.legendLocalized
+import com.mylegnd.legend.registered.core.model.ApplicationLocalizedCopy
+import com.mylegnd.legend.registered.core.design.validatedText
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -10,6 +13,16 @@ import org.junit.Test
 import java.util.Locale
 
 class ApplicationLocalizationRuntimeTest {
+    @Test
+    fun `catalog entries require matching source contract and isolate individual failures`() {
+        val valid = ApplicationLocalizedCopy("entry", "Settings", "Anviwònman", "visual interface copy", "revision1", emptyList(), "AzureTranslator", "ProviderDerived", "Observation", "2026-09-10T00:00:00Z", true)
+        assertEquals("Anviwònman", valid.validatedText("Settings", "visual interface copy", "revision1", emptyList()))
+        assertNull(valid.copy(sourceRevision = "revision2").validatedText("Settings", "visual interface copy", "revision1", emptyList()))
+        assertNull(valid.copy(failureCode = "translation_pending").validatedText("Settings", "visual interface copy", "revision1", emptyList()))
+        assertNull(valid.copy(source = "Other").validatedText("Settings", "visual interface copy", "revision1", emptyList()))
+        assertNull(valid.copy(placeholders = listOf("name")).validatedText("Settings", "visual interface copy", "revision1", emptyList()))
+    }
+
     @Test
     fun `identical refresh preserves presentation but revised copy or locale updates it`() {
         val key = LegendLocalizationKey("Settings", "visual interface copy")

@@ -24,7 +24,7 @@ settings:
     TARGETED_DEVICE_FAMILY: "1,2"
     CODE_SIGN_STYLE: Automatic
     DEVELOPMENT_TEAM: Z8XL9RU485
-    CURRENT_PROJECT_VERSION: "1"
+    CURRENT_PROJECT_VERSION: "25"
     EXTRACT_APP_INTENTS_METADATA: NO
     MARKETING_VERSION: "1.0"
     ENABLE_USER_SCRIPT_SANDBOXING: YES
@@ -39,6 +39,28 @@ targets:
     type: application
     platform: iOS
 
+    postBuildScripts:
+      - name: Include verified WebRTC archive symbols
+        script: |
+          /bin/bash "$SRCROOT/Scripts/webrtc-symbols.sh" install "$HOME/Library/Caches/com.mylegnd.legend/WebRTC/152.0.0" "$TARGET_BUILD_DIR/$FRAMEWORKS_FOLDER_PATH/WebRTC.framework/WebRTC" "$DWARF_DSYM_FOLDER_PATH/WebRTC.framework.dSYM"
+        runOnlyWhenInstalling: true
+        showEnvVars: false
+        inputFiles:
+          - $(SRCROOT)/Scripts/webrtc-symbols.sh
+          - $(HOME)/Library/Caches/com.mylegnd.legend/WebRTC/152.0.0/WebRTC.framework.dSYM
+          - $(TARGET_BUILD_DIR)/$(FRAMEWORKS_FOLDER_PATH)/WebRTC.framework/WebRTC
+        outputFiles:
+          # Xcode grants literal output access; declare every bundle directory and file.
+          - $(DWARF_DSYM_FOLDER_PATH)/WebRTC.framework.dSYM
+          - $(DWARF_DSYM_FOLDER_PATH)/WebRTC.framework.dSYM/Contents
+          - $(DWARF_DSYM_FOLDER_PATH)/WebRTC.framework.dSYM/Contents/Info.plist
+          - $(DWARF_DSYM_FOLDER_PATH)/WebRTC.framework.dSYM/Contents/Resources
+          - $(DWARF_DSYM_FOLDER_PATH)/WebRTC.framework.dSYM/Contents/Resources/DWARF
+          - $(DWARF_DSYM_FOLDER_PATH)/WebRTC.framework.dSYM/Contents/Resources/DWARF/WebRTC
+          - $(DWARF_DSYM_FOLDER_PATH)/WebRTC.framework.dSYM/Contents/Resources/Relocations
+          - $(DWARF_DSYM_FOLDER_PATH)/WebRTC.framework.dSYM/Contents/Resources/Relocations/aarch64
+          - $(DWARF_DSYM_FOLDER_PATH)/WebRTC.framework.dSYM/Contents/Resources/Relocations/aarch64/WebRTC.yml
+
     dependencies:
       - package: WebRTC
       - target: LegendNotificationService
@@ -49,6 +71,10 @@ targets:
         excludes:
           - Resources/Info.plist
 
+      - path: ../SHARED/Calling/Resources/raw/legend_ringback.wav
+        buildPhase: resources
+      - path: ../SHARED/Calling/Resources/raw/legend_incoming.wav
+        buildPhase: resources
       - path: ../Legend-Design/legend-design.tokens.json
         buildPhase: resources
       - path: ../Legend-Design/legend-application-copy.json
@@ -63,6 +89,8 @@ targets:
       path: Legend/Resources/Info.plist
       properties:
         CFBundleDisplayName: LEGEND®
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
         CFBundleURLTypes:
           - CFBundleTypeRole: Editor
             CFBundleURLSchemes:
@@ -120,12 +148,6 @@ targets:
           APS_ENVIRONMENT: development
         Release:
           APS_ENVIRONMENT: production
-
-    scheme:
-      testTargets:
-        - LegendTests
-        - LegendUITests
-      gatherCoverageData: true
 
   LegendTests:
     type: bundle.unit-test
@@ -220,3 +242,8 @@ schemes:
 
     archive:
       config: Release
+      preActions:
+        - name: Prepare publisher WebRTC archive symbols
+          settingsTarget: Legend
+          script: |
+            /bin/bash "$SRCROOT/Scripts/webrtc-symbols.sh" prepare "$HOME/Library/Caches/com.mylegnd.legend/WebRTC/152.0.0"

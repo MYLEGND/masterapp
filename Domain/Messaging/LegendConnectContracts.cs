@@ -97,6 +97,8 @@ public interface ITranslationProvider : ITranslationService
     /// </summary>
     string ProviderVersion => "unspecified";
 
+    int RequestCharacterCount(string text) => text.Length;
+
     async Task<IReadOnlyList<TranslationProviderResult>> TranslateBatchAsync(
         IReadOnlyList<string> texts,
         string targetLanguage,
@@ -167,7 +169,8 @@ public interface IRetainedTranslationService
 
     async Task<IReadOnlyList<RetainedTranslationResult>> TranslateRetainedBatchAsync(
         IReadOnlyList<RetainedTranslationRequest> requests,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        int maximumProviderBatches = int.MaxValue)
     {
         var results = new List<RetainedTranslationResult>(requests.Count);
         foreach (var request in requests)

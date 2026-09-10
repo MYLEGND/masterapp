@@ -24,6 +24,7 @@ permissions:
   contents: read
 
 env:
+  AZURE_TRANSLATOR_RESOURCE_NAME: masterapp-translator-1221
   AZURE_WEBAPP_NAME: masterapp-portal
   AZURE_RESOURCE_GROUP: masterapp-rg
   DOTNET_VERSION: '10.x'
@@ -479,7 +480,9 @@ jobs:
         run: |
           $deployedSha = '${{ needs.merge.outputs.merge_sha }}'
           if ($deployedSha -notmatch '^[0-9a-f]{40}$') { throw 'The immutable production SHA is unavailable or malformed.' }
-          az webapp config appsettings set --resource-group '${{ env.AZURE_RESOURCE_GROUP }}' --name '${{ env.AZURE_WEBAPP_NAME }}' --settings "LegendConnect__Research__CodeSha=$deployedSha" "LegendConnect__ModelEvaluation__CodeSha=$deployedSha" --output none
+          $translatorId = az cognitiveservices account show --resource-group '${{ env.AZURE_RESOURCE_GROUP }}' --name '${{ env.AZURE_TRANSLATOR_RESOURCE_NAME }}' --query id --output tsv
+          if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($translatorId)) { throw 'The configured Azure Translator resource could not be resolved.' }
+          az webapp config appsettings set --resource-group '${{ env.AZURE_RESOURCE_GROUP }}' --name '${{ env.AZURE_WEBAPP_NAME }}' --settings "AzureTranslator__ResourceId=$translatorId" "LegendConnect__Research__CodeSha=$deployedSha" "LegendConnect__ModelEvaluation__CodeSha=$deployedSha" --output none
           if ($LASTEXITCODE -ne 0) { throw 'Unable to bind LEGEND runtime provenance to the immutable production SHA.' }
 
       - name: Deploy immutable merged production tree

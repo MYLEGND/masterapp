@@ -12,6 +12,7 @@ import android.telecom.CallAudioState
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.mylegnd.legend.registered.R
 import com.mylegnd.legend.registered.MainActivity
 import com.mylegnd.legend.registered.LegendContainer
 import com.mylegnd.legend.registered.core.model.MobileIdentity
@@ -44,14 +45,17 @@ class LegendCallingCoordinator : ViewModel() {
 }
 
 // This survives Activity recreation and shares the existing messaging socket.
-data class LegendCallUiState(val call: LegendCallSnapshot? = null, val status: String = "", val failure: String? = null, val name: String = "", val incoming: Boolean = false, val muted: Boolean = false, val camera: Boolean = true, val speaker: Boolean = false, val localVideo: VideoTrack? = null, val remoteVideo: VideoTrack? = null, val systemAnswerRequested: Boolean = false, val sharingScreen: Boolean = false, val controlError: String? = null)
+data class LegendCallUiState(val call: LegendCallSnapshot? = null, val status: String = "", val failure: String? = null, val name: String = "", val incoming: Boolean = false, val muted: Boolean = false, val camera: Boolean = true, val speaker: Boolean = false, val localVideo: VideoTrack? = null, val remoteVideo: VideoTrack? = null, val systemAnswerRequested: Boolean = false, val sharingScreen: Boolean = false, val controlError: String? = null, val starting: Boolean = false)
 class LegendCallViewModel(private val app: Application, val transport: MobileMessagingRealtimeClient, private val identity: MobileIdentity) : ViewModel() {
     private val mutableState = MutableStateFlow(LegendCallUiState())
     val state = mutableState.asStateFlow()
     val deviceId = app.getSharedPreferences("legend_calls", Context.MODE_PRIVATE).let { preferences -> preferences.getString("device", null) ?: UUID.randomUUID().toString().also { preferences.edit().putString("device", it).apply() } }
     private var policy: LegendCallPolicy? = null
     var peer: LegendRTCPeer? = null; private set
-    private var starting = false
+    private var ringback: MediaPlayer? = null
+    private var reconciliation: Job? = null
+    private var startupDeadline: Job? = null
+    private var outgoingRequest: Job? = null
     private var stopped = false
     private var pending: Triple<String, String, Boolean>? = null
     private var deadline: Job? = null
@@ -83,29 +87,40 @@ class LegendCallViewModel(private val app: Application, val transport: MobileMes
         result.policy?.let { policy = it }
         return result
     }
-    fun start(conversationId: String, video: Boolean) = viewModelScope.launch {
-        if (inCall || starting || stopped) return@launch
-        starting = true
-        try {
-            checkPermissions(video)
-            command(LegendCallCommand("sync", deviceId))
-            pending = Triple(UUID.randomUUID().toString(), conversationId, video)
-            update { it.copy(failure = null) }
-            LegendCallPlatform.outgoing(app, pending!!.first)
-        } catch (error: Exception) { pending = null; update { it.copy(failure = error.message ?: "Calling unavailable.") } }
-        finally { starting = false }
-    }
-    fun placePendingCall() = viewModelScope.launch {
-        val request = pending ?: return@launch
-        try {
-            val result = command(LegendCallCommand("invite", deviceId, request.first, request.second, request.third))
-            if (pending?.first != request.first || stopped) {
-                runCatching { transport.call(LegendCallCommand("end", deviceId, request.first), existingConnectionOnly = true) }
-                return@launch
+    fun start(conversationId: String, video: Boolean, recipientName: String = "") {
+        if (inCall || stopped) return
+        val request = Triple(UUID.randomUUID().toString(), conversationId, video)
+        pending = request
+        update { it.copy(starting = true, status = "Calling", name = recipientName, failure = null) }
+        viewModelScope.launch {
+            try {
+                checkPermissions(video)
+                if (pending?.first != request.first || stopped) return@launch
+                startupDeadline = viewModelScope.launch {
+                    delay(25_000)
+                    if (pending?.first == request.first) fail("The call could not start in time. Please try again.")
+                }
+                LegendCallPlatform.outgoing(app, request.first)
+            } catch (error: Exception) {
+                if (pending?.first == request.first) fail(error.message ?: "Calling unavailable.")
             }
-            pending = null
-            result.call?.let { show(it); armDeadline(it.id, Instant.parse(it.expiresUtc).toEpochMilli()) }
-        } catch (error: Exception) { fail(error.message ?: "Calling unavailable.") }
+        }
+    }
+    fun placePendingCall() {
+        outgoingRequest = viewModelScope.launch {
+            val request = pending ?: return@launch
+            try {
+                val result = command(LegendCallCommand("invite", deviceId, request.first, request.second, request.third))
+                if (pending?.first != request.first || stopped) {
+                    runCatching { transport.call(LegendCallCommand("cancel", deviceId, request.first, request.second), existingConnectionOnly = true) }
+                    return@launch
+                }
+                val call = result.call ?: error("The call could not start. Please try again.")
+                pending = null
+                startupDeadline?.cancel(); startupDeadline = null
+                receive(LegendCallEvent(call))
+            } catch (error: Exception) { if (pending?.first == request.first) fail(error.message ?: "Calling unavailable.") }
+        }
     }
     fun answer() = viewModelScope.launch {
         val call = state.value.call ?: return@launch
@@ -122,10 +137,11 @@ class LegendCallViewModel(private val app: Application, val transport: MobileMes
         app.startActivity(Intent(app, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP))
     }
     fun end() = viewModelScope.launch {
-        val id = state.value.call?.id ?: pending?.first
+        val outgoing = pending
+        val id = state.value.call?.id ?: outgoing?.first
         val decline = state.value.incoming
         clear()
-        if (id != null) runCatching { command(LegendCallCommand(if (decline) "decline" else "end", deviceId, id)) }
+        if (id != null) runCatching { command(LegendCallCommand(if (outgoing != null) "cancel" else if (decline) "decline" else "end", deviceId, id, outgoing?.second)) }
     }
     fun background(value: Boolean) { peer?.background(value) }
     fun dismissFailure() { update { it.copy(failure = null) } }
@@ -152,7 +168,12 @@ class LegendCallViewModel(private val app: Application, val transport: MobileMes
         update { it.copy(speaker = enabled) }; updateProximity()
     }
     fun audioRouteChanged(route: Int) { update { it.copy(speaker = route == CallAudioState.ROUTE_SPEAKER) }; updateProximity() }
-    fun platformFailed() { viewModelScope.launch { fail("Android could not start this call. Check calling permissions and try again.") } }
+    fun platformFailed() { viewModelScope.launch {
+        if (state.value.incoming) {
+            update { it.copy(failure = "Android could not present this call. Check calling permissions and notifications.") }
+            clear() // Do not decline other devices on the receiving account.
+        } else fail("Android could not start this call. Check calling permissions and try again.")
+    } }
     fun receivePush(call: LegendCallSnapshot) { viewModelScope.launch { receive(LegendCallEvent(call)) } }
     @Suppress("DEPRECATION")
     private fun routeSpeaker(enabled: Boolean) {
@@ -167,9 +188,11 @@ class LegendCallViewModel(private val app: Application, val transport: MobileMes
     }
     private fun show(call: LegendCallSnapshot) {
         LegendCallPlatform.connection?.setCallerDisplayName(if (isCallerAccount(call)) call.calleeName else call.callerName, android.telecom.TelecomManager.PRESENTATION_ALLOWED)
-        update { it.copy(call = call, name = if (call.callerDeviceId == deviceId) call.calleeName else call.callerName,
+        update { it.copy(call = call, starting = false, name = if (call.callerDeviceId == deviceId) call.calleeName else call.callerName,
             incoming = call.status == "ringing" && call.callerDeviceId != deviceId,
-            status = if (call.status == "ringing") { if (call.callerDeviceId == deviceId) "Calling" else "Incoming call" } else it.status) }
+            status = if (call.status == "ringing") { if (call.callerDeviceId == deviceId) { if (call.receivedUtc == null) "Calling" else "Ringing" } else "Incoming call" } else it.status) }
+        updateRingback()
+        startReconciliation(call.id)
     }
     private suspend fun sync() {
         runCatching {
@@ -192,7 +215,15 @@ class LegendCallViewModel(private val app: Application, val transport: MobileMes
         val callerAccount = isCallerAccount(call)
         if (callerAccount && call.callerDeviceId != deviceId) return
         if (!callerAccount && call.calleeDeviceId != null && call.calleeDeviceId != deviceId) { if (state.value.call?.id == call.id) clear(); return }
-        if (call.terminal) { if (state.value.call?.id == call.id) clear(); return }
+        if (pending != null && pending?.first != call.id) return
+        if (call.terminal) {
+            if (state.value.call?.id == call.id || pending?.first == call.id) {
+                if (callerAccount) update { it.copy(failure = call.failureMessage) }
+                clear()
+            }
+            return
+        }
+        if (state.value.call?.id == call.id && state.value.call?.receivedUtc != null && call.receivedUtc == null && call.status == "ringing") return
         show(call)
         if (call.status == "ringing") {
             if (!callerAccount && reported.add(call.id)) { runCatching { LegendCallPlatform.incoming(app, call) }.onFailure { platformFailed() } }
@@ -203,12 +234,60 @@ class LegendCallViewModel(private val app: Application, val transport: MobileMes
             runCatching { ensurePeer(); peer?.offer() }.onFailure { fail(it.message ?: "Calling unavailable.") }
         }
     }
+    fun confirmIncomingPresentation(id: String) = viewModelScope.launch {
+        if (state.value.call?.id != id || !state.value.incoming) return@launch
+        runCatching { command(LegendCallCommand("received", deviceId, id)) }
+            .onFailure {
+                if (state.value.call?.id == id) {
+                    update { it.copy(failure = "The incoming call could not be confirmed. Please try again.") }
+                    clear()
+                }
+            }
+    }
+    private fun updateRingback() {
+        val call = state.value.call
+        if (!caller || call?.status != "ringing" || call.receivedUtc == null) {
+            ringback?.release(); ringback = null; return
+        }
+        if (ringback != null) return
+        runCatching {
+            audio.mode = AudioManager.MODE_IN_COMMUNICATION
+            check(audio.requestAudioFocus(focus) == AudioManager.AUDIOFOCUS_REQUEST_GRANTED)
+            val player = MediaPlayer()
+            ringback = player
+            player.setAudioAttributes(AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_VOICE_COMMUNICATION_SIGNALLING).setContentType(AudioAttributes.CONTENT_TYPE_MUSIC).build())
+            app.resources.openRawResourceFd(R.raw.legend_ringback).use { descriptor ->
+                player.setDataSource(descriptor.fileDescriptor, descriptor.startOffset, descriptor.length)
+            }
+            player.isLooping = true; player.prepare(); player.start()
+        }.onFailure {
+            ringback?.release(); ringback = null
+            update { it.copy(controlError = "The recipient received the call, but the ringing sound could not play.") }
+        }
+    }
+    private fun startReconciliation(id: String) {
+        if (reconciliation != null) return
+        reconciliation = viewModelScope.launch {
+            while (isActive && state.value.call?.id == id) {
+                delay(3_000)
+                if (state.value.call?.id != id) return@launch
+                try {
+                    val result = command(LegendCallCommand("get", deviceId, id))
+                    if (!isActive || state.value.call?.id != id) return@launch
+                    result.call?.let { receive(LegendCallEvent(it)) }
+                } catch (error: Exception) {
+                    if (isActive && state.value.call?.id == id) fail("The call status could not be confirmed. Please try again.")
+                }
+            }
+        }
+    }
     private suspend fun ensurePeer() {
         if (peer != null) return
         val call = state.value.call ?: return
         if (policy == null) command(LegendCallCommand("get", deviceId, call.id))
         val settings = policy ?: error("Call settings unavailable.")
         checkPermissions(call.video)
+        ringback?.release(); ringback = null
         audio.mode = AudioManager.MODE_IN_COMMUNICATION
         audio.requestAudioFocus(focus)
         update { it.copy(speaker = call.video, status = "Connecting") }
@@ -245,7 +324,7 @@ class LegendCallViewModel(private val app: Application, val transport: MobileMes
     }
     private fun armDeadline(id: String, at: Long) {
         deadline?.cancel()
-        deadline = viewModelScope.launch { delay((at - System.currentTimeMillis()).coerceAtLeast(1_000)); if (state.value.call?.id == id) fail(if (state.value.call?.status == "ringing") "The call was not answered." else "This network could not establish a direct call. Try another Wi-Fi or mobile connection.") }
+        deadline = viewModelScope.launch { delay((at - System.currentTimeMillis()).coerceAtLeast(1_000)); if (state.value.call?.id == id) fail(if (state.value.call?.status == "ringing") { if (caller && state.value.call?.receivedUtc == null) "The recipient could not be reached. Their device did not confirm receiving the call." else "The call was not answered." } else "This network could not establish a direct call. Try another Wi-Fi or mobile connection.") }
     }
     private fun updateProximity() {
         val power = app.getSystemService(PowerManager::class.java)
@@ -257,6 +336,11 @@ class LegendCallViewModel(private val app: Application, val transport: MobileMes
     }
     private fun fail(message: String) { update { it.copy(failure = message) }; end() }
     private fun clear() {
+        pending?.first?.let { finished.add(it) }
+        ringback?.release(); ringback = null
+        reconciliation?.cancel(); reconciliation = null
+        startupDeadline?.cancel(); startupDeadline = null
+        outgoingRequest?.cancel(); outgoingRequest = null
         state.value.call?.id?.let { finished.add(it) }
         deadline?.cancel(); deadline = null; heartbeat?.cancel(); heartbeat = null; pending = null
         val oldPeer = peer; peer = null; update { LegendCallUiState(failure = it.failure) }; oldPeer?.close()
@@ -269,7 +353,8 @@ class LegendCallViewModel(private val app: Application, val transport: MobileMes
         if (stopped) return
         stopped = true
         transport.retireAccountConnection()
-        val id = state.value.call?.id ?: pending?.first
+        val outgoing = pending
+        val id = state.value.call?.id ?: outgoing?.first
         val decline = state.value.incoming
         clear()
         if (LegendCallPlatform.store === this) LegendCallPlatform.store = null
@@ -278,7 +363,7 @@ class LegendCallViewModel(private val app: Application, val transport: MobileMes
         // outlive ViewModel cancellation but cannot reconnect as the next account.
         CoroutineScope(Dispatchers.Main.immediate).launch {
             try {
-                if (id != null) runCatching { transport.call(LegendCallCommand(if (decline) "decline" else "end", deviceId, id), existingConnectionOnly = true) }
+                if (id != null) runCatching { transport.call(LegendCallCommand(if (outgoing != null) "cancel" else if (decline) "decline" else "end", deviceId, id, outgoing?.second), existingConnectionOnly = true) }
             } finally { transport.close(); cancel() }
         }
     }

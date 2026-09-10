@@ -17,7 +17,18 @@ public sealed record LegendCallSnapshot(
     string CalleeUserId, string CalleeType, Guid CallerDeviceId, Guid? CalleeDeviceId,
     string CallerName, string CalleeName, bool Video, string Status,
     DateTime CreatedUtc, DateTime ExpiresUtc, int Epoch,
-    string[]? CallerUserIds = null, string[]? CalleeUserIds = null);
+    string[]? CallerUserIds = null, string[]? CalleeUserIds = null,
+    DateTime? ReceivedUtc = null)
+{
+    // Every client uses the same authoritative delivery and terminal messages.
+    public string? FailureMessage => Status switch
+    {
+        "missed" when ReceivedUtc == null => "The recipient could not be reached. Their device did not confirm receiving the call.",
+        "missed" => "The call was not answered.",
+        "declined" => "The call was declined.",
+        _ => null
+    };
+}
 
 public sealed record LegendCallEvent(
     LegendCallSnapshot Call, string? SignalKind = null, string? SignalData = null,

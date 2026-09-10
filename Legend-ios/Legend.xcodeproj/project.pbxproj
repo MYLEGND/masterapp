@@ -49,6 +49,7 @@
 		8B3F273830E32EA991066953 /* NotificationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2D3D5095709962382F31790 /* NotificationService.swift */; };
 		9143163FFD11DECB7F307A06 /* LogicalParticipantIdentity.swift in Sources */ = {isa = PBXBuildFile; fileRef = CB26E12CD661DE7C441F7218 /* LogicalParticipantIdentity.swift */; };
 		956B671334A52CF106C5B414 /* LegendDiagnostics.swift in Sources */ = {isa = PBXBuildFile; fileRef = 78E9CB9087E03621529FA288 /* LegendDiagnostics.swift */; };
+		9822C6C9EF13553DCC9E8357 /* legend_ringback.wav in Resources */ = {isa = PBXBuildFile; fileRef = E787E0EFC873A8C34337121E /* legend_ringback.wav */; };
 		9A370F97BA5B167EC3385274 /* MobileNotificationStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 91DA576F4CE2BB831C9D29C2 /* MobileNotificationStore.swift */; };
 		9C51AD4CB76219CECD8ADF2E /* LegendDailyActivity.swift in Sources */ = {isa = PBXBuildFile; fileRef = 73B79374AB1BC2E063C1D801 /* LegendDailyActivity.swift */; };
 		9EE6470D3F2989075FEC359F /* LegendPushNotificationDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93F318D58C87065122FFF88F /* LegendPushNotificationDelegate.swift */; };
@@ -59,6 +60,7 @@
 		B08DF9F51CABC3BC27A79143 /* MessagingModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20D35703BC894AC8E986DFF8 /* MessagingModels.swift */; };
 		B1451E8E156E526EA6BF05ED /* legend-design.tokens.json in Resources */ = {isa = PBXBuildFile; fileRef = 452622EF612A1C339AA4173A /* legend-design.tokens.json */; };
 		B389C8E0455AC63F91D431A2 /* LegendNextStates.swift in Sources */ = {isa = PBXBuildFile; fileRef = 538A9E85B3309A6AEE9BC228 /* LegendNextStates.swift */; };
+		B50BF47FE06926803EA8753C /* legend_incoming.wav in Resources */ = {isa = PBXBuildFile; fileRef = 22D9D78C477B35FC13A5580D /* legend_incoming.wav */; };
 		C0325C94634E1332EBA4B71D /* MobileDiscoveryStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10B73B365BF2133E6B85E1C4 /* MobileDiscoveryStoreTests.swift */; };
 		C099D69A49B0597C0038CDA9 /* DailyScriptureManagementStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 900CBF2F0003B1DA7EA2F1C6 /* DailyScriptureManagementStore.swift */; };
 		C140F773F7626275C30793A1 /* LegendNextShimmer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C1FCF0F3A5692DF6467B0B6 /* LegendNextShimmer.swift */; };
@@ -132,6 +134,7 @@
 		1EFD49D13AD84E4B171A989E /* LegendCallSystem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LegendCallSystem.swift; sourceTree = "<group>"; };
 		1F20FB63560403143889765D /* legend-application-copy.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "legend-application-copy.json"; sourceTree = "<group>"; };
 		20D35703BC894AC8E986DFF8 /* MessagingModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessagingModels.swift; sourceTree = "<group>"; };
+		22D9D78C477B35FC13A5580D /* legend_incoming.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = legend_incoming.wav; sourceTree = "<group>"; };
 		25849EC2D977B502DED9DA6C /* LegendCallStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LegendCallStore.swift; sourceTree = "<group>"; };
 		260A62B3D57EA1766E96DF56 /* LegendLaunchCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LegendLaunchCache.swift; sourceTree = "<group>"; };
 		28C1D977C634FEC8B8B83B87 /* MobileSocialStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileSocialStore.swift; sourceTree = "<group>"; };
@@ -197,6 +200,7 @@
 		E18DF8C5550EB16730C4F99C /* LegendApplicationBootstrapCoordinatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LegendApplicationBootstrapCoordinatorTests.swift; sourceTree = "<group>"; };
 		E5C1BFF90DD76D5A09D0E3C1 /* LegendNextSurface.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LegendNextSurface.swift; sourceTree = "<group>"; };
 		E682CA4D7BA829CAC4259297 /* LegendApplicationShell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LegendApplicationShell.swift; sourceTree = "<group>"; };
+		E787E0EFC873A8C34337121E /* legend_ringback.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = legend_ringback.wav; sourceTree = "<group>"; };
 		E7E81305123969A7AFFB8384 /* LogicalParticipantIdentityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LogicalParticipantIdentityTests.swift; sourceTree = "<group>"; };
 		E8FF22E3544EE230279C2B3E /* NativeUnreadBadge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeUnreadBadge.swift; sourceTree = "<group>"; };
 		E9D683074E2ECD1A965EA827 /* MobileConfigurationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileConfigurationTests.swift; sourceTree = "<group>"; };
@@ -247,13 +251,31 @@
 			path = Resources;
 			sourceTree = "<group>";
 		};
+		2AA580A445CE8FB2D33FA8CC /* SHARED */ = {
+			isa = PBXGroup;
+			children = (
+				5BA04C2DAE716204F4B919D1 /* Calling */,
+			);
+			path = SHARED;
+			sourceTree = "<group>";
+		};
 		2E7B89773FED4F60DE26467A /* MASTERAPP */ = {
 			isa = PBXGroup;
 			children = (
 				7B7189BD579AA77EDF4FBC4B /* Legend-Design */,
+				2AA580A445CE8FB2D33FA8CC /* SHARED */,
 			);
 			name = MASTERAPP;
 			path = ..;
+			sourceTree = "<group>";
+		};
+		30BED40D9CCAFF34BAC8054E /* raw */ = {
+			isa = PBXGroup;
+			children = (
+				22D9D78C477B35FC13A5580D /* legend_incoming.wav */,
+				E787E0EFC873A8C34337121E /* legend_ringback.wav */,
+			);
+			path = raw;
 			sourceTree = "<group>";
 		};
 		4BBAC424BF7204A7BA070F2D /* Discovery */ = {
@@ -276,6 +298,14 @@
 				D668B3A39A6A0A474DA968FA /* LegendSkeleton.swift */,
 			);
 			path = DesignSystem;
+			sourceTree = "<group>";
+		};
+		5BA04C2DAE716204F4B919D1 /* Calling */ = {
+			isa = PBXGroup;
+			children = (
+				EDFCF76A9E0EFC25F8547B50 /* Resources */,
+			);
+			path = Calling;
 			sourceTree = "<group>";
 		};
 		5CBF4189AD13FBB18D244823 /* Features */ = {
@@ -497,6 +527,14 @@
 			path = Social;
 			sourceTree = "<group>";
 		};
+		EDFCF76A9E0EFC25F8547B50 /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				30BED40D9CCAFF34BAC8054E /* raw */,
+			);
+			path = Resources;
+			sourceTree = "<group>";
+		};
 		FBCAF1A7DF857FC4089EC4C8 /* App */ = {
 			isa = PBXGroup;
 			children = (
@@ -535,6 +573,7 @@
 				EADB7468BC942A7ED477A4C4 /* Resources */,
 				9CE20B10361D083D21BC8FC2 /* Frameworks */,
 				EFB8ADFDF78187956FA73B7C /* Embed Foundation Extensions */,
+				371B69414A6E5BEA4DAACB43 /* Include verified WebRTC archive symbols */,
 			);
 			buildRules = (
 			);
@@ -648,10 +687,46 @@
 				CEA324C22EB521222C0E457B /* README-NEXTGEN.md in Resources */,
 				E2DFA2F96E598176BF9082AA /* legend-application-copy.json in Resources */,
 				B1451E8E156E526EA6BF05ED /* legend-design.tokens.json in Resources */,
+				B50BF47FE06926803EA8753C /* legend_incoming.wav in Resources */,
+				9822C6C9EF13553DCC9E8357 /* legend_ringback.wav in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		371B69414A6E5BEA4DAACB43 /* Include verified WebRTC archive symbols */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+				"$(SRCROOT)/Scripts/webrtc-symbols.sh",
+				"$(HOME)/Library/Caches/com.mylegnd.legend/WebRTC/152.0.0/WebRTC.framework.dSYM",
+				"$(TARGET_BUILD_DIR)/$(FRAMEWORKS_FOLDER_PATH)/WebRTC.framework/WebRTC",
+			);
+			name = "Include verified WebRTC archive symbols";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+				"$(DWARF_DSYM_FOLDER_PATH)/WebRTC.framework.dSYM",
+				"$(DWARF_DSYM_FOLDER_PATH)/WebRTC.framework.dSYM/Contents",
+				"$(DWARF_DSYM_FOLDER_PATH)/WebRTC.framework.dSYM/Contents/Info.plist",
+				"$(DWARF_DSYM_FOLDER_PATH)/WebRTC.framework.dSYM/Contents/Resources",
+				"$(DWARF_DSYM_FOLDER_PATH)/WebRTC.framework.dSYM/Contents/Resources/DWARF",
+				"$(DWARF_DSYM_FOLDER_PATH)/WebRTC.framework.dSYM/Contents/Resources/DWARF/WebRTC",
+				"$(DWARF_DSYM_FOLDER_PATH)/WebRTC.framework.dSYM/Contents/Resources/Relocations",
+				"$(DWARF_DSYM_FOLDER_PATH)/WebRTC.framework.dSYM/Contents/Resources/Relocations/aarch64",
+				"$(DWARF_DSYM_FOLDER_PATH)/WebRTC.framework.dSYM/Contents/Resources/Relocations/aarch64/WebRTC.yml",
+			);
+			runOnlyForDeploymentPostprocessing = 1;
+			shellPath = /bin/sh;
+			shellScript = "/bin/bash \"$SRCROOT/Scripts/webrtc-symbols.sh\" install \"$HOME/Library/Caches/com.mylegnd.legend/WebRTC/152.0.0\" \"$TARGET_BUILD_DIR/$FRAMEWORKS_FOLDER_PATH/WebRTC.framework/WebRTC\" \"$DWARF_DSYM_FOLDER_PATH/WebRTC.framework.dSYM\"\n";
+			showEnvVarsInLog = 0;
+		};
+/* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		05C523F6CEEFC6A6EFC4D7EC /* Sources */ = {
@@ -867,7 +942,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 25;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEVELOPMENT_TEAM = Z8XL9RU485;
 				ENABLE_NS_ASSERTIONS = NO;
@@ -988,7 +1063,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 25;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				DEVELOPMENT_TEAM = Z8XL9RU485;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -1059,7 +1134,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 25;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEVELOPMENT_TEAM = Z8XL9RU485;
 				ENABLE_NS_ASSERTIONS = NO;
