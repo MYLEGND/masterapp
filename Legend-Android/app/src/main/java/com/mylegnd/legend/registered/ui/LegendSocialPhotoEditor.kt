@@ -2,7 +2,10 @@ package com.mylegnd.legend.registered.ui
 
 import android.graphics.Bitmap
 import android.graphics.Canvas as AndroidCanvas
-import android.graphics.ImageDecoder
+import android.graphics.BitmapFactory
+import android.graphics.Matrix
+import android.media.ExifInterface
+import android.content.Context
 import android.graphics.Paint
 import android.graphics.ColorMatrix
 import android.graphics.ColorMatrixColorFilter
@@ -51,6 +54,38 @@ internal fun drawLegendPhoto(canvas: AndroidCanvas, width: Float, height: Float,
     canvas.restore()
 }
 
+/** Decode within the memory budget and honor camera orientation on every supported API. */
+internal fun decodeLegendPhoto(context: Context, uri: Uri): Bitmap {
+    val resolver = context.contentResolver
+    val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+    resolver.openInputStream(uri).use { BitmapFactory.decodeStream(it, null, bounds) }
+    require(bounds.outWidth > 0 && bounds.outHeight > 0) { "Unsupported photo" }
+    var sample = 1
+    while (max(bounds.outWidth, bounds.outHeight) / sample > 2048) sample *= 2
+    val bitmap = resolver.openInputStream(uri).use {
+        BitmapFactory.decodeStream(it, null, BitmapFactory.Options().apply { inSampleSize = sample; inPreferredConfig = Bitmap.Config.ARGB_8888 })
+    } ?: error("Photo could not be decoded")
+    val orientation = try {
+        resolver.openInputStream(uri).use { stream ->
+            if (stream == null) ExifInterface.ORIENTATION_NORMAL
+            else ExifInterface(stream).getAttributeInt(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL)
+        }
+    } catch (_: java.io.IOException) { ExifInterface.ORIENTATION_NORMAL }
+    val transform = when (orientation) {
+        ExifInterface.ORIENTATION_FLIP_HORIZONTAL -> floatArrayOf(-1f, 0f, 0f, 0f, 1f, 0f, 0f, 0f, 1f)
+        ExifInterface.ORIENTATION_ROTATE_180 -> floatArrayOf(-1f, 0f, 0f, 0f, -1f, 0f, 0f, 0f, 1f)
+        ExifInterface.ORIENTATION_FLIP_VERTICAL -> floatArrayOf(1f, 0f, 0f, 0f, -1f, 0f, 0f, 0f, 1f)
+        ExifInterface.ORIENTATION_TRANSPOSE -> floatArrayOf(0f, 1f, 0f, 1f, 0f, 0f, 0f, 0f, 1f)
+        ExifInterface.ORIENTATION_ROTATE_90 -> floatArrayOf(0f, -1f, 0f, 1f, 0f, 0f, 0f, 0f, 1f)
+        ExifInterface.ORIENTATION_TRANSVERSE -> floatArrayOf(0f, -1f, 0f, -1f, 0f, 0f, 0f, 0f, 1f)
+        ExifInterface.ORIENTATION_ROTATE_270 -> floatArrayOf(0f, 1f, 0f, -1f, 0f, 0f, 0f, 0f, 1f)
+        else -> return bitmap
+    }
+    val oriented = Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, Matrix().apply { setValues(transform) }, true)
+    if (oriented !== bitmap) bitmap.recycle()
+    return oriented
+}
+
 @Composable
 internal fun LegendSocialPhotoEditor(uri: Uri, ratios: List<Double>, back: () -> Unit, done: (Uri) -> Unit) {
     val context = LocalContext.current
@@ -63,12 +98,7 @@ internal fun LegendSocialPhotoEditor(uri: Uri, ratios: List<Double>, back: () ->
     LaunchedEffect(uri) {
         try {
             image = withContext(Dispatchers.IO) {
-                ImageDecoder.decodeBitmap(ImageDecoder.createSource(context.contentResolver, uri)) { decoder, info, _ ->
-                    decoder.allocator = ImageDecoder.ALLOCATOR_SOFTWARE
-                    val size = info.size
-                    val scale = minOf(1.0, 2048.0 / max(size.width, size.height))
-                    decoder.setTargetSize(max(1, (size.width * scale).toInt()), max(1, (size.height * scale).toInt()))
-                }
+                decodeLegendPhoto(context, uri)
             }
         } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
         catch (_: Exception) { error = "This photo could not be opened. Select it again." }

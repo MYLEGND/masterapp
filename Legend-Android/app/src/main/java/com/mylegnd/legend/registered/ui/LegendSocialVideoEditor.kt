@@ -30,7 +30,13 @@ internal fun LegendSocialVideoEditor(uri: Uri, initial: SocialVideoEdit, back: (
     DisposableEffect(player) { onDispose { player.release() } }
     LaunchedEffect(uri) {
         try {
-            duration = withContext(Dispatchers.IO) { MediaMetadataRetriever().use { it.setDataSource(context, uri); (it.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toFloatOrNull() ?: error("Duration unavailable")) / 1000 } }
+            duration = withContext(Dispatchers.IO) {
+                val metadata = MediaMetadataRetriever()
+                try {
+                    metadata.setDataSource(context, uri)
+                    (metadata.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toFloatOrNull() ?: error("Duration unavailable")) / 1000
+                } finally { metadata.release() }
+            }
             check(duration > 0)
             range = initial.startSeconds.toFloat()..(initial.endSeconds?.toFloat() ?: minOf(duration, maximum))
         } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }

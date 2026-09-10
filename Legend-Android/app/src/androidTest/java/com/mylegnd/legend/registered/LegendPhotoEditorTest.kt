@@ -20,6 +20,35 @@ import java.util.concurrent.atomic.AtomicReference
 class LegendPhotoEditorTest {
     @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
 
+    @Test fun photoDecodeHonorsAllCameraOrientationsAndBoundsLargeImages() {
+        val file = File.createTempFile("camera-orientation-", ".jpg", compose.activity.cacheDir)
+        val source = Bitmap.createBitmap(4200, 40, Bitmap.Config.ARGB_8888)
+        Canvas(source).apply {
+            drawColor(Color.BLUE)
+            drawRect(0f, 0f, 2100f, 40f, android.graphics.Paint().apply { color = Color.RED })
+        }
+        try {
+            for (orientation in 1..8) {
+                file.outputStream().use { source.compress(Bitmap.CompressFormat.JPEG, 95, it) }
+                android.media.ExifInterface(file.absolutePath).apply {
+                    setAttribute(android.media.ExifInterface.TAG_ORIENTATION, orientation.toString())
+                    saveAttributes()
+                }
+                val decoded = com.mylegnd.legend.registered.ui.decodeLegendPhoto(compose.activity, Uri.fromFile(file))
+                try {
+                    assertTrue(maxOf(decoded.width, decoded.height) <= 2048)
+                    val vertical = orientation >= 5
+                    assertEquals(vertical, decoded.height > decoded.width)
+                    val redAtStart = orientation in listOf(1, 4, 5, 6)
+                    val position = if (redAtStart) .25f else .75f
+                    val pixel = decoded.getPixel(if (vertical) decoded.width / 2 else (decoded.width * position).toInt(),
+                        if (vertical) (decoded.height * position).toInt() else decoded.height / 2)
+                    assertTrue("Incorrect camera orientation $orientation", Color.red(pixel) > 200 && Color.blue(pixel) < 40)
+                } finally { decoded.recycle() }
+            }
+        } finally { source.recycle(); file.delete() }
+    }
+
     @Test fun formatMenuIsCompactAndSelectsTheRequestedFormat() {
         val chosen = AtomicReference<com.mylegnd.legend.registered.core.model.LegendSocialContentType?>()
         compose.setContent { LegendTheme { LegendSocialCreationModeMenu({}, chosen::set) } }

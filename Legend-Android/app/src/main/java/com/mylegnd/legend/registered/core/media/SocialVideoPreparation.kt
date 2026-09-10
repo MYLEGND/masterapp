@@ -19,10 +19,12 @@ import kotlin.coroutines.resumeWithException
 internal class SocialMediaPreparationException(message: String, cause: Throwable? = null) : Exception(message, cause)
 
 /** Produces the same H.264/AAC MP4 delivery format required of iOS before upload. */
+@androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 internal object SocialVideoPreparation {
     suspend fun prepare(context: Context, uri: Uri, edit: SocialVideoEdit = SocialVideoEdit()): File {
         withContext(Dispatchers.IO) {
-            MediaMetadataRetriever().use { metadata ->
+            val metadata = MediaMetadataRetriever()
+            try {
                 metadata.setDataSource(context, uri)
                 val duration = metadata.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toDoubleOrNull()
                     ?: throw SocialMediaPreparationException("This video's duration could not be read. Select it again.")
@@ -30,7 +32,7 @@ internal object SocialVideoPreparation {
                 val end = edit.endSeconds ?: (duration / 1000)
                 if (!edit.startSeconds.isFinite() || !end.isFinite() || edit.startSeconds < 0 || end > duration / 1000 + 0.05 || end <= edit.startSeconds || end - edit.startSeconds > limit)
                     throw SocialMediaPreparationException("Select a video range of ${limit.toInt()} seconds or less.")
-            }
+            } finally { metadata.release() }
         }
         val output = File.createTempFile("legend-video-", ".mp4", context.cacheDir)
         output.delete()
