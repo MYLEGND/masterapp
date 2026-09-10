@@ -55,6 +55,7 @@ class LegendCallViewModel(private val app: Application, val transport: MobileMes
     private var ringback: MediaPlayer? = null
     private var reconciliation: Job? = null
     private var startupDeadline: Job? = null
+    private var outgoingRequest: Job? = null
     private var stopped = false
     private var pending: Triple<String, String, Boolean>? = null
     private var deadline: Job? = null
@@ -105,19 +106,21 @@ class LegendCallViewModel(private val app: Application, val transport: MobileMes
             }
         }
     }
-    fun placePendingCall() = viewModelScope.launch {
-        val request = pending ?: return@launch
-        try {
-            val result = command(LegendCallCommand("invite", deviceId, request.first, request.second, request.third))
-            if (pending?.first != request.first || stopped) {
-                runCatching { transport.call(LegendCallCommand("cancel", deviceId, request.first, request.second), existingConnectionOnly = true) }
-                return@launch
-            }
-            val call = result.call ?: error("The call could not start. Please try again.")
-            pending = null
-            startupDeadline?.cancel(); startupDeadline = null
-            receive(LegendCallEvent(call))
-        } catch (error: Exception) { if (pending?.first == request.first) fail(error.message ?: "Calling unavailable.") }
+    fun placePendingCall() {
+        outgoingRequest = viewModelScope.launch {
+            val request = pending ?: return@launch
+            try {
+                val result = command(LegendCallCommand("invite", deviceId, request.first, request.second, request.third))
+                if (pending?.first != request.first || stopped) {
+                    runCatching { transport.call(LegendCallCommand("cancel", deviceId, request.first, request.second), existingConnectionOnly = true) }
+                    return@launch
+                }
+                val call = result.call ?: error("The call could not start. Please try again.")
+                pending = null
+                startupDeadline?.cancel(); startupDeadline = null
+                receive(LegendCallEvent(call))
+            } catch (error: Exception) { if (pending?.first == request.first) fail(error.message ?: "Calling unavailable.") }
+        }
     }
     fun answer() = viewModelScope.launch {
         val call = state.value.call ?: return@launch
@@ -337,6 +340,7 @@ class LegendCallViewModel(private val app: Application, val transport: MobileMes
         ringback?.release(); ringback = null
         reconciliation?.cancel(); reconciliation = null
         startupDeadline?.cancel(); startupDeadline = null
+        outgoingRequest?.cancel(); outgoingRequest = null
         state.value.call?.id?.let { finished.add(it) }
         deadline?.cancel(); deadline = null; heartbeat?.cancel(); heartbeat = null; pending = null
         val oldPeer = peer; peer = null; update { LegendCallUiState(failure = it.failure) }; oldPeer?.close()

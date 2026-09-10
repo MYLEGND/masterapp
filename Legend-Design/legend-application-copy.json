@@ -1,5 +1,5 @@
 {
-  "catalogVersion": "application-copy-v1-a5b5f49f2e7fe8cb",
+  "catalogVersion": "application-copy-v1-d26f65b75794d5cd",
   "sourceLanguageCode": "en",
   "entries": [
     {
@@ -15976,6 +15976,17 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.e093068bddacfff9264c1a45",
+      "source": "The call could not start. Please try again.",
+      "context": "visual interface copy",
+      "sourceRevision": "8da23f32ca7d59b2",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.e9c3ee0ad93f94ecf84f088e",
       "source": "The client CRM store is no longer available.",
       "context": "visual interface copy",
@@ -16167,6 +16178,17 @@
       "source": "The next recurring financial item is shown from saved financial data.",
       "context": "visual interface copy",
       "sourceRevision": "5ce0df73c05cae9b",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.a948f243dcf8fd28ef9518df",
+      "source": "The recipient’s device received your call",
+      "context": "visual interface copy",
+      "sourceRevision": "57623f04842039d3",
       "placeholders": [
 
       ],
@@ -17840,6 +17862,17 @@
       "source": "Waiting for device authentication.",
       "context": "visual interface copy",
       "sourceRevision": "08c4899c93536408",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.4f576a319f8b3006638c568b",
+      "source": "Waiting for the recipient’s device to confirm receipt",
+      "context": "visual interface copy",
+      "sourceRevision": "8cc26e772e04a58e",
       "placeholders": [
 
       ],

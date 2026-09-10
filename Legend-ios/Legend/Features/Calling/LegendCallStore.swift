@@ -30,11 +30,13 @@ final class LegendCallStore: NSObject, ObservableObject, CXProviderDelegate {
     private let callLog = Logger(subsystem: "com.mylegnd.legend.registered", category: "calling")
     private var reconciliation: Task<Void, Never>?
     private var startupDeadline: Task<Void, Never>?
+    private var outgoingRequest: Task<Void, Never>?
     private var heartbeat: Task<Void, Never>?
     private var deadline: Task<Void, Never>?
     @Published private var pendingOutgoing: (UUID, UUID, Bool)?
     private var outgoingName = ""
     var isStarting: Bool { pendingOutgoing != nil && current == nil }
+    func handlesSystemCall(_ id: UUID) -> Bool { current?.id == id || pendingOutgoing?.0 == id }
     private var reportedCalls = Set<UUID>()
     private var finishedCalls = Set<UUID>()
     private var requestingScreenShare = false
@@ -93,7 +95,7 @@ final class LegendCallStore: NSObject, ObservableObject, CXProviderDelegate {
                     self.failure = "The call could not start in time. Please try again."
                     self.provider.reportCall(with: id, endedAt: Date(), reason: .failed)
                     self.clear()
-                    _ = try? await self.transport.call(LegendCallCommand(action: "cancel", deviceId: self.deviceId, callId: id, conversationId: conversationId), existingConnectionOnly: true)
+                    self.cancelOutgoing(id: id, conversationId: conversationId)
                 }
                 let action = CXStartCallAction(call: id, handle: CXHandle(type: .generic, value: recipientName.isEmpty ? "Legend" : recipientName))
                 action.isVideo = video
@@ -113,11 +115,17 @@ final class LegendCallStore: NSObject, ObservableObject, CXProviderDelegate {
         if let pending = pendingOutgoing {
             provider.reportCall(with: pending.0, endedAt: Date(), reason: .remoteEnded)
             clear()
-            Task { _ = try? await transport.call(LegendCallCommand(action: "cancel", deviceId: deviceId, callId: pending.0, conversationId: pending.1), existingConnectionOnly: true) }
+            cancelOutgoing(id: pending.0, conversationId: pending.1)
             return
         }
         guard let current else { clear(); return }
         Task { do { try await controller.request(CXTransaction(action: CXEndCallAction(call: current.id))) } catch { await finish(current.id) } }
+    }
+    private func cancelOutgoing(id: UUID, conversationId: UUID) {
+        // Cleanup has its own task, independent of the cancelled invite task.
+        Task { [transport, deviceId] in
+            _ = try? await transport.call(LegendCallCommand(action: "cancel", deviceId: deviceId, callId: id, conversationId: conversationId), existingConnectionOnly: true)
+        }
     }
     func systemTimedOut(_ id: UUID) {
         if current?.id == id { fail("The call could not start in time. Please try again.") }
@@ -359,6 +367,7 @@ final class LegendCallStore: NSObject, ObservableObject, CXProviderDelegate {
         ringback?.stop(); ringback = nil
         reconciliation?.cancel(); reconciliation = nil
         startupDeadline?.cancel(); startupDeadline = nil
+        outgoingRequest?.cancel(); outgoingRequest = nil
         peer?.close(); peer = nil
         heartbeat?.cancel(); heartbeat = nil; deadline?.cancel(); deadline = nil
         localVideo = nil; remoteVideo = nil; current = nil; pendingOutgoing = nil
@@ -398,15 +407,18 @@ final class LegendCallStore: NSObject, ObservableObject, CXProviderDelegate {
 
     nonisolated func providerDidReset(_ provider: CXProvider) { Task { @MainActor in if let id = self.current?.id { await self.finish(id) } else { self.end() } } }
     nonisolated func provider(_ provider: CXProvider, perform action: CXStartCallAction) {
-        Task { @MainActor in
-            guard let pending = self.pendingOutgoing, pending.0 == action.callUUID else { action.fail(); return }
+        Task { @MainActor in self.beginOutgoing(provider, action: action) }
+    }
+    private func beginOutgoing(_ provider: CXProvider, action: CXStartCallAction) {
+        guard let pending = pendingOutgoing, pending.0 == action.callUUID else { action.fail(); return }
+        outgoingRequest = Task { @MainActor in
             // CallKit's start action confirms local readiness, not a remote network round trip.
             action.fulfill()
             provider.reportOutgoingCall(with: pending.0, startedConnectingAt: Date())
             do {
                 let result = try await self.send(LegendCallCommand(action: "invite", deviceId: self.deviceId, callId: pending.0, conversationId: pending.1, video: pending.2))
                 guard self.pendingOutgoing?.0 == pending.0, !self.stopped else {
-                    _ = try? await self.transport.call(LegendCallCommand(action: "cancel", deviceId: self.deviceId, callId: pending.0, conversationId: pending.1), existingConnectionOnly: true)
+                    self.cancelOutgoing(id: pending.0, conversationId: pending.1)
                     return
                 }
                 guard let call = result.call else { throw LegendCallingError.unavailable("The call could not start. Please try again.") }
@@ -424,7 +436,7 @@ final class LegendCallStore: NSObject, ObservableObject, CXProviderDelegate {
                 guard self.pendingOutgoing?.0 == pending.0 else { return }
                 provider.reportCall(with: pending.0, endedAt: Date(), reason: .failed)
                 self.failure = error.localizedDescription; self.clear()
-                _ = try? await self.transport.call(LegendCallCommand(action: "cancel", deviceId: self.deviceId, callId: pending.0, conversationId: pending.1), existingConnectionOnly: true)
+                self.cancelOutgoing(id: pending.0, conversationId: pending.1)
             }
         }
     }

@@ -108,6 +108,7 @@ final class MobileMessagingRealtimeClient: MessagingRealtimeTransport {
             try await Task.sleep(for: .milliseconds(100))
         }
         guard callReady, let socket else { throw LegendCallingError.unavailable("Calling could not connect. Please try again.") }
+        try Task.checkCancellation()
         let id = UUID().uuidString
         let argument = try JSONSerialization.jsonObject(with: JSONEncoder().encode(command))
         let frame = try JSONSerialization.data(withJSONObject: ["type": 1, "invocationId": id, "target": "Call", "arguments": [argument]])

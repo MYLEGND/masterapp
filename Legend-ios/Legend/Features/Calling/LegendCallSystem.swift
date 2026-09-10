@@ -136,7 +136,7 @@ final class LegendCallSystem: NSObject, PKPushRegistryDelegate, CXProviderDelega
     nonisolated func provider(_ provider: CXProvider, perform action: CXEndCallAction) {
         Task { @MainActor in
             self.finished(action.callUUID)
-            if let owner = self.owner, owner.current?.id == action.callUUID { owner.provider(provider, perform: action) }
+            if let owner = self.owner, owner.handlesSystemCall(action.callUUID) { owner.provider(provider, perform: action) }
             else { action.fulfill() }
         }
     }
