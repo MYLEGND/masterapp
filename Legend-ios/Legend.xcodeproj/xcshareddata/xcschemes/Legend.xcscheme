@@ -21,6 +21,34 @@
                ReferencedContainer = "container:Legend.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
+         <BuildActionEntry
+            buildForTesting = "YES"
+            buildForRunning = "NO"
+            buildForProfiling = "NO"
+            buildForArchiving = "NO"
+            buildForAnalyzing = "NO">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "EA4A0637A0F2AB3926966269"
+               BuildableName = "LegendTests.xctest"
+               BlueprintName = "LegendTests"
+               ReferencedContainer = "container:Legend.xcodeproj">
+            </BuildableReference>
+         </BuildActionEntry>
+         <BuildActionEntry
+            buildForTesting = "YES"
+            buildForRunning = "NO"
+            buildForProfiling = "NO"
+            buildForArchiving = "NO"
+            buildForAnalyzing = "NO">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "1E19E163CFAA8580A24E53FA"
+               BuildableName = "LegendUITests.xctest"
+               BlueprintName = "LegendUITests"
+               ReferencedContainer = "container:Legend.xcodeproj">
+            </BuildableReference>
+         </BuildActionEntry>
       </BuildActionEntries>
    </BuildAction>
    <TestAction
@@ -114,5 +142,23 @@
    <ArchiveAction
       buildConfiguration = "Release"
       revealArchiveInOrganizer = "YES">
+      <PreActions>
+         <ExecutionAction
+            ActionType = "Xcode.IDEStandardExecutionActionsCore.ExecutionActionType.ShellScriptAction">
+            <ActionContent
+               title = "Prepare publisher WebRTC archive symbols"
+               scriptText = "/bin/bash &quot;$SRCROOT/Scripts/webrtc-symbols.sh&quot; prepare &quot;$HOME/Library/Caches/com.mylegnd.legend/WebRTC/152.0.0&quot;&#10;">
+               <EnvironmentBuildable>
+                  <BuildableReference
+                     BuildableIdentifier = "primary"
+                     BlueprintIdentifier = "A3724AD4D043CDC38EFCD940"
+                     BuildableName = "Legend.app"
+                     BlueprintName = "Legend"
+                     ReferencedContainer = "container:Legend.xcodeproj">
+                  </BuildableReference>
+               </EnvironmentBuildable>
+            </ActionContent>
+         </ExecutionAction>
+      </PreActions>
    </ArchiveAction>
 </Scheme>

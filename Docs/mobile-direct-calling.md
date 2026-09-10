@@ -38,3 +38,9 @@ Release status: backend release authorized; native distribution requires new sig
 Automated coverage includes backend authorization, legacy identity aliases, relational answer concurrency, call expiration, bounded signaling, push payloads, native WebRTC peer connection/renegotiation, and the existing mobile/backend regression suites. Simulator peer tests do not establish physical-device cross-platform or carrier-network reliability.
 
 The legacy backend contact-address endpoint remains available for already-published clients. New mobile builds no longer use it for calling. Web messaging continues using the shared messaging authority; this change adds native calling UI, not a browser calling interface.
+
+## iOS archive symbols
+
+The WebRTC 152.0.0 Swift package omits debug symbols. Its publisher distributes them separately as `WebRTC-M152-dSYM.zip`. The shared Legend scheme prepares that checksum-pinned download in the local Library cache before archiving. An archive-only build phase verifies the embedded framework and publisher dSYM have identical UUIDs, then includes the dSYM in the archive. Build-script sandboxing stays enabled; no signing settings change.
+
+The first archive needs network access for the approximately 389 MiB download; subsequent archives use the cached symbols. A package upgrade must update the publisher symbol version/checksum and cache path together. Missing or mismatched symbols fail the archive rather than silently producing another incomplete upload. Generate the project from `Legend-ios/project.yml` to retain the shared archive action.

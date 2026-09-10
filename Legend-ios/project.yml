@@ -39,6 +39,28 @@ targets:
     type: application
     platform: iOS
 
+    postBuildScripts:
+      - name: Include verified WebRTC archive symbols
+        script: |
+          /bin/bash "$SRCROOT/Scripts/webrtc-symbols.sh" install "$HOME/Library/Caches/com.mylegnd.legend/WebRTC/152.0.0" "$TARGET_BUILD_DIR/$FRAMEWORKS_FOLDER_PATH/WebRTC.framework/WebRTC" "$DWARF_DSYM_FOLDER_PATH/WebRTC.framework.dSYM"
+        runOnlyWhenInstalling: true
+        showEnvVars: false
+        inputFiles:
+          - $(SRCROOT)/Scripts/webrtc-symbols.sh
+          - $(HOME)/Library/Caches/com.mylegnd.legend/WebRTC/152.0.0/WebRTC.framework.dSYM
+          - $(TARGET_BUILD_DIR)/$(FRAMEWORKS_FOLDER_PATH)/WebRTC.framework/WebRTC
+        outputFiles:
+          # Xcode grants literal output access; declare every bundle directory and file.
+          - $(DWARF_DSYM_FOLDER_PATH)/WebRTC.framework.dSYM
+          - $(DWARF_DSYM_FOLDER_PATH)/WebRTC.framework.dSYM/Contents
+          - $(DWARF_DSYM_FOLDER_PATH)/WebRTC.framework.dSYM/Contents/Info.plist
+          - $(DWARF_DSYM_FOLDER_PATH)/WebRTC.framework.dSYM/Contents/Resources
+          - $(DWARF_DSYM_FOLDER_PATH)/WebRTC.framework.dSYM/Contents/Resources/DWARF
+          - $(DWARF_DSYM_FOLDER_PATH)/WebRTC.framework.dSYM/Contents/Resources/DWARF/WebRTC
+          - $(DWARF_DSYM_FOLDER_PATH)/WebRTC.framework.dSYM/Contents/Resources/Relocations
+          - $(DWARF_DSYM_FOLDER_PATH)/WebRTC.framework.dSYM/Contents/Resources/Relocations/aarch64
+          - $(DWARF_DSYM_FOLDER_PATH)/WebRTC.framework.dSYM/Contents/Resources/Relocations/aarch64/WebRTC.yml
+
     dependencies:
       - package: WebRTC
       - target: LegendNotificationService
@@ -120,12 +142,6 @@ targets:
           APS_ENVIRONMENT: development
         Release:
           APS_ENVIRONMENT: production
-
-    scheme:
-      testTargets:
-        - LegendTests
-        - LegendUITests
-      gatherCoverageData: true
 
   LegendTests:
     type: bundle.unit-test
@@ -220,3 +236,8 @@ schemes:
 
     archive:
       config: Release
+      preActions:
+        - name: Prepare publisher WebRTC archive symbols
+          settingsTarget: Legend
+          script: |
+            /bin/bash "$SRCROOT/Scripts/webrtc-symbols.sh" prepare "$HOME/Library/Caches/com.mylegnd.legend/WebRTC/152.0.0"

@@ -535,6 +535,7 @@
 				EADB7468BC942A7ED477A4C4 /* Resources */,
 				9CE20B10361D083D21BC8FC2 /* Frameworks */,
 				EFB8ADFDF78187956FA73B7C /* Embed Foundation Extensions */,
+				371B69414A6E5BEA4DAACB43 /* Include verified WebRTC archive symbols */,
 			);
 			buildRules = (
 			);
@@ -652,6 +653,40 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		371B69414A6E5BEA4DAACB43 /* Include verified WebRTC archive symbols */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+				"$(SRCROOT)/Scripts/webrtc-symbols.sh",
+				"$(HOME)/Library/Caches/com.mylegnd.legend/WebRTC/152.0.0/WebRTC.framework.dSYM",
+				"$(TARGET_BUILD_DIR)/$(FRAMEWORKS_FOLDER_PATH)/WebRTC.framework/WebRTC",
+			);
+			name = "Include verified WebRTC archive symbols";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+				"$(DWARF_DSYM_FOLDER_PATH)/WebRTC.framework.dSYM",
+				"$(DWARF_DSYM_FOLDER_PATH)/WebRTC.framework.dSYM/Contents",
+				"$(DWARF_DSYM_FOLDER_PATH)/WebRTC.framework.dSYM/Contents/Info.plist",
+				"$(DWARF_DSYM_FOLDER_PATH)/WebRTC.framework.dSYM/Contents/Resources",
+				"$(DWARF_DSYM_FOLDER_PATH)/WebRTC.framework.dSYM/Contents/Resources/DWARF",
+				"$(DWARF_DSYM_FOLDER_PATH)/WebRTC.framework.dSYM/Contents/Resources/DWARF/WebRTC",
+				"$(DWARF_DSYM_FOLDER_PATH)/WebRTC.framework.dSYM/Contents/Resources/Relocations",
+				"$(DWARF_DSYM_FOLDER_PATH)/WebRTC.framework.dSYM/Contents/Resources/Relocations/aarch64",
+				"$(DWARF_DSYM_FOLDER_PATH)/WebRTC.framework.dSYM/Contents/Resources/Relocations/aarch64/WebRTC.yml",
+			);
+			runOnlyForDeploymentPostprocessing = 1;
+			shellPath = /bin/sh;
+			shellScript = "/bin/bash \"$SRCROOT/Scripts/webrtc-symbols.sh\" install \"$HOME/Library/Caches/com.mylegnd.legend/WebRTC/152.0.0\" \"$TARGET_BUILD_DIR/$FRAMEWORKS_FOLDER_PATH/WebRTC.framework/WebRTC\" \"$DWARF_DSYM_FOLDER_PATH/WebRTC.framework.dSYM\"\n";
+			showEnvVarsInLog = 0;
+		};
+/* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		05C523F6CEEFC6A6EFC4D7EC /* Sources */ = {
