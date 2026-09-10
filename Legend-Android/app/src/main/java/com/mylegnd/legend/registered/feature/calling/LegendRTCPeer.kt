@@ -30,6 +30,10 @@ class LegendRTCPeer(
     private var videoSource: VideoSource? = null
     private var surfaceHelper: SurfaceTextureHelper? = null
     private var capturer: CameraVideoCapturer? = null
+    private var screenCapturer: ScreenCapturerAndroid? = null
+    private var screenHelper: SurfaceTextureHelper? = null
+    private var cameraWasEnabled = true
+    var onScreenSharingEnded: (() -> Unit)? = null
     var localVideo: VideoTrack? = null; private set
     private val connectivity = app.getSystemService(ConnectivityManager::class.java)
     private var cellular = false
@@ -155,9 +159,36 @@ class LegendRTCPeer(
     fun muted(value: Boolean) { audioTrack.setEnabled(!value) }
     fun camera(value: Boolean) { localVideo?.setEnabled(value); if (value) configureCapture() else runCatching { capturer?.stopCapture(); captureStarted = false } }
     fun background(value: Boolean) { background = value; if (value) runCatching { capturer?.stopCapture(); captureStarted = false } else configureCapture() }
+    fun startScreenSharing(permission: android.content.Intent) {
+        check(!closed && video && screenCapturer == null)
+        val source = requireNotNull(videoSource)
+        cameraWasEnabled = localVideo?.enabled() ?: true
+        localVideo?.setEnabled(true)
+        val screen = ScreenCapturerAndroid(permission, object : android.media.projection.MediaProjection.Callback() {
+            override fun onStop() { scope.launch { stopScreenSharing() } }
+        })
+        try {
+            capturer?.stopCapture(); captureStarted = false
+            screenHelper = SurfaceTextureHelper.create("LegendCallScreen", egl.eglBaseContext)
+            screenCapturer = screen
+            screen.initialize(screenHelper, app, source.capturerObserver)
+            val display = app.resources.displayMetrics
+            val scale = minOf(1f, 1280f / maxOf(display.widthPixels, display.heightPixels))
+            screen.startCapture((display.widthPixels * scale).toInt().coerceAtLeast(2), (display.heightPixels * scale).toInt().coerceAtLeast(2), 15)
+        } catch (error: Exception) { stopScreenSharing(); throw error }
+    }
+    fun stopScreenSharing() {
+        val screen = screenCapturer ?: return
+        screenCapturer = null
+        localVideo?.setEnabled(cameraWasEnabled)
+        runCatching { screen.stopCapture() }; screen.dispose()
+        screenHelper?.dispose(); screenHelper = null
+        configureCapture()
+        onScreenSharingEnded?.invoke()
+    }
     fun flipCamera() { capturer?.switchCamera(null) }
     private fun configureCapture() {
-        if (closed || background || !video || localVideo?.enabled() != true) return
+        if (closed || screenCapturer != null || background || !video || localVideo?.enabled() != true) return
         val width = if (cellular) policy.cellularWidth else policy.wifiWidth
         val height = if (cellular) policy.cellularHeight else policy.wifiHeight
         val fps = if (cellular) policy.cellularFps else policy.wifiFps
@@ -197,6 +228,7 @@ class LegendRTCPeer(
     fun close() {
         if (closed) return
         closed = true; recovery?.cancel(); recovery = null
+        stopScreenSharing()
         runCatching { connectivity.unregisterNetworkCallback(network) }
         audioTrack.setEnabled(false); localVideo?.setEnabled(false)
         runCatching { capturer?.stopCapture() }; capturer?.dispose(); capturer = null

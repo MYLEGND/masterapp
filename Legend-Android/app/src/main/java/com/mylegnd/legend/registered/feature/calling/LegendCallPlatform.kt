@@ -22,6 +22,10 @@ object LegendCallPlatform {
     const val CHANNEL = "legend_calls"
     const val NOTIFICATION = 7042
     private fun handle(context: Context) = PhoneAccountHandle(ComponentName(context, LegendConnectionService::class.java), "legend")
+    fun startScreenSharing(context: Context, permission: Intent) {
+        context.startForegroundService(Intent(context, LegendCallForegroundService::class.java)
+            .putExtra("video", true).putExtra("screenPermission", permission).putExtra("callId", store?.state?.value?.call?.id))
+    }
     fun register(context: Context) {
         val telecom = context.getSystemService(TelecomManager::class.java)
         telecom.registerPhoneAccount(PhoneAccount.builder(handle(context), "LEGEND®").setCapabilities(PhoneAccount.CAPABILITY_SELF_MANAGED).build())
@@ -48,7 +52,7 @@ object LegendCallPlatform {
         val launch = PendingIntent.getActivity(context, 7043, Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
         val decline = PendingIntent.getBroadcast(context, 7044, Intent(context, LegendCallActionReceiver::class.java).setAction("end").putExtra("callId", call.id), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
         val notification = NotificationCompat.Builder(context, CHANNEL).setSmallIcon(R.drawable.ic_legend_notification)
-            .setContentTitle(call.callerName).setContentText("Incoming Legend call").setCategory(NotificationCompat.CATEGORY_CALL)
+            .setContentTitle(call.callerName).setContentText("Incoming Legend® call").setCategory(NotificationCompat.CATEGORY_CALL)
             .setPriority(NotificationCompat.PRIORITY_MAX).setContentIntent(launch).setFullScreenIntent(launch, true)
             .setOngoing(true).setTimeoutAfter(45_000).addAction(0, "Decline", decline).addAction(0, "Open call", launch).build()
         context.getSystemService(NotificationManager::class.java).notify(NOTIFICATION, notification)
@@ -98,6 +102,7 @@ class LegendCallForegroundService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val call = LegendCallPlatform.store?.state?.value?.call ?: run { stopSelf(); return START_NOT_STICKY }
+        if (intent?.hasExtra("screenPermission") == true && intent.getStringExtra("callId") != call.id) return START_NOT_STICKY
         val launch = PendingIntent.getActivity(this, 7043, Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
         val end = PendingIntent.getBroadcast(this, 7044, Intent(this, LegendCallActionReceiver::class.java).setAction("end").putExtra("callId", call.id), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
         val notification = NotificationCompat.Builder(this, LegendCallPlatform.CHANNEL).setSmallIcon(R.drawable.ic_legend_notification)
@@ -108,7 +113,13 @@ class LegendCallForegroundService : Service() {
             types = types or ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
             if (intent?.getBooleanExtra("video", false) == true) types = types or ServiceInfo.FOREGROUND_SERVICE_TYPE_CAMERA
         }
-        try { ServiceCompat.startForeground(this, LegendCallPlatform.NOTIFICATION, notification, types) }
+        @Suppress("DEPRECATION")
+        val screenPermission = intent?.getParcelableExtra<Intent>("screenPermission")
+        if (screenPermission != null && Build.VERSION.SDK_INT >= 29) types = types or ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION
+        try {
+            ServiceCompat.startForeground(this, LegendCallPlatform.NOTIFICATION, notification, types)
+            if (screenPermission != null) LegendCallPlatform.store?.captureScreen(screenPermission)
+        }
         catch (_: RuntimeException) { LegendCallPlatform.store?.platformFailed(); stopSelf() }
         return START_NOT_STICKY
     }

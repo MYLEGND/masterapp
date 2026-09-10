@@ -86,6 +86,7 @@ targets:
         UIBackgroundModes:
           - audio
           - voip
+        NSPhotoLibraryAddUsageDescription: "Legend® saves a call snapshot only when you choose to save it."
         NSPhotoLibraryUsageDescription: "LEGEND® uses photo access only when you choose to manage media for a Legend update."
         NSCalendarsFullAccessUsageDescription: "LEGEND® reads and creates calendar events on this device only when you choose to use Calendar in Today’s Activity."
         NSFaceIDUsageDescription: "LEGEND® uses Face ID only when you choose to protect access to your account on this device."

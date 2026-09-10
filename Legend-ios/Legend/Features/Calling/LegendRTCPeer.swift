@@ -1,5 +1,6 @@
 import AVFoundation
 import Network
+import ReplayKit
 import UIKit
 @preconcurrency import WebRTC
 
@@ -12,6 +13,10 @@ final class LegendRTCPeer: NSObject, RTCPeerConnectionDelegate {
     private let factory = RTCPeerConnectionFactory(encoderFactory: RTCDefaultVideoEncoderFactory(), decoderFactory: RTCDefaultVideoDecoderFactory())
     private var peer: RTCPeerConnection?
     private var capturer: RTCCameraVideoCapturer?
+    private var videoSource: RTCVideoSource?
+    private var sharingScreen = false
+    private var cameraWasEnabled = true
+    var onScreenSharingEnded: (() -> Void)?
     private var audio: RTCAudioTrack?
     private var remoteCandidates: [(Int, RTCIceCandidate)] = []
     private var localCandidates: [RTCIceCandidate] = []
@@ -47,6 +52,7 @@ final class LegendRTCPeer: NSObject, RTCPeerConnectionDelegate {
         if let audio { connection.add(audio, streamIds: ["legend"]) }
         if video {
             let videoSource = factory.videoSource()
+            self.videoSource = videoSource
             capturer = RTCCameraVideoCapturer(delegate: videoSource)
             localVideo = factory.videoTrack(with: videoSource, trackId: "legend-video")
             if let localVideo { connection.add(localVideo, streamIds: ["legend"]) }
@@ -64,7 +70,7 @@ final class LegendRTCPeer: NSObject, RTCPeerConnectionDelegate {
         }
         monitor.start(queue: DispatchQueue(label: "legend.call.network"))
         observers.append(NotificationCenter.default.addObserver(forName: UIApplication.didEnterBackgroundNotification, object: nil, queue: .main) { [weak self] _ in
-            Task { @MainActor in self?.capturer?.stopCapture() }
+            Task { @MainActor in self?.stopScreenSharing(); self?.capturer?.stopCapture() }
         })
         observers.append(NotificationCenter.default.addObserver(forName: UIApplication.didBecomeActiveNotification, object: nil, queue: .main) { [weak self] _ in
             Task { @MainActor in self?.configureCamera() }
@@ -145,6 +151,51 @@ final class LegendRTCPeer: NSObject, RTCPeerConnectionDelegate {
         }
     }
 
+    func startScreenSharing() async throws {
+        guard !closed, !sharingScreen, let source = videoSource else { return }
+        sharingScreen = true
+        cameraWasEnabled = localVideo?.isEnabled ?? true
+        localVideo?.isEnabled = true
+        source.adaptOutputFormat(toWidth: Int32(cellular ? policy.cellularWidth : policy.wifiWidth), height: Int32(cellular ? policy.cellularHeight : policy.wifiHeight), fps: 15)
+        await capturer?.stopCapture()
+        let capture = RTCVideoCapturer(delegate: source)
+        do {
+            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+                RPScreenRecorder.shared().startCapture(handler: { [weak self] buffer, type, error in
+                    if error != nil {
+                        Task { @MainActor in self?.stopScreenSharing() }
+                        return
+                    }
+                    guard type == .video, let pixels = CMSampleBufferGetImageBuffer(buffer) else { return }
+                    let time = Int64(CMTimeGetSeconds(CMSampleBufferGetPresentationTimeStamp(buffer)) * 1_000_000_000)
+                    let orientation = (CMGetAttachment(buffer, key: RPVideoSampleOrientationKey as CFString, attachmentModeOut: nil) as? NSNumber)?.uint32Value ?? 1
+                    let rotation: RTCVideoRotation = switch CGImagePropertyOrientation(rawValue: orientation) {
+                    case .right: ._90
+                    case .down: ._180
+                    case .left: ._270
+                    default: ._0
+                    }
+                    source.capturer(capture, didCapture: RTCVideoFrame(buffer: RTCCVPixelBuffer(pixelBuffer: pixels), rotation: rotation, timeStampNs: time))
+                }, completionHandler: { error in
+                    if let error { continuation.resume(throwing: error) } else { continuation.resume() }
+                })
+            }
+            if closed || !sharingScreen { RPScreenRecorder.shared().stopCapture { _ in } }
+        } catch {
+            sharingScreen = false
+            localVideo?.isEnabled = cameraWasEnabled
+            configureCamera()
+            throw error
+        }
+    }
+    func stopScreenSharing() {
+        guard sharingScreen else { return }
+        sharingScreen = false
+        localVideo?.isEnabled = cameraWasEnabled
+        RPScreenRecorder.shared().stopCapture { _ in }
+        configureCamera()
+        onScreenSharingEnded?()
+    }
     func setMuted(_ muted: Bool) { audio?.isEnabled = !muted }
     func setCameraEnabled(_ enabled: Bool) {
         localVideo?.isEnabled = enabled
@@ -154,6 +205,7 @@ final class LegendRTCPeer: NSObject, RTCPeerConnectionDelegate {
     func close() {
         guard !closed else { return }
         closed = true
+        stopScreenSharing()
         recoveryTask?.cancel(); recoveryTask = nil
         monitor.cancel()
         observers.forEach(NotificationCenter.default.removeObserver); observers.removeAll()
@@ -164,12 +216,13 @@ final class LegendRTCPeer: NSObject, RTCPeerConnectionDelegate {
     }
 
     private func configureCamera() {
-        guard !closed, let capturer, localVideo?.isEnabled == true, UIApplication.shared.applicationState != .background else { return }
+        guard !closed, !sharingScreen, let capturer, localVideo?.isEnabled == true, UIApplication.shared.applicationState != .background else { return }
         let position: AVCaptureDevice.Position = frontCamera ? .front : .back
         guard let device = RTCCameraVideoCapturer.captureDevices().first(where: { $0.position == position }) else { return }
         let width = cellular ? policy.cellularWidth : policy.wifiWidth
         let height = cellular ? policy.cellularHeight : policy.wifiHeight
         let fps = cellular ? policy.cellularFps : policy.wifiFps
+        videoSource?.adaptOutputFormat(toWidth: Int32(width), height: Int32(height), fps: Int32(fps))
         let formats = RTCCameraVideoCapturer.supportedFormats(for: device)
         guard let format = formats.filter({
             let size = CMVideoFormatDescriptionGetDimensions($0.formatDescription)

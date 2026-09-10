@@ -687,13 +687,6 @@ private struct LegendGuestView: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: LegendNextSpacing.md) {
-                    HStack {
-                        Text(LegendLocalized("LEGEND®")).font(.title2.bold())
-                        Spacer()
-                        Text(LegendLocalized("GUEST")).font(.caption.bold()).padding(.horizontal, 14).padding(.vertical, 8)
-                            .background(LegendNextColor.goldBright.opacity(0.15), in: Capsule())
-                    }
-                    .foregroundStyle(LegendNextColor.navy)
                     if let content {
                         VStack(alignment: .leading, spacing: 12) {
                             Text(content.title).font(.title.bold())
@@ -710,7 +703,7 @@ private struct LegendGuestView: View {
                                 guestRow(title: item.reference, subtitle: index == 0 ? "Today · \(item.translation)" : "\(item.date) · \(item.translation)", icon: "book")
                             }.buttonStyle(.plain)
                         }
-                        Text(LegendLocalized("Discover Legend")).font(.title3.bold()).padding(.top, 8)
+                        Text(LegendLocalized("Discover Legend®")).font(.title3.bold()).padding(.top, 8)
                         ForEach(content.guides) { item in
                             Button { guide = item } label: {
                                 guestRow(title: item.title, subtitle: item.subtitle, icon: "sparkles")
@@ -743,9 +736,21 @@ private struct LegendGuestView: View {
                 .frame(maxWidth: .infinity)
             }
             .background(LegendNextCanvas())
-            .navigationTitle(LegendLocalized("Explore"))
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .topBarLeading) { Button(LegendLocalized("Back"), action: onExit) } }
+            .toolbarBackground(LegendNextColor.surface, for: .navigationBar)
+            .toolbarBackground(.visible, for: .navigationBar)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) { Button(LegendLocalized("Back"), action: onExit) }
+                ToolbarItem(placement: .principal) {
+                    Text(LegendLocalized("LEGEND®"))
+                        .font(LegendNextTypography.wordmark)
+                        .tracking(LegendSharedDesign.tracking("wordmark"))
+                        .foregroundStyle(LegendNextColor.navy)
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Text(LegendLocalized("GUEST")).font(.caption2.bold()).foregroundStyle(LegendNextColor.gold)
+                }
+            }
             .safeAreaInset(edge: .bottom) {
                 Button(LegendLocalized("Sign in securely"), action: onSignIn)
                     .buttonStyle(LegendNextButtonStyle(kind: .primary))
@@ -764,18 +769,21 @@ private struct LegendGuestView: View {
     }
 
     private func guestRow(title: String, subtitle: String, icon: String) -> some View {
-        LegendNextSurface(style: .elevated) {
-            HStack(spacing: 14) {
-                Image(systemName: icon).foregroundStyle(LegendNextColor.goldBright).font(.title2)
-                VStack(alignment: .leading, spacing: 5) {
-                    Text(title).font(.headline)
-                    Text(subtitle).font(.subheadline).foregroundStyle(LegendNextColor.textSecondary)
-                }
-                Spacer(minLength: 4)
-                Image(systemName: "chevron.right").foregroundStyle(LegendNextColor.textSecondary)
+        HStack(spacing: 14) {
+            Image(systemName: icon)
+                .font(.title3).foregroundStyle(LegendNextColor.goldBright)
+                .frame(width: 42, height: 42)
+                .background(.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title).font(LegendNextTypography.bodyEmphasis).foregroundStyle(.white)
+                Text(subtitle).font(.caption).foregroundStyle(.white.opacity(0.72))
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
+            Spacer(minLength: 4)
+            Image(systemName: "chevron.right").font(.caption.bold()).foregroundStyle(LegendNextColor.goldBright)
         }
+        .padding(16).frame(maxWidth: .infinity, alignment: .leading)
+        .background(LegendNextGradient.hero, in: RoundedRectangle(cornerRadius: 20))
+        .overlay { RoundedRectangle(cornerRadius: 20).strokeBorder(LegendNextColor.goldBright.opacity(0.3), lineWidth: 1) }
     }
 
     @MainActor private func load() async {

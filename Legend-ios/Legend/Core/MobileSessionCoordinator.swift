@@ -1109,7 +1109,8 @@ final class MobileSessionCoordinator: ObservableObject {
         let account = MobileSignedInAccount(
             id: session.actor.identity.userID,
             displayName: session.actor.displayName,
-            participantType: session.actor.identity.participantType)
+            participantType: session.actor.identity.participantType,
+            avatar: session.actor.avatar)
         do {
             if let multiAccountTokenStore {
                 let persisted = try multiAccountTokenStore.upsert(activeTokens, for: account)

@@ -54,6 +54,7 @@ public sealed class MobileGuestAccessTests
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var content = await response.Content.ReadFromJsonAsync<MobileGuestSnapshot>();
         Assert.NotNull(content);
+        Assert.Equal("https://www.mylegnd.com/privacy-terms", Assert.Single(content!.Links).Url);
         Assert.Equal(7, content!.Readings.Count);
         Assert.Equal("2026-09-09", content.Readings[0].Date);
         Assert.Equal("2026-09-03", content.Readings[6].Date);

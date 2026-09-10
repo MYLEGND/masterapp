@@ -1,5 +1,5 @@
 {
-  "catalogVersion": "application-copy-v1-b0bf71103fd84a88",
+  "catalogVersion": "application-copy-v1-a5b5f49f2e7fe8cb",
   "sourceLanguageCode": "en",
   "entries": [
     {
@@ -251,17 +251,6 @@
       "sourceRevision": "da821d4997ec0050",
       "placeholders": [
 
-      ],
-      "translationPolicy": "AzureAllowed",
-      "reuseScope": "Global"
-    },
-    {
-      "id": "application.copy.d414dece01efeaee1dd2df3e",
-      "source": "Call {value1}",
-      "context": "accessibility copy",
-      "sourceRevision": "df08338f1545260a",
-      "placeholders": [
-        "value1"
       ],
       "translationPolicy": "AzureAllowed",
       "reuseScope": "Global"
@@ -619,6 +608,17 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.05bd9072cf8fcb69b8451e59",
+      "source": "Continue as {value1}",
+      "context": "accessibility copy",
+      "sourceRevision": "6bfb52f2e901c451",
+      "placeholders": [
+        "value1"
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.2573475de1c28609942eacba",
       "source": "Continue to {value1} details",
       "context": "accessibility copy",
@@ -636,6 +636,17 @@
       "sourceRevision": "a72cb376684864ba",
       "placeholders": [
         "value1"
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.e7be9f956c52c4356f8648bf",
+      "source": "Conversation options",
+      "context": "accessibility copy",
+      "sourceRevision": "af8a897d2feb975e",
+      "placeholders": [
+
       ],
       "translationPolicy": "AzureAllowed",
       "reuseScope": "Global"
@@ -821,17 +832,6 @@
       "source": "Explore public readings and learn about Legend without an account.",
       "context": "accessibility copy",
       "sourceRevision": "f66e1d9b52eb8b68",
-      "placeholders": [
-
-      ],
-      "translationPolicy": "AzureAllowed",
-      "reuseScope": "Global"
-    },
-    {
-      "id": "application.copy.579f52c89c0d37e7a2ec58f6",
-      "source": "Group management",
-      "context": "accessibility copy",
-      "sourceRevision": "5435052e1a25150c",
       "placeholders": [
 
       ],
@@ -2396,17 +2396,6 @@
       "reuseScope": "Global"
     },
     {
-      "id": "application.copy.1acd9d3233eb0a3858c71296",
-      "source": "View group members",
-      "context": "accessibility copy",
-      "sourceRevision": "e1ae830987352edd",
-      "placeholders": [
-
-      ],
-      "translationPolicy": "AzureAllowed",
-      "reuseScope": "Global"
-    },
-    {
       "id": "application.copy.ff8255d9a7475f3b694dca2d",
       "source": "View {value1} insights",
       "context": "accessibility copy",
@@ -2773,6 +2762,17 @@
       "source": "A text post needs a caption.",
       "context": "visual interface copy",
       "sourceRevision": "5da7ef173100464f",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.e117a8bac6177e280f586ca9",
+      "source": "A video frame is not available yet. Please try again.",
+      "context": "visual interface copy",
+      "sourceRevision": "d6a1e7c0bd3ab84e",
       "placeholders": [
 
       ],
@@ -4100,28 +4100,6 @@
       "reuseScope": "Global"
     },
     {
-      "id": "application.copy.da543fb060ace2d9968c50f1",
-      "source": "Authorized access",
-      "context": "visual interface copy",
-      "sourceRevision": "37a2921e5e85d7c5",
-      "placeholders": [
-
-      ],
-      "translationPolicy": "AzureAllowed",
-      "reuseScope": "Global"
-    },
-    {
-      "id": "application.copy.98629cc21098376394a11d15",
-      "source": "Available accounts",
-      "context": "visual interface copy",
-      "sourceRevision": "1645771ccfb89105",
-      "placeholders": [
-
-      ],
-      "translationPolicy": "AzureAllowed",
-      "reuseScope": "Global"
-    },
-    {
       "id": "application.copy.73fca1b333435a23a7981112",
       "source": "Available in Legend® Ai mode.",
       "context": "visual interface copy",
@@ -4485,10 +4463,10 @@
       "reuseScope": "Global"
     },
     {
-      "id": "application.copy.534c7df05cda8d4e4d37ad14",
-      "source": "CLOSED LEGEND CONVERSATION",
+      "id": "application.copy.3679d147fdc935e729bb334e",
+      "source": "CLOSED LEGEND® CONVERSATION",
       "context": "visual interface copy",
-      "sourceRevision": "23bf021e536434ef",
+      "sourceRevision": "b1b76eca97b2fdf2",
       "placeholders": [
 
       ],
@@ -4606,6 +4584,17 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.9baa95a55f74317c9e13e169",
+      "source": "Call controls",
+      "context": "visual interface copy",
+      "sourceRevision": "d65de19e549b4f70",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.abb425831916d14d864f4590",
       "source": "Call settings unavailable.",
       "context": "visual interface copy",
@@ -4621,17 +4610,6 @@
       "source": "Calling",
       "context": "visual interface copy",
       "sourceRevision": "74028104c2ae1cf9",
-      "placeholders": [
-
-      ],
-      "translationPolicy": "AzureAllowed",
-      "reuseScope": "Global"
-    },
-    {
-      "id": "application.copy.be994945e6e53d7481cde9f6",
-      "source": "Calls open through your device’s secure Phone experience.",
-      "context": "visual interface copy",
-      "sourceRevision": "016b74f6e6d6c34c",
       "placeholders": [
 
       ],
@@ -5388,10 +5366,10 @@
       "reuseScope": "Global"
     },
     {
-      "id": "application.copy.c367366fba3bb4a88ab91315",
-      "source": "Closed Legend conversation",
+      "id": "application.copy.152724afcf9c615d1adcb4b1",
+      "source": "Closed Legend® conversation",
       "context": "visual interface copy",
-      "sourceRevision": "e1aff56e050505ca",
+      "sourceRevision": "dadf73d3b7ebfd18",
       "placeholders": [
 
       ],
@@ -5993,6 +5971,17 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.f93afcda09462c2c0ad72368",
+      "source": "Conversation options",
+      "context": "visual interface copy",
+      "sourceRevision": "af8a897d2feb975e",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.f90ecdb0b12414a851899f63",
       "source": "Conversation unavailable",
       "context": "visual interface copy",
@@ -6384,17 +6373,6 @@
       "sourceRevision": "1ed9fa0e9a10de89",
       "placeholders": [
 
-      ],
-      "translationPolicy": "AzureAllowed",
-      "reuseScope": "Global"
-    },
-    {
-      "id": "application.copy.3caaf4fa9aeea178c285675d",
-      "source": "Current {workspace} workspace",
-      "context": "visual interface copy",
-      "sourceRevision": "7c89ab7758eadc02",
-      "placeholders": [
-        "workspace"
       ],
       "translationPolicy": "AzureAllowed",
       "reuseScope": "Global"
@@ -7060,10 +7038,10 @@
       "reuseScope": "Global"
     },
     {
-      "id": "application.copy.65b6785c39562f5c5ada5891",
-      "source": "Discover Legend",
+      "id": "application.copy.1007be81f4541918ab7f8b4b",
+      "source": "Discover Legend®",
       "context": "visual interface copy",
-      "sourceRevision": "9f9af37c541d5c3a",
+      "sourceRevision": "1754f19d03d5717c",
       "placeholders": [
 
       ],
@@ -7593,17 +7571,6 @@
       "source": "Expense Lens projection needs review",
       "context": "visual interface copy",
       "sourceRevision": "96a4f3aad6044981",
-      "placeholders": [
-
-      ],
-      "translationPolicy": "AzureAllowed",
-      "reuseScope": "Global"
-    },
-    {
-      "id": "application.copy.b706604070033be204745675",
-      "source": "Explore",
-      "context": "visual interface copy",
-      "sourceRevision": "3b73900b8d29f963",
       "placeholders": [
 
       ],
@@ -8425,6 +8392,17 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.393fecb03fb8b16cd7598cb4",
+      "source": "Group members and settings",
+      "context": "visual interface copy",
+      "sourceRevision": "64acb4e2f5b03b97",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.97366add05a7d4337bc8487e",
       "source": "Group name",
       "context": "visual interface copy",
@@ -9231,17 +9209,6 @@
       "reuseScope": "Global"
     },
     {
-      "id": "application.copy.24ac84a23b259f2c065c0276",
-      "source": "LEGEND® IDENTITY",
-      "context": "visual interface copy",
-      "sourceRevision": "37dba41bf019d73a",
-      "placeholders": [
-
-      ],
-      "translationPolicy": "AzureAllowed",
-      "reuseScope": "Global"
-    },
-    {
       "id": "application.copy.570e96495be26be2cd611f6f",
       "source": "LIFE HAC",
       "context": "visual interface copy",
@@ -9822,6 +9789,28 @@
 
       ],
       "translationPolicy": "NonTranslatable",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.2230dd3ffce717dec27c7e3c",
+      "source": "Legend® video call",
+      "context": "visual interface copy",
+      "sourceRevision": "a60850985c659512",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.a750888ecaeed7da6dfc67b5",
+      "source": "Legend® voice call",
+      "context": "visual interface copy",
+      "sourceRevision": "e35132a627086c67",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
       "reuseScope": "Global"
     },
     {
@@ -10665,17 +10654,6 @@
       "source": "Mortgages",
       "context": "visual interface copy",
       "sourceRevision": "9be66b076b9c23a1",
-      "placeholders": [
-
-      ],
-      "translationPolicy": "AzureAllowed",
-      "reuseScope": "Global"
-    },
-    {
-      "id": "application.copy.aaf1bf36b210b57f50335101",
-      "source": "Move between your authorized Legend experiences without signing out.",
-      "context": "visual interface copy",
-      "sourceRevision": "676124ce514fd8da",
       "placeholders": [
 
       ],
@@ -12587,10 +12565,10 @@
       "reuseScope": "Global"
     },
     {
-      "id": "application.copy.7469a4bf2474596ac3a0e7ce",
-      "source": "Private Legend conversation",
+      "id": "application.copy.12db78318e1e58ca077e9ce6",
+      "source": "Private Legend® conversation",
       "context": "visual interface copy",
-      "sourceRevision": "ec47d5f32bc46e64",
+      "sourceRevision": "a82d65e51ef3f84c",
       "placeholders": [
 
       ],
@@ -13885,6 +13863,17 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.d9333ebacb00e0ed7cfae1d8",
+      "source": "Return to call",
+      "context": "visual interface copy",
+      "sourceRevision": "4c378660e65decda",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.2761031389798b8db0df8c74",
       "source": "Review",
       "context": "visual interface copy",
@@ -14501,6 +14490,17 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.18aefb452add4a07b37401ae",
+      "source": "Screen sharing could not start. Please try again.",
+      "context": "visual interface copy",
+      "sourceRevision": "58e59eea94371de7",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.258a311eec3710385ea9d5f0",
       "source": "Search Christian music or an artist",
       "context": "visual interface copy",
@@ -14820,17 +14820,6 @@
       "reuseScope": "Global"
     },
     {
-      "id": "application.copy.cf05b7bae57cff1f8b009b7c",
-      "source": "Select the Legend experience you want to enter.",
-      "context": "visual interface copy",
-      "sourceRevision": "3adac2553a392c39",
-      "placeholders": [
-
-      ],
-      "translationPolicy": "AzureAllowed",
-      "reuseScope": "Global"
-    },
-    {
       "id": "application.copy.f7dfc0bb6fe9ba47ce9d59a5",
       "source": "Select up to 10 photos or videos.",
       "context": "visual interface copy",
@@ -15084,6 +15073,17 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.acedaa0833957750f0874843",
+      "source": "Share Legend® screen",
+      "context": "visual interface copy",
+      "sourceRevision": "36bf43670393f50d",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.cffe2ee4c10d18fb93732a62",
       "source": "Share a 24-hour moment with your Legend network.",
       "context": "visual interface copy",
@@ -15176,6 +15176,17 @@
       "source": "Share outside Legend",
       "context": "visual interface copy",
       "sourceRevision": "ec91eb9d82b7dda2",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.cf82f3b79205da6139286577",
+      "source": "Share screen",
+      "context": "visual interface copy",
+      "sourceRevision": "5a271ba7ed246e2b",
       "placeholders": [
 
       ],
@@ -15536,6 +15547,17 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.c6ecc0a4341120c0c2d9ebcc",
+      "source": "Stop sharing",
+      "context": "visual interface copy",
+      "sourceRevision": "b2c78147ed570bab",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.f7963bf4e654cba58cafc3b2",
       "source": "Stories",
       "context": "visual interface copy",
@@ -15749,6 +15771,17 @@
       "source": "Take part in the Legend matching community.",
       "context": "visual interface copy",
       "sourceRevision": "30760cced139bf78",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.6ff12c4531c63c5593d1a141",
+      "source": "Take snapshot",
+      "context": "visual interface copy",
+      "sourceRevision": "2c86d50742a1ff4b",
       "placeholders": [
 
       ],
@@ -16321,17 +16354,6 @@
       "source": "There are no open community reports.",
       "context": "visual interface copy",
       "sourceRevision": "d106873e236717d9",
-      "placeholders": [
-
-      ],
-      "translationPolicy": "AzureAllowed",
-      "reuseScope": "Global"
-    },
-    {
-      "id": "application.copy.c8c33b43c1d013abd8a3f815",
-      "source": "These accounts remain protected and require a fresh sign-in after the shared security checkpoint.",
-      "context": "visual interface copy",
-      "sourceRevision": "3a89591bcb775ea1",
       "placeholders": [
 
       ],
@@ -17770,6 +17792,28 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.e9e66942097e0e5524f7b923",
+      "source": "Voice and video calls stay in Legend®.",
+      "context": "visual interface copy",
+      "sourceRevision": "598cef97dfdf6fad",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.3a0d35f41f74a6f1c4631ad9",
+      "source": "Voice or video call",
+      "context": "visual interface copy",
+      "sourceRevision": "d59f494e85991fda",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.bd483f80b48ec176cffe89e3",
       "source": "WEEKDAY",
       "context": "visual interface copy",
@@ -18490,17 +18534,6 @@
       "source": "Your secure session is still stored. Check your connection and try again.",
       "context": "visual interface copy",
       "sourceRevision": "61215159fb3d2039",
-      "placeholders": [
-
-      ],
-      "translationPolicy": "AzureAllowed",
-      "reuseScope": "Global"
-    },
-    {
-      "id": "application.copy.248069e1dce540d48cd915da",
-      "source": "Your secure session remains active. Legend validates the selected account before loading its data.",
-      "context": "visual interface copy",
-      "sourceRevision": "503a69e7481d5b33",
       "placeholders": [
 
       ],

@@ -1,6 +1,9 @@
 package com.mylegnd.legend.registered.feature.calling
 
 import android.Manifest
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -30,6 +33,13 @@ val LocalLegendCalling = staticCompositionLocalOf<LegendCallViewModel?> { null }
 @Composable
 fun LegendCallOverlay(store: LegendCallViewModel) {
     val state by store.state.collectAsStateWithLifecycle()
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val scope = rememberCoroutineScope()
+    var snapshotRequest by remember { mutableIntStateOf(0) }
+    var snapshotError by remember { mutableStateOf<String?>(null) }
+    val screenPermission = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        if (result.resultCode == android.app.Activity.RESULT_OK) result.data?.let(store::startScreenSharing)
+    }
     val answerPermissions = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { grants ->
         if (grants.values.all { it }) store.answer() else store.end()
     }
@@ -38,10 +48,26 @@ fun LegendCallOverlay(store: LegendCallViewModel) {
     if (state.call == null && state.failure == null) return
     Dialog(onDismissRequest = {}, properties = DialogProperties(usePlatformDefaultWidth = false, dismissOnBackPress = false, dismissOnClickOutside = false)) {
         Box(Modifier.fillMaxSize().background(Brush.linearGradient(listOf(LegendColors.Navy, LegendColors.Midnight)))) {
-            state.remoteVideo?.let { video -> store.peer?.let { engine -> LegendVideoSurface(video, engine, Modifier.fillMaxSize()) } }
+            state.remoteVideo?.let { video -> store.peer?.let { engine -> LegendVideoSurface(video, engine, Modifier.fillMaxSize(), snapshotRequest) { bitmap ->
+                scope.launch {
+                    runCatching {
+                        val uri = withContext(Dispatchers.IO) {
+                            val folder = java.io.File(context.cacheDir, "call-snapshots").apply { mkdirs() }
+                            folder.listFiles()?.filter { System.currentTimeMillis() - it.lastModified() > 86_400_000 }?.forEach { it.delete() }
+                            val file = java.io.File(folder, "Legend-${java.util.UUID.randomUUID()}.png")
+                            file.outputStream().use { bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }
+                            androidx.core.content.FileProvider.getUriForFile(context, "${context.packageName}.call-snapshots", file)
+                        }
+                        context.startActivity(android.content.Intent.createChooser(android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                            type = "image/png"; putExtra(android.content.Intent.EXTRA_STREAM, uri)
+                            addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                        }, null))
+                    }.onFailure { snapshotError = "The snapshot could not be shared. Please try again." }
+                }
+            } } }
             Column(Modifier.fillMaxSize().safeDrawingPadding().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(24.dp)) {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text(legendLocalized("LEGEND®"), style = LegendTypography.Section, color = LegendColors.Gold)
+                Text(legendLocalized("LEGEND®"), style = LegendTypography.Wordmark, color = Color.White)
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                     state.localVideo?.let { video -> store.peer?.let { engine -> LegendVideoSurface(video, engine, Modifier.size(105.dp, 145.dp).clip(RoundedCornerShape(22.dp))) } }
                 }
                 Spacer(Modifier.weight(1f))
@@ -53,16 +79,32 @@ fun LegendCallOverlay(store: LegendCallViewModel) {
                     Text(callStatusLabel(state.status), color = LegendColors.Gold)
                     if (state.incoming) {
                         Row(horizontalArrangement = Arrangement.spacedBy(30.dp)) {
-                            Button(onClick = { store.end() }, colors = ButtonDefaults.buttonColors(containerColor = LegendColors.Error)) { Text(legendLocalized("Decline")) }
+                        Button(onClick = { store.end() }, colors = ButtonDefaults.buttonColors(containerColor = LegendColors.Error)) { Text(legendLocalized("Decline")) }
                             Button(onClick = { answer() }, colors = ButtonDefaults.buttonColors(containerColor = LegendColors.Gold, contentColor = LegendColors.Midnight)) { Text(legendLocalized("Answer")) }
                         }
                     } else {
                         Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                             IconButton(onClick = store::toggleMute, modifier = Modifier.background(Color.White.copy(alpha = .15f), CircleShape)) { Icon(if (state.muted) Icons.Default.MicOff else Icons.Default.Mic, legendLocalized("Mute"), tint = Color.White) }
                             IconButton(onClick = store::toggleSpeaker, modifier = Modifier.background(Color.White.copy(alpha = .15f), CircleShape)) { Icon(Icons.Default.VolumeUp, legendLocalized("Speaker"), tint = Color.White) }
-                            if (state.call?.video == true) {
+                            if (state.call?.video == true && !state.sharingScreen) {
                                 IconButton(onClick = store::toggleCamera) { Icon(if (state.camera) Icons.Default.Videocam else Icons.Default.VideocamOff, legendLocalized("Camera"), tint = Color.White) }
                                 IconButton(onClick = store::flipCamera) { Icon(Icons.Default.Cameraswitch, legendLocalized("Flip"), tint = Color.White) }
+                            }
+                        }
+                        if (state.remoteVideo != null && state.status == "Connected") {
+                            TextButton(onClick = { snapshotRequest++ }) {
+                                Icon(Icons.Default.PhotoCamera, null, tint = LegendColors.GoldBright)
+                                Spacer(Modifier.width(8.dp)); Text(legendLocalized("Take snapshot"), color = Color.White)
+                            }
+                        }
+                        if (state.call?.video == true && state.status == "Connected") {
+                            OutlinedButton(onClick = {
+                                if (state.sharingScreen) store.stopScreenSharing()
+                                else screenPermission.launch(context.getSystemService(android.media.projection.MediaProjectionManager::class.java).createScreenCaptureIntent())
+                            }) {
+                                Icon(Icons.Default.ScreenShare, null, tint = LegendColors.GoldBright)
+                                Spacer(Modifier.width(8.dp))
+                                Text(if (state.sharingScreen) legendLocalized("Stop sharing") else legendLocalized("Share screen"), color = Color.White)
                             }
                         }
                         Button(onClick = { store.end() }, colors = ButtonDefaults.buttonColors(containerColor = LegendColors.Error)) { Icon(Icons.Default.CallEnd, null); Spacer(Modifier.width(8.dp)); Text(legendLocalized("End call")) }
@@ -71,6 +113,12 @@ fun LegendCallOverlay(store: LegendCallViewModel) {
                 Spacer(Modifier.height(28.dp))
             }
         }
+    }
+    snapshotError?.let { message ->
+        AlertDialog(onDismissRequest = { snapshotError = null }, text = { Text(legendLocalized(message)) }, confirmButton = { TextButton(onClick = { snapshotError = null }) { Text(legendLocalized("OK")) } })
+    }
+    state.controlError?.let { message ->
+        AlertDialog(onDismissRequest = store::dismissControlError, title = { Text(legendLocalized("Call controls")) }, text = { Text(legendLocalized(message)) }, confirmButton = { TextButton(onClick = store::dismissControlError) { Text(legendLocalized("OK")) } })
     }
 }
 @Composable
@@ -84,8 +132,23 @@ private fun callStatusLabel(value: String): String = when (value) {
     else -> legendLocalized(value)
 }
 @Composable
-private fun LegendVideoSurface(track: VideoTrack, peer: LegendRTCPeer, modifier: Modifier) {
+private fun LegendVideoSurface(track: VideoTrack, peer: LegendRTCPeer, modifier: Modifier, snapshotRequest: Int = 0, snapshot: (android.graphics.Bitmap) -> Unit = {}) {
+    var renderer by remember(track) { mutableStateOf<SurfaceViewRenderer?>(null) }
+    val onSnapshot by rememberUpdatedState(snapshot)
+    DisposableEffect(renderer, snapshotRequest) {
+        val view = renderer
+        val consumed = java.util.concurrent.atomic.AtomicBoolean(false)
+        val disposed = java.util.concurrent.atomic.AtomicBoolean(false)
+        lateinit var listener: org.webrtc.EglRenderer.FrameListener
+        listener = org.webrtc.EglRenderer.FrameListener { bitmap ->
+            if (consumed.compareAndSet(false, true)) view?.post { view.removeFrameListener(listener); if (!disposed.get()) onSnapshot(bitmap) }
+        }
+        if (snapshotRequest > 0) view?.addFrameListener(listener, 1f)
+        onDispose { disposed.set(true); consumed.set(true); if (snapshotRequest > 0) view?.removeFrameListener(listener) }
+    }
     key(track) {
-        AndroidView(modifier = modifier, factory = { context -> SurfaceViewRenderer(context).apply { init(peer.egl.eglBaseContext, null); setEnableHardwareScaler(true); track.addSink(this) } }, onRelease = { view -> track.removeSink(view); view.release() }, update = {})
+        AndroidView(modifier = modifier, factory = { context -> SurfaceViewRenderer(context).apply {
+            init(peer.egl.eglBaseContext, null); setEnableHardwareScaler(true); track.addSink(this); renderer = this
+        } }, onRelease = { view -> track.removeSink(view); view.release(); renderer = null }, update = {})
     }
 }

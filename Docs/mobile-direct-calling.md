@@ -1,6 +1,6 @@
 # Legend direct calling
 
-Release status: local implementation; deployment is on hold. No paid calling resource or TURN relay is configured.
+Release status: backend release authorized; native distribution requires new signed builds and device verification. No paid calling resource or TURN relay is configured.
 
 ## Architecture
 
@@ -15,10 +15,17 @@ Release status: local implementation; deployment is on hold. No paid calling res
 
 - iOS uses CallKit, PushKit and the system audio session. Android uses a self-managed Telecom connection, foreground call service and incoming-call notifications.
 - Microphone and camera access require user permission. Camera capture pauses in the background; an accepted audio call can continue under the native call lifecycle.
-- Voice/video controls include mute, speaker, camera, camera switch and end/decline. Ending or switching accounts immediately releases media; teardown uses only the old authenticated connection.
+- Voice/video controls include mute, speaker, camera, camera switch, an explicit one-frame snapshot/share action, and end/decline. Ending or switching accounts immediately releases media; teardown uses only the old authenticated connection.
 - Trickle ICE, queued early candidates and negotiation epochs handle offer/answer races. Network changes initiate bounded ICE recovery.
 - Shared policy: 45-second ringing, 20-second initial connection deadline, three recovery attempts, 720p/30fps Wi-Fi and 480p/24fps cellular ceilings, 1 Mbps video and 64 kbps audio ceilings. Native network adaptation can lower these.
 - A network that requires TURN will fail clearly. Direct-only calling cannot promise universal connectivity across carriers, firewalls or countries.
+
+## Screen sharing and snapshots
+
+- Android requests fresh MediaProjection consent for each sharing session and starts the existing call service with the mediaProjection type before capture. Revocation and call teardown release the projection. The shared video sender carries the screen in place of the camera.
+- iOS uses ReplayKit app capture: **Legend® content only**, not other apps or the entire device. Sharing collapses the call into a Return/Stop sharing bar; ending, stopping sharing, or leaving the app ends capture. Sharing other apps on iOS would require a separately provisioned broadcast extension, which this change does not add.
+- Snapshots capture one remote decoded frame only on request, then open the platform share UI. No continuous recording is created. Android shares through a private cache-only FileProvider; old snapshot files are cleaned on subsequent captures. iOS keeps the snapshot in memory until the share UI closes.
+- Verify screen consent denied/accepted/revoked, stopping/restarting sharing, device rotation, muted camera restoration, and snapshot sharing on physical devices before publishing native builds.
 
 ## Release and verification
 

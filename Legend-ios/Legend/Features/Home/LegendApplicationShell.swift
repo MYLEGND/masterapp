@@ -822,7 +822,6 @@ private struct LegendAccountSwitcherSheet: View {
                         availableAccounts
                         retainedAccounts
                         addAccountButton
-                        securityNotice
                     }
                     .padding(
                         .horizontal,
@@ -843,110 +842,13 @@ private struct LegendAccountSwitcherSheet: View {
     }
 
     private var sheetHeader: some View {
-        VStack(
-            alignment: .leading,
-            spacing: LegendNextSpacing.sm
-        ) {
-            Capsule()
-                .fill(Color.white.opacity(0.34))
-                .frame(width: 52, height: 5)
-                .frame(maxWidth: .infinity)
-                .accessibilityHidden(true)
-
-            HStack(
-                alignment: .center,
-                spacing: LegendNextSpacing.sm
-            ) {
-                Image(systemName: "person.2.badge.gearshape.fill")
-                    .font(
-                        .system(
-                            size: 20,
-                            weight: .semibold
-                        )
-                    )
-                    .foregroundStyle(LegendNextColor.midnight)
-                    .frame(width: 52, height: 52)
-                    .background(
-                        LegendNextColor.goldBright,
-                        in: Circle()
-                    )
-                    .accessibilityHidden(true)
-
-                VStack(
-                    alignment: .leading,
-                    spacing: LegendNextSpacing.micro
-                ) {
-                    Text(LegendLocalized("LEGEND® IDENTITY"))
-                        .font(LegendNextTypography.eyebrow)
-                        .tracking(1)
-                        .foregroundStyle(
-                            LegendNextColor.goldBright
-                        )
-
-                    Text(LegendLocalized("Switch account"))
-                        .font(LegendNextTypography.hero)
-                        .foregroundStyle(.white)
-
-                    Text(
-                        LegendLocalized("Move between your authorized Legend experiences without signing out.")
-                    )
-                    .font(LegendNextTypography.supporting)
-                    .foregroundStyle(
-                        Color.white.opacity(0.68)
-                    )
-                    .fixedSize(
-                        horizontal: false,
-                        vertical: true
-                    )
-                }
-
-                Spacer(minLength: LegendNextSpacing.xs)
-
-                Button {
-                    dismiss()
-                } label: {
-                    Image(systemName: "xmark")
-                        .font(
-                            .system(
-                                size: 15,
-                                weight: .bold
-                            )
-                        )
-                        .foregroundStyle(.white)
-                        .frame(width: 46, height: 46)
-                        .background(
-                            Color.white.opacity(0.08),
-                            in: Circle()
-                        )
-                        .overlay {
-                            Circle()
-                                .strokeBorder(
-                                    Color.white.opacity(0.18),
-                                    lineWidth: 1
-                                )
-                        }
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel(LegendLocalized("Close account switcher", context: "accessibility copy"))
-            }
-        }
-        .padding(LegendNextSpacing.sm)
-        .background(
-            Color.white.opacity(0.055),
-            in: RoundedRectangle(
-                cornerRadius: LegendNextRadius.prominentCard,
-                style: .continuous
-            )
-        )
-        .overlay {
-            RoundedRectangle(
-                cornerRadius: LegendNextRadius.prominentCard,
-                style: .continuous
-            )
-            .strokeBorder(
-                Color.white.opacity(0.14),
-                lineWidth: 1
-            )
+        HStack {
+            Text(LegendLocalized("Switch account"))
+                .font(LegendNextTypography.section).foregroundStyle(.white)
+            Spacer()
+            Button { dismiss() } label: {
+                Image(systemName: "xmark").foregroundStyle(.white).frame(width: 44, height: 44)
+            }.accessibilityLabel(LegendLocalized("Close account switcher", context: "accessibility copy"))
         }
     }
 
@@ -1040,13 +942,6 @@ private struct LegendAccountSwitcherSheet: View {
             alignment: .leading,
             spacing: LegendNextSpacing.xs
         ) {
-            LegendNextSectionHeader(
-                eyebrow: LegendLocalized("Authorized access"),
-                title: LegendLocalized("Available accounts"),
-                detail: LegendLocalized("Select the Legend experience you want to enter.")
-            )
-            .foregroundStyle(.white)
-
             ForEach(
                 alternateAccountTypes,
                 id: \.self
@@ -1061,12 +956,8 @@ private struct LegendAccountSwitcherSheet: View {
         let alternatives = signedInAccounts.filter { $0.id != currentAccountID }
         if !alternatives.isEmpty {
             VStack(alignment: .leading, spacing: LegendNextSpacing.xs) {
-                LegendNextSectionHeader(
-                    eyebrow: LegendLocalized("Signed in on this device"),
-                    title: LegendLocalized("Other accounts"),
-                    detail: LegendLocalized("These accounts remain protected and require a fresh sign-in after the shared security checkpoint.")
-                )
-                .foregroundStyle(.white)
+                Text(LegendLocalized("Other accounts"))
+                    .font(LegendNextTypography.caption).foregroundStyle(LegendNextColor.goldBright)
 
                 ForEach(alternatives) { account in
                     Button {
@@ -1074,11 +965,7 @@ private struct LegendAccountSwitcherSheet: View {
                         switchSignedInAccount(account.id)
                     } label: {
                         HStack(spacing: LegendNextSpacing.sm) {
-                            Image(systemName: account.participantType.accountSystemImage)
-                                .font(.system(size: 18, weight: .semibold))
-                                .foregroundStyle(LegendNextColor.midnight)
-                                .frame(width: 48, height: 48)
-                                .background(LegendNextColor.goldBright, in: Circle())
+                            LegendProfileAvatar(avatar: account.avatar, displayName: account.displayName, size: 48)
 
                             VStack(alignment: .leading, spacing: LegendNextSpacing.micro) {
                                 Text(account.displayName)
@@ -1138,22 +1025,7 @@ private struct LegendAccountSwitcherSheet: View {
             HStack(
                 spacing: LegendNextSpacing.sm
             ) {
-                Image(
-                    systemName: participantType.accountSystemImage
-                )
-                .font(
-                    .system(
-                        size: 18,
-                        weight: .semibold
-                    )
-                )
-                .foregroundStyle(LegendNextColor.midnight)
-                .frame(width: 48, height: 48)
-                .background(
-                    LegendNextColor.goldBright,
-                    in: Circle()
-                )
-                .accessibilityHidden(true)
+                LegendProfileAvatar(avatar: accountAvatar, displayName: accountDisplayName, size: 48)
 
                 VStack(
                     alignment: .leading,
@@ -1165,15 +1037,7 @@ private struct LegendAccountSwitcherSheet: View {
                     .font(LegendNextTypography.bodyEmphasis)
                     .foregroundStyle(.white)
 
-                    Text(participantType.accountDescription)
-                        .font(LegendNextTypography.supporting)
-                        .foregroundStyle(
-                            Color.white.opacity(0.64)
-                        )
-                        .fixedSize(
-                            horizontal: false,
-                            vertical: true
-                        )
+
                 }
 
                 Spacer(minLength: LegendNextSpacing.xs)
@@ -1224,40 +1088,9 @@ private struct LegendAccountSwitcherSheet: View {
         )
     }
 
-    private var securityNotice: some View {
-        HStack(
-            alignment: .top,
-            spacing: LegendNextSpacing.xs
-        ) {
-            Image(systemName: "lock.shield.fill")
-                .font(
-                    .system(
-                        size: 14,
-                        weight: .semibold
-                    )
-                )
-                .foregroundStyle(
-                    LegendNextColor.goldBright
-                )
-                .accessibilityHidden(true)
-
-            Text(
-                LegendLocalized("Your secure session remains active. Legend validates the selected account before loading its data.")
-            )
-            .font(LegendNextTypography.caption)
-            .foregroundStyle(
-                Color.white.opacity(0.56)
-            )
-            .fixedSize(
-                horizontal: false,
-                vertical: true
-            )
-        }
-        .padding(.horizontal, LegendNextSpacing.xs)
-    }
 
     private var preferredHeight: CGFloat {
-        (alternateAccountTypes.count + signedInAccounts.count) > 2 ? 760 : 670
+        min(760, 330 + CGFloat(alternateAccountTypes.count + signedInAccounts.filter { $0.id != currentAccountID }.count) * 84)
     }
 }
 

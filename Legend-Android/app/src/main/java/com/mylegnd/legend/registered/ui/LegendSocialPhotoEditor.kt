@@ -10,6 +10,7 @@ import android.graphics.Paint
 import android.graphics.ColorMatrix
 import android.graphics.ColorMatrixColorFilter
 import android.net.Uri
+import androidx.compose.foundation.border
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTransformGestures
@@ -131,7 +132,7 @@ internal fun LegendSocialPhotoEditor(uri: Uri, ratios: List<Double>, back: () ->
         }
         Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = androidx.compose.ui.Alignment.Center) {
             image?.let { bitmap ->
-                Canvas(Modifier.fillMaxWidth().aspectRatio(aspect, matchHeightConstraintsFirst = true).semantics { contentDescription = legendLocalized("Photo crop preview", "accessibility copy"); stateDescription = "${(edit.zoom * 100).toInt()}%" }.pointerInput(uri) {
+                Canvas(Modifier.fillMaxWidth().aspectRatio(aspect, matchHeightConstraintsFirst = true).border(2.dp, androidx.compose.ui.graphics.Color.White).semantics { contentDescription = legendLocalized("Photo crop preview", "accessibility copy"); stateDescription = "${(edit.zoom * 100).toInt()}%" }.pointerInput(uri) {
                     detectTransformGestures { _, pan, zoom, _ ->
                         if (!saving) edit = edit.copy(zoom = (edit.zoom * zoom).coerceIn(.25f, 6f), x = edit.x + pan.x / size.width.coerceAtLeast(1), y = edit.y + pan.y / size.height.coerceAtLeast(1))
                     }

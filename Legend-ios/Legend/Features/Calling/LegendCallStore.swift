@@ -14,6 +14,9 @@ final class LegendCallStore: NSObject, ObservableObject, CXProviderDelegate {
     @Published private(set) var muted = false
     @Published private(set) var cameraEnabled = true
     @Published private(set) var speaker = false
+    @Published private(set) var sharingScreen = false
+    @Published var minimized = false
+    @Published var controlError: String?
     let deviceId: UUID
     private let identity: LogicalParticipantIdentity
     private let transport: MobileMessagingRealtimeClient
@@ -27,6 +30,7 @@ final class LegendCallStore: NSObject, ObservableObject, CXProviderDelegate {
     private var reportedCalls = Set<UUID>()
     private var finishedCalls = Set<UUID>()
     private var starting = false
+    private var requestingScreenShare = false
     private var stopped = false
     private var shutdownTask: Task<Void, Never>?
     private var audioObservers: [NSObjectProtocol] = []
@@ -96,6 +100,19 @@ final class LegendCallStore: NSObject, ObservableObject, CXProviderDelegate {
         Task { try? await controller.request(CXTransaction(action: CXSetMutedCallAction(call: current.id, muted: !muted))) }
     }
     func toggleCamera() { cameraEnabled.toggle(); peer?.setCameraEnabled(cameraEnabled) }
+    func toggleScreenSharing() {
+        guard let peer, current?.video == true, !requestingScreenShare else { return }
+        if sharingScreen { peer.stopScreenSharing(); sharingScreen = false; minimized = false; return }
+        requestingScreenShare = true
+        Task {
+            defer { requestingScreenShare = false }
+            do {
+                try await peer.startScreenSharing()
+                guard current != nil else { peer.stopScreenSharing(); return }
+                sharingScreen = true; minimized = true
+            } catch { controlError = LegendLocalized("Screen sharing could not start. Please try again.") }
+        }
+    }
     func switchCamera() { peer?.switchCamera() }
     func toggleSpeaker() {
         do {
@@ -213,6 +230,7 @@ final class LegendCallStore: NSObject, ObservableObject, CXProviderDelegate {
                 self.fail("This network could not establish a direct call. Try another Wi-Fi or mobile connection.")
             }
         }
+        engine.onScreenSharingEnded = { [weak self] in self?.sharingScreen = false; self?.minimized = false }
         peer = engine; localVideo = engine.localVideo
         updateProximity()
         armDeadline(call.id, until: Date().addingTimeInterval(Double(policy.connectSeconds)))
@@ -257,6 +275,7 @@ final class LegendCallStore: NSObject, ObservableObject, CXProviderDelegate {
         heartbeat?.cancel(); heartbeat = nil; deadline?.cancel(); deadline = nil
         localVideo = nil; remoteVideo = nil; current = nil; pendingOutgoing = nil
         muted = false; cameraEnabled = true; speaker = false
+        sharingScreen = false; minimized = false; controlError = nil
         UIDevice.current.isProximityMonitoringEnabled = false
         RTCAudioSession.sharedInstance().isAudioEnabled = false
     }

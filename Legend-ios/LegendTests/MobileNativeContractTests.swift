@@ -5,6 +5,17 @@ import UIKit
 
 @MainActor
 final class MobileNativeContractTests: XCTestCase {
+    func testSavedAccountAvatarRoundTripAndLegacyCompatibility() throws {
+        let legacy = Data(#"{"id":"saved","displayName":"Saved member","participantType":"Client","lastUsedAt":0}"#.utf8)
+        let old = try JSONDecoder().decode(MobileSignedInAccount.self, from: legacy)
+        XCTAssertNil(old.avatar)
+        let avatar = ProfileAvatar(kind: "Image", contentType: "image/png", resourcePath: "/api/v1/mobile/media/avatar/saved")
+        let updated = MobileSignedInAccount(id: old.id, displayName: old.displayName, participantType: old.participantType, avatar: avatar)
+        let restored = try JSONDecoder().decode(MobileSignedInAccount.self, from: JSONEncoder().encode(updated))
+        XCTAssertEqual(restored.avatar, avatar)
+        XCTAssertEqual(restored.id, old.id)
+    }
+
     func testSocialPhotoExportSupportsZoomingOutAndBoundsPortraitResolution() throws {
         let image = UIGraphicsImageRenderer(size: CGSize(width: 300, height: 600)).image { context in
             UIColor.red.setFill()

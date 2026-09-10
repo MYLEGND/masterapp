@@ -44,7 +44,7 @@ class LegendCallingCoordinator : ViewModel() {
 }
 
 // This survives Activity recreation and shares the existing messaging socket.
-data class LegendCallUiState(val call: LegendCallSnapshot? = null, val status: String = "", val failure: String? = null, val name: String = "", val incoming: Boolean = false, val muted: Boolean = false, val camera: Boolean = true, val speaker: Boolean = false, val localVideo: VideoTrack? = null, val remoteVideo: VideoTrack? = null, val systemAnswerRequested: Boolean = false)
+data class LegendCallUiState(val call: LegendCallSnapshot? = null, val status: String = "", val failure: String? = null, val name: String = "", val incoming: Boolean = false, val muted: Boolean = false, val camera: Boolean = true, val speaker: Boolean = false, val localVideo: VideoTrack? = null, val remoteVideo: VideoTrack? = null, val systemAnswerRequested: Boolean = false, val sharingScreen: Boolean = false, val controlError: String? = null)
 class LegendCallViewModel(private val app: Application, val transport: MobileMessagingRealtimeClient, private val identity: MobileIdentity) : ViewModel() {
     private val mutableState = MutableStateFlow(LegendCallUiState())
     val state = mutableState.asStateFlow()
@@ -131,6 +131,20 @@ class LegendCallViewModel(private val app: Application, val transport: MobileMes
     fun dismissFailure() { update { it.copy(failure = null) } }
     fun toggleMute() { update { it.copy(muted = !it.muted) }; peer?.muted(state.value.muted) }
     fun toggleCamera() { update { it.copy(camera = !it.camera) }; peer?.camera(state.value.camera) }
+    fun startScreenSharing(permission: android.content.Intent) {
+        if (state.value.status != "Connected" || state.value.call?.video != true) return
+        runCatching { LegendCallPlatform.startScreenSharing(app, permission) }
+            .onFailure { update { it.copy(controlError = "Screen sharing could not start. Please try again.") } }
+    }
+    fun captureScreen(permission: android.content.Intent) {
+        val engine = peer ?: return
+        engine.onScreenSharingEnded = { update { it.copy(sharingScreen = false) } }
+        runCatching { engine.startScreenSharing(permission) }
+            .onSuccess { update { it.copy(sharingScreen = true) } }
+            .onFailure { update { it.copy(controlError = "Screen sharing could not start. Please try again.") } }
+    }
+    fun stopScreenSharing() { peer?.stopScreenSharing(); update { it.copy(sharingScreen = false) } }
+    fun dismissControlError() { update { it.copy(controlError = null) } }
     fun flipCamera() { peer?.flipCamera() }
     fun toggleSpeaker() {
         val enabled = !state.value.speaker

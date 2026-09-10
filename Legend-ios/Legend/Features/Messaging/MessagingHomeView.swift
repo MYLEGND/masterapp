@@ -3041,7 +3041,7 @@ private struct LegendConversationHeader: View {
                             .foregroundStyle(LegendNextColor.goldBright)
 
                         Text(conversation.isClosed
-                             ? LegendLocalized("CLOSED LEGEND CONVERSATION")
+                             ? LegendLocalized("CLOSED LEGEND® CONVERSATION")
                              : LegendLocalized("PRIVATE GROUP CHAT"))
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(.white.opacity(0.72))
@@ -3058,7 +3058,7 @@ private struct LegendConversationHeader: View {
                             .foregroundStyle(LegendNextColor.goldBright)
 
                         Text(conversation.isClosed
-                             ? LegendLocalized("Closed Legend conversation")
+                             ? LegendLocalized("Closed Legend® conversation")
                              : relationshipSubtitle)
                             .font(.caption)
                             .foregroundStyle(.white.opacity(0.72))
@@ -3069,91 +3069,77 @@ private struct LegendConversationHeader: View {
 
             Spacer()
 
-            if isGroup {
-                Button { showingMembers = true } label: {
-                    Image(systemName: "person.3.fill").foregroundStyle(LegendNextColor.goldBright).frame(width: 44, height: 44)
-                }.accessibilityLabel(LegendLocalized("View group members"))
-            }
-            if isGroup &&
-                (
-                    conversation.canManageMembers ||
-                    conversation.canManageCollaborators == true ||
-                    conversation.canDeleteGroup == true ||
-                    (isFounder && conversation.canManagePromotion == true)
-                ) {
-                Menu {
-                    if conversation.canManageMembers {
-                        Button(action: editGroup) {
-                            Label(LegendLocalized("Edit Group"), systemImage: "pencil")
-                        }
-
-                        Button(action: addMember) {
-                            Label(
-                                LegendLocalized("Add Members"),
-                                systemImage: "person.badge.plus")
-                        }
+            Menu {
+                if isGroup {
+                    Button { showingMembers = true } label: {
+                        Label(LegendLocalized("View group members"), systemImage: "person.3.fill")
                     }
-
-                    if conversation.canManageCollaborators == true {
-                        Divider()
-
-                        Button(action: manageCollaborators) {
-                            Label(
-                                LegendLocalized("Collaborators"),
-                                systemImage: "person.2.badge.gearshape")
-                        }
+                } else {
+                    Button(action: startCall) {
+                        Label(LegendLocalized("Voice or video call"), systemImage: "phone.fill")
                     }
-
-                    if conversation.canDeleteGroup == true {
-                        Divider()
-
-                        Button(role: .destructive, action: deleteGroup) {
-                            Label(
-                                LegendLocalized("Delete Group"),
-                                systemImage: "trash")
-                        }
-                    }
-
-                    if isFounder, conversation.canManagePromotion == true {
-                        Divider()
-
-                        Button {
-                            setGroupPromotion(!(conversation.isPromoted ?? false))
-                        } label: {
-                            Label(
-                                conversation.isPromoted == true
-                                    ? "Stop Promoting Group"
-                                    : "Promote Group",
-                                systemImage: conversation.isPromoted == true
-                                    ? "megaphone.fill"
-                                    : "megaphone")
-                        }
-                    }
-                } label: {
-                    Image(systemName: "ellipsis")
-                        .font(.body.weight(.bold))
-                        .foregroundStyle(LegendNextColor.midnight)
-                        .frame(width: 38, height: 38)
-                        .background(LegendNextGradient.gold, in: Circle())
                 }
-                .buttonStyle(LegendMessagingPressButtonStyle())
-                .accessibilityLabel(LegendLocalized("Group management", context: "accessibility copy"))
-            } else if !isGroup {
-                Button(action: startCall) {
-                    Image(systemName: "phone.fill")
-                        .font(.body.weight(.semibold))
-                        .foregroundStyle(LegendNextColor.midnight)
-                        .frame(width: 38, height: 38)
-                        .background(LegendNextGradient.gold, in: Circle())
+                if let receiptPrivacy {
+                    Button(action: receiptPrivacy) {
+                        Label(LegendLocalized("Read receipt privacy"), systemImage: "eye")
+                    }
                 }
-                .buttonStyle(LegendMessagingPressButtonStyle())
-                .accessibilityLabel(LegendLocalized("Call {value1}", context: "accessibility copy", arguments: ["value1": String(describing: (conversation.title))]))
+                if conversation.canManageMembers {
+                    Button(action: editGroup) {
+                        Label(LegendLocalized("Edit Group"), systemImage: "pencil")
+                    }
+
+                    Button(action: addMember) {
+                        Label(
+                            LegendLocalized("Add Members"),
+                            systemImage: "person.badge.plus")
+                    }
+                }
+
+                if conversation.canManageCollaborators == true {
+                    Divider()
+
+                    Button(action: manageCollaborators) {
+                        Label(
+                            LegendLocalized("Collaborators"),
+                            systemImage: "person.2.badge.gearshape")
+                    }
+                }
+
+                if conversation.canDeleteGroup == true {
+                    Divider()
+
+                    Button(role: .destructive, action: deleteGroup) {
+                        Label(
+                            LegendLocalized("Delete Group"),
+                            systemImage: "trash")
+                    }
+                }
+
+                if isFounder, conversation.canManagePromotion == true {
+                    Divider()
+
+                    Button {
+                        setGroupPromotion(!(conversation.isPromoted ?? false))
+                    } label: {
+                        Label(
+                            conversation.isPromoted == true
+                                ? "Stop Promoting Group"
+                                : "Promote Group",
+                            systemImage: conversation.isPromoted == true
+                                ? "megaphone.fill"
+                                : "megaphone")
+                    }
+                }
+            } label: {
+                Image(systemName: "ellipsis")
+                    .font(.body.weight(.bold))
+                    .foregroundStyle(LegendNextColor.midnight)
+                    .frame(width: 38, height: 38)
+                    .background(LegendNextGradient.gold, in: Circle())
             }
-            if let receiptPrivacy {
-                Button(action: receiptPrivacy) {
-                    Image(systemName: "eye.circle").font(.title2).foregroundStyle(LegendNextColor.gold)
-                }.accessibilityLabel(LegendLocalized("Read receipt privacy"))
-            }
+            .buttonStyle(LegendMessagingPressButtonStyle())
+            .accessibilityLabel(LegendLocalized("Conversation options", context: "accessibility copy"))
 
         }
         .sheet(isPresented: $showingMembers) {
@@ -3200,13 +3186,13 @@ private struct LegendConversationHeader: View {
 
     private var relationshipSubtitle: String {
         guard let counterparty else {
-            return LegendLocalized("Private Legend conversation")
+            return LegendLocalized("Private Legend® conversation")
         }
 
         switch counterparty.identity.participantType {
         case .agent:
             return publicAgentRoleLabel(roleLabel: counterparty.roleLabel)
-                ?? LegendLocalized("Private Legend conversation")
+                ?? LegendLocalized("Private Legend® conversation")
 
         case .client:
             return LegendLocalized("Private connection")

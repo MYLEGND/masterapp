@@ -679,6 +679,8 @@ private fun LegendPillNavigation(
     }
     if (accountSwitcherOpen) {
         LegendAccountSwitcherSheet(
+            accountAvatar = accountAvatar,
+            mediaRepository = mediaRepository,
             accountName = accountName,
             participantType = participantType,
             alternateParticipantTypes = alternateParticipantTypes,
@@ -712,6 +714,8 @@ private fun legendTabIcon(tab: LegendTab, selected: Boolean) = when (tab) {
 
 @Composable
 private fun LegendAccountSwitcherSheet(
+    accountAvatar: MobileAvatar?,
+    mediaRepository: AuthenticatedMediaRepository,
     accountName: String,
     participantType: String,
     alternateParticipantTypes: List<String>,
@@ -746,9 +750,15 @@ private fun LegendAccountSwitcherSheet(
                     shape = LegendShapes.Card,
                     modifier = Modifier.fillMaxWidth().border(1.dp, LegendColors.Gold.copy(alpha = 0.34f), LegendShapes.Card),
                 ) {
-                    Column(Modifier.padding(LegendSpacing.Sm)) {
-                        Text(accountName, style = LegendTypography.CardTitle, color = LegendColors.OnNavy)
-                        Text(legendLocalized("Current {workspace} workspace", mapOf("workspace" to participantType)), style = LegendTypography.Supporting, color = LegendColors.GoldSoft)
+                    Row(Modifier.padding(LegendSpacing.Sm), verticalAlignment = Alignment.CenterVertically) {
+                        LegendProtectedAvatar(accountAvatar, accountName, participantType, mediaRepository, size = 44.dp)
+                        Spacer(Modifier.width(LegendSpacing.Sm))
+                        Column(Modifier.weight(1f)) {
+                            Text(accountName, style = LegendTypography.CardTitle, color = LegendColors.OnNavy)
+                            Text(participantType, style = LegendTypography.Supporting, color = LegendColors.GoldSoft)
+                        }
+                        Icon(Icons.Default.CheckCircle, legendLocalized("Active"), tint = LegendColors.Success)
+
                     }
                 }
             }
@@ -760,7 +770,7 @@ private fun LegendAccountSwitcherSheet(
                     colors = ButtonDefaults.outlinedButtonColors(contentColor = LegendColors.OnNavy),
                     border = BorderStroke(1.dp, LegendColors.Gold.copy(alpha = 0.46f)),
                 ) {
-                    Icon(if (role.equals("Agent", true)) Icons.Default.BusinessCenter else Icons.Default.Person, null)
+                    LegendProtectedAvatar(accountAvatar, accountName, participantType, mediaRepository, size = 40.dp)
                     Spacer(Modifier.width(LegendSpacing.Xs))
                     Text(legendLocalized("Continue as {role}", mapOf("role" to role)))
                 }
@@ -776,7 +786,7 @@ private fun LegendAccountSwitcherSheet(
                     colors = ButtonDefaults.outlinedButtonColors(contentColor = LegendColors.OnNavy),
                     border = BorderStroke(1.dp, LegendColors.Divider),
                 ) {
-                    Icon(Icons.Default.AccountCircle, null)
+                    LegendProtectedAvatar(account.avatar, account.displayName, participantType, mediaRepository, size = 40.dp)
                     Spacer(Modifier.width(LegendSpacing.Xs))
                     Column(Modifier.weight(1f)) {
                         Text(account.displayName, style = LegendTypography.BodyEmphasis)
@@ -3064,7 +3074,7 @@ private fun LegendMessagingCallDirectorySheet(
                     Column(Modifier.weight(1f)) {
                         LegendSectionPill("Call a connection", null, "CALL")
                         Text(
-                            legendLocalized("Calls open through your device’s secure Phone experience."),
+                            legendLocalized("Voice and video calls stay in Legend®."),
                             style = LegendTypography.Supporting,
                             color = LegendColors.TextSecondary,
                         )
@@ -3112,10 +3122,10 @@ private fun LegendConversationCallSheet(
         Column(Modifier.fillMaxWidth().padding(LegendSpacing.PageHorizontal), verticalArrangement = Arrangement.spacedBy(LegendSpacing.Md), horizontalAlignment = Alignment.CenterHorizontally) {
             Text(fallbackName, style = LegendTypography.Section)
             Button(onClick = { video = false; permissions.launch(arrayOf(android.Manifest.permission.RECORD_AUDIO)) }, modifier = Modifier.fillMaxWidth()) {
-                Icon(Icons.Default.Phone, null); Spacer(Modifier.width(8.dp)); Text(legendLocalized("Legend voice call"))
+                Icon(Icons.Default.Phone, null); Spacer(Modifier.width(8.dp)); Text(legendLocalized("Legend® voice call"))
             }
             Button(onClick = { video = true; permissions.launch(arrayOf(android.Manifest.permission.RECORD_AUDIO, android.Manifest.permission.CAMERA)) }, modifier = Modifier.fillMaxWidth()) {
-                Icon(Icons.Default.Videocam, null); Spacer(Modifier.width(8.dp)); Text(legendLocalized("Legend video call"))
+                Icon(Icons.Default.Videocam, null); Spacer(Modifier.width(8.dp)); Text(legendLocalized("Legend® video call"))
             }
             TextButton(onClick = dismiss) { Text(legendLocalized("Cancel")) }
         }
@@ -3589,6 +3599,9 @@ private fun MessageThread(
     val openProfile = LocalLegendOpenProfile.current
     val counterparty = conversation.participants.firstOrNull { it.identity != currentIdentity }
     val context = LocalContext.current
+    var optionsOpen by remember { mutableStateOf(false) }
+    var callOpen by remember { mutableStateOf(false) }
+    if (callOpen) LegendConversationCallSheet(conversation.id, conversation.title) { callOpen = false }
     var privacyOpen by remember { mutableStateOf(false) }
     val lifecycleState by LocalLifecycleOwner.current.lifecycle.currentStateFlow.collectAsStateWithLifecycle()
     LaunchedEffect(conversation.id, conversation.messages.lastOrNull()?.id, lifecycleState) {
@@ -3618,6 +3631,14 @@ private fun MessageThread(
         Surface(color = LegendColors.Navy) {
             Row(Modifier.fillMaxWidth().padding(horizontal = LegendSpacing.Sm, vertical = LegendSpacing.Xs), verticalAlignment = Alignment.CenterVertically) {
                 IconButton(onClick = back) { Icon(Icons.AutoMirrored.Filled.ArrowBack, legendLocalized("Back to messages", "accessibility copy"), tint = LegendColors.OnNavy) }
+                Box(Modifier.clickable {
+                    if (conversation.conversationType.equals("Group", ignoreCase = true)) manageGroup(conversation)
+                    else counterparty?.let { openProfile(SocialAuthor(it.identity, it.profileId, it.displayName, it.avatar)) }
+                }) {
+                    LegendProtectedAvatar(if (conversation.conversationType.equals("Group", ignoreCase = true)) conversation.groupAvatar else counterparty?.avatar,
+                        conversation.title, participantType, mediaRepository, size = 42.dp)
+                }
+                Spacer(Modifier.width(LegendSpacing.Xs))
                 Column(Modifier.weight(1f).clickable {
                     if (conversation.conversationType.equals("Group", ignoreCase = true)) manageGroup(conversation)
                     else counterparty?.let { openProfile(SocialAuthor(it.identity, it.profileId, it.displayName, it.avatar)) }
@@ -3625,10 +3646,18 @@ private fun MessageThread(
                     Text(conversation.title, style = LegendTypography.CardTitle, color = LegendColors.OnNavy, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     conversation.purpose?.let { Text(it, style = LegendTypography.Label, color = LegendColors.GoldSoft, maxLines = 1) }
                 }
-                IconButton(onClick = { privacyOpen = true }) { Icon(Icons.Default.Settings, legendLocalized("Read receipt privacy"), tint = LegendColors.Gold) }
-                conversation.meeting?.linkLabel?.let { Icon(Icons.Default.Event, "$it meeting", tint = LegendColors.Gold) }
-                if (conversation.conversationType.equals("Group", ignoreCase = true)) {
-                    IconButton(onClick = { manageGroup(conversation) }) { Icon(Icons.Default.Group, legendLocalized("View group members", "accessibility copy"), tint = LegendColors.GoldBright) }
+                Box {
+                    IconButton(onClick = { optionsOpen = true }) {
+                        Icon(Icons.Default.MoreHoriz, legendLocalized("Conversation options"), tint = LegendColors.GoldBright)
+                    }
+                    DropdownMenu(expanded = optionsOpen, onDismissRequest = { optionsOpen = false }) {
+                        if (conversation.conversationType.equals("Group", ignoreCase = true)) {
+                            DropdownMenuItem(text = { Text(legendLocalized("Group members and settings")) }, onClick = { optionsOpen = false; manageGroup(conversation) })
+                        } else {
+                            DropdownMenuItem(text = { Text(legendLocalized("Voice or video call")) }, onClick = { optionsOpen = false; callOpen = true })
+                        }
+                        DropdownMenuItem(text = { Text(legendLocalized("Read receipt privacy")) }, onClick = { optionsOpen = false; privacyOpen = true })
+                    }
                 }
             }
         }
@@ -8073,12 +8102,10 @@ private fun GuestScreen(
     Scaffold(
         containerColor = LegendColors.Canvas,
         topBar = {
-            Row(Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = LegendSpacing.PageHorizontal, vertical = LegendSpacing.Sm), verticalAlignment = Alignment.CenterVertically) {
-                TextButton(onClick = onExit) { Text(legendLocalized("Back")) }
-                Spacer(Modifier.weight(1f))
-                Text(legendLocalized("LEGEND®"), style = LegendTypography.CardTitle, color = LegendColors.Navy)
-                Spacer(Modifier.weight(1f))
-                Text(legendLocalized("GUEST"), style = LegendTypography.Label, color = LegendColors.Gold)
+            Box(Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = LegendSpacing.PageHorizontal, vertical = LegendSpacing.Sm)) {
+                TextButton(onClick = onExit, modifier = Modifier.align(Alignment.CenterStart)) { Text(legendLocalized("Back")) }
+                Text(legendLocalized("LEGEND®"), style = LegendTypography.Wordmark, color = LegendColors.Navy, modifier = Modifier.align(Alignment.Center))
+                Text(legendLocalized("GUEST"), style = LegendTypography.Caption, color = LegendColors.Gold, modifier = Modifier.align(Alignment.CenterEnd))
             }
         },
         bottomBar = {
@@ -8107,7 +8134,7 @@ private fun GuestScreen(
                         article = Triple(reading.reference, "${reading.date} · ${reading.translation}", reading.text)
                     }
                 }
-                item { Text(legendLocalized("Discover Legend"), style = LegendTypography.CardTitle, color = LegendColors.Navy, modifier = Modifier.padding(top = 12.dp)) }
+                item { Text(legendLocalized("Discover Legend®"), style = LegendTypography.CardTitle, color = LegendColors.Navy, modifier = Modifier.padding(top = 12.dp)) }
                 items(snapshot.guides, key = { it.id }) { guide ->
                     GuestContentCard(guide.title, guide.subtitle, Icons.Default.AutoAwesome) {
                         article = Triple(guide.title, guide.subtitle, guide.text)
@@ -8148,15 +8175,15 @@ private fun GuestScreen(
 
 @Composable
 private fun GuestContentCard(title: String, subtitle: String, icon: androidx.compose.ui.graphics.vector.ImageVector, onClick: () -> Unit) {
-    Surface(onClick = onClick, shape = RoundedCornerShape(20.dp), color = LegendColors.Surface,
+    Surface(onClick = onClick, shape = RoundedCornerShape(20.dp), color = LegendColors.Navy,
         border = BorderStroke(1.dp, LegendColors.Gold.copy(alpha = 0.25f))) {
         Row(Modifier.fillMaxWidth().padding(18.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
             Icon(icon, contentDescription = null, tint = LegendColors.Gold)
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                Text(title, style = LegendTypography.CardTitle, color = LegendColors.TextPrimary)
-                Text(subtitle, style = LegendTypography.Supporting, color = LegendColors.TextSecondary)
+                Text(title, style = LegendTypography.BodyEmphasis, color = LegendColors.OnNavy)
+                Text(subtitle, style = LegendTypography.Supporting, color = LegendColors.GoldSoft)
             }
-            Icon(Icons.Default.ChevronRight, contentDescription = null, tint = LegendColors.TextSecondary)
+            Icon(Icons.Default.ChevronRight, contentDescription = null, tint = LegendColors.GoldBright)
         }
     }
 }
