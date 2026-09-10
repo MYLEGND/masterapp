@@ -11,6 +11,9 @@ import com.mylegnd.legend.registered.core.design.LegendNavigationPolicy
 import com.mylegnd.legend.registered.core.navigation.LegendNotificationNavigation
 import com.mylegnd.legend.registered.ui.LegendEmptyState
 import com.mylegnd.legend.registered.ui.LegendTab
+import com.mylegnd.legend.registered.core.design.LegendLocalizationRuntime
+import com.mylegnd.legend.registered.core.design.LegendLocalizationKey
+import java.util.Locale
 import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
@@ -53,4 +56,30 @@ class LegendDesignSystemTest {
             LegendTab.available("Client").map(LegendTab::label),
         )
     }
+    @Test fun savedTranslatedLabelsDoNotChangeNavigationIdentityOrRoleVisibility() {
+        compose.setContent { LegendTheme { LegendEmptyState("Legend", "Shared authority") } }
+        val sources = LegendNavigationPolicy.Tabs
+        val previous = sources.associate { source ->
+            LegendLocalizationKey(source, LegendLocalizationRuntime.VisualContext) to
+                LegendLocalizationRuntime.text(source)
+        }
+        val previousLocale = LegendLocalizationRuntime.locale()
+        try {
+            LegendLocalizationRuntime.install(
+                sources.associate { source ->
+                    LegendLocalizationKey(source, LegendLocalizationRuntime.VisualContext) to "translated:$source"
+                },
+                Locale.forLanguageTag("ht"),
+            )
+            assertEquals(LegendTab.entries.toList(), LegendTab.available("Agent"))
+            assertEquals(
+                LegendTab.entries.filterNot { it == LegendTab.CLIENTS },
+                LegendTab.available("Client"),
+            )
+            assertEquals("translated:Home", LegendTab.HOME.label)
+        } finally {
+            LegendLocalizationRuntime.install(previous, previousLocale)
+        }
+    }
+
 }

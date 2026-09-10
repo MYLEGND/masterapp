@@ -13,3 +13,7 @@ Catalog requests fill at most one missing provider batch while reusing all avail
 The existing ApprovedOnly policy remains in force. Five entries in the current manifest require approved translations and retain source copy until that approval exists. This is separate from ordinary Azure-translatable interface copy.
 
 Validation includes every enabled registry language, durable reuse across actors, provider literal preservation, stale/source-mismatch rejection, web actor authorization, native tests, and DOM checks of language switching, dynamic text, accessibility, input preservation and excluded message bodies. Live Azure and device acceptance results are recorded separately from these automated checks.
+
+Profile metrics, editor labels and account actions resolve app-owned source copy through the same native presentation lookup. Plural content names are complete shared phrases rather than an English suffix appended to a translated word. Language picker descriptions are shared design copy on both native platforms. User names, biographies and editable values are not treated as interface labels.
+
+Navigation configuration is resolved from canonical source copy, independently of translated display labels. A device regression reproduces startup with a non-English catalog already installed and verifies that tab order and Agent-only visibility remain unchanged.

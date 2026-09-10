@@ -545,11 +545,13 @@ internal enum class LegendTab(private val copyKey: String) {
     ACCOUNT("tab.account");
 
     val label get() = LegendCopy.value(copyKey)
+    // Configuration identity must not depend on the active presentation language.
+    private val configuredTitle get() = LegendDesignAuthority.copy(copyKey)
 
     companion object {
         fun available(participantType: String): List<LegendTab> {
             val configured = LegendNavigationPolicy.Tabs.map { title ->
-                entries.singleOrNull { it.label == title }
+                entries.singleOrNull { it.configuredTitle == title }
                     ?: error("Shared LEGEND navigation contains an unsupported tab: $title")
             }
             check(configured.distinct().size == configured.size) {
@@ -558,7 +560,7 @@ internal enum class LegendTab(private val copyKey: String) {
             return if (participantType.equals("Agent", ignoreCase = true)) {
                 configured
             } else {
-                configured.filterNot { it.label == LegendNavigationPolicy.AgentOnlyTab }
+                configured.filterNot { it.configuredTitle == LegendNavigationPolicy.AgentOnlyTab }
             }
         }
     }
