@@ -283,11 +283,28 @@ Dir.glob(KOTLIN_ROOT.join("**/*.kt")).sort.each do |path|
   end
 end
 
+# Calling view models retain source-form UI state until presentation. Collect
+# those explicit UI assignments and failure paths without treating wire status
+# codes or arbitrary message content as interface copy.
+[
+  SWIFT_ROOT.join("Features/Calling/LegendCallStore.swift"),
+  KOTLIN_ROOT.join("com/mylegnd/legend/registered/feature/calling/LegendCallViewModel.kt")
+].each do |path|
+  File.foreach(path) do |line|
+    next unless line.match?(/\bfail\(|\b(?:status|failure|controlError)\s*[:=]/)
+    line.scan(LITERAL).each do |token|
+      value = literal_value(token)
+      add.call(value, VISUAL) if value&.match?(/\A[A-Z]/)
+    end
+  end
+end
+
 # Server-owned native presentation projections are part of the application
 # surface, but their stable keys and semantic codes are not. Register only the
 # explicit human-copy positions so native renderers can resolve those values
 # through the same catalog without translating arbitrary response data.
 {
+  ROOT.join("SHARED/Calling/LegendCallingContracts.cs") => [ /=>\s*(#{LITERAL})/ ],
   ROOT.join("Infrastructure/Mobile/MobileFinancialPresentationEvaluator.cs") => [
     /\b(?:eyebrow|title|status|reason):\s*(#{LITERAL})/,
     /\b(?:AmountMetric|DateMetric|TextMetric)\(\s*(#{LITERAL})/
