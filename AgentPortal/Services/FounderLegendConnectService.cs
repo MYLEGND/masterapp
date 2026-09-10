@@ -554,6 +554,23 @@ public sealed class FounderLegendConnectService
             [policy.Stage, readiness.Stage, capacity.Stage]);
     }
 
+    internal async Task<FounderLegendOperationalDiagnosticRead<LegendConnectFounderSectionPageSnapshot?>>
+        GetOperationalDiagnosticSectionAsync(
+            ClaimsPrincipal user,
+            string section,
+            string language,
+            CancellationToken cancellationToken = default)
+    {
+        // The existing section authority resolves the active Founder account.
+        // Denials must propagate rather than become diagnostic receipts.
+        FounderGuard.EnsureFounderOrThrow(user);
+        return await ReadOperationalDiagnosticStageAsync<LegendConnectFounderSectionPageSnapshot?>(
+            "selected_section_page",
+            null,
+            async token => await GetSectionPageAsync(user, section, language, null, null, null, token),
+            cancellationToken);
+    }
+
     private static async Task<FounderLegendOperationalDiagnosticRead<T>>
         ReadOperationalDiagnosticStageAsync<T>(
             string name,
@@ -567,9 +584,9 @@ public sealed class FounderLegendConnectService
 
         try
         {
-            return FounderLegendOperationalDiagnosticRead<T>.Available(
-                name,
-                await read(stageBudget.Token));
+            var value = await read(stageBudget.Token);
+            stageBudget.Token.ThrowIfCancellationRequested();
+            return FounderLegendOperationalDiagnosticRead<T>.Available(name, value);
         }
         catch (OperationCanceledException)
             when (cancellationToken.IsCancellationRequested)
@@ -583,13 +600,18 @@ public sealed class FounderLegendConnectService
                 fallback,
                 OperationalDiagnosticStageBudget);
         }
-        catch (Exception)
+        catch (ForbidResultException)
+        {
+            throw;
+        }
+        catch (Exception exception)
         {
             // Diagnostics are an observation surface. A failed observation is
             // reported as such and must not suppress the other authorities.
             return FounderLegendOperationalDiagnosticRead<T>.Failed(
                 name,
-                fallback);
+                fallback,
+                exception.GetType().Name);
         }
     }
 
@@ -1836,7 +1858,9 @@ internal sealed record FounderLegendOperationalDiagnosticsSnapshot(
 internal sealed record FounderLegendOperationalDiagnosticStage(
     string Name,
     string State,
-    string Detail);
+    string Detail,
+    string? ReasonCode = null,
+    string? ExceptionType = null);
 
 internal sealed record FounderLegendOperationalDiagnosticRead<T>(
     T Value,
@@ -1862,17 +1886,22 @@ internal sealed record FounderLegendOperationalDiagnosticRead<T>(
             new(
                 name,
                 "timed_out",
-                $"The canonical authority exceeded its {budget.TotalSeconds:F0}-second diagnostic stage budget."));
+                $"The canonical authority exceeded its {budget.TotalSeconds:F0}-second diagnostic stage budget.",
+                "operational_diagnostic_stage_deadline_exceeded",
+                nameof(OperationCanceledException)));
 
     public static FounderLegendOperationalDiagnosticRead<T> Failed(
         string name,
-        T fallback) =>
+        T fallback,
+        string? exceptionType = null) =>
         new(
             fallback,
             new(
                 name,
                 "failed",
-                "The canonical authority failed while producing this diagnostic stage."));
+                "The canonical authority failed while producing this diagnostic stage.",
+                "operational_diagnostic_stage_failed",
+                exceptionType));
 }
 
 internal sealed record FounderLegendLanguageDiagnosticSnapshot(
