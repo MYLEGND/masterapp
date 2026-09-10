@@ -1,5 +1,5 @@
 {
-  "catalogVersion": "application-copy-v1-5a6704d3e5e0c382",
+  "catalogVersion": "application-copy-v1-be6065997f7ec92e",
   "sourceLanguageCode": "en",
   "entries": [
     {
@@ -8731,6 +8731,28 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.a7274351abd8e6e5381ecaa1",
+      "source": "Android could not present this call. Check calling permissions and notifications.",
+      "context": "visual interface copy",
+      "sourceRevision": "2dde08cf7595cf4a",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.d76cd31c17dffee3fa63c825",
+      "source": "Android could not start this call. Check calling permissions and try again.",
+      "context": "visual interface copy",
+      "sourceRevision": "dc7601f37322fbb3",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.68e2408d1af400042a53922e",
       "source": "Android supplies native selection and playback. LEGEND's existing protected upload and media-processing authority owns publication.",
       "context": "visual interface copy",
@@ -12343,6 +12365,17 @@
       "source": "Calling",
       "context": "visual interface copy",
       "sourceRevision": "74028104c2ae1cf9",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.d5e973b342243a4da7e784e8",
+      "source": "Calling unavailable.",
+      "context": "visual interface copy",
+      "sourceRevision": "69c71b5d00ad692d",
       "placeholders": [
 
       ],
@@ -18592,6 +18625,17 @@
       "source": "Direct OpenAI mode; native LEGEND responder bypassed",
       "context": "visual interface copy",
       "sourceRevision": "dc6a0d89826e1998",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.606bffa602167f44b735963f",
+      "source": "Direct connection unavailable",
+      "context": "visual interface copy",
+      "sourceRevision": "9fc09d5a9574a4b2",
       "placeholders": [
 
       ],
@@ -41968,6 +42012,17 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.ff4e22f4f4598f4a60586e68",
+      "source": "Ringing",
+      "context": "visual interface copy",
+      "sourceRevision": "426a858eacbbfb5a",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.8a352635454072d333f4cca5",
       "source": "Risk Level",
       "context": "visual interface copy",
@@ -48228,6 +48283,17 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.eee7fa97efa4835032f30762",
+      "source": "The audio route could not be changed.",
+      "context": "visual interface copy",
+      "sourceRevision": "13f34a26eea89170",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.84781a8853b544a28a0a8a32",
       "source": "The authorization service did not return a callback.",
       "context": "visual interface copy",
@@ -48239,10 +48305,76 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.dd53786cff1633ca035062f0",
+      "source": "The call could not be answered.",
+      "context": "visual interface copy",
+      "sourceRevision": "df2bbc8ab0b183b5",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.57dda135c85db73f5162bff2",
+      "source": "The call could not start in time. Please try again.",
+      "context": "visual interface copy",
+      "sourceRevision": "a38e49068e898288",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.e093068bddacfff9264c1a45",
       "source": "The call could not start. Please try again.",
       "context": "visual interface copy",
       "sourceRevision": "8da23f32ca7d59b2",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.df450039724bbd5deb41713c",
+      "source": "The call session could not be verified. Please call again.",
+      "context": "visual interface copy",
+      "sourceRevision": "ac2aa94b98a3fb11",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.21842aad6084432df2d535a9",
+      "source": "The call status could not be confirmed. Please try again.",
+      "context": "visual interface copy",
+      "sourceRevision": "3c16d60e5c106c53",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.84be0c4792a7d6d5bf258ade",
+      "source": "The call was declined.",
+      "context": "visual interface copy",
+      "sourceRevision": "044f149802f9f442",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.fc597e2cfeffbde6903a3305",
+      "source": "The call was not answered.",
+      "context": "visual interface copy",
+      "sourceRevision": "80c08c42e9b04001",
       "placeholders": [
 
       ],
@@ -48287,6 +48419,17 @@
       "source": "The device reminder is no longer available.",
       "context": "visual interface copy",
       "sourceRevision": "27a465140380a857",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.987bcaf035fa410fbce2fcc9",
+      "source": "The direct connection could not be established.",
+      "context": "visual interface copy",
+      "sourceRevision": "da215786894b3bea",
       "placeholders": [
 
       ],
@@ -48364,6 +48507,28 @@
       "source": "The home store is no longer available.",
       "context": "visual interface copy",
       "sourceRevision": "03740854dc7b841b",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.57a518c15204ea7f7a68b688",
+      "source": "The incoming call could not be confirmed. Please try again.",
+      "context": "visual interface copy",
+      "sourceRevision": "836d2af06c7073e3",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.eb9ac6e98be67cb865c25244",
+      "source": "The incoming call could not be presented or confirmed. Please try again.",
+      "context": "visual interface copy",
+      "sourceRevision": "97a0432cef8f7fee",
       "placeholders": [
 
       ],
@@ -48518,6 +48683,28 @@
       "source": "The package should arrive today. | Pake a ta dwe rive jodi a.",
       "context": "visual interface copy",
       "sourceRevision": "c92facfaf69baf6e",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.6738518c4bda99cfa8ee356c",
+      "source": "The recipient could not be reached. Their device did not confirm receiving the call.",
+      "context": "visual interface copy",
+      "sourceRevision": "0e458e7f52590b8e",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.6233b0257348dcd6f1e54368",
+      "source": "The recipient received the call, but the ringing sound could not play.",
+      "context": "visual interface copy",
+      "sourceRevision": "412d7c7555ca0212",
       "placeholders": [
 
       ],
@@ -49057,6 +49244,17 @@
       "source": "This music stream is not playable.",
       "context": "visual interface copy",
       "sourceRevision": "ee2b07afca0ccde8",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.9c91c628f8991a2dba74d110",
+      "source": "This network could not establish a direct call. Try another Wi-Fi or mobile connection.",
+      "context": "visual interface copy",
+      "sourceRevision": "e600cf0f0627ba12",
       "placeholders": [
 
       ],

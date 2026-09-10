@@ -16,6 +16,19 @@ namespace AgentPortal.Tests;
 
 public sealed class ApplicationLocalizationArchitectureTests
 {
+    [Theory]
+    [InlineData("Ringing")]
+    [InlineData("The call status could not be confirmed. Please try again.")]
+    [InlineData("The recipient could not be reached. Their device did not confirm receiving the call.")]
+    [InlineData("The call was declined.")]
+    public void CallingStatusAndFailureCopy_UsesTheSharedRetainedCatalog(string source)
+    {
+        var entry = Assert.Single(new EmbeddedApplicationCopyManifestSource().Manifest.Entries,
+            entry => entry.Source == source && entry.Context == "visual interface copy");
+        Assert.Equal("Global", entry.ReuseScope);
+        Assert.Equal("AzureAllowed", entry.TranslationPolicy);
+    }
+
     [Fact]
     public async Task EveryEnabledLanguage_RetainsAndReusesTheSameSourceIdentity()
     {
