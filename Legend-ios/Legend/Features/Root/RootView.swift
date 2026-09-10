@@ -28,7 +28,7 @@ struct RootView: View {
             case .authenticated(let currentSession):
                 if localization.isReady(for: currentSession) {
                     AuthenticatedHomeView(currentSession: currentSession, coordinator: session)
-                        .id("\(currentSession.actor.identity)-\(localization.revision)")
+                        .id(currentSession.actor.identity)
                 } else {
                     LegendSessionProgressView()
                 }
@@ -531,6 +531,7 @@ private struct SessionFailureView: View {
 
 private struct AuthenticatedHomeView: View {
     @Environment(\.scenePhase) private var scenePhase
+    @EnvironmentObject private var localization: LegendApplicationLocalization
     @EnvironmentObject private var pushNotifications: LegendPushNotificationDelegate
     let currentSession: MobileSession
     @ObservedObject private var coordinator: MobileSessionCoordinator
@@ -567,6 +568,9 @@ private struct AuthenticatedHomeView: View {
                     onSignOut: {
                         Task { await signOut() }
                     })
+                    // Refresh translated presentation without replacing the
+                    // account's bootstrap, caches, or in-flight requests.
+                    .id(localization.revision)
             case .failed(let failure):
                 NavigationStack {
                     LegendNextErrorState(

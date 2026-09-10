@@ -269,11 +269,13 @@ private enum LegendLocalizationRuntime {
     static func install(
         _ values: [LegendLocalizationKey: String],
         locale: Locale
-    ) {
+    ) -> Bool {
         lock.lock()
+        defer { lock.unlock() }
+        guard translations != values || activeLocale != locale else { return false }
         translations = values
         activeLocale = locale
-        lock.unlock()
+        return true
     }
 
     static func text(_ source: String, context: String) -> String {
@@ -454,7 +456,12 @@ final class LegendApplicationLocalization: ObservableObject {
         actorKey: String?
     ) {
         let resolvedLocale = Locale(identifier: languageCode.replacingOccurrences(of: "-", with: "_"))
-        LegendLocalizationRuntime.install(values, locale: resolvedLocale)
+        let presentationChanged = LegendLocalizationRuntime.install(values, locale: resolvedLocale)
+        // Cache hydration and the server response commonly contain identical
+        // copy. Republishing that catalog tears down the authenticated shell
+        // and restarts all of its account-scoped requests.
+        guard presentationChanged || activeActorKey != actorKey ||
+                self.languageCode != languageCode else { return }
         self.languageCode = languageCode
         locale = resolvedLocale
         activeActorKey = actorKey
