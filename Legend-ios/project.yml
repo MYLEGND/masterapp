@@ -89,6 +89,8 @@ targets:
       path: Legend/Resources/Info.plist
       properties:
         CFBundleDisplayName: LEGEND®
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
         CFBundleURLTypes:
           - CFBundleTypeRole: Editor
             CFBundleURLSchemes:
