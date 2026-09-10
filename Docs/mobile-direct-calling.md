@@ -13,6 +13,10 @@ Release status: backend release authorized; native distribution requires new sig
 
 ## Native behavior
 
+- Inbox search filters existing conversations and opens the same server-authorized profile directory used by message and call pickers. Calling a searched profile resolves or creates the canonical direct conversation; there is no separate call directory or client-side identity authority.
+- Recipient, group-member and host selection expose search near the top. Android cancels superseded searches and rejects stale results; repeated conversation starts are guarded.
+- Native search controls and call controls consume `Legend-Design/legend-design.tokens.json`, including pressed feedback, selected colors, and call-control size. Android maps Material theme containers and selection colors to this shared palette.
+
 - iOS uses CallKit, PushKit and the system audio session. Android uses a self-managed Telecom connection, foreground call service and incoming-call notifications.
 - Microphone and camera access require user permission. Camera capture pauses in the background; an accepted audio call can continue under the native call lifecycle.
 - Voice/video controls include mute, speaker, camera, camera switch, an explicit one-frame snapshot/share action, and end/decline. Ending or switching accounts immediately releases media; teardown uses only the old authenticated connection.

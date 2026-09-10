@@ -90,8 +90,8 @@ private struct LegendCallScreen: View {
                         }
                     } else {
                         HStack(spacing: 20) {
-                            control(store.muted ? LegendLocalized("Unmute") : LegendLocalized("Mute"), icon: store.muted ? "mic.slash.fill" : "mic.fill") { store.setMuted() }
-                            control(LegendLocalized("Speaker"), icon: store.speaker ? "speaker.wave.3.fill" : "ear.fill") { store.toggleSpeaker() }
+                            control(store.muted ? LegendLocalized("Unmute") : LegendLocalized("Mute"), icon: store.muted ? "mic.slash.fill" : "mic.fill", color: store.muted ? LegendNextColor.gold : .white.opacity(LegendSharedDesign.opacity("callControlSurface"))) { store.setMuted() }
+                            control(LegendLocalized("Speaker"), icon: store.speaker ? "speaker.wave.3.fill" : "ear.fill", color: store.speaker ? LegendNextColor.gold : .white.opacity(LegendSharedDesign.opacity("callControlSurface"))) { store.toggleSpeaker() }
                             if store.current?.video == true && !store.sharingScreen {
                                 control(LegendLocalized("Camera"), icon: store.cameraEnabled ? "video.fill" : "video.slash.fill") { store.toggleCamera() }
                                 control(LegendLocalized("Flip"), icon: "arrow.triangle.2.circlepath.camera") { store.switchCamera() }
@@ -139,10 +139,10 @@ private struct LegendCallScreen: View {
         default: return LegendLocalized(store.status)
         }
     }
-    private func control(_ title: String, icon: String, color: Color = .white.opacity(0.16), action: @escaping () -> Void) -> some View {
+    private func control(_ title: String, icon: String, color: Color = .white.opacity(LegendSharedDesign.opacity("callControlSurface")), action: @escaping () -> Void) -> some View {
         Button(action: action) {
             VStack(spacing: 8) {
-                Image(systemName: icon).font(.title2).frame(width: 54, height: 54).background(color, in: Circle())
+                Image(systemName: icon).font(.title2).frame(width: LegendSharedDesign.scalar(.sizes, "callControl"), height: LegendSharedDesign.scalar(.sizes, "callControl")).background(color, in: Circle())
                 Text(title).font(.caption)
             }
         }.buttonStyle(.plain).accessibilityLabel(title)

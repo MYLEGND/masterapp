@@ -125,6 +125,7 @@ struct MessagingHomeView: View {
     let openConversation: (UUID) -> Void
 
     @Environment(\.colorScheme) private var colorScheme
+    @State private var inboxSearch = ""
     @State private var isPresentingNewConversation = false
     @State private var isPresentingCallDirectory = false
     @State private var conversationPendingRemoval: ConversationSummary?
@@ -139,6 +140,7 @@ struct MessagingHomeView: View {
         .sheet(isPresented: $isPresentingNewConversation) {
             LegendRecipientPicker(
                 store: store,
+                initialSearch: inboxSearch,
                 selectConversation: { conversationID in
                     isPresentingNewConversation = false
                     openConversation(conversationID)
@@ -150,14 +152,15 @@ struct MessagingHomeView: View {
             .legendNextSheetChrome(detents: [.large])
         }
         .sheet(isPresented: $isPresentingCallDirectory) {
-            if case .loaded(let conversations) = store.state {
-                LegendMessagingCallDirectory(
-                    store: store,
-                    conversations: conversations,
-                    dismiss: { isPresentingCallDirectory = false })
-                    .legendNextSheetChrome(detents: [.medium, .large])
-            }
+            LegendRecipientPicker(
+                store: store,
+                initialSearch: inboxSearch,
+                forCalling: true,
+                selectConversation: openConversation,
+                dismiss: { isPresentingCallDirectory = false })
+                .legendNextSheetChrome(detents: [.large])
         }
+
         .alert(
             LegendLocalized("Remove conversation?"),
             isPresented: Binding(
@@ -215,9 +218,24 @@ struct MessagingHomeView: View {
     private func inbox(
         _ conversations: [ConversationSummary]
     ) -> some View {
-        LegendScrollView {
+        let query = inboxSearch.trimmingCharacters(in: .whitespacesAndNewlines)
+        let matches = conversations.filter { query.isEmpty || $0.title.localizedCaseInsensitiveContains(query) }
+        return LegendScrollView {
             LazyVStack(spacing: 0) {
                 inboxHeader
+                LegendMessagingSearchField(search: $inboxSearch, placeholder: LegendSharedDesign.copy("search.messaging"))
+                if !query.isEmpty {
+                    Button {
+                        isPresentingNewConversation = true
+                    } label: {
+                        Label(LegendLocalized("Search profiles to message or call"), systemImage: "person.crop.circle.badge.magnifyingglass")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(LegendNextColor.gold)
+                            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                    }
+                    .buttonStyle(LegendMessagingPressButtonStyle())
+                    .padding(.horizontal, LegendNextSpacing.pageHorizontal)
+                }
 
                 if let refreshFailure = store.refreshFailure {
                     LegendMessagingStatusBanner(
@@ -229,11 +247,14 @@ struct MessagingHomeView: View {
                     .padding(.top, LegendNextSpacing.sm)
                 }
 
-                if conversations.isEmpty {
+                if matches.isEmpty && !query.isEmpty {
+                    LegendMessagingEmptyState(symbol: "magnifyingglass", title: LegendLocalized("No matching conversations"),
+                        message: LegendLocalized("Search profiles to start a message or call."), actionTitle: nil, action: nil)
+                } else if conversations.isEmpty {
                     inboxEmptyState
                         .padding(.top, LegendNextSpacing.display)
                 } else {
-                    conversationSection(conversations)
+                    conversationSection(matches)
                         .padding(.top, LegendNextSpacing.intermediate)
                 }
             }
@@ -675,74 +696,9 @@ struct MessagingHomeView: View {
     }
 }
 
-private struct LegendMessagingCallDirectory: View {
-    @ObservedObject var store: MessagingStore
-    let conversations: [ConversationSummary]
-    let dismiss: () -> Void
-
-    @State private var selectedConversation: ConversationSummary?
-
-    private var directConversations: [ConversationSummary] {
-        conversations.filter { $0.conversationType != "Group" }
-    }
-
-    var body: some View {
-        NavigationStack {
-            ZStack {
-                LegendNextCanvas()
-
-                LegendScrollView {
-                    VStack(alignment: .leading, spacing: LegendNextSpacing.md) {
-                        Text(LegendLocalized("Call a connection"))
-                            .font(LegendNextTypography.section)
-                            .foregroundStyle(LegendNextColor.textPrimary)
-
-                        Text(LegendLocalized("Calls open through your device’s secure Phone or FaceTime experience."))
-                            .font(.subheadline)
-                            .foregroundStyle(LegendNextColor.textSecondary)
-
-                        if directConversations.isEmpty {
-                            LegendMessagingEmptyState(
-                                symbol: "phone.down.fill",
-                                title: LegendLocalized("No direct conversations"),
-                                message: LegendLocalized("Start a private conversation to call a connection."),
-                                actionTitle: nil,
-                                action: nil)
-                        } else {
-                            LazyVStack(spacing: LegendNextSpacing.sm) {
-                                ForEach(directConversations) { conversation in
-                                    Button {
-                                        selectedConversation = conversation
-                                    } label: {
-                                        LegendConversationRow(conversation: conversation)
-                                    }
-                                    .buttonStyle(LegendMessagingPressButtonStyle())
-                                }
-                            }
-                        }
-                    }
-                    .padding(.horizontal, LegendNextSpacing.pageHorizontal)
-                    .padding(.vertical, LegendNextSpacing.md)
-                }
-                .scrollIndicators(.hidden)
-            }
-            .navigationTitle(LegendLocalized("Call"))
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button(LegendLocalized("Done"), action: dismiss)
-                        .foregroundStyle(LegendNextColor.gold)
-                }
-            }
-        }
-        .sheet(item: $selectedConversation) { conversation in
-            LegendConversationCallSheet(
-                store: store,
-                conversationID: conversation.id,
-                fallbackName: conversation.title)
-                .legendNextSheetChrome(detents: [.height(340)])
-        }
-    }
+private struct LegendCallRecipient: Identifiable {
+    let id: UUID
+    let name: String
 }
 
 private struct LegendConversationCallSheet: View {
@@ -814,12 +770,15 @@ private struct LegendCallActionButton: View {
 
 private struct LegendRecipientPicker: View {
     @ObservedObject var store: MessagingStore
+    var initialSearch = ""
+    var forCalling = false
     let selectConversation: (UUID) -> Void
     let dismiss: () -> Void
 
     @Environment(\.colorScheme) private var colorScheme
     @FocusState private var searchIsFocused: Bool
     @State private var search = ""
+    @State private var selectedCall: LegendCallRecipient?
     @State private var isCreatingGroup = false
     @State private var groupSubject = ""
     @State private var groupRecipients: [LogicalParticipantIdentity: MessagingRecipient] = [:]
@@ -836,7 +795,7 @@ private struct LegendRecipientPicker: View {
 
                 VStack(spacing: 0) {
                     recipientHeader
-                    searchField
+                    LegendMessagingSearchField(search: $search)
                     recipientScopes
                     if isCreatingGroup {
                         groupCreationBar
@@ -845,8 +804,16 @@ private struct LegendRecipientPicker: View {
                 }
             }
             .toolbar(.hidden, for: .navigationBar)
+            .onAppear {
+                search = initialSearch
+                store.loadRecipients(search: initialSearch)
+            }
             .onChange(of: search) { _, value in
                 store.searchRecipients(value)
+            }
+            .sheet(item: $selectedCall) { target in
+                LegendConversationCallSheet(store: store, conversationID: target.id, fallbackName: target.name)
+                    .legendNextSheetChrome(detents: [.height(340)])
             }
         }
     }
@@ -868,7 +835,7 @@ private struct LegendRecipientPicker: View {
                 Spacer()
 
                 VStack(spacing: 2) {
-                    Text(isCreatingGroup ? LegendLocalized("New group") : LegendLocalized("New message"))
+                    Text(forCalling ? LegendLocalized("Call a connection") : isCreatingGroup ? LegendLocalized("New group") : LegendLocalized("New message"))
                         .font(.system(.headline, design: .rounded).weight(.bold))
                         .foregroundStyle(.white)
 
@@ -881,6 +848,7 @@ private struct LegendRecipientPicker: View {
 
                 Spacer()
 
+                if !forCalling {
                 Button {
                     isCreatingGroup.toggle()
                     groupRecipients.removeAll()
@@ -901,6 +869,7 @@ private struct LegendRecipientPicker: View {
                     isCreatingGroup
                         ? LegendLocalized("Create a direct message", context: "accessibility copy")
                         : LegendLocalized("Create a group chat", context: "accessibility copy"))
+                }
             }
         }
         .padding(.horizontal, LegendNextSpacing.pageHorizontal)
@@ -916,60 +885,6 @@ private struct LegendRecipientPicker: View {
                 )
                 .ignoresSafeArea(edges: .top)
         }
-    }
-
-    private var searchField: some View {
-        HStack(spacing: LegendNextSpacing.sm) {
-            Image(systemName: "magnifyingglass")
-                .font(.body.weight(.semibold))
-                .foregroundStyle(
-                    searchIsFocused
-                        ? LegendNextColor.gold
-                        : LegendNextColor.textTertiary
-                )
-
-            TextField(LegendLocalized("Search people"), text: $search)
-                .font(.body)
-                .foregroundStyle(LegendNextColor.textPrimary)
-                .textInputAutocapitalization(.words)
-                .autocorrectionDisabled()
-                .focused($searchIsFocused)
-
-            if !search.isEmpty {
-                Button {
-                    search = ""
-                } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .foregroundStyle(LegendNextColor.textTertiary)
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel(LegendLocalized("Clear search", context: "accessibility copy"))
-            }
-        }
-        .padding(.horizontal, LegendNextSpacing.md)
-        .frame(minHeight: 50)
-        .background(
-            LegendNextColor.surfaceElevated,
-            in: RoundedRectangle(
-                cornerRadius: LegendNextRadius.control,
-                style: .continuous
-            )
-        )
-        .overlay {
-            RoundedRectangle(
-                cornerRadius: LegendNextRadius.control,
-                style: .continuous
-            )
-            .stroke(
-                searchIsFocused
-                    ? LegendNextColor.gold.opacity(0.72)
-                    : LegendNextColor.separator,
-                lineWidth: searchIsFocused ? 1.25 : 1
-            )
-        }
-        .padding(.horizontal, LegendNextSpacing.pageHorizontal)
-        .padding(.top, LegendNextSpacing.intermediate)
-        .padding(.bottom, LegendNextSpacing.sm)
     }
 
     private var groupCreationBar: some View {
@@ -1240,7 +1155,10 @@ private struct LegendRecipientPicker: View {
 
         store.startConversation(
             with: recipient,
-            completion: selectConversation
+            completion: { id in
+                if forCalling { selectedCall = LegendCallRecipient(id: id, name: recipient.displayName) }
+                else { selectConversation(id) }
+            }
         )
     }
 
@@ -1285,7 +1203,6 @@ private struct LegendGroupMemberPicker: View {
     let conversationID: UUID
     let dismiss: () -> Void
 
-    @FocusState private var searchIsFocused: Bool
     @State private var search = ""
 
     var body: some View {
@@ -1295,7 +1212,7 @@ private struct LegendGroupMemberPicker: View {
 
                 VStack(spacing: 0) {
                     header
-                    searchField
+                    LegendMessagingSearchField(search: $search, placeholder: LegendSharedDesign.copy("search.connections"))
                     scopes
                     content
                 }
@@ -1332,25 +1249,6 @@ private struct LegendGroupMemberPicker: View {
         .padding(.horizontal, LegendNextSpacing.pageHorizontal)
         .padding(.vertical, LegendNextSpacing.md)
         .background(LegendNextGradient.hero)
-    }
-
-    private var searchField: some View {
-        HStack(spacing: LegendNextSpacing.xs) {
-            Image(systemName: "magnifyingglass")
-                .foregroundStyle(LegendNextColor.textTertiary)
-
-            TextField(LegendLocalized("Search connections"), text: $search)
-                .focused($searchIsFocused)
-                .autocorrectionDisabled()
-        }
-        .padding(.horizontal, LegendNextSpacing.sm)
-        .frame(minHeight: 44)
-        .background(
-            LegendNextColor.surfaceElevated,
-            in: RoundedRectangle(cornerRadius: LegendNextRadius.compact, style: .continuous)
-        )
-        .padding(.horizontal, LegendNextSpacing.pageHorizontal)
-        .padding(.vertical, LegendNextSpacing.sm)
     }
 
     private var scopes: some View {
@@ -1451,9 +1349,11 @@ private struct LegendGroupCollaboratorSheet: View {
     let currentIdentity: LogicalParticipantIdentity
     let dismiss: () -> Void
 
+    @State private var search = ""
+
     private var manageableParticipants: [MessagingParticipant] {
         conversation.participants
-            .filter { $0.identity != currentIdentity }
+            .filter { $0.identity != currentIdentity && (search.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || $0.displayName.localizedCaseInsensitiveContains(search.trimmingCharacters(in: .whitespacesAndNewlines))) }
             .sorted {
                 $0.displayName.localizedCaseInsensitiveCompare(
                     $1.displayName) == .orderedAscending
@@ -1467,6 +1367,7 @@ private struct LegendGroupCollaboratorSheet: View {
 
                 VStack(spacing: 0) {
                     header
+                    LegendMessagingSearchField(search: $search, placeholder: LegendSharedDesign.copy("search.groupMembers"))
 
                     if let failure = store.sendFailure {
                         LegendMessagingStatusBanner(
@@ -1948,7 +1849,7 @@ private struct LegendGroupHostPicker: View {
                     }
                 }
             }
-            .searchable(text: $search, prompt: "Search group members by name")
+            .searchable(text: $search, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search group members by name")
             .navigationTitle(LegendLocalized("Choose group host"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -4301,8 +4202,8 @@ private struct LegendMessagingPressButtonStyle: ButtonStyle {
         configuration: Configuration
     ) -> some View {
         configuration.label
-            .scaleEffect(configuration.isPressed ? 0.975 : 1)
-            .opacity(configuration.isPressed ? 0.86 : 1)
+            .scaleEffect(configuration.isPressed ? LegendSharedDesign.opacity("pressedControlScale") : 1)
+            .opacity(configuration.isPressed ? LegendSharedDesign.opacity("pressedSurface") : 1)
             .animation(
                 .easeOut(duration: 0.14),
                 value: configuration.isPressed
@@ -4372,4 +4273,64 @@ extension MessagingParticipant {
     var legendProfile: MobileSocialAuthor {
         MobileSocialAuthor(identity: identity, profileID: profileID, displayName: displayName, avatar: avatar)
     }
+}
+
+private struct LegendMessagingSearchField: View {
+    @Binding var search: String
+    var placeholder = LegendSharedDesign.copy("search.people")
+    @FocusState private var searchIsFocused: Bool
+    var body: some View {
+        HStack(spacing: LegendNextSpacing.sm) {
+            Image(systemName: "magnifyingglass")
+                .font(.body.weight(.semibold))
+                .foregroundStyle(
+                    searchIsFocused
+                        ? LegendNextColor.gold
+                        : LegendNextColor.textTertiary
+                )
+
+            TextField(LegendLocalized(placeholder), text: $search)
+                .font(.body)
+                .foregroundStyle(LegendNextColor.textPrimary)
+                .textInputAutocapitalization(.words)
+                .autocorrectionDisabled()
+                .focused($searchIsFocused)
+
+            if !search.isEmpty {
+                Button {
+                    search = ""
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundStyle(LegendNextColor.textTertiary)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(LegendLocalized("Clear search", context: "accessibility copy"))
+            }
+        }
+        .padding(.horizontal, LegendNextSpacing.md)
+        .frame(minHeight: 50)
+        .background(
+            LegendNextColor.surfaceElevated,
+            in: RoundedRectangle(
+                cornerRadius: LegendNextRadius.control,
+                style: .continuous
+            )
+        )
+        .overlay {
+            RoundedRectangle(
+                cornerRadius: LegendNextRadius.control,
+                style: .continuous
+            )
+            .stroke(
+                searchIsFocused
+                    ? LegendNextColor.gold.opacity(0.72)
+                    : LegendNextColor.separator,
+                lineWidth: searchIsFocused ? 1.25 : 1
+            )
+        }
+        .padding(.horizontal, LegendNextSpacing.pageHorizontal)
+        .padding(.top, LegendNextSpacing.intermediate)
+        .padding(.bottom, LegendNextSpacing.sm)
+    }
+
 }

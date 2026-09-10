@@ -1,5 +1,5 @@
 {
-  "catalogVersion": "application-copy-v1-d26f65b75794d5cd",
+  "catalogVersion": "application-copy-v1-94179b5bc326a5a3",
   "sourceLanguageCode": "en",
   "entries": [
     {
@@ -436,17 +436,6 @@
       "source": "Close account switcher",
       "context": "accessibility copy",
       "sourceRevision": "8028d6b795a1d740",
-      "placeholders": [
-
-      ],
-      "translationPolicy": "AzureAllowed",
-      "reuseScope": "Global"
-    },
-    {
-      "id": "application.copy.9dd648ecf6ce06f9e7a01e19",
-      "source": "Close call directory",
-      "context": "accessibility copy",
-      "sourceRevision": "b659c5d7b41da0e7",
       "placeholders": [
 
       ],
@@ -4562,17 +4551,6 @@
       "reuseScope": "Global"
     },
     {
-      "id": "application.copy.bed36204541ea7d02f235049",
-      "source": "Call",
-      "context": "visual interface copy",
-      "sourceRevision": "d6e645b7d2b2da64",
-      "placeholders": [
-
-      ],
-      "translationPolicy": "AzureAllowed",
-      "reuseScope": "Global"
-    },
-    {
       "id": "application.copy.ab013f69a56283a0aa0ec8e1",
       "source": "Call a connection",
       "context": "visual interface copy",
@@ -4610,17 +4588,6 @@
       "source": "Calling",
       "context": "visual interface copy",
       "sourceRevision": "74028104c2ae1cf9",
-      "placeholders": [
-
-      ],
-      "translationPolicy": "AzureAllowed",
-      "reuseScope": "Global"
-    },
-    {
-      "id": "application.copy.87964081c591efa9369127da",
-      "source": "Calls open through your device’s secure Phone or FaceTime experience.",
-      "context": "visual interface copy",
-      "sourceRevision": "1c3b7d79513f7497",
       "placeholders": [
 
       ],
@@ -9792,28 +9759,6 @@
       "reuseScope": "Global"
     },
     {
-      "id": "application.copy.2230dd3ffce717dec27c7e3c",
-      "source": "Legend® video call",
-      "context": "visual interface copy",
-      "sourceRevision": "a60850985c659512",
-      "placeholders": [
-
-      ],
-      "translationPolicy": "AzureAllowed",
-      "reuseScope": "Global"
-    },
-    {
-      "id": "application.copy.a750888ecaeed7da6dfc67b5",
-      "source": "Legend® voice call",
-      "context": "visual interface copy",
-      "sourceRevision": "e35132a627086c67",
-      "placeholders": [
-
-      ],
-      "translationPolicy": "AzureAllowed",
-      "reuseScope": "Global"
-    },
-    {
       "id": "application.copy.1c38d40e384c3e67cd47e48b",
       "source": "Let compatible members find your profile.",
       "context": "visual interface copy",
@@ -11135,17 +11080,6 @@
       "reuseScope": "Global"
     },
     {
-      "id": "application.copy.d32593fe8896d5f21e4128af",
-      "source": "No direct conversations",
-      "context": "visual interface copy",
-      "sourceRevision": "af9561066657121d",
-      "placeholders": [
-
-      ],
-      "translationPolicy": "AzureAllowed",
-      "reuseScope": "Global"
-    },
-    {
       "id": "application.copy.aa186ac1d5a73a748615d4c6",
       "source": "No follow requests",
       "context": "visual interface copy",
@@ -11194,6 +11128,17 @@
       "source": "No matching Legend members",
       "context": "visual interface copy",
       "sourceRevision": "8e7379d91d80558c",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.e06614623159a2d896bfdad4",
+      "source": "No matching conversations",
+      "context": "visual interface copy",
+      "sourceRevision": "8a36372a6faa827c",
       "placeholders": [
 
       ],
@@ -14600,6 +14545,17 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.8ffac2a3a1a8e13ecaf3f071",
+      "source": "Search group members",
+      "context": "visual interface copy",
+      "sourceRevision": "2c9c4b585d86f12f",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.37be793cedd2bb567ef01026",
       "source": "Search leads",
       "context": "visual interface copy",
@@ -14633,10 +14589,43 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.9c2eaaafffd069b91c8a3c0c",
+      "source": "Search people and conversations",
+      "context": "visual interface copy",
+      "sourceRevision": "31fe14f74667998e",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.ddc9a4a21dde4b87a49cf64a",
       "source": "Search people, goals, interests",
       "context": "visual interface copy",
       "sourceRevision": "e27db6a2cd947c91",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.313d51fa52b46ac529c9fe7d",
+      "source": "Search profiles to message or call",
+      "context": "visual interface copy",
+      "sourceRevision": "8bd88840f0ee88d6",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.212c0b5be4fd14ce6bd8beba",
+      "source": "Search profiles to start a message or call.",
+      "context": "visual interface copy",
+      "sourceRevision": "14fc33116149552a",
       "placeholders": [
 
       ],
@@ -15463,17 +15452,6 @@
       "source": "Start a private conversation",
       "context": "visual interface copy",
       "sourceRevision": "303225be20b90318",
-      "placeholders": [
-
-      ],
-      "translationPolicy": "AzureAllowed",
-      "reuseScope": "Global"
-    },
-    {
-      "id": "application.copy.9a7448990c1f3f8fccff408d",
-      "source": "Start a private conversation to call a connection.",
-      "context": "visual interface copy",
-      "sourceRevision": "17f79dbf7db4ba15",
       "placeholders": [
 
       ],
@@ -17807,17 +17785,6 @@
       "source": "Views",
       "context": "visual interface copy",
       "sourceRevision": "69c404591e99d86f",
-      "placeholders": [
-
-      ],
-      "translationPolicy": "AzureAllowed",
-      "reuseScope": "Global"
-    },
-    {
-      "id": "application.copy.e9e66942097e0e5524f7b923",
-      "source": "Voice and video calls stay in Legend®.",
-      "context": "visual interface copy",
-      "sourceRevision": "598cef97dfdf6fad",
       "placeholders": [
 
       ],

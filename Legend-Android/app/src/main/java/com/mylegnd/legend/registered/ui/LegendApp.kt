@@ -2743,10 +2743,11 @@ private fun MessagesScreen(
     val detail by viewModel.detail.collectAsStateWithLifecycle()
     val historyFailure by viewModel.historyFailure.collectAsStateWithLifecycle()
     var selectedConversationId by remember { mutableStateOf<String?>(null) }
+    var inboxSearch by remember { mutableStateOf("") }
     var creatingConversation by remember { mutableStateOf(false) }
     var conversationMenu by remember { mutableStateOf<ConversationSummary?>(null) }
     var callDirectoryOpen by remember { mutableStateOf(false) }
-    var callTarget by remember { mutableStateOf<ConversationSummary?>(null) }
+    var callTarget by remember { mutableStateOf<Pair<String, String>?>(null) }
     var managingGroup by remember { mutableStateOf<ConversationDetail?>(null) }
     var addingGroupMember by remember { mutableStateOf<ConversationDetail?>(null) }
     LaunchedEffect(Unit) { viewModel.load() }
@@ -2772,7 +2773,7 @@ private fun MessagesScreen(
 
                 is LoadState.Error -> LegendErrorState((conversations as LoadState.Error).message, viewModel::load)
                 is LoadState.Data -> {
-                    val rows = (conversations as LoadState.Data<List<ConversationSummary>>).value
+                    val rows = (conversations as LoadState.Data<List<ConversationSummary>>).value.filter { inboxSearch.isBlank() || it.title.contains(inboxSearch.trim(), ignoreCase = true) }
                     LazyColumn(
                         verticalArrangement = Arrangement.spacedBy(LegendSpacing.Sm),
                         contentPadding = PaddingValues(vertical = LegendSpacing.Md, horizontal = LegendSpacing.PageHorizontal),
@@ -2785,6 +2786,14 @@ private fun MessagesScreen(
                                 },
                                 onCallDirectory = { callDirectoryOpen = true },
                             )
+                        }
+                        item {
+                            LegendMessagingSearchField(inboxSearch, { inboxSearch = it }, LegendDesignAuthority.copy("search.messaging"))
+                            if (inboxSearch.isNotBlank()) TextButton(onClick = { creatingConversation = true }) {
+                                Icon(Icons.Default.PersonSearch, null, tint = LegendColors.Gold)
+                                Spacer(Modifier.width(LegendSpacing.Xs))
+                                Text(legendLocalized("Search profiles to message or call"), color = LegendColors.Gold)
+                            }
                         }
                         if (rows.isEmpty()) {
                             item {
@@ -2861,16 +2870,23 @@ private fun MessagesScreen(
     }
         }
 
-    if (creatingConversation) {
+    if (creatingConversation || callDirectoryOpen) {
         LegendRecipientPicker(
+            initialSearch = inboxSearch,
+            forCalling = callDirectoryOpen,
             state = viewModel.recipients.collectAsStateWithLifecycle().value,
             mediaRepository = mediaRepository,
             participantType = participantType,
             load = viewModel::loadRecipients,
             choose = { recipient ->
                 viewModel.startConversation(recipient) { id ->
-                    creatingConversation = false
-                    selectedConversationId = id
+                    if (callDirectoryOpen) {
+                        callDirectoryOpen = false
+                        callTarget = id to recipient.displayName
+                    } else {
+                        creatingConversation = false
+                        selectedConversationId = id
+                    }
                 }
             },
             createGroup = { subject, recipients, image ->
@@ -2880,25 +2896,13 @@ private fun MessagesScreen(
                 }
             },
             isSending = viewModel.isSending.collectAsStateWithLifecycle().value,
-            dismiss = { creatingConversation = false },
+            dismiss = { creatingConversation = false; callDirectoryOpen = false },
         )
     }
-    if (callDirectoryOpen) {
-        val rows = (conversations as? LoadState.Data<List<ConversationSummary>>)?.value.orEmpty()
-        LegendMessagingCallDirectorySheet(
-            conversations = rows,
-            mediaRepository = mediaRepository,
-            participantType = participantType,
-            dismiss = { callDirectoryOpen = false },
-            select = { conversation ->
-                callTarget = conversation
-            },
-        )
-    }
-    callTarget?.let { conversation ->
+    callTarget?.let { target ->
         LegendConversationCallSheet(
-            conversationId = conversation.id,
-            fallbackName = conversation.title,
+            conversationId = target.first,
+            fallbackName = target.second,
             dismiss = { callTarget = null },
         )
     }
@@ -3045,68 +3049,6 @@ private fun LegendConversationRow(
     )
 }
 
-/** Android's platform-native counterpart to the iOS Messages call directory. */
-@Composable
-private fun LegendMessagingCallDirectorySheet(
-    conversations: List<ConversationSummary>,
-    mediaRepository: AuthenticatedMediaRepository,
-    participantType: String,
-    dismiss: () -> Unit,
-    select: (ConversationSummary) -> Unit,
-) {
-    val directConversations = conversations.filterNot {
-        it.conversationType.equals("Group", ignoreCase = true)
-    }
-    ModalBottomSheet(
-        onDismissRequest = dismiss,
-        containerColor = LegendColors.Canvas,
-    ) {
-        LazyColumn(
-            modifier = Modifier.fillMaxHeight(.88f),
-            contentPadding = PaddingValues(
-                horizontal = LegendSpacing.PageHorizontal,
-                vertical = LegendSpacing.Md,
-            ),
-            verticalArrangement = Arrangement.spacedBy(LegendSpacing.Sm),
-        ) {
-            item {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f)) {
-                        LegendSectionPill("Call a connection", null, "CALL")
-                        Text(
-                            legendLocalized("Voice and video calls stay in Legend®."),
-                            style = LegendTypography.Supporting,
-                            color = LegendColors.TextSecondary,
-                        )
-                    }
-                    IconButton(onClick = dismiss, modifier = Modifier.size(LegendSize.MinimumTapTarget)) {
-                        Icon(Icons.Default.Close, legendLocalized("Close call directory", "accessibility copy"), tint = LegendColors.TextPrimary)
-                    }
-                }
-            }
-            if (directConversations.isEmpty()) {
-                item {
-                    LegendMessagingEmptyCard(
-                        title = "No direct conversations",
-                        detail = "Start a private conversation to call a connection.",
-                        action = dismiss,
-                    )
-                }
-            } else {
-                items(directConversations, key = { it.id }) { conversation ->
-                    LegendConversationRow(
-                        conversation = conversation,
-                        mediaRepository = mediaRepository,
-                        participantType = participantType,
-                        open = { select(conversation) },
-                        more = null,
-                    )
-                }
-            }
-        }
-    }
-}
-
 @Composable
 private fun LegendConversationCallSheet(
     conversationId: String,
@@ -3121,11 +3063,11 @@ private fun LegendConversationCallSheet(
     ModalBottomSheet(onDismissRequest = dismiss, containerColor = LegendColors.Canvas) {
         Column(Modifier.fillMaxWidth().padding(LegendSpacing.PageHorizontal), verticalArrangement = Arrangement.spacedBy(LegendSpacing.Md), horizontalAlignment = Alignment.CenterHorizontally) {
             Text(fallbackName, style = LegendTypography.Section)
-            Button(onClick = { video = false; permissions.launch(arrayOf(android.Manifest.permission.RECORD_AUDIO)) }, modifier = Modifier.fillMaxWidth()) {
-                Icon(Icons.Default.Phone, null); Spacer(Modifier.width(8.dp)); Text(legendLocalized("Legend® voice call"))
+            LegendCallActionCard("Legend voice call", "Private in-app audio", Icons.Default.Phone) {
+                video = false; permissions.launch(arrayOf(android.Manifest.permission.RECORD_AUDIO))
             }
-            Button(onClick = { video = true; permissions.launch(arrayOf(android.Manifest.permission.RECORD_AUDIO, android.Manifest.permission.CAMERA)) }, modifier = Modifier.fillMaxWidth()) {
-                Icon(Icons.Default.Videocam, null); Spacer(Modifier.width(8.dp)); Text(legendLocalized("Legend® video call"))
+            LegendCallActionCard("Legend video call", "Connect face to face", Icons.Default.Videocam) {
+                video = true; permissions.launch(arrayOf(android.Manifest.permission.RECORD_AUDIO, android.Manifest.permission.CAMERA))
             }
             TextButton(onClick = dismiss) { Text(legendLocalized("Cancel")) }
         }
@@ -3146,6 +3088,8 @@ private fun LegendMessagingEmptyCard(title: String, detail: String, action: () -
 
 @Composable
 private fun LegendRecipientPicker(
+    initialSearch: String = "",
+    forCalling: Boolean = false,
     state: LoadState<List<MessagingRecipient>>,
     mediaRepository: AuthenticatedMediaRepository,
     participantType: String,
@@ -3155,7 +3099,7 @@ private fun LegendRecipientPicker(
     isSending: Boolean,
     dismiss: () -> Unit,
 ) {
-    var search by remember { mutableStateOf("") }
+    var search by remember { mutableStateOf(initialSearch) }
     var scope by remember { mutableStateOf<String?>(null) }
     var isCreatingGroup by remember { mutableStateOf(false) }
     var groupSubject by remember { mutableStateOf("") }
@@ -3167,12 +3111,13 @@ private fun LegendRecipientPicker(
         Column(Modifier.fillMaxHeight(0.9f).padding(horizontal = LegendSpacing.PageHorizontal)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
-                    Text(if (isCreatingGroup) legendLocalized("New group") else legendLocalized("New message"), style = LegendTypography.Section, color = LegendColors.TextPrimary)
+                    Text(if (forCalling) legendLocalized("Call a connection") else if (isCreatingGroup) legendLocalized("New group") else legendLocalized("New message"), style = LegendTypography.Section, color = LegendColors.TextPrimary)
                     Text(if (isCreatingGroup) legendLocalized("Choose at least two connections") else legendLocalized("Search your LEGEND network"), style = LegendTypography.Supporting, color = LegendColors.TextSecondary)
                 }
                 TextButton(onClick = dismiss) { Text(legendLocalized("Cancel"), color = LegendColors.Gold) }
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(LegendSpacing.Xs), modifier = Modifier.padding(top = LegendSpacing.Xs)) {
+            LegendMessagingSearchField(search, { search = it })
+            if (!forCalling) Row(horizontalArrangement = Arrangement.spacedBy(LegendSpacing.Xs), modifier = Modifier.padding(top = LegendSpacing.Xs)) {
                 FilterChip(selected = !isCreatingGroup, onClick = { isCreatingGroup = false; groupRecipients = emptyList() }, label = { Text(legendLocalized("Direct")) }, colors = legendCompactChipColors())
                 FilterChip(selected = isCreatingGroup, onClick = { isCreatingGroup = true }, label = { Text(legendLocalized("Group")) }, colors = legendCompactChipColors())
             }
@@ -3202,13 +3147,12 @@ private fun LegendRecipientPicker(
                     enabled = !isSending && groupSubject.isNotBlank() && groupRecipients.size >= 2,
                 ) { createGroup(groupSubject, groupRecipients, groupImage) }
             }
-            OutlinedTextField(value = search, onValueChange = { search = it }, modifier = Modifier.fillMaxWidth().padding(top = LegendSpacing.Sm), singleLine = true, leadingIcon = { Icon(Icons.Default.Search, null) }, placeholder = { Text(legendLocalized("Search people")) })
             LazyRow(Modifier.padding(vertical = LegendSpacing.Sm), horizontalArrangement = Arrangement.spacedBy(LegendSpacing.Xs)) {
                 item {
-                    FilterChip(selected = scope == null, onClick = { scope = null }, label = { Text(legendLocalized("All")) })
+                    FilterChip(selected = scope == null, onClick = { scope = null }, label = { Text(legendLocalized("All")) }, colors = legendCompactChipColors())
                 }
                 items(listOf("Clients", "Agents", "Leads")) { value ->
-                    FilterChip(selected = scope == value, onClick = { scope = value }, label = { Text(value) })
+                    FilterChip(selected = scope == value, onClick = { scope = value }, label = { Text(legendLocalized(value)) }, colors = legendCompactChipColors())
                 }
             }
             when (state) {
@@ -3220,29 +3164,27 @@ private fun LegendRecipientPicker(
                     } else {
                         LazyColumn(verticalArrangement = Arrangement.spacedBy(LegendSpacing.Xs), contentPadding = PaddingValues(bottom = LegendSpacing.Lg)) {
                             items(state.value, key = { "${it.identity.userId}:${it.identity.participantType}" }) { recipient ->
-                                Surface(
-                                    modifier = Modifier.fillMaxWidth().clickable {
-                                        if (isCreatingGroup) {
-                                            groupRecipients = if (groupRecipients.any { it.identity == recipient.identity }) groupRecipients.filterNot { it.identity == recipient.identity } else groupRecipients + recipient
-                                        } else choose(recipient)
-                                    },
-                                    color = LegendColors.Surface,
-                                    shape = LegendShapes.Control,
-                                ) {
-                                    Row(Modifier.padding(LegendSpacing.Sm), verticalAlignment = Alignment.CenterVertically) {
-                                        LegendProtectedAvatar(recipient.avatar, recipient.displayName, participantType, mediaRepository)
-                                        Spacer(Modifier.width(LegendSpacing.Sm))
-                                        Column(Modifier.weight(1f)) {
-                                            Text(recipient.displayName, style = LegendTypography.CardTitle, color = LegendColors.TextPrimary)
-                                            Text(recipient.relationshipLabel ?: recipient.roleLabel ?: legendLocalized("LEGEND member"), style = LegendTypography.Label, color = LegendColors.TextSecondary)
+                                LegendContactCard(
+                                    displayName = recipient.displayName,
+                                    subtitle = recipient.relationshipLabel ?: recipient.roleLabel ?: legendLocalized("Connection"),
+                                    isVerified = recipient.isVerified == true,
+                                    onClick = {
+                                        if (!isSending) {
+                                            if (isCreatingGroup) {
+                                                groupRecipients = if (groupRecipients.any { it.identity == recipient.identity }) groupRecipients.filterNot { it.identity == recipient.identity } else groupRecipients + recipient
+                                            } else choose(recipient)
                                         }
+                                    },
+                                    avatar = { LegendProtectedAvatar(recipient.avatar, recipient.displayName, participantType, mediaRepository, size = 46.dp) },
+                                    action = {
                                         if (isCreatingGroup) Icon(
-                                            if (groupRecipients.any { it.identity == recipient.identity }) Icons.Default.CheckCircle else Icons.Default.AddCircleOutline,
+                                            if (groupRecipients.any { it.identity == recipient.identity }) Icons.Default.CheckCircle else Icons.Default.RadioButtonUnchecked,
                                             if (groupRecipients.any { it.identity == recipient.identity }) legendLocalized("Remove group member", "accessibility copy") else legendLocalized("Add group member", "accessibility copy"),
                                             tint = if (groupRecipients.any { it.identity == recipient.identity }) LegendColors.Success else LegendColors.Gold,
-                                        ) else Icon(Icons.Default.ChevronRight, legendLocalized("Start conversation", "accessibility copy"), tint = LegendColors.Gold)
-                                    }
-                                }
+                                        ) else Icon(if (forCalling) Icons.Default.Phone else Icons.Default.ChevronRight,
+                                            if (forCalling) legendLocalized("Call a connection", "accessibility copy") else legendLocalized("Start conversation", "accessibility copy"), tint = LegendColors.Gold)
+                                    },
+                                )
                             }
                         }
                     }
@@ -3256,8 +3198,8 @@ private fun LegendRecipientPicker(
 private fun legendCompactChipColors() = FilterChipDefaults.filterChipColors(
     containerColor = LegendColors.SurfaceInset,
     labelColor = LegendColors.TextSecondary,
-    selectedContainerColor = LegendColors.Navy,
-    selectedLabelColor = LegendColors.GoldBright,
+    selectedContainerColor = LegendColors.Gold,
+    selectedLabelColor = LegendColors.Midnight,
 )
 
 @Composable
@@ -3292,7 +3234,7 @@ private fun LegendGroupMemberPicker(
                 }
                 TextButton(onClick = dismiss) { Text(legendLocalized("Cancel"), color = LegendColors.Gold) }
             }
-            OutlinedTextField(search, { search = it }, modifier = Modifier.fillMaxWidth().padding(vertical = LegendSpacing.Sm), singleLine = true, leadingIcon = { Icon(Icons.Default.Search, null, tint = LegendColors.Gold) }, placeholder = { Text(legendLocalized("Search people")) }, shape = LegendShapes.Control, colors = legendMessagingFieldColors())
+            LegendMessagingSearchField(search, { search = it })
             when (state) {
                 LoadState.Idle, LoadState.Loading -> LegendLoadingState()
                 is LoadState.Error -> LegendErrorState(state.message) { load(search, null) }
@@ -3333,6 +3275,7 @@ private fun LegendGroupManagementSheet(
 ) {
     val openProfile = LocalLegendOpenProfile.current
     var subject by remember(conversation.id, conversation.title) { mutableStateOf(conversation.title) }
+    var memberSearch by remember { mutableStateOf("") }
     var confirmDelete by remember { mutableStateOf(false) }
     var editingMeeting by remember { mutableStateOf(false) }
     val groupImagePicker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri -> uri?.let(updateImage) }
@@ -3353,6 +3296,7 @@ private fun LegendGroupManagementSheet(
                     TextButton(onClick = dismiss) { Text(legendLocalized("Done"), color = LegendColors.Gold) }
                 }
             }
+            item { LegendMessagingSearchField(memberSearch, { memberSearch = it }, LegendDesignAuthority.copy("search.groupMembers")) }
             if (conversation.canManageMembers) item {
                 OutlinedButton(
                     onClick = { groupImagePicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
@@ -3396,7 +3340,7 @@ private fun LegendGroupManagementSheet(
             }
             item { Text(legendLocalized("MEMBERS"), style = LegendTypography.Eyebrow, color = LegendColors.Gold) }
             if (conversation.canManageMembers) item { OutlinedButton(onClick = addMember, shape = LegendShapes.Control, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Default.PersonAdd, null, tint = LegendColors.Gold); Spacer(Modifier.width(LegendSpacing.Xs)); Text(legendLocalized("Add member"), color = LegendColors.TextPrimary) } }
-            items(conversation.participants, key = { "${it.identity.userId}:${it.identity.participantType}" }) { member ->
+            items(conversation.participants.filter { memberSearch.isBlank() || it.displayName.contains(memberSearch.trim(), ignoreCase = true) }, key = { "${it.identity.userId}:${it.identity.participantType}" }) { member ->
                 Surface(color = LegendColors.Surface, shape = LegendShapes.Control, modifier = Modifier.fillMaxWidth()) {
                     Row(Modifier.padding(LegendSpacing.Sm).clickable { openProfile(SocialAuthor(member.identity, member.profileId, member.displayName, member.avatar)) }, verticalAlignment = Alignment.CenterVertically) {
                         LegendProtectedAvatar(member.avatar, member.displayName, participantType, mediaRepository, size = 42.dp)
@@ -3439,6 +3383,7 @@ private fun LegendGroupMeetingEditorSheet(
     val existing = conversation.meeting
     var enabled by remember(conversation.id) { mutableStateOf(existing?.linkLabel != null || existing?.linkUrl != null) }
     var hostKey by remember(conversation.id) { mutableStateOf(existing?.host?.let { "${it.identity.userId}:${it.identity.participantType}" } ?: conversation.participants.firstOrNull()?.let { "${it.identity.userId}:${it.identity.participantType}" }.orEmpty()) }
+    var hostSearch by remember { mutableStateOf("") }
     var hostsOpen by remember { mutableStateOf(false) }
     var label by remember(conversation.id) { mutableStateOf(existing?.linkLabel.orEmpty()) }
     var url by remember(conversation.id) { mutableStateOf(existing?.linkUrl.orEmpty()) }
@@ -3488,7 +3433,8 @@ private fun LegendGroupMeetingEditorSheet(
                             Icon(Icons.Default.ExpandMore, null, tint = LegendColors.Gold)
                         }
                         DropdownMenu(expanded = hostsOpen, onDismissRequest = { hostsOpen = false }, containerColor = LegendColors.Surface) {
-                            conversation.participants.forEach { participant ->
+                            LegendMessagingSearchField(hostSearch, { hostSearch = it }, LegendDesignAuthority.copy("search.groupMembers"))
+                            conversation.participants.filter { hostSearch.isBlank() || it.displayName.contains(hostSearch.trim(), ignoreCase = true) }.forEach { participant ->
                                 DropdownMenuItem(text = { Text(participant.displayName, color = LegendColors.TextPrimary) }, onClick = { hostKey = "${participant.identity.userId}:${participant.identity.participantType}"; hostsOpen = false })
                             }
                         }
@@ -8325,4 +8271,31 @@ private fun LegendPostDetailSheet(initialPost: SocialPost, social: SocialViewMod
         }
     }
     if (commenting) LegendCommentsSheet(post, mediaRepository, participantType, { commenting = false }) { body, parent -> social.comment(post.id, body, parent) }
+}
+
+@Composable
+private fun LegendMessagingSearchField(value: String, changed: (String) -> Unit, placeholder: String = LegendDesignAuthority.copy("search.people")) {
+    OutlinedTextField(value, changed, modifier = Modifier.fillMaxWidth().padding(vertical = LegendSpacing.Sm),
+        singleLine = true, shape = LegendShapes.Control, colors = legendMessagingFieldColors(),
+        leadingIcon = { Icon(Icons.Default.Search, null, tint = LegendColors.Gold) },
+        trailingIcon = { if (value.isNotEmpty()) IconButton(onClick = { changed("") }) {
+            Icon(Icons.Default.Cancel, legendLocalized("Clear search", "accessibility copy"), tint = LegendColors.TextTertiary)
+        } }, placeholder = { Text(legendLocalized(placeholder)) })
+}
+
+@Composable
+private fun LegendCallActionCard(title: String, subtitle: String, icon: androidx.compose.ui.graphics.vector.ImageVector, action: () -> Unit) {
+    Surface(color = LegendColors.SurfaceElevated, shape = LegendShapes.Control,
+        modifier = Modifier.fillMaxWidth().legendPressClickable(action).border(LegendSpacing.Hairline, LegendColors.Divider, LegendShapes.Control)) {
+        Row(Modifier.padding(LegendSpacing.Sm), verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.size(42.dp).background(LegendGradients.Gold, CircleShape), contentAlignment = Alignment.Center) {
+                Icon(icon, null, tint = LegendColors.Midnight)
+            }
+            Column(Modifier.weight(1f).padding(horizontal = LegendSpacing.Sm)) {
+                Text(legendLocalized(title), style = LegendTypography.BodyEmphasis, color = LegendColors.TextPrimary)
+                Text(legendLocalized(subtitle), style = LegendTypography.Caption, color = LegendColors.TextSecondary)
+            }
+            Icon(Icons.Default.NorthEast, null, tint = LegendColors.Gold)
+        }
+    }
 }
