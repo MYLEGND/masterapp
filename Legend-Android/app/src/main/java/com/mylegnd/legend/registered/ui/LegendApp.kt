@@ -3790,9 +3790,9 @@ private enum class SocialCollection {
 
     val label: String
         get() = when (this) {
-            POSTS -> "${LegendCopy.value("content.post")}s"
+            POSTS -> LegendCopy.value("content.posts")
             STORIES -> legendLocalized("Stories")
-            SHORT_VIDEOS -> "${LegendCopy.value("content.hac")}s"
+            SHORT_VIDEOS -> LegendCopy.value("content.hacs")
         }
 }
 
@@ -4416,8 +4416,8 @@ private fun LegendSocialActionRow(
             Icon(icon, null, tint = tint)
             Spacer(Modifier.width(LegendSpacing.Sm))
             Column(Modifier.weight(1f)) {
-                Text(title, style = LegendTypography.BodyEmphasis, color = tint)
-                Text(detail, style = LegendTypography.Caption, color = LegendColors.TextSecondary)
+                Text(legendLocalized(title), style = LegendTypography.BodyEmphasis, color = tint)
+                Text(legendLocalized(detail), style = LegendTypography.Caption, color = LegendColors.TextSecondary)
             }
             Icon(Icons.Default.ChevronRight, null, tint = LegendColors.TextSecondary)
         }
@@ -5452,7 +5452,7 @@ private fun LegendProfileIdentityCard(
                             Text(handle, style = LegendTypography.Label, color = LegendColors.TextPrimary)
                             Icon(
                                 Icons.Default.KeyboardArrowDown,
-                                "Account options",
+                                legendLocalized("Account options", "accessibility copy"),
                                 tint = LegendColors.TextPrimary,
                                 modifier = Modifier.size(18.dp),
                             )
@@ -5547,7 +5547,7 @@ private fun LegendProfileIdentityCard(
             if (account.isPhoneVisible) account.phone?.takeIf(String::isNotBlank)?.let { LegendProfileDetail(Icons.Default.Phone, it, LegendColors.TextSecondary) }
 
             Row(Modifier.fillMaxWidth().padding(top = LegendSpacing.Xs), horizontalArrangement = Arrangement.SpaceEvenly) {
-                LegendProfileMetric(hacCount, "${LegendCopy.value("content.hac")}s", Modifier.weight(1f))
+                LegendProfileMetric(hacCount, LegendCopy.value("content.hacs"), Modifier.weight(1f))
                 LegendProfileMetric(metrics?.followingCount.orZero, "Following", Modifier.weight(1f))
                 LegendProfileMetric(metrics?.followerCount.orZero, "Followers", Modifier.weight(1f))
             }
@@ -5568,7 +5568,7 @@ private fun LegendProfileDetail(icon: ImageVector, value: String, color: Color) 
 private fun LegendProfileMetric(value: Int, label: String, modifier: Modifier = Modifier) {
     Column(modifier = modifier, horizontalAlignment = Alignment.CenterHorizontally) {
         Text(value.toString(), style = LegendTypography.Section, color = LegendColors.TextPrimary)
-        Text(label, style = LegendTypography.Caption, color = LegendColors.TextPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text(legendLocalized(label), style = LegendTypography.Caption, color = LegendColors.TextPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }
 
@@ -5745,7 +5745,7 @@ private fun LegendAccountSettingsSheet(
             }
             item { AccountSettingsRow("Edit profile", "Update your public profile, handle, and visibility", Icons.Default.Edit, click = { edit(account) }) }
             if (isFounder) item { AccountSettingsRow("Creator insights", "Review reach and engagement", Icons.Default.Insights, creatorInsights) }
-            item { AccountSettingsRow("Language preferences", account.translationAccess?.preferredCommunicationLanguage ?: legendLocalized("No preferred communication language set"), Icons.Default.Translate, { language(account) }, footnote = legendLocalized("Translation is server-only.")) }
+            item { AccountSettingsRow("Language preferences", account.translationAccess?.preferredCommunicationLanguage ?: legendLocalized("No preferred communication language set"), Icons.Default.Translate, { language(account) }, footnote = LegendCopy.value("localization.preferenceSummary")) }
             if (isFounder) item { AccountSettingsRow("Founder management", "Server-authorized account archive and removal controls", Icons.Default.AdminPanelSettings, founderManagement) }
             if (isFounder) item { AccountSettingsRow("Member authority", "Grant or revoke founder-controlled LEGEND resources", Icons.Default.ManageAccounts, memberAuthority) }
             if (canManageScripture) item { AccountSettingsRow("Daily Scripture", "Manage the server-owned scripture schedule", Icons.AutoMirrored.Filled.MenuBook, scriptureManagement) }
@@ -5842,7 +5842,7 @@ private fun LegendCreatorInsightsSheet(
                         Column(Modifier.padding(LegendSpacing.CardContent), verticalArrangement = Arrangement.spacedBy(LegendSpacing.Xs)) {
                             Text(legendLocalized("CONTENT AND COMMUNITY"), style = LegendTypography.Eyebrow, color = LegendColors.Gold)
                             LegendCreatorInsightValue("Posts", profileMetrics?.postCount?.toString() ?: "—")
-                            LegendCreatorInsightValue("${LegendCopy.value("content.hac")}s", profileMetrics?.videoCount?.toString() ?: "—")
+                            LegendCreatorInsightValue(LegendCopy.value("content.hacs"), profileMetrics?.videoCount?.toString() ?: "—")
                             LegendCreatorInsightValue("Stories", profileMetrics?.storyCount?.toString() ?: "—")
                             LegendCreatorInsightValue("Following", profileMetrics?.followingCount?.toString() ?: "—")
                             LegendCreatorInsightValue("Profile visits", insights.profileVisits.toString())
@@ -5851,7 +5851,7 @@ private fun LegendCreatorInsightsSheet(
                     }
                 }
                 item { LegendCreatorInsightList("Top posts", "Publish a post to begin building performance history.", insights.topPosts) }
-                item { LegendCreatorInsightList("Top ${LegendCopy.value("content.hac")}s", "Publish a ${LegendCopy.value("content.hac")} to begin building ${LegendCopy.value("content.hac")} performance history.", insights.topVideos) }
+                item { LegendCreatorInsightList(legendLocalized("Top {content}", mapOf("content" to LegendCopy.value("content.hacs"))), legendLocalized("Publish a {content} to start tracking its performance.", mapOf("content" to LegendCopy.value("content.hac"))), insights.topVideos) }
                 item { LegendCreatorInsightList("Top stories", "Publish a story to begin building story performance history.", insights.topStories) }
             }
         }
@@ -6499,13 +6499,13 @@ private fun AccountEditorSheet(
 
 @Composable
 private fun AccountEditorField(label: String, value: String, minLines: Int = 1, change: (String) -> Unit) {
-    OutlinedTextField(value = value, onValueChange = change, label = { Text(label) }, modifier = Modifier.fillMaxWidth(), minLines = minLines, shape = LegendShapes.Control)
+    OutlinedTextField(value = value, onValueChange = change, label = { Text(legendLocalized(label)) }, modifier = Modifier.fillMaxWidth(), minLines = minLines, shape = LegendShapes.Control)
 }
 
 @Composable
 private fun AccountEditorSwitch(label: String, checked: Boolean, change: (Boolean) -> Unit) {
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        Text(label, modifier = Modifier.weight(1f), style = LegendTypography.Body, color = LegendColors.TextPrimary)
+        Text(legendLocalized(label), modifier = Modifier.weight(1f), style = LegendTypography.Body, color = LegendColors.TextPrimary)
         Switch(checked = checked, onCheckedChange = change)
     }
 }
@@ -6529,7 +6529,7 @@ private fun LanguageDialog(
         title = { Text(legendLocalized("Preferred language")) },
         text = {
             Column {
-                Text(legendLocalized("Choose the language you want to read your messages in."))
+                Text(LegendCopy.value("localization.preferenceDescription"))
                 when (val state = languages) {
                     is LoadState.Data -> LazyColumn(Modifier.heightIn(max = 320.dp)) {
                         items(state.value, key = { it.code }) { option ->
@@ -6967,7 +6967,7 @@ private fun FinancialOutlookMetric(
         ) { Icon(icon, null, tint = tone, modifier = Modifier.size(17.dp)) }
         Spacer(Modifier.width(LegendSpacing.Xs))
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(LegendSpacing.Micro)) {
-            Text(label, style = LegendTypography.Label, color = LegendColors.OnNavy.copy(alpha = 0.66f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(legendLocalized(label), style = LegendTypography.Label, color = LegendColors.OnNavy.copy(alpha = 0.66f), maxLines = 1, overflow = TextOverflow.Ellipsis)
             Text(value, style = LegendTypography.BodyEmphasis, color = tone, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
     }
@@ -7129,7 +7129,7 @@ private fun FinancialDetailScreen(
             FinancialDetailDestination.TaxProfile -> {
                 val section = snapshot.healthSnapshot?.sections?.firstOrNull { it.key == destination.healthSectionKey }
                 if (section == null) {
-                    item { FinancialAvailabilityCard("The saved ${destination.key.replace('-', ' ')} detail is not available yet.") }
+                    item { FinancialAvailabilityCard(legendLocalized("The saved {destination} detail is not available yet.", mapOf("destination" to destination.key.replace('-', ' ')))) }
                 } else {
                     item { FinancialHealthSectionDetail(section) }
                 }

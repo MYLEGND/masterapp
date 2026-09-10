@@ -7556,7 +7556,7 @@ private struct LegendTranslationLanguagePicker: View {
                     LegendNextSheetHeader(
                         eyebrow: LegendLocalized("Language translation"),
                         title: LegendLocalized("Choose your language"),
-                        detail: LegendLocalized("Messages are translated only for your view. The sender’s original message is always available."),
+                        detail: LegendSharedDesign.copy("localization.preferenceDescription"),
                         dismiss: { dismiss() })
 
                     LegendProfileSettingsSection(title: LegendLocalized("Preferred language")) {

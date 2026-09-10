@@ -219,6 +219,8 @@
     "accountDeletion": "Request account deletion"
   },
   "copy": {
+    "localization.preferenceDescription": "Choose your language for LEGEND screens and messages. Original messages remain available.",
+    "localization.preferenceSummary": "Your language is used across LEGEND.",
     "localization.updating": "Updating your language…",
     "localization.unavailable": "Some text could not be translated. Your language preference is saved.",
     "search.messaging": "Search people and conversations",
@@ -232,8 +234,10 @@
     "tab.messages": "Messages",
     "tab.account": "Account",
     "content.post": "Post",
+    "content.posts": "Posts",
     "content.story": "Story",
     "content.hac": "Hac",
+    "content.hacs": "Hacs",
     "message.original": "Original",
     "account.deletion": "Request account deletion",
     "account.add": "Add account",

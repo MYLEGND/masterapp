@@ -243,6 +243,10 @@ Dir.glob(KOTLIN_ROOT.join("**/*.kt")).sort.each do |path|
   source.scan(/legendLocalized\(\s*(#{LITERAL})(?:\s*,\s*(#{LITERAL}))?/) do |token, context_token|
     add.call(literal_value(token), context_token ? literal_value(context_token) : VISUAL)
   end
+  source.scan(/\b(?:title|detail|label|placeholder|emptyTitle|emptyMessage)\s*=\s*(#{LITERAL})/) do |token|
+    value = literal_value(token[0])
+    add.call(value, VISUAL) if eligible?(value, :kotlin)
+  end
   source.scan(/LegendPrimaryButton\(\s*(#{LITERAL})/) do |token|
     add.call(literal_value(token[0]), VISUAL)
   end
@@ -253,7 +257,7 @@ Dir.glob(KOTLIN_ROOT.join("**/*.kt")).sort.each do |path|
   %w[
     LegendJourneySectionLabel LegendMetric LegendSocialDetailField
     LegendCreatorInsightMetric LegendCreatorInsightValue
-    AccountSettingsRow FinancialAvailabilityCard FinancialHeroMetric
+    AccountSettingsRow AccountEditorField AccountEditorSwitch FinancialAvailabilityCard FinancialHeroMetric
     FinancialOutlookMetric
   ].each do |function|
     source.scan(/#{function}\(\s*(#{LITERAL})/) do |token|
