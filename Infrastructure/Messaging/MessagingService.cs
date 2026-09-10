@@ -197,12 +197,9 @@ internal sealed class MessagingService : IMessagingService
                         : null,
                     participant.PinnedUtc
                 })
-            // Pins create the only inbox ordering exception. Within the pinned
-            // and unpinned sections alike, the most recently sent or received
-            // message is always first. This keeps up to six actor-owned pins
-            // durable without introducing a separate manual sort order.
-            .OrderByDescending(x => x.PinnedUtc.HasValue)
-            .ThenByDescending(x => x.LastMessageUtc ?? DateTime.MinValue)
+            // Inbox order is message recency for every actor and platform.
+            // Read status and saved pins never displace newer activity.
+            .OrderByDescending(x => x.LastMessageUtc ?? DateTime.MinValue)
             .ThenByDescending(x => x.Id)
             .Skip(skip)
             .Take(take)
@@ -408,8 +405,7 @@ internal sealed class MessagingService : IMessagingService
                     IsPinned = group.Any(conversation => conversation.IsPinned)
                 };
             })
-            .OrderByDescending(conversation => conversation.IsPinned)
-            .ThenByDescending(conversation => conversation.LastMessageUtc ?? DateTime.MinValue)
+            .OrderByDescending(conversation => conversation.LastMessageUtc ?? DateTime.MinValue)
             .ThenByDescending(conversation => conversation.Id)
             .ToArray();
 
@@ -1969,6 +1965,9 @@ internal sealed class MessagingService : IMessagingService
         }
 
         var conversation = await (await AuthorizedConversationsQueryAsync(actor, cancellationToken))
+            // Authorization includes no-tracking profile subqueries. This is
+            // a write: persist the conversation's recency with the message.
+            .AsTracking()
             .FirstOrDefaultAsync(x => x.Id == command.ConversationId, cancellationToken);
         if (conversation is null)
             return MessagingMessageResult.Failure("MESSAGING_CONVERSATION_NOT_FOUND", "The requested conversation was not found.");

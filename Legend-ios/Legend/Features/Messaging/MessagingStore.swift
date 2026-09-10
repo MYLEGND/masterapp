@@ -360,6 +360,7 @@ final class MessagingStore: ObservableObject {
     private let realtime: (any MessagingRealtimeTransport)?
     let isFounder: Bool
     private var conversationListTask: Task<MobileStoreLoadResult, Never>?
+    private var inboxActivityRevision = 0
     private var presentationRevision = 0
     private var isRefreshingActivityNotifications = false
     private var conversationDetailTasks: [UUID: Task<ConversationDetail, Error>] = [:]
@@ -501,6 +502,8 @@ final class MessagingStore: ObservableObject {
 
         isLoadingMoreConversations = true
         refreshFailure = nil
+        let activityRevision = inboxActivityRevision
+        let languageRevision = presentationRevision
         Task(priority: .utility) { [weak self] in
             guard let self else { return }
             defer { self.isLoadingMoreConversations = false }
@@ -510,7 +513,9 @@ final class MessagingStore: ObservableObject {
                     offset: loadedConversations.count,
                     limit: Self.inboxPageSize,
                     accessToken: try await self.accessTokenProvider())
-                guard case .loaded(let currentConversations) = self.state else {
+                guard activityRevision == self.inboxActivityRevision,
+                      languageRevision == self.presentationRevision,
+                      case .loaded(let currentConversations) = self.state else {
                     return
                 }
 
@@ -1101,7 +1106,8 @@ final class MessagingStore: ObservableObject {
             Task { [weak self] in
                 guard let self else { return }
                 _ = await self.requestConversationList(
-                    preservingCachedValue: self.hasCachedConversations)
+                    preservingCachedValue: self.hasCachedConversations,
+                    afterActivity: true)
             }
             return message
         } catch {
@@ -1482,8 +1488,10 @@ final class MessagingStore: ObservableObject {
     }
 
     private func requestConversationList(
-        preservingCachedValue: Bool
+        preservingCachedValue: Bool,
+        afterActivity: Bool = false
     ) async -> MobileStoreLoadResult {
+        if afterActivity { inboxActivityRevision += 1 }
         if let conversationListTask {
             return await conversationListTask.value
         }
@@ -1503,8 +1511,17 @@ final class MessagingStore: ObservableObject {
                     message: LegendLocalized("The messaging store is no longer available."),
                     correlationID: nil))
             }
-            return await self.executeConversationListRequest(
-                preservingCachedValue: preservingCachedValue)
+            // A send/event may arrive after an existing HTTP snapshot was
+            // taken. Finish that request, then fetch the newer snapshot rather
+            // than letting coalescing silently lose the activity.
+            var result: MobileStoreLoadResult
+            var activityRevision: Int
+            repeat {
+                activityRevision = self.inboxActivityRevision
+                result = await self.executeConversationListRequest(
+                    preservingCachedValue: preservingCachedValue)
+            } while activityRevision != self.inboxActivityRevision && !Task.isCancelled
+            return result
         }
         conversationListTask = task
         let result = await task.value
@@ -1516,6 +1533,7 @@ final class MessagingStore: ObservableObject {
         preservingCachedValue: Bool
     ) async -> MobileStoreLoadResult {
         let revision = presentationRevision
+        let activityRevision = inboxActivityRevision
         defer { if revision == presentationRevision { isRefreshing = false } }
         do {
             let accessToken = try await accessTokenProvider()
@@ -1524,7 +1542,8 @@ final class MessagingStore: ObservableObject {
                 limit: Self.inboxPageSize,
                 accessToken: accessToken)
             try Task.checkCancellation()
-            guard revision == presentationRevision else { return .loaded }
+            guard revision == presentationRevision,
+                  activityRevision == inboxActivityRevision else { return .loaded }
             // The server-owned messaging service is the sole authority for
             // inbox visibility. Do not apply a second client-side persistence
             // rule here. The server intentionally hides empty direct drafts,
@@ -1580,9 +1599,6 @@ final class MessagingStore: ObservableObject {
             uniquingKeysWith: { latest, _ in latest })
 
         return uniqueConversations.values.sorted { left, right in
-            if left.isPinned != right.isPinned {
-                return left.isPinned
-            }
             let leftTimestamp = left.lastMessageUTC ?? .distantPast
             let rightTimestamp = right.lastMessageUTC ?? .distantPast
             if leftTimestamp != rightTimestamp {
@@ -1599,14 +1615,14 @@ final class MessagingStore: ObservableObject {
         }
         if let unreadCount = event.unreadCount {
             notificationBadgeUpdateHandler?(unreadCount, event.revision ?? 0)
-            return
         }
         guard let conversationID = event.conversationID else { return }
         Task { [weak self] in
             guard let self else { return }
 
             async let inbox = self.requestConversationList(
-                preservingCachedValue: self.hasCachedConversations)
+                preservingCachedValue: self.hasCachedConversations,
+                afterActivity: true)
             async let selectedConversation = self.refreshSelectedConversation(
                 ifSelected: conversationID)
             _ = await (inbox, selectedConversation)

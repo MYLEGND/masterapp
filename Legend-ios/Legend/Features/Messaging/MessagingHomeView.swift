@@ -303,23 +303,9 @@ struct MessagingHomeView: View {
         .padding(.bottom, LegendNextSpacing.xs)
     }
 
-    private var pinnedColumns: [GridItem] {
-        Array(
-            repeating: GridItem(
-                .flexible(),
-                spacing: LegendNextSpacing.sm,
-                alignment: .top
-            ),
-            count: 3
-        )
-    }
-
     private func conversationSection(
         _ conversations: [ConversationSummary]
     ) -> some View {
-        let pinnedConversations = conversations.filter { $0.isPinned }
-        let recentConversations = conversations.filter { !$0.isPinned }
-
         return VStack(
             alignment: .leading,
             spacing: LegendNextSpacing.md
@@ -342,18 +328,12 @@ struct MessagingHomeView: View {
                 )
             }
 
-            if !pinnedConversations.isEmpty {
-                pinnedConversationGrid(
-                    pinnedConversations
-                )
-            }
-
-            if !recentConversations.isEmpty {
+            if !conversations.isEmpty {
                 LazyVStack(
                     spacing: LegendNextSpacing.sm
                 ) {
                     ForEach(
-                        recentConversations
+                        conversations
                     ) { conversation in
                         conversationButton(
                             conversation
@@ -405,138 +385,6 @@ struct MessagingHomeView: View {
                     LegendLocalized("Loads the next oldest conversations without delaying the latest messages.", context: "accessibility copy")
                 )
             }
-        }
-    }
-
-    private func pinnedConversationGrid(
-        _ conversations: [ConversationSummary]
-    ) -> some View {
-        LazyVGrid(
-            columns: pinnedColumns,
-            alignment: .center,
-            spacing: LegendNextSpacing.md
-        ) {
-            ForEach(conversations) { conversation in
-                pinnedConversationButton(
-                    conversation
-                )
-            }
-        }
-        .padding(
-            .horizontal,
-            LegendNextSpacing.pageHorizontal
-        )
-        .accessibilityElement(
-            children: .contain
-        )
-        .accessibilityLabel(
-            LegendLocalized("Pinned conversations", context: "accessibility copy")
-        )
-    }
-
-    private func pinnedConversationButton(
-        _ conversation: ConversationSummary
-    ) -> some View {
-        Button {
-            openConversation(conversation.id)
-        } label: {
-            VStack(
-                spacing: LegendNextSpacing.xs
-            ) {
-                ZStack(alignment: .topTrailing) {
-                    Group {
-                        if conversation.conversationType == "Group" {
-                            LegendMessagingGroupAvatar(
-                                avatar: conversation.groupAvatar,
-                                size: 72
-                            )
-                        } else {
-                            LegendMessagingAvatar(
-                                participant:
-                                    conversation.counterparty,
-                                size: 72,
-                                showsGoldRing:
-                                    conversation.unreadCount > 0
-                            )
-                        }
-                    }
-                    .frame(
-                        width: 72,
-                        height: 72
-                    )
-
-                    if conversation.unreadCount > 0 {
-                        Text(
-                            conversation.unreadCount > 99
-                                ? "99+"
-                                : "\(conversation.unreadCount)"
-                        )
-                        .font(
-                            .caption2.weight(.bold)
-                        )
-                        .foregroundStyle(.white)
-                        .frame(
-                            minWidth: 22,
-                            minHeight: 22
-                        )
-                        .padding(
-                            .horizontal,
-                            conversation.unreadCount > 9
-                                ? 4
-                                : 0
-                        )
-                        .background(
-                            Color(
-                                uiColor: .systemRed
-                            ),
-                            in: Capsule()
-                        )
-                        .offset(
-                            x: 7,
-                            y: -6
-                        )
-                        .accessibilityLabel(
-                            LegendLocalized("{value1} unread messages", context: "accessibility copy", arguments: ["value1": String(describing: (conversation.unreadCount))])
-                        )
-                    }
-                }
-                .frame(
-                    width: 88,
-                    height: 78
-                )
-
-                Text(conversation.title)
-                    .font(
-                        .caption.weight(.semibold)
-                    )
-                    .foregroundStyle(
-                        LegendNextColor.textPrimary
-                    )
-                    .multilineTextAlignment(.center)
-                    .lineLimit(2)
-                    .minimumScaleFactor(0.82)
-                    .frame(
-                        maxWidth: .infinity,
-                        minHeight: 32,
-                        alignment: .top
-                    )
-            }
-            .frame(
-                maxWidth: .infinity,
-                alignment: .top
-            )
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(
-            LegendLocalized("{value1}, pinned conversation", context: "accessibility copy", arguments: ["value1": String(describing: (conversation.title))])
-        )
-        .accessibilityHint(
-            LegendLocalized("Open conversation", context: "accessibility copy")
-        )
-        .contextMenu {
-            conversationContextMenu(
-                conversation
-            )
         }
     }
 

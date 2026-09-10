@@ -725,6 +725,33 @@ final class MobileNativeContractTests: XCTestCase {
         XCTAssertEqual(afterFirstMessage.first?.lastMessagePreview, "First persisted message")
     }
 
+    func testIncomingActivityDuringInboxRequestFetchesTheNewerServerSnapshot() async throws {
+        let id = UUID()
+        let api = InboxReconciliationMessagingAPI(conversationID: id)
+        api.holdNextInboxSnapshot = true
+        let realtime = RecordingMessagingRealtimeTransport()
+        let store = MessagingStore(api: api, accessTokenProvider: { "token" },
+            diagnostics: LegendDiagnostics(), actorParticipantType: .client, realtime: realtime)
+        store.load()
+        while api.releaseInboxSnapshot == nil { await Task.yield() }
+        api.makeConversationVisible()
+        realtime.publish(MobileMessagingRealtimeEvent(
+            conversationID: id, messageID: UUID(), unreadCount: 1, revision: 1, occurredUTC: .now))
+        // Let reconciliation join the held request before completing its stale snapshot.
+        try await Task.sleep(for: .milliseconds(30))
+        api.releaseInboxSnapshot?.resume()
+        api.releaseInboxSnapshot = nil
+        let deadline = ContinuousClock.now.advanced(by: .seconds(1))
+        while ContinuousClock.now < deadline {
+            if case .loaded(let rows) = store.state, rows.map(\.id) == [id] {
+                XCTAssertEqual(api.conversationListCallCount, 2)
+                return
+            }
+            await Task.yield()
+        }
+        XCTFail("An event arriving during the request must not leave the old inbox visible")
+    }
+
     func testMessagingRecipientSearchUsesItsRecentCacheBeforeRevalidation() async throws {
         let api = InboxReconciliationMessagingAPI(conversationID: UUID())
         let store = MessagingStore(
@@ -1353,6 +1380,8 @@ private final class InboxReconciliationMessagingAPI: MessagingAPI, @unchecked Se
     private(set) var recipientCallCount = 0
     private var isVisibleInInbox = false
     private var lastMessage: ConversationMessage?
+    var holdNextInboxSnapshot = false
+    var releaseInboxSnapshot: CheckedContinuation<Void, Never>?
 
     init(conversationID: UUID) {
         self.conversationID = conversationID
@@ -1375,6 +1404,11 @@ private final class InboxReconciliationMessagingAPI: MessagingAPI, @unchecked Se
 
     func conversations(accessToken: String) async throws -> [ConversationSummary] {
         conversationListCallCount += 1
+        if holdNextInboxSnapshot {
+            holdNextInboxSnapshot = false
+            await withCheckedContinuation { releaseInboxSnapshot = $0 }
+            return []
+        }
         guard isVisibleInInbox else { return [] }
         return [ConversationSummary(
             id: conversationID,

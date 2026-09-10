@@ -58,6 +58,7 @@
     scrollPositions: readSession('scroll-positions', {}),
     searchTimer: null,
     searchRequestId: 0,
+    inboxRequestId: 0,
     isSearchingContacts: false,
     searchResultNodes: new Map(),
     searchStatusNode: null,
@@ -1133,7 +1134,9 @@
   }
 
   async function refreshList() {
+    const requestId = ++state.inboxRequestId;
     const result = await request('/Messaging/Conversations');
+    if (requestId !== state.inboxRequestId) return;
     state.conversations = result.conversations || [];
     setUnreadCount();
     renderConversations();
