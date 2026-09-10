@@ -2778,7 +2778,18 @@ private fun MessagesScreen(
                                 )
                             }
                         } else {
-                            items(rows, key = { it.id }) { row ->
+                            items(rows.filter { it.isPinned }.chunked(3)) { pinnedRow ->
+                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(LegendSpacing.Sm)) {
+                                    pinnedRow.forEach { row ->
+                                        Column(Modifier.weight(1f).combinedClickable(onClick = { selectedConversationId = row.id; viewModel.open(row.id) }, onLongClick = { conversationMenu = row }).padding(LegendSpacing.Sm), horizontalAlignment = Alignment.CenterHorizontally) {
+                                            BadgeBoxForPinnedConversation(row, mediaRepository, participantType)
+                                            Text(row.title, style = LegendTypography.Label, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                        }
+                                    }
+                                    repeat(3 - pinnedRow.size) { Spacer(Modifier.weight(1f)) }
+                                }
+                            }
+                            items(rows.filterNot { it.isPinned }, key = { it.id }) { row ->
                                 LegendConversationRow(
                                     conversation = row,
                                     mediaRepository = mediaRepository,
@@ -2821,6 +2832,8 @@ private fun MessagesScreen(
                     loadOlder = viewModel::loadOlder,
                     historyFailure = historyFailure,
                     delete = viewModel::deleteMessage,
+                    setReadReceipts = viewModel::setReadReceipts,
+                    markViewed = viewModel::markViewed,
                     manageGroup = { managingGroup = it },
                     resolveVerification = viewModel::resolveVerification,
                 )
@@ -2941,6 +2954,13 @@ private fun LegendMessagesInboxHeader(
                     .border(LegendSpacing.Hairline, LegendColors.Gold.copy(alpha = 0.66f), CircleShape),
             ) { Icon(Icons.Default.Phone, legendLocalized("Call a connection", "accessibility copy"), tint = LegendColors.OnNavy) }
         }
+    }
+}
+
+@Composable
+private fun BadgeBoxForPinnedConversation(conversation: ConversationSummary, mediaRepository: AuthenticatedMediaRepository, participantType: String) {
+    BadgedBox(badge = { if (conversation.unreadCount > 0) Badge { Text(conversation.unreadCount.toString()) } }) {
+        LegendProtectedAvatar(conversation.groupAvatar ?: conversation.counterparty.avatar, conversation.title, participantType, mediaRepository, size = 64.dp)
     }
 }
 
@@ -3605,12 +3625,34 @@ private fun MessageThread(
     loadOlder: () -> Unit,
     historyFailure: String?,
     delete: (ConversationMessage) -> Unit,
+    setReadReceipts: (String, Boolean, Boolean) -> Unit,
+    markViewed: (String) -> Unit,
     manageGroup: (ConversationDetail) -> Unit,
     resolveVerification: (VerificationReview, Boolean, String?) -> Unit,
 ) {
     val openProfile = LocalLegendOpenProfile.current
     val counterparty = conversation.participants.firstOrNull { it.identity != currentIdentity }
     val context = LocalContext.current
+    var privacyOpen by remember { mutableStateOf(false) }
+    val lifecycleState by LocalLifecycleOwner.current.lifecycle.currentStateFlow.collectAsStateWithLifecycle()
+    LaunchedEffect(conversation.id, conversation.messages.lastOrNull()?.id, lifecycleState) {
+        if (lifecycleState == Lifecycle.State.RESUMED) markViewed(conversation.id)
+    }
+    if (privacyOpen) AlertDialog(onDismissRequest = { privacyOpen = false },
+        title = { Text(legendLocalized("Read receipt privacy")) },
+        text = { Column {
+            conversation.readReceipts?.let { privacy ->
+                Text(legendLocalized("Turning receipts off for all chats takes precedence over individual chat settings."))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(legendLocalized("Send receipts in all chats"), Modifier.weight(1f))
+                    Switch(checked = privacy.globalEnabled, onCheckedChange = { setReadReceipts(conversation.id, it, true) })
+                }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(legendLocalized("Send receipts in this chat"), Modifier.weight(1f))
+                    Switch(checked = privacy.conversationEnabled, onCheckedChange = { setReadReceipts(conversation.id, it, false) })
+                }
+            }
+        } }, confirmButton = { TextButton(onClick = { privacyOpen = false }) { Text(legendLocalized("Done")) } })
     var draft by remember { mutableStateOf("") }
     var replyTo by remember { mutableStateOf<ConversationMessage?>(null) }
     var attachments by remember { mutableStateOf<List<Uri>>(emptyList()) }
@@ -3627,12 +3669,14 @@ private fun MessageThread(
                     Text(conversation.title, style = LegendTypography.CardTitle, color = LegendColors.OnNavy, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     conversation.purpose?.let { Text(it, style = LegendTypography.Label, color = LegendColors.GoldSoft, maxLines = 1) }
                 }
+                IconButton(onClick = { privacyOpen = true }) { Icon(Icons.Default.Settings, legendLocalized("Read receipt privacy"), tint = LegendColors.Gold) }
                 conversation.meeting?.linkLabel?.let { Icon(Icons.Default.Event, "$it meeting", tint = LegendColors.Gold) }
                 if (conversation.conversationType.equals("Group", ignoreCase = true)) {
                     IconButton(onClick = { manageGroup(conversation) }) { Icon(Icons.Default.Group, legendLocalized("View group members", "accessibility copy"), tint = LegendColors.GoldBright) }
                 }
             }
         }
+        historyFailure?.let { Text(legendLocalized(it), color = LegendColors.Error, modifier = Modifier.padding(LegendSpacing.Sm)) }
         key(conversation.id) {
             LazyColumn(
                 modifier = Modifier.weight(1f),
@@ -3643,7 +3687,7 @@ private fun MessageThread(
                 // reverseLayout makes item 0 the physical bottom of the thread.
             // Present a reversed view of the canonical chronological collection
             // so visual order remains oldest at the top and newest at the bottom.
-            items(conversation.messages.asReversed(), key = { it.id }) { message ->
+            items(conversation.messages.filterNot { it.isDeleted }.asReversed(), key = { it.id }) { message ->
                 LegendMessageBubble(
                     message = message,
                     mediaRepository = mediaRepository,
@@ -3652,13 +3696,20 @@ private fun MessageThread(
                     delete = { delete(message) },
                     resolveVerification = resolveVerification,
                 )
+                if (message.isMine) {
+                    val read = conversation.readReceipts?.readers?.any { reader ->
+                        !(reader.userId.equals(currentIdentity.userId, true) && reader.participantType.equals(currentIdentity.participantType, true)) &&
+                            runCatching { java.time.Instant.parse(reader.readThroughUtc) >= java.time.Instant.parse(message.sentUtc) }.getOrDefault(false)
+                    } == true
+                    Text(if (read) legendLocalized("Read") else legendLocalized("Sent"), modifier = Modifier.fillMaxWidth(), textAlign = androidx.compose.ui.text.style.TextAlign.End, style = LegendTypography.Label, color = LegendColors.TextSecondary)
+                }
+
             }
 
             // With reverseLayout this remains visually above the oldest loaded
             // message and loading history does not disturb the current viewport.
                 if (conversation.hasOlderMessages) {
                     item {
-                        historyFailure?.let { Text(legendLocalized(it), color = LegendColors.Error) }
                         TextButton(
                             onClick = loadOlder,
                             modifier = Modifier.fillMaxWidth(),
@@ -3688,7 +3739,7 @@ private fun MessageThread(
             Row(Modifier.fillMaxWidth().background(LegendColors.Surface).padding(horizontal = LegendSpacing.PageHorizontal, vertical = LegendSpacing.Sm), verticalAlignment = Alignment.Bottom) {
                 IconButton(onClick = { photoPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }) { Icon(Icons.Default.AddPhotoAlternate, legendLocalized("Add photo", "accessibility copy"), tint = LegendColors.Gold) }
                 IconButton(onClick = { filePicker.launch(arrayOf("image/*", "application/pdf", "text/plain", "application/msword", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "application/vnd.ms-excel", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")) }) { Icon(Icons.Default.AttachFile, legendLocalized("Add file", "accessibility copy"), tint = LegendColors.Gold) }
-                OutlinedTextField(value = draft, onValueChange = { draft = it }, modifier = Modifier.weight(1f), placeholder = { Text(legendLocalized("Write a message")) }, maxLines = 5, shape = LegendShapes.Control)
+                OutlinedTextField(value = draft, onValueChange = { draft = it }, modifier = Modifier.weight(1f), placeholder = { Text(legendLocalized("Write a message")) }, keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(capitalization = androidx.compose.ui.text.input.KeyboardCapitalization.Sentences, autoCorrectEnabled = true, keyboardType = androidx.compose.ui.text.input.KeyboardType.Text), maxLines = 5, shape = LegendShapes.Control)
                 IconButton(
                     onClick = {
                         send(context, conversation.id, draft, replyTo?.id, attachments)
@@ -3716,6 +3767,28 @@ private fun LegendMessageBubble(
     delete: () -> Unit,
     resolveVerification: (VerificationReview, Boolean, String?) -> Unit,
 ) {
+    var actionsOpen by remember(message.id) { mutableStateOf(false) }
+    val context = LocalContext.current
+    fun copyText(text: String) {
+        (context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager).setPrimaryClip(android.content.ClipData.newPlainText("Message", text))
+        actionsOpen = false
+    }
+    if (actionsOpen) AlertDialog(onDismissRequest = { actionsOpen = false },
+        title = { Text(legendLocalized("Message actions")) },
+        text = { Column(Modifier.heightIn(max = 440.dp).verticalScroll(rememberScrollState())) {
+            androidx.compose.foundation.text.selection.SelectionContainer { Text(message.body) }
+            Text(legendMeetingTime(message.sentUtc), style = LegendTypography.Label)
+            TextButton(onClick = { actionsOpen = false; reply() }) { Text(legendLocalized("Reply")) }
+            TextButton(onClick = { copyText(message.body) }) { Text(legendLocalized("Copy")) }
+            message.originalBody?.takeIf { it != message.body }?.let { original ->
+                TextButton(onClick = { copyText(original) }) { Text(legendLocalized("Copy original text")) }
+            }
+            TextButton(onClick = {
+                actionsOpen = false
+                context.startActivity(android.content.Intent.createChooser(android.content.Intent(android.content.Intent.ACTION_SEND).apply { type = "text/plain"; putExtra(android.content.Intent.EXTRA_TEXT, message.body) }, null))
+            }) { Text(legendLocalized("Share message")) }
+            if (message.isMine) TextButton(onClick = { actionsOpen = false; delete() }) { Text(legendLocalized("Unsend"), color = LegendColors.Error) }
+        } }, confirmButton = { TextButton(onClick = { actionsOpen = false }) { Text(legendLocalized("Done")) } })
     val openProfile = LocalLegendOpenProfile.current
     val senderProfile = SocialAuthor(message.sender.identity, message.sender.profileId, message.sender.displayName, message.sender.avatar)
     Row(Modifier.fillMaxWidth(), horizontalArrangement = if (message.isMine) Arrangement.End else Arrangement.Start, verticalAlignment = Alignment.Bottom) {
@@ -3723,7 +3796,7 @@ private fun LegendMessageBubble(
             Box(Modifier.clickable { openProfile(senderProfile) }) { LegendProtectedAvatar(message.sender.avatar, message.sender.displayName, participantType, mediaRepository, size = 28.dp) }
             Spacer(Modifier.width(LegendSpacing.Xs))
         }
-        Surface(color = if (message.isMine) LegendColors.Navy else LegendColors.GoldSoft, shape = LegendShapes.Control, modifier = Modifier.widthIn(max = 300.dp)) {
+        Surface(color = if (message.isMine) LegendColors.Navy else LegendColors.GoldSoft, shape = LegendShapes.Control, modifier = Modifier.widthIn(max = 300.dp).combinedClickable(onClick = {}, onLongClick = { actionsOpen = true })) {
             Column(Modifier.padding(LegendSpacing.Sm), verticalArrangement = Arrangement.spacedBy(LegendSpacing.Xs)) {
                 if (!message.isMine) Text(message.sender.displayName, modifier = Modifier.clickable { openProfile(senderProfile) }, style = LegendTypography.Label, color = LegendColors.TextSecondary)
                 message.reply?.let { replyPreview ->

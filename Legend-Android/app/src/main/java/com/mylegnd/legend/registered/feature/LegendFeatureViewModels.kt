@@ -539,9 +539,20 @@ class MessagingViewModel(private val repository: MessagingRepository, private va
         }
     }
 
+    fun markViewed(id: String) = viewModelScope.launch { repository.markRead(role, id) }
+
+    fun setReadReceipts(id: String, enabled: Boolean, globally: Boolean) = viewModelScope.launch {
+        when (val result = repository.setReadReceipts(role, id, enabled, globally)) {
+            is LoadState.Data -> refreshOpenConversation(id)
+            is LoadState.Error -> _historyFailure.value = result.message
+            else -> Unit
+        }
+    }
+
     fun setPinned(conversation: ConversationSummary, isPinned: Boolean) = viewModelScope.launch {
         if (repository.setPinned(role, conversation.id, isPinned) is LoadState.Data) {
             updateInbox(conversation.id) { it.copy(isPinned = isPinned) }
+            refreshInboxSilently()
         }
     }
 
@@ -563,7 +574,19 @@ class MessagingViewModel(private val repository: MessagingRepository, private va
 
     fun deleteMessage(message: ConversationMessage) = viewModelScope.launch {
         if (!message.isMine || message.isDeleted) return@launch
-        if (repository.deleteMessage(role, message.conversationId, message.id) is LoadState.Data) open(message.conversationId)
+        if (repository.deleteMessage(role, message.conversationId, message.id) is LoadState.Data) {
+            refreshOpenConversation(message.conversationId)
+            refreshInboxSilently()
+        }
+    }
+
+    private suspend fun refreshOpenConversation(id: String) {
+        val revision = presentationRevision
+        when (val fresh = repository.conversation(role, id)) {
+            is LoadState.Data -> if (revision == presentationRevision && selectedConversationId == id) _detail.value = fresh
+            is LoadState.Error -> if (revision == presentationRevision && selectedConversationId == id) _historyFailure.value = fresh.message
+            else -> Unit
+        }
     }
 
     /**

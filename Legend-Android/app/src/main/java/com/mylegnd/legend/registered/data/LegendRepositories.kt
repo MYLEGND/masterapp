@@ -139,6 +139,9 @@ class FounderAccountRepository(private val client: LegendApiClient) {
     suspend fun purge(role: String, accounts: List<FounderManagedAccount>, confirmation: String) = request { client.api.purgeFounderAccounts(role, FounderAccountBatchRequest(accounts.map { FounderAccountTargetRequest(it.profileId, it.participantType) }, confirmation)).legendBody() }
 }
 class MessagingRepository(private val client: LegendApiClient) {
+    suspend fun setReadReceipts(role: String, id: String, enabled: Boolean, globally: Boolean) = request {
+        client.api.setReadReceipts(role, id, MessagingReadReceiptRequest(enabled, globally)).legendBody()
+    }
     private val attachmentUploader = MessagingAttachmentUploader(client)
 
     suspend fun conversations(role: String, take: Int = 24, skip: Int = 0) = request {

@@ -490,7 +490,14 @@ public sealed record MessagingConversationDetail(
     bool CanManagePromotion = false,
     MessagingGroupMeeting? Meeting = null,
     bool CanManageMeeting = false,
-    bool HasOlderMessages = false);
+    bool HasOlderMessages = false)
+{
+    public MessagingReadReceiptSettings? ReadReceipts { get; init; }
+}
+
+public sealed record MessagingReadReceipt(string UserId, string ParticipantType, DateTime ReadThroughUtc);
+public sealed record MessagingReadReceiptSettings(bool GlobalEnabled, bool ConversationEnabled,
+    IReadOnlyList<MessagingReadReceipt> Readers);
 
 /// <summary>
 /// The resolved meeting presentation for a group conversation. Host identity

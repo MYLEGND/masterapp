@@ -266,6 +266,7 @@ internal object FinancialPresentationOrder {
     val meeting: MessagingGroupMeeting? = null,
     @SerialName("canManageMeeting") val canManageMeeting: Boolean = false,
     @SerialName("hasOlderMessages") val hasOlderMessages: Boolean = false,
+    val readReceipts: MessagingReadReceiptSettings? = null,
 )
 @Serializable data class MessagingGroupMeeting(
     val host: MobileParticipant,
@@ -473,3 +474,7 @@ data class SocialVideoEdit(val startSeconds: Double = 0.0, val endSeconds: Doubl
     val phone2: String, val addressLine: String, val city: String, val state: String,
     val zipCode: String, val updatedUtc: String?
 )
+
+@Serializable data class MessagingReadReceiptSettings(val globalEnabled: Boolean, val conversationEnabled: Boolean, val readers: List<MessagingReadReceipt> = emptyList())
+@Serializable data class MessagingReadReceipt(val userId: String, val participantType: String, val readThroughUtc: String)
+@Serializable data class MessagingReadReceiptRequest(val enabled: Boolean, val globally: Boolean)

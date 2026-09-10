@@ -303,9 +303,23 @@ struct MessagingHomeView: View {
         .padding(.bottom, LegendNextSpacing.xs)
     }
 
+    private var pinnedColumns: [GridItem] {
+        Array(
+            repeating: GridItem(
+                .flexible(),
+                spacing: LegendNextSpacing.sm,
+                alignment: .top
+            ),
+            count: 3
+        )
+    }
+
     private func conversationSection(
         _ conversations: [ConversationSummary]
     ) -> some View {
+        let pinnedConversations = conversations.filter { $0.isPinned }
+        let recentConversations = conversations.filter { !$0.isPinned }
+
         return VStack(
             alignment: .leading,
             spacing: LegendNextSpacing.md
@@ -328,12 +342,18 @@ struct MessagingHomeView: View {
                 )
             }
 
-            if !conversations.isEmpty {
+            if !pinnedConversations.isEmpty {
+                pinnedConversationGrid(
+                    pinnedConversations
+                )
+            }
+
+            if !recentConversations.isEmpty {
                 LazyVStack(
                     spacing: LegendNextSpacing.sm
                 ) {
                     ForEach(
-                        conversations
+                        recentConversations
                     ) { conversation in
                         conversationButton(
                             conversation
@@ -385,6 +405,138 @@ struct MessagingHomeView: View {
                     LegendLocalized("Loads the next oldest conversations without delaying the latest messages.", context: "accessibility copy")
                 )
             }
+        }
+    }
+
+    private func pinnedConversationGrid(
+        _ conversations: [ConversationSummary]
+    ) -> some View {
+        LazyVGrid(
+            columns: pinnedColumns,
+            alignment: .center,
+            spacing: LegendNextSpacing.md
+        ) {
+            ForEach(conversations) { conversation in
+                pinnedConversationButton(
+                    conversation
+                )
+            }
+        }
+        .padding(
+            .horizontal,
+            LegendNextSpacing.pageHorizontal
+        )
+        .accessibilityElement(
+            children: .contain
+        )
+        .accessibilityLabel(
+            LegendLocalized("Pinned conversations", context: "accessibility copy")
+        )
+    }
+
+    private func pinnedConversationButton(
+        _ conversation: ConversationSummary
+    ) -> some View {
+        Button {
+            openConversation(conversation.id)
+        } label: {
+            VStack(
+                spacing: LegendNextSpacing.xs
+            ) {
+                ZStack(alignment: .topTrailing) {
+                    Group {
+                        if conversation.conversationType == "Group" {
+                            LegendMessagingGroupAvatar(
+                                avatar: conversation.groupAvatar,
+                                size: 72
+                            )
+                        } else {
+                            LegendMessagingAvatar(
+                                participant:
+                                    conversation.counterparty,
+                                size: 72,
+                                showsGoldRing:
+                                    conversation.unreadCount > 0
+                            )
+                        }
+                    }
+                    .frame(
+                        width: 72,
+                        height: 72
+                    )
+
+                    if conversation.unreadCount > 0 {
+                        Text(
+                            conversation.unreadCount > 99
+                                ? "99+"
+                                : "\(conversation.unreadCount)"
+                        )
+                        .font(
+                            .caption2.weight(.bold)
+                        )
+                        .foregroundStyle(.white)
+                        .frame(
+                            minWidth: 22,
+                            minHeight: 22
+                        )
+                        .padding(
+                            .horizontal,
+                            conversation.unreadCount > 9
+                                ? 4
+                                : 0
+                        )
+                        .background(
+                            Color(
+                                uiColor: .systemRed
+                            ),
+                            in: Capsule()
+                        )
+                        .offset(
+                            x: 7,
+                            y: -6
+                        )
+                        .accessibilityLabel(
+                            LegendLocalized("{value1} unread messages", context: "accessibility copy", arguments: ["value1": String(describing: (conversation.unreadCount))])
+                        )
+                    }
+                }
+                .frame(
+                    width: 88,
+                    height: 78
+                )
+
+                Text(conversation.title)
+                    .font(
+                        .caption.weight(.semibold)
+                    )
+                    .foregroundStyle(
+                        LegendNextColor.textPrimary
+                    )
+                    .multilineTextAlignment(.center)
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.82)
+                    .frame(
+                        maxWidth: .infinity,
+                        minHeight: 32,
+                        alignment: .top
+                    )
+            }
+            .frame(
+                maxWidth: .infinity,
+                alignment: .top
+            )
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(
+            LegendLocalized("{value1}, pinned conversation", context: "accessibility copy", arguments: ["value1": String(describing: (conversation.title))])
+        )
+        .accessibilityHint(
+            LegendLocalized("Open conversation", context: "accessibility copy")
+        )
+        .contextMenu {
+            conversationContextMenu(
+                conversation
+            )
         }
     }
 
@@ -2026,6 +2178,8 @@ struct ConversationThreadView: View {
 
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.dismiss) private var dismissThread
+    @Environment(\.scenePhase) private var scenePhase
+    @State private var isThreadVisible = false
     @FocusState private var composerIsFocused: Bool
     @State private var draft = ""
     @State private var stagedAttachments: [MessagingAttachmentDraft] = []
@@ -2038,6 +2192,7 @@ struct ConversationThreadView: View {
     @State private var isPresentingGroupCollaborators = false
     @State private var isConfirmingDeleteGroup = false
     @State private var isPresentingCallSheet = false
+    @State private var isPresentingReceiptPrivacy = false
     @State private var verificationProfile: LegendVerificationProfileRoute?
 
     var body: some View {
@@ -2047,6 +2202,8 @@ struct ConversationThreadView: View {
             threadContent
         }
         .toolbar(.hidden, for: .navigationBar)
+        .onAppear { isThreadVisible = true }
+        .onDisappear { isThreadVisible = false }
         .task {
             if store.selectedConversationID != conversationID {
                 store.openConversation(conversationID)
@@ -2100,6 +2257,19 @@ struct ConversationThreadView: View {
                 LegendLocalized("This permanently closes the group for every member. ")
                 + "Only the group owner can perform this action."
             )
+        }
+        .confirmationDialog(LegendLocalized("Read receipt privacy"), isPresented: $isPresentingReceiptPrivacy, titleVisibility: .visible) {
+            if case .loaded(let conversation) = store.detailState, let privacy = conversation.readReceipts {
+                Button(privacy.conversationEnabled ? LegendLocalized("Turn off for this chat") : LegendLocalized("Turn on for this chat")) {
+                    store.setReadReceipts(conversationID: conversation.id, enabled: !privacy.conversationEnabled, globally: false)
+                }
+                Button(privacy.globalEnabled ? LegendLocalized("Turn off for all chats") : LegendLocalized("Turn on for all chats")) {
+                    store.setReadReceipts(conversationID: conversation.id, enabled: !privacy.globalEnabled, globally: true)
+                }
+            }
+            Button(LegendLocalized("Cancel"), role: .cancel) {}
+        } message: {
+            Text(LegendLocalized("Your unread counts stay accurate. Turning receipts off for all chats takes precedence over individual chat settings."))
         }
         .sheet(isPresented: $isPresentingCallSheet) {
             if case .loaded(let conversation) = store.detailState {
@@ -2176,11 +2346,13 @@ struct ConversationThreadView: View {
                         isPromoted: isPromoted)
                 },
                 isFounder: store.isFounder,
-                startCall: { isPresentingCallSheet = true }
+                startCall: { isPresentingCallSheet = true },
+                receiptPrivacy: { isPresentingReceiptPrivacy = true }
             )
 
             LegendMessageTimeline(
-                messages: conversation.messages,
+                messages: conversation.messages.filter { !$0.isDeleted },
+                readReceipts: conversation.readReceipts,
                 participantAvatar: { identity in
                     conversation.participants.first(where: {
                         $0.identity == identity
@@ -2205,6 +2377,12 @@ struct ConversationThreadView: View {
             )
             .id(conversation.id)
         }
+        .onChange(of: conversation.messages.last?.id, initial: true) { _, _ in
+            if isThreadVisible && scenePhase == .active { store.markViewed(conversation.id) }
+        }
+        .onChange(of: scenePhase) { _, phase in
+            if isThreadVisible && phase == .active { store.markViewed(conversation.id) }
+        }
         .safeAreaInset(edge: .bottom, spacing: 0) {
             if conversation.isClosed {
                 closedConversationBanner
@@ -2219,7 +2397,7 @@ struct ConversationThreadView: View {
             if let sendFailure = store.sendFailure {
                 LegendMessagingStatusBanner(
                     symbol: "exclamationmark.circle.fill",
-                    title: LegendLocalized("Message not sent"),
+                    title: sendFailure.title,
                     message: sendFailure.message
                 )
                 .padding(.top, LegendNextSpacing.xs)
@@ -2863,6 +3041,7 @@ private struct LegendConversationHeader: View {
     let setGroupPromotion: (Bool) -> Void
     let isFounder: Bool
     let startCall: () -> Void
+    var receiptPrivacy: (() -> Void)? = nil
 
     @State private var showingMembers = false
     @Environment(\.dismiss) private var dismiss
@@ -3023,6 +3202,12 @@ private struct LegendConversationHeader: View {
                 .buttonStyle(LegendMessagingPressButtonStyle())
                 .accessibilityLabel(LegendLocalized("Call {value1}", context: "accessibility copy", arguments: ["value1": String(describing: (conversation.title))]))
             }
+            if let receiptPrivacy {
+                Button(action: receiptPrivacy) {
+                    Image(systemName: "eye.circle").font(.title2).foregroundStyle(LegendNextColor.gold)
+                }.accessibilityLabel(LegendLocalized("Read receipt privacy"))
+            }
+
         }
         .sheet(isPresented: $showingMembers) {
             NavigationStack {
@@ -3259,6 +3444,7 @@ private struct LegendConversationFallbackHeader: View {
 
 private struct LegendMessageTimeline: View {
     let messages: [ConversationMessage]
+    var readReceipts: MessagingReadReceiptSettings? = nil
     let participantAvatar: (LogicalParticipantIdentity) -> ProfileAvatar?
     let hasOlderMessages: Bool
     let isLoadingOlderMessages: Bool
@@ -3327,6 +3513,14 @@ private struct LegendMessageTimeline: View {
                                     : { onOpenVerificationProfile(message) }
                             )
                             .id(message.id)
+                            if message.isMine {
+                                let read = readReceipts?.readers.contains(where: {
+                                    !($0.userId.caseInsensitiveCompare(message.sender.identity.userID) == .orderedSame && $0.participantType == message.sender.identity.participantType.rawValue) && $0.readThroughUtc >= message.sentUTC
+                                }) == true
+                                Text(read ? LegendLocalized("Read") : LegendLocalized("Sent"))
+                                .font(.caption2).foregroundStyle(LegendNextColor.textSecondary)
+                                .frame(maxWidth: .infinity, alignment: .trailing)
+                            }
                         }
                     }
 
@@ -3616,6 +3810,14 @@ private struct LegendMessageBubble: View {
                     )
                 }
 
+                ShareLink(item: message.body) {
+                    Label(LegendLocalized("Share message"), systemImage: "square.and.arrow.up")
+                }
+                if let original = message.originalBody, original != message.body {
+                    Button { UIPasteboard.general.string = original } label: {
+                        Label(LegendLocalized("Copy original text"), systemImage: "text.quote")
+                    }
+                }
                 if message.isMine {
                     Divider()
                     Button(role: .destructive, action: onDelete) {
@@ -3655,7 +3857,8 @@ private struct LegendMessageBubble: View {
                 alignment: message.isMine ? .trailing : .leading,
                 spacing: LegendNextSpacing.xs
             ) {
-                Text(message.isDeleted ? LegendLocalized("Message unsent") : displayedMessageBody)
+                Text(displayedMessageBody)
+                    .textSelection(.enabled)
                     .font(.system(size: 15, weight: .regular))
                     .italic(message.isDeleted)
                     .lineSpacing(0)

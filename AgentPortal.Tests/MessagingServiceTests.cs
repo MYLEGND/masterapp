@@ -30,6 +30,36 @@ public sealed class MessagingServiceTests
     private const string FounderTestObjectId = "b13065c4-2e0b-4dc7-8546-76f664ce1edf";
 
     [Fact]
+    public async Task ReadReceipts_DefaultOnAndRespectGlobalAndConversationPrivacyWithoutChangingUnreadAccounting()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        await SeedAgentAndClientAsync(db, linkClientToAgent: true, grantClientToAgent: false);
+        var service = CreateService(db);
+        var agent = new MessagingActor("agent-1", MessagingParticipantTypes.Agent);
+        var client = new MessagingActor("client-1", MessagingParticipantTypes.Client);
+        var opened = await service.StartConversationAsync(new StartMessagingConversationCommand(
+            agent, client.UserId, client.ParticipantType, InitialMessageBody: "First message"));
+        var id = opened.Conversation!.Id;
+        Assert.True((await service.MarkConversationReadAsync(new MessagingConversationActionCommand(client, id))).Succeeded);
+        Assert.DoesNotContain((await service.GetConversationAsync(client, id)).Conversation!.ReadReceipts!.Readers,
+            reader => reader.UserId == client.UserId);
+        var visible = (await service.GetConversationAsync(agent, id)).Conversation!.ReadReceipts!;
+        var firstRead = Assert.Single(visible.Readers.Where(r => r.UserId == client.UserId)).ReadThroughUtc;
+        Assert.True((await service.SetReadReceiptsAsync(client, id, false, false)).Succeeded);
+        Assert.DoesNotContain((await service.GetConversationAsync(agent, id)).Conversation!.ReadReceipts!.Readers, r => r.UserId == client.UserId);
+        Assert.True((await service.SendMessageAsync(new SendMessagingMessageCommand(agent, id, "Second message"))).Succeeded);
+        Assert.True((await service.MarkConversationReadAsync(new MessagingConversationActionCommand(client, id))).Succeeded);
+        Assert.Equal(0, Assert.Single((await service.ListConversationsAsync(client, new MessagingConversationListQuery())).Conversations).UnreadCount);
+        Assert.True((await service.SetReadReceiptsAsync(client, id, false, true)).Succeeded);
+        Assert.True((await service.SetReadReceiptsAsync(client, id, true, false)).Succeeded);
+        Assert.False((await service.GetConversationAsync(client, id)).Conversation!.ReadReceipts!.GlobalEnabled);
+        Assert.DoesNotContain((await service.GetConversationAsync(agent, id)).Conversation!.ReadReceipts!.Readers, r => r.UserId == client.UserId);
+        Assert.True((await service.SetReadReceiptsAsync(client, id, true, true)).Succeeded);
+        Assert.Equal(firstRead, Assert.Single((await service.GetConversationAsync(agent, id)).Conversation!.ReadReceipts!.Readers.Where(r => r.UserId == client.UserId)).ReadThroughUtc);
+        Assert.False((await service.SetReadReceiptsAsync(new MessagingActor("stranger", MessagingParticipantTypes.Client), id, true, false)).Succeeded);
+    }
+
+    [Fact]
     public async Task RecencyRepair_UsesPersistedMessagesAndLeavesEmptyDraftsAlone()
     {
         await using var connection = new SqliteConnection("Data Source=:memory:");
@@ -181,7 +211,7 @@ public sealed class MessagingServiceTests
     }
 
     [Fact]
-    public async Task Inbox_OrdersByMostRecentMessageRegardlessOfPinsOrReadStatus()
+    public async Task Inbox_KeepsPinsStaticAndOrdersUnpinnedActivityByRecency()
     {
         await using var db = ControllerTestHelpers.BuildDb();
         await SeedAgentAndClientAsync(db, linkClientToAgent: true, grantClientToAgent: false);
@@ -245,12 +275,21 @@ public sealed class MessagingServiceTests
             agent,
             new MessagingConversationListQuery(Take: 10));
 
-        Assert.Equal(newer.Id, Assert.Single(newestPage.Conversations).Id);
-        Assert.Equal(older.Id, Assert.Single(olderPage.Conversations).Id);
+        Assert.Equal(older.Id, Assert.Single(newestPage.Conversations).Id);
+        Assert.Equal(newer.Id, Assert.Single(olderPage.Conversations).Id);
         Assert.Collection(
             inbox.Conversations,
-            first => Assert.Equal(newer.Id, first.Id),
-            second => Assert.Equal(older.Id, second.Id));
+            first => Assert.Equal(older.Id, first.Id),
+            second => Assert.Equal(newer.Id, second.Id));
+        Assert.True((await service.SetConversationPinnedAsync(new SetMessagingConversationPinnedCommand(agent, newer.Id, true))).Succeeded);
+        var pinnedOrder = (await service.ListConversationsAsync(agent, new MessagingConversationListQuery())).Conversations.Select(c => c.Id).ToArray();
+        foreach (var id in new[] { older.Id, newer.Id })
+        {
+            Assert.True((await service.SendMessageAsync(new SendMessagingMessageCommand(agent, id, "Pinned activity"))).Succeeded);
+            Assert.Equal(pinnedOrder, (await service.ListConversationsAsync(agent, new MessagingConversationListQuery())).Conversations.Select(c => c.Id));
+        }
+        Assert.True((await service.SetConversationPinnedAsync(new SetMessagingConversationPinnedCommand(agent, newer.Id, false))).Succeeded);
+        Assert.True((await service.SetConversationPinnedAsync(new SetMessagingConversationPinnedCommand(agent, older.Id, false))).Succeeded);
 
         // Incoming activity moves each conversation ahead of older unread
         // activity, then the agent's reply takes first place even when read.
@@ -433,9 +472,31 @@ public sealed class MessagingServiceTests
             new DeleteMessagingMessageCommand(agent, conversation.Id, messageId))).Succeeded);
         var refreshed = Assert.IsType<MessagingConversationDetail>(
             (await service.GetConversationAsync(client, conversation.Id)).Conversation);
-        var message = Assert.Single(refreshed.Messages);
-        Assert.True(message.IsDeleted);
-        Assert.Equal("Message unsent", message.Body);
+        Assert.Empty(refreshed.Messages);
+        var deleted = await db.InternalMessages.AsNoTracking().SingleAsync(m => m.Id == messageId);
+        Assert.True(deleted.IsDeleted);
+        Assert.Equal(string.Empty, deleted.Body);
+    }
+
+    [Fact]
+    public async Task DeletedMessage_DoesNotLeaveReplyTextOrConsumeHistoryPageSlots()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        await SeedAgentAndClientAsync(db, linkClientToAgent: true, grantClientToAgent: false);
+        var service = CreateService(db);
+        var agent = new MessagingActor("agent-1", MessagingParticipantTypes.Agent);
+        var client = new MessagingActor("client-1", MessagingParticipantTypes.Client);
+        var conversation = (await service.StartConversationAsync(new StartMessagingConversationCommand(
+            agent, client.UserId, client.ParticipantType, InitialMessageBody: "Remove this text"))).Conversation!;
+        var original = Assert.Single(conversation.Messages);
+        Assert.True((await service.SendMessageAsync(new SendMessagingMessageCommand(
+            client, conversation.Id, "Reply remains", ReplyToMessageId: original.Id))).Succeeded);
+        Assert.True((await service.DeleteMessageAsync(new DeleteMessagingMessageCommand(agent, conversation.Id, original.Id))).Succeeded);
+        var detail = (await service.GetConversationAsync(client, conversation.Id)).Conversation!;
+        var reply = Assert.Single(detail.Messages);
+        Assert.Equal("Reply remains", reply.Body);
+        Assert.Null(reply.Reply);
+        Assert.False(detail.HasOlderMessages);
     }
 
     [Fact]

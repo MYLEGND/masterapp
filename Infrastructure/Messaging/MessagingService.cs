@@ -12,7 +12,7 @@ using Shared.Auth;
 
 namespace Infrastructure.Messaging;
 
-internal sealed class MessagingService : IMessagingService
+internal sealed partial class MessagingService : IMessagingService
 {
     private const int MaximumConversationSubjectLength = 240;
     private const int MaximumMessageBodyLength = 10_000;
@@ -45,6 +45,7 @@ internal sealed class MessagingService : IMessagingService
     private readonly ITranslationEntitlementAuthority? _translationEntitlements;
     private readonly ITranslationSystemUsageRecorder? _translationSystemUsage;
     private readonly IApplicationLocalizationService? _applicationLocalization;
+    private readonly IMessagingRealtimePublisher? _realtime;
 
     public MessagingService(
         MasterAppDbContext db,
@@ -60,9 +61,11 @@ internal sealed class MessagingService : IMessagingService
         ILegendLanguageRegistry? languages = null,
         ITranslationEntitlementAuthority? translationEntitlements = null,
         ITranslationSystemUsageRecorder? translationSystemUsage = null,
-        IApplicationLocalizationService? applicationLocalization = null)
+        IApplicationLocalizationService? applicationLocalization = null,
+        IMessagingRealtimePublisher? realtime = null)
     {
         _db = db;
+        _realtime = realtime;
         _logger = logger;
         _moderation = moderation;
         _participantIdentities = participantIdentities;
@@ -197,9 +200,10 @@ internal sealed class MessagingService : IMessagingService
                         : null,
                     participant.PinnedUtc
                 })
-            // Inbox order is message recency for every actor and platform.
-            // Read status and saved pins never displace newer activity.
-            .OrderByDescending(x => x.LastMessageUtc ?? DateTime.MinValue)
+            // Saved pins occupy stable slots; the remaining inbox follows
+            // the latest sent or received message, regardless of read status.
+            .OrderByDescending(x => x.PinnedUtc.HasValue)
+            .ThenByDescending(x => x.PinnedUtc.HasValue ? DateTime.MaxValue : x.LastMessageUtc ?? DateTime.MinValue)
             .ThenByDescending(x => x.Id)
             .Skip(skip)
             .Take(take)
@@ -405,7 +409,8 @@ internal sealed class MessagingService : IMessagingService
                     IsPinned = group.Any(conversation => conversation.IsPinned)
                 };
             })
-            .OrderByDescending(conversation => conversation.LastMessageUtc ?? DateTime.MinValue)
+            .OrderByDescending(conversation => conversation.IsPinned)
+            .ThenByDescending(conversation => conversation.IsPinned ? DateTime.MaxValue : conversation.LastMessageUtc ?? DateTime.MinValue)
             .ThenByDescending(conversation => conversation.Id)
             .ToArray();
 
@@ -489,7 +494,7 @@ internal sealed class MessagingService : IMessagingService
             : Math.Clamp(messagePage.Take, 1, 80);
         var messagesQuery = _db.InternalMessages
             .AsNoTracking()
-            .Where(message => message.ConversationId == conversationId);
+            .Where(message => message.ConversationId == conversationId && !message.IsDeleted);
         if (messagePage?.BeforeUtc is DateTime beforeUtc)
         {
             messagesQuery = messagesQuery.Where(message => message.SentUtc < beforeUtc);
@@ -512,7 +517,7 @@ internal sealed class MessagingService : IMessagingService
                 x.IsDeleted,
                 x.ReplyToMessageId,
                 x.VerificationReviewRequestId,
-                x.ReplyToMessage == null
+                x.ReplyToMessage == null || x.ReplyToMessage.IsDeleted
                     ? null
                     : new ReplyDetailRow(
                         x.ReplyToMessage.Id,
@@ -660,7 +665,7 @@ internal sealed class MessagingService : IMessagingService
             canManagePromotion,
             meeting,
             isGroupOwner && conversation.Purpose is null,
-            hasOlderMessages);
+            hasOlderMessages) with { ReadReceipts = await ReadReceiptSettingsAsync(actor, conversationId, cancellationToken) };
 
         return new MessagingConversationResult(true, null, null, detail);
     }
@@ -2189,8 +2194,19 @@ internal sealed class MessagingService : IMessagingService
         if (latestMessage is null)
             return MessagingOperationResult.Success();
 
-        participant.LastReadUtc = latestMessage.SentUtc;
-        participant.LastReadMessageId = latestMessage.Id;
+        var receiptSettings = await ReadReceiptSettingsAsync(actor, command.ConversationId, cancellationToken);
+        var advancesPrivateRead = participant.LastReadUtc == null || participant.LastReadUtc < latestMessage.SentUtc;
+        var advancesSharedRead = receiptSettings.GlobalEnabled && receiptSettings.ConversationEnabled &&
+            (participant.SharedReadThroughUtc == null || participant.SharedReadThroughUtc < latestMessage.SentUtc);
+        if (!advancesPrivateRead && !advancesSharedRead)
+            return MessagingOperationResult.Success();
+        if (advancesPrivateRead)
+        {
+            participant.LastReadUtc = latestMessage.SentUtc;
+            participant.LastReadMessageId = latestMessage.Id;
+        }
+        if (advancesSharedRead)
+            participant.SharedReadThroughUtc = latestMessage.SentUtc;
         AddAudit(actor.UserId, "ConversationRead", command.ConversationId, latestMessage.Id, null, null, DateTime.UtcNow);
         await _notifications.StageConversationReadAsync(
             actor,
@@ -3495,6 +3511,8 @@ internal sealed class MessagingService : IMessagingService
         try
         {
             await _db.SaveChangesAsync(cancellationToken);
+            if (operation is "MessageUnsent" or "ConversationRead" or "ReadReceiptsChanged")
+                await PublishConversationRefreshAsync(conversationId, cancellationToken);
             return MessagingOperationResult.Success();
         }
         catch (DbUpdateException ex)

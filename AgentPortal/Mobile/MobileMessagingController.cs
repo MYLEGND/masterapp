@@ -842,6 +842,17 @@ public sealed class MobileMessagingController : MobileApiControllerBase
             : MessagingFailure(result.ErrorCode, result.ErrorMessage);
     }
 
+    [HttpPut("messaging/conversations/{conversationId:guid}/read-receipts")]
+    public async Task<IActionResult> SetReadReceipts(Guid conversationId,
+        [FromBody] MobileReadReceiptRequest request, CancellationToken cancellationToken)
+    {
+        var resolved = await ResolveActorAsync(cancellationToken);
+        if (resolved.Error != null) return resolved.Error;
+        var result = await _messaging.SetReadReceiptsAsync(resolved.Actor!.Actor,
+            conversationId, request.Enabled, request.Globally, cancellationToken);
+        return result.Succeeded ? NoContent() : MessagingFailure(result.ErrorCode, result.ErrorMessage);
+    }
+
     [HttpGet("messaging/conversations/{conversationId:guid}/call-options")]
     public async Task<IActionResult> ConversationCallOptions(Guid conversationId, CancellationToken cancellationToken)
     {
@@ -933,7 +944,8 @@ public sealed class MobileMessagingController : MobileApiControllerBase
             CanManagePromotion = conversation.CanManagePromotion,
             Meeting = meeting,
             CanManageMeeting = conversation.CanManageMeeting,
-            HasOlderMessages = conversation.HasOlderMessages
+            HasOlderMessages = conversation.HasOlderMessages,
+            ReadReceipts = conversation.ReadReceipts
         };
     }
 
@@ -1229,6 +1241,7 @@ public sealed record MobileConversationDetailDto(
     string? Purpose,
     MobileAvatarDto? GroupAvatar)
 {
+    public MessagingReadReceiptSettings? ReadReceipts { get; init; }
     public bool CanManageCollaborators { get; init; }
     public bool CanDeleteGroup { get; init; }
     public bool IsPromoted { get; init; }
@@ -1302,6 +1315,7 @@ public sealed record MobileSendMessageRequest(
     Guid? ReplyToMessageId = null);
 public sealed record MobileConversationPinnedRequest(bool? IsPinned);
 public sealed record MobileConversationMutedRequest(bool? IsMuted);
+public sealed record MobileReadReceiptRequest(bool Enabled, bool Globally);
 public sealed record MobileConversationCallOptionsDto(
     Guid ConversationId,
     string DisplayName,

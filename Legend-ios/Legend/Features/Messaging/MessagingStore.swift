@@ -1143,6 +1143,24 @@ final class MessagingStore: ObservableObject {
         }
     }
 
+    func markViewed(_ conversationID: UUID) {
+        Task {
+            do { try await api.markRead(conversationID: conversationID, accessToken: try await accessTokenProvider()) }
+            catch { diagnostics.record(category: .messaging, summary: "Read state could not be saved.") }
+        }
+    }
+
+    func setReadReceipts(conversationID: UUID, enabled: Bool, globally: Bool) {
+        Task {
+            do {
+                try await api.setReadReceipts(conversationID: conversationID, enabled: enabled,
+                    globally: globally, accessToken: try await accessTokenProvider())
+                conversationDetailCache.removeValue(forKey: conversationID)
+                await refreshConversation(conversationID, presentsResult: true, marksRead: false)
+            } catch { sendFailure = failure(for: error, title: LegendLocalized("Privacy settings not saved")) }
+        }
+    }
+
     func setPinned(conversationID: UUID, isPinned: Bool) {
         Task {
             do {
@@ -1165,6 +1183,7 @@ final class MessagingStore: ObservableObject {
                         isPinned: isPinned,
                         isMuted: conversation.isMuted)
                 }
+                _ = await requestConversationList(preservingCachedValue: hasCachedConversations, afterActivity: true)
             } catch {
                 sendFailure = failure(for: error, title: LegendLocalized("Conversation not updated"))
             }
@@ -1222,19 +1241,12 @@ final class MessagingStore: ObservableObject {
                     conversationID: message.conversationID,
                     messageID: message.id,
                     accessToken: try await accessTokenProvider())
-                replaceMessage(message.id) { original in
-                    ConversationMessage(
-                        id: original.id,
-                        conversationID: original.conversationID,
-                        sender: original.sender,
-                        body: "Message unsent",
-                        sentUTC: original.sentUTC,
-                        attachments: [],
-                        isMine: original.isMine,
-                        isDeleted: true,
-                        reply: original.reply,
-                        verificationReview: original.verificationReview)
+                if case .loaded(let conversation) = detailState, conversation.id == message.conversationID {
+                    presentConversation(copyConversation(conversation,
+                        messages: conversation.messages.filter { $0.id != message.id }))
                 }
+                await refreshConversation(message.conversationID, presentsResult: true, marksRead: false)
+                _ = await requestConversationList(preservingCachedValue: hasCachedConversations, afterActivity: true)
             } catch {
                 sendFailure = failure(for: error, title: LegendLocalized("Message not unsent"))
             }
@@ -1367,7 +1379,7 @@ final class MessagingStore: ObservableObject {
             canManagePromotion: conversation.canManagePromotion,
             meeting: conversation.meeting,
             canManageMeeting: conversation.canManageMeeting,
-            hasOlderMessages: hasOlderMessages ?? conversation.hasOlderMessages)
+            hasOlderMessages: hasOlderMessages ?? conversation.hasOlderMessages, readReceipts: conversation.readReceipts)
     }
 
     private var hasCachedConversations: Bool {
@@ -1586,19 +1598,17 @@ final class MessagingStore: ObservableObject {
         }))
     }
 
-    /// This local presentation order is intentionally the same as the server
-    /// order: the actor's pinned chats remain first (maximum six on the
-    /// server), then every section is ordered by its latest sent or received
-    /// message. It only guards against an out-of-order response; persistence
-    /// and pin eligibility remain server-owned.
+    /// Preserve the server's static pin positions while reconciling activity
+    /// in the unpinned list. Pin eligibility and the six-pin limit are server-owned.
     private func orderedInbox(
         _ conversations: [ConversationSummary]
     ) -> [ConversationSummary] {
-        let uniqueConversations = Dictionary(
-            conversations.map { ($0.id, $0) },
-            uniquingKeysWith: { latest, _ in latest })
-
-        return uniqueConversations.values.sorted { left, right in
+        var seen = Set<UUID>()
+        let uniqueConversations = conversations.filter { seen.insert($0.id).inserted }
+        let positions = Dictionary(uniqueKeysWithValues: uniqueConversations.enumerated().map { ($0.element.id, $0.offset) })
+        return uniqueConversations.sorted { left, right in
+            if left.isPinned != right.isPinned { return left.isPinned }
+            if left.isPinned { return positions[left.id, default: 0] < positions[right.id, default: 0] }
             let leftTimestamp = left.lastMessageUTC ?? .distantPast
             let rightTimestamp = right.lastMessageUTC ?? .distantPast
             if leftTimestamp != rightTimestamp {

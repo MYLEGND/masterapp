@@ -1,5 +1,5 @@
 {
-  "catalogVersion": "application-copy-v1-bb83d063373b50ff",
+  "catalogVersion": "application-copy-v1-fda1eb3f41ff8e28",
   "sourceLanguageCode": "en",
   "entries": [
     {
@@ -5971,6 +5971,17 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.a4a14d1eb0500c09bccf82b4",
+      "source": "Copy original text",
+      "context": "visual interface copy",
+      "sourceRevision": "313f536501ae2a71",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.de720f25e7eed8fec331e9b6",
       "source": "Could not add comment",
       "context": "visual interface copy",
@@ -10309,6 +10320,17 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.ddfb48ce02b59580df8a710c",
+      "source": "Message actions",
+      "context": "visual interface copy",
+      "sourceRevision": "f532ee1f7288365e",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.8c97e53798ebb3cba65422c2",
       "source": "Message not sent",
       "context": "visual interface copy",
@@ -12466,6 +12488,17 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.7c07f404fe5ef3f3fb3d0346",
+      "source": "Privacy settings not saved",
+      "context": "visual interface copy",
+      "sourceRevision": "c85c4740f60373e8",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.7469a4bf2474596ac3a0e7ce",
       "source": "Private Legend conversation",
       "context": "visual interface copy",
@@ -12888,6 +12921,28 @@
       "source": "Reach and engagement generated from protected Legend activity.",
       "context": "visual interface copy",
       "sourceRevision": "ee3a7702c20fb030",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.aa00505f91d7355e7b1fb30a",
+      "source": "Read",
+      "context": "visual interface copy",
+      "sourceRevision": "9b9a8d05a7ec353b",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.4d7ebb7c1b85e78cb67fac81",
+      "source": "Read receipt privacy",
+      "context": "visual interface copy",
+      "sourceRevision": "e04f007acfa65ddc",
       "placeholders": [
 
       ],
@@ -14743,10 +14798,43 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.9db1fea1e5aef0ac159c8199",
+      "source": "Send receipts in all chats",
+      "context": "visual interface copy",
+      "sourceRevision": "0325d9d1da786aac",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.4aa864d037209a901f7189d9",
+      "source": "Send receipts in this chat",
+      "context": "visual interface copy",
+      "sourceRevision": "66319bec8ec50740",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.32e9074ab96d57225f7c369c",
       "source": "Sending deletion request…",
       "context": "visual interface copy",
       "sourceRevision": "8838c1abd863299d",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.bf65f7c47edb18ab15030acc",
+      "source": "Sent",
+      "context": "visual interface copy",
+      "sourceRevision": "c16bc82bf1f04ede",
       "placeholders": [
 
       ],
@@ -14934,6 +15022,17 @@
       "source": "Share a practical insight with your Legend network.",
       "context": "visual interface copy",
       "sourceRevision": "65b0da162be2a231",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.e97f9ac3c7f3f95a0e07f16f",
+      "source": "Share message",
+      "context": "visual interface copy",
+      "sourceRevision": "6b82f7ec6987fff5",
       "placeholders": [
 
       ],
@@ -16879,6 +16978,61 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.d1cfb7851a8a0c91fc07318f",
+      "source": "Turn off for all chats",
+      "context": "visual interface copy",
+      "sourceRevision": "6467cd2ee348c7a1",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.830719e754a1402b27dc0877",
+      "source": "Turn off for this chat",
+      "context": "visual interface copy",
+      "sourceRevision": "598b8b01f2521023",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.922736ecc060ccf7f1e3ec77",
+      "source": "Turn on for all chats",
+      "context": "visual interface copy",
+      "sourceRevision": "5391bc8238388897",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.74c843ff4934a275ca50bbc7",
+      "source": "Turn on for this chat",
+      "context": "visual interface copy",
+      "sourceRevision": "3c43908da909a137",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.043162626a4803a2308084c7",
+      "source": "Turning receipts off for all chats takes precedence over individual chat settings.",
+      "context": "visual interface copy",
+      "sourceRevision": "f3bc16d2fbaa95d7",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.6e62dfa6215e84d1d5817a74",
       "source": "Type DELETE",
       "context": "visual interface copy",
@@ -18248,6 +18402,17 @@
       "source": "Your story",
       "context": "visual interface copy",
       "sourceRevision": "1d777ad1a4af6bc7",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.5e9c9cad215941468babb671",
+      "source": "Your unread counts stay accurate. Turning receipts off for all chats takes precedence over individual chat settings.",
+      "context": "visual interface copy",
+      "sourceRevision": "3d8b67fd1f37176c",
       "placeholders": [
 
       ],

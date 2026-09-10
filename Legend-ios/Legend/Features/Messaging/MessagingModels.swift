@@ -116,12 +116,13 @@ struct ConversationDetail: Codable, Equatable, Sendable {
     let meeting: MessagingGroupMeeting?
     let canManageMeeting: Bool?
     let hasOlderMessages: Bool?
+    let readReceipts: MessagingReadReceiptSettings?
 
     private enum CodingKeys: String, CodingKey {
         case id, conversationType, title, participants, messages, isMuted, isClosed
         case canManageMembers, purpose, groupAvatar, canManageCollaborators
         case canDeleteGroup, isPromoted, canManagePromotion, meeting, canManageMeeting
-        case hasOlderMessages
+        case hasOlderMessages, readReceipts
         case promotionStartedUTC = "promotionStartedUtc"
         case promotionEndedUTC = "promotionEndedUtc"
     }
@@ -145,7 +146,8 @@ struct ConversationDetail: Codable, Equatable, Sendable {
         canManagePromotion: Bool? = nil,
         meeting: MessagingGroupMeeting? = nil,
         canManageMeeting: Bool? = nil,
-        hasOlderMessages: Bool? = nil
+        hasOlderMessages: Bool? = nil,
+        readReceipts: MessagingReadReceiptSettings? = nil
     ) {
         self.id = id
         self.conversationType = conversationType
@@ -166,8 +168,21 @@ struct ConversationDetail: Codable, Equatable, Sendable {
         self.meeting = meeting
         self.canManageMeeting = canManageMeeting
         self.hasOlderMessages = hasOlderMessages
+        self.readReceipts = readReceipts
     }
 }
+
+struct MessagingReadReceiptSettings: Codable, Equatable, Sendable {
+    let globalEnabled: Bool
+    let conversationEnabled: Bool
+    let readers: [MessagingReadReceipt]
+}
+struct MessagingReadReceipt: Codable, Equatable, Sendable {
+    let userId: String
+    let participantType: String
+    let readThroughUtc: Date
+}
+struct MessagingReadReceiptRequest: Encodable { let enabled: Bool; let globally: Bool }
 
 struct MessagingGroupMeeting: Codable, Equatable, Sendable {
     let host: MessagingParticipant
@@ -720,6 +735,7 @@ struct FounderAccountBatchOutcome: Codable, Equatable, Sendable {
 }
 
 protocol MessagingAPI: Sendable {
+    func setReadReceipts(conversationID: UUID, enabled: Bool, globally: Bool, accessToken: String) async throws
     func conversations(accessToken: String) async throws -> [ConversationSummary]
     func recipients(
         search: String?,
@@ -851,6 +867,10 @@ protocol MessagingAPI: Sendable {
 }
 
 extension MessagingAPI {
+    func setReadReceipts(conversationID: UUID, enabled: Bool, globally: Bool, accessToken: String) async throws {
+        throw MobileMessagingContractError.unavailable
+    }
+
     /// Older test doubles and integration implementations can continue to
     /// provide the original inbox contract. The production transport supplies
     /// the bounded server page below so the Messages landing screen never has
@@ -1631,6 +1651,12 @@ struct URLSessionMessagingAPI: MessagingAPI {
             body: ConversationPinnedRequest(isPinned: isPinned),
             accessToken: accessToken,
             headers: participantHeader)
+    }
+
+    func setReadReceipts(conversationID: UUID, enabled: Bool, globally: Bool, accessToken: String) async throws {
+        try await client.put("/api/v1/mobile/messaging/conversations/\(conversationID.uuidString)/read-receipts",
+            body: MessagingReadReceiptRequest(enabled: enabled, globally: globally),
+            accessToken: accessToken, headers: participantHeader)
     }
 
     func setMuted(conversationID: UUID, isMuted: Bool, accessToken: String) async throws {
