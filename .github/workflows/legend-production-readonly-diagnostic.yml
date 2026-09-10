@@ -1,307 +1,105 @@
-name: LEGEND candidate read-only production observation
+name: LEGEND isolated production-data shadow validation
 
-# This workflow is a non-authoritative candidate observation only. The single
-# production proof and release authority is agentportal-production-deploy.yml.
-# A result here cannot validate a deployment because the live deployed SHA is
-# deliberately unavailable to this candidate-only workflow.
+# Non-release evidence only. This workflow has no merge, deployment, migration,
+# Azure-control-plane, provider, queue, notification, or production-write authority.
 on:
-  # A validation/* branch can observe its exact commit against the live Founder
-  # curriculum without opening or synchronizing a production PR. It cannot
-  # claim production proof, merge, or deploy.
   push:
     branches:
       - 'validation/legend-native-*'
   workflow_dispatch:
+    inputs:
+      candidate_sha:
+        description: Exact immutable candidate commit to validate
+        required: true
+        type: string
 
 concurrency:
-  group: legend-production-readonly-diagnostic
+  group: legend-production-readonly-diagnostic-${{ github.ref }}
   cancel-in-progress: true
 
 permissions:
   contents: read
-  id-token: write
 
 env:
-  AZURE_WEBAPP_NAME: masterapp-portal
-  AZURE_RESOURCE_GROUP: masterapp-rg
   DOTNET_VERSION: '10.x'
-  DIAGNOSTIC_RESULT_PATH: diagnostics/legend-production-readonly-latest.txt
-  LEGEND_PRODUCTION_PROOF_MATRIX_VERSION: lai-027-029-v1
+  LEGEND_VALIDATION_CANDIDATE_SHA: ${{ inputs.candidate_sha || github.sha }}
+  LEGEND_PRODUCTION_PROOF_REQUIRED: 'true'
+  LEGEND_PRODUCTION_PROOF_MATRIX_VERSION: 'lai-027-029-v1'
+  LEGEND_PRODUCTION_READONLY_CONNECTION: ${{ secrets.LEGEND_PRODUCTION_SELECT_ONLY_CONNECTION }}
+  LEGEND_PRODUCTION_READONLY_FOUNDER_OID: ${{ secrets.LEGEND_PRODUCTION_READONLY_FOUNDER_OID }}
+  LEGEND_VALIDATION_ROOT: diagnostics/legend-shadow
+  LEGEND_STAGE0_RESULT_PATH: diagnostics/legend-shadow/stage0.json
+  LEGEND_STAGE1_RESULT_PATH: diagnostics/legend-shadow/stage1.json
+  LEGEND_PRODUCTION_PROOF_RESULT_PATH: diagnostics/legend-shadow/stage2.json
+  OPENAI_API_KEY: ''
+  OpenAI__ApiKey: ''
+  LegendConnect__CorpusAcquisition__Enabled: 'false'
+  LEGEND_DISABLE_PROVIDER_TRANSPORTS: 'true'
+  LEGEND_DISABLE_QUEUES: 'true'
+  LEGEND_DISABLE_NOTIFICATIONS: 'true'
+  LEGEND_DISABLE_EXTERNAL_SIDE_EFFECTS: 'true'
 
 jobs:
   production-readonly-diagnostic:
-    runs-on: windows-latest
-    # A validation branch runs the complete regression plus the bounded live
-    # native matrix. Full-corpus replay/convergence is intentionally excluded.
-    timeout-minutes: 30
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
     environment:
-      name: Production
+      # Deliberately separate from the release environment. Only a technically
+      # SELECT-only credential belongs in this environment.
+      name: LEGEND-Production-ReadOnly-Validation
 
     steps:
-      - name: Checkout exact requested commit
+      - name: Checkout exact immutable candidate
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0
+          ref: ${{ env.LEGEND_VALIDATION_CANDIDATE_SHA }}
+          fetch-depth: 1
+
+      - name: Start the overall validation deadline
+        shell: bash
+        run: echo "LEGEND_VALIDATION_STARTED_EPOCH_SECONDS=$(date +%s)" >> "$GITHUB_ENV"
 
       - name: Set up .NET
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: ${{ env.DOTNET_VERSION }}
 
-      - name: Restore test project
-        id: restore
-        shell: pwsh
-        continue-on-error: true
+      - name: Restore and build once
+        shell: bash
         run: |
-          New-Item -ItemType Directory -Force diagnostics | Out-Null
-          dotnet restore AgentPortal.Tests/AgentPortal.Tests.csproj 2>&1 | Tee-Object -FilePath diagnostics/restore.txt
-          exit $LASTEXITCODE
+          set -Eeuo pipefail
+          dotnet restore AgentPortal.Tests/AgentPortal.Tests.csproj --nologo
+          dotnet build AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-restore --nologo
 
-      - name: Build test project
-        id: build
-        if: steps.restore.outcome == 'success'
-        shell: pwsh
-        continue-on-error: true
-        run: |
-          dotnet build AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-restore 2>&1 | Tee-Object -FilePath diagnostics/build.txt
-          exit $LASTEXITCODE
+      - name: Run bounded isolated validation stages
+        id: validation
+        shell: bash
+        run: scripts/run-legend-production-shadow.sh
 
-      - name: Run complete predeployment regression suite
-        id: regression
-        if: steps.build.outcome == 'success'
-        shell: pwsh
-        continue-on-error: true
-        run: |
-          dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-build 2>&1 | Tee-Object -FilePath diagnostics/regression.txt
-          exit $LASTEXITCODE
-
-      - name: Login to Azure with OIDC
-        if: steps.build.outcome == 'success' && steps.regression.outcome == 'success'
-        uses: azure/login@v2
-        with:
-          client-id: ${{ secrets.AZURE_CLIENT_ID }}
-          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-
-      - name: Resolve production database and Founder identity securely
-        if: steps.build.outcome == 'success' && steps.regression.outcome == 'success'
-        shell: pwsh
-        run: |
-          $connection = ''
-          $rawConnections = az webapp config connection-string list `
-            --resource-group '${{ env.AZURE_RESOURCE_GROUP }}' `
-            --name '${{ env.AZURE_WEBAPP_NAME }}' `
-            --output json
-          if ($LASTEXITCODE -ne 0) { throw 'Unable to read production App Service connection strings.' }
-          $connections = $rawConnections | ConvertFrom-Json
-          $match = $connections | Where-Object { $_.name -eq 'MasterAppDb' } | Select-Object -First 1
-          if ($null -ne $match -and -not [string]::IsNullOrWhiteSpace([string]$match.value)) { $connection = [string]$match.value }
-
-          $rawSettings = az webapp config appsettings list `
-            --resource-group '${{ env.AZURE_RESOURCE_GROUP }}' `
-            --name '${{ env.AZURE_WEBAPP_NAME }}' `
-            --output json
-          if ($LASTEXITCODE -ne 0) { throw 'Unable to read production App Service settings.' }
-          $settings = @{}
-          foreach ($item in ($rawSettings | ConvertFrom-Json)) { $settings[[string]$item.name] = [string]$item.value }
-
-          if ([string]::IsNullOrWhiteSpace($connection)) {
-            foreach ($name in @('ConnectionStrings__MasterAppDb','MasterAppDb','SQLCONNSTR_MasterAppDb')) {
-              if ($settings.ContainsKey($name) -and -not [string]::IsNullOrWhiteSpace($settings[$name])) { $connection = $settings[$name]; break }
-            }
-          }
-          if ([string]::IsNullOrWhiteSpace($connection)) { throw 'Production MasterAppDb connection string could not be resolved.' }
-          if ($connection -notmatch '(?i)(server=tcp:|\.database\.windows\.net|initial catalog=)') { throw 'Resolved MasterAppDb is not recognized as production SQL Server.' }
-
-          $founderOid = ''
-          foreach ($name in @('FOUNDER_OID','Founder__Oid','Founder:Oid')) {
-            if ($settings.ContainsKey($name) -and -not [string]::IsNullOrWhiteSpace($settings[$name])) { $founderOid = $settings[$name]; break }
-          }
-          if ([string]::IsNullOrWhiteSpace($founderOid)) { throw 'Production Founder OID could not be resolved.' }
-
-          Write-Output "::add-mask::$connection"
-          Write-Output "::add-mask::$founderOid"
-          "LEGEND_PRODUCTION_READONLY_CONNECTION=$connection" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-          "LEGEND_PRODUCTION_READONLY_FOUNDER_OID=$founderOid" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-          # The bounded candidate observation uses the same matrix test as the
-          # release authority, with SQL read-only and the provider unavailable.
-          # It remains non-authoritative because no deployed SHA is available.
-          "LEGEND_PRODUCTION_PROOF_REQUIRED=true" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-          # Anchor the handoff because VSTest may change its current directory.
-          "LEGEND_PRODUCTION_PROOF_RESULT_PATH=$env:GITHUB_WORKSPACE/diagnostics/legend-production-matrix-result.json" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-          "OPENAI_API_KEY=" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-          "OpenAI__ApiKey=" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-
-      - name: Run canonical production read-only diagnostics
-        id: diagnostic
-        if: steps.build.outcome == 'success' && steps.regression.outcome == 'success'
-        shell: pwsh
-        continue-on-error: true
-        run: |
-          New-Item -ItemType Directory -Force diagnostics | Out-Null
-          $native = 'diagnostics/native.txt'
-          $preflight = 'diagnostics/test-preflight.txt'
-          $nativeExit = 99
-          $executedTests = 0
-          $matrixCases = $null
-          $matrixTotalCases = $null
-          $matrixFailedCases = $null
-          $matrixStatus = ''
-          $matrixResultState = 'missing'
-          $nativePasses = $null
-          $negativePasses = $null
-          $providerClientCount = $null
-          $productionWriteCommandCount = $null
-          $validationErrors = [System.Collections.Generic.List[string]]::new()
-          try {
-            $testName = 'AgentPortal.Tests.LegendFounderCurriculumSqlServerE2ETests.ProductionReadOnlyNativeProofMatrix'
-            $filter = "FullyQualifiedName=$testName"
-            $matrixResultPath = $env:LEGEND_PRODUCTION_PROOF_RESULT_PATH
-            if (Test-Path $matrixResultPath) { throw 'A stale candidate observation result exists before matrix execution.' }
-            dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-build --list-tests --filter $filter --diag diagnostics/vstest-discovery.txt 2>&1 | Tee-Object -FilePath $preflight
-            $listExit = $LASTEXITCODE
-            $listText = Get-Content $preflight -Raw
-            if ($listExit -ne 0) { throw "Test discovery preflight failed with exit code $listExit." }
-            $discovered = [regex]::Matches($listText, '(?m)^\s*' + [regex]::Escape($testName) + '\s*$').Count
-            if ($discovered -ne 1) { throw "The exact native production matrix was discovered $discovered times; required count is one." }
-            dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-build --filter $filter --results-directory diagnostics --logger 'trx;LogFileName=legend-production-observation.trx' --logger 'console;verbosity=detailed' 2>&1 | Tee-Object -FilePath $native
-            $nativeExit = $LASTEXITCODE
-            $trxPath = 'diagnostics/legend-production-observation.trx'
-            if (Test-Path $trxPath) {
-              [xml]$trx = Get-Content $trxPath -Raw
-              $counters = $trx.TestRun.ResultSummary.Counters
-              if ($null -ne $counters) { $executedTests = [int]$counters.executed }
-            }
-            if (Test-Path $matrixResultPath) {
-              try {
-                $matrixResult = Get-Content $matrixResultPath -Raw | ConvertFrom-Json -ErrorAction Stop
-                $requiredResultFields = @('MatrixVersion','Status','ExecutedCases','TotalCases','FailedCases','NativePasses','NegativePasses','ProviderClientCount','ProductionWriteCommandCount','Categories','CaseResults')
-                $missingResultFields = @($requiredResultFields | Where-Object { $_ -notin $matrixResult.PSObject.Properties.Name })
-                if ($missingResultFields.Count -gt 0) { throw ('The candidate observation is missing required fields: ' + ($missingResultFields -join ', ') + '.') }
-                if ([string]::IsNullOrWhiteSpace([string]$matrixResult.Status) -or $null -eq $matrixResult.Categories -or $null -eq $matrixResult.CaseResults) { throw 'The candidate observation contains null required evidence fields.' }
-                foreach ($numericField in @('ExecutedCases','TotalCases','FailedCases','NativePasses','NegativePasses','ProviderClientCount','ProductionWriteCommandCount')) {
-                  if ($null -eq $matrixResult.$numericField) { throw "The candidate observation contains null numeric field '$numericField'." }
-                }
-                $matrixResultState = 'present'
-                $matrixStatus = [string]$matrixResult.Status
-                $matrixCases = [int]$matrixResult.ExecutedCases
-                $matrixTotalCases = [int]$matrixResult.TotalCases
-                $matrixFailedCases = [int]$matrixResult.FailedCases
-                $nativePasses = [int]$matrixResult.NativePasses
-                $negativePasses = [int]$matrixResult.NegativePasses
-                $providerClientCount = [int]$matrixResult.ProviderClientCount
-                $productionWriteCommandCount = [int]$matrixResult.ProductionWriteCommandCount
-                if ($matrixResult.MatrixVersion -ne $env:LEGEND_PRODUCTION_PROOF_MATRIX_VERSION) { $validationErrors.Add('The candidate observation used an unexpected matrix version.') }
-                if ($matrixStatus -ne 'passed') { $validationErrors.Add('The candidate observation did not report a passed matrix.') }
-                if ($providerClientCount -ne 0) { $validationErrors.Add('The candidate observation created a provider client.') }
-                if ($productionWriteCommandCount -ne 0) { $validationErrors.Add('The candidate observation reported a production write command.') }
-              }
-              catch {
-                $matrixResultState = 'malformed'
-                $matrixStatus = ''
-                $matrixCases = $null
-                $matrixTotalCases = $null
-                $matrixFailedCases = $null
-                $nativePasses = $null
-                $negativePasses = $null
-                $providerClientCount = $null
-                $productionWriteCommandCount = $null
-                $validationErrors.Add('The candidate observation could not be parsed: ' + $_.Exception.Message)
-              }
-            }
-            else {
-              $validationErrors.Add('The candidate observation result is missing.')
-            }
-            if ($executedTests -ne 1) { $nativeExit = 97 }
-            if ($null -eq $matrixCases -or $matrixCases -lt 1) { $nativeExit = 98 }
-            if ($validationErrors.Count -gt 0) {
-              if ($nativeExit -eq 0) { $nativeExit = 96 }
-              ($validationErrors -join ' | ') | Add-Content -Path $preflight -Encoding utf8
-            }
-          }
-          catch {
-            if ($nativeExit -eq 0) { $nativeExit = 96 }
-            $_ | Out-String | Add-Content -Path $preflight -Encoding utf8
-          }
-          finally {
-            "native_exit=$nativeExit" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
-            "executed_tests=$executedTests" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
-            "matrix_cases=$matrixCases" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
-            "matrix_total_cases=$matrixTotalCases" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
-            "matrix_failed_cases=$matrixFailedCases" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
-            "matrix_status=$matrixStatus" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
-            "matrix_result_state=$matrixResultState" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
-            "native_passes=$nativePasses" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
-            "negative_passes=$negativePasses" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
-            "provider_client_count=$providerClientCount" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
-            "production_write_command_count=$productionWriteCommandCount" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
-          }
-
-      - name: Assemble sanitized diagnostic transcript
-        if: always()
-        shell: pwsh
-        run: |
-          New-Item -ItemType Directory -Force diagnostics | Out-Null
-          @(
-            'LEGEND CANDIDATE READ-ONLY PRODUCTION OBSERVATION'
-            'Authority: non-authoritative; production proof lives only in agentportal-production-deploy.yml'
-            "CandidateSha: $env:GITHUB_SHA"
-            'DeployedSha: unavailable'
-            "MatrixVersion: $env:LEGEND_PRODUCTION_PROOF_MATRIX_VERSION"
-            "RestoreOutcome: ${{ steps.restore.outcome }}"
-            "BuildOutcome: ${{ steps.build.outcome }}"
-            "RegressionOutcome: ${{ steps.regression.outcome }}"
-            "DiagnosticOutcome: ${{ steps.diagnostic.outcome }}"
-            "NativeExit: ${{ steps.diagnostic.outputs.native_exit }}"
-            "ExecutedTests: ${{ steps.diagnostic.outputs.executed_tests }}"
-            "MatrixResultState: ${{ steps.diagnostic.outputs.matrix_result_state }}"
-            "MatrixStatus: ${{ steps.diagnostic.outputs.matrix_status }}"
-            "MatrixCases: ${{ steps.diagnostic.outputs.matrix_cases }}"
-            "MatrixTotalCases: ${{ steps.diagnostic.outputs.matrix_total_cases }}"
-            "MatrixFailedCases: ${{ steps.diagnostic.outputs.matrix_failed_cases }}"
-            "NativePasses: ${{ steps.diagnostic.outputs.native_passes }}"
-            "NegativePasses: ${{ steps.diagnostic.outputs.negative_passes }}"
-            "ProviderClientCount: ${{ steps.diagnostic.outputs.provider_client_count }}"
-            "ProductionWriteCommandCount: ${{ steps.diagnostic.outputs.production_write_command_count }}"
-            ''
-            '=== TEST PREFLIGHT ==='
-            if (Test-Path diagnostics/test-preflight.txt) { Get-Content diagnostics/test-preflight.txt }
-            ''
-            '=== VSTEST DISCOVERY DIAGNOSTIC ==='
-            if (Test-Path diagnostics/vstest-discovery.txt) { Get-Content diagnostics/vstest-discovery.txt | Select-Object -Last 250 }
-            ''
-            '=== RESTORE ==='
-            if (Test-Path diagnostics/restore.txt) { Get-Content diagnostics/restore.txt }
-            ''
-            '=== BUILD ==='
-            if (Test-Path diagnostics/build.txt) { Get-Content diagnostics/build.txt }
-            ''
-            '=== COMPLETE PREDEPLOYMENT REGRESSION ==='
-            if (Test-Path diagnostics/regression.txt) { Get-Content diagnostics/regression.txt }
-            ''
-            '=== NATIVE LIVE DATABASE DIAGNOSTIC ==='
-            if (Test-Path diagnostics/native.txt) { Get-Content diagnostics/native.txt }
-          ) | Set-Content -Path '${{ env.DIAGNOSTIC_RESULT_PATH }}' -Encoding utf8
-
-      # A diagnostic must never alter the branch it is inspecting. Persist the
-      # sanitized transcript only as a workflow artifact; notably, do not use
-      # `always()` to push a partial transcript after cancellation or failure.
-      - name: Upload sanitized diagnostic transcript
+      - name: Upload sanitized exact-SHA evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: legend-production-readonly-diagnostic-${{ github.run_id }}
-          path: ${{ env.DIAGNOSTIC_RESULT_PATH }}
-          if-no-files-found: warn
+          name: legend-shadow-${{ env.LEGEND_VALIDATION_CANDIDATE_SHA }}-${{ github.run_id }}
+          path: diagnostics/legend-shadow
+          if-no-files-found: error
+          retention-days: 14
 
-      - name: Enforce diagnostic execution success
+      - name: Enforce isolated validation result
         if: always()
-        shell: pwsh
+        shell: bash
         run: |
-          if ('${{ steps.restore.outcome }}' -ne 'success') { throw 'Production diagnostic restore failed.' }
-          if ('${{ steps.build.outcome }}' -ne 'success') { throw 'Production diagnostic build failed.' }
-          if ('${{ steps.regression.outcome }}' -ne 'success') { throw 'Complete predeployment regression failed.' }
-          if ('${{ steps.diagnostic.outcome }}' -ne 'success') { throw 'Production read-only diagnostic was not completed successfully.' }
-          if ('${{ steps.diagnostic.outputs.native_exit }}' -ne '0') { throw 'Production native diagnostic did not execute successfully.' }
-          if ('${{ steps.diagnostic.outputs.executed_tests }}' -ne '1') { throw 'Production native diagnostic executed zero or multiple filtered tests.' }
-          if ([int]'${{ steps.diagnostic.outputs.matrix_cases }}' -lt 1) { throw 'Production native diagnostic reported zero executed matrix cases.' }
+          set -Eeuo pipefail
+          test -f diagnostics/legend-shadow/summary.json
+          python3 - <<'PY'
+          import json
+          with open('diagnostics/legend-shadow/summary.json', encoding='utf-8') as stream:
+              result = json.load(stream)
+          assert result['status'] == 'passed', result
+          assert result['candidateSha'] == '${{ env.LEGEND_VALIDATION_CANDIDATE_SHA }}', result
+          assert result['totalWallMilliseconds'] <= 1_200_000, result
+          assert result['providerClientCount'] == 0, result
+          assert result['providerHttpCallCount'] == 0, result
+          assert result['productionWriteCommandCount'] == 0, result
+          assert result['skippedCases'] == 0, result
+          PY
