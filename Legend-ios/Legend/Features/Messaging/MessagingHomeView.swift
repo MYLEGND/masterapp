@@ -1153,6 +1153,10 @@ private struct LegendRecipientPicker: View {
             return
         }
 
+        if forCalling, let existingID = recipient.existingConversationID {
+            selectedCall = LegendCallRecipient(id: existingID, name: recipient.displayName)
+            return
+        }
         store.startConversation(
             with: recipient,
             completion: { id in

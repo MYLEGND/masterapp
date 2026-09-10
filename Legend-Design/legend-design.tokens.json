@@ -219,6 +219,8 @@
     "accountDeletion": "Request account deletion"
   },
   "copy": {
+    "localization.updating": "Updating your language…",
+    "localization.unavailable": "Some text could not be translated. Your language preference is saved.",
     "search.messaging": "Search people and conversations",
     "search.people": "Search people",
     "search.connections": "Search connections",

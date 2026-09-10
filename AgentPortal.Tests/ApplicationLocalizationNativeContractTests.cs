@@ -106,14 +106,16 @@ public sealed partial class ApplicationLocalizationNativeContractTests
         Assert.Contains("applicationLocalizationCatalog", iosLocalization, StringComparison.Ordinal);
         Assert.Contains("installSource(actorKey:", iosLocalization, StringComparison.Ordinal);
         Assert.Contains("legendPreferredLanguageDidChange", iosAccount, StringComparison.Ordinal);
-        Assert.Contains("localization.revision", iosRoot, StringComparison.Ordinal);
+        Assert.DoesNotContain(".id(localization.revision)", iosRoot, StringComparison.Ordinal);
+        Assert.Contains("@Observable", iosLocalization, StringComparison.Ordinal);
 
         Assert.Contains("preferredLanguageCode", androidSession, StringComparison.Ordinal);
         Assert.Contains("cache.localizationCatalog(actorKey)", androidLocalization, StringComparison.Ordinal);
         Assert.Contains("repository.catalog(participantType)", androidLocalization, StringComparison.Ordinal);
         Assert.Contains("installSource(actorKey)", androidLocalization, StringComparison.Ordinal);
         Assert.Contains("localization.refresh", androidRoot, StringComparison.Ordinal);
-        Assert.Contains("localization.revision", androidRoot, StringComparison.Ordinal);
+        Assert.DoesNotContain("key(localization.revision)", androidRoot, StringComparison.Ordinal);
+        Assert.Contains("Snapshot.withMutableSnapshot", androidLocalization, StringComparison.Ordinal);
         Assert.Contains("Text(legendLocalized(message)", File.ReadAllText(Path.Combine(
             root, "Legend-Android", "app", "src", "main", "java", "com", "mylegnd", "legend", "registered", "ui", "LegendComponents.kt")), StringComparison.Ordinal);
     }

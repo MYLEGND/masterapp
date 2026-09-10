@@ -806,7 +806,7 @@ internal sealed class LegendConnectTranslationRouter : IAccountScopedTranslation
                 ApplicationLocalizationTelemetry.ProviderOperation(
                     source,
                     target,
-                    protectedSource.Text.Length,
+                    _azure.RequestCharacterCount(protectedSource.Text),
                     result.Succeeded && !string.IsNullOrWhiteSpace(result.TranslatedText));
             }
 
@@ -900,8 +900,10 @@ internal sealed class LegendConnectTranslationRouter : IAccountScopedTranslation
 
     public async Task<IReadOnlyList<RetainedTranslationResult>> TranslateRetainedBatchAsync(
         IReadOnlyList<RetainedTranslationRequest> requests,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        int maximumProviderBatches = int.MaxValue)
     {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(maximumProviderBatches);
         if (requests.Count == 0)
             return Array.Empty<RetainedTranslationResult>();
 
@@ -937,9 +939,9 @@ internal sealed class LegendConnectTranslationRouter : IAccountScopedTranslation
             target,
             _azure.ProviderName,
             _azure.ProviderVersion)).ToArray();
-        var batchIdentity = "retained-batch:" + Hash(string.Join('\n', identities.Order(StringComparer.Ordinal)));
+        var batchIdentity = "retained-batch:" + maximumProviderBatches + ":" + Hash(string.Join('\n', identities.Order(StringComparer.Ordinal)));
         var coalesced = await _coalescer.ExecuteAsync(batchIdentity, () =>
-            TranslateRetainedBatchCoreAsync(requests, identities, source, target, cancellationToken));
+            TranslateRetainedBatchCoreAsync(requests, identities, source, target, maximumProviderBatches, cancellationToken));
         if (coalesced.JoinedExistingRequest)
             ApplicationLocalizationTelemetry.Coalesced(source, target);
         return coalesced.Result;
@@ -950,6 +952,7 @@ internal sealed class LegendConnectTranslationRouter : IAccountScopedTranslation
         IReadOnlyList<string> identities,
         string source,
         string target,
+        int maximumProviderBatches,
         CancellationToken cancellationToken)
     {
         var results = new RetainedTranslationResult?[requests.Count];
@@ -1062,13 +1065,21 @@ internal sealed class LegendConnectTranslationRouter : IAccountScopedTranslation
             misses.Add(group);
         }
 
+        var batches = 0;
         foreach (var chunk in BatchChunks(misses, requests))
         {
+            if (batches++ >= maximumProviderBatches)
+            {
+                foreach (var miss in chunk)
+                    foreach (var index in miss.Indices)
+                        results[index] = RetainedFailure(requests[index], source, target, "translation_pending");
+                continue;
+            }
             var protectedSources = chunk.Select(item =>
                 TranslationOutputValidator.ProtectNonTranslatableBrands(
                     requests[item.RepresentativeIndex].SourceText,
                     requests[item.RepresentativeIndex].PlaceholderContract)).ToArray();
-            var characters = protectedSources.Sum(item => item.Text.Length);
+            var characters = protectedSources.Sum(item => _azure.RequestCharacterCount(item.Text));
             var chunkIdentity = Hash(string.Join('\n', chunk.Select(item => item.Identity).Order(StringComparer.Ordinal)));
             var reservation = await _capacity.TryReserveAsync(
                 _azure.ProviderName,
@@ -1217,7 +1228,7 @@ internal sealed class LegendConnectTranslationRouter : IAccountScopedTranslation
             "translation_provider_failed")).ToArray();
     }
 
-    private static IReadOnlyList<IReadOnlyList<(string Identity, int RepresentativeIndex, int[] Indices)>> BatchChunks(
+    private IReadOnlyList<IReadOnlyList<(string Identity, int RepresentativeIndex, int[] Indices)>> BatchChunks(
         IReadOnlyList<(string Identity, int RepresentativeIndex, int[] Indices)> misses,
         IReadOnlyList<RetainedTranslationRequest> requests)
     {
@@ -1226,7 +1237,8 @@ internal sealed class LegendConnectTranslationRouter : IAccountScopedTranslation
         var characters = 0;
         foreach (var miss in misses)
         {
-            var length = requests[miss.RepresentativeIndex].SourceText.Length;
+            var request = requests[miss.RepresentativeIndex];
+            var length = _azure.RequestCharacterCount(TranslationOutputValidator.ProtectNonTranslatableBrands(request.SourceText, request.PlaceholderContract).Text);
             if (current.Count == 100 || characters + length > 50_000)
             {
                 chunks.Add(current.ToArray());
@@ -1253,10 +1265,11 @@ internal sealed class LegendConnectTranslationRouter : IAccountScopedTranslation
         for (var attempt = 0; attempt < 14 && unresolved.Count > 0; attempt++)
         {
             await Task.Delay(TimeSpan.FromMilliseconds(500), cancellationToken);
+            var retainedMatches = await _intelligence!.TryGetRetainedTranslationsAsync(
+                unresolved.Keys.ToArray(), cancellationToken);
             foreach (var identity in unresolved.Keys.ToArray())
             {
-                var retained = await _intelligence!.TryGetRetainedTranslationAsync(identity, cancellationToken);
-                if (retained is null)
+                if (!retainedMatches.TryGetValue(identity, out var retained))
                     continue;
                 var miss = unresolved[identity];
                 var request = requests[miss.RepresentativeIndex];
@@ -1597,7 +1610,7 @@ internal sealed class LegendConnectTranslationRouter : IAccountScopedTranslation
 
         var reservation = await _capacity.TryReserveAsync(
             _azure.ProviderName,
-            text?.Length ?? 0,
+            string.IsNullOrEmpty(text) ? 0 : _azure.RequestCharacterCount(text),
             TranslationCapacityPurpose.Live,
             reservationReference: requestReference,
             cancellationToken: cancellationToken);

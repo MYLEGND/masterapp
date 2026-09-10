@@ -5,6 +5,16 @@ import UIKit
 
 @MainActor
 final class MobileNativeContractTests: XCTestCase {
+    func testLocalizationValidatesEntriesWithoutDiscardingOtherTranslatedCopy() {
+        func entry(revision: String = "revision1", failure: String? = nil) -> LegendApplicationLocalizedCopy {
+            LegendApplicationLocalizedCopy(id: "entry", source: "Settings", text: "Anviwònman", context: "visual interface copy", sourceRevision: revision, placeholders: [], provider: "AzureTranslator", provenance: "ProviderDerived", validationState: "Observation", createdUtc: "2026-09-10T00:00:00Z", reused: true, failureCode: failure)
+        }
+        XCTAssertEqual(entry().validatedText(source: "Settings", context: "visual interface copy", revision: "revision1", placeholders: []), "Anviwònman")
+        XCTAssertNil(entry(revision: "revision2").validatedText(source: "Settings", context: "visual interface copy", revision: "revision1", placeholders: []))
+        XCTAssertNil(entry(failure: "translation_pending").validatedText(source: "Settings", context: "visual interface copy", revision: "revision1", placeholders: []))
+        XCTAssertNil(entry().validatedText(source: "Other", context: "visual interface copy", revision: "revision1", placeholders: []))
+    }
+
     func testSavedAccountAvatarRoundTripAndLegacyCompatibility() throws {
         let legacy = Data(#"{"id":"saved","displayName":"Saved member","participantType":"Client","lastUsedAt":0}"#.utf8)
         let old = try JSONDecoder().decode(MobileSignedInAccount.self, from: legacy)

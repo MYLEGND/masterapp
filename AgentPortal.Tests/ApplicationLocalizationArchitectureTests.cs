@@ -17,6 +17,26 @@ namespace AgentPortal.Tests;
 public sealed class ApplicationLocalizationArchitectureTests
 {
     [Fact]
+    public async Task EveryEnabledLanguage_RetainsAndReusesTheSameSourceIdentity()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var provider = new RecordingTranslationProvider();
+        var router = await BuildRouterAsync(db, provider);
+        var languages = await new LegendLanguageRegistry(db, Configuration()).ListEnabledTranslationLanguagesAsync();
+        foreach (var language in languages)
+        {
+            var first = await router.TranslateRetainedAsync(Request(target: language.Code));
+            var operations = provider.TranslateOperations;
+            var second = await router.TranslateRetainedAsync(Request(target: language.Code));
+            Assert.True(first.Succeeded);
+            Assert.True(second.Reused);
+            Assert.Equal(language.Code, second.TargetLanguageCode);
+            Assert.Equal(first.Text, second.Text);
+            Assert.Equal(operations, provider.TranslateOperations);
+        }
+    }
+
+    [Fact]
     public async Task RetainedTranslation_FirstMissPersists_AndSecondRequestReusesWithoutProvider()
     {
         await using var db = ControllerTestHelpers.BuildDb();
@@ -242,11 +262,16 @@ public sealed class ApplicationLocalizationArchitectureTests
             NullLogger<ApplicationLocalizationService>.Instance);
 
         var first = await service.GetCatalogAsync(new MessagingActor("user-1", "Client"));
+        Assert.InRange(provider.BatchOperations, 1, 2);
+        for (var attempt = 0; first.Entries.Any(entry => entry.FailureCode == "translation_pending") && attempt < 60; attempt++)
+            first = await service.GetCatalogAsync(new MessagingActor("user-1", "Client"));
+        Assert.DoesNotContain(first.Entries, entry => entry.FailureCode == "translation_pending");
         var second = await service.GetCatalogAsync(new MessagingActor("user-2", "Client"));
 
         Assert.Equal("ht", first.LanguageCode);
         Assert.False(first.IsComplete);
-        Assert.Equal(2, first.Entries.Count(item => item.FailureCode == "approved_translation_unavailable"));
+        Assert.Equal(new EmbeddedApplicationCopyManifestSource().Manifest.Entries.Count(entry => entry.TranslationPolicy == "ApprovedOnly"),
+            first.Entries.Count(item => item.FailureCode == "approved_translation_unavailable"));
         Assert.Contains(first.Entries, item =>
             item.Source == "Secure sign in" && item.Text.StartsWith("[ht]", StringComparison.Ordinal));
         Assert.Equal(first.Entries.Select(item => item.Text), second.Entries.Select(item => item.Text));

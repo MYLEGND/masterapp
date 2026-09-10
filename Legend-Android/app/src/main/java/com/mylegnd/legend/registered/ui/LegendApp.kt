@@ -216,8 +216,12 @@ fun LegendRoot(sessionViewModel: SessionViewModel, container: LegendContainer) {
             if (localization.actorKey != session.accountId || !localization.isReady) {
                 LegendLoadingState()
             } else {
-                key(localization.revision) {
-                    AuthenticatedShell(
+                Column(Modifier.fillMaxSize()) {
+                    localization.status?.let { status ->
+                        Text(legendLocalized(status), style = LegendTypography.Caption, color = LegendColors.Gold,
+                            modifier = Modifier.fillMaxWidth().background(LegendColors.Navy).padding(LegendSpacing.Xs))
+                    }
+                    Box(Modifier.weight(1f)) { AuthenticatedShell(
                         session = session,
                         calling = calling,
                         container = container,
@@ -226,7 +230,7 @@ fun LegendRoot(sessionViewModel: SessionViewModel, container: LegendContainer) {
                         switchSignedInAccount = { accountId -> sessionViewModel.switchSignedInAccount(accountId, activity) },
                         addAccount = { activity?.let(sessionViewModel::addAccount) },
                         cycleAccount = sessionViewModel::cycleAccount,
-                    )
+                    ) }
                 }
             }
         }
@@ -2879,7 +2883,11 @@ private fun MessagesScreen(
             participantType = participantType,
             load = viewModel::loadRecipients,
             choose = { recipient ->
-                viewModel.startConversation(recipient) { id ->
+                val existingId = recipient.existingConversationId
+                if (callDirectoryOpen && existingId != null) {
+                    callDirectoryOpen = false
+                    callTarget = existingId to recipient.displayName
+                } else viewModel.startConversation(recipient) { id ->
                     if (callDirectoryOpen) {
                         callDirectoryOpen = false
                         callTarget = id to recipient.displayName
@@ -3155,6 +3163,7 @@ private fun LegendRecipientPicker(
                     FilterChip(selected = scope == value, onClick = { scope = value }, label = { Text(legendLocalized(value)) }, colors = legendCompactChipColors())
                 }
             }
+            if (isSending) LinearProgressIndicator(modifier = Modifier.fillMaxWidth(), color = LegendColors.Gold, trackColor = LegendColors.SurfaceInset)
             when (state) {
                 LoadState.Idle, LoadState.Loading -> LegendLoadingState()
                 is LoadState.Error -> LegendErrorState(state.message) { load(search, scope) }

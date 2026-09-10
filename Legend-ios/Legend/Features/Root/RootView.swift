@@ -66,6 +66,14 @@ struct RootView: View {
                     launchCache: session.launchCache)
             }
         }
+        .safeAreaInset(edge: .top) {
+            if let status = localization.status {
+                Text(LegendLocalized(status)).font(.caption)
+                    .foregroundStyle(LegendNextColor.gold)
+                    .frame(maxWidth: .infinity).padding(8)
+                    .background(LegendNextColor.navy)
+            }
+        }
         .environment(\.locale, localization.locale)
         .alert(
             LegendLocalized("Use Face ID?"),
@@ -568,9 +576,7 @@ private struct AuthenticatedHomeView: View {
                     onSignOut: {
                         Task { await signOut() }
                     })
-                    // Refresh translated presentation without replacing the
-                    // account's bootstrap, caches, or in-flight requests.
-                    .id(localization.revision)
+                    // Observable copy updates labels without replacing navigation or calls.
             case .failed(let failure):
                 NavigationStack {
                     LegendNextErrorState(

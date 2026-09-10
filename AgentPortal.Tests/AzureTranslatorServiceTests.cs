@@ -4,6 +4,7 @@ using System.Linq;
 using System.Net;
 using System.Net.Http;
 using System.Text;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Domain.Messaging;
@@ -17,6 +18,61 @@ namespace AgentPortal.Tests;
 
 public sealed class AzureTranslatorServiceTests
 {
+    [Fact]
+    public async Task PlainLabels_UsePlainTransportAndMixedBatchesPreserveOrder()
+    {
+        var handler = new RecordingHandler(request =>
+        {
+            var body = JsonDocument.Parse(request.Content!.ReadAsStringAsync().GetAwaiter().GetResult());
+            var values = body.RootElement.EnumerateArray().Select(item => item.EnumerateObject().Single().Value.GetString()!).ToArray();
+            var html = request.RequestUri!.Query.Contains("textType=html", StringComparison.Ordinal);
+            foreach (var value in values)
+                Assert.Equal(value.Contains("notranslate", StringComparison.Ordinal), html);
+            return JsonResponse(JsonSerializer.Serialize(values.Select(value => new
+            {
+                translations = new[] { new { text = value.Replace("Title", "Tit", StringComparison.Ordinal).Replace("Hello", "Bonjou", StringComparison.Ordinal), to = "ht" } }
+            })));
+        });
+        var service = CreateService(handler);
+        var single = await service.TranslateAsync("Title", "ht", "en");
+        Assert.True(single.Succeeded);
+        Assert.Equal("Tit", single.TranslatedText);
+        Assert.Equal(5, service.RequestCharacterCount("Title"));
+        var batch = await service.TranslateBatchAsync(["Title", "Hello {name}", "Hello"], "ht", "en");
+        Assert.All(batch, result => Assert.True(result.Succeeded));
+        Assert.Equal(new[] { "Tit", "Bonjou {name}", "Bonjou" }, batch.Select(result => result.TranslatedText));
+        Assert.Equal(3, handler.CallCount);
+    }
+
+    [Fact]
+    public async Task TranslateBatch_ProtectsAndRestoresPlaceholdersMarkupUrlsAndNewlines()
+    {
+        const string source = "Welcome, {name}.\nRead <b>{count}</b> at https://mylegnd.com";
+        var handler = new RecordingHandler(request =>
+        {
+            var body = JsonDocument.Parse(request.Content!.ReadAsStringAsync().GetAwaiter().GetResult());
+            var text = body.RootElement[0].EnumerateObject().Single().Value.GetString()!;
+            Assert.Contains("notranslate", text, StringComparison.Ordinal);
+            Assert.DoesNotContain("{name}", text, StringComparison.Ordinal);
+            return JsonResponse(JsonSerializer.Serialize(new[] { new { translations = new[] { new { text = text.Replace("Welcome", "Byenveni", StringComparison.Ordinal), to = "ht" } } } }));
+        });
+        var service = CreateService(handler);
+        var result = Assert.Single(await service.TranslateBatchAsync([source], "ht", "en"));
+        Assert.True(result.Succeeded);
+        Assert.Equal(source.Replace("Welcome", "Byenveni", StringComparison.Ordinal), result.TranslatedText);
+        Assert.Contains("textType=html", handler.RequestUri!.Query, StringComparison.Ordinal);
+        Assert.True(service.RequestCharacterCount(source) >= source.Length);
+    }
+
+    [Fact]
+    public void ProtectedProviderOutput_RejectsMissingOrDuplicatedLiterals()
+    {
+        var source = AzureProtectedText.Create("Hello {name}\nNext");
+        Assert.Equal("Hello {name}\nNext", source.Restore(source.Text));
+        Assert.Null(source.Restore(source.Text.Replace("__legend_literal_0__", "", StringComparison.Ordinal)));
+        Assert.Null(source.Restore(source.Text + "__legend_literal_0__"));
+    }
+
     [Fact]
     public async Task DetectLanguage_UsesTheExistingV3ContractAndNormalizesHaitianCreole()
     {
@@ -174,8 +230,8 @@ public sealed class AzureTranslatorServiceTests
         Assert.Equal("Youn", result[0].TranslatedText);
         Assert.Equal("De", result[1].TranslatedText);
         Assert.Equal(1, handler.CallCount);
-        Assert.Contains("\"One\"", handler.RequestBody, StringComparison.Ordinal);
-        Assert.Contains("\"Two\"", handler.RequestBody, StringComparison.Ordinal);
+        Assert.Contains("One", handler.RequestBody, StringComparison.Ordinal);
+        Assert.Contains("Two", handler.RequestBody, StringComparison.Ordinal);
     }
 
     private static AzureTranslatorService CreateService(RecordingHandler handler)

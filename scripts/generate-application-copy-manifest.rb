@@ -1,6 +1,7 @@
 #!/usr/bin/env ruby
 # frozen_string_literal: true
 
+require "cgi"
 require "digest"
 require "json"
 require "pathname"
@@ -320,6 +321,22 @@ Dir.glob([
   source = File.read(path)
   source.scan(/ApplicationCopyText\.Source\(\s*(#{LITERAL})/) do |token|
     add.call(literal_value(token[0]), VISUAL)
+  end
+end
+
+# Static authenticated web interface copy joins the same retained source IDs.
+# Razor expressions and user content are never sent to the provider here.
+Dir.glob([ROOT.join("AgentPortal/Views/**/*.cshtml").to_s,
+          ROOT.join("Shared/Views/**/*.cshtml").to_s]).sort.each do |path|
+  html = File.read(path).gsub(/<(script|style)\b[^>]*>.*?<\/\1>/mi, "")
+  html.scan(/>([^<>]+)</m).flatten.each do |text|
+    next if text.match?(/[@{}]/)
+    value = CGI.unescapeHTML(text).gsub(/\s+/, " ").strip
+    add.call(value, VISUAL)
+  end
+  html.scan(/\b(placeholder|title|aria-label|alt)="([^"@{}]+)"/).each do |name, text|
+    value = CGI.unescapeHTML(text).gsub(/\s+/, " ").strip
+    add.call(value, %w[aria-label alt].include?(name) ? ACCESSIBILITY : VISUAL)
   end
 end
 
