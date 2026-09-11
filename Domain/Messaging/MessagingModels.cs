@@ -532,6 +532,7 @@ public sealed record MessagingConversationDetail(
     bool HasOlderMessages = false)
 {
     public MessagingReadReceiptSettings? ReadReceipts { get; init; }
+    public IReadOnlyList<string> ReactionOptions { get; init; } = MessagingReactionOptions.Defaults;
 }
 
 public sealed record MessagingReadReceipt(string UserId, string ParticipantType, DateTime ReadThroughUtc);
@@ -604,6 +605,11 @@ public sealed record MessagingMessageSummary(
     string? OriginalBody = null)
 {
     public IReadOnlyList<MessagingReactionSummary> Reactions { get; init; } = Array.Empty<MessagingReactionSummary>();
+}
+
+public static class MessagingReactionOptions
+{
+    public static IReadOnlyList<string> Defaults { get; } = Array.AsReadOnly(new[] { "❤️", "👍", "👎", "😂", "‼️", "❓" });
 }
 
 public sealed record MessagingReactionSummary(string Emoji, int Count, bool ReactedByCurrentActor);

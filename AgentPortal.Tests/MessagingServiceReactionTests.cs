@@ -18,6 +18,14 @@ namespace AgentPortal.Tests;
 
 public sealed partial class MessagingServiceTests
 {
+    [Fact]
+    public void Reactions_CanonicalPaletteContainsOnlySupportedDistinctEmoji()
+    {
+        Assert.Equal(6, MessagingReactionOptions.Defaults.Count);
+        Assert.Equal(MessagingReactionOptions.Defaults.Count, MessagingReactionOptions.Defaults.Distinct().Count());
+        Assert.All(MessagingReactionOptions.Defaults, emoji => Assert.True(MessagingService.IsSupportedReactionEmoji(emoji)));
+    }
+
     [Theory]
     [InlineData("👍", true)]
     [InlineData("❤️", true)]
@@ -46,7 +54,8 @@ public sealed partial class MessagingServiceTests
         var client = new MessagingActor("client-1", MessagingParticipantTypes.Client);
         var opened = await service.StartConversationAsync(new StartMessagingConversationCommand(
             agent, client.UserId, client.ParticipantType, InitialMessageBody: "Reaction target"));
-        var id = opened.Conversation!.Id;
+        Assert.Equal(MessagingReactionOptions.Defaults, opened.Conversation!.ReactionOptions);
+        var id = opened.Conversation.Id;
         var messageId = Assert.Single(opened.Conversation.Messages).Id;
         var first = await service.SetMessageReactionAsync(client, id, messageId, "👍");
         Assert.True(first.Succeeded, first.ErrorCode);

@@ -970,6 +970,7 @@ public sealed class MobileMessagingController : MobileApiControllerBase
             Meeting = meeting,
             CanManageMeeting = conversation.CanManageMeeting,
             HasOlderMessages = conversation.HasOlderMessages,
+            ReactionOptions = conversation.ReactionOptions,
             ReadReceipts = conversation.ReadReceipts
         };
     }
@@ -1267,6 +1268,7 @@ public sealed record MobileConversationDetailDto(
     MobileAvatarDto? GroupAvatar)
 {
     public MessagingReadReceiptSettings? ReadReceipts { get; init; }
+    public IReadOnlyList<string> ReactionOptions { get; init; } = Array.Empty<string>();
     public bool CanManageCollaborators { get; init; }
     public bool CanDeleteGroup { get; init; }
     public bool IsPromoted { get; init; }
