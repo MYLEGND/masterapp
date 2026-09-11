@@ -27,6 +27,15 @@ internal interface ITranslationCapacityAuthority
         string provider,
         CancellationToken cancellationToken = default);
 
+    Task<LegendConnectProviderCapacitySnapshot> GetSnapshotAsync(
+        string provider,
+        CancellationToken cancellationToken,
+        LegendConnectExternalProviderPolicy? providerPolicy) =>
+        LegendConnectExternalProviderPolicy.Resolve(providerPolicy).ForbidsExternalProviders
+            ? Task.FromException<LegendConnectProviderCapacitySnapshot>(new InvalidOperationException(
+                "native_only_capacity_snapshot_policy_unavailable"))
+            : GetSnapshotAsync(provider, cancellationToken);
+
     Task<TranslationCapacityReservation?> TryReserveAsync(
         string provider,
         int characters,
@@ -73,27 +82,34 @@ internal sealed class TranslationCapacityAuthority : ITranslationCapacityAuthori
         _azureSubscriptionCapacity = azureSubscriptionCapacity;
     }
 
+    public Task<LegendConnectProviderCapacitySnapshot> GetSnapshotAsync(
+        string provider,
+        CancellationToken cancellationToken = default) =>
+        GetSnapshotAsync(provider, cancellationToken, providerPolicy: null);
+
     public async Task<LegendConnectProviderCapacitySnapshot> GetSnapshotAsync(
         string provider,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken,
+        LegendConnectExternalProviderPolicy? providerPolicy)
     {
         var now = DateTime.UtcNow;
         var billingPeriodStart = CurrentPeriod();
         var billingStartUtc = billingPeriodStart.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
         var hourlyWindowStart = now.AddMinutes(-AzureTranslatorSubscriptionCapacity.CapacityWindowMinutes);
         var normalizedProvider = provider?.Trim() ?? string.Empty;
-        var settings = await SettingsForAsync(normalizedProvider, cancellationToken);
+        var settings = await SettingsForAsync(normalizedProvider, cancellationToken, providerPolicy);
         var monthlyUsage = await GetWindowUsageAsync(normalizedProvider, billingStartUtc, now, cancellationToken);
         var hourlyUsage = await GetWindowUsageAsync(normalizedProvider, hourlyWindowStart, now, cancellationToken);
         var monthlyRemaining = Remaining(settings.MonthlyCapacityCharacters, monthlyUsage);
-        var hourlyRemaining = Remaining(settings.CapacityCharacters, hourlyUsage);
+        var hourlyCapacity = settings.IsAvailable ? (long?)settings.CapacityCharacters : null;
+        var hourlyRemaining = Remaining(hourlyCapacity, hourlyUsage);
         var monthlyAcquisition = SafeAcquisitionRemaining(
             settings.MonthlyCapacityCharacters,
             settings.MonthlyLiveReserveCharacters,
             settings.MaximumSafeMonthlyCorpusCharacters,
             monthlyUsage);
         var hourlyAcquisition = SafeAcquisitionRemaining(
-            settings.CapacityCharacters,
+            hourlyCapacity,
             settings.LiveReserveCharacters,
             settings.MaximumSafeCorpusCharacters,
             hourlyUsage);
@@ -534,11 +550,16 @@ internal sealed class TranslationCapacityAuthority : ITranslationCapacityAuthori
                usage.CompletedCorpusCharacters + usage.ReservedCorpusCharacters + characters <= maximumSafeCorpus;
     }
 
-    private async Task<CapacitySettings> SettingsForAsync(string provider, CancellationToken cancellationToken)
+    private async Task<CapacitySettings> SettingsForAsync(
+        string provider,
+        CancellationToken cancellationToken,
+        LegendConnectExternalProviderPolicy? providerPolicy = null)
     {
         if (string.Equals(provider, "AzureTranslator", StringComparison.OrdinalIgnoreCase) && _azureSubscriptionCapacity is not null)
         {
-            var azure = await _azureSubscriptionCapacity.GetCurrentAsync(cancellationToken);
+            var azure = LegendConnectExternalProviderPolicy.Resolve(providerPolicy).ForbidsExternalProviders
+                ? await _azureSubscriptionCapacity.GetCurrentAsync(cancellationToken, providerPolicy)
+                : await _azureSubscriptionCapacity.GetCurrentAsync(cancellationToken);
             return azure.IsAvailable && azure.HourlyCharacterLimit is { } hourlyCapacity
                 ? new CapacitySettings(
                     hourlyCapacity,

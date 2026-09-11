@@ -85,13 +85,21 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
     private ILegendConnectTranslationIntelligence Intelligence => _intelligence ??
         throw new InvalidOperationException("Legend Connect translation-intelligence authority is not available from the DI service graph.");
 
+    public Task<LegendConnectDashboardSnapshot> GetDashboardAsync(
+        CancellationToken cancellationToken = default) =>
+        GetDashboardAsync(cancellationToken, null);
+
     public async Task<LegendConnectDashboardSnapshot> GetDashboardAsync(
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken,
+        LegendConnectExternalProviderPolicy? providerPolicy)
     {
         // Ensures the data-backed baseline is available for a newly initialized
         // environment without treating the baseline list as a runtime authority.
-        await _registry.ListEnabledTranslationLanguagesAsync(cancellationToken);
-        return await BuildDashboardAsync(await LoadStateAsync(cancellationToken), cancellationToken);
+        if (LegendConnectExternalProviderPolicy.Resolve(providerPolicy).ForbidsExternalProviders)
+            await _registry.ListEnabledTranslationLanguagesReadOnlyAsync(cancellationToken);
+        else
+            await _registry.ListEnabledTranslationLanguagesAsync(cancellationToken);
+        return await BuildDashboardAsync(await LoadStateAsync(cancellationToken), cancellationToken, providerPolicy);
     }
 
     public async Task<LegendConnectDashboardProjectionSnapshot> GetDashboardProjectionAsync(
@@ -205,7 +213,8 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
 
     private async Task<LegendConnectDashboardSnapshot> BuildDashboardAsync(
         LegendConnectOperationalState state,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        LegendConnectExternalProviderPolicy? providerPolicy = null)
     {
         var activeLearningEvents = ActiveLearningEvents(state).ToList();
         var activeCandidates = ActiveCandidates(state).ToList();
@@ -223,7 +232,9 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
         var currentPeriod = new DateOnly(DateTime.UtcNow.Year, DateTime.UtcNow.Month, 1);
         var providerCapacity = _capacityAuthority is null
             ? null
-            : await _capacityAuthority.GetSnapshotAsync("AzureTranslator", cancellationToken);
+            : LegendConnectExternalProviderPolicy.Resolve(providerPolicy).ForbidsExternalProviders
+                ? await _capacityAuthority.GetSnapshotAsync("AzureTranslator", cancellationToken, providerPolicy)
+                : await _capacityAuthority.GetSnapshotAsync("AzureTranslator", cancellationToken);
         var runtime = _runtimePolicy is null ? null : await _runtimePolicy.GetEffectiveAsync(cancellationToken);
         var capacity = state.Capacities
             .Where(item => item.Provider == "AzureTranslator" && item.BillingPeriodStart == currentPeriod)
@@ -396,8 +407,32 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
             string input,
             string sourceLanguageCode,
             LegendConnectNativeInferenceSnapshot? internalInference,
-            CancellationToken cancellationToken = default)
+            CancellationToken cancellationToken = default,
+            LegendConnectExternalProviderPolicy? providerPolicy = null)
     {
+        // Internet research is an external boundary. A native-only request may
+        // not be routed to it, so the decision is refused here rather than
+        // being refused later by an unavailable transport.
+        if (LegendConnectExternalProviderPolicy.Resolve(providerPolicy)
+            .ForbidsExternalProviders)
+        {
+            return new LegendConnectResearchNeededDecision(
+                ResearchRequired: false,
+                LegendConnectResearchNeed.NotResearchable,
+                "native_only_external_research_forbidden",
+                LegendConnectResearchAccessClass.PublicReadOnly,
+                sourceLanguageCode,
+                InternalKnowledgeAvailable: internalInference is
+                {
+                    Supported: true,
+                    Answer: not null
+                },
+                InternalEvidenceStale: false,
+                InternalEvidenceConflicted: false,
+                NamedSource: null,
+                DateTime.UtcNow);
+        }
+
         var governedLanguage =
             await _registry.NormalizeEnabledTranslationLanguageAsync(
                 sourceLanguageCode,
@@ -480,6 +515,23 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
                 "named_external_source_requires_research");
         }
 
+        // A supported answer that was composed from a validated, claim-bound,
+        // read-only zero-write receipt is already current internal governed
+        // knowledge. The authenticated service returned that value during this
+        // exchange, so nothing public can be more authoritative or more recent
+        // and no surface wording ("current", "right now", "today") may
+        // reclassify the satisfied claim as internet research. This is not a
+        // general bypass for supported answers: the claim must actually carry
+        // complete, canonical, unexpired receipt provenance.
+        if (internalAvailable &&
+            IsAnsweredByAttestedGovernedRead(internalInference, decidedUtc))
+        {
+            return Decision(
+                false,
+                LegendConnectResearchNeed.ExistingGovernedKnowledge,
+                "governed_read_only_content_binding_answers_request");
+        }
+
         // Current internal LEGEND state must stay with existing governed
         // operational tools. Internet research is never a substitute for the
         // database, runtime, model, training, capacity, or readiness authority.
@@ -493,6 +545,20 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
                 internalAvailable
                     ? "existing_governed_knowledge_answers_request"
                     : "internal_legend_state_requires_governed_tools");
+        }
+
+        // Records this deployment owns are authenticated governed resources and
+        // the public internet holds no authority over them. The typed intent
+        // was established by the meaning-graph analysis that produced this
+        // inference; absent an admitted relation it is Unknown and the request
+        // is not diverted here.
+        if (internalInference?.OwnedRecordIntent?.Intent ==
+            LegendConnectOwnedRecordIntent.OwnedRecordStateInspection)
+        {
+            return Decision(
+                false,
+                LegendConnectResearchNeed.NotResearchable,
+                "internal_operational_data_requires_governed_tools");
         }
 
         if (conflicted)
@@ -538,6 +604,22 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
                 false,
                 LegendConnectResearchNeed.NotResearchable,
                 "conversation_context_is_not_external_research");
+        }
+
+        // Failed native understanding does not establish that a factual
+        // question concerns public evidence. Explicit source and research
+        // requests were handled above. The ordinary provider tool planner may
+        // still request governed research or an authenticated read explicitly.
+        if (internalInference is
+            {
+                Supported: false,
+                OwnedRecordIntent.Intent: LegendConnectOwnedRecordIntent.Unknown
+            })
+        {
+            return Decision(
+                false,
+                LegendConnectResearchNeed.NotResearchable,
+                "unclassified_request_requires_provider_tool_planning");
         }
 
         if (ContainsResearchSignal(
@@ -591,9 +673,12 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
 
     public async Task<LegendConnectResearchOutcome> ExecuteResearchAsync(
         LegendConnectResearchRequest request,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        LegendConnectExternalProviderPolicy? providerPolicy = null)
     {
         ArgumentNullException.ThrowIfNull(request);
+        var externalResearchPolicy =
+            LegendConnectExternalProviderPolicy.Resolve(providerPolicy);
         var startedUtc = DateTime.UtcNow;
         var sessionId = Guid.NewGuid();
 
@@ -670,6 +755,16 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
                     retryable,
                     text),
                 provenance);
+        }
+
+        // The research search and page transports are external boundaries. A
+        // native-only request fails closed here, before either transport is
+        // consulted, so no external client is constructed or invoked.
+        if (externalResearchPolicy.ForbidsExternalProviders)
+        {
+            return Failure(
+                "native_only_external_research_forbidden",
+                "LEGEND did not start internet research because this request forbids every external provider.");
         }
 
         if (!TryValidateResearchRequest(request, out var requestFailure))
@@ -1325,14 +1420,16 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
             IReadOnlyList<LegendConnectConversationContextItem> context,
             LegendConnectDiscourseStateSnapshot? discourseState,
             CancellationToken cancellationToken = default,
-            string sourceLanguageCode = "en") =>
+            string sourceLanguageCode = "en",
+            LegendConnectExternalProviderPolicy? providerPolicy = null) =>
         TryInferConversationCoreAsync(
             input,
             context,
             discourseState,
             readOnlyContentReceipt: null,
             cancellationToken: cancellationToken,
-            sourceLanguageCode: sourceLanguageCode);
+            sourceLanguageCode: sourceLanguageCode,
+            providerPolicy: providerPolicy);
 
     public Task<LegendConnectNativeInferenceSnapshot>
         TryInferConversationWithReadOnlyContentAsync(
@@ -1342,13 +1439,32 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
             LegendConnectReadOnlyContentBindingReceipt receipt,
             CancellationToken cancellationToken = default,
             string sourceLanguageCode = "en") =>
+        TryInferConversationWithReadOnlyContentAsync(
+            input,
+            context,
+            discourseState,
+            receipt,
+            cancellationToken,
+            sourceLanguageCode,
+            null);
+
+    public Task<LegendConnectNativeInferenceSnapshot>
+        TryInferConversationWithReadOnlyContentAsync(
+            string input,
+            IReadOnlyList<LegendConnectConversationContextItem> context,
+            LegendConnectDiscourseStateSnapshot? discourseState,
+            LegendConnectReadOnlyContentBindingReceipt receipt,
+            CancellationToken cancellationToken,
+            string sourceLanguageCode,
+            LegendConnectExternalProviderPolicy? providerPolicy) =>
         TryInferConversationCoreAsync(
             input,
             context,
             discourseState,
             receipt,
             cancellationToken,
-            sourceLanguageCode);
+            sourceLanguageCode,
+            providerPolicy);
 
     private async Task<LegendConnectNativeInferenceSnapshot>
         TryInferConversationCoreAsync(
@@ -1357,15 +1473,28 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
             LegendConnectDiscourseStateSnapshot? discourseState,
             LegendConnectReadOnlyContentBindingReceipt? readOnlyContentReceipt,
             CancellationToken cancellationToken,
-            string sourceLanguageCode)
+            string sourceLanguageCode,
+            LegendConnectExternalProviderPolicy? providerPolicy = null)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        var externalProviderPolicy =
+            LegendConnectExternalProviderPolicy.Resolve(providerPolicy);
+
+        // The typed operational intent is produced by the single meaning-graph
+        // analysis below and carried on every finished result, so research
+        // classification and Founder tool routing consume one classification
+        // instead of re-analyzing or matching text.
+        LegendConnectOwnedRecordClassification? ownedRecordIntent = null;
+
         LegendConnectNativeInferenceSnapshot Finish(
             LegendConnectNativeInferenceSnapshot inference) =>
             WithResearchDecision(
                 input ?? string.Empty,
                 sourceLanguageCode,
-                inference,
+                inference with
+                {
+                    OwnedRecordIntent = inference.OwnedRecordIntent ?? ownedRecordIntent
+                },
                 discourseState);
         if (string.IsNullOrWhiteSpace(LegendLanguageIdentity.NormalizeText(input ?? string.Empty)))
             return Finish(NativeInferenceUnsupported("invalid_input"));
@@ -1377,6 +1506,7 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
             discourseState,
             cancellationToken,
             readOnlyContentReceipt);
+        ownedRecordIntent = composed.OwnedRecordIntent;
         if (string.Equals(
                 composed.State,
                 LegendSemanticTransitionInference.ReadOnlyContentRequired,
@@ -1395,7 +1525,9 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
                 "Unavailable",
                 composed.ReadOnlyContentRequest,
                 ModelAssistance: DormantModelAssistance(
-                    "read_only_content_authorization_pending")));
+                    "read_only_content_authorization_pending"),
+                ScheduleCertificates: composed.ScheduleCertificates,
+                ReasoningTransitionPath: composed.ReasoningTransitionPath));
         }
         if (string.Equals(composed.State, LegendSemanticTransitionInference.Supported, StringComparison.Ordinal) &&
             !string.IsNullOrWhiteSpace(composed.RealizedText))
@@ -1426,12 +1558,27 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
                 articulationMode,
                 null,
                 composed.ContentBindingProvenance,
-                PresentationConstraints: composed.PresentationConstraints);
+                PresentationConstraints: composed.PresentationConstraints,
+                ReadOnlyContentAttestation: composed.ReadOnlyContentAttestation,
+                ScheduleCertificates: composed.ScheduleCertificates,
+                ReasoningTransitionPath: composed.ReasoningTransitionPath);
+
+            // An owned-record claim needs the current receipt validated by the
+            // selected content frame. A static curriculum response cannot
+            // satisfy that obligation, even when its wording is governed.
+            if (ownedRecordIntent?.RequiresGovernedReadReceipt == true &&
+                !IsAnsweredByAttestedGovernedRead(symbolic, DateTime.UtcNow))
+            {
+                return Finish(NativeInferenceUnsupported(
+                    "owned_record_read_scope_unproven",
+                    requiresEscalation: false));
+            }
 
             var served = await TryApplyPromotedReasoningModelAsync(
                 input ?? string.Empty,
                 sourceLanguageCode,
                 symbolic,
+                externalProviderPolicy,
                 cancellationToken);
             return Finish(served);
         }
@@ -1443,7 +1590,16 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
         if (composed.State is LegendSemanticTransitionInference.Ambiguous or
             LegendSemanticTransitionInference.Contradicted)
         {
-            return Finish(NativeInferenceUnsupported(composed.Reasons.FirstOrDefault() ?? "semantic_transition_not_governed"));
+            // Both states are decisions of the governed semantic authority.
+            // An unsuccessful selection does not retain a selected candidate's
+            // evidence count, so zero evidence here cannot establish that the
+            // source was unknown. In particular, competing governed responses
+            // and ambiguous realization must never become provider requests.
+            // Unknown or unproven source meaning is reported as insufficient
+            // evidence and uses the explicit escalation reasons below.
+            return Finish(NativeInferenceUnsupported(
+                composed.Reasons.FirstOrDefault() ?? "semantic_transition_not_governed",
+                requiresEscalation: false));
         }
         // V20.3: native Founder conversation inference is governed by the
         // reusable meaning-graph authority only.
@@ -1480,8 +1636,22 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
             string founderInput,
             string sourceLanguageCode,
             LegendConnectNativeInferenceSnapshot symbolic,
+            LegendConnectExternalProviderPolicy providerPolicy,
             CancellationToken cancellationToken)
     {
+        // The promoted reasoning model is transported by an external provider.
+        // A native-only request therefore never reaches it: the model
+        // authority is left dormant with its own precise reason and the
+        // governed symbolic answer is served unchanged and unrelabelled.
+        if (providerPolicy.ForbidsExternalProviders)
+        {
+            return symbolic with
+            {
+                ModelAssistance = DormantModelAssistance(
+                    "native_only_external_model_inference_forbidden")
+            };
+        }
+
         if (!symbolic.Supported ||
             string.IsNullOrWhiteSpace(symbolic.Answer))
         {
@@ -1513,6 +1683,18 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
             {
                 ModelAssistance = DormantModelAssistance(
                     "active_reasoning_model_read_only_content_not_authorized")
+            };
+        }
+
+        // The certificate belongs to the selected executable proof and its
+        // governed articulation. Ordinary graph-equivalent model wording has
+        // no authority to change that association.
+        if (symbolic.ScheduleCertificates is { Count: > 0 })
+        {
+            return symbolic with
+            {
+                ModelAssistance = DormantModelAssistance(
+                    "active_reasoning_model_schedule_certificate_not_authorized")
             };
         }
 
@@ -1654,7 +1836,12 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
             "meaning_graph_processing_bound_exceeded" or
             "meaning_graph_relation_unproven" or
             "semantic_transition_evidence_unknown" or
-            "semantic_transition_not_supported";
+            "semantic_transition_not_supported" or
+            // The discourse authority returned no conversation state at all.
+            // Nothing governed was resolved, refused, or contradicted, so this
+            // is an unavailable input rather than a governed boundary. An
+            // unresolved, mismatched, or invalid binding stays fail-closed.
+            "discourse_reference_state_unavailable";
 
     private static LegendConnectNativeInferenceSnapshot WithResearchDecision(
         string input,
@@ -1670,6 +1857,35 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
                 DateTime.UtcNow,
                 discourseState: discourseState)
         };
+
+    /// <summary>
+    /// True only when the canonical curriculum receipt-validation and content
+    /// composition authority issued an attestation for this exact finished
+    /// claim, and every receipt carried on the claim is the one that
+    /// attestation was issued for.
+    ///
+    /// No receipt field is revalidated here and no validity is inferred from a
+    /// string: validity is owned solely by
+    /// <c>LegendConnectCurriculumService.TryValidateReadOnlyContentBindingReceipt</c>.
+    /// This only binds the attested identity to the claim being decided, so a
+    /// receipt belonging to another request, transition, result frame, tool,
+    /// argument set, value path, semantic variable, result dimension, or
+    /// output cannot suppress the research decision.
+    /// </summary>
+    private static bool IsAnsweredByAttestedGovernedRead(
+        LegendConnectNativeInferenceSnapshot? inference,
+        DateTime decidedUtc)
+    {
+        if (inference?.ReadOnlyContentAttestation is not
+            LegendConnectReadOnlyContentBindingAttestation attestation)
+        {
+            return false;
+        }
+
+        var provenance = inference.ContentBindingProvenance;
+        return provenance is { Count: 1 } &&
+            attestation.Attests(provenance[0], inference.Answer, decidedUtc);
+    }
 
     private static bool HasCurrentTurnDiscourseAuthority(
         LegendConnectDiscourseStateSnapshot? discourseState)
@@ -2466,6 +2682,11 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
             selectorSemanticSignatures,
             cancellationToken);
 
+    public Task<bool> AreSourceSlotBindingsActiveAsync(
+        IReadOnlyList<LegendConnectUtteranceMeaningNode> nodes,
+        CancellationToken cancellationToken = default) =>
+        Curriculum.AreSourceSlotBindingsActiveAsync(nodes, cancellationToken);
+
     public async Task<LegendConnectRetainedKnowledgeSearchSnapshot>
         SearchRetainedKnowledgeAsync(
             string query,
@@ -2568,10 +2789,11 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
                 occurrence.SupersededUtc == null &&
                 anchor.LanguageCode == lexeme.LanguageCode &&
                 anchor.SupersededUtc == null &&
-                anchor.Provenance == LegendConnectKnowledgeProvenance.FounderApproved &&
+                (anchor.Provenance == LegendConnectKnowledgeProvenance.FounderApproved ||
+                 anchor.Provenance == LegendConnectKnowledgeProvenance.SystemValidatedMachine) &&
                 node.LanguageCode == lexeme.LanguageCode &&
                 node.SupersededUtc == null &&
-                node.Provenance == LegendConnectKnowledgeProvenance.FounderApproved &&
+                node.Provenance == anchor.Provenance &&
                 primitive.SupersededUtc == null &&
                 primitive.Provenance == LegendConnectKnowledgeProvenance.FounderApproved &&
                 primitive.MaturityState != "Contradicted" &&
@@ -2580,17 +2802,30 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
                 primitive.HumanVerifiedSupportCount >= 1 &&
                 example.SupersededUtc == null &&
                 example.LanguageCode == lexeme.LanguageCode &&
-                example.Provenance == LegendConnectKnowledgeProvenance.FounderApproved
+                example.Provenance == node.Provenance
             select new RetainedSemanticCandidate(
                 example.CurriculumFamilyId,
                 node.SemanticSignature,
-                lexeme.NormalizedHash)
+                lexeme.NormalizedHash,
+                node.Provenance == LegendConnectKnowledgeProvenance.SystemValidatedMachine ? node.Id : Guid.Empty,
+                node.Provenance)
         ).Distinct()
             .OrderBy(item => item.CurriculumFamilyId)
             .ThenBy(item => item.SemanticSignature)
             .ThenBy(item => item.LexemeHash)
             .Take(MaximumRetainedSemanticCandidates)
             .ToArrayAsync(cancellationToken);
+
+        var machineNodeIds = semanticCandidates
+            .Where(item => item.Provenance == LegendConnectKnowledgeProvenance.SystemValidatedMachine)
+            .Select(item => item.NodeId).Distinct().ToArray();
+        if (machineNodeIds.Length > 0)
+        {
+            var admittedNodes = await Curriculum.GetActiveMachineMeaningNodeIdsAsync(machineNodeIds, cancellationToken);
+            semanticCandidates = semanticCandidates.Where(item =>
+                item.Provenance == LegendConnectKnowledgeProvenance.FounderApproved ||
+                admittedNodes.Contains(item.NodeId)).ToArray();
+        }
 
         var rankedFamilies = semanticCandidates
             .GroupBy(item => item.CurriculumFamilyId)
@@ -2880,7 +3115,9 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
     private sealed record RetainedSemanticCandidate(
         Guid CurriculumFamilyId,
         string SemanticSignature,
-        string LexemeHash);
+        string LexemeHash,
+        Guid NodeId,
+        string Provenance);
 
     private sealed record RetainedFamilyTextUnit(
         Guid CurriculumFamilyId,
@@ -2913,8 +3150,15 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
 
     public Task<LegendConnectProviderCapacitySnapshot> GetProviderCapacityAsync(
         CancellationToken cancellationToken = default) =>
+        GetProviderCapacityAsync(cancellationToken, null);
+
+    public Task<LegendConnectProviderCapacitySnapshot> GetProviderCapacityAsync(
+        CancellationToken cancellationToken,
+        LegendConnectExternalProviderPolicy? providerPolicy) =>
         _capacityAuthority is not null
-            ? _capacityAuthority.GetSnapshotAsync("AzureTranslator", cancellationToken)
+            ? LegendConnectExternalProviderPolicy.Resolve(providerPolicy).ForbidsExternalProviders
+                ? _capacityAuthority.GetSnapshotAsync("AzureTranslator", cancellationToken, providerPolicy)
+                : _capacityAuthority.GetSnapshotAsync("AzureTranslator", cancellationToken)
             : Task.FromResult(new LegendConnectProviderCapacitySnapshot(
                 "AzureTranslator", false, "Unavailable", null, null, null,
                 new DateOnly(DateTime.UtcNow.Year, DateTime.UtcNow.Month, 1),
@@ -2931,9 +3175,15 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
     /// same ledgers, corpus lineage, and operational evidence; this is a read
     /// surface only and does not create another metrics authority.
     /// </summary>
+    public Task<LegendConnectMetricDetailSnapshot> GetMetricDetailAsync(
+        string? metricKey,
+        CancellationToken cancellationToken = default) =>
+        GetMetricDetailAsync(metricKey, cancellationToken, null);
+
     public async Task<LegendConnectMetricDetailSnapshot> GetMetricDetailAsync(
         string? metricKey,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken,
+        LegendConnectExternalProviderPolicy? providerPolicy)
     {
         var key = metricKey?.Trim().ToLowerInvariant();
         if (string.IsNullOrWhiteSpace(key))
@@ -2945,7 +3195,7 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
         if (key.StartsWith("capacity-", StringComparison.Ordinal) ||
             key is "azure-characters-used" or "consumed-live-characters" or "consumed-corpus-characters" or
                 "provider-characters-reserved")
-            return await BuildCapacityMetricDetailAsync(key, cancellationToken);
+            return await BuildCapacityMetricDetailAsync(key, cancellationToken, providerPolicy);
 
         if (key is "provider-operations" or "provider-billable-characters" or "same-language-avoided" or
             "memory-avoided" or "structural-avoided" or "context-avoided" or "promoted-translation-model-avoided" or
@@ -3105,9 +3355,10 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
 
     private async Task<LegendConnectMetricDetailSnapshot> BuildCapacityMetricDetailAsync(
         string key,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        LegendConnectExternalProviderPolicy? providerPolicy = null)
     {
-        var snapshot = await GetProviderCapacityAsync(cancellationToken);
+        var snapshot = await GetProviderCapacityAsync(cancellationToken, providerPolicy);
         var capacities = await _db.Set<LegendTranslationProviderCapacity>().AsNoTracking()
             .Where(item => item.Provider == "AzureTranslator")
             .OrderByDescending(item => item.BillingPeriodStart)
@@ -6198,36 +6449,38 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
                     candidate.TargetLanguageCode == language) &&
                 (candidate.TeacherProposalProcessingState != "NotStarted" ||
                     proposal != null)
-            select new MachineLearningLifecycleSource(
-                candidate.Id,
-                candidate.SourceLanguageCode,
-                candidate.TargetLanguageCode,
-                candidate.Provenance,
-                candidate.TeacherProposalProcessingState,
-                candidate.TeacherProposalAttemptCount,
-                candidate.TeacherProposalFailureCode,
-                candidate.CreatedUtc,
-                candidate.TeacherProposalProcessedUtc,
-                proposal == null ? null : proposal.Id,
-                proposal == null ? null : proposal.PairKey,
-                proposal == null ? null : proposal.FamilyKey,
-                proposal == null ? null : proposal.Provenance,
-                proposal == null ? null : proposal.ValidationState,
-                proposal != null && proposal.CriticApproved,
-                proposal == null ? null : proposal.CriticConfidence,
-                proposal == null ? null : proposal.CriticReasonCodesJson,
-                proposal == null ? 0 : proposal.CanonicalValidationAttemptCount,
-                proposal == null ? null : proposal.CanonicalValidatedUtc,
-                proposal == null ? null : proposal.CanonicalValidationFailureCode,
-                proposal == null ? 0 : proposal.CurriculumAdmissionAttemptCount,
-                proposal == null ? null : proposal.CurriculumAdmittedUtc,
-                proposal == null ? null : proposal.CurriculumAdmissionFailureCode,
-                proposal == null ? null : proposal.CreatedUtc,
-                proposal == null ? null : proposal.UpdatedUtc,
-                proposal == null
+            select new
+            {
+                CorrelationId = candidate.Id,
+                SourceLanguageCode = candidate.SourceLanguageCode,
+                TargetLanguageCode = candidate.TargetLanguageCode,
+                CandidateProvenance = candidate.Provenance,
+                CandidateState = candidate.TeacherProposalProcessingState,
+                CandidateAttemptCount = candidate.TeacherProposalAttemptCount,
+                CandidateFailureCode = candidate.TeacherProposalFailureCode,
+                CandidateCreatedUtc = candidate.CreatedUtc,
+                CandidateProcessedUtc = candidate.TeacherProposalProcessedUtc,
+                ProposalId = proposal == null ? (Guid?)null : proposal.Id,
+                PairKey = proposal == null ? null : proposal.PairKey,
+                FamilyKey = proposal == null ? null : proposal.FamilyKey,
+                ProposalProvenance = proposal == null ? null : proposal.Provenance,
+                ActualProposalState = proposal == null ? null : proposal.ValidationState,
+                CriticApproved = proposal != null && proposal.CriticApproved,
+                CriticConfidence = proposal == null ? (decimal?)null : proposal.CriticConfidence,
+                CriticReasonCodesJson = proposal == null ? null : proposal.CriticReasonCodesJson,
+                ValidatorAttemptCount = proposal == null ? 0 : proposal.CanonicalValidationAttemptCount,
+                ValidatorCompletedUtc = proposal == null ? (DateTime?)null : proposal.CanonicalValidatedUtc,
+                ValidatorFailureCode = proposal == null ? null : proposal.CanonicalValidationFailureCode,
+                AdmissionAttemptCount = proposal == null ? 0 : proposal.CurriculumAdmissionAttemptCount,
+                AdmissionCompletedUtc = proposal == null ? (DateTime?)null : proposal.CurriculumAdmittedUtc,
+                AdmissionFailureCode = proposal == null ? null : proposal.CurriculumAdmissionFailureCode,
+                ProposalCreatedUtc = proposal == null ? (DateTime?)null : proposal.CreatedUtc,
+                ProposalUpdatedUtc = proposal == null ? (DateTime?)null : proposal.UpdatedUtc,
+                SortUpdatedUtc = proposal == null
                     ? candidate.TeacherProposalProcessedUtc ?? candidate.ProcessedUtc ?? candidate.CreatedUtc
                     : proposal.UpdatedUtc,
-                proposal == null ? candidate.Id : proposal.Id);
+                SortId = proposal == null ? candidate.Id : proposal.Id
+            };
 
         if (search is not null)
         {
@@ -6258,6 +6511,34 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
             .OrderByDescending(item => item.SortUpdatedUtc)
             .ThenByDescending(item => item.SortId)
             .Take(FounderSectionPageSize + 1)
+            .Select(item => new MachineLearningLifecycleSource(
+                item.CorrelationId,
+                item.SourceLanguageCode,
+                item.TargetLanguageCode,
+                item.CandidateProvenance,
+                item.CandidateState,
+                item.CandidateAttemptCount,
+                item.CandidateFailureCode,
+                item.CandidateCreatedUtc,
+                item.CandidateProcessedUtc,
+                item.ProposalId,
+                item.PairKey,
+                item.FamilyKey,
+                item.ProposalProvenance,
+                item.ActualProposalState,
+                item.CriticApproved,
+                item.CriticConfidence,
+                item.CriticReasonCodesJson,
+                item.ValidatorAttemptCount,
+                item.ValidatorCompletedUtc,
+                item.ValidatorFailureCode,
+                item.AdmissionAttemptCount,
+                item.AdmissionCompletedUtc,
+                item.AdmissionFailureCode,
+                item.ProposalCreatedUtc,
+                item.ProposalUpdatedUtc,
+                item.SortUpdatedUtc,
+                item.SortId))
             .ToListAsync(cancellationToken);
         var page = values.Take(FounderSectionPageSize).ToList();
         var admittedFamilyKeys = page

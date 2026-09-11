@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Threading;
 using System.Threading.Tasks;
 using AgentPortal.Models;
@@ -25,6 +26,156 @@ namespace AgentPortal.Tests;
 /// </summary>
 public sealed class LegendConnectDiscourseReferenceBindingTests
 {
+    [Fact]
+    public void LegacyTurnSnapshot_DoesNotInventAnAnalysisDiagnostic()
+    {
+        var legacy = JsonSerializer.Deserialize<LegendConnectDiscourseTurnStateSnapshot>(
+            "{\"SequenceNumber\":1,\"Role\":\"user\",\"IsComposed\":false,\"Nodes\":[],\"Relations\":[],\"Bindings\":[]}");
+        Assert.NotNull(legacy);
+        Assert.Null(legacy.AnalysisReasonCode);
+    }
+
+    [Fact]
+    public async Task WithdrawnCanonicalReferenceEvidence_CannotReactivateAnOlderNonReplacementTarget()
+    {
+        await using var fixture = await CreateInMemoryFixtureAsync();
+        var conversationId = Guid.NewGuid();
+        await fixture.ObserveAsync(fixture.FirstActor, conversationId, "user", "Alpha explanation.");
+        await fixture.ObserveAsync(fixture.FirstActor, conversationId, "user", "Explain it.");
+        var original = Assert.Single(await fixture.ActiveBindingsAsync(fixture.FirstActor, conversationId));
+        Assert.Equal("alpha", original.EntitySemanticValue);
+        await fixture.ObserveAsync(fixture.FirstActor, conversationId, "user", "Beta explanation.");
+        await fixture.ObserveAsync(fixture.FirstActor, conversationId, "user", "Revisit the latest explanation.");
+        var selected = Assert.Single(await fixture.ActiveBindingsAsync(fixture.FirstActor, conversationId));
+        Assert.Equal("beta", selected.EntitySemanticValue);
+        Assert.False(selected.ReplacesActiveBinding);
+        var turns = await fixture.Db.LegendFounderAiDiscourseTurns
+            .OrderBy(turn => turn.SequenceNumber).ToArrayAsync();
+        var originalGraphs = turns.Select(turn => turn.MeaningGraphJson).ToArray();
+        var originalBindings = turns.Select(turn => turn.ResolvedBindingsJson).ToArray();
+
+        var selectedRule = await fixture.Db.LegendLanguageDiscourseReferenceRules
+            .SingleAsync(rule => rule.RuleSignature == selected.ReferenceRuleSignature);
+        var sourceUnits = await (
+            from evidence in fixture.Db.LegendLanguageDiscourseReferenceRuleEvidence
+            join example in fixture.Db.LegendCurriculumExamples
+                on evidence.CurriculumExampleId equals example.Id
+            where evidence.DiscourseReferenceRuleId == selectedRule.Id && evidence.SupersededUtc == null
+            select example.TextUnitId).Distinct().ToArrayAsync();
+        Assert.NotEmpty(sourceUnits);
+        // Exercise the existing canonical retirement and maturity authority.
+        // Neither the retained graph nor its binding receipt is rewritten.
+        await CreateCurriculum(fixture.Db).ReconcileSupersededExamplesAsync(sourceUnits);
+        fixture.Db.ChangeTracker.Clear();
+        var retiredRule = await fixture.Db.LegendLanguageDiscourseReferenceRules
+            .SingleAsync(rule => rule.Id == selectedRule.Id);
+        Assert.False(retiredRule.IsProductionEligible);
+        Assert.Equal(0, retiredRule.IndependentSourceCount);
+        Assert.True(await fixture.Db.LegendLanguageDiscourseReferenceRules.AnyAsync(rule =>
+            rule.RuleSignature == original.ReferenceRuleSignature && rule.IsProductionEligible));
+
+        var reloaded = Assert.Single(await fixture.LatestBindingsAsync(fixture.FirstActor, conversationId));
+        Assert.Equal("unresolved", reloaded.ResolutionState);
+        Assert.Equal("reference_rule_provenance_invalid", reloaded.ReasonCode);
+        Assert.Empty(await fixture.ActiveBindingsAsync(fixture.FirstActor, conversationId));
+        var retained = await fixture.Db.LegendFounderAiDiscourseTurns
+            .OrderBy(turn => turn.SequenceNumber).ToArrayAsync();
+        Assert.Equal(originalGraphs, retained.Select(turn => turn.MeaningGraphJson));
+        Assert.Equal(originalBindings, retained.Select(turn => turn.ResolvedBindingsJson));
+
+        await fixture.ObserveAsync(fixture.FirstActor, conversationId, "user", "Explain it.");
+        var followup = Assert.Single(await fixture.LatestBindingsAsync(fixture.FirstActor, conversationId));
+        Assert.Equal("unresolved", followup.ResolutionState);
+        Assert.Equal("reference_active_binding_invalid", followup.ReasonCode);
+        var plan = await fixture.PlanAsync(fixture.FirstActor, conversationId, "Explain it.");
+        Assert.False(plan.Supported);
+        Assert.Equal("discourse_reference_unresolved", plan.ReasonCode);
+    }
+
+    [Theory]
+    [InlineData("selector_missing", "reference_selector_identity_invalid")]
+    [InlineData("selector_malformed", "reference_selector_identity_invalid")]
+    [InlineData("antecedent", "reference_antecedent_identity_invalid")]
+    [InlineData("rule", "reference_rule_provenance_invalid")]
+    public async Task InvalidatedNonReplacementDecision_CannotReactivateAnOlderTarget(
+        string mutation,
+        string expectedReason)
+    {
+        await using var fixture = await CreateInMemoryFixtureAsync();
+        var conversationId = Guid.NewGuid();
+        await fixture.ObserveAsync(fixture.FirstActor, conversationId, "user", "Alpha explanation.");
+        await fixture.ObserveAsync(fixture.FirstActor, conversationId, "user", "Explain it.");
+        Assert.Equal("alpha", Assert.Single(await fixture.ActiveBindingsAsync(
+            fixture.FirstActor, conversationId)).EntitySemanticValue);
+        await fixture.ObserveAsync(fixture.FirstActor, conversationId, "user", "Beta explanation.");
+        await fixture.ObserveAsync(fixture.FirstActor, conversationId, "user", "Revisit the latest explanation.");
+        var selected = Assert.Single(await fixture.ActiveBindingsAsync(fixture.FirstActor, conversationId));
+        Assert.Equal("beta", selected.EntitySemanticValue);
+        Assert.False(selected.ReplacesActiveBinding);
+
+        var turns = await fixture.Db.LegendFounderAiDiscourseTurns
+            .OrderBy(turn => turn.SequenceNumber).ToArrayAsync();
+        var latest = turns[^1];
+        var originalBindings = latest.ResolvedBindingsJson;
+        if (mutation == "selector_missing")
+            latest.MeaningGraphJson = turns[0].MeaningGraphJson;
+        else if (mutation == "selector_malformed")
+            latest.MeaningGraphJson = "{invalid";
+        else
+            latest.ResolvedBindingsJson = JsonSerializer.Serialize(new[]
+            {
+                mutation == "antecedent"
+                    ? selected with { EntityNodeIndex = int.MaxValue }
+                    : selected with { RuleLanguageCode = "zz" }
+            });
+        await fixture.Db.SaveChangesAsync();
+        var storedGraph = latest.MeaningGraphJson;
+        var storedBindings = latest.ResolvedBindingsJson;
+        fixture.Db.ChangeTracker.Clear();
+
+        var reloaded = Assert.Single(await fixture.LatestBindingsAsync(fixture.FirstActor, conversationId));
+        Assert.Equal("unresolved", reloaded.ResolutionState);
+        Assert.Equal(expectedReason, reloaded.ReasonCode);
+        if (mutation == "selector_malformed")
+            Assert.Equal("meaning_graph_state_invalid",
+                (await fixture.StateAsync(fixture.FirstActor, conversationId)).Turns.Last().AnalysisReasonCode);
+        Assert.Empty(await fixture.ActiveBindingsAsync(fixture.FirstActor, conversationId));
+        var retained = await fixture.Db.LegendFounderAiDiscourseTurns.SingleAsync(turn => turn.Id == latest.Id);
+        Assert.Equal(storedGraph, retained.MeaningGraphJson);
+        Assert.Equal(storedBindings, retained.ResolvedBindingsJson);
+        if (mutation.StartsWith("selector_", StringComparison.Ordinal))
+            Assert.Equal(originalBindings, retained.ResolvedBindingsJson);
+
+        await fixture.ObserveAsync(fixture.FirstActor, conversationId, "user", "Explain it.");
+        var followup = Assert.Single(await fixture.LatestBindingsAsync(fixture.FirstActor, conversationId));
+        Assert.Equal("unresolved", followup.ResolutionState);
+        Assert.Equal("reference_active_binding_invalid", followup.ReasonCode);
+        Assert.Empty(await fixture.ActiveBindingsAsync(fixture.FirstActor, conversationId));
+    }
+
+    [Fact]
+    public async Task RetainedNonReplacementSelector_DoesNotRequireAnIndependentlyComposedGraph()
+    {
+        await using var fixture = await CreateInMemoryFixtureAsync();
+        var conversationId = Guid.NewGuid();
+        await fixture.ObserveAsync(fixture.FirstActor, conversationId, "user", "Alpha explanation.");
+        await fixture.ObserveAsync(fixture.FirstActor, conversationId, "user", "Explain it.");
+        var turn = await fixture.Db.LegendFounderAiDiscourseTurns
+            .OrderByDescending(item => item.SequenceNumber).FirstAsync();
+        var graph = JsonNode.Parse(turn.MeaningGraphJson)!;
+        graph["IsComposed"] = false;
+        turn.MeaningGraphJson = graph.ToJsonString();
+        await fixture.Db.SaveChangesAsync();
+        fixture.Db.ChangeTracker.Clear();
+
+        var binding = Assert.Single(await fixture.LatestBindingsAsync(fixture.FirstActor, conversationId));
+        Assert.Equal("bound", binding.ResolutionState);
+        Assert.Equal("alpha", binding.EntitySemanticValue);
+        Assert.Equal("alpha", Assert.Single(await fixture.ActiveBindingsAsync(
+            fixture.FirstActor, conversationId)).EntitySemanticValue);
+        AssertCompletedReference(await fixture.PlanAsync(fixture.FirstActor, conversationId, "Explain it."), "alpha");
+    }
+
     [Fact]
     public async Task UniquePronounsAndThat_CompleteTheCurrentMeaningGraphBeforeSelection()
     {

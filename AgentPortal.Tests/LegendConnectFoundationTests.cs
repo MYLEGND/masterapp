@@ -98,6 +98,122 @@ public sealed class LegendConnectFoundationTests
         Assert.DoesNotContain("Hello", demand.PairKey, StringComparison.Ordinal);
     }
 
+    [Theory]
+    [InlineData("en", "ht")]
+    [InlineData("es", "fr")]
+    public async Task Router_NativeOnlyMiss_DoesNotRecordExternalDemandOrReserveCapacity(
+        string sourceLanguage,
+        string targetLanguage)
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var registry = CreateRegistry(db);
+        Assert.NotNull(await registry.GetOrCreateEnabledPairAsync(sourceLanguage, targetLanguage));
+        var provider = new RecordingProvider();
+        var router = new LegendConnectTranslationRouter(
+            provider,
+            registry,
+            new TranslationCapacityAuthority(db, Configuration(), NullLogger<TranslationCapacityAuthority>.Instance),
+            NullLogger<LegendConnectTranslationRouter>.Instance,
+            new TranslationDemandRecorder(db, NullLogger<TranslationDemandRecorder>.Instance),
+            intelligence: new LegendConnectTranslationIntelligence(db, Configuration()));
+
+        var result = await router.TranslateAsync(
+            "Unretained translation content",
+            targetLanguage,
+            sourceLanguage,
+            CancellationToken.None,
+            LegendConnectExternalProviderPolicy.NativeOnly);
+
+        Assert.False(result.Succeeded);
+        Assert.Equal("None", result.Provider);
+        Assert.Equal("external_provider_forbidden_by_native_only_policy", result.ErrorCode);
+        Assert.Equal(0, provider.TranslateCalls);
+        Assert.Null(provider.LastProviderPolicy);
+        Assert.Empty(await db.LegendTranslationPairDemands.ToListAsync());
+        Assert.Empty(await db.LegendTranslationProviderCapacities.ToListAsync());
+        Assert.Empty(await db.LegendTranslationProviderReservations.ToListAsync());
+    }
+
+    [Fact]
+    public async Task Router_ExternalFallback_PreservesRequestPolicyAtProviderBoundary()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var provider = new RecordingProvider();
+        var router = new LegendConnectTranslationRouter(
+            provider,
+            CreateRegistry(db),
+            new TranslationCapacityAuthority(db, Configuration(), NullLogger<TranslationCapacityAuthority>.Instance),
+            NullLogger<LegendConnectTranslationRouter>.Instance,
+            new TranslationDemandRecorder(db, NullLogger<TranslationDemandRecorder>.Instance));
+        var policy = new LegendConnectExternalProviderPolicy(AllowExternalProviders: true);
+
+        var result = await router.TranslateAsync(
+            "Translation content",
+            "ht",
+            "en",
+            CancellationToken.None,
+            policy);
+
+        Assert.True(result.Succeeded);
+        Assert.Equal(provider.ProviderName, result.Provider);
+        Assert.Equal("en", result.DetectedLanguage);
+        Assert.Equal(1, provider.TranslateCalls);
+        Assert.Same(policy, provider.LastProviderPolicy);
+        var demand = await db.LegendTranslationPairDemands.SingleAsync();
+        Assert.Equal(1, demand.AzureFallbackCount);
+        Assert.Equal("Translation content".Length, demand.ProviderCharacterCount);
+    }
+
+    [Theory]
+    [InlineData(true, "en", false)]
+    [InlineData(false, "en", true)]
+    [InlineData(false, "fr", false)]
+    public async Task Router_LanguageDetection_ReadsPartialRegistryWithoutProvisioning(
+        bool nativeOnly,
+        string detectedLanguage,
+        bool expectedSuccess)
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        ControllerTestHelpers.SeedGovernedLanguageBaseline(db, "en");
+        var saveAttempts = 0;
+        db.SavingChanges += (_, _) =>
+        {
+            saveAttempts++;
+            throw new InvalidOperationException("Language detection cannot provision registry rows.");
+        };
+        var registry = CreateRegistry(db);
+        var provider = new RecordingProvider { DetectedLanguage = detectedLanguage };
+        var corpus = new LegendConnectCorpusService(
+            db,
+            registry,
+            NullLogger<LegendConnectCorpusService>.Instance);
+        var router = new LegendConnectTranslationRouter(
+            provider,
+            registry,
+            new TranslationCapacityAuthority(db, Configuration(), NullLogger<TranslationCapacityAuthority>.Instance),
+            NullLogger<LegendConnectTranslationRouter>.Instance,
+            structuralComposition: new LegendConnectCurriculumService(db, registry, corpus));
+
+        var result = await router.DetectLanguageAsync(
+            "Unretained source content",
+            CancellationToken.None,
+            nativeOnly
+                ? LegendConnectExternalProviderPolicy.NativeOnly
+                : LegendConnectExternalProviderPolicy.ProviderEnabled);
+
+        Assert.Equal(expectedSuccess, result.Succeeded);
+        Assert.Equal(expectedSuccess ? "en" : null, result.Language);
+        Assert.Equal(
+            nativeOnly
+                ? "native_only_governed_source_language_undetermined"
+                : expectedSuccess ? null : "translation_language_unsupported",
+            result.ErrorCode);
+        Assert.Equal(nativeOnly ? 0 : 1, provider.DetectionCalls);
+        Assert.Equal(0, saveAttempts);
+        Assert.Equal("en", (await db.LegendLanguageDefinitions.SingleAsync()).LanguageCode);
+        Assert.Empty(await db.LegendTranslationProviderCapacities.ToListAsync());
+    }
+
     [Fact]
     public async Task Capacity_LiveReservationHasPriorityOverBootstrapReserve()
     {
@@ -212,10 +328,16 @@ public sealed class LegendConnectFoundationTests
     private sealed class RecordingProvider : ITranslationProvider
     {
         public string ProviderName => "AzureTranslator";
+        public string DetectedLanguage { get; init; } = "en";
+        public int DetectionCalls { get; private set; }
         public int TranslateCalls { get; private set; }
+        public LegendConnectExternalProviderPolicy? LastProviderPolicy { get; private set; }
 
-        public Task<TranslationDetectionResult> DetectLanguageAsync(string text, CancellationToken cancellationToken = default) =>
-            Task.FromResult(new TranslationDetectionResult(true, "en"));
+        public Task<TranslationDetectionResult> DetectLanguageAsync(string text, CancellationToken cancellationToken = default)
+        {
+            DetectionCalls++;
+            return Task.FromResult(new TranslationDetectionResult(true, DetectedLanguage));
+        }
 
         public Task<TranslationProviderResult> TranslateAsync(
             string text,
@@ -225,6 +347,17 @@ public sealed class LegendConnectFoundationTests
         {
             TranslateCalls++;
             return Task.FromResult(new TranslationProviderResult(true, text, sourceLanguage, ProviderName));
+        }
+
+        public Task<TranslationProviderResult> TranslateAsync(
+            string text,
+            string targetLanguage,
+            string? sourceLanguage,
+            CancellationToken cancellationToken,
+            LegendConnectExternalProviderPolicy? providerPolicy)
+        {
+            LastProviderPolicy = providerPolicy;
+            return TranslateAsync(text, targetLanguage, sourceLanguage, cancellationToken);
         }
     }
 }

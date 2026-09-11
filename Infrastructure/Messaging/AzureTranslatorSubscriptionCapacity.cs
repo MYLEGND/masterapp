@@ -2,6 +2,7 @@ using System.Net.Http.Headers;
 using System.Text.Json;
 using Azure.Core;
 using Azure.Identity;
+using Domain.Messaging;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 
@@ -17,6 +18,14 @@ internal interface IAzureTranslatorSubscriptionCapacitySource
 {
     Task<AzureTranslatorSubscriptionCapacity> GetCurrentAsync(
         CancellationToken cancellationToken = default);
+
+    Task<AzureTranslatorSubscriptionCapacity> GetCurrentAsync(
+        CancellationToken cancellationToken,
+        LegendConnectExternalProviderPolicy? providerPolicy) =>
+        LegendConnectExternalProviderPolicy.Resolve(providerPolicy).ForbidsExternalProviders
+            ? Task.FromException<AzureTranslatorSubscriptionCapacity>(new InvalidOperationException(
+                "native_only_capacity_snapshot_policy_unavailable"))
+            : GetCurrentAsync(cancellationToken);
 }
 
 internal sealed record AzureTranslatorSubscriptionCapacity(
@@ -63,6 +72,7 @@ internal sealed class AzureTranslatorSubscriptionCapacitySource : IAzureTranslat
     private readonly ILogger<AzureTranslatorSubscriptionCapacitySource> _logger;
     private readonly TokenCredential _credential;
     private readonly TimeSpan _refreshTimeout;
+    private readonly TimeProvider _timeProvider;
     private readonly SemaphoreSlim _refreshLock = new(1, 1);
     private AzureTranslatorSubscriptionCapacity? _cached;
 
@@ -71,26 +81,48 @@ internal sealed class AzureTranslatorSubscriptionCapacitySource : IAzureTranslat
         IConfiguration configuration,
         ILogger<AzureTranslatorSubscriptionCapacitySource> logger,
         TokenCredential? credential = null,
-        TimeSpan? refreshTimeout = null)
+        TimeSpan? refreshTimeout = null,
+        TimeProvider? timeProvider = null)
     {
         _httpClientFactory = httpClientFactory;
         _configuration = configuration;
         _logger = logger;
         _credential = credential ?? new DefaultAzureCredential();
         _refreshTimeout = refreshTimeout ?? RefreshTimeout;
+        _timeProvider = timeProvider ?? TimeProvider.System;
     }
 
+    public Task<AzureTranslatorSubscriptionCapacity> GetCurrentAsync(
+        CancellationToken cancellationToken = default) =>
+        GetCurrentAsync(cancellationToken, providerPolicy: null);
+
     public async Task<AzureTranslatorSubscriptionCapacity> GetCurrentAsync(
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken,
+        LegendConnectExternalProviderPolicy? providerPolicy)
     {
-        var now = DateTime.UtcNow;
+        cancellationToken.ThrowIfCancellationRequested();
+        var now = _timeProvider.GetUtcNow().UtcDateTime;
+        if (LegendConnectExternalProviderPolicy.Resolve(providerPolicy).ForbidsExternalProviders)
+        {
+            // A local diagnostic may inspect an already synchronized, fresh
+            // snapshot. It never waits for or starts an external refresh, and
+            // its result cannot replace the provider-enabled shared cache.
+            return _cached is { } local && now - local.RefreshedUtc < MinimumRefreshInterval
+                ? local with
+                {
+                    Status = local.IsAvailable ? "Cached" : local.Status,
+                    Detail = "Native-only cached Azure capacity observation; external refresh was not attempted. " + local.Detail
+                }
+                : Unavailable(now,
+                    "native_only_capacity_refresh_forbidden: no fresh cached Azure capacity observation is available.");
+        }
         if (_cached is { } cached && now - cached.RefreshedUtc < MinimumRefreshInterval)
             return cached;
 
         await _refreshLock.WaitAsync(cancellationToken);
         try
         {
-            now = DateTime.UtcNow;
+            now = _timeProvider.GetUtcNow().UtcDateTime;
             if (_cached is { } refreshed && now - refreshed.RefreshedUtc < MinimumRefreshInterval)
                 return refreshed;
 
