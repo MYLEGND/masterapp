@@ -418,6 +418,7 @@ final class MessagingStore: ObservableObject {
         let body: String
         let replyToMessageID: UUID?
         let clientMessageID: UUID
+        var sharedPostID: UUID? = nil
     }
     private var pendingSubmission: PendingSubmission?
 
@@ -1156,12 +1157,19 @@ final class MessagingStore: ObservableObject {
         }
     }
 
+    func sharedPostURL(_ postID: UUID) -> URL? { api.sharedPostURL(postID) }
+
+    func downloadAttachment(_ attachment: MessagingAttachment) async throws -> URL {
+        try await api.downloadAttachment(attachment, accessToken: accessTokenProvider())
+    }
+
     func send(
         body: String,
-        replyingTo replyTarget: ConversationMessage? = nil
+        replyingTo replyTarget: ConversationMessage? = nil,
+        sharedPostID: UUID? = nil
     ) async -> ConversationMessage? {
         let normalizedBody = body.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !normalizedBody.isEmpty,
+        guard (!normalizedBody.isEmpty || sharedPostID != nil),
               let conversationID = selectedConversationID,
               !isSending else {
             return nil
@@ -1169,21 +1177,29 @@ final class MessagingStore: ObservableObject {
 
         if pendingSubmission?.conversationID != conversationID ||
             pendingSubmission?.body != normalizedBody ||
-            pendingSubmission?.replyToMessageID != replyTarget?.id {
+            pendingSubmission?.replyToMessageID != replyTarget?.id ||
+            pendingSubmission?.sharedPostID != sharedPostID {
             pendingSubmission = PendingSubmission(conversationID: conversationID, body: normalizedBody,
-                replyToMessageID: replyTarget?.id, clientMessageID: UUID())
+                replyToMessageID: replyTarget?.id, clientMessageID: UUID(), sharedPostID: sharedPostID)
         }
         guard let submission = pendingSubmission else { return nil }
         isSending = true
         sendFailure = nil
         defer { isSending = false }
         do {
-            let message = try await api.send(
+            let message: ConversationMessage
+            if let sharedPostID {
+                message = try await api.sendShared(conversationID: conversationID, body: normalizedBody,
+                    sharedPostID: sharedPostID, clientMessageID: submission.clientMessageID,
+                    accessToken: try await accessTokenProvider())
+            } else {
+                message = try await api.send(
                 conversationID: conversationID,
                 body: normalizedBody,
                 replyToMessageID: replyTarget?.id,
                 clientMessageID: submission.clientMessageID,
                 accessToken: try await accessTokenProvider())
+            }
             pendingSubmission = nil
             append(message: message, to: conversationID)
 
@@ -1250,7 +1266,11 @@ final class MessagingStore: ObservableObject {
                     updated.reactions = result.reactions
                     return updated
                 }
-            } catch { self.sendFailure = self.failure(for: error, title: LegendLocalized("Reaction unavailable")) }
+            } catch {
+                guard !(error is CancellationError), !Task.isCancelled,
+                    revision == self.presentationRevision, self.selectedConversationID == message.conversationID else { return }
+                self.sendFailure = self.failure(for: error, title: LegendLocalized("Reaction unavailable"))
+            }
         }
     }
 
@@ -1267,10 +1287,11 @@ final class MessagingStore: ObservableObject {
         readAcknowledgementTasks[id] = Task { [weak self] in
             guard let self else { return }
             do {
-                try await self.api.markRead(conversationID: id, accessToken: try await self.accessTokenProvider())
+                try await self.api.markRead(conversationID: id, readThroughMessageID: latest, accessToken: try await self.accessTokenProvider())
                 try Task.checkCancellation()
                 self.acknowledgedVisibleMessages[id] = latest
-                self.updateUnreadCount(for: id)
+                if case .loaded(let current) = self.detailState, current.id == id,
+                   current.messages.last?.id == latest { self.updateUnreadCount(for: id) }
             } catch {
                 self.diagnostics.record(category: .messaging, summary: "Read state could not be saved.")
             }
@@ -1530,6 +1551,7 @@ final class MessagingStore: ObservableObject {
 
             if marksRead { acknowledgeVisible(conversation) }
         } catch {
+            guard !(error is CancellationError), !Task.isCancelled else { return }
             guard revision == presentationRevision, presentsResult, selectedConversationID == conversationID else {
                 return
             }

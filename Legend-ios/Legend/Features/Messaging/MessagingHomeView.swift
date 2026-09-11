@@ -1,3 +1,4 @@
+import QuickLook
 import SwiftUI
 import UIKit
 import PhotosUI
@@ -3611,6 +3612,9 @@ private struct LegendMessageContextPreview: View {
 }
 
 private struct LegendMessageBubble: View {
+    @Environment(\.legendMessagingStore) private var messaging
+    @State private var sharingAttachments = false
+
     let message: ConversationMessage
     let senderAvatar: ProfileAvatar?
     let showsSender: Bool
@@ -3666,6 +3670,14 @@ private struct LegendMessageBubble: View {
                     .disabled(emojiDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }.padding().presentationDetents([.height(220)])
         }
+        .sheet(isPresented: $sharingAttachments) {
+            NavigationStack {
+                List(message.attachments) { attachment in
+                    LegendMessageAttachmentChip(attachment: attachment, isMine: false)
+                }
+                .navigationTitle(LegendLocalized("Open or share attachments"))
+            }
+        }
         .contextMenu {
             if !message.isDeleted {
                 ForEach(reactionOptions, id: \.self) { emoji in
@@ -3695,8 +3707,16 @@ private struct LegendMessageBubble: View {
                     )
                 }
 
-                ShareLink(item: message.body) {
-                    Label(LegendLocalized("Share message"), systemImage: "square.and.arrow.up")
+                if let shared = message.sharedContent, let url = messaging?.sharedPostURL(shared.sourcePostId) {
+                    ShareLink(item: url) { Label(LegendLocalized("Share content"), systemImage: "square.and.arrow.up") }
+                } else if !message.attachments.isEmpty {
+                    Button { sharingAttachments = true } label: {
+                        Label(LegendLocalized("Open or share attachments"), systemImage: "square.and.arrow.up")
+                    }
+                } else {
+                    ShareLink(item: message.body) {
+                        Label(LegendLocalized("Share message"), systemImage: "square.and.arrow.up")
+                    }
                 }
                 if let original = message.originalBody, original != message.body {
                     Button { UIPasteboard.general.string = original } label: {
@@ -3763,6 +3783,9 @@ private struct LegendMessageBubble: View {
                                 .font(.caption).buttonStyle(.bordered)
                         }
                     }
+                }
+                if !message.isDeleted, let shared = message.sharedContent {
+                    LegendSharedMessageCard(content: shared)
                 }
                 if !message.isDeleted {
                     ForEach(message.attachments) { attachment in
@@ -3954,6 +3977,12 @@ private struct LegendMessageBubble: View {
 }
 
 private struct LegendMessageAttachmentChip: View {
+    @Environment(\.legendMessagingStore) private var messaging
+    @State private var previewURL: URL?
+    @State private var downloadedURL: URL?
+    @State private var isLoading = false
+    @State private var failed = false
+
     let attachment: MessagingAttachment
     let isMine: Bool
 
@@ -3966,6 +3995,15 @@ private struct LegendMessageAttachmentChip: View {
     }
 
     var body: some View {
+        Button {
+            guard let messaging, attachment.canDownload, !isLoading else { return }
+            isLoading = true
+            Task {
+                defer { isLoading = false }
+                do { let url = try await messaging.downloadAttachment(attachment); downloadedURL = url; previewURL = url }
+                catch { failed = true }
+            }
+        } label: {
         HStack(spacing: LegendNextSpacing.xs) {
             Image(systemName: isImage ? "photo.fill" : "doc.fill")
                 .font(.caption.weight(.semibold))
@@ -4003,6 +4041,19 @@ private struct LegendMessageAttachmentChip: View {
         .accessibilityLabel(
             "\(attachment.originalFileName), \(scanStatusLabel)"
         )
+        }
+        .disabled(!attachment.canDownload || isLoading)
+        .quickLookPreview($previewURL)
+        .onChange(of: previewURL) { _, current in
+            if current == nil, let downloadedURL {
+                try? FileManager.default.removeItem(at: downloadedURL.deletingLastPathComponent())
+                self.downloadedURL = nil
+            }
+        }
+        .alert(LegendLocalized("Attachment unavailable"), isPresented: $failed) {
+            Button(LegendLocalized("OK"), role: .cancel) { }
+        }
+
     }
 }
 
@@ -4392,4 +4443,24 @@ private struct LegendMessagingSearchField: View {
         .padding(.bottom, LegendNextSpacing.sm)
     }
 
+}
+
+private struct LegendSharedMessageCard: View {
+    let content: MessagingSharedContent
+    @Environment(\.legendSocialStore) private var social
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if content.status == "available", let social {
+                Text(content.authorDisplayName ?? "").font(.headline)
+                if let body = content.body, !body.isEmpty { Text(body) }
+                ForEach(content.media.sorted { $0.displayOrder < $1.displayOrder }) { media in
+                    if media.mediaKind == "Image" {
+                        LegendSocialMediaImage(media: media, social: social)
+                    } else if media.mediaKind == "Video" {
+                        LegendSocialMediaVideo(postID: content.sourcePostId, media: media, music: nil, social: social)
+                    }
+                }
+            } else { Text(LegendLocalized("Shared content is unavailable.")) }
+        }
+    }
 }

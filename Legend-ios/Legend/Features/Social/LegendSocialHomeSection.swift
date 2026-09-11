@@ -79,6 +79,16 @@ extension EnvironmentValues {
     }
 }
 
+struct LegendSocialStoreEnvironmentKey: EnvironmentKey {
+    static let defaultValue: MobileSocialStore? = nil
+}
+extension EnvironmentValues {
+    var legendSocialStore: MobileSocialStore? {
+        get { self[LegendSocialStoreEnvironmentKey.self] }
+        set { self[LegendSocialStoreEnvironmentKey.self] = newValue }
+    }
+}
+
 /// ONE application-wide sharing control for Legend social content.
 ///
 /// Every Story, Post, and Hac share button routes here.
@@ -135,32 +145,7 @@ private struct LegendGlobalShareSheet: View {
     @State private var search = ""
     @State private var recipientBeingSent: LogicalParticipantIdentity?
 
-    private var normalizedBody: String {
-        post.body.trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-
-    /// One textual representation for the existing message body contract.
-    ///
-    /// No fake social attachment or parallel message schema is introduced.
-    /// When the canonical messaging contract gains a typed social attachment,
-    /// that evolution can occur at the messaging authority instead of here.
-    private var internalMessageBody: String {
-        let heading =
-            "Shared a Legend \(post.displayContentType) by \(post.author.displayName)"
-
-        guard !normalizedBody.isEmpty else {
-            return heading
-        }
-
-        return "\(heading)\n\n\(normalizedBody)"
-    }
-
-    private var externalShareBody: String {
-        normalizedBody.isEmpty
-            ? "Legend \(post.displayContentType) by \(post.author.displayName)"
-            : normalizedBody
-    }
-
+    // Sharing preserves the server-owned source reference and its authorized link.
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
@@ -212,7 +197,8 @@ private struct LegendGlobalShareSheet: View {
 
             recipientScopes
 
-            ShareLink(item: externalShareBody) {
+            if let shareURL = messaging.sharedPostURL(post.id) {
+            ShareLink(item: shareURL) {
                 HStack(spacing: LegendNextSpacing.sm) {
                     Image(systemName: "square.and.arrow.up")
                         .font(.body.weight(.semibold))
@@ -250,6 +236,7 @@ private struct LegendGlobalShareSheet: View {
                 }
             )
             .accessibilityLabel(LegendLocalized("Share outside Legend", context: "accessibility copy"))
+            }
         }
         .padding(.horizontal, LegendNextSpacing.md)
         .padding(.top, LegendNextSpacing.sm)
@@ -459,7 +446,7 @@ private struct LegendGlobalShareSheet: View {
                 // Canonical message-send authority. Successful first sends
                 // already reconcile the server-owned Previous Messages inbox.
                 let message = await messaging.send(
-                    body: internalMessageBody
+                    body: "", sharedPostID: post.id
                 )
 
                 recipientBeingSent = nil

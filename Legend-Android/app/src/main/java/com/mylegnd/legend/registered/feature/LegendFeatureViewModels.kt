@@ -250,6 +250,7 @@ internal class PendingMessageSubmission private constructor(
     val body: String,
     val replyToMessageId: String?,
     val attachments: List<String>,
+    val sharedPostId: String?,
 ) {
     val clientMessageId: String = UUID.randomUUID().toString()
     var acknowledgedMessageId: String? = null
@@ -270,10 +271,10 @@ internal class PendingMessageSubmission private constructor(
 
     companion object {
         fun forPayload(previous: PendingMessageSubmission?, conversationId: String, body: String,
-                       replyToMessageId: String?, attachments: List<String>): PendingMessageSubmission =
+                       replyToMessageId: String?, attachments: List<String>, sharedPostId: String? = null): PendingMessageSubmission =
             previous?.takeIf { it.conversationId == conversationId && it.body == body &&
-                it.replyToMessageId == replyToMessageId && it.attachments == attachments }
-                ?: PendingMessageSubmission(conversationId, body, replyToMessageId, attachments.toList())
+                it.replyToMessageId == replyToMessageId && it.attachments == attachments && it.sharedPostId == sharedPostId }
+                ?: PendingMessageSubmission(conversationId, body, replyToMessageId, attachments.toList(), sharedPostId)
     }
 }
 
@@ -371,9 +372,10 @@ class MessagingViewModel(private val repository: MessagingRepository, private va
         val latest = detail.messages.lastOrNull()?.id ?: return
         if (readAcknowledgements[id] == latest || readJobs[id]?.isActive == true) return
         readJobs[id] = viewModelScope.launch {
-            if (repository.markRead(role, id) is LoadState.Data) {
+            if (repository.markRead(role, id, latest) is LoadState.Data) {
                 readAcknowledgements[id] = latest
-                updateInbox(id) { it.copy(unreadCount = 0) }
+                if ((_detail.value as? LoadState.Data)?.value?.messages?.lastOrNull()?.id == latest)
+                    updateInbox(id) { it.copy(unreadCount = 0) }
             }
             readJobs.remove(id)
             val current = (_detail.value as? LoadState.Data)?.value
@@ -612,21 +614,22 @@ class MessagingViewModel(private val repository: MessagingRepository, private va
         body: String,
         replyToMessageId: String? = null,
         attachmentUris: List<Uri> = emptyList(),
+        sharedPostId: String? = null,
         completed: (Boolean) -> Unit,
     ) = viewModelScope.launch {
         val normalized = body.trim()
-        if (normalized.isBlank() || _isSending.value) {
+        if ((normalized.isBlank() && sharedPostId == null) || _isSending.value) {
             completed(false)
             return@launch
         }
         val submission = PendingMessageSubmission.forPayload(pendingSubmission, id, normalized,
-            replyToMessageId, attachmentUris.map { it.toString() })
+            replyToMessageId, attachmentUris.map { it.toString() }, sharedPostId)
         pendingSubmission = submission
         _historyFailure.value = null
         _isSending.value = true
         try {
             if (submission.acknowledgedMessageId == null) {
-                when (val result = repository.send(role, id, normalized, replyToMessageId, submission.clientMessageId)) {
+                when (val result = repository.send(role, id, normalized, replyToMessageId, submission.clientMessageId, sharedPostId)) {
                     is LoadState.Data -> submission.acknowledgedMessageId = result.value.id
                     is LoadState.Error -> {
                         _historyFailure.value = result.message

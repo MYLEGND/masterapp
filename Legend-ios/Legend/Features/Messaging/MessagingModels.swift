@@ -228,6 +228,7 @@ struct ConversationMessage: Codable, Equatable, Identifiable, Sendable {
     let translation: MessageTranslationPresentation?
     let originalBody: String?
     var reactions: [MessageReaction]
+    let sharedContent: MessagingSharedContent?
 
     private enum CodingKeys: String, CodingKey {
         case id
@@ -241,7 +242,7 @@ struct ConversationMessage: Codable, Equatable, Identifiable, Sendable {
         case reply
         case verificationReview
         case translation
-        case reactions
+        case reactions, sharedContent
         case originalBody
     }
 
@@ -258,7 +259,8 @@ struct ConversationMessage: Codable, Equatable, Identifiable, Sendable {
         verificationReview: VerificationReview? = nil,
         translation: MessageTranslationPresentation? = nil,
         originalBody: String? = nil,
-        reactions: [MessageReaction] = []
+        reactions: [MessageReaction] = [],
+        sharedContent: MessagingSharedContent? = nil
     ) {
         self.id = id
         self.conversationID = conversationID
@@ -273,6 +275,7 @@ struct ConversationMessage: Codable, Equatable, Identifiable, Sendable {
         self.translation = translation
         self.originalBody = originalBody
         self.reactions = reactions
+        self.sharedContent = sharedContent
     }
 
     init(from decoder: Decoder) throws {
@@ -290,6 +293,7 @@ struct ConversationMessage: Codable, Equatable, Identifiable, Sendable {
         translation = try container.decodeIfPresent(MessageTranslationPresentation.self, forKey: .translation)
         originalBody = try container.decodeIfPresent(String.self, forKey: .originalBody)
         reactions = try container.decodeIfPresent([MessageReaction].self, forKey: .reactions) ?? []
+        sharedContent = try container.decodeIfPresent(MessagingSharedContent.self, forKey: .sharedContent)
     }
 }
 
@@ -504,9 +508,10 @@ struct SendMessageRequest: Encodable, Sendable {
     let body: String
     let replyToMessageID: UUID?
     let clientMessageID: UUID
+    var sharedPostId: UUID? = nil
 
     private enum CodingKeys: String, CodingKey {
-        case body
+        case body, sharedPostId
         case replyToMessageID = "replyToMessageId"
         case clientMessageID = "clientMessageId"
     }
@@ -750,6 +755,11 @@ struct FounderAccountBatchOutcome: Codable, Equatable, Sendable {
 }
 
 protocol MessagingAPI: Sendable {
+    func sendShared(conversationID: UUID, body: String, sharedPostID: UUID, clientMessageID: UUID, accessToken: String) async throws -> ConversationMessage
+    func downloadAttachment(_ attachment: MessagingAttachment, accessToken: String) async throws -> URL
+    func sharedPostURL(_ postID: UUID) -> URL?
+    func markRead(conversationID: UUID, readThroughMessageID: UUID, accessToken: String) async throws
+
     func react(conversationID: UUID, messageID: UUID, emoji: String?, accessToken: String) async throws -> MessageReactionResult
     func setReadReceipts(conversationID: UUID, enabled: Bool, globally: Bool, accessToken: String) async throws
     func conversations(accessToken: String) async throws -> [ConversationSummary]
@@ -883,6 +893,13 @@ protocol MessagingAPI: Sendable {
 }
 
 extension MessagingAPI {
+    func sendShared(conversationID: UUID, body: String, sharedPostID: UUID, clientMessageID: UUID, accessToken: String) async throws -> ConversationMessage { throw MobileAPIError.invalidServerResponse }
+    func downloadAttachment(_ attachment: MessagingAttachment, accessToken: String) async throws -> URL { throw MobileAPIError.invalidServerResponse }
+    func sharedPostURL(_ postID: UUID) -> URL? { nil }
+    func markRead(conversationID: UUID, readThroughMessageID: UUID, accessToken: String) async throws {
+        try await markRead(conversationID: conversationID, accessToken: accessToken)
+    }
+
     func react(conversationID: UUID, messageID: UUID, emoji: String?, accessToken: String) async throws -> MessageReactionResult {
         throw MobileMessagingContractError.unavailable
     }
@@ -1622,6 +1639,34 @@ struct URLSessionMessagingAPI: MessagingAPI {
         )
     }
 
+
+    func sharedPostURL(_ postID: UUID) -> URL? {
+        client.baseURL.appendingPathComponent("Social/Posts").appendingPathComponent(postID.uuidString)
+    }
+
+    func sendShared(conversationID: UUID, body: String, sharedPostID: UUID, clientMessageID: UUID, accessToken: String) async throws -> ConversationMessage {
+        try await client.post("/api/v1/mobile/messaging/conversations/\(conversationID.uuidString)/messages",
+            body: SendMessageRequest(body: body, replyToMessageID: nil, clientMessageID: clientMessageID, sharedPostId: sharedPostID),
+            accessToken: accessToken, idempotencyKey: clientMessageID, headers: participantHeader, response: ConversationMessage.self)
+    }
+
+    func downloadAttachment(_ attachment: MessagingAttachment, accessToken: String) async throws -> URL {
+        guard attachment.canDownload else { throw MobileAPIError.invalidServerResponse }
+        let temporary = try await client.downloadFile("/api/v1/mobile/messaging/attachments/\(attachment.id.uuidString)",
+            accessToken: accessToken, headers: participantHeader)
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let filename = (attachment.originalFileName as NSString).lastPathComponent
+        let destination = directory.appendingPathComponent(filename.isEmpty ? "attachment" : filename)
+        try FileManager.default.moveItem(at: temporary, to: destination)
+        return destination
+    }
+
+    func markRead(conversationID: UUID, readThroughMessageID: UUID, accessToken: String) async throws {
+        try await client.post("/api/v1/mobile/messaging/conversations/\(conversationID.uuidString)/read?readThroughMessageId=\(readThroughMessageID.uuidString)",
+            body: EmptyMobileRequest(), accessToken: accessToken, headers: participantHeader)
+    }
+
     func send(
         conversationID: UUID,
         body: String,
@@ -1730,3 +1775,13 @@ func messageReceiptLabels(messages: [ConversationMessage], readers: [MessagingRe
 struct MessageReaction: Codable, Equatable, Sendable { let emoji: String; let count: Int; let reactedByCurrentActor: Bool }
 struct MessageReactionRequest: Encodable { let emoji: String }
 struct MessageReactionResult: Decodable { let messageId: UUID; let reactions: [MessageReaction] }
+
+struct MessagingSharedContent: Codable, Equatable, Sendable {
+    let sourcePostId: UUID
+    let status: String
+    let contentType: String?
+    let body: String?
+    let authorDisplayName: String?
+    let media: [MobileSocialMedia]
+    let url: String
+}

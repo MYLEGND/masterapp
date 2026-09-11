@@ -299,12 +299,13 @@ internal object FinancialPresentationOrder {
     val translation: MessageTranslation? = null,
     @SerialName("originalBody") val originalBody: String? = null,
     val reactions: List<MessageReaction> = emptyList(),
+    val sharedContent: MessagingSharedContent? = null,
 )
 @Serializable data class MessageReplyPreview(val id: String, val sender: MobileParticipant, val body: String, @SerialName("isDeleted") val isDeleted: Boolean)
 @Serializable data class VerificationReview(val id: String, @SerialName("requesterUserId") val requesterUserId: String, @SerialName("requesterParticipantType") val requesterParticipantType: String, val status: String, @SerialName("requestedUtc") val requestedUtc: String, @SerialName("canResolve") val canResolve: Boolean, @SerialName("resourceType") val resourceType: String)
 @Serializable data class MessageAttachment(val id: String, @SerialName("originalFileName") val originalFileName: String, @SerialName("contentType") val contentType: String, @SerialName("sizeBytes") val sizeBytes: Long, @SerialName("scanStatus") val scanStatus: String, @SerialName("createdUtc") val createdUtc: String, @SerialName("canDownload") val canDownload: Boolean)
 @Serializable data class MessageTranslation(@SerialName("originalLanguage") val originalLanguage: String, @SerialName("targetLanguage") val targetLanguage: String, val provider: String)
-@Serializable data class SendMessageRequest(val body: String, @SerialName("replyToMessageId") val replyToMessageId: String? = null, @SerialName("clientMessageId") val clientMessageId: String)
+@Serializable data class SendMessageRequest(val body: String, @SerialName("replyToMessageId") val replyToMessageId: String? = null, @SerialName("clientMessageId") val clientMessageId: String, @SerialName("sharedPostId") val sharedPostId: String? = null)
 @Serializable data class StartConversationRequest(@SerialName("targetUserId") val targetUserId: String, @SerialName("targetParticipantType") val targetParticipantType: String, @SerialName("initialMessageBody") val initialMessageBody: String? = null)
 @Serializable data class MessagingGroupParticipantRequest(@SerialName("userId") val userId: String, @SerialName("participantType") val participantType: String)
 @Serializable data class MessagingGroupImageRequest(@SerialName("contentType") val contentType: String, @SerialName("base64Content") val base64Content: String)
@@ -507,3 +508,9 @@ internal fun messageReceiptLabels(messages: List<ConversationMessage>, readers: 
 @Serializable data class MessageReaction(val emoji: String, val count: Int, val reactedByCurrentActor: Boolean)
 @Serializable data class MessageReactionRequest(val emoji: String)
 @Serializable data class MessageReactionResult(val messageId: String, val reactions: List<MessageReaction> = emptyList())
+
+@Serializable data class MessagingSharedContent(
+    val sourcePostId: String, val status: String,
+    val contentType: String? = null, val body: String? = null,
+    val authorDisplayName: String? = null, val media: List<SocialMedia> = emptyList(), val url: String,
+)

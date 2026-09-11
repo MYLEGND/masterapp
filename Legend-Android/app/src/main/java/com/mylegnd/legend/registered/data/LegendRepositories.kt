@@ -118,8 +118,8 @@ class MessagingRepository(private val client: LegendApiClient) {
     suspend fun conversation(role: String, id: String, beforeUtc: String? = null) = request {
         client.api.conversation(role, id, beforeUtc).legendBody()
     }
-    suspend fun send(role: String, id: String, text: String, replyToMessageId: String? = null, clientMessageId: String) = request {
-        client.api.sendMessage(role, id, SendMessageRequest(text, replyToMessageId, clientMessageId)).legendBody()
+    suspend fun send(role: String, id: String, text: String, replyToMessageId: String? = null, clientMessageId: String, sharedPostId: String? = null) = request {
+        client.api.sendMessage(role, id, SendMessageRequest(text, replyToMessageId, clientMessageId, sharedPostId)).legendBody()
     }
     suspend fun react(role: String, conversationId: String, messageId: String, emoji: String?) = request {
         if (emoji == null) client.api.removeMessageReaction(role, conversationId, messageId).legendBody()
@@ -140,7 +140,7 @@ class MessagingRepository(private val client: LegendApiClient) {
     suspend fun setGroupCollaborator(role: String, id: String, participant: MobileParticipant, isManager: Boolean) = request { client.api.setGroupCollaborator(role, id, MessagingGroupCollaboratorRequest(participant.identity.userId, participant.identity.participantType, isManager)).legendBody() }
     suspend fun deleteGroup(role: String, id: String) = request { client.api.deleteMessagingGroup(role, id).legendBody() }
     suspend fun setGroupPromotion(role: String, id: String, isPromoted: Boolean) = request { client.api.setGroupPromotion(role, id, MessagingGroupPromotionRequest(isPromoted)).legendBody() }
-    suspend fun markRead(role: String, id: String) = request { client.api.markRead(role, id).legendBody() }
+    suspend fun markRead(role: String, id: String, readThroughMessageId: String? = null) = request { client.api.markRead(role, id, readThroughMessageId).legendBody() }
     suspend fun setPinned(role: String, id: String, isPinned: Boolean) = request {
         client.api.setConversationPinned(role, id, ConversationPinnedRequest(isPinned)).legendBody()
     }

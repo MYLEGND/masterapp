@@ -4,6 +4,47 @@ import XCTest
 
 @MainActor
 final class MobileSocialContractTests: XCTestCase {
+    func testSourceOnlyShareRequestCarriesIdentityWithoutInventingCaption() throws {
+        let postID = UUID()
+        let clientID = UUID()
+        let request = SendMessageRequest(body: "", replyToMessageID: nil, clientMessageID: clientID, sharedPostId: postID)
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder.mobile.encode(request)) as? [String: Any])
+        XCTAssertEqual(object["body"] as? String, "")
+        XCTAssertEqual(object["sharedPostId"] as? String, postID.uuidString)
+        XCTAssertEqual(object["clientMessageId"] as? String, clientID.uuidString)
+        XCTAssertNil(object["mediaUrl"])
+    }
+
+    func testSharedCardRetainsCaptionlessImageAndUnavailableState() throws {
+        let source = UUID(), media = UUID()
+        let json = """
+        {"sourcePostId":"\(source)","status":"available","contentType":"Post","body":"","authorDisplayName":"Member",
+        "media":[{"id":"\(media)","displayOrder":0,"mediaKind":"Image","mimeType":"image/jpeg","fileSizeBytes":12,
+        "processingState":"Ready","hasPreviewImage":false}],"url":"/Social/Posts/\(source)"}
+        """
+        let card = try JSONDecoder().decode(MessagingSharedContent.self, from: Data(json.utf8))
+        XCTAssertEqual(card.sourcePostId, source)
+        XCTAssertEqual(card.body, "")
+        XCTAssertEqual(card.media.map(\.id), [media])
+        let unavailable = """
+        {"sourcePostId":"\(source)","status":"unavailable","media":[],"url":"/Social/Posts/\(source)"}
+        """
+        let revoked = try JSONDecoder().decode(MessagingSharedContent.self, from: Data(unavailable.utf8))
+        XCTAssertNil(revoked.body)
+        XCTAssertNil(revoked.authorDisplayName)
+        XCTAssertTrue(revoked.media.isEmpty)
+    }
+
+    func testExternalShareUsesCanonicalResolvableURLWithoutCredentials() throws {
+        let post = UUID()
+        let api = URLSessionMessagingAPI(client: MobileHTTPClient(baseURL: URL(string: "https://example.test")!), participantType: .agent)
+        let url = try XCTUnwrap(api.sharedPostURL(post))
+        XCTAssertEqual(url.path, "/Social/Posts/\(post.uuidString)")
+        XCTAssertNil(url.query)
+        XCTAssertNil(url.user)
+        XCTAssertNil(url.password)
+    }
+
     func testCreatorImageRendererFlattensAppearanceAndStoryTextIntoPublishedJPEG() throws {
         let source = UIGraphicsImageRenderer(size: CGSize(width: 80, height: 80)).jpegData(
             withCompressionQuality: 1) { context in
