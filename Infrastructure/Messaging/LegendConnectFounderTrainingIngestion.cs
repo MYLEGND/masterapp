@@ -507,9 +507,35 @@ internal sealed class LegendConnectFounderTrainingIngestionAuthority
         var sources = await _db.Set<LegendLanguageTextUnit>()
             .Where(item => legacySourceIds.Contains(item.Id))
             .ToListAsync(cancellationToken);
+        // The same bounded legacy batch is revisited to recover interrupted
+        // retirement. Match its exact source language/hash identities in SQL
+        // once per dependent table, rather than scanning each table for every
+        // source on every worker tick. Entity projections remain tracked and
+        // the SQL join retains the database's existing equality semantics.
+        var candidateRows = await (
+            from candidate in _db.Set<LegendCorpusCandidate>()
+            join source in _db.Set<LegendLanguageTextUnit>()
+                on new { Language = candidate.SourceLanguageCode, Hash = candidate.SourceTextHash }
+                equals new { Language = source.LanguageCode, Hash = source.NormalizedHash }
+            where legacySourceIds.Contains(source.Id) &&
+                (candidate.IsApproved || candidate.ProcessingState != "Superseded" ||
+                 candidate.FailureCode != "legacy_multi_unit_reconciled")
+            select new { SourceId = source.Id, Candidate = candidate }
+        ).ToListAsync(cancellationToken);
+        var learningRows = await (
+            from learningEvent in _db.Set<LegendTranslationLearningEvent>()
+            join source in _db.Set<LegendLanguageTextUnit>()
+                on new { Language = learningEvent.SourceLanguageCode, Hash = learningEvent.SourceTextHash }
+                equals new { Language = source.LanguageCode, Hash = source.NormalizedHash }
+            where legacySourceIds.Contains(source.Id) && learningEvent.ProcessingState != "Superseded"
+            select new { SourceId = source.Id, LearningEvent = learningEvent }
+        ).ToListAsync(cancellationToken);
+        var candidatesBySource = candidateRows.ToLookup(item => item.SourceId, item => item.Candidate);
+        var learningBySource = learningRows.ToLookup(item => item.SourceId, item => item.LearningEvent);
         var reconciled = 0;
         foreach (var source in sources)
-            reconciled += await DecommissionLegacySourceAsync(source, cancellationToken);
+            reconciled += await DecommissionLegacySourceAsync(source, cancellationToken,
+                candidatesBySource[source.Id].ToList(), learningBySource[source.Id].ToList());
         return reconciled;
     }
 
@@ -806,7 +832,9 @@ internal sealed class LegendConnectFounderTrainingIngestionAuthority
 
     private async Task<int> DecommissionLegacySourceAsync(
         LegendLanguageTextUnit source,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        IReadOnlyList<LegendCorpusCandidate>? observedCandidates = null,
+        IReadOnlyList<LegendTranslationLearningEvent>? observedLearningEvents = null)
     {
         var now = DateTime.UtcNow;
         var alignments = await _db.Set<LegendTranslationAlignment>()
@@ -835,13 +863,13 @@ internal sealed class LegendConnectFounderTrainingIngestionAuthority
                 (item.SourceTextUnitId == source.Id || item.RelatedTextUnitId == source.Id ||
                  retiredTargetIds.Contains(item.SourceTextUnitId) || retiredTargetIds.Contains(item.RelatedTextUnitId)))
             .ToListAsync(cancellationToken);
-        var candidates = await _db.Set<LegendCorpusCandidate>()
+        var candidates = observedCandidates ?? await _db.Set<LegendCorpusCandidate>()
             .Where(item => item.SourceLanguageCode == source.LanguageCode &&
                 item.SourceTextHash == source.NormalizedHash &&
                 (item.IsApproved || item.ProcessingState != "Superseded" ||
                  item.FailureCode != "legacy_multi_unit_reconciled"))
             .ToListAsync(cancellationToken);
-        var learningEvents = await _db.Set<LegendTranslationLearningEvent>()
+        var learningEvents = observedLearningEvents ?? await _db.Set<LegendTranslationLearningEvent>()
             .Where(item => item.SourceLanguageCode == source.LanguageCode &&
                 item.SourceTextHash == source.NormalizedHash && item.ProcessingState != "Superseded")
             .ToListAsync(cancellationToken);
