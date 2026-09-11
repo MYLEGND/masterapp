@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "authorization": "Repository owner explicitly authorized publishing candidate e218d972 to public MYLEGND/masterapp and refreshing its one-time release baseline on 2026-09-11, retaining exactly the same nine native failures and four skipped tests. No new failures, skipped identities, weakened gates, or autonomous-readiness claims are authorized.",
-  "sourceCommit": "e218d972219f3a5b4294cbc61228d1bf75cbf8bf",
+  "authorization": "Repository owner authorized publishing the chat release and retaining exactly the existing nine native failures and four skipped tests on 2026-09-11, and directed repair of the failed release. This corrected candidate adds the missing notification self-label to the shared catalog. No new failure, skip, weakened gate, or autonomous-readiness claim is authorized.",
+  "sourceCommit": "5a49ef0fa8e342c296afdc579010a0b35e083d07",
   "productionBaseCommit": "5fd2fdafc69d77e5c43b6142c2e12b682ff20808",
   "allowedPolicyPaths": [
     ".github/workflows/agentportal-production-deploy.yml",
