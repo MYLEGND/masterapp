@@ -1999,6 +1999,13 @@ private final class OwnedDetailMessagingAPI: MessagingAPI, @unchecked Sendable {
     private let sender = MessagingParticipant(identity: try! LogicalParticipantIdentity(userID: "other", participantType: .client),
         profileID: "profile", displayName: "Other", roleLabel: nil, avatar: nil)
 
+    func conversations(accessToken: String) async throws -> [ConversationSummary] { [] }
+    func recipients(search: String?, scope: MessagingRecipientScope?, accessToken: String) async throws -> [MessagingRecipient] { [] }
+    func start(recipient: MessagingRecipient, accessToken: String) async throws -> ConversationDetail { throw MobileMessagingContractError.unavailable }
+    func messages(conversationID: UUID, accessToken: String) async throws -> [ConversationMessage] { throw MobileMessagingContractError.unavailable }
+    func send(conversationID: UUID, body: String, replyToMessageID: UUID?, clientMessageID: UUID, accessToken: String) async throws -> ConversationMessage { throw MobileMessagingContractError.unavailable }
+    func upload(conversationID: UUID, messageID: UUID, attachment: MessagingAttachmentDraft, accessToken: String) async throws -> MessagingAttachment { throw MobileMessagingContractError.unavailable }
+
     func conversation(id: UUID, accessToken: String) async throws -> ConversationDetail {
         calls[id, default: 0] += 1
         return await withCheckedContinuation { pending[id, default: []].append($0) }
