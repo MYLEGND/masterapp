@@ -15,6 +15,31 @@ namespace AgentPortal.Tests;
 public sealed partial class MessagingServiceTests
 {
     [Fact]
+    public async Task DirectCalls_SameOwnerProfilesKeepRecipientReceiptSeparateFromCaller()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        await SeedAgentAndClientAsync(db, true, false);
+        var client = await db.ClientProfiles.SingleAsync(p => p.ClientUserId == "client-1");
+        client.ExternalIdentityObjectId = "agent-1";
+        await db.SaveChangesAsync();
+        var service = CreateService(db);
+        var conversation = (await service.StartConversationAsync(new StartMessagingConversationCommand(
+            new("agent-1", "Agent"), "client-1", "Client", InitialMessageBody: "Call"))).Conversation!;
+        var id = Guid.NewGuid();
+        var invite = await service.ExecuteAsync("agent-1", "Agent", new("invite", Guid.NewGuid(), id, conversation.Id), default);
+        Assert.True(invite.Succeeded, invite.Error);
+        Assert.Contains("agent-1", invite.Call!.CalleeUserIds!);
+        var rejected = await service.ExecuteAsync("agent-1", "Agent", new("received", Guid.NewGuid(), id), default);
+        Assert.False(rejected.Succeeded);
+        Assert.Equal("Only the recipient can confirm call delivery.", rejected.Error);
+        var received = await service.ExecuteAsync("agent-1", "Client", new("received", Guid.NewGuid(), id), default);
+        Assert.True(received.Succeeded, received.Error);
+        Assert.NotNull(received.Call!.ReceivedUtc);
+        Assert.Null(received.Call.CalleeDeviceId);
+        Assert.True((await service.ExecuteAsync("agent-1", "Client", new("accept", Guid.NewGuid(), id), default)).Succeeded);
+    }
+
+    [Fact]
     public async Task DirectCalls_ReloadedTimestampsRemainUtcInStatusAndPushSnapshots()
     {
         await using var connection = new SqliteConnection("Data Source=:memory:");
