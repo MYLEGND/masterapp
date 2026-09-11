@@ -601,7 +601,19 @@ public sealed record MessagingMessageSummary(
     MessagingReplyPreview? Reply = null,
     MessagingVerificationReview? VerificationReview = null,
     MessagingTranslationPresentation? Translation = null,
-    string? OriginalBody = null);
+    string? OriginalBody = null)
+{
+    public IReadOnlyList<MessagingReactionSummary> Reactions { get; init; } = Array.Empty<MessagingReactionSummary>();
+}
+
+public sealed record MessagingReactionSummary(string Emoji, int Count, bool ReactedByCurrentActor);
+public sealed record MessagingReactionState(Guid MessageId, IReadOnlyList<MessagingReactionSummary> Reactions);
+public sealed record MessagingReactionResult(bool Succeeded, string? ErrorCode, string? ErrorMessage,
+    MessagingReactionState? Value)
+{
+    public static MessagingReactionResult Failure(string code, string message) => new(false, code, message, null);
+}
+public sealed record SetMessagingReactionRequest(string? Emoji);
 
 /// <summary>
 /// Presentation metadata for a server-cached derivative. The message body's

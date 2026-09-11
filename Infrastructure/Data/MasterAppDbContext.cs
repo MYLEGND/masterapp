@@ -99,6 +99,8 @@ public class MasterAppDbContext : DbContext
     public DbSet<MessagingAuditEntry> MessagingAuditEntries => Set<MessagingAuditEntry>();
     public DbSet<VerificationReviewRequest> VerificationReviewRequests => Set<VerificationReviewRequest>();
     public DbSet<ControlledResourceGrant> ControlledResourceGrants => Set<ControlledResourceGrant>();
+    public DbSet<MessageReaction> MessageReactions => Set<MessageReaction>();
+
     public DbSet<MessageTranslation> MessageTranslations => Set<MessageTranslation>();
     public DbSet<LegendLanguageDefinition> LegendLanguageDefinitions => Set<LegendLanguageDefinition>();
     public DbSet<LegendLanguagePair> LegendLanguagePairs => Set<LegendLanguagePair>();

@@ -611,9 +611,14 @@ internal sealed partial class MessagingService : IMessagingService
             conversation.ConversationType == MessagingConversationTypes.ClientAgent &&
             !await ConversationHasActiveClientMembershipAsync(conversation.Id, cancellationToken);
 
+        timing.Next("reactions_query");
+        var reactionSummaries = await ReactionSummariesAsync(actor, messageIds, cancellationToken);
         timing.Next("translation_presentation");
         var messageSummaries = messages
-            .Select(message => ToMessageSummary(message, attachments, reviews))
+            .Select(message => ToMessageSummary(message, attachments, reviews) with
+            {
+                Reactions = reactionSummaries.GetValueOrDefault(message.Id) ?? []
+            })
             .ToList();
         if (applyTranslation)
             messageSummaries = await ApplyTranslationPresentationAsync(

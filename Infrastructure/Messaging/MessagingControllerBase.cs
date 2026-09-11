@@ -40,6 +40,31 @@ public abstract class MessagingControllerBase : Controller
         return actor is null ? null : new MessagingActor(actor.Value.UserId, actor.Value.ParticipantType);
     }
 
+    [HttpPut("/Messaging/Conversations/{conversationId:guid}/Messages/{messageId:guid}/Reaction")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> SetMessageReaction(Guid conversationId, Guid messageId,
+        [FromBody] SetMessagingReactionRequest? request)
+    {
+        var actor = await ResolveMessagingActorAsync(HttpContext.RequestAborted);
+        if (actor == null) return Forbid();
+        if (string.IsNullOrEmpty(request?.Emoji))
+            return Failure("MESSAGING_REACTION_INVALID", "Choose one emoji reaction.");
+        var result = await _messagingService.SetMessageReactionAsync(actor, conversationId,
+            messageId, request.Emoji, HttpContext.RequestAborted);
+        return result.Succeeded ? Ok(result.Value) : Failure(result.ErrorCode, result.ErrorMessage);
+    }
+
+    [HttpDelete("/Messaging/Conversations/{conversationId:guid}/Messages/{messageId:guid}/Reaction")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> RemoveMessageReaction(Guid conversationId, Guid messageId)
+    {
+        var actor = await ResolveMessagingActorAsync(HttpContext.RequestAborted);
+        if (actor == null) return Forbid();
+        var result = await _messagingService.SetMessageReactionAsync(actor, conversationId,
+            messageId, null, HttpContext.RequestAborted);
+        return result.Succeeded ? Ok(result.Value) : Failure(result.ErrorCode, result.ErrorMessage);
+    }
+
     [HttpGet("/Messaging")]
     public async Task<IActionResult> Index(string? search, bool includeClosed = false)
     {

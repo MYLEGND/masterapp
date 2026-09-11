@@ -2,6 +2,10 @@ namespace Domain.Messaging;
 
 public interface IMessagingService
 {
+    Task<MessagingReactionResult> SetMessageReactionAsync(MessagingActor actor, Guid conversationId,
+        Guid messageId, string? emoji, CancellationToken cancellationToken = default) =>
+        Task.FromResult(MessagingReactionResult.Failure("MESSAGING_REACTION_UNAVAILABLE", "Message reactions are unavailable."));
+
     // Null means presentation is unavailable: delivery must remain pending.
     Task<string?> PrepareNotificationPresentationAsync(MessagingActor recipient, Guid notificationId,
         CancellationToken cancellationToken = default) => Task.FromResult<string?>(null);

@@ -37,6 +37,30 @@ public sealed class MobileMessagingController : MobileApiControllerBase
         _controlledResources = controlledResources;
     }
 
+    [HttpPut("messaging/conversations/{conversationId:guid}/messages/{messageId:guid}/reaction")]
+    public async Task<IActionResult> SetMessageReaction(Guid conversationId, Guid messageId,
+        [FromBody] SetMessagingReactionRequest? request, CancellationToken cancellationToken)
+    {
+        var resolved = await ResolveActorAsync(cancellationToken);
+        if (resolved.Error != null) return resolved.Error;
+        if (string.IsNullOrEmpty(request?.Emoji))
+            return MessagingFailure("MESSAGING_REACTION_INVALID", "Choose one emoji reaction.");
+        var result = await _messaging.SetMessageReactionAsync(resolved.Actor!.Actor,
+            conversationId, messageId, request.Emoji, cancellationToken);
+        return result.Succeeded ? Ok(result.Value) : MessagingFailure(result.ErrorCode, result.ErrorMessage);
+    }
+
+    [HttpDelete("messaging/conversations/{conversationId:guid}/messages/{messageId:guid}/reaction")]
+    public async Task<IActionResult> RemoveMessageReaction(Guid conversationId, Guid messageId,
+        CancellationToken cancellationToken)
+    {
+        var resolved = await ResolveActorAsync(cancellationToken);
+        if (resolved.Error != null) return resolved.Error;
+        var result = await _messaging.SetMessageReactionAsync(resolved.Actor!.Actor,
+            conversationId, messageId, null, cancellationToken);
+        return result.Succeeded ? Ok(result.Value) : MessagingFailure(result.ErrorCode, result.ErrorMessage);
+    }
+
     [HttpGet("session")]
     public async Task<IActionResult> Session(CancellationToken cancellationToken)
     {
@@ -1086,7 +1110,7 @@ public sealed class MobileMessagingController : MobileApiControllerBase
                 message.Translation.OriginalLanguage,
                 message.Translation.TargetLanguage,
                 message.Translation.Provider),
-        message.OriginalBody);
+        message.OriginalBody) { Reactions = message.Reactions };
 
     private static MobileAvatarDto? AvatarFor(
         MessagingParticipantSummary participant,
@@ -1280,7 +1304,10 @@ public sealed record MobileMessageDto(
     MobileReplyPreviewDto? Reply = null,
     MobileVerificationReviewDto? VerificationReview = null,
     MobileMessageTranslationDto? Translation = null,
-    string? OriginalBody = null);
+    string? OriginalBody = null)
+{
+    public IReadOnlyList<MessagingReactionSummary> Reactions { get; init; } = Array.Empty<MessagingReactionSummary>();
+}
 
 public sealed record MobileMessageTranslationDto(
     string OriginalLanguage,
