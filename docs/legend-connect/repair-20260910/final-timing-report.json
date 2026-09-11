@@ -1,21 +1,10 @@
 {
-  "tested_source": "5798e251f59146e6c79cd28d7f7d69efa779d8a7",
-  "environment": "Controlled local in-memory frozen matrix rerun after final full regression",
-  "source_receipts": "heldout-5798e251-20260911-0614.jsonl",
-  "matrix_run": {
-    "passed": 15,
-    "failed": 9,
-    "skipped": 0,
-    "elapsed_seconds": 22
-  },
-  "failures": [
+  "candidate": "5798e251f59146e6c79cd28d7f7d69efa779d8a7",
+  "environment": "Local controlled tests and guarded in-memory live-resource diagnostics, not authenticated production HTTP",
+  "native_stage_timings": [
     {
       "case": "native_capability:internal_data_uncertainty",
-      "reason": "meaning_graph_component_unknown",
-      "evidence_count": 0,
-      "provider_clients": 0,
-      "provider_calls": 0,
-      "observed_stages": [
+      "stages": [
         {
           "Event": "stage_completed",
           "AuthorityMethod": "LegendConnectCurriculumService.ReadReusableMeaningCandidatesAsync",
@@ -72,17 +61,11 @@
             "EvidenceCount": 0
           }
         }
-      ],
-      "downstream_capability": "not established after failed meaning prerequisite",
-      "disposition": "Frozen positive test remains failed; no answer or assertion changed"
+      ]
     },
     {
       "case": "native_capability:rewriting",
-      "reason": "meaning_graph_component_unknown",
-      "evidence_count": 0,
-      "provider_clients": 0,
-      "provider_calls": 0,
-      "observed_stages": [
+      "stages": [
         {
           "Event": "stage_completed",
           "AuthorityMethod": "LegendConnectCurriculumService.ReadReusableMeaningCandidatesAsync",
@@ -139,17 +122,11 @@
             "EvidenceCount": 0
           }
         }
-      ],
-      "downstream_capability": "not established after failed meaning prerequisite",
-      "disposition": "Frozen positive test remains failed; no answer or assertion changed"
+      ]
     },
     {
       "case": "native_capability:constrained_planning",
-      "reason": "meaning_graph_component_unknown",
-      "evidence_count": 0,
-      "provider_clients": 0,
-      "provider_calls": 0,
-      "observed_stages": [
+      "stages": [
         {
           "Event": "stage_completed",
           "AuthorityMethod": "LegendConnectCurriculumService.ReadReusableMeaningCandidatesAsync",
@@ -202,17 +179,11 @@
             "EvidenceCount": 0
           }
         }
-      ],
-      "downstream_capability": "not established after failed meaning prerequisite",
-      "disposition": "Frozen positive test remains failed; no answer or assertion changed"
+      ]
     },
     {
       "case": "native_capability:causal_diagnosis",
-      "reason": "meaning_graph_component_unknown",
-      "evidence_count": 0,
-      "provider_clients": 0,
-      "provider_calls": 0,
-      "observed_stages": [
+      "stages": [
         {
           "Event": "stage_completed",
           "AuthorityMethod": "LegendConnectCurriculumService.ReadReusableMeaningCandidatesAsync",
@@ -269,17 +240,11 @@
             "EvidenceCount": 0
           }
         }
-      ],
-      "downstream_capability": "not established after failed meaning prerequisite",
-      "disposition": "Frozen positive test remains failed; no answer or assertion changed"
+      ]
     },
     {
       "case": "native_capability:haitian_creole_conflict",
-      "reason": "meaning_graph_component_unknown",
-      "evidence_count": 0,
-      "provider_clients": 0,
-      "provider_calls": 0,
-      "observed_stages": [
+      "stages": [
         {
           "Event": "stage_completed",
           "AuthorityMethod": "LegendConnectCurriculumService.ReadReusableMeaningCandidatesAsync",
@@ -332,17 +297,11 @@
             "EvidenceCount": 0
           }
         }
-      ],
-      "downstream_capability": "not established after failed meaning prerequisite",
-      "disposition": "Frozen positive test remains failed; no answer or assertion changed"
+      ]
     },
     {
       "case": "native_capability:deduction",
-      "reason": "meaning_graph_component_unknown",
-      "evidence_count": 0,
-      "provider_clients": 0,
-      "provider_calls": 0,
-      "observed_stages": [
+      "stages": [
         {
           "Event": "stage_completed",
           "AuthorityMethod": "LegendConnectCurriculumService.ReadReusableMeaningCandidatesAsync",
@@ -395,17 +354,11 @@
             "EvidenceCount": 0
           }
         }
-      ],
-      "downstream_capability": "not established after failed meaning prerequisite",
-      "disposition": "Frozen positive test remains failed; no answer or assertion changed"
+      ]
     },
     {
       "case": "native_capability:arithmetic",
-      "reason": "semantic_transition_not_supported",
-      "evidence_count": 0,
-      "provider_clients": 0,
-      "provider_calls": 0,
-      "observed_stages": [
+      "stages": [
         {
           "Event": "stage_completed",
           "AuthorityMethod": "LegendConnectCurriculumService.ReadReusableMeaningCandidatesAsync",
@@ -462,17 +415,11 @@
             "EvidenceCount": 0
           }
         }
-      ],
-      "downstream_capability": "not established after failed meaning prerequisite",
-      "disposition": "Frozen positive test remains failed; no answer or assertion changed"
+      ]
     },
     {
       "case": "native_capability:tool_planning",
-      "reason": "meaning_graph_component_unknown",
-      "evidence_count": 0,
-      "provider_clients": 0,
-      "provider_calls": 0,
-      "observed_stages": [
+      "stages": [
         {
           "Event": "stage_completed",
           "AuthorityMethod": "LegendConnectCurriculumService.ReadReusableMeaningCandidatesAsync",
@@ -525,17 +472,11 @@
             "EvidenceCount": 0
           }
         }
-      ],
-      "downstream_capability": "not established after failed meaning prerequisite",
-      "disposition": "Frozen positive test remains failed; no answer or assertion changed"
+      ]
     },
     {
       "case": "native_capability:same_conversation_memory_turn_one",
-      "reason": "semantic_transition_not_supported",
-      "evidence_count": 0,
-      "provider_clients": 0,
-      "provider_calls": 0,
-      "observed_stages": [
+      "stages": [
         {
           "Event": "stage_completed",
           "AuthorityMethod": "LegendConnectCurriculumService.ReadReusableMeaningCandidatesAsync",
@@ -592,10 +533,69 @@
             "EvidenceCount": 0
           }
         }
-      ],
-      "downstream_capability": "not established after failed meaning prerequisite",
-      "disposition": "Frozen positive test remains failed; no answer or assertion changed"
+      ]
     }
   ],
-  "interpretation": "Seven requests lack a composed governed meaning graph; arithmetic and the first memory turn lack a supported transition. No external providers were constructed or called for these native-only rows. Independent composition progress does not substitute for these acceptance cases."
+  "resource_stages": {
+    "final_azure": [
+      {
+        "Stage": "native_only_policy",
+        "Outcome": "UNAVAILABLE",
+        "Reason": "external_provider_forbidden_by_native_only_policy",
+        "FailureType": null,
+        "ElapsedMilliseconds": 1.7592
+      },
+      {
+        "Stage": "provider_translation",
+        "Outcome": "SUCCEEDED",
+        "Reason": null,
+        "FailureType": null,
+        "ElapsedMilliseconds": 563.2537
+      }
+    ],
+    "final_research": [
+      {
+        "Stage": "native_only_policy",
+        "Outcome": "RESEARCH_NOT_AUTHORIZED",
+        "Reason": "native_only_external_research_forbidden",
+        "FailureType": null,
+        "ElapsedMilliseconds": 0.371
+      },
+      {
+        "Stage": "research_policy",
+        "Outcome": "RESEARCH_REQUIRED",
+        "Reason": "named_external_source_requires_research",
+        "FailureType": null,
+        "ElapsedMilliseconds": 0.525
+      },
+      {
+        "Stage": "native_only_execution",
+        "Outcome": "Failure",
+        "Reason": "native_only_external_research_forbidden",
+        "FailureType": null,
+        "ElapsedMilliseconds": 6.1545
+      },
+      {
+        "Stage": "governed_research",
+        "Outcome": "InsufficientEvidence",
+        "Reason": "research_evidence_admissibility_failed",
+        "FailureType": null,
+        "ElapsedMilliseconds": 28782.1401
+      },
+      {
+        "Stage": "local_observability",
+        "Outcome": "COMPLETED",
+        "Reason": null,
+        "FailureType": null,
+        "ElapsedMilliseconds": 34.5111
+      }
+    ]
+  },
+  "research_components_ms": {
+    "SearchLatencyMilliseconds": 25697,
+    "RetrievalLatencyMilliseconds": 3061,
+    "ReasoningLatencyMilliseconds": 13
+  },
+  "completed_founder_http_latency_measured": false,
+  "performance_gate": "open; stage durations and suite duration are not completed-response latency proof"
 }

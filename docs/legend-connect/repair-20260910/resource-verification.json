@@ -425,5 +425,293 @@
     "StartedUtc": "2026-09-11T05:36:05.151311Z",
     "CompletedUtc": "2026-09-11T05:36:39.278327Z",
     "ElapsedMilliseconds": 34126.7476
+  },
+  "final_candidate": "5798e251f59146e6c79cd28d7f7d69efa779d8a7",
+  "final_azure": {
+    "CandidateSha": "5798e251f59146e6c79cd28d7f7d69efa779d8a7",
+    "RunIdentity": "local:resource:b9387e79a3c048bab5c17f68c3742d7e",
+    "Authority": "NonAuthoritativeResourceBoundaryDiagnostic",
+    "Environment": "LocalInMemoryObservabilityWithLiveProvider",
+    "Resource": "azure",
+    "Status": "OBSERVED",
+    "Reason": "resource_boundary_observed_not_production_data_proof",
+    "CredentialConfigured": true,
+    "EndpointConfigured": true,
+    "Stage": "provider_translation",
+    "Stages": [
+      {
+        "Stage": "native_only_policy",
+        "Outcome": "UNAVAILABLE",
+        "Reason": "external_provider_forbidden_by_native_only_policy",
+        "FailureType": null,
+        "ElapsedMilliseconds": 1.7592
+      },
+      {
+        "Stage": "provider_translation",
+        "Outcome": "SUCCEEDED",
+        "Reason": null,
+        "FailureType": null,
+        "ElapsedMilliseconds": 563.2537
+      }
+    ],
+    "HttpCallCount": 1,
+    "HttpCalls": [
+      {
+        "Client": "AzureTranslator",
+        "StatusCode": 200,
+        "ElapsedMilliseconds": 543.6691
+      }
+    ],
+    "HttpCallsDropped": 0,
+    "Outcome": {
+      "Policy": "ProviderEnabled",
+      "NativeOnlyReason": "external_provider_forbidden_by_native_only_policy",
+      "Succeeded": true,
+      "Provider": "AzureTranslator",
+      "ErrorCode": null,
+      "OutputPresent": true,
+      "Provenance": "ProviderDerived",
+      "Serving": "NonServing",
+      "Canonical": "NonCanonical"
+    },
+    "CanonicalWriteAttempts": 0,
+    "LocalObservabilityWrites": 0,
+    "SaveChangesAttempts": 0,
+    "StartedUtc": "2026-09-11T06:04:39.673631Z",
+    "CompletedUtc": "2026-09-11T06:04:41.073099Z",
+    "ElapsedMilliseconds": 1399.4582
+  },
+  "final_research": {
+    "CandidateSha": "5798e251f59146e6c79cd28d7f7d69efa779d8a7",
+    "RunIdentity": "local:resource:b9387e79a3c048bab5c17f68c3742d7e",
+    "Authority": "NonAuthoritativeResourceBoundaryDiagnostic",
+    "Environment": "LocalInMemoryObservabilityWithLiveProvider",
+    "Resource": "research",
+    "Status": "OBSERVED",
+    "Reason": "resource_boundary_observed_not_production_data_proof",
+    "CredentialConfigured": true,
+    "EndpointConfigured": true,
+    "Stage": "local_observability",
+    "Stages": [
+      {
+        "Stage": "native_only_policy",
+        "Outcome": "RESEARCH_NOT_AUTHORIZED",
+        "Reason": "native_only_external_research_forbidden",
+        "FailureType": null,
+        "ElapsedMilliseconds": 0.371
+      },
+      {
+        "Stage": "research_policy",
+        "Outcome": "RESEARCH_REQUIRED",
+        "Reason": "named_external_source_requires_research",
+        "FailureType": null,
+        "ElapsedMilliseconds": 0.525
+      },
+      {
+        "Stage": "native_only_execution",
+        "Outcome": "Failure",
+        "Reason": "native_only_external_research_forbidden",
+        "FailureType": null,
+        "ElapsedMilliseconds": 6.1545
+      },
+      {
+        "Stage": "governed_research",
+        "Outcome": "InsufficientEvidence",
+        "Reason": "research_evidence_admissibility_failed",
+        "FailureType": null,
+        "ElapsedMilliseconds": 28782.1401
+      },
+      {
+        "Stage": "local_observability",
+        "Outcome": "COMPLETED",
+        "Reason": null,
+        "FailureType": null,
+        "ElapsedMilliseconds": 34.5111
+      }
+    ],
+    "HttpCallCount": 11,
+    "HttpCalls": [
+      {
+        "Client": "LegendInternetResearchSearch",
+        "StatusCode": 200,
+        "ElapsedMilliseconds": 25592.6903
+      },
+      {
+        "Client": "LegendResearchPageRetrieval",
+        "StatusCode": 200,
+        "ElapsedMilliseconds": 252.2063
+      },
+      {
+        "Client": "LegendResearchPageRetrieval",
+        "StatusCode": 200,
+        "ElapsedMilliseconds": 153.6289
+      },
+      {
+        "Client": "LegendResearchPageRetrieval",
+        "StatusCode": 200,
+        "ElapsedMilliseconds": 803.3813
+      },
+      {
+        "Client": "LegendResearchPageRetrieval",
+        "StatusCode": 200,
+        "ElapsedMilliseconds": 152.792
+      },
+      {
+        "Client": "LegendResearchPageRetrieval",
+        "StatusCode": 200,
+        "ElapsedMilliseconds": 193.824
+      },
+      {
+        "Client": "LegendResearchPageRetrieval",
+        "StatusCode": 200,
+        "ElapsedMilliseconds": 604.2647
+      },
+      {
+        "Client": "LegendResearchPageRetrieval",
+        "StatusCode": 301,
+        "ElapsedMilliseconds": 86.3314
+      },
+      {
+        "Client": "LegendResearchPageRetrieval",
+        "StatusCode": 200,
+        "ElapsedMilliseconds": 173.9462
+      },
+      {
+        "Client": "LegendResearchPageRetrieval",
+        "StatusCode": 302,
+        "ElapsedMilliseconds": 188.0563
+      },
+      {
+        "Client": "LegendResearchPageRetrieval",
+        "StatusCode": 200,
+        "ElapsedMilliseconds": 335.822
+      }
+    ],
+    "HttpCallsDropped": 0,
+    "Outcome": {
+      "Policy": "ProviderEnabled",
+      "NativeOnlyReason": "native_only_external_research_forbidden",
+      "DecisionReason": "named_external_source_requires_research",
+      "Need": "NamedExternalDocumentOrSource",
+      "Outcome": "InsufficientEvidence",
+      "EvidenceOrigin": "UnresolvedEvidence",
+      "FailureReason": "research_evidence_admissibility_failed",
+      "EvidenceDiagnostics": {
+        "AdmissibleClaimCount": 0,
+        "IndependentSourceCount": 0,
+        "RequiredIndependentSourceCount": 1,
+        "CandidateCounts": {
+          "RawClaims": 1,
+          "RawContradictions": 0,
+          "AdmittedClaims": 1,
+          "AdmittedContradictions": 0,
+          "BoundClaims": 0,
+          "BoundContradictions": 0
+        },
+        "ClaimCount": 0,
+        "MaterialClaimCount": 0,
+        "ContradictionCount": 0,
+        "Admissibility": [],
+        "ClaimResolutions": [],
+        "Pages": [
+          {
+            "Succeeded": false,
+            "StatusCode": 200,
+            "RequestCount": 1,
+            "RedirectCount": 0,
+            "ReturnedBytes": 0,
+            "Reason": "internet_research_page_content_oversized"
+          },
+          {
+            "Succeeded": true,
+            "StatusCode": 200,
+            "RequestCount": 1,
+            "RedirectCount": 0,
+            "ReturnedBytes": 182314,
+            "Reason": "none"
+          },
+          {
+            "Succeeded": false,
+            "StatusCode": 200,
+            "RequestCount": 1,
+            "RedirectCount": 0,
+            "ReturnedBytes": 0,
+            "Reason": "internet_research_page_content_oversized"
+          },
+          {
+            "Succeeded": false,
+            "StatusCode": 200,
+            "RequestCount": 1,
+            "RedirectCount": 0,
+            "ReturnedBytes": 0,
+            "Reason": "internet_research_content_type_unsupported"
+          },
+          {
+            "Succeeded": false,
+            "StatusCode": 200,
+            "RequestCount": 1,
+            "RedirectCount": 0,
+            "ReturnedBytes": 0,
+            "Reason": "internet_research_page_content_oversized"
+          },
+          {
+            "Succeeded": false,
+            "StatusCode": 200,
+            "RequestCount": 1,
+            "RedirectCount": 0,
+            "ReturnedBytes": 0,
+            "Reason": "internet_research_page_content_oversized"
+          },
+          {
+            "Succeeded": false,
+            "StatusCode": 200,
+            "RequestCount": 2,
+            "RedirectCount": 1,
+            "ReturnedBytes": 0,
+            "Reason": "internet_research_content_type_unsupported"
+          },
+          {
+            "Succeeded": true,
+            "StatusCode": 200,
+            "RequestCount": 2,
+            "RedirectCount": 1,
+            "ReturnedBytes": 57553,
+            "Reason": "none"
+          }
+        ],
+        "CitationValidation": {
+          "Succeeded": true,
+          "MaterialClaimCount": 0,
+          "InlineCitationCount": 0,
+          "RejectionReasons": []
+        }
+      },
+      "SearchProvider": "OpenAIResponsesWebSearch",
+      "Provenance": "FounderAuthorizedGovernedInternetResearch",
+      "IsReadOnly": true,
+      "ZeroWrite": true,
+      "QueryReceipts": 1,
+      "PageReceipts": 8,
+      "Documents": 2,
+      "Citations": 2,
+      "SearchLatencyMilliseconds": 25697,
+      "RetrievalLatencyMilliseconds": 3061,
+      "ReasoningLatencyMilliseconds": 13,
+      "Serving": "NonServing",
+      "Canonical": "NonCanonical"
+    },
+    "CanonicalWriteAttempts": 0,
+    "LocalObservabilityWrites": 6,
+    "SaveChangesAttempts": 6,
+    "StartedUtc": "2026-09-11T06:04:41.094917Z",
+    "CompletedUtc": "2026-09-11T06:05:09.961308Z",
+    "ElapsedMilliseconds": 28866.1572
+  },
+  "final_resource_boundary_results": {
+    "executed": 4,
+    "passed": 4,
+    "failed": 0,
+    "skipped": 0,
+    "answer_correctness": "Not established: research returned InsufficientEvidence, with raw/admitted/bound claim counts 1/1/0."
   }
 }

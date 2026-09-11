@@ -12,4 +12,6 @@ Current graph revalidation adds three bounded batched queries only for computed 
 
 The SQL diagnostic amendment recognizes only the three exact static query tags and adds attribution regression cases. It changes no SELECT-only permission rule, result requirement, capability assertion, threshold or release gate. New SQLite execution coverage checks actual relational translation, bounded query execution and withdrawal; this is not Azure execution proof.
 
-Verification is pending the combined candidate build and focused/full runs. Earlier red reproductions are preserved under `/private/tmp/legend-composition-preservation-ae4bc697` and must not be relabeled as passes.
+Combined verification is recorded in final-verification.json. Earlier red reproductions are preserved under `/private/tmp/legend-composition-preservation-ae4bc697` and must not be relabeled as passes.
+
+At `21213eaf`, all 154 focused cases passed, including the complete two-step native reply, copied-pair rejection, evidence withdrawal and actual bounded SQLite execution. At final source `5798e251`, the full suite reports 2,350 runner passes, nine unchanged capability failures and four skipped facts. Two resource facts passed separately; two SQL facts remain unexecuted for this candidate. Twenty-four existing gated runner passes have no live-data credit. This repair does not establish general prose understanding or release readiness.
