@@ -20,66 +20,99 @@ internal sealed partial class MessagingService
             (emoji != null && !IsSupportedReactionEmoji(emoji)))
             return MessagingReactionResult.Failure("MESSAGING_REACTION_INVALID", "Choose one supported emoji reaction.");
 
-        // Serialize target eligibility and the actor's set/remove on relational
-        // stores. The composite primary key is the final duplicate boundary.
-        await using var transaction = _db.Database.IsRelational()
-            ? await _db.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken)
-            : null;
-        var member = await FindAuthorizedParticipantAsync(actor, conversationId, cancellationToken);
-        if (member == null)
-            return MessagingReactionResult.Failure("MESSAGING_CONVERSATION_NOT_FOUND", "The conversation is unavailable.");
-        var message = await _db.InternalMessages.AsNoTracking()
-            .Where(x => x.Id == messageId && x.ConversationId == conversationId && !x.IsDeleted)
-            .Select(x => new { x.Conversation.IsClosed, x.Conversation.ConversationType })
-            .SingleOrDefaultAsync(cancellationToken);
-        if (message == null)
-            return MessagingReactionResult.Failure("MESSAGING_MESSAGE_NOT_FOUND", "The message is unavailable.");
-        if (message.IsClosed)
-            return MessagingReactionResult.Failure("MESSAGING_CONVERSATION_CLOSED", "Closed conversations cannot receive reactions.");
-        if (!await CanSendWithinCommunitySafetyAsync(actor, conversationId, cancellationToken))
-            return MessagingReactionResult.Failure("MESSAGING_BLOCKED_BY_COMMUNITY_SAFETY", "A community block prevents reactions in this conversation.");
-        if (message.ConversationType == MessagingConversationTypes.ClientAgent &&
-            !await ConversationHasActiveClientMembershipAsync(conversationId, cancellationToken))
-            return MessagingReactionResult.Failure("MESSAGING_MEMBERSHIP_INACTIVE", "This membership is inactive.");
-
-        var profileId = await ReactionActorProfileIdAsync(actor, cancellationToken);
-        if (profileId == null)
-            return MessagingReactionResult.Failure("MESSAGING_ACTOR_INVALID", "The messaging identity is unavailable.");
-        var existing = await _db.MessageReactions.SingleOrDefaultAsync(x =>
-            x.InternalMessageId == messageId && x.ActorProfileId == profileId.Value &&
-            x.ParticipantType == actor.ParticipantType, cancellationToken);
-        var changed = existing?.Emoji != emoji;
-        if (changed)
+        var writeAttempted = false;
+        MessagingReactionResult result;
+        try
         {
-            if (emoji == null)
-                _db.MessageReactions.Remove(existing!);
-            else if (existing == null)
-                _db.MessageReactions.Add(new MessageReaction
+            result = await _db.Database.CreateExecutionStrategy().ExecuteAsync(async () =>
+            {
+                // Capture only this attempt's additions. A retry must not reuse
+                // a reaction/audit accepted by EF but rolled back by the database,
+                // nor clear unrelated work from this scoped context.
+                var previouslyTracked = _db.ChangeTracker.Entries().Select(x => x.Entity).ToHashSet();
+                try
                 {
-                    InternalMessageId = messageId, ActorProfileId = profileId.Value,
-                    ParticipantType = actor.ParticipantType, Emoji = emoji, UpdatedUtc = DateTime.UtcNow
-                });
-            else
+                    await using var transaction = _db.Database.IsRelational()
+                        ? await _db.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken)
+                        : null;
+                    var member = await FindAuthorizedParticipantAsync(actor, conversationId, cancellationToken);
+                    if (member == null)
+                        return MessagingReactionResult.Failure("MESSAGING_CONVERSATION_NOT_FOUND", "The conversation is unavailable.");
+                    var message = await _db.InternalMessages.AsNoTracking()
+                        .Where(x => x.Id == messageId && x.ConversationId == conversationId && !x.IsDeleted)
+                        .Select(x => new { x.Conversation.IsClosed, x.Conversation.ConversationType })
+                        .SingleOrDefaultAsync(cancellationToken);
+                    if (message == null)
+                        return MessagingReactionResult.Failure("MESSAGING_MESSAGE_NOT_FOUND", "The message is unavailable.");
+                    if (message.IsClosed)
+                        return MessagingReactionResult.Failure("MESSAGING_CONVERSATION_CLOSED", "Closed conversations cannot receive reactions.");
+                    if (!await CanSendWithinCommunitySafetyAsync(actor, conversationId, cancellationToken))
+                        return MessagingReactionResult.Failure("MESSAGING_BLOCKED_BY_COMMUNITY_SAFETY", "A community block prevents reactions in this conversation.");
+                    if (message.ConversationType == MessagingConversationTypes.ClientAgent &&
+                        !await ConversationHasActiveClientMembershipAsync(conversationId, cancellationToken))
+                        return MessagingReactionResult.Failure("MESSAGING_MEMBERSHIP_INACTIVE", "This membership is inactive.");
+
+                    var profileId = await ReactionActorProfileIdAsync(actor, cancellationToken);
+                    if (profileId == null)
+                        return MessagingReactionResult.Failure("MESSAGING_ACTOR_INVALID", "The messaging identity is unavailable.");
+                    var existing = await _db.MessageReactions.SingleOrDefaultAsync(x =>
+                        x.InternalMessageId == messageId && x.ActorProfileId == profileId.Value &&
+                        x.ParticipantType == actor.ParticipantType, cancellationToken);
+                    var changed = existing?.Emoji != emoji;
+                    if (changed)
+                    {
+                        if (emoji == null)
+                            _db.MessageReactions.Remove(existing!);
+                        else if (existing == null)
+                            _db.MessageReactions.Add(new MessageReaction
+                            {
+                                InternalMessageId = messageId, ActorProfileId = profileId.Value,
+                                ParticipantType = actor.ParticipantType, Emoji = emoji, UpdatedUtc = DateTime.UtcNow
+                            });
+                        else
+                        {
+                            existing.Emoji = emoji;
+                            existing.UpdatedUtc = DateTime.UtcNow;
+                        }
+                        AddAudit(actor.UserId, "MessageReactionChanged", conversationId, messageId, null, null, DateTime.UtcNow);
+                        writeAttempted = true;
+                        await _db.SaveChangesAsync(cancellationToken);
+                    }
+
+                    // Read the canonical acknowledgment inside the transaction.
+                    // There is no database read that can fail after commit.
+                    var summaries = await ReactionSummariesAsync(actor, [messageId], cancellationToken, profileId);
+                    var acknowledgment = new MessagingReactionResult(true, null, null,
+                        new MessagingReactionState(messageId, summaries.GetValueOrDefault(messageId) ?? []));
+                    if (transaction != null) await transaction.CommitAsync(cancellationToken);
+                    return acknowledgment;
+                }
+                catch
+                {
+                    foreach (var entry in _db.ChangeTracker.Entries().ToArray())
+                        if (!previouslyTracked.Contains(entry.Entity) ||
+                            entry.Entity is MessageReaction reaction && reaction.InternalMessageId == messageId)
+                            entry.State = EntityState.Detached;
+                    throw;
+                }
+            });
+        }
+        catch (DbUpdateException)
+        {
+            _logger.LogWarning("A concurrent or failed message reaction write could not be committed.");
+            return MessagingReactionResult.Failure("MESSAGING_REACTION_SAVE_FAILED", "The reaction could not be saved. Please retry.");
+        }
+        // An uncertain commit may be retried as a no-op. Still refresh after the
+        // strategy confirms the requested state; never audit that no-op again.
+        if (result.Succeeded && writeAttempted)
+        {
+            try { await PublishConversationRefreshAsync(conversationId, cancellationToken); }
+            catch (OperationCanceledException)
             {
-                existing.Emoji = emoji;
-                existing.UpdatedUtc = DateTime.UtcNow;
-            }
-            AddAudit(actor.UserId, "MessageReactionChanged", conversationId, messageId, null, null, DateTime.UtcNow);
-            try
-            {
-                await _db.SaveChangesAsync(cancellationToken);
-            }
-            catch (DbUpdateException)
-            {
-                _logger.LogWarning("A concurrent or failed message reaction write could not be committed.");
-                return MessagingReactionResult.Failure("MESSAGING_REACTION_SAVE_FAILED", "The reaction could not be saved. Please retry.");
+                _logger.LogDebug("Reaction committed; conversation refresh was cancelled.");
             }
         }
-        if (transaction != null) await transaction.CommitAsync(cancellationToken);
-        if (changed) await PublishConversationRefreshAsync(conversationId, cancellationToken);
-        var summaries = await ReactionSummariesAsync(actor, [messageId], cancellationToken, profileId);
-        return new MessagingReactionResult(true, null, null,
-            new MessagingReactionState(messageId, summaries.GetValueOrDefault(messageId) ?? []));
+        return result;
     }
 
     private async Task<Guid?> ReactionActorProfileIdAsync(MessagingActor actor, CancellationToken ct)

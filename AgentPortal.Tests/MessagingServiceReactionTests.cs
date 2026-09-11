@@ -12,6 +12,10 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
+using Microsoft.EntityFrameworkCore.Storage;
+using System.Data.Common;
+using System.Threading;
 using Xunit;
 
 namespace AgentPortal.Tests;
@@ -79,8 +83,10 @@ public sealed partial class MessagingServiceTests
         Assert.Equal(auditCount, await db.MessagingAuditEntries.CountAsync());
     }
 
-    [Fact]
-    public async Task Reactions_PublishCommittedChangeOnlyAndExcludeOutsidersFromRefresh()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Reactions_PublishCommittedChangeOnlyAndExcludeOutsidersFromRefresh(bool cancelRefresh)
     {
         await using var db = ControllerTestHelpers.BuildDb();
         await SeedAgentAndClientAsync(db, linkClientToAgent: true, grantClientToAgent: false);
@@ -97,7 +103,7 @@ public sealed partial class MessagingServiceTests
             {
                 Assert.Single(db.MessageReactions.AsNoTracking().ToList());
                 published.Add(value);
-            }).Returns(Task.CompletedTask);
+            }).Returns(() => cancelRefresh ? Task.FromException(new OperationCanceledException()) : Task.CompletedTask);
         var images = new MessagingProfileImageResolver(db, NullLogger<MessagingProfileImageResolver>.Instance);
         var service = new MessagingService(db, NullLogger<MessagingService>.Instance,
             new CommunityTextModerationService(new ConfigurationBuilder().Build()), images,
@@ -139,6 +145,72 @@ public sealed partial class MessagingServiceTests
         Assert.True((await service.DeleteMessageAsync(new DeleteMessagingMessageCommand(agent, id, messageId))).Succeeded);
         Assert.False((await service.SetMessageReactionAsync(client, id, messageId, "❤️")).Succeeded);
         Assert.Empty((await service.GetConversationAsync(client, id)).Conversation!.Messages);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Reactions_RetryRolledBackOrUncertainCommitWithoutLosingStateOrDuplicatingAudit(bool failAfterCommit)
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        var fault = new ReactionCommitFault { FailAfterCommit = failAfterCommit };
+        await using var db = new MasterAppDbContext(new DbContextOptionsBuilder<MasterAppDbContext>()
+            .UseSqlite(connection).ReplaceService<IExecutionStrategyFactory, ReactionRetryStrategyFactory>()
+            .AddInterceptors(fault).Options);
+        await db.Database.EnsureCreatedAsync();
+        await SeedAgentAndClientAsync(db, linkClientToAgent: true, grantClientToAgent: false);
+        var service = CreateService(db);
+        var agent = new MessagingActor("agent-1", MessagingParticipantTypes.Agent);
+        var client = new MessagingActor("client-1", MessagingParticipantTypes.Client);
+        var opened = await service.StartConversationAsync(new StartMessagingConversationCommand(
+            agent, client.UserId, client.ParticipantType, InitialMessageBody: "Retry transaction"));
+        Assert.True(opened.Succeeded, opened.ErrorCode);
+        var id = opened.Conversation!.Id;
+        var messageId = Assert.Single(opened.Conversation.Messages).Id;
+        fault.Armed = true;
+        var result = await service.SetMessageReactionAsync(client, id, messageId, "👍");
+        Assert.True(result.Succeeded, result.ErrorCode);
+        Assert.Equal(1, fault.Failures);
+        Assert.Equal(new MessagingReactionSummary("👍", 1, true), Assert.Single(result.Value!.Reactions));
+        Assert.Single(await db.MessageReactions.AsNoTracking().ToListAsync());
+        Assert.Single(await db.MessagingAuditEntries.Where(x => x.Action == "MessageReactionChanged").ToListAsync());
+    }
+
+    public sealed class ReactionRetryStrategyFactory(ExecutionStrategyDependencies dependencies) : IExecutionStrategyFactory
+    {
+        public IExecutionStrategy Create() => new ReactionRetryStrategy(dependencies);
+    }
+
+    private sealed class ReactionRetryStrategy(ExecutionStrategyDependencies dependencies)
+        : ExecutionStrategy(dependencies, 2, TimeSpan.Zero)
+    {
+        protected override bool ShouldRetryOn(Exception exception) => exception is TimeoutException;
+    }
+
+    private sealed class ReactionCommitFault : DbTransactionInterceptor
+    {
+        public bool Armed { get; set; }
+        public bool FailAfterCommit { get; init; }
+        public int Failures { get; private set; }
+        private void FailOnce(bool afterCommit)
+        {
+            if (!Armed || Failures != 0 || FailAfterCommit != afterCommit) return;
+            Failures++;
+            throw new TimeoutException("Controlled transaction acknowledgment fault.");
+        }
+        public override ValueTask<InterceptionResult> TransactionCommittingAsync(DbTransaction transaction,
+            TransactionEventData eventData, InterceptionResult result, CancellationToken cancellationToken = default)
+        {
+            FailOnce(false);
+            return ValueTask.FromResult(result);
+        }
+        public override Task TransactionCommittedAsync(DbTransaction transaction, TransactionEndEventData eventData,
+            CancellationToken cancellationToken = default)
+        {
+            FailOnce(true);
+            return Task.CompletedTask;
+        }
     }
 
     [Fact]
