@@ -939,7 +939,8 @@ public sealed class LegendConnectMeaningGraphTests
                     Messages = [new LegendFounderAiChatMessage("user", unseenInput)]
             });
 
-            Assert.True(response.Succeeded);
+            // Persisting structural discourse does not turn unavailable inference into success.
+            Assert.False(response.Succeeded);
             Assert.Contains("NativeFailure=", response.Message, StringComparison.Ordinal);
             Assert.Contains("ProviderFailure=provider_api_key_unavailable", response.Message, StringComparison.Ordinal);
             Assert.DoesNotContain(unseenInput, response.Message, StringComparison.OrdinalIgnoreCase);

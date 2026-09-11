@@ -285,9 +285,8 @@ public sealed class LegendConnectGovernedDiscourseOrdinalAmbiguityTests
                     ]
                 });
 
-            Assert.True(
-                reply.Succeeded,
-                $"stage={reply.Stage}; reason={reply.Reason}; error={reply.Error}; message={reply.Message}");
+            // A governed diagnostic is not a successfully answered correction.
+            Assert.Equal(hasGroundedCorrection, reply.Succeeded);
             if (hasGroundedCorrection)
             {
                 Assert.Equal("I understand the correction.", reply.Message);

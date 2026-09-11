@@ -121,7 +121,8 @@ public sealed class LegendConnectBatchLanguageEndToEndContractTests
             Assert.Empty(native.ScheduleCertificates ?? []);
             Assert.Empty(native.ReasoningTransitionPath ?? []);
             var response = await ReplyAsync(services, request);
-            Assert.True(response.Succeeded, response.Error);
+            // Unsupported constraints must fail the response as well as native inference.
+            Assert.False(response.Succeeded);
             Assert.Equal("SystemDiagnostic", response.ResponseAuthority);
             Assert.Equal("native_only_blocked", response.Stage);
             Assert.Empty(response.ScheduleCertificates ?? []);
