@@ -1,6 +1,8 @@
 package com.mylegnd.legend.registered
 
 import com.mylegnd.legend.registered.core.model.SendMessageRequest
+import com.mylegnd.legend.registered.core.model.MobileIdentity
+import com.mylegnd.legend.registered.feature.MessagingViewModel
 import com.mylegnd.legend.registered.feature.PendingMessageSubmission
 import com.mylegnd.legend.registered.data.LoadState
 import kotlinx.coroutines.runBlocking
@@ -12,6 +14,15 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class MessageSubmissionRetryTest {
+    @Test
+    fun messagingViewModelScopeSeparatesAccountUserAndParticipantRole() {
+        val key = MessagingViewModel.sessionKey("account-a", MobileIdentity("user-a", "Agent"))
+        assertEquals(key, MessagingViewModel.sessionKey("account-a", MobileIdentity("user-a", "Agent")))
+        assertNotEquals(key, MessagingViewModel.sessionKey("account-b", MobileIdentity("user-a", "Agent")))
+        assertNotEquals(key, MessagingViewModel.sessionKey("account-a", MobileIdentity("user-b", "Agent")))
+        assertNotEquals(key, MessagingViewModel.sessionKey("account-a", MobileIdentity("user-a", "Client")))
+    }
+
     @Test
     fun retryRetainsMessageAcknowledgementAndCompletedUploadsUntilPayloadChanges() {
         val first = PendingMessageSubmission.forPayload(null, "conversation", "body", "reply", listOf("first", "second"))

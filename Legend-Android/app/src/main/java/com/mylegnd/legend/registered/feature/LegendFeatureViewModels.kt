@@ -16,6 +16,7 @@ import com.mylegnd.legend.registered.data.*
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.cancelChildren
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
@@ -275,6 +276,26 @@ internal class PendingMessageSubmission private constructor(
 }
 
 class MessagingViewModel(private val repository: MessagingRepository, private val role: String) : ViewModel() {
+    companion object {
+        internal fun sessionKey(accountId: String, identity: MobileIdentity): String =
+            "messaging:" + listOf(accountId, identity.userId, identity.participantType)
+                .joinToString(":") { "${it.length}:$it" }
+    }
+
+    fun deactivate() {
+        viewModelScope.coroutineContext.cancelChildren()
+        // Keep an uncertain send identity in this account-keyed ViewModel.
+        // Returning to the same account may retry it; another actor gets a
+        // different ViewModel. The cancelled send owns its final busy reset.
+        selectedConversationId = null
+        presentationRevision++
+        inboxRequestRevision++
+        _conversations.value = LoadState.Idle
+        _detail.value = LoadState.Idle
+        _recipients.value = LoadState.Idle
+        _historyFailure.value = null
+    }
+
     private var pendingSubmission: PendingMessageSubmission? = null
     private val _conversations = MutableStateFlow<LoadState<List<ConversationSummary>>>(LoadState.Idle)
     val conversations: StateFlow<LoadState<List<ConversationSummary>>> = _conversations.asStateFlow()

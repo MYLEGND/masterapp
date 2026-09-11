@@ -700,6 +700,31 @@ final class MobileNativeContractTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(api.conversationListCallCount, 2)
     }
 
+    func testFailedAttachmentRemainsOwnedByAcknowledgedMessageUntilRemoved() {
+        var attachment = MessagingAttachmentDraft(fileName: "document.txt", contentType: "text/plain", data: Data("file".utf8))
+        XCTAssertFalse(MessagingAttachmentDraft.hasPendingAcknowledgedUploads([attachment]))
+        let acknowledgedMessageID = UUID()
+        attachment.acknowledgedMessageID = acknowledgedMessageID
+        attachment.state = .failed("Upload failed")
+        XCTAssertTrue(MessagingAttachmentDraft.hasPendingAcknowledgedUploads([attachment]))
+        XCTAssertEqual(attachment.acknowledgedMessageID, acknowledgedMessageID)
+        XCTAssertTrue(attachment.canUpload(to: acknowledgedMessageID))
+        XCTAssertFalse(attachment.canUpload(to: UUID()))
+        attachment.state = .uploading
+        XCTAssertFalse(attachment.canUpload(to: acknowledgedMessageID))
+        XCTAssertFalse(MessagingAttachmentDraft.hasPendingAcknowledgedUploads([]))
+    }
+
+    func testAcknowledgedDraftCannotClearNewBodyOrReplySelection() {
+        let reply = UUID()
+        let submitted = MessagingDraftSnapshot(body: "Original draft", replyToMessageID: reply)
+        XCTAssertTrue(submitted.matches(body: "Original draft", replyToMessageID: reply))
+        XCTAssertFalse(submitted.matches(body: "New draft", replyToMessageID: reply))
+        XCTAssertFalse(submitted.matches(body: "Original draft", replyToMessageID: UUID()))
+        XCTAssertFalse(submitted.matches(body: "Original draft", replyToMessageID: nil))
+        XCTAssertFalse(submitted.matches(body: "Original draft ", replyToMessageID: reply))
+    }
+
     func testMessageRetryReusesIdentityAfterLostAcknowledgementAndNewMessageGetsFreshIdentity() async {
         let api = InboxReconciliationMessagingAPI(conversationID: UUID())
         let store = MessagingStore(api: api, accessTokenProvider: { "token" },

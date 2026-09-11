@@ -457,6 +457,15 @@ struct MessagingAttachmentDraft: Identifiable, Equatable, Sendable {
     let contentType: String
     let data: Data
     var state: State
+    var acknowledgedMessageID: UUID?
+
+    func canUpload(to messageID: UUID) -> Bool {
+        acknowledgedMessageID == messageID && state != .uploading
+    }
+
+    static func hasPendingAcknowledgedUploads(_ attachments: [Self]) -> Bool {
+        attachments.contains { $0.acknowledgedMessageID != nil }
+    }
 
     init(
         id: UUID = UUID(),
@@ -470,6 +479,16 @@ struct MessagingAttachmentDraft: Identifiable, Equatable, Sendable {
         self.contentType = contentType
         self.data = data
         self.state = state
+    }
+}
+
+/// Captures the composer submission without owning message delivery state.
+struct MessagingDraftSnapshot {
+    let body: String
+    let replyToMessageID: UUID?
+
+    func matches(body: String, replyToMessageID: UUID?) -> Bool {
+        self.body == body && self.replyToMessageID == replyToMessageID
     }
 }
 

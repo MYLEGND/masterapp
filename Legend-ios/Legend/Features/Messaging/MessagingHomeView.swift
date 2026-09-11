@@ -2255,6 +2255,15 @@ struct ConversationThreadView: View {
                 .padding(.top, LegendNextSpacing.xs)
             }
 
+            if MessagingAttachmentDraft.hasPendingAcknowledgedUploads(stagedAttachments) {
+                LegendMessagingStatusBanner(
+                    symbol: "exclamationmark.circle.fill",
+                    title: "Attachments pending",
+                    message: "Retry or remove attachments from the previous message before sending another message."
+                )
+                .padding(.top, LegendNextSpacing.xs)
+            }
+
             if !stagedAttachments.isEmpty {
                 LegendMessageAttachmentStaging(
                     attachments: stagedAttachments,
@@ -2435,22 +2444,32 @@ struct ConversationThreadView: View {
     private var canSend: Bool {
         !store.isSending &&
         !store.isUploadingAttachment &&
+        !MessagingAttachmentDraft.hasPendingAcknowledgedUploads(stagedAttachments) &&
         !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     private func sendDraft() {
-        let outgoing = draft.trimmingCharacters(
+        guard canSend else { return }
+        let submittedAttachmentIDs = Set(stagedAttachments.map(\.id))
+        let submittedReply = replyingToMessage
+        let submittedDraft = MessagingDraftSnapshot(body: draft, replyToMessageID: submittedReply?.id)
+        let outgoing = submittedDraft.body.trimmingCharacters(
             in: .whitespacesAndNewlines
         )
 
         guard !outgoing.isEmpty else { return }
 
         Task {
-            guard let message = await store.send(body: outgoing, replyingTo: replyingToMessage) else { return }
-            draft = ""
-            replyingToMessage = nil
+            guard let message = await store.send(body: outgoing, replyingTo: submittedReply) else { return }
+            if submittedDraft.matches(body: draft, replyToMessageID: replyingToMessage?.id) {
+                draft = ""
+                replyingToMessage = nil
+            }
+            for index in stagedAttachments.indices where submittedAttachmentIDs.contains(stagedAttachments[index].id) {
+                stagedAttachments[index].acknowledgedMessageID = message.id
+            }
             messageForStagedAttachments = message
-            await uploadStagedAttachments(to: message)
+            await uploadStagedAttachments(to: message, attachmentIDs: submittedAttachmentIDs)
         }
     }
 
@@ -2527,8 +2546,8 @@ struct ConversationThreadView: View {
         attachmentIDs: Set<UUID>? = nil
     ) async {
         let uploads = stagedAttachments.filter { attachment in
-            (attachmentIDs == nil || attachmentIDs?.contains(attachment.id) == true) &&
-                attachment.state != .uploading
+            attachment.canUpload(to: message.id) &&
+                (attachmentIDs == nil || attachmentIDs?.contains(attachment.id) == true)
         }
 
         for attachment in uploads {

@@ -871,8 +871,12 @@ private fun AuthenticatedShell(
         },
     )
     val messages: MessagingViewModel = viewModel(
+        key = MessagingViewModel.sessionKey(session.accountId, session.actor.identity),
         factory = LegendViewModelFactory { MessagingViewModel(container.messagingRepository, participantType) },
     )
+    DisposableEffect(messages) {
+        onDispose { messages.deactivate() }
+    }
     val account: AccountViewModel = viewModel(
         factory = LegendViewModelFactory { AccountViewModel(container.accountRepository, participantType) },
     )
