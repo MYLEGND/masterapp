@@ -507,14 +507,6 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
                     : "research_source_language_not_governed");
         }
 
-        if (namedSource is not null)
-        {
-            return Decision(
-                true,
-                LegendConnectResearchNeed.NamedExternalDocumentOrSource,
-                "named_external_source_requires_research");
-        }
-
         // A supported answer that was composed from a validated, claim-bound,
         // read-only zero-write receipt is already current internal governed
         // knowledge. The authenticated service returned that value during this
@@ -522,14 +514,57 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
         // and no surface wording ("current", "right now", "today") may
         // reclassify the satisfied claim as internet research. This is not a
         // general bypass for supported answers: the claim must actually carry
-        // complete, canonical, unexpired receipt provenance.
+        // complete, canonical, unexpired receipt provenance. A named external
+        // source retains its separate research route unless established owned
+        // record or discourse authority makes the claim internal.
         if (internalAvailable &&
+            (namedSource is null ||
+             internalInference?.OwnedRecordIntent?.Intent == LegendConnectOwnedRecordIntent.OwnedRecordStateInspection ||
+             HasCurrentTurnDiscourseAuthority(discourseState)) &&
             IsAnsweredByAttestedGovernedRead(internalInference, decidedUtc))
         {
             return Decision(
                 false,
                 LegendConnectResearchNeed.ExistingGovernedKnowledge,
                 "governed_read_only_content_binding_answers_request");
+        }
+
+        // Records this deployment owns are authenticated governed resources and
+        // the public internet holds no authority over them. The typed intent
+        // was established by the meaning-graph analysis that produced this
+        // inference; absent an admitted relation it is Unknown and the request
+        // is not diverted here.
+        if (internalInference?.OwnedRecordIntent?.Intent ==
+            LegendConnectOwnedRecordIntent.OwnedRecordStateInspection)
+        {
+            return Decision(
+                false,
+                LegendConnectResearchNeed.NotResearchable,
+                "internal_operational_data_requires_governed_tools");
+        }
+
+        // A governed reference binding on the current user turn proves that
+        // the request depends on conversation-scoped semantic state. Public
+        // research cannot supply authority for that state. Apply this before
+        // explicit research, named sources and inferred research classification
+        // so wording cannot turn a discourse reference into an
+        // unrelated internet request. An unresolved governed reference is
+        // equally conversation-scoped and must remain on the conversational
+        // fail-closed/escalation path rather than be researched externally.
+        if (HasCurrentTurnDiscourseAuthority(discourseState))
+        {
+            return Decision(
+                false,
+                LegendConnectResearchNeed.NotResearchable,
+                "conversation_context_is_not_external_research");
+        }
+
+        if (namedSource is not null)
+        {
+            return Decision(
+                true,
+                LegendConnectResearchNeed.NamedExternalDocumentOrSource,
+                "named_external_source_requires_research");
         }
 
         // Current internal LEGEND state must stay with existing governed
@@ -545,20 +580,6 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
                 internalAvailable
                     ? "existing_governed_knowledge_answers_request"
                     : "internal_legend_state_requires_governed_tools");
-        }
-
-        // Records this deployment owns are authenticated governed resources and
-        // the public internet holds no authority over them. The typed intent
-        // was established by the meaning-graph analysis that produced this
-        // inference; absent an admitted relation it is Unknown and the request
-        // is not diverted here.
-        if (internalInference?.OwnedRecordIntent?.Intent ==
-            LegendConnectOwnedRecordIntent.OwnedRecordStateInspection)
-        {
-            return Decision(
-                false,
-                LegendConnectResearchNeed.NotResearchable,
-                "internal_operational_data_requires_governed_tools");
         }
 
         if (conflicted)
@@ -588,22 +609,6 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
                 true,
                 LegendConnectResearchNeed.ExplicitVerificationRequest,
                 "explicit_verification_requires_research");
-        }
-
-        // A governed reference binding on the current user turn proves that
-        // the request depends on conversation-scoped semantic state. Public
-        // research cannot supply authority for that state. Apply this before
-        // time-sensitive and external-knowledge-gap classification so words
-        // such as "which" or "now" cannot turn a discourse reference into an
-        // unrelated internet request. An unresolved governed reference is
-        // equally conversation-scoped and must remain on the conversational
-        // fail-closed/escalation path rather than be researched externally.
-        if (HasCurrentTurnDiscourseAuthority(discourseState))
-        {
-            return Decision(
-                false,
-                LegendConnectResearchNeed.NotResearchable,
-                "conversation_context_is_not_external_research");
         }
 
         // Failed native understanding does not establish that a factual
