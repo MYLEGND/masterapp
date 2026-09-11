@@ -498,16 +498,17 @@ public sealed class MobileMessagingTranslationEndToEndTests
                 InitialMessageBody: source));
         Assert.True(conversation.Succeeded, $"{conversation.ErrorCode}: {conversation.ErrorMessage}");
 
-        // Initial provider fallback occurs while the localized notification
-        // presentation is staged, not when the recipient later opens the chat.
-        Assert.Equal(1, provider.TranslateCalls);
+        // Provider work is deferred until recipient presentation; the durable
+        // original message is acknowledged without waiting for translation.
+        Assert.Equal(0, provider.TranslateCalls);
 
         var initialRead = await service.GetConversationAsync(
             new MessagingActor(client.ClientUserId, MessagingParticipantTypes.Client),
             conversation.Conversation!.Id);
         Assert.True(initialRead.Succeeded, initialRead.ErrorMessage);
 
-        // Read reuses the already persisted translation.
+        // First recipient presentation executes the provider once; later reads and
+        // messages retain the existing governed corpus/cache assertions.
         Assert.Equal(1, provider.TranslateCalls);
 
         var retainedEvent = await db.LegendTranslationLearningEvents.SingleAsync();
