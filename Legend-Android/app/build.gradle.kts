@@ -8,6 +8,57 @@ import java.security.MessageDigest
 import java.security.cert.CertificateFactory
 import java.util.Base64
 import java.util.Properties
+import java.io.RandomAccessFile
+import java.time.Instant
+import org.gradle.api.provider.ValueSource
+import org.gradle.api.provider.ValueSourceParameters
+import org.gradle.api.file.RegularFileProperty
+import org.gradle.api.provider.Property
+
+abstract class LegendSigningPassword : ValueSource<String, LegendSigningPassword.Parameters> {
+    interface Parameters : ValueSourceParameters { val account: Property<String> }
+    override fun obtain(): String? {
+        if (!System.getProperty("os.name").startsWith("Mac")) return null
+        val process = ProcessBuilder(
+            "/usr/bin/security", "find-generic-password", "-s",
+            "com.mylegnd.legend.android.release", "-a", parameters.account.get(), "-w",
+        ).redirectError(ProcessBuilder.Redirect.DISCARD).start()
+        val value = process.inputStream.bufferedReader().use { it.readText() }.removeSuffix("\n")
+        return if (process.waitFor() == 0) value.takeIf { it.isNotEmpty() } else null
+    }
+}
+
+// A ValueSource is rechecked even when Gradle restores its configuration cache.
+// Keep the reservation outside build/ so clean and separate checkouts cannot reset it.
+abstract class LegendReleaseVersionCode : ValueSource<Int, LegendReleaseVersionCode.Parameters> {
+    interface Parameters : ValueSourceParameters {
+        val reservationFile: RegularFileProperty
+    }
+
+    override fun obtain(): Int {
+        val file = parameters.reservationFile.get().asFile
+        file.parentFile.mkdirs()
+        return RandomAccessFile(file, "rw").use { state ->
+            state.channel.lock().use {
+                val saved = if (state.length() == 0L) 7L else {
+                    state.readLine().trim().toLongOrNull()
+                        ?: error("Invalid Android release version reservation: $file")
+                }
+                // UTC seconds since 2020 also advance on fresh CI runners.
+                val clockCode = Instant.now().epochSecond - 1_577_836_800L
+                val next = maxOf(saved + 1L, clockCode)
+                check(saved in 7L..2_100_000_000L && next in 8L..2_100_000_000L) {
+                    "Android release version code is outside the Google Play range."
+                }
+                state.seek(0)
+                state.writeBytes("$next\n")
+                state.setLength(state.filePointer)
+                state.fd.sync()
+                next.toInt()
+            }
+        }
+    }
+}
 
 plugins {
     alias(libs.plugins.android.application)
@@ -28,6 +79,17 @@ val legendProperties = Properties().apply {
 fun legendValue(name: String): String = legendProperties.getProperty(name)?.trim().orEmpty()
 
 val legendApplicationId = "com.mylegnd.legend.registered"
+val releaseRequested = gradle.startParameter.taskNames.any {
+    val task = it.substringAfterLast(':')
+    task.contains("Release", ignoreCase = true) || task in setOf("build", "assemble", "bundle")
+}
+val automaticReleaseVersionCode = if (releaseRequested) {
+    providers.of(LegendReleaseVersionCode::class) {
+        parameters.reservationFile.set(
+            gradle.gradleUserHomeDir.resolve("legend-release/$legendApplicationId.version-code"),
+        )
+    }.get().also { logger.lifecycle("LEGEND release versionCode: $it") }
+} else 7
 val legendDebugRuntimeRoot = layout.buildDirectory.dir("generated/legend-runtime/debug")
 val legendReleaseRuntimeRoot = layout.buildDirectory.dir("generated/legend-runtime/release")
 val legendDebugRuntimeAssets = legendDebugRuntimeRoot.map { it.dir("assets") }
@@ -163,19 +225,37 @@ android {
         applicationId = legendApplicationId
         minSdk = 26
         targetSdk = 37
-        versionCode = 6
+        versionCode = automaticReleaseVersionCode
         versionName = "1.0.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         manifestPlaceholders["msalSignatureHash"] = productionMsalSignatureHash
     }
 
-    // Local release signing is optional; CI signs its bundle in the release workflow.
-    val localReleaseStorePassword = System.getenv("LEGEND_STORE_PASSWORD")
-    val localReleaseKeyPassword = System.getenv("LEGEND_KEY_PASSWORD")
+    // CI retains its existing external signing step. Local builds use env or Keychain.
+    val externalCiSigning = providers.environmentVariable("GITHUB_ACTIONS").orNull == "true"
+    val signingRequested = releaseRequested || gradle.startParameter.taskNames.any {
+        it.substringAfterLast(':') == "signingReport"
+    }
+    fun signingPassword(environment: String, account: String): String? =
+        providers.environmentVariable(environment).orNull?.takeIf { it.isNotEmpty() }
+            ?: if (signingRequested && !externalCiSigning) providers.of(LegendSigningPassword::class) {
+                parameters.account.set(account)
+            }.orNull else null
+    val localReleaseStorePassword = signingPassword("LEGEND_STORE_PASSWORD", "store-password")
+    val localReleaseKeyPassword = signingPassword("LEGEND_KEY_PASSWORD", "key-password")
     val localReleaseKeystore = rootProject.file("Legend.jks")
     val hasLocalReleaseSigning = localReleaseKeystore.exists() &&
         !localReleaseStorePassword.isNullOrBlank() && !localReleaseKeyPassword.isNullOrBlank()
+    val releaseArtifactRequested = gradle.startParameter.taskNames.any {
+        val task = it.substringAfterLast(':')
+        task in setOf("build", "assemble", "bundle") ||
+            (task.contains("release", ignoreCase = true) &&
+                (task.startsWith("bundle", true) || task.startsWith("assemble", true) || task.startsWith("package", true)))
+    }
+    check(!releaseArtifactRequested || hasLocalReleaseSigning || externalCiSigning) {
+        "Release signing is not configured. Run: swift tools/setup-release-signing.swift (one-time macOS Keychain setup). No unsigned release will be built."
+    }
     if (hasLocalReleaseSigning) {
         signingConfigs.create("release") {
             storeFile = localReleaseKeystore

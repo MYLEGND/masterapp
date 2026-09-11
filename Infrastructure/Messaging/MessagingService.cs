@@ -359,7 +359,9 @@ internal sealed partial class MessagingService : IMessagingService
                 conversation.Purpose,
                 ToGroupImage(conversation.GroupImageContent, conversation.GroupImageContentType),
                 currentParticipant.PinnedUtc.HasValue,
-                currentParticipant.IsMuted));
+                currentParticipant.IsMuted) { DisplayTitle = conversation.ConversationType == MessagingConversationTypes.Group
+                    ? conversation.Subject
+                    : ToParticipantSummary(counterparty, displayNames).DisplayName });
         }
 
         if (latestMessagesByConversation.Count > 0)
@@ -686,7 +688,11 @@ internal sealed partial class MessagingService : IMessagingService
             canManagePromotion,
             meeting,
             isGroupOwner && conversation.Purpose is null,
-            hasOlderMessages) with { ReadReceipts = await ReadReceiptSettingsAsync(actor, conversationId, cancellationToken) };
+            hasOlderMessages) with {
+                DisplayTitle = conversation.ConversationType == MessagingConversationTypes.Group
+                    ? conversation.Subject
+                    : participantSummaries.FirstOrDefault(participant => !IsCurrentActor(participant.UserId, participant.ParticipantType, actorUserIds, actor.ParticipantType))?.DisplayName,
+                ReadReceipts = await ReadReceiptSettingsAsync(actor, conversationId, cancellationToken) };
 
         timing.Complete();
         return new MessagingConversationResult(true, null, null, detail);

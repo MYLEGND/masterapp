@@ -866,6 +866,7 @@
 		};
 		2DF9F29BC16FB331FA04C45A /* Debug */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = 2B58FFC163E4FC3D9A4C4EA3 /* Legend-Debug.xcconfig */;
 			buildSettings = {
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = LegendNotificationService/Info.plist;
@@ -942,7 +943,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 25;
+				CURRENT_PROJECT_VERSION = 30;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEVELOPMENT_TEAM = Z8XL9RU485;
 				ENABLE_NS_ASSERTIONS = NO;
@@ -972,6 +973,7 @@
 		};
 		45D218F8FA6F60E84F3958EA /* Release */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = AE1E940C18A479901232F224 /* Legend-Production.xcconfig */;
 			buildSettings = {
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = LegendNotificationService/Info.plist;
@@ -1063,7 +1065,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 25;
+				CURRENT_PROJECT_VERSION = 30;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				DEVELOPMENT_TEAM = Z8XL9RU485;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -1134,7 +1136,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 25;
+				CURRENT_PROJECT_VERSION = 30;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEVELOPMENT_TEAM = Z8XL9RU485;
 				ENABLE_NS_ASSERTIONS = NO;
@@ -1183,6 +1185,7 @@
 		};
 		96621BDD09748917B84CEF71 /* Staging */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = 02A0C45349D257A61D736948 /* Legend-Staging.xcconfig */;
 			buildSettings = {
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = LegendNotificationService/Info.plist;

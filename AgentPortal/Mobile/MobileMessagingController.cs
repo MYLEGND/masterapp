@@ -139,7 +139,7 @@ public sealed partial class MobileMessagingController : MobileApiControllerBase
             response.Add(new MobileConversationSummaryDto(
                 conversation.Id,
                 conversation.ConversationType,
-                conversation.Subject ?? identities.GetDisplayName(conversation.Counterparty) ?? "Conversation",
+                conversation.DisplayTitle ?? identities.GetDisplayName(conversation.Counterparty) ?? "Member",
                 ToParticipantDto(
                     conversation.Counterparty,
                     identities,
@@ -950,7 +950,7 @@ public sealed partial class MobileMessagingController : MobileApiControllerBase
         return new MobileConversationDetailDto(
             conversation.Id,
             conversation.ConversationType,
-            conversation.Subject ?? "Conversation",
+            conversation.DisplayTitle ?? conversation.Subject ?? "Member",
             participants,
             messages,
             conversation.IsMuted,

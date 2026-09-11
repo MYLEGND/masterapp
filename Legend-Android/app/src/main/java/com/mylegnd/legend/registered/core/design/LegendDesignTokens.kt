@@ -63,6 +63,7 @@ object LegendDesignAuthority {
 }
 
 object LegendColors {
+    val ChatTimestamp get() = LegendDesignAuthority.color("chatTimestamp")
     val Midnight get() = LegendDesignAuthority.color("midnight")
     val Navy get() = LegendDesignAuthority.color("navy")
     val NavyElevated get() = LegendDesignAuthority.color("navyElevated")

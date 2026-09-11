@@ -1992,6 +1992,18 @@ extension MobileNativeContractTests {
 }
 
 private final class OwnedDetailMessagingAPI: MessagingAPI, @unchecked Sendable {
+    var reactionCalls: [String?] = []
+    var pendingReaction: CheckedContinuation<MessageReactionResult, Error>?
+    func react(conversationID: UUID, messageID: UUID, emoji: String?, accessToken: String) async throws -> MessageReactionResult {
+        reactionCalls.append(emoji)
+        return try await withCheckedThrowingContinuation { pendingReaction = $0 }
+    }
+    func finishReaction(_ result: Result<MessageReactionResult, Error>) {
+        let continuation = pendingReaction
+        pendingReaction = nil
+        continuation?.resume(with: result)
+    }
+
     var pending: [UUID: [CheckedContinuation<ConversationDetail, Never>]] = [:]
     var calls: [UUID: Int] = [:]
     var readCount = 0
@@ -2024,4 +2036,32 @@ private final class OwnedDetailMessagingAPI: MessagingAPI, @unchecked Sendable {
         await withCheckedContinuation { read = $0 }
     }
     func finishRead() { read?.resume(); read = nil }
+}
+
+extension MobileNativeContractTests {
+    func testQueuedReactionKeepsNewestFeedbackAndRestoresLastAcknowledgmentOnFailure() async throws {
+        let api = OwnedDetailMessagingAPI()
+        let store = MessagingStore(api: api, accessTokenProvider: { "test-token" }, diagnostics: LegendDiagnostics(), actorParticipantType: .client)
+        let id = UUID()
+        store.openConversation(id)
+        try await waitForMessagingCondition { api.pending[id]?.count == 1 }
+        api.complete(id)
+        try await waitForMessagingCondition { if case .loaded = store.detailState { return true }; return false }
+        guard case .loaded(let detail) = store.detailState, let message = detail.messages.first else { return XCTFail("Missing conversation") }
+        store.react(to: message, emoji: "❤️")
+        guard case .loaded(let pending) = store.detailState else { return XCTFail("Missing optimistic state") }
+        XCTAssertEqual(pending.messages.first?.reactions.first?.emoji, "❤️")
+        store.react(to: message, emoji: "😂")
+        try await waitForMessagingCondition { api.pendingReaction != nil }
+        XCTAssertEqual(api.reactionCalls.count, 1)
+        api.finishReaction(.success(MessageReactionResult(messageId: id, reactions: [MessageReaction(emoji: "❤️", count: 1, reactedByCurrentActor: true)])))
+        try await waitForMessagingCondition { api.reactionCalls.count == 2 && api.pendingReaction != nil }
+        guard case .loaded(let newest) = store.detailState else { return XCTFail("Missing queued state") }
+        XCTAssertEqual(newest.messages.first?.reactions.first?.emoji, "😂")
+        api.finishReaction(.failure(URLError(.notConnectedToInternet)))
+        try await waitForMessagingCondition { store.sendFailure != nil }
+        guard case .loaded(let restored) = store.detailState else { return XCTFail("Missing restored state") }
+        XCTAssertEqual(restored.messages.first?.reactions, [MessageReaction(emoji: "❤️", count: 1, reactedByCurrentActor: true)])
+        api.finishRead()
+    }
 }

@@ -26,6 +26,8 @@ public sealed class MobilePushDevice
     /// </summary>
     public string Environment { get; set; } = "production";
 
+    public bool SupportsCommunicationNotifications { get; set; }
+
     public bool IsActive { get; set; } = true;
 
     public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;

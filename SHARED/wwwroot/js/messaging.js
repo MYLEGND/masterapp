@@ -816,7 +816,7 @@
       identity.append(createAvatar(conversation.counterparty));
       const copy = document.createElement('span');
       copy.className = 'messaging-conversation-copy';
-      copy.append(createTextElement('span', 'messaging-conversation-title', conversation.counterparty?.displayName || 'Conversation'));
+      copy.append(createTextElement('span', 'messaging-conversation-title', conversation.displayTitle || conversation.counterparty?.displayName || 'Member'));
       copy.append(createTextElement('span', 'messaging-conversation-preview', conversation.lastMessagePreview || conversation.subject || 'No messages yet.'));
       if (state.drafts[`conversation:${conversation.id}`]) {
         copy.append(createTextElement('span', 'messaging-conversation-draft', 'Draft'));
@@ -895,22 +895,46 @@
   async function setMessageReaction(conversationId, message, emoji) {
     const key = `${conversationId}:${message.id}`;
     const version = state.navigationVersion;
+    state.reactionConfirmed ||= new Map();
+    if (!state.reactionFlights.has(key)) state.reactionConfirmed.set(key,
+      (state.active?.messages || []).find(item => item.id === message.id)?.reactions || []);
     const previous = state.reactionFlights.get(key) || Promise.resolve();
     const flight = previous.catch(() => {}).then(() => request(`/Messaging/Conversations/${encodeURIComponent(conversationId)}/Messages/${encodeURIComponent(message.id)}/Reaction`, {
       method: emoji ? 'PUT' : 'DELETE',
       ...(emoji ? { body: JSON.stringify({ emoji }) } : {})
     }));
     state.reactionFlights.set(key, flight);
+    const before = (state.active?.messages || []).find(item => item.id === message.id)?.reactions || [];
+    const pending = before.map(item => ({ ...item, count: item.count - (item.reactedByCurrentActor ? 1 : 0), reactedByCurrentActor: false })).filter(item => item.count > 0);
+    if (emoji) {
+      const existing = pending.find(item => item.emoji === emoji);
+      if (existing) { existing.count++; existing.reactedByCurrentActor = true; }
+      else pending.push({ emoji, count: 1, reactedByCurrentActor: true });
+    }
+    if (state.active?.id === conversationId) {
+      state.active = { ...state.active, messages: state.active.messages.map(item => item.id === message.id ? { ...item, reactions: pending } : item) };
+      renderConversation();
+    }
     try {
       const result = await flight;
       if (state.active?.id !== conversationId || version !== state.navigationVersion) return;
+      state.reactionConfirmed.set(key, result.reactions || []);
+      if (state.reactionFlights.get(key) !== flight) return;
       state.active = { ...state.active, messages: state.active.messages.map(item =>
         item.id === message.id ? { ...item, reactions: result.reactions || [] } : item) };
       renderConversation();
     } catch (error) {
-      if (state.active?.id === conversationId && version === state.navigationVersion) showError(error.message);
+      if (state.active?.id === conversationId && version === state.navigationVersion && state.reactionFlights.get(key) === flight) {
+        state.active = { ...state.active, messages: state.active.messages.map(item =>
+          item.id === message.id && item.reactions === pending ? { ...item, reactions: state.reactionConfirmed.get(key) || [] } : item) };
+        renderConversation();
+        showError(error.message);
+      }
     } finally {
-      if (state.reactionFlights.get(key) === flight) state.reactionFlights.delete(key);
+      if (state.reactionFlights.get(key) === flight) {
+        state.reactionFlights.delete(key);
+        state.reactionConfirmed.delete(key);
+      }
     }
   }
 
@@ -918,7 +942,7 @@
     const reactions = document.createElement('div');
     reactions.className = 'messaging-reactions';
     (message.reactions || []).forEach(reaction => {
-      const button = createTextElement('button', 'messaging-reaction', `${reaction.emoji} ${reaction.count}`);
+      const button = createTextElement('button', 'messaging-reaction', reaction.emoji + (reaction.count > 1 ? ` ${reaction.count}` : ''));
       button.type = 'button';
       button.setAttribute('aria-pressed', String(reaction.reactedByCurrentActor));
       button.setAttribute('aria-label', `${reaction.emoji}, ${reaction.count} reactions`);
@@ -937,7 +961,7 @@
       const button = createTextElement('button', 'messaging-reaction', emoji);
       button.type = 'button';
       button.setAttribute('aria-label', `React ${emoji}`);
-      button.addEventListener('click', () => setMessageReaction(conversation.id, message, emoji));
+      button.addEventListener('click', () => { menu.open = false; setMessageReaction(conversation.id, message, emoji); });
       palette.append(button);
     });
     const picker = document.createElement('input');
@@ -953,16 +977,16 @@
     picker.addEventListener('keydown', event => {
       if (event.key === 'Enter' && picker.value.trim()) {
         event.preventDefault();
+        menu.open = false;
         setMessageReaction(conversation.id, message, picker.value.trim());
       }
     });
     palette.append(plus, picker);
     menu.append(palette);
-    reactions.append(menu);
-    card.append(reactions);
+    card.append(menu, reactions);
     card.addEventListener('dblclick', event => {
       if (event.target.closest('a, button, input, summary, video, audio')) return;
-      setMessageReaction(conversation.id, message, '👍');
+      setMessageReaction(conversation.id, message, '❤️');
     });
     card.addEventListener('contextmenu', event => {
       if (event.target.closest('a, button, input, video, audio') || window.getSelection()?.toString()) return;
@@ -1045,7 +1069,7 @@
     }
 
     elements.threadAvatar.replaceChildren(createAvatar(target, 'eager'));
-    elements.threadTitle.textContent = target?.displayName || 'Conversation';
+    elements.threadTitle.textContent = conversation?.displayTitle || target?.displayName || 'Member';
     elements.threadSubject.textContent = [
       roleLabel(target?.participantType),
       'Secure conversation',
@@ -1230,7 +1254,7 @@
       ...matchingConversations.map(conversation => ({
         key: searchResultKey('conversation', conversation.id, 'conversation'),
         person: conversation.counterparty,
-        title: conversation.counterparty?.displayName || 'Conversation',
+        title: conversation.displayTitle || conversation.counterparty?.displayName || 'Member',
         subtitle: `Existing conversation${conversation.unreadCount > 0 ? ` · ${conversation.unreadCount} unread` : ''}`,
         select: () => {
           elements.search.value = '';
@@ -1833,9 +1857,14 @@
     refreshList().catch(() => { });
   }
   // Both web hosts publish the same design document already used by native.
-  fetch('/design/legend-design.tokens.json', { credentials: 'same-origin', cache: 'force-cache' })
+  fetch('/design/legend-design.tokens.json', { credentials: 'same-origin', cache: 'no-cache' })
     .then(response => { if (!response.ok) throw new Error('Design unavailable'); return response.json(); })
     .then(design => {
+      for (const [role, key] of [['incoming-background', 'navy'], ['incoming-text', 'onNavy'],
+        ['outgoing-background', 'gold'], ['outgoing-text', 'onGold'], ['timestamp', 'chatTimestamp'], ['surface', 'surface']]) {
+        const color = design.colors?.[key]?.light;
+        if (/^#[0-9a-f]{6}$/i.test(color || '')) root.style.setProperty(`--messaging-${role}`, color);
+      }
       const semantic = design.platformSemanticColors;
       for (const [status, key] of [['read', 'success'], ['sent', 'danger']]) {
         const color = semantic?.[key]?.android;

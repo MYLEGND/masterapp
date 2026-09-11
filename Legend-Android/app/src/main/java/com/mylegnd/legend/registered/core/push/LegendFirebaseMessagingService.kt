@@ -75,7 +75,9 @@ class LegendFirebaseMessagingService : FirebaseMessagingService() {
                 revision = message.data["revision"]?.toLongOrNull(),
             ),
         )
-        val notification = message.notification ?: return
+        val title = message.data["title"] ?: message.notification?.title ?: return
+        val body = message.data["body"] ?: message.notification?.body.orEmpty()
+        val sender = runCatching { org.json.JSONObject(message.data["sender"].orEmpty()) }.getOrNull()
         val conversationId = message.data["conversationId"].orEmpty()
         val intent = Intent(this, MainActivity::class.java)
             .setFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
@@ -86,17 +88,68 @@ class LegendFirebaseMessagingService : FirebaseMessagingService() {
             intent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
+        val builder = NotificationCompat.Builder(this, CHANNEL)
+            .setSmallIcon(R.drawable.ic_legend_notification)
+            .setContentTitle(title)
+            .setContentText(body)
+            .setContentIntent(pendingIntent)
+            .setAutoCancel(true)
+            .setOnlyAlertOnce(true)
+        val senderName = sender?.optString("name").orEmpty()
+        val senderId = sender?.optString("id").orEmpty()
+        if (senderName.isNotBlank() && senderId.isNotBlank()) {
+            val person = androidx.core.app.Person.Builder().setName(senderName).setKey(senderId)
+            loadSenderAvatar(sender?.optString("imagePath").orEmpty())?.let {
+                person.setIcon(androidx.core.graphics.drawable.IconCompat.createWithBitmap(it))
+                builder.setLargeIcon(it)
+            }
+            builder.setStyle(NotificationCompat.MessagingStyle(
+                androidx.core.app.Person.Builder().setName(com.mylegnd.legend.registered.core.design.legendLocalized("You")).build()
+            ).addMessage(body, message.sentTime, person.build()).setGroupConversation(false))
+        }
         notificationManager().notify(
             message.data["notificationId"]?.hashCode() ?: message.messageId?.hashCode() ?: 0,
-            NotificationCompat.Builder(this, CHANNEL)
-                .setSmallIcon(R.drawable.ic_legend_notification)
-                .setContentTitle(notification.title ?: "LEGEND®")
-                .setContentText(notification.body)
-                .setContentIntent(pendingIntent)
-                .setAutoCancel(true)
-                .build(),
+            builder.build(),
         )
     }
+
+    /** Only the server-issued relative capability on our configured origin is fetched. */
+    private fun loadSenderAvatar(path: String): android.graphics.Bitmap? = runCatching {
+        if (!path.startsWith("/api/v1/mobile/notifications/") || path.contains('\\')) return null
+        val base = java.net.URI(com.mylegnd.legend.registered.core.config.LegendRuntimeConfigurationLoader.load(this).apiBaseUrl)
+        val uri = base.resolve(path)
+        if (uri.scheme != "https" || uri.host != base.host || uri.port != base.port) return null
+        val connection = uri.toURL().openConnection() as java.net.HttpURLConnection
+        try {
+            connection.instanceFollowRedirects = false
+            connection.connectTimeout = 1_500
+            connection.readTimeout = 1_500
+            connection.useCaches = false
+            if (connection.responseCode != 200 || connection.contentLengthLong > 3 * 1024 * 1024) return null
+            val deadline = android.os.SystemClock.elapsedRealtime() + 2_000
+            val bytes = connection.inputStream.use { input ->
+                val output = java.io.ByteArrayOutputStream()
+                val buffer = ByteArray(8192)
+                while (true) {
+                    if (android.os.SystemClock.elapsedRealtime() > deadline) return null
+                    val count = input.read(buffer)
+                    if (count < 0) break
+                    if (output.size() + count > 3 * 1024 * 1024) return null
+                    output.write(buffer, 0, count)
+                }
+                output.toByteArray()
+            }
+            if (bytes.size > 3 * 1024 * 1024) return null
+            val options = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options)
+            if (options.outWidth <= 0 || options.outHeight <= 0) return null
+            options.inJustDecodeBounds = false
+            options.inSampleSize = 1
+            while (maxOf(options.outWidth, options.outHeight) / options.inSampleSize > 320) options.inSampleSize *= 2
+            android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options)
+        } finally { connection.disconnect() }
+    }.getOrNull()
+
     private fun notificationManager(): NotificationManager = getSystemService(NotificationManager::class.java).also {
         ensureNotificationChannel(this)
     }

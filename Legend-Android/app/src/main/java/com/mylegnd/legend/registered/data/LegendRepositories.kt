@@ -201,6 +201,6 @@ class JourneyRepository(private val client: LegendApiClient) {
 }
 class CommunityRepository(private val client: LegendApiClient) { suspend fun block(role: String, userId: String, participantType: String) = request { client.api.block(role, CommunityBlockRequest(userId, participantType)).legendBody() }; suspend fun report(role: String, userId: String, participantType: String, targetKind: String, targetEntityId: String?, category: String, detail: String) = request { client.api.report(role, CommunityReportRequest(userId, participantType, targetKind, targetEntityId, category, detail)).legendBody() }; suspend fun openReports(role: String) = request { client.api.openCommunityReports(role).legendBody() }; suspend fun resolveReport(role: String, id: String, resolution: String) = request { client.api.resolveCommunityReport(role, id, CommunitySafetyReportResolutionRequest(resolution)).legendBody() } }
 class NotificationDeviceRepository(private val client: LegendApiClient) {
-    suspend fun registerFcm(role: String, token: String) = request { client.api.registerFcmDevice(role, FcmDeviceTokenRequest(token)).legendBody() }
-    suspend fun deactivateFcm(role: String, token: String) = request { client.api.deactivateFcmDevice(role, FcmDeviceTokenRequest(token)).legendBody() }
+    suspend fun registerFcm(role: String, token: String) = request { client.api.registerFcmDevice(role, FcmDeviceTokenRequest(token, true)).legendBody() }
+    suspend fun deactivateFcm(role: String, token: String) = request { client.api.deactivateFcmDevice(role, FcmDeviceTokenRequest(token, true)).legendBody() }
 }
