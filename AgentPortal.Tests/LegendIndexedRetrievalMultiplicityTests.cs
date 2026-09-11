@@ -7,6 +7,9 @@ using System.Threading.Tasks;
 using Domain.Entities;
 using Domain.Messaging;
 using Infrastructure.Messaging;
+using Infrastructure.Data;
+using Microsoft.Data.Sqlite;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
@@ -15,6 +18,36 @@ namespace AgentPortal.Tests;
 
 public sealed class LegendIndexedRetrievalMultiplicityTests
 {
+    [Theory]
+    [InlineData("amber birch cedar")]
+    [InlineData("amber amber birch cedar")]
+    public async Task RelationalIndexedRetrieval_TranslatesSingleAndMixedMultiplicityGroups(string request)
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        await using var db = new MasterAppDbContext(new DbContextOptionsBuilder<MasterAppDbContext>()
+            .UseSqlite(connection).Options);
+        await db.Database.EnsureCreatedAsync();
+        var configuration = new ConfigurationBuilder().Build();
+        var registry = new LegendLanguageRegistry(db, configuration);
+        var corpus = new LegendConnectCorpusService(db, registry,
+            NullLogger<LegendConnectCorpusService>.Instance);
+        var curriculum = new LegendConnectCurriculumService(db, registry, corpus);
+        var method = typeof(LegendConnectCurriculumService).GetMethod("LoadIndexedSemanticAnchorIdsAsync",
+            BindingFlags.Instance | BindingFlags.NonPublic);
+        Assert.NotNull(method);
+        foreach (var requireMeaning in new[] { false, true })
+        {
+            var task = Assert.IsAssignableFrom<Task>(method.Invoke(curriculum,
+                ["en", request.Split(' ').Select(LegendLanguageIdentity.TextHash).ToArray(), CancellationToken.None, requireMeaning]));
+            await task;
+            var result = task.GetType().GetProperty("Result")!.GetValue(task)!;
+            Assert.Empty(Assert.IsAssignableFrom<IReadOnlyList<Guid>>(
+                result.GetType().GetProperty("AnchorIds")!.GetValue(result)));
+            Assert.False(Assert.IsType<bool>(result.GetType().GetProperty("BoundExceeded")!.GetValue(result)));
+        }
+    }
+
     [Theory]
     [InlineData("amber birch cedar", "amber birch cedar", -1, true)]
     [InlineData("amber amber birch birch", "amber amber birch birch", -1, true)]
