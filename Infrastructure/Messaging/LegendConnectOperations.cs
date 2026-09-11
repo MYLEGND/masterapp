@@ -686,6 +686,7 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
             LegendConnectExternalProviderPolicy.Resolve(providerPolicy);
         var startedUtc = DateTime.UtcNow;
         var sessionId = Guid.NewGuid();
+        LegendConnectResearchCandidateCounts? candidateCounts = null;
 
         LegendConnectResearchOutcome Failure(
             string reasonCode,
@@ -737,7 +738,8 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
                 RetrievalLatencyMilliseconds: retrievalLatency,
                 ReasoningLatencyMilliseconds: reasoningLatency,
                 SearchCostMicrounits: searchCost,
-                ModelCostMicrounits: modelCost);
+                ModelCostMicrounits: modelCost,
+                CandidateCounts: candidateCounts);
             var provenance = BuildResearchProvenance(
                 request,
                 session,
@@ -842,6 +844,14 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
                 "LEGEND external research search failed before public page candidates were returned.",
                 retryable: true);
         }
+
+        candidateCounts = searchResult.CandidateCounts;
+        if (searchResult.Succeeded)
+            candidateCounts = (candidateCounts ?? new LegendConnectResearchCandidateCounts()) with
+            {
+                AdmittedClaims = searchResult.ClaimCandidates.Count,
+                AdmittedContradictions = searchResult.ContradictionCandidates.Count
+            };
 
         if (!searchResult.Succeeded)
         {
@@ -986,6 +996,7 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
             searchResult,
             pageResult,
             (long)Math.Ceiling((DateTime.UtcNow - startedUtc).TotalMilliseconds));
+        candidateCounts = evidencePacket.CandidateCounts;
         var transportLineageFailure =
             ResearchTransportLineageFailure(request, evidencePacket);
         if (transportLineageFailure is not null)
@@ -1096,7 +1107,8 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
                 (long)Math.Ceiling(
                     (completed - reasoningStartedUtc).TotalMilliseconds)),
             searchResult.CostMicrounits,
-            null);
+            null,
+            candidateCounts);
         var provenance = BuildResearchProvenance(
             request,
             session,
@@ -2177,9 +2189,12 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
             .GroupBy(item => item.Uri, StringComparer.Ordinal)
             .ToDictionary(group => group.Key, group => group.First().Lineage, StringComparer.Ordinal);
 
+        var boundClaims = 0;
+        var boundContradictions = 0;
         var claims = new List<LegendConnectClaimEvidence>();
         foreach (var candidate in search.ClaimCandidates)
         {
+            var evidenceBeforeCandidate = claims.Count;
             foreach (var uri in candidate.CanonicalUris)
             {
                 if (!artifactsByUri.TryGetValue(uri, out var artifact))
@@ -2211,6 +2226,8 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
                 if (claims.Count >= request.MaximumClaims)
                     break;
             }
+            if (claims.Count > evidenceBeforeCandidate)
+                boundClaims++;
             if (claims.Count >= request.MaximumClaims)
                 break;
         }
@@ -2218,6 +2235,7 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
         var contradictions = new List<LegendConnectContradictingEvidence>();
         foreach (var candidate in search.ContradictionCandidates)
         {
+            var evidenceBeforeCandidate = contradictions.Count;
             foreach (var uri in candidate.CanonicalUris)
             {
                 if (!artifactsByUri.TryGetValue(uri, out var artifact))
@@ -2249,6 +2267,8 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
                 if (contradictions.Count >= request.MaximumClaims)
                     break;
             }
+            if (contradictions.Count > evidenceBeforeCandidate)
+                boundContradictions++;
             if (contradictions.Count >= request.MaximumClaims)
                 break;
         }
@@ -2315,7 +2335,14 @@ internal sealed class LegendConnectOperations : ILegendConnectOperations
             pages.Citations,
             languageLineage,
             latencyMilliseconds,
-            search.CostMicrounits);
+            search.CostMicrounits,
+            (search.CandidateCounts ?? new LegendConnectResearchCandidateCounts()) with
+            {
+                AdmittedClaims = search.ClaimCandidates.Count,
+                AdmittedContradictions = search.ContradictionCandidates.Count,
+                BoundClaims = boundClaims,
+                BoundContradictions = boundContradictions
+            });
     }
 
     internal static bool HasCompleteResearchTransportLineage(

@@ -281,6 +281,7 @@ public sealed class LegendFounderAiComprehensiveDiagnosticContractTests
         AdmissibleClaimCount = outcome.InsufficientEvidence?.AdmissibleClaimCount,
         IndependentSourceCount = outcome.InsufficientEvidence?.IndependentSourceCount,
         RequiredIndependentSourceCount = outcome.InsufficientEvidence?.RequiredIndependentSourceCount,
+        CandidateCounts = outcome.Session.CandidateCounts,
         ClaimCount = outcome.Session.ClaimEvidence.Count,
         MaterialClaimCount = outcome.Session.MaterialClaimEvidence?.Count ?? 0,
         ContradictionCount = outcome.Session.ContradictingEvidence.Count,

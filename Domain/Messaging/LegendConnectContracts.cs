@@ -2005,7 +2005,8 @@ public sealed record LegendConnectResearchSession(
     long RetrievalLatencyMilliseconds = 0,
     long ReasoningLatencyMilliseconds = 0,
     long? SearchCostMicrounits = null,
-    long? ModelCostMicrounits = null);
+    long? ModelCostMicrounits = null,
+    LegendConnectResearchCandidateCounts? CandidateCounts = null);
 
 public sealed record LegendConnectResearchConclusion(
     string ConclusionIdentity,
@@ -2368,6 +2369,16 @@ public sealed record LegendConnectResearchSearchTransportRequest(
     int MaximumResults,
     int MaximumClaims);
 
+// Observation only. Null means the stage was not observed; zero means it ran
+// and produced no candidates. Counts never grant evidence or serving authority.
+public sealed record LegendConnectResearchCandidateCounts(
+    int? RawClaims = null,
+    int? RawContradictions = null,
+    int? AdmittedClaims = null,
+    int? AdmittedContradictions = null,
+    int? BoundClaims = null,
+    int? BoundContradictions = null);
+
 public sealed record LegendConnectResearchSearchTransportResult(
     bool Succeeded,
     string Transport,
@@ -2383,7 +2394,8 @@ public sealed record LegendConnectResearchSearchTransportResult(
     long LatencyMilliseconds,
     long? CostMicrounits,
     string? FailureReason,
-    bool Retryable);
+    bool Retryable,
+    LegendConnectResearchCandidateCounts? CandidateCounts = null);
 
 public interface ILegendConnectResearchSearchTransport
 {
@@ -2446,7 +2458,8 @@ public sealed record LegendConnectResearchEvidencePacket(
     IReadOnlyList<LegendConnectCitation> Citations,
     LegendConnectResearchLanguageLineage LanguageLineage,
     long LatencyMilliseconds,
-    long? CostMicrounits);
+    long? CostMicrounits,
+    LegendConnectResearchCandidateCounts? CandidateCounts = null);
 
 public static class LegendConnectResearchContracts
 {
