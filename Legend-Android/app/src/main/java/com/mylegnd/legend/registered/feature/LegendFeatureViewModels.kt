@@ -725,7 +725,7 @@ class MessagingViewModel(private val repository: MessagingRepository, private va
                         }))
                     }
                 }
-                is LoadState.Error -> _historyFailure.value = result.message
+                is LoadState.Error -> if (revision == presentationRevision && selectedConversationId == message.conversationId) _historyFailure.value = result.message
                 else -> Unit
             }
         }
