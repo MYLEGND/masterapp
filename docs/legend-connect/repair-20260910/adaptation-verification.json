@@ -1,0 +1,69 @@
+{
+  "tested_candidate": "37991900",
+  "learning_reproduction": {
+    "before_fix": "8e365466",
+    "tests": 4,
+    "passed": 2,
+    "failed": 2,
+    "failed_cases": "healthy exact resubmission during canonical validation and curriculum admission leases",
+    "negative_cases": "withdrawn selected evidence remained ineligible"
+  },
+  "repairs": [
+    {
+      "commit": "37991900",
+      "authority": "LegendConnectAutonomousLearningService.SubmitConversationMachineProposalAsync",
+      "change": "Include the two actual processing lease states in existing exact-identity deduplication; retain current canonical evidence revalidation, bound, and lease ownership."
+    },
+    {
+      "commit": "9c8f4d15",
+      "authority": "LegendFounderAiConversationService.ReplyAsync",
+      "change": "Report blocked native-only research as an unsuccessful diagnostic with unchanged stage and zero external clients."
+    },
+    {
+      "commit": "8e365466",
+      "authority": "LegendConnectOperations.DecideResearchNeeded",
+      "change": "Preserve established owned-record and current-turn discourse authority before named-source/explicit-research wording; retain public-research positive routes."
+    }
+  ],
+  "build": {
+    "warnings": 0,
+    "errors": 0
+  },
+  "focused": {
+    "total": 103,
+    "passed": 103,
+    "failed": 0,
+    "skipped": 0,
+    "elapsed_seconds": 6
+  },
+  "full_regression": {
+    "total": 2313,
+    "runner_passed": 2300,
+    "failed": 9,
+    "skipped": 4,
+    "elapsed_seconds": 329,
+    "failed_tests": [
+      "AgentPortal.Tests.LegendFounderAiHeldOutOperationMatrixTests.SameConversationMemory_RetainsAndReturnsTheExactValuesStatedEarlier",
+      "AgentPortal.Tests.LegendFounderAiHeldOutOperationMatrixTests.NativeOnlyToolPlanning_SelectsTheRegisteredReadToolAndBindsItsReceipt",
+      "AgentPortal.Tests.LegendFounderAiHeldOutOperationMatrixTests.NativeOnlyCapability_ProducesTheCorrectAnswerUnderLegendAuthority(category: \"haitian_creole_conflict\")",
+      "AgentPortal.Tests.LegendFounderAiHeldOutOperationMatrixTests.NativeOnlyCapability_ProducesTheCorrectAnswerUnderLegendAuthority(category: \"deduction\")",
+      "AgentPortal.Tests.LegendFounderAiHeldOutOperationMatrixTests.NativeOnlyCapability_ProducesTheCorrectAnswerUnderLegendAuthority(category: \"constrained_planning\")",
+      "AgentPortal.Tests.LegendFounderAiHeldOutOperationMatrixTests.NativeOnlyCapability_ProducesTheCorrectAnswerUnderLegendAuthority(category: \"rewriting\")",
+      "AgentPortal.Tests.LegendFounderAiHeldOutOperationMatrixTests.NativeOnlyCapability_ProducesTheCorrectAnswerUnderLegendAuthority(category: \"causal_diagnosis\")",
+      "AgentPortal.Tests.LegendFounderAiHeldOutOperationMatrixTests.NativeOnlyCapability_ProducesTheCorrectAnswerUnderLegendAuthority(category: \"internal_data_uncertainty\")",
+      "AgentPortal.Tests.LegendFounderAiHeldOutOperationMatrixTests.NativeOnlyCapability_ProducesTheCorrectAnswerUnderLegendAuthority(category: \"arithmetic\")"
+    ],
+    "existing_environment_gated_passes_without_live_credit": 24,
+    "other_local_passes": 2276,
+    "release_gate": "blocked"
+  },
+  "limitations": [
+    "Controlled learning fixtures use a recording critic; no live teacher or production learning write is established.",
+    "Existing research transport is OpenAIResponsesWebSearch, external assistance; native-only still forbids it.",
+    "Azure OpenAI key setting presence was observed without exporting its value; valid credentials and successful research execution are unverified.",
+    "Persisted runtime policy takes precedence over acquisition bootstrap defaults; effective live acquisition policy is unverified.",
+    "No new learning approval or promotion authority, no public dispatch after unavailable classification, and no change to frozen capability questions or answers.",
+    "Revised SQL performance and authenticated Founder HTTP remain unverified.",
+    "Public repair-branch publication authorization remains pending; nothing deployed."
+  ]
+}
