@@ -115,8 +115,10 @@ public sealed class SocialMediaStorageTests
         }
     }
 
-    [Fact]
-    public async Task BlobUpload_UsesThePreProvisionedContainer_WithoutAttemptingContainerManagement()
+    [Theory]
+    [InlineData("legend-photo.jpg", false)]
+    [InlineData("legend-hac.mp4", true)]
+    public async Task BlobUpload_UsesThePreProvisionedContainer_WithoutAttemptingContainerManagement(string fileName, bool requiresProcessing)
     {
         using var handler = new RecordingBlobHandler();
         var options = new BlobClientOptions
@@ -144,11 +146,12 @@ public sealed class SocialMediaStorageTests
         await using var stream = new MemoryStream(content);
         var result = await storage.StoreAsync(
             Guid.NewGuid(),
-            "legend-photo.jpg",
+            fileName,
             content.Length,
             stream);
 
         Assert.True(result.Succeeded);
+        Assert.Equal(requiresProcessing, result.Media!.RequiresBackgroundProcessing);
         Assert.NotEmpty(handler.RequestUris);
         Assert.DoesNotContain(
             handler.RequestUris,
