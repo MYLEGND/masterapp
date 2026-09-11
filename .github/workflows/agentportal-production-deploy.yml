@@ -119,23 +119,43 @@ jobs:
           fi
 
       - name: Test full suite including security regressions
+        env:
+          LEGEND_BASELINE_PRODUCTION_BASE: ${{ github.event.pull_request.base.sha }}
         run: |
-          set -o pipefail
-          dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-build 2>&1 | tee test.log
-          if grep -q "No test is available" test.log; then
-            echo "::error::The test runner completed without discovering tests."
+          set -euo pipefail
+          results_dir="$RUNNER_TEMP/legend-full-regression-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          if [ -e "$results_dir" ]; then
+            echo "::error::A stale full-regression result directory already exists."
             exit 1
           fi
-          runner_success=false
-          if grep -qE 'Passed![[:space:]]+-[[:space:]]+Failed:[[:space:]]+0,[[:space:]]+Passed:[[:space:]]+[1-9][0-9]*' test.log; then
-            runner_success=true
-          elif grep -q "Test Run Successful" test.log && grep -qE 'Passed:[[:space:]]*[1-9][0-9]*' test.log; then
-            runner_success=true
-          fi
-          if [ "$runner_success" != true ] || grep -qE 'Failed:[[:space:]]*[1-9][0-9]*' test.log; then
-            echo "::error::The full AgentPortal regression did not report a successful non-empty test run with zero failures."
+          mkdir -p "$results_dir"
+          run_start=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          set +e
+          dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj -c Release --no-build \
+            --logger 'trx;LogFileName=full-regression.trx' --results-directory "$results_dir" 2>&1 | tee test.log
+          pipeline_status=("${PIPESTATUS[@]}")
+          set -e
+          if [ "${pipeline_status[1]}" -ne 0 ]; then
+            echo "::error::Full regression log capture failed."
             exit 1
           fi
+          python3 scripts/legend-baseline-regression.py \
+            --trx "$results_dir/full-regression.trx" \
+            --manifest .github/legend-baseline-release.json \
+            --runner-exit-code "${pipeline_status[0]}" \
+            --source-root "$GITHUB_WORKSPACE" \
+            --run-start-utc "$run_start" \
+            --production-base-sha "$LEGEND_BASELINE_PRODUCTION_BASE" \
+            --output "$results_dir/release-decision.json"
+
+      - name: Preserve explicit full-regression release decision
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: legend-regression-release-decision-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/legend-full-regression-${{ github.run_id }}-${{ github.run_attempt }}/release-decision.json
+          if-no-files-found: ignore
+          retention-days: 14
 
       - name: Database migration validation
         env:
