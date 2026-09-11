@@ -366,7 +366,7 @@ internal sealed class TranslationEntitlementAuthority : ITranslationEntitlementA
             .AsNoTracking()
             .SingleOrDefaultAsync(item => item.UserId == account.UserId && item.ParticipantType == account.ParticipantType, cancellationToken);
         var allowance = entitlement?.MonthlyCharacterAllowance ?? DefaultAllowance();
-        var isUnlimited = entitlement?.IsUnlimited ?? false;
+        var isUnlimited = access.CanManage || (entitlement?.IsUnlimited ?? false);
         await EnsureUsagePeriodAsync(account, period, cancellationToken);
         if (!await ReservePeriodAsync(account, period, allowance, isUnlimited, characters, cancellationToken))
         {
@@ -784,7 +784,7 @@ internal sealed class TranslationEntitlementAuthority : ITranslationEntitlementA
         DateOnly period)
     {
         var allowance = Math.Max(0, entitlement?.MonthlyCharacterAllowance ?? DefaultAllowance());
-        var unlimited = entitlement?.IsUnlimited ?? false;
+        var unlimited = access.CanManage || (entitlement?.IsUnlimited ?? false);
         var consumed = Math.Max(0, usage?.ConsumedCharacters ?? 0);
         var reserved = Math.Max(0, usage?.ReservedCharacters ?? 0);
         long? remaining = unlimited ? null : Math.Max(0, allowance - consumed - reserved);
@@ -805,7 +805,7 @@ internal sealed class TranslationEntitlementAuthority : ITranslationEntitlementA
             start,
             end,
             end,
-            entitlement?.EntitlementSource ?? "DefaultPolicy",
+            access.CanManage ? "FounderIdentity" : entitlement?.EntitlementSource ?? "DefaultPolicy",
             entitlement?.IsFounderOverride ?? false,
             usage?.LastTranslationActivityUtc);
     }

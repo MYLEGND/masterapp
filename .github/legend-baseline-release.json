@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
-  "authorization": "Owner explicitly authorized publication of call repair 8721d8b8edc6d7fa251f4d84c251c6b146d2d09b and deployment through the protected production workflow on 2026-09-11, retaining exactly the existing nine native failures and four skipped tests and adding seven passing call-binding regression cases. This approval does not claim those native failures are repaired or waive other release checks.",
-  "sourceCommit": "8721d8b8edc6d7fa251f4d84c251c6b146d2d09b",
-  "productionBaseCommit": "33aa8a7cbd485935c678c384d38599ef40dff232",
+  "authorization": "Owner authorized the shared Founder unlimited translation correction on 2026-09-11. Retain exactly the existing nine native failures and four skipped tests; add four passing Founder identity and quota regressions. No other release check or held-out expectation is changed.",
+  "sourceCommit": "cf6b5085de64977874f78f8f31c63dcc5273a98c",
+  "productionBaseCommit": "cbcb19353dede03704fa4a1d88a9a97758da2090",
   "allowedPolicyPaths": [
     ".github/workflows/agentportal-production-deploy.yml",
     ".github/legend-baseline-release.json",
@@ -1481,6 +1481,22 @@
     },
     {
       "name": "AgentPortal.Tests.FounderLegendConnectLiveMetricsTests.Create_UsesCanonicalSnapshotsForAllFounderAggregateCounters",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.FounderTranslationEntitlementTests.ConfiguredFounder_IsUnlimitedAndMeteredThroughEitherProfile(participantType: \"Agent\", useAlias: False)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.FounderTranslationEntitlementTests.ConfiguredFounder_IsUnlimitedAndMeteredThroughEitherProfile(participantType: \"Client\", useAlias: False)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.FounderTranslationEntitlementTests.ConfiguredFounder_IsUnlimitedAndMeteredThroughEitherProfile(participantType: \"Client\", useAlias: True)",
+      "outcome": "Passed"
+    },
+    {
+      "name": "AgentPortal.Tests.FounderTranslationEntitlementTests.OtherAccount_WithTranslationAccess_DoesNotAcquireFounderAllowance",
       "outcome": "Passed"
     },
     {
@@ -9890,5 +9906,5 @@
       "outcome": "Passed"
     }
   ],
-  "rosterSha256": "c432101fe6859bf6293a0a3af9d84812ced263fe2dd7ae353525a05aff5a8db1"
+  "rosterSha256": "2aa4913e80e6a6ccec46772305aba908082d1158332fe63f444d12cd1e6fa071"
 }

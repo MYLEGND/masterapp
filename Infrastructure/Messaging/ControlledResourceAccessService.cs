@@ -119,7 +119,7 @@ internal sealed class ControlledResourceAccessService : IControlledResourceAcces
         return IsCanonicalFounderManagerAsync(actor, cancellationToken);
     }
 
-    public Task<bool> IsCanonicalFounderManagerAsync(
+    public async Task<bool> IsCanonicalFounderManagerAsync(
         MessagingActor actor,
         CancellationToken cancellationToken = default)
     {
@@ -127,9 +127,12 @@ internal sealed class ControlledResourceAccessService : IControlledResourceAcces
         var configuredFounderOid = Environment.GetEnvironmentVariable("FOUNDER_OID")
             ?? Environment.GetEnvironmentVariable("FounderOid")
             ?? _configuration["Founder:Oid"];
-        return Task.FromResult(FounderAuthority.IsConfiguredFounderIdentity(
-            actor.UserId,
-            configuredFounderOid));
+        // Member routes may carry the stored ClientUserId instead of the Entra
+        // object ID. Resolve only the existing database-backed identity forms;
+        // names, email addresses and client-supplied claims grant no authority.
+        var userIds = await ParticipantUserIdFormsAsync(actor, cancellationToken);
+        return userIds.Any(userId => FounderAuthority.IsConfiguredFounderIdentity(
+            userId, configuredFounderOid));
     }
 
     public async Task<string?> GetPreferredLanguageAsync(
