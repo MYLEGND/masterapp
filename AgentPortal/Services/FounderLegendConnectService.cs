@@ -892,6 +892,23 @@ public sealed class FounderLegendConnectService
         return new FounderLegendConnectOperationResult(true, "Autonomous acquisition is paused. Live communication and Azure fallback remain available.");
     }
 
+    public async Task<TranslationLimitsPageVm> GetTranslationLimitsAsync(ClaimsPrincipal user,
+        string? search, CancellationToken cancellationToken = default)
+    {
+        await ResolveFounderActorAsync(user, cancellationToken);
+        if (_entitlements is null) throw new InvalidOperationException("Translation entitlement authority is unavailable.");
+        return new(await _entitlements.GetGlobalLimitAsync(cancellationToken),
+            await _entitlements.SearchFounderAccountsAsync(search, 8, cancellationToken));
+    }
+
+    public async Task UpdateGlobalTranslationLimitAsync(ClaimsPrincipal user, TranslationGlobalLimitInput input,
+        CancellationToken cancellationToken = default)
+    {
+        var founder = await ResolveFounderActorAsync(user, cancellationToken);
+        if (_entitlements is null) throw new InvalidOperationException("Translation entitlement authority is unavailable.");
+        await _entitlements.SetGlobalLimitAsync(founder, input.CharacterAllowance ?? -1, input.Version, cancellationToken);
+    }
+
     public async Task<FounderLegendConnectEntitlementResult> UpdateEntitlementAsync(
         ClaimsPrincipal user,
         FounderLegendConnectEntitlementInput input,
@@ -911,31 +928,24 @@ public sealed class FounderLegendConnectService
         {
             return new FounderLegendConnectEntitlementResult(
                 false,
-                "Translation access can be managed only for active, current-paying Client CRM accounts.");
+                "Choose an active agent or an eligible current-paying member account.");
         }
-
-        var grant = await _messaging.SetControlledResourceGrantAsync(
-            new SetControlledResourceGrantCommand(
-                new MessagingActor(founder, MessagingParticipantTypes.Agent),
-                ControlledResourceTypes.LanguageTranslation,
-                targetUserId,
-                participantType,
-                input.AccessGranted),
-            cancellationToken);
-        if (!grant.Succeeded)
-            return new FounderLegendConnectEntitlementResult(false, grant.ErrorMessage ?? "Legend could not update translation access.");
-
-        // Permission controls whether a provider call can start. Retaining a
-        // prior entitlement on revoke preserves the audit trail while ensuring
-        // it cannot be consumed until access is granted again.
-        if (!input.AccessGranted)
-            return new FounderLegendConnectEntitlementResult(true, "Translation access was revoked. Existing entitlement history remains auditable.");
 
         var mode = input.EntitlementMode?.Trim() ?? string.Empty;
         var unlimited = string.Equals(mode, "Unlimited", StringComparison.OrdinalIgnoreCase);
         long allowance;
         string source;
-        if (unlimited)
+        if (!input.AccessGranted)
+        {
+            allowance = 0;
+            source = "GlobalPolicy";
+        }
+        else if (string.Equals(mode, "Global", StringComparison.OrdinalIgnoreCase))
+        {
+            allowance = (await _entitlements.GetGlobalLimitAsync(cancellationToken)).CharacterAllowance;
+            source = "GlobalPolicy";
+        }
+        else if (unlimited)
         {
             allowance = 0;
             source = "FounderUnlimited";
@@ -958,6 +968,24 @@ public sealed class FounderLegendConnectService
         if (allowance < 0)
             return new FounderLegendConnectEntitlementResult(false, "Enter a non-negative monthly character allowance.");
 
+        var grant = await _messaging.SetControlledResourceGrantAsync(
+            new SetControlledResourceGrantCommand(
+                new MessagingActor(founder, MessagingParticipantTypes.Agent),
+                ControlledResourceTypes.LanguageTranslation,
+                targetUserId,
+                participantType,
+                input.AccessGranted),
+            cancellationToken);
+        if (!grant.Succeeded)
+            return new FounderLegendConnectEntitlementResult(false, grant.ErrorMessage ?? "Legend could not update translation access.");
+
+        // Permission controls whether a provider call can start. Retaining a
+        // prior entitlement on revoke preserves the audit trail while ensuring
+        // it cannot be consumed until access is granted again.
+        if (!input.AccessGranted)
+            return new FounderLegendConnectEntitlementResult(true, "Translation access was revoked. Existing entitlement history remains auditable.");
+
+
         try
         {
             await _entitlements.SetEntitlementAsync(
@@ -967,7 +995,7 @@ public sealed class FounderLegendConnectService
                     allowance,
                     unlimited,
                     source,
-                    IsFounderOverride: true),
+                    IsFounderOverride: source != "GlobalPolicy"),
                 cancellationToken);
         }
         catch (ArgumentException exception)

@@ -1,5 +1,5 @@
 {
-  "catalogVersion": "application-copy-v1-3eeec2f0b387429f",
+  "catalogVersion": "application-copy-v1-70db8bde5ea25d46",
   "sourceLanguageCode": "en",
   "entries": [
     {
@@ -3344,6 +3344,17 @@
       "source": "Traffic Type",
       "context": "accessibility copy",
       "sourceRevision": "9d6606912e6ac2b3",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.fcfe682d9d70396c851a4a22",
+      "source": "Translation policy",
+      "context": "accessibility copy",
+      "sourceRevision": "ac75741d5c037924",
       "placeholders": [
 
       ],
@@ -8643,6 +8654,17 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.1792fbf02f370e532f94a474",
+      "source": "Always active",
+      "context": "visual interface copy",
+      "sourceRevision": "8c559f48eae34a00",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.905b260fe3b4cf66be533998",
       "source": "American General (AIG/Corebridge)",
       "context": "visual interface copy",
@@ -9186,6 +9208,17 @@
       "source": "Applications",
       "context": "visual interface copy",
       "sourceRevision": "98e33b0f3104fcf1",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.28c2e634fc3becdc6ab46f8d",
+      "source": "Applies when an account uses the global default. Individual allowances remain separate.",
+      "context": "visual interface copy",
+      "sourceRevision": "1b93f191c6cc4e5f",
       "placeholders": [
 
       ],
@@ -11448,6 +11481,17 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.889fea3239ec07d92de8f01b",
+      "source": "Both Founder profiles. Usage is measured and saved translations are reused.",
+      "context": "visual interface copy",
+      "sourceRevision": "37a610c70008d437",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.9dc49b591f9fdbe621b394fa",
       "source": "Bounce Before Funnel Start",
       "context": "visual interface copy",
@@ -13120,6 +13164,17 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.74e01c772817046faa80fd49",
+      "source": "Changes apply across web, iOS and Android. Existing usage is retained. Founder access stays unlimited.",
+      "context": "visual interface copy",
+      "sourceRevision": "a4a792fd02811a8e",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.77af9752f310bdaa8e064376",
       "source": "Changes save automatically to the server for the current agent profile.",
       "context": "visual interface copy",
@@ -13135,6 +13190,39 @@
       "source": "Changes update this CRM account everywhere.",
       "context": "visual interface copy",
       "sourceRevision": "d7186aedc07b3e7e",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.1c5532b120cc509166680207",
+      "source": "Changing a limit does not reset usage. Use the global default to follow future global changes.",
+      "context": "visual interface copy",
+      "sourceRevision": "ed53bf749dc4b98e",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.bd6676cbc22e82ef6c377a42",
+      "source": "Characters per month",
+      "context": "visual interface copy",
+      "sourceRevision": "2a9eb0779ccc71f5",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.ed5a13058d18924a6022c20d",
+      "source": "Characters per user per month",
+      "context": "visual interface copy",
+      "sourceRevision": "64d4de56e716c2e6",
       "placeholders": [
 
       ],
@@ -19897,6 +19985,17 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.c1a237bd999b0e6c43e02650",
+      "source": "Edit global limit",
+      "context": "visual interface copy",
+      "sourceRevision": "18245967c97e7af6",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.36257a11d4b2e09d4143a3e7",
       "source": "Edit group meeting",
       "context": "visual interface copy",
@@ -20495,6 +20594,17 @@
       "source": "Enable Reminders",
       "context": "visual interface copy",
       "sourceRevision": "83453bbc024462dd",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.5094d08b1e00f163d23c82bf",
+      "source": "Enabled",
+      "context": "visual interface copy",
+      "sourceRevision": "92c1cdfdf4cb9cf6",
       "placeholders": [
 
       ],
@@ -22428,6 +22538,17 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.aa3ef63e785facd1e817837f",
+      "source": "Find an account to review usage and adjust its monthly limit.",
+      "context": "visual interface copy",
+      "sourceRevision": "58ce7ff59c76760a",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.a9ba823ba21ad34f607a1179",
       "source": "Finding music",
       "context": "visual interface copy",
@@ -22949,6 +23070,17 @@
       "source": "Founder View",
       "context": "visual interface copy",
       "sourceRevision": "1a07cdea046ed72a",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.56bc6a605d79f902a9efc6ff",
+      "source": "Founder account",
+      "context": "visual interface copy",
+      "sourceRevision": "585d6cde6216bfea",
       "placeholders": [
 
       ],
@@ -23708,6 +23840,28 @@
       "source": "Global",
       "context": "visual interface copy",
       "sourceRevision": "a258b30f88c30650",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.f69892d9b1d02bcefa9b98aa",
+      "source": "Global monthly default",
+      "context": "visual interface copy",
+      "sourceRevision": "ca4a9ce7c96f73c1",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.b8a70e7ac61023594bfb4479",
+      "source": "Global monthly limit",
+      "context": "visual interface copy",
+      "sourceRevision": "d2515b969b402837",
       "placeholders": [
 
       ],
@@ -26185,6 +26339,28 @@
       "source": "Indexed UL",
       "context": "visual interface copy",
       "sourceRevision": "8a76e3bb3c2bf0ff",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.a6bae88e5708847eff577d1f",
+      "source": "Individual allowances",
+      "context": "visual interface copy",
+      "sourceRevision": "147541545a88be26",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.f563430b0c6fea19f49d0382",
+      "source": "Individual amount",
+      "context": "visual interface copy",
+      "sourceRevision": "5827a279e49161aa",
       "placeholders": [
 
       ],
@@ -30384,6 +30560,17 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.0378fccc73984cb13c9c2cde",
+      "source": "Manage global translation limits and individual allowances on the dedicated Founder page.",
+      "context": "visual interface copy",
+      "sourceRevision": "457d654e61f6e289",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.6b4d25243f395831c683a426",
       "source": "Manage lead pipeline, contact progress, and follow-up updates.",
       "context": "visual interface copy",
@@ -30443,6 +30630,17 @@
       "source": "Manage this server-authorized conversation. Removing it only removes it from your inbox; a new message will bring it back.",
       "context": "visual interface copy",
       "sourceRevision": "70564d73966a455f",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.f8f9d16ad095e9834db07049",
+      "source": "Manage translation limits",
+      "context": "visual interface copy",
+      "sourceRevision": "83a8d65020279598",
       "placeholders": [
 
       ],
@@ -31770,6 +31968,17 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.b5be063c5cf1f50d0c5b3291",
+      "source": "Monthly allowance",
+      "context": "visual interface copy",
+      "sourceRevision": "01a1ee35863f2fd3",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.7014a6c01d557effdd25f2cd",
       "source": "Monthly allowance left",
       "context": "visual interface copy",
@@ -31818,6 +32027,17 @@
       "source": "Months Covered",
       "context": "visual interface copy",
       "sourceRevision": "9d25a9b73b6d82fc",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.78e946a21f0f351ef24910fd",
+      "source": "More accounts match. Refine your search to find a specific user.",
+      "context": "visual interface copy",
+      "sourceRevision": "769759db66285ccc",
       "placeholders": [
 
       ],
@@ -33498,6 +33718,17 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.6c48008d7fe97d238e200cad",
+      "source": "No matching active accounts. Try another name or email.",
+      "context": "visual interface copy",
+      "sourceRevision": "457f187b8e83ebdb",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.e06614623159a2d896bfdad4",
       "source": "No matching conversations",
       "context": "visual interface copy",
@@ -34690,6 +34921,17 @@
       "source": "Once name found:",
       "context": "visual interface copy",
       "sourceRevision": "5f09d21ba60cccd9",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.a3c8d471de325822b34c95b4",
+      "source": "One allowance policy for every LEGEND platform.",
+      "context": "visual interface copy",
+      "sourceRevision": "0060e7e02688b812",
       "placeholders": [
 
       ],
@@ -42892,6 +43134,17 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.cb4c6fd51ecb1baa28c77c9e",
+      "source": "Save allowance",
+      "context": "visual interface copy",
+      "sourceRevision": "12e754b7ff6a6797",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.ffe3275c881e183569cfaf12",
       "source": "Save and launch your personal Zoom meeting links instantly. One click to copy.",
       "context": "visual interface copy",
@@ -42929,6 +43182,17 @@
       "source": "Save event",
       "context": "visual interface copy",
       "sourceRevision": "2ea84a3cf7ab9a83",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.4b854b7dbb56d07a83c6f02f",
+      "source": "Save global limit",
+      "context": "visual interface copy",
+      "sourceRevision": "8b3d06530d066391",
       "placeholders": [
 
       ],
@@ -43805,6 +44069,17 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.7ebf49766dc964c5a0c65d84",
+      "source": "Search name, email or user ID",
+      "context": "visual interface copy",
+      "sourceRevision": "b190a24039d54df4",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.3f082f83c8c36ae241be8fc0",
       "source": "Search name, email, or account ID",
       "context": "visual interface copy",
@@ -43941,6 +44216,17 @@
       "source": "Search training...",
       "context": "visual interface copy",
       "sourceRevision": "5f39b6b15bab0de1",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.9fa657f88c2a1e2e2af28623",
+      "source": "Search users",
+      "context": "visual interface copy",
+      "sourceRevision": "e4bb77af4bc57267",
       "placeholders": [
 
       ],
@@ -50847,10 +51133,43 @@
       "reuseScope": "Global"
     },
     {
+      "id": "application.copy.2b73c03b44ba66d48427afb4",
+      "source": "Translation Limits",
+      "context": "visual interface copy",
+      "sourceRevision": "2235f833560704e5",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.d6dce557e66d5e9dbb8697dd",
+      "source": "Translation access",
+      "context": "visual interface copy",
+      "sourceRevision": "9333af79cf9d3f4f",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
       "id": "application.copy.5600ab656a720fb586cbea06",
       "source": "Translation access pending",
       "context": "visual interface copy",
       "sourceRevision": "c2982870fee01a4d",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.fc0f337074876fcd9ee5ac58",
+      "source": "Translation allowances",
+      "context": "visual interface copy",
+      "sourceRevision": "4a664c081d6c236c",
       "placeholders": [
 
       ],
@@ -50884,6 +51203,17 @@
       "source": "Translation learning preference unavailable",
       "context": "visual interface copy",
       "sourceRevision": "7af78ab839b7fa6c",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.b86c9e9fc2d91a825073d814",
+      "source": "Translation management",
+      "context": "visual interface copy",
+      "sourceRevision": "67d1702a91dc355b",
       "placeholders": [
 
       ],
@@ -51511,6 +51841,17 @@
       "source": "Unlimited",
       "context": "visual interface copy",
       "sourceRevision": "11dde17d6c3e2098",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.b1a7f073956c94194acf7157",
+      "source": "Unlimited Founder access",
+      "context": "visual interface copy",
+      "sourceRevision": "331815a5a104efe8",
       "placeholders": [
 
       ],
@@ -55505,6 +55846,17 @@
       "source": "below that.",
       "context": "visual interface copy",
       "sourceRevision": "dfae03fc947502cf",
+      "placeholders": [
+
+      ],
+      "translationPolicy": "AzureAllowed",
+      "reuseScope": "Global"
+    },
+    {
+      "id": "application.copy.a6d032181a73a0c00530c4a6",
+      "source": "characters / user",
+      "context": "visual interface copy",
+      "sourceRevision": "b5c1de5a1b310a90",
       "placeholders": [
 
       ],

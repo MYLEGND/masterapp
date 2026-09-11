@@ -1,0 +1,101 @@
+@using AgentPortal.Models
+@model TranslationLimitsPageVm
+@{ ViewData["Title"] = "Translation Limits"; }
+@section Styles {
+    <link rel="stylesheet" href="~/css/translation-limits.css" asp-append-version="true" />
+}
+<main class="dashboard-page-shell translation-limits">
+    <header class="dashboard-section-head">
+        <div><span class="dashboard-section-kicker">Founder controls</span><h1>Translation Limits</h1><p>One allowance policy for every LEGEND platform.</p></div>
+        <a asp-action="Index" class="dashboard-command-action">Legend® Connect</a>
+    </header>
+    @if (TempData["LegendConnectSuccess"] is string success) { <div class="alert alert-success" role="status">@success</div> }
+    @if (TempData["LegendConnectError"] is string error) { <div class="alert alert-danger" role="alert">@error</div> }
+    <section class="translation-limits-summary" aria-label="Translation policy">
+        <article class="dashboard-analytics-panel">
+            <span class="dashboard-section-kicker">Global monthly default</span>
+            <strong class="translation-limit-value">@Model.GlobalLimit.CharacterAllowance.ToString("N0") <small>characters / user</small></strong>
+            <p>Applies when an account uses the global default. Individual allowances remain separate.</p>
+            <button class="dashboard-command-action btn-carrier-settings" type="button" data-bs-toggle="modal" data-bs-target="#globalTranslationLimit">Edit global limit</button>
+        </article>
+        <article class="dashboard-analytics-panel translation-founder-card">
+            <span class="dashboard-section-kicker">Founder account</span>
+            <strong class="translation-limit-value">Unlimited</strong>
+            <p>Both Founder profiles. Usage is measured and saved translations are reused.</p>
+            <span class="translation-limit-badge">Always active</span>
+        </article>
+    </section>
+    <section class="dashboard-analytics-panel" aria-labelledby="translation-users-title">
+        <div class="dashboard-section-head"><div><h2 id="translation-users-title">Individual allowances</h2><p>Find an account to review usage and adjust its monthly limit.</p></div></div>
+        <form method="get" asp-action="TranslationLimits" class="translation-limit-search" role="search">
+            <label class="visually-hidden" for="translation-account-search">Search users</label>
+            <input id="translation-account-search" class="form-control" type="search" name="search" value="@Model.Search.Query" placeholder="Search name, email or user ID" maxlength="120" />
+            <button type="submit" class="dashboard-command-action btn-carrier-settings">Search</button>
+        </form>
+        <div class="translation-account-list">
+        @for (var index = 0; index < Model.Search.Accounts.Count; index++)
+        {
+            var account = Model.Search.Accounts[index];
+            var entitlement = account.Entitlement;
+            <article class="translation-account-row">
+                <div><strong>@account.DisplayName</strong><small>@account.Account.ParticipantType · @(account.PreferredLanguage ?? "Language not set")</small></div>
+                <div><strong>@(entitlement.IsUnlimited ? "Unlimited" : entitlement.CharacterAllowance.ToString("N0"))</strong><small>@entitlement.ConsumedCharacters.ToString("N0") used this month</small></div>
+                <span class="translation-limit-badge">@(entitlement.EntitlementSource is "DefaultPolicy" or "GlobalPolicy" ? "Global default" : entitlement.EntitlementSource == "FounderIdentity" ? "Founder" : "Individual")</span>
+                @if (entitlement.EntitlementSource == "FounderIdentity")
+                {
+                    <span class="translation-limit-badge">Unlimited Founder access</span>
+                }
+                else
+                {
+                    <button type="button" class="dashboard-command-action" data-bs-toggle="modal" data-bs-target="#translationAccount@(index)" aria-label="Manage @account.DisplayName">Manage</button>
+                }
+            </article>
+        }
+        </div>
+        @if (Model.Search.Accounts.Count == 0) { <p class="translation-limit-empty">No matching active accounts. Try another name or email.</p> }
+        @if (Model.Search.HasMore) { <p>More accounts match. Refine your search to find a specific user.</p> }
+    </section>
+</main>
+<div class="modal fade legend-modal" id="globalTranslationLimit" tabindex="-1" aria-labelledby="globalTranslationLimitTitle" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered"><form class="modal-content" method="post" asp-action="UpdateGlobalTranslationLimit">
+        <div class="modal-header"><h2 class="modal-title fs-5" id="globalTranslationLimitTitle">Global monthly limit</h2><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button></div>
+        <div class="modal-body">
+            <input type="hidden" name="Version" value="@Model.GlobalLimit.Version" />
+            <label class="form-label" for="globalCharacterAllowance">Characters per user per month</label>
+            <input class="form-control" id="globalCharacterAllowance" name="CharacterAllowance" type="number" min="0" step="1" required value="@Model.GlobalLimit.CharacterAllowance" />
+            <p class="mt-3">Changes apply across web, iOS and Android. Existing usage is retained. Founder access stays unlimited.</p>
+        </div>
+        <div class="modal-footer"><button type="button" class="dashboard-command-action" data-bs-dismiss="modal">Cancel</button><button type="submit" class="dashboard-command-action btn-carrier-settings">Save global limit</button></div>
+    </form></div>
+</div>
+@for (var index = 0; index < Model.Search.Accounts.Count; index++)
+{
+    var account = Model.Search.Accounts[index];
+    var entitlement = account.Entitlement;
+    if (entitlement.EntitlementSource == "FounderIdentity") { continue; }
+    var usesGlobal = entitlement.EntitlementSource is "DefaultPolicy" or "GlobalPolicy";
+    <div class="modal fade legend-modal" id="translationAccount@(index)" tabindex="-1" aria-labelledby="translationAccountTitle@(index)" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered"><form class="modal-content" method="post" asp-action="UpdateTranslationAccountLimit" data-translation-limit-form>
+            <div class="modal-header"><h2 class="modal-title fs-5" id="translationAccountTitle@(index)">@account.DisplayName</h2><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button></div>
+            <div class="modal-body">
+                <input type="hidden" name="TargetUserId" value="@account.Account.UserId" /><input type="hidden" name="TargetParticipantType" value="@account.Account.ParticipantType" /><input type="hidden" name="ReturnAccountSearch" value="@Model.Search.Query" />
+                <p>@entitlement.ConsumedCharacters.ToString("N0") characters used · @entitlement.ReservedCharacters.ToString("N0") pending</p>
+                <label class="form-label" for="access@(index)">Translation access</label>
+                <select class="form-select mb-3" id="access@(index)" name="AccessGranted"><option value="true" selected="@(account.AccessState == "Granted")">Enabled</option><option value="false" selected="@(account.AccessState != "Granted")">Disabled</option></select>
+                <label class="form-label" for="mode@(index)">Monthly allowance</label>
+                <select class="form-select mb-3" id="mode@(index)" name="EntitlementMode" data-limit-mode>
+                    <option value="Global" selected="@usesGlobal">Use global default (@Model.GlobalLimit.CharacterAllowance.ToString("N0"))</option>
+                    <option value="Custom" selected="@(!usesGlobal && !entitlement.IsUnlimited)">Individual amount</option>
+                    <option value="Unlimited" selected="@entitlement.IsUnlimited">Unlimited</option>
+                </select>
+                <div data-custom-limit>
+                    <label class="form-label" for="amount@(index)">Characters per month</label>
+                    <input class="form-control" id="amount@(index)" name="CustomCharacterAllowance" type="number" min="0" step="1" value="@entitlement.CharacterAllowance" />
+                </div>
+                <p class="mt-3">Changing a limit does not reset usage. Use the global default to follow future global changes.</p>
+            </div>
+            <div class="modal-footer"><button type="button" class="dashboard-command-action" data-bs-dismiss="modal">Cancel</button><button type="submit" class="dashboard-command-action btn-carrier-settings">Save allowance</button></div>
+        </form></div>
+    </div>
+}
+@section Scripts { <script src="~/js/translation-limits.js" asp-append-version="true"></script> }

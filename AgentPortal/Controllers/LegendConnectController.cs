@@ -54,6 +54,58 @@ public sealed class LegendConnectController : Controller
     }
 
     [HttpGet]
+    [Route("founder/translation-limits")]
+    public async Task<IActionResult> TranslationLimits([FromQuery] string? search, CancellationToken cancellationToken)
+    {
+        try { return View(await _service.GetTranslationLimitsAsync(User, search, cancellationToken)); }
+        catch (ForbidResultException) { return Forbid(); }
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    [Route("founder/translation-limits/global")]
+    public async Task<IActionResult> UpdateGlobalTranslationLimit([FromForm] TranslationGlobalLimitInput input,
+        CancellationToken cancellationToken)
+    {
+        if (!ModelState.IsValid)
+        {
+            TempData["LegendConnectError"] = "Enter a valid monthly character limit.";
+            return RedirectToAction(nameof(TranslationLimits));
+        }
+        try
+        {
+            await _service.UpdateGlobalTranslationLimitAsync(User, input, cancellationToken);
+            TempData["LegendConnectSuccess"] = "Global translation limit saved. Founder access remains unlimited.";
+        }
+        catch (ForbidResultException) { return Forbid(); }
+        catch (Microsoft.EntityFrameworkCore.DbUpdateException)
+        {
+            TempData["LegendConnectError"] = "The limit could not be saved. Refresh and try again.";
+        }
+        return RedirectToAction(nameof(TranslationLimits));
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    [Route("founder/translation-limits/account")]
+    public async Task<IActionResult> UpdateTranslationAccountLimit([FromForm] FounderLegendConnectEntitlementInput input,
+        CancellationToken cancellationToken)
+    {
+        if (!ModelState.IsValid)
+        {
+            TempData["LegendConnectError"] = "Enter a valid account allowance.";
+            return RedirectToAction(nameof(TranslationLimits), new { search = input.ReturnAccountSearch });
+        }
+        try
+        {
+            var result = await _service.UpdateEntitlementAsync(User, input, cancellationToken);
+            TempData[result.Succeeded ? "LegendConnectSuccess" : "LegendConnectError"] = result.Message;
+        }
+        catch (ForbidResultException) { return Forbid(); }
+        return RedirectToAction(nameof(TranslationLimits), new { search = input.ReturnAccountSearch });
+    }
+
+    [HttpGet]
     [Route("founder/legend-connect/capacity")]
     public async Task<IActionResult> GetProviderCapacity(CancellationToken cancellationToken)
     {

@@ -41,7 +41,7 @@ public sealed record TranslationFounderAccountUsageSnapshot(
 /// <summary>
 /// Bounded, CRM-backed Founder account selection for translation management.
 /// The account directory is intentionally not reconstructed from historic
-/// grants, entitlements, or usage: only active, current-paying Client CRM
+/// grants, entitlements, or usage: active Agent profiles and active, current-paying Client CRM
 /// records are eligible for the operational surface.
 /// </summary>
 public sealed record TranslationFounderAccountSearchSnapshot(
@@ -123,8 +123,14 @@ public enum TranslationAvoidedPath
 /// usage, and durable reservation/ledger finalization. It does not translate
 /// text and it never stores message bodies.
 /// </summary>
+public sealed record TranslationGlobalLimitSnapshot(long CharacterAllowance, Guid? Version, DateTime? UpdatedUtc);
+
 public interface ITranslationEntitlementAuthority
 {
+    Task<TranslationGlobalLimitSnapshot> GetGlobalLimitAsync(CancellationToken cancellationToken = default);
+    Task<TranslationGlobalLimitSnapshot> SetGlobalLimitAsync(string founderUserId, long characterAllowance,
+        Guid? expectedVersion, CancellationToken cancellationToken = default);
+
     Task<TranslationAccountEntitlementSnapshot> GetSnapshotAsync(
         MessagingActor account,
         CancellationToken cancellationToken = default);
