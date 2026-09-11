@@ -6,6 +6,7 @@ The production runner is copied unchanged into a temporary Git fixture, and a
 fake dotnet executable writes controlled discovery/TRX/JSON evidence. Passing
 these tests proves runner rejection behavior, never live SQL/native capability.
 """
+import argparse
 import os
 import subprocess
 import pathlib
@@ -15,6 +16,10 @@ import uuid
 
 if os.name != "posix":
     raise SystemExit("NOT_CONFIGURED: these runner contract tests require POSIX bash and timeout")
+parser = argparse.ArgumentParser(description=__doc__)
+parser.add_argument('--configuration-only', action='store_true',
+                    help='Run only existing configuration cases; no GNU timeout required. Full simulations remain a separate gate.')
+args = parser.parse_args()
 source_repo = pathlib.Path(__file__).resolve().parents[1]
 root = pathlib.Path(tempfile.mkdtemp(prefix="legend-runner-simulation-"))
 repo = root / "source-fixture"
@@ -190,6 +195,9 @@ cases += ['valid_resources','resource_wrong_sha','resource_wrong_identity','reso
 cases += ['resource_canonical_claim','resource_openai_catalog_executed','resource_research_no_receipt']
 cases += ['resource_unknown_research_state','resource_no_accepted_http','resource_missing_stages','observation_missing_diagnostics','observation_swallowed_sql_failure','observation_missing_preflight']
 cases += ['configuration_available', 'configuration_preexisting_matching_receipt', 'configuration_missing_sql', 'configuration_whitespace_sql', 'configuration_whitespace_founder', 'configuration_provider_forbidden', 'whitespace_sql', 'whitespace_founder', 'resource_alias_presence', 'resource_pre_http_failure']
+full_case_count = len(cases)
+if args.configuration_only:
+ cases = [case for case in cases if case.startswith('configuration_')]
 for case in cases:
  workspace=root/case;workspace.mkdir()
  if case in ('preexisting_result','preexisting_trx'):
@@ -263,9 +271,9 @@ for case in cases:
  expected=0 if case.startswith('valid_') or case in ('configuration_available','configuration_preexisting_matching_receipt','resource_alias_presence') else 1
  rows.append({'Case':case,'Expected':'pass' if expected==0 else 'fail','Exit':result.returncode,'Status':summary.get('Status'),'FailureCode':summary.get('FailureCode'),'MatchesExpectation':(result.returncode==0)==(expected==0),'SimulatedTestProcessInvoked':(workspace/'diagnostics/legend-shadow/private/executed.marker').exists()})
  print(json.dumps(rows[-1]))
-(root/'simulation-report.json').write_text(json.dumps({'SimulationOnly':True,'SourceSha':sha,'Cases':rows},indent=2))
+(root/'simulation-report.json').write_text(json.dumps({'SimulationOnly':True,'SourceSha':sha,'Scope':'configuration_only' if args.configuration_only else 'full','TotalAvailableCases':full_case_count,'ExecutedCases':len(rows),'Cases':rows},indent=2))
 print('SIMULATED_REPORT='+str(root/'simulation-report.json'))
 failed = [row['Case'] for row in rows if not row['MatchesExpectation']]
 if failed:
     raise SystemExit('Runner contract regressions: ' + ', '.join(failed))
-print(f'Runner contract checks passed: {len(rows)}. Simulation only; no SQL or builds executed.')
+print(f'Runner contract checks passed: {len(rows)} of {full_case_count}; scope={"configuration_only" if args.configuration_only else "full"}. Simulation only; no SQL or builds executed.')

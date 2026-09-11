@@ -212,39 +212,41 @@ PY
 }
 trap write_summary EXIT
 
+# Bash 3.2 does not apply errexit to a failed standalone [[ ... ]].
+# Explicit exits keep every mandatory authority guard fail-closed on that host.
 failure='candidate_sha_missing_or_invalid'
-[[ "${LEGEND_VALIDATION_CANDIDATE_SHA:-}" =~ ^[0-9a-f]{40}$ ]]
+[[ "${LEGEND_VALIDATION_CANDIDATE_SHA:-}" =~ ^[0-9a-f]{40}$ ]] || exit 1
 failure='candidate_source_mismatch'
-[[ "$(git rev-parse HEAD)" == "$LEGEND_VALIDATION_CANDIDATE_SHA" ]]
+[[ "$(git rev-parse HEAD)" == "$LEGEND_VALIDATION_CANDIDATE_SHA" ]] || exit 1
 git diff --quiet HEAD --
 if [[ "$LEGEND_VALIDATION_SCOPE" == 'provider_resources' ]]; then
   failure='required_resource_diagnostics_not_enabled'
-  [[ "${LEGEND_RESOURCE_DIAGNOSTICS_REQUIRED:-}" == 'true' ]]
+  [[ "${LEGEND_RESOURCE_DIAGNOSTICS_REQUIRED:-}" == 'true' ]] || exit 1
 else
 failure='not_configured_select_only_credential'
-[[ "${LEGEND_PRODUCTION_READONLY_CONNECTION:-}" =~ [^[:space:]] ]]
+[[ "${LEGEND_PRODUCTION_READONLY_CONNECTION:-}" =~ [^[:space:]] ]] || exit 1
 failure='not_configured_founder_identity'
-[[ "${LEGEND_PRODUCTION_READONLY_FOUNDER_OID:-}" =~ [^[:space:]] ]]
+[[ "${LEGEND_PRODUCTION_READONLY_FOUNDER_OID:-}" =~ [^[:space:]] ]] || exit 1
 failure='required_observation_not_enabled'
-[[ "${LEGEND_PRODUCTION_OBSERVATION_REQUIRED:-}" == 'true' ]]
+[[ "${LEGEND_PRODUCTION_OBSERVATION_REQUIRED:-}" == 'true' ]] || exit 1
 failure='provider_credential_present'
-[[ -z "${OPENAI_API_KEY:-}" && -z "${OpenAI__ApiKey:-}" ]]
+[[ -z "${OPENAI_API_KEY:-}" && -z "${OpenAI__ApiKey:-}" ]] || exit 1
 fi
 if [[ "$mode" == --check-configuration ]]; then
   failure='configuration_check_requires_native_scope'
-  [[ "$LEGEND_VALIDATION_SCOPE" != provider_resources ]]
+  [[ "$LEGEND_VALIDATION_SCOPE" != provider_resources ]] || exit 1
   failure='configuration_inputs_available'
   status='inputs_available'
   exit 0
 fi
 failure='stale_observation_evidence'
-[[ ! -e "$root/private/observation.trx" ]]
+[[ ! -e "$root/private/observation.trx" ]] || exit 1
 if [[ "$LEGEND_VALIDATION_SCOPE" == 'provider_resources' ]]; then
   for resource in azure research openai; do
-    [[ ! -e "$root/resource-$resource.json" ]]
+    [[ ! -e "$root/resource-$resource.json" ]] || exit 1
   done
 else
-  [[ ! -e "$LEGEND_VALIDATION_RESULT_PATH" ]]
+  [[ ! -e "$LEGEND_VALIDATION_RESULT_PATH" ]] || exit 1
 fi
 
 failure='exact_test_discovery_failed'
